@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Globe2, Instagram, Linkedin, Loader2, Send, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, Globe2, Instagram, Linkedin, Loader2, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -17,6 +17,7 @@ type CalendarItem = {
   status: string;
   contentGenerationId?: string | null;
   variationIdx?: number | null;
+  contentIdPublicado?: string | null;
 };
 
 type ContentGeneration = {
@@ -33,6 +34,15 @@ type FacebookCapability = {
   pageId?: string;
   pageName?: string;
   reconnectMeta?: boolean;
+};
+
+type SocialPublication = {
+  id: string;
+  provider: string;
+  externalId?: string | null;
+  status: string;
+  publishedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type PublishPreview = {
@@ -92,6 +102,11 @@ function facebookReason(reason?: string) {
   return "Facebook orgânico ainda não está disponível para esta conexão.";
 }
 
+function calendarItemId(publication: SocialPublication) {
+  const value = publication.metadata?.calendarItemId;
+  return typeof value === "string" ? value : null;
+}
+
 export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
   const { user, tenantOverride, token } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
@@ -99,15 +114,22 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
   const [history, setHistory] = useState<ContentHistory>({ items: [] });
   const [facebook, setFacebook] = useState<FacebookCapability | null>(null);
+  const [publications, setPublications] = useState<SocialPublication[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [sent, setSent] = useState<Set<string>>(new Set());
 
   const [path, query = ""] = pathname.split("?");
   const params = useMemo(() => new URLSearchParams(query), [query]);
   const source = params.get("source") || params.get("from");
   const tab = params.get("tab") || "gerador";
   const visible = path === "/content" && tab === "gerador" && (source === "media-plan" || source === "media-calendar");
+
+  async function fetchPublications(headers: { Authorization: string }) {
+    const response = await fetch(`/api/tenants/${tenantId}/social-publications`, { headers });
+    if (!response.ok) return [];
+    const body = await response.json() as { publications?: SocialPublication[] };
+    return Array.isArray(body.publications) ? body.publications : [];
+  }
 
   useEffect(() => {
     if (!visible || !tenantId || !token) return;
@@ -118,7 +140,8 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       fetch(`/api/tenants/${tenantId}/content-calendar`, { headers }),
       fetch(`/api/tenants/${tenantId}/content`, { headers }),
       fetch(`/api/tenants/${tenantId}/facebook-organic-capability`, { headers }),
-    ]).then(async ([calendarResponse, contentResponse, facebookResponse]) => {
+      fetchPublications(headers),
+    ]).then(async ([calendarResponse, contentResponse, facebookResponse, nextPublications]) => {
       const nextCalendar = calendarResponse.ok ? await calendarResponse.json() as CalendarItem[] : [];
       const nextHistory = contentResponse.ok ? await contentResponse.json() as ContentHistory : { items: [] };
       const nextFacebook = facebookResponse.ok ? await facebookResponse.json() as FacebookCapability : { ready: false };
@@ -126,19 +149,38 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
         setCalendar(Array.isArray(nextCalendar) ? nextCalendar : []);
         setHistory(nextHistory ?? { items: [] });
         setFacebook(nextFacebook);
+        setPublications(nextPublications);
       }
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [tenantId, token, visible]);
 
+  const hasActivePublication = publications.some((publication) => publication.status === "queued" || publication.status === "publishing");
+  useEffect(() => {
+    if (!visible || !tenantId || !token || !hasActivePublication) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    const timer = window.setInterval(() => {
+      void fetchPublications(headers).then(setPublications);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [hasActivePublication, tenantId, token, visible]);
+
   const briefing = readBriefing();
   const generationById = useMemo(() => new Map((history.items ?? []).map((item) => [item.id, item])), [history.items]);
+  const publicationByCalendarId = useMemo(() => {
+    const map = new Map<string, SocialPublication>();
+    for (const publication of publications) {
+      const itemId = calendarItemId(publication);
+      if (itemId && !map.has(itemId)) map.set(itemId, publication);
+    }
+    return map;
+  }, [publications]);
   const hasFacebookPlanned = useMemo(() => calendar.some((item) => {
     const channel = normalize(item.canal);
     return channel.includes("facebook") && item.status !== "recusado" && item.status !== "pulado";
   }), [calendar]);
   const items = useMemo(() => calendar.filter((item) => {
-    if (item.status !== "aprovado" || !item.contentGenerationId) return false;
+    if (!["aprovado", "gerado", "publicado"].includes(item.status) || !item.contentGenerationId) return false;
     if (briefing?.campaignName && !normalize(item.pilar).includes(normalize(briefing.campaignName))) return false;
     const channel = normalize(item.canal);
     if (item.tipo === "linkedin_post") return channel.includes("linkedin");
@@ -158,6 +200,31 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       window.location.href = body.url;
     } catch (error) {
       toast({ title: "Não foi possível iniciar a reconexão Meta", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      setBusy(null);
+    }
+  }
+
+  async function refreshPublications() {
+    if (!token || !tenantId) return;
+    setPublications(await fetchPublications({ Authorization: `Bearer ${token}` }));
+  }
+
+  async function retry(publication: SocialPublication, item: CalendarItem) {
+    if (!tenantId || !token) return;
+    setBusy(item.id);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/social-publications/${publication.id}/retry`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await response.json().catch(() => ({})) as { publication?: SocialPublication; error?: string; detail?: string };
+      if (!response.ok) throw new Error(body.detail || body.error || "retry_failed");
+      await refreshPublications();
+      toast({ title: body.publication?.status === "published" ? "Publicação concluída" : "Nova tentativa iniciada" });
+    } catch (error) {
+      await refreshPublications();
+      toast({ title: "A nova tentativa falhou", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
       setBusy(null);
     }
   }
@@ -229,15 +296,17 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
             : preview.mediaUrls.length > 1 ? preview.mediaUrls : undefined,
           contentType,
           mediaKind: isFacebook ? facebookMediaKind : undefined,
+          calendarItemId: item.id,
+          contentGenerationId: item.contentGenerationId,
         }),
       });
-      const body = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(body.error || "publish_failed");
-      setSent((current) => new Set(current).add(item.id));
+      const body = await response.json().catch(() => ({})) as { publication?: SocialPublication; error?: string };
+      if (!response.ok || !body.publication) throw new Error(body.error || "publish_failed");
+      setPublications((current) => [body.publication!, ...current.filter((publication) => publication.id !== body.publication!.id)]);
       const label = isLinkedIn ? "LinkedIn" : isFacebook ? "Facebook" : "Instagram";
-      toast({ title: `Publicação enviada para ${label}`, description: "A peça entrou na fila nativa com retry automático." });
+      toast({ title: `Peça adicionada à fila do ${label}`, description: "O status muda para Publicado somente após confirmação real do canal." });
     } catch (error) {
-      toast({ title: "Não foi possível publicar", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      toast({ title: "Não foi possível iniciar a publicação", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -254,9 +323,9 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                 <Badge variant="outline">Publicação orgânica nativa</Badge>
               </div>
               <p className="mt-2 font-semibold">Publicar a campanha sem sair do Plano de Mídia</p>
-              <p className="mt-1 text-sm text-muted-foreground">Instagram, Facebook e LinkedIn usam a peça já aprovada e a mesma fila social, com retry automático e sem criar outra campanha.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Instagram, Facebook e LinkedIn usam a peça já aprovada. O estado exibido vem da fila real e permanece após recarregar a página.</p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" />Somente peças aprovadas aparecem aqui</div>
+            <div className="flex items-center gap-1.5 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" />Publicado só após confirmação do canal</div>
           </div>
 
           {hasFacebookPlanned && facebook && !facebook.ready && (
@@ -289,8 +358,13 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                 const isLinkedIn = item.tipo === "linkedin_post" || channel.includes("linkedin");
                 const isFacebook = channel.includes("facebook");
                 const label = isLinkedIn ? "LinkedIn" : isFacebook ? "Facebook" : "Instagram";
-                const wasSent = sent.has(item.id);
-                const disabled = busy === item.id || wasSent || (isFacebook && !facebook?.ready);
+                const publication = publicationByCalendarId.get(item.id);
+                const isPublished = publication?.status === "published" || item.status === "publicado";
+                const isQueued = publication?.status === "queued";
+                const isPublishing = publication?.status === "publishing";
+                const isFailed = publication?.status === "failed";
+                const disabled = busy === item.id || isPublished || isQueued || isPublishing || (isFacebook && !facebook?.ready);
+
                 return (
                   <div key={item.id} className="rounded-lg border bg-background/80 p-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -299,11 +373,22 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                         <span className="text-xs font-semibold uppercase tracking-wide">{label} · {item.tipo}</span>
                       </div>
                       <p className="mt-1 text-sm font-medium truncate">{item.temaSugerido}</p>
+                      {isPublished && <p className="mt-1 text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Publicado e confirmado pelo canal</p>}
+                      {isQueued && <p className="mt-1 text-xs text-amber-700 flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />Aguardando processamento</p>}
+                      {isPublishing && <p className="mt-1 text-xs text-blue-700 flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" />Publicando no canal</p>}
+                      {isFailed && <p className="mt-1 text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />A tentativa falhou; a peça continua aprovada</p>}
                     </div>
-                    <Button size="sm" variant={wasSent ? "outline" : "default"} disabled={disabled} onClick={() => void publish(item)}>
-                      {busy === item.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : wasSent ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-                      {wasSent ? "Enviado" : isFacebook && !facebook?.ready ? "Meta pendente" : "Publicar"}
-                    </Button>
+                    {isFailed && publication ? (
+                      <Button size="sm" variant="outline" disabled={busy === item.id} onClick={() => void retry(publication, item)}>
+                        {busy === item.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+                        Tentar novamente
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant={isPublished ? "outline" : "default"} disabled={disabled} onClick={() => void publish(item)}>
+                        {busy === item.id || isPublishing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : isPublished ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : isQueued ? <Clock3 className="mr-1.5 h-3.5 w-3.5" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                        {isPublished ? "Publicado" : isPublishing ? "Publicando" : isQueued ? "Na fila" : isFacebook && !facebook?.ready ? "Meta pendente" : "Publicar"}
+                      </Button>
+                    )}
                   </div>
                 );
               })}
