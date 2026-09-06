@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, AlertTriangle, Building2, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -120,6 +120,15 @@ function signalWhy(item: NewsCase): string | null {
   if (suppliers.length) return `Movimento relacionado a fornecedor do tenant: ${suppliers.join(", ")}.`;
   if (regions.length) return `Sinal ligado ao território do negócio: ${regions.join(", ")}.`;
   return rationale;
+}
+
+function prospectorHref(item: NewsCase) {
+  const params = new URLSearchParams({ mode: "empresas", tab: "busca", jarvisCase: item.id });
+  const term = evidenceTextArray(item.evidence?.matchedTerms)[0];
+  const region = evidenceTextArray(item.evidence?.matchedRegions)[0];
+  if (term) params.set("jarvisTerm", term);
+  if (region) params.set("jarvisRegion", region);
+  return `/prospector?${params.toString()}`;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -382,7 +391,15 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs">
                     <div className="text-muted-foreground"><span className="font-medium text-foreground">{sourceName}</span> · {new Date(item.updatedAt).toLocaleString("pt-BR")}</div>
-                    {item.href && <a href={item.href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir contexto <ExternalLink className="h-3.5 w-3.5" /></a>}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={prospectorHref(item)}>
+                          <Building2 className="mr-1.5 h-3.5 w-3.5" />
+                          {item.severity === "opportunity" ? "Prospectar oportunidade" : "Explorar no Prospector"}
+                        </a>
+                      </Button>
+                      {item.href && <a href={item.href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir contexto <ExternalLink className="h-3.5 w-3.5" /></a>}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
