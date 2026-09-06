@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
 import BusinessGoalsDialog from "@/components/dashboard/BusinessGoalsDialog";
 import StrategicObserver from "@/components/dashboard/StrategicObserver";
 import JarvisHistory from "@/components/dashboard/JarvisHistory";
 import JarvisObserverCaseSync from "@/components/dashboard/JarvisObserverCaseSync";
+import JarvisNewsMarket from "@/components/dashboard/JarvisNewsMarket";
 
 type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
 type OfficialMetrics = CommandCenterProps["data"];
@@ -104,23 +106,36 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <>
-      <OfficialCommandCenter
-        data={official}
-        executive={executive}
-        loading={loading}
-        userName={user?.name ?? ""}
-        onRefresh={refresh}
-        goalsAction={<BusinessGoalsDialog onChanged={refresh} />}
-      />
-      <StrategicObserver
-        tenantId={tenantId}
-        token={token}
-        official={official}
-        refreshKey={refreshKey}
-      />
-      <JarvisObserverCaseSync token={token} />
-      <JarvisHistory token={token} refreshKey={refreshKey} />
-    </>
+    <Tabs defaultValue="overview" className="w-full">
+      <div className="mx-auto w-full max-w-[1600px] px-4 pt-3 sm:px-6 lg:px-8">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="news">Notícias & Mercado</TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsContent value="overview" className="mt-0">
+        <OfficialCommandCenter
+          data={official}
+          executive={executive}
+          loading={loading}
+          userName={user?.name ?? ""}
+          onRefresh={refresh}
+          goalsAction={<BusinessGoalsDialog onChanged={refresh} />}
+        />
+        <StrategicObserver
+          tenantId={tenantId}
+          token={token}
+          official={official}
+          refreshKey={refreshKey}
+        />
+        <JarvisObserverCaseSync token={token} />
+        <JarvisHistory token={token} refreshKey={refreshKey} />
+      </TabsContent>
+
+      <TabsContent value="news" className="mt-4">
+        <JarvisNewsMarket token={token} />
+      </TabsContent>
+    </Tabs>
   );
 }
