@@ -539,7 +539,7 @@ REGRAS OBRIGATÓRIAS:
 - Entenda o segmento a partir dos dados reais informados no perfil.
 - Você pode INFERIR públicos comerciais plausíveis a partir do segmento/descrição, mas não transforme inferências em fatos sobre a empresa.
 - Ofertas devem ser produtos, serviços, categorias ou formas plausíveis de apresentar o que a empresa realmente vende. Não invente preço, certificação, garantia, estoque, unidade, depoimento ou condição comercial.
-- O CATÁLOGO abaixo contém somente itens ativos e é a fonte comercial oficial. Não use `profile.produtos` para contradizer nomes, preços ou itens ativos do catálogo.
+- O CATÁLOGO abaixo contém somente itens ativos e é a fonte comercial oficial. Não use 'profile.produtos' para contradizer nomes, preços ou itens ativos do catálogo.
 - Se o catálogo tiver produto adequado, devolva exatamente o id informado em productId. Caso contrário, omita productId.
 - Gere de 4 a 8 públicos e de 4 a 8 ofertas. Evite opções redundantes ou genéricas demais.
 - Responda em português do Brasil.
