@@ -68,7 +68,7 @@ router.post("/changelog/marcar-lido", async (req, res) => {
   return res.json({ ok: true });
 });
 
-router.get("/tenants/:tenantId/configuration-history", async (req, res) => {
+router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
