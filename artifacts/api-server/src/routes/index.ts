@@ -161,6 +161,7 @@ import contentAutopilotRouter from "./content_autopilot";
 import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { enforceAccessLicense } from "../middlewares/accessLicense";
+import { configurationBusinessProfileAudit } from "../middlewares/configurationBusinessProfileAudit";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
 
@@ -259,6 +260,7 @@ router.use(agentActionsLogRouter);
 router.use(consentsRouter);
 
 // Business Hub
+router.use(configurationBusinessProfileAudit);
 router.use(businessProfilesRouter);
 
 // Agent Config
