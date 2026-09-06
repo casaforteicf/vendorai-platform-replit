@@ -16,11 +16,24 @@ const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
 export default function NotFound() {
   const { token, isLoading } = useAuth();
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+  const searchParams = new URLSearchParams(window.location.search);
+  const isLegacyMobileCapture =
+    normalizedPath === "/content-studio/video/avatar" && searchParams.get("capture") === "mobile";
   const isMediaCenter = normalizedPath === "/midias";
   const isConversations = normalizedPath === "/conversas";
   const isAiMetrics = normalizedPath === "/metricas-ia";
   const isDubleCapture = normalizedPath === "/content-studio/video/avatar/captura";
   const isProtectedAlias = isMediaCenter || isConversations || isAiMetrics || isDubleCapture;
+
+  useEffect(() => {
+    if (!isLegacyMobileCapture) return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("capture");
+    const query = params.toString();
+    window.location.replace(
+      `/content-studio/video/avatar/captura${query ? `?${query}` : ""}`,
+    );
+  }, [isLegacyMobileCapture]);
 
   useEffect(() => {
     if (isProtectedAlias && !isLoading && !token) {
@@ -31,6 +44,8 @@ export default function NotFound() {
       window.location.assign("/login");
     }
   }, [isProtectedAlias, isDubleCapture, isLoading, token]);
+
+  if (isLegacyMobileCapture) return null;
 
   if (isProtectedAlias) {
     if (isLoading || !token) return null;
