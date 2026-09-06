@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Image as ImageIcon, Library, X } from "lucide-react";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "./MediaAssetPicker";
 
@@ -62,11 +63,26 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function findAdsDialog(): HTMLElement | null {
+  const dialogs = Array.from(document.querySelectorAll<HTMLElement>("[role='dialog']"));
+  return dialogs.find((dialog) => dialog.textContent?.includes("Nova campanha")) ?? null;
+}
+
+function hideLegacyPmaxPlaceholder() {
+  document.querySelectorAll<HTMLElement>("[role='option']").forEach((option) => {
+    if (option.textContent?.includes("Performance Max completa") && option.textContent?.includes("implantação")) {
+      option.style.display = "none";
+      option.setAttribute("aria-hidden", "true");
+    }
+  });
+}
+
 export function MediaAdsBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [asset, setAsset] = useState<MediaPickerAsset | null>(readStoredAsset);
   const [googleFormat, setGoogleFormat] = useState<GoogleFormat>(readInitialGoogleFormat);
+  const [dialogPortal, setDialogPortal] = useState<HTMLElement | null>(null);
   const assetRef = useRef<MediaPickerAsset | null>(asset);
   const googleFormatRef = useRef<GoogleFormat>(googleFormat);
   const tenantId = currentTenantId();
@@ -91,6 +107,24 @@ export function MediaAdsBridge() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!onAds) {
+      setDialogPortal(null);
+      return;
+    }
+
+    const syncDialog = () => {
+      const nextDialog = findAdsDialog();
+      setDialogPortal((current) => current === nextDialog ? current : nextDialog);
+      hideLegacyPmaxPlaceholder();
+    };
+
+    syncDialog();
+    const observer = new MutationObserver(syncDialog);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [onAds]);
 
   useEffect(() => {
     const previousFetch = window.fetch.bind(window);
@@ -169,38 +203,42 @@ export function MediaAdsBridge() {
 
   if (!onAds || !tenantId) return null;
 
-  return (
-    <>
-      <div className="fixed bottom-5 right-5 z-[80] w-[min(360px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur">
-        <div className="space-y-2 border-b pb-3">
-          <div>
-            <p className="text-xs font-semibold">Formato Google</p>
-            <p className="text-[10px] text-muted-foreground">Escolha como campanhas Google de IA serão preparadas.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-            <button
-              type="button"
-              onClick={() => setGoogleFormat("search")}
-              className={`rounded-lg px-2 py-2 text-xs font-medium transition ${googleFormat === "search" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Google Search
-            </button>
-            <button
-              type="button"
-              onClick={() => setGoogleFormat("performance_max")}
-              className={`rounded-lg px-2 py-2 text-xs font-medium transition ${googleFormat === "performance_max" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Performance Max
-            </button>
-          </div>
-          {googleFormat === "performance_max" && (
-            <p className="text-[10px] leading-relaxed text-muted-foreground">
-              PMax usa site/landing page como destino e combina títulos, descrições, imagem e logo do tenant. A publicação continua pausada até a ativação autorizada.
-            </p>
-          )}
+  const campaignControls = (
+    <div className="mt-4 border-t pt-4 space-y-4" data-vendorai-ads-google-format="true">
+      <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+        <div>
+          <p className="text-sm font-semibold">Formato Google</p>
+          <p className="text-xs text-muted-foreground">Escolha a estratégia que a IA vai preparar quando a plataforma for Google.</p>
         </div>
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => setGoogleFormat("search")}
+            className={`rounded-lg px-2 py-2 text-xs font-medium transition ${googleFormat === "search" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Google Search
+          </button>
+          <button
+            type="button"
+            onClick={() => setGoogleFormat("performance_max")}
+            className={`rounded-lg px-2 py-2 text-xs font-medium transition ${googleFormat === "performance_max" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Performance Max
+          </button>
+        </div>
+        {googleFormat === "performance_max" ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Performance Max combina títulos, descrições, imagem e logo do tenant em múltiplos canais Google. A estrutura nasce pausada e só entra em gasto dentro das autorizações e do orçamento aprovado.
+          </p>
+        ) : (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Search cria anúncios responsivos de texto voltados para pesquisas com intenção comercial.
+          </p>
+        )}
+      </div>
 
-        <div className="mt-3 flex items-start gap-3">
+      <div className="rounded-xl border p-3">
+        <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
             {asset ? (
               <img src={mediaAssetUrl(asset.storageUrl)} alt={asset.originalFilename || "Mídia escolhida"} className="h-full w-full object-cover" />
@@ -228,10 +266,16 @@ export function MediaAdsBridge() {
           <Library className="h-4 w-4" />
           {asset ? "Trocar imagem da Biblioteca" : "Escolher da Biblioteca"}
         </button>
-        <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-          A imagem selecionada é usada em Meta Imagem e em Performance Max. Se PMax não receber imagem, o VendorAI gera uma antes do Design QA.
+        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+          A imagem escolhida é usada em Meta Imagem e em Performance Max. Se PMax não receber imagem, o VendorAI gera uma antes do Design QA.
         </p>
       </div>
+    </div>
+  );
+
+  return (
+    <>
+      {dialogPortal ? createPortal(campaignControls, dialogPortal) : null}
 
       <MediaAssetPicker
         tenantId={tenantId}
