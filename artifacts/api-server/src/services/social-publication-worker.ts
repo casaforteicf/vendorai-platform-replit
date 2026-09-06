@@ -1,6 +1,7 @@
 import { and, eq, lt, or } from "drizzle-orm";
 import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { enqueueDueMediaPlanPublications } from "./media-plan-scheduled-publication.js";
 import { publishAnySocialPublication } from "./social-publication-dispatcher.js";
 
 const POLL_MS = 60_000;
@@ -13,6 +14,10 @@ export async function processPendingSocialPublications() {
   if (running) return;
   running = true;
   try {
+    await enqueueDueMediaPlanPublications().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu preparar publicações vencidas do Plano de Mídia");
+    });
+
     const staleBefore = new Date(Date.now() - STALE_AFTER_MS);
     const pending = await db.select({
       id: socialPublicationsTable.id,
