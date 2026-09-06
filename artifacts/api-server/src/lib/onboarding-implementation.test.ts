@@ -16,7 +16,6 @@ const readyFacts: ImplementationFacts = {
   calendarConnected: false,
   leadCount: 0,
   catalogCount: 1,
-  profileProductCount: 0,
   agentsConfigured: true,
   autonomyEnabled: false,
 };
@@ -38,16 +37,15 @@ describe("onboarding implementation lifecycle", () => {
     const plan = buildImplementationPlan("Consultoria empresarial", { ...readyFacts, catalogCount: 0 }, state(true));
     const catalog = plan.find((step) => step.id === "catalog");
     expect(catalog?.hardBlocker).toBe(false);
+    expect(catalog?.done).toBe(false);
     expect(buildImplementationReadiness(plan).blockers.some((item) => item.id === "catalog")).toBe(false);
   });
 
-  it("does not let legacy profile products mark catalog readiness", () => {
-    const plan = buildImplementationPlan(
-      "Consultoria empresarial",
-      { ...readyFacts, catalogCount: 0, profileProductCount: 12 },
-      state(true),
-    );
-    expect(plan.find((step) => step.id === "catalog")?.done).toBe(false);
+  it("marks catalog readiness only when the official active catalog has items", () => {
+    const emptyPlan = buildImplementationPlan("Consultoria empresarial", { ...readyFacts, catalogCount: 0 }, state(true));
+    const readyPlan = buildImplementationPlan("Consultoria empresarial", { ...readyFacts, catalogCount: 3 }, state(true));
+    expect(emptyPlan.find((step) => step.id === "catalog")?.done).toBe(false);
+    expect(readyPlan.find((step) => step.id === "catalog")?.done).toBe(true);
   });
 
   it("keeps system-observed steps non-acknowledgeable", () => {
