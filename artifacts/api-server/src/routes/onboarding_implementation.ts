@@ -80,7 +80,7 @@ async function readImplementationFacts(tenantId: string) {
       onboardingConcluido: tenantsTable.onboardingConcluido,
       setupCompletedAt: tenantsTable.setupCompletedAt,
     }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
-    db.select({ id: businessProfilesTable.id, produtos: businessProfilesTable.produtos })
+    db.select({ id: businessProfilesTable.id })
       .from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db.select({
       id: agentConfigsTable.id,
@@ -104,7 +104,6 @@ async function readImplementationFacts(tenantId: string) {
 
   if (!tenant) return null;
 
-  const profileProducts = Array.isArray(profile?.produtos) ? profile.produtos.length : 0;
   const facts: ImplementationFacts = {
     onboardingComplete: tenant.onboardingConcluido === true || !!tenant.setupCompletedAt,
     profileConfigured: !!profile,
@@ -114,7 +113,6 @@ async function readImplementationFacts(tenantId: string) {
     calendarConnected: !!calendar?.googleCalendarId,
     leadCount: Number(leads?.value ?? 0),
     catalogCount,
-    profileProductCount: profileProducts,
     agentsConfigured: !!config?.setupCompletedAt,
     autonomyEnabled: !!config?.autonomyEnabledAt,
   };
