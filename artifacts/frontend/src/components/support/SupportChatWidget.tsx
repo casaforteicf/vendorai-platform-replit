@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircleQuestion, X, Send, Loader2, CheckCircle2, ChevronDown } from "lucide-react";
+import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -16,22 +16,45 @@ interface BugReportResult {
   resolvidoPor: "agente" | "humano" | null;
 }
 
+interface BrowserSpeechRecognitionEvent extends Event {
+  results: {
+    [index: number]: {
+      [index: number]: { transcript: string };
+    };
+  };
+}
+
+interface BrowserSpeechRecognition {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+};
+
 export function SupportChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [listening, setListening] = useState(false);
   const [bugReport, setBugReport] = useState<BugReportResult | null>(null);
-  // Um id por sessão do widget — todo o histórico da conversa (mesmo que
-  // vá e volte "aberto/fechado") vira 1 relato técnico só, não um por
-  // mensagem enviada.
   const conversationIdRef = useRef<string>(crypto.randomUUID());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
-  // A Central de Ajuda pode abrir o atendimento já levando a pergunta que
-  // não foi resolvida, evitando que o cliente precise explicar tudo de novo.
   useEffect(() => {
     const openFromHelp = (event: Event) => {
       const detail = (event as CustomEvent<{ question?: string }>).detail;
@@ -50,7 +73,7 @@ export function SupportChatWidget() {
         {
           role: "assistant",
           content:
-            "Olá! Sou o assistente de suporte do Vendor.ai 👋\n\nPosso te ajudar com dúvidas de uso, configurações e integrações. Se tiver encontrado algum problema, é só descrever o que aconteceu!",
+            "Olá. Sou o JARVIS, seu assistente inteligente no VendorAI. Posso orientar sobre o sistema, ajudar com configurações e integrações e acompanhar problemas até a resolução. Você pode falar ou digitar.",
         },
       ]);
     }
@@ -59,6 +82,60 @@ export function SupportChatWidget() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streaming]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (listening) {
+      stopListening();
+      return;
+    }
+
+    const speechWindow = window as SpeechWindow;
+    const SpeechRecognitionImpl = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognitionImpl) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "A entrada por voz não está disponível neste navegador. Você ainda pode conversar comigo por texto.",
+        },
+      ]);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionImpl();
+    recognition.lang = "pt-BR";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) setInput((current) => (current ? `${current} ${transcript}` : transcript));
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setListening(false);
+    };
+    recognition.onerror = () => {
+      recognitionRef.current = null;
+      setListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    setListening(true);
+    recognition.start();
+  }, [listening, stopListening]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -72,7 +149,6 @@ export function SupportChatWidget() {
     setBugReport(null);
 
     const token = localStorage.getItem("vendorai_token");
-
     abortRef.current = new AbortController();
 
     try {
@@ -82,12 +158,19 @@ export function SupportChatWidget() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ messages: newMessages, conversationId: conversationIdRef.current }),
+        body: JSON.stringify({
+          messages: newMessages,
+          conversationId: conversationIdRef.current,
+          context: {
+            route: window.location.pathname,
+            title: document.title,
+          },
+        }),
         signal: abortRef.current.signal,
       });
 
       if (!res.ok || !res.body) {
-        throw new Error("Falha na conexão com o suporte");
+        throw new Error("Falha na conexão com o JARVIS");
       }
 
       let assistantContent = "";
@@ -131,15 +214,13 @@ export function SupportChatWidget() {
               });
             }
 
-            if (payload.done) {
-              if (payload.bugReportId && payload.protocolo) {
-                setBugReport({
-                  bugReportId: payload.bugReportId,
-                  protocolo: payload.protocolo,
-                  status: payload.status ?? "aberto",
-                  resolvidoPor: payload.resolvidoPor ?? null,
-                });
-              }
+            if (payload.done && payload.bugReportId && payload.protocolo) {
+              setBugReport({
+                bugReportId: payload.bugReportId,
+                protocolo: payload.protocolo,
+                status: payload.status ?? "aberto",
+                resolvidoPor: payload.resolvidoPor ?? null,
+              });
             }
 
             if (payload.error) {
@@ -147,7 +228,7 @@ export function SupportChatWidget() {
                 const updated = [...prev];
                 updated[updated.length - 1] = {
                   role: "assistant",
-                  content: "Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.",
+                  content: "Ocorreu um erro ao processar sua mensagem. Tente novamente.",
                 };
                 return updated;
               });
@@ -165,7 +246,7 @@ export function SupportChatWidget() {
             ...prev.slice(0, -1),
             {
               role: "assistant",
-              content: "Não foi possível conectar ao suporte. Verifique sua conexão e tente novamente.",
+              content: "Não foi possível conectar ao JARVIS. Verifique sua conexão e tente novamente.",
             },
           ];
         }
@@ -187,11 +268,13 @@ export function SupportChatWidget() {
 
   const handleClose = () => {
     abortRef.current?.abort();
+    stopListening();
     setOpen(false);
   };
 
   const handleReset = () => {
     abortRef.current?.abort();
+    stopListening();
     setMessages([]);
     setBugReport(null);
     conversationIdRef.current = crypto.randomUUID();
@@ -202,12 +285,20 @@ export function SupportChatWidget() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-20 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] flex flex-col rounded-2xl shadow-2xl border border-border bg-background overflow-hidden"
-          style={{ height: "clamp(400px, 60vh, 600px)" }}>
+        <div
+          className="fixed bottom-20 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] flex flex-col rounded-2xl shadow-2xl border border-border bg-background overflow-hidden"
+          style={{ height: "clamp(420px, 64vh, 640px)" }}
+          aria-label="JARVIS"
+        >
           <div className="flex items-center justify-between px-4 py-3 bg-primary text-primary-foreground shrink-0">
-            <div className="flex items-center gap-2">
-              <MessageCircleQuestion className="h-5 w-5" />
-              <span className="font-semibold text-sm">Suporte Vendor.ai</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-8 w-8 rounded-full bg-primary-foreground/15 flex items-center justify-center shrink-0">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-sm leading-tight">JARVIS</div>
+                <div className="text-[10px] opacity-80 truncate">Assistente inteligente do VendorAI</div>
+              </div>
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -224,6 +315,7 @@ export function SupportChatWidget() {
                 size="icon"
                 className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20"
                 onClick={handleClose}
+                title="Fechar JARVIS"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -234,10 +326,7 @@ export function SupportChatWidget() {
             {messages.map((msg, i) => (
               <div
                 key={i}
-                className={cn(
-                  "flex",
-                  msg.role === "user" ? "justify-end" : "justify-start"
-                )}
+                className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
               >
                 <div
                   className={cn(
@@ -268,9 +357,9 @@ export function SupportChatWidget() {
                   <p className="text-green-600 text-xs">
                     Protocolo <strong>{bugReport.protocolo}</strong>.{" "}
                     {bugReport.status === "resolvido" && bugReport.resolvidoPor === "agente"
-                      ? "Resolvido pelo agente e disponível no histórico do suporte."
+                      ? "Resolvido pelo JARVIS e disponível no histórico."
                       : bugReport.status === "em_analise"
-                        ? "Atendimento em análise pela equipe."
+                        ? "Em análise pela equipe."
                         : "Encaminhado para acompanhamento da equipe."}
                   </p>
                 </div>
@@ -282,12 +371,23 @@ export function SupportChatWidget() {
 
           <div className="px-3 pb-3 pt-2 shrink-0 border-t border-border">
             <div className="flex items-end gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant={listening ? "default" : "outline"}
+                className="h-9 w-9 shrink-0"
+                onClick={startListening}
+                disabled={streaming}
+                title={listening ? "Parar de ouvir" : "Falar com JARVIS"}
+              >
+                {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
               <Textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Digite sua mensagem..."
+                placeholder={listening ? "Estou ouvindo..." : "Fale ou digite para o JARVIS..."}
                 className="min-h-[40px] max-h-[120px] resize-none text-sm leading-relaxed py-2 px-3"
                 disabled={streaming}
                 rows={1}
@@ -297,16 +397,13 @@ export function SupportChatWidget() {
                 className="h-9 w-9 shrink-0"
                 onClick={() => void sendMessage()}
                 disabled={!input.trim() || streaming}
+                title="Enviar"
               >
-                {streaming ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-              Enter para enviar · Shift+Enter para nova linha
+              {listening ? "Escutando em português do Brasil" : "Voz ou texto · Enter para enviar · Shift+Enter para nova linha"}
             </p>
           </div>
         </div>
@@ -319,13 +416,10 @@ export function SupportChatWidget() {
           open && "scale-90"
         )}
         onClick={() => setOpen((v) => !v)}
-        title="Suporte"
+        title="JARVIS"
+        aria-label="Abrir JARVIS"
       >
-        {open ? (
-          <X className="h-5 w-5" />
-        ) : (
-          <MessageCircleQuestion className="h-6 w-6" />
-        )}
+        {open ? <X className="h-5 w-5" /> : <Sparkles className="h-6 w-6" />}
       </Button>
     </>
   );
