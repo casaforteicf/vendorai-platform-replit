@@ -12,6 +12,17 @@ const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Faturamento: { label: "Faturamento", title: "Plano, consumo, cobrança e dados de faturamento" },
 };
 
+const CONFIG_SEARCH_INDEX = [
+  { section: "Empresa", terms: "empresa perfil razão social nome fantasia cnpj telefone email instagram endereço segmento marca logo favicon cor missão visão história público alvo diferenciais concorrentes" },
+  { section: "Comercial", terms: "comercial fechamento venda preço desconto margem comissão estoque aprovação inteligência análise regras abordagem" },
+  { section: "Agenda e Automações", terms: "agenda calendário disponibilidade horário agendamento automação avaliação google pós-venda gatilho lembrete" },
+  { section: "Integrações", terms: "integrações whatsapp instagram facebook meta ads google gmail smtp zapsign pagamento erp estoque ecommerce api webhook token conexão" },
+  { section: "IA e Agentes", terms: "ia agentes sdr closer follow-up suporte cobrança financeiro comportamento prompt limites autonomia contexto inteligência" },
+  { section: "Documentos", terms: "documentos contrato proposta modelo assinatura zapsign html variáveis linha produto" },
+  { section: "Equipe e Acessos", terms: "equipe usuários acessos permissões papéis roles segurança governança" },
+  { section: "Faturamento", terms: "faturamento plano cobrança consumo créditos assinatura mensalidade pagamento" },
+] as const;
+
 export default function Configuracoes() {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
@@ -59,6 +70,77 @@ export default function Configuracoes() {
         tab.setAttribute("aria-label", next.label);
         tab.dataset.configSection = next.label.toLowerCase().replace(/\s+/g, "-");
       });
+
+      if (primaryTabList && !root.querySelector("[data-config-search='true']")) {
+        const search = document.createElement("section");
+        search.dataset.configSearch = "true";
+        search.className = "config-search";
+        search.setAttribute("aria-label", "Buscar configurações");
+
+        const label = document.createElement("label");
+        label.className = "config-search__label";
+        label.textContent = "Buscar configuração";
+
+        const input = document.createElement("input");
+        input.type = "search";
+        input.className = "config-search__input";
+        input.placeholder = "Ex.: desconto, WhatsApp, contrato, logo, comissão...";
+        input.autocomplete = "off";
+        input.setAttribute("aria-label", "Buscar configuração");
+
+        const results = document.createElement("div");
+        results.className = "config-search__results";
+        results.hidden = true;
+
+        const openSection = (section: string) => {
+          const target = tabs.find((tab) => tab.getAttribute("aria-label") === section);
+          target?.click();
+          input.value = "";
+          results.hidden = true;
+          window.setTimeout(() => {
+            root.querySelector<HTMLElement>("[role='tabpanel']:not([hidden])")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 80);
+        };
+
+        const renderResults = () => {
+          const query = input.value.trim().toLocaleLowerCase("pt-BR");
+          results.replaceChildren();
+          if (query.length < 2) {
+            results.hidden = true;
+            return;
+          }
+          const matches = CONFIG_SEARCH_INDEX.filter((item) =>
+            item.section.toLocaleLowerCase("pt-BR").includes(query) || item.terms.includes(query)
+          );
+          matches.forEach((item) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "config-search__result";
+            button.textContent = item.section;
+            button.addEventListener("click", () => openSection(item.section));
+            results.appendChild(button);
+          });
+          if (matches.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "config-search__empty";
+            empty.textContent = "Nenhuma área encontrada. Tente outro termo.";
+            results.appendChild(empty);
+          }
+          results.hidden = false;
+        };
+
+        input.addEventListener("input", renderResults);
+        input.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          const first = results.querySelector<HTMLButtonElement>("button");
+          if (!first) return;
+          event.preventDefault();
+          first.click();
+        });
+
+        search.append(label, input, results);
+        primaryTabList.parentElement?.insertBefore(search, primaryTabList);
+      }
 
       if (primaryTabList && !root.querySelector("[data-config-governance='true']")) {
         const governance = document.createElement("section");
@@ -222,6 +304,23 @@ export default function Configuracoes() {
           flex: 0 0 auto !important; width: auto !important; min-width: max-content !important; white-space: nowrap !important;
         }
         .mobile-config-selector { display: none; }
+        .config-search { position: relative; display: grid; gap: .35rem; margin: .5rem 0 .75rem; }
+        .config-search__label { font-size: .78rem; font-weight: 600; color: hsl(var(--muted-foreground)); }
+        .config-search__input {
+          width: 100%; min-height: 2.65rem; padding: 0 .8rem; border: 1px solid hsl(var(--border)); border-radius: .65rem;
+          background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: .9rem;
+        }
+        .config-search__input:focus { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+        .config-search__results {
+          position: absolute; top: calc(100% + .25rem); left: 0; right: 0; z-index: 30; display: grid; gap: .25rem;
+          padding: .4rem; border: 1px solid hsl(var(--border)); border-radius: .65rem; background: hsl(var(--popover));
+          box-shadow: 0 12px 30px hsl(var(--foreground) / .08);
+        }
+        .config-search__result {
+          width: 100%; text-align: left; border-radius: .45rem; padding: .55rem .65rem; font-size: .82rem; font-weight: 600;
+        }
+        .config-search__result:hover, .config-search__result:focus-visible { background: hsl(var(--muted)); }
+        .config-search__empty { padding: .55rem .65rem; font-size: .78rem; color: hsl(var(--muted-foreground)); }
         .config-governance {
           display: grid; gap: .75rem; margin: .5rem 0 1rem; padding: .9rem 1rem; border: 1px solid hsl(var(--border));
           border-radius: .8rem; background: hsl(var(--muted) / .3);
