@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { logger } from "../lib/logger.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
+import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
   buildMetaAdsOAuthUrl,
   getMetaAdsRedirectUri,
@@ -29,6 +30,37 @@ function getAppUrl(): string {
 
 function integrationsRedirect(appUrl: string, params: string): string {
   return `${appUrl}/configuracoes?tab=integracoes&${params}`;
+}
+
+function actorFromRequest(req: Request, userId?: string | null) {
+  return {
+    userId: userId ?? req.user?.id ?? req.user?.sub ?? null,
+    ip: req.ip ?? null,
+  };
+}
+
+async function auditMetaAdsChange(input: {
+  tenantId: string;
+  action: "criar" | "atualizar" | "excluir";
+  before?: unknown;
+  after?: unknown;
+  req: Request;
+  userId?: string | null;
+}) {
+  try {
+    const audited = await writeConfigurationAudit({
+      tenantId: input.tenantId,
+      action: input.action,
+      entity: "integration_meta_ads",
+      entityId: input.tenantId,
+      before: input.before,
+      after: input.after,
+      actor: actorFromRequest(input.req, input.userId),
+    });
+    if (!audited) logger.warn({ tenantId: input.tenantId }, "configuracoes: falha ao auditar Meta Ads");
+  } catch (error) {
+    logger.warn({ error, tenantId: input.tenantId }, "configuracoes: auditoria Meta Ads indisponível");
+  }
 }
 
 router.get("/auth/meta-ads", authenticate, async (req, res) => {
@@ -69,10 +101,12 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let oauthUserId: string | null = null;
   let exactRedirectUri: string | undefined;
   try {
     const decoded = consumeOAuthState(state, "meta-ads");
     tenantId = decoded.tenantId;
+    oauthUserId = decoded.userId ?? null;
     exactRedirectUri = decoded.returnTo?.startsWith("https://") ? decoded.returnTo : undefined;
   } catch (err) {
     logger.warn({ err }, "Callback Meta Ads: state inválido, expirado ou reutilizado");
@@ -81,6 +115,7 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
 
   try {
     logger.info({ tenantId }, "Processando callback Meta Ads");
+    const before = await getMetaAdsConnectionByTenantId(tenantId);
     let shortToken;
     try {
       shortToken = await exchangeCodeForToken(code, exactRedirectUri);
@@ -103,11 +138,15 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
     try {
       accounts = await listAccessibleAdAccounts(longLived.access_token);
     } catch (err) {
+      const after = await getMetaAdsConnectionByTenantId(tenantId);
+      await auditMetaAdsChange({ tenantId, action: before ? "atualizar" : "criar", before, after, req, userId: oauthUserId });
       logger.error({ err, tenantId }, "Erro ao listar Ad Accounts Meta acessíveis");
       return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=pending"));
     }
 
     if (accounts.length === 0) {
+      const after = await getMetaAdsConnectionByTenantId(tenantId);
+      await auditMetaAdsChange({ tenantId, action: before ? "atualizar" : "criar", before, after, req, userId: oauthUserId });
       logger.warn({ tenantId }, "Nenhuma Ad Account Meta acessível para o usuário");
       return res.redirect(integrationsRedirect(appUrl, "metaAdsError=no_account"));
     }
@@ -115,14 +154,20 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
     if (accounts.length === 1 && accounts[0]) {
       try {
         await selectMetaAdsAccount(tenantId, accounts[0]);
+        const after = await getMetaAdsConnectionByTenantId(tenantId);
+        await auditMetaAdsChange({ tenantId, action: before ? "atualizar" : "criar", before, after, req, userId: oauthUserId });
         logger.info({ tenantId, adAccountId: accounts[0].adAccountId }, "Meta Ads conectado com sucesso");
         return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=1"));
       } catch (err) {
+        const after = await getMetaAdsConnectionByTenantId(tenantId);
+        await auditMetaAdsChange({ tenantId, action: before ? "atualizar" : "criar", before, after, req, userId: oauthUserId });
         logger.error({ err, tenantId }, "Erro ao selecionar automaticamente a única Ad Account Meta");
         return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=pending"));
       }
     }
 
+    const after = await getMetaAdsConnectionByTenantId(tenantId);
+    await auditMetaAdsChange({ tenantId, action: before ? "atualizar" : "criar", before, after, req, userId: oauthUserId });
     logger.info({ tenantId, count: accounts.length }, "Múltiplas Ad Accounts Meta encontradas, aguardando seleção");
     return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=pending"));
   } catch (err) {
@@ -193,8 +238,10 @@ router.post("/tenants/:tenantId/meta-ads-connection/select-account", authenticat
     const account = accounts.find((a) => a.adAccountId === adAccountId);
     if (!account) return res.status(404).json({ error: "Ad account not found or not accessible" });
 
+    const before = conn;
     await selectMetaAdsAccount(tenantId, account);
     const updated = await getMetaAdsConnectionByTenantId(tenantId);
+    await auditMetaAdsChange({ tenantId, action: "atualizar", before, after: updated, req });
     return res.json({
       connected: true,
       adAccountId: updated?.adAccountId,
@@ -215,8 +262,10 @@ router.post("/tenants/:tenantId/meta-ads-connection/refresh", authenticate, asyn
     const conn = await getMetaAdsConnectionByTenantId(tenantId);
     if (!conn) return res.status(404).json({ error: "Connection not found" });
 
+    const before = conn;
     await refreshMetaAdsToken(conn.id);
     const updated = await getMetaAdsConnectionByTenantId(tenantId);
+    await auditMetaAdsChange({ tenantId, action: "atualizar", before, after: updated, req });
     return res.json({
       id: updated?.id,
       tokenExpiresAt: updated?.tokenExpiresAt?.toISOString() ?? null,
@@ -233,7 +282,9 @@ router.delete("/tenants/:tenantId/meta-ads-connection", authenticate, async (req
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+    const before = await getMetaAdsConnectionByTenantId(tenantId);
     await disconnectMetaAds(tenantId);
+    if (before) await auditMetaAdsChange({ tenantId, action: "excluir", before, req });
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar Meta Ads");
