@@ -11,6 +11,7 @@ import {
   contentPublishedPostsTable,
   contentPerformanceInsightsTable,
   agentConfigsTable,
+  instagramConnectionsTable,
   type PostMetricas,
   type PerformanceAprendizados,
 } from "@workspace/db";
@@ -78,12 +79,31 @@ async function fetchMediaMetrics(mediaId: string, accessToken: string, contentTy
 }
 
 export async function refreshPendingMetrics(tenantId: string): Promise<{ atualizados: number; erros: number }> {
-  const [config] = await db
-    .select({ token: agentConfigsTable.instagramPageAccessToken })
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.tenantId, tenantId));
-  if (!config?.token) {
-    throw new PerformanceError("Instagram não conectado (Configurações → Instagram) — sem isso não dá pra buscar métricas dos posts.");
+  const [[directConnection], [legacyConfig]] = await Promise.all([
+    db
+      .select({
+        token: instagramConnectionsTable.pageAccessToken,
+        disconnectedAt: instagramConnectionsTable.disconnectedAt,
+        tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
+      })
+      .from(instagramConnectionsTable)
+      .where(eq(instagramConnectionsTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({ token: agentConfigsTable.instagramPageAccessToken })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1),
+  ]);
+  const directTokenExpired = Boolean(directConnection?.tokenExpiresAt && directConnection.tokenExpiresAt <= new Date());
+  const directReady = Boolean(directConnection && !directConnection.disconnectedAt && !directTokenExpired && directConnection.token);
+  const token = directReady ? directConnection?.token : legacyConfig?.token;
+  if (!token) {
+    throw new PerformanceError(
+      directTokenExpired
+        ? "A conexão do Instagram expirou. Reconecte em Configurações → Integrações antes de atualizar as métricas."
+        : "Instagram não conectado (Configurações → Integrações) — sem isso não dá pra buscar métricas dos posts.",
+    );
   }
 
   const cutoff = new Date(Date.now() - MIN_AGE_BEFORE_METRICS_HOURS * 60 * 60 * 1000);
@@ -102,7 +122,7 @@ export async function refreshPendingMetrics(tenantId: string): Promise<{ atualiz
   let erros = 0;
   for (const post of posts) {
     try {
-      const metricas = await fetchMediaMetrics(post.instagramMediaId, config.token, post.contentType);
+      const metricas = await fetchMediaMetrics(post.instagramMediaId, token, post.contentType);
       await db
         .update(contentPublishedPostsTable)
         .set({ metricas, ultimaColetaEm: new Date(), ultimoErroMetricas: null })
