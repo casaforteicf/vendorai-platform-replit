@@ -1,5 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
+import { contentCalendarItemsTable, db, socialPublicationsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { consumeOAuthState, createOAuthState } from "../lib/oauth-state.js";
 import { logger } from "../lib/logger.js";
@@ -81,6 +83,16 @@ router.get("/tenants/:tenantId/facebook-organic-capability", authenticate, async
   });
 });
 
+router.get("/tenants/:tenantId/social-publications", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const publications = await db.select().from(socialPublicationsTable)
+    .where(eq(socialPublicationsTable.tenantId, tenantId))
+    .orderBy(desc(socialPublicationsTable.createdAt))
+    .limit(100);
+  return res.json({ publications });
+});
+
 router.delete("/tenants/:tenantId/social-connections/:provider", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const selected = provider(req.params.provider);
@@ -105,6 +117,8 @@ const publicationSchema = z.object({
   mediaUrls: z.array(z.string().url()).max(10).optional(),
   contentType: z.enum(["post", "video", "short", "image", "carousel", "story", "reel"]).optional(),
   mediaKind: z.enum(["image", "video"]).optional(),
+  calendarItemId: z.string().min(1).optional(),
+  contentGenerationId: z.string().min(1).optional(),
 }).refine((data) => Boolean(data.text || data.mediaUrl || data.mediaUrls?.length), "text_or_media_required");
 
 router.post("/tenants/:tenantId/social-publications/:provider", authenticate, async (req, res) => {
@@ -117,16 +131,46 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = publicationSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_publication", details: parsed.error.flatten() });
+
+  if (parsed.data.calendarItemId) {
+    const [calendarItem] = await db.select({
+      id: contentCalendarItemsTable.id,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    }).from(contentCalendarItemsTable).where(and(
+      eq(contentCalendarItemsTable.id, parsed.data.calendarItemId),
+      eq(contentCalendarItemsTable.tenantId, tenantId),
+    )).limit(1);
+    if (!calendarItem) return res.status(404).json({ error: "calendar_item_not_found" });
+    if (parsed.data.contentGenerationId && calendarItem.contentGenerationId && calendarItem.contentGenerationId !== parsed.data.contentGenerationId) {
+      return res.status(409).json({ error: "calendar_generation_mismatch" });
+    }
+  }
+
   try {
     const publication = selected === "instagram"
       ? await createInstagramOrganicPublication(tenantId, parsed.data)
       : selected === "facebook"
         ? await createFacebookOrganicPublication(tenantId, parsed.data)
         : await createSocialPublication(tenantId, selected, parsed.data);
-    void publishAnySocialPublication(tenantId, publication.id).catch((error) => {
-      logger.error({ error, tenantId, publicationId: publication.id, provider: selected }, "Falha assíncrona na publicação social");
+
+    const sourceMetadata = parsed.data.calendarItemId ? {
+      calendarItemId: parsed.data.calendarItemId,
+      contentGenerationId: parsed.data.contentGenerationId,
+      source: "media-calendar",
+    } : {};
+    const [linkedPublication] = await db.update(socialPublicationsTable).set({
+      metadata: { ...(publication.metadata || {}), ...sourceMetadata },
+      updatedAt: new Date(),
+    }).where(and(
+      eq(socialPublicationsTable.id, publication.id),
+      eq(socialPublicationsTable.tenantId, tenantId),
+    )).returning();
+    if (!linkedPublication) throw new Error("publication_link_failed");
+
+    void publishAnySocialPublication(tenantId, linkedPublication.id).catch((error) => {
+      logger.error({ error, tenantId, publicationId: linkedPublication.id, provider: selected }, "Falha assíncrona na publicação social");
     });
-    return res.status(202).json({ publication, publishing: true });
+    return res.status(202).json({ publication: linkedPublication, publishing: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "publication_failed";
     if (["connection_not_found", "meta_not_connected", "meta_token_expired", "instagram_not_connected", "page_permission_missing", "linked_page_not_found"].includes(message)) {
