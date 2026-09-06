@@ -130,6 +130,11 @@ router.post(
     if (value.periodEnd < value.periodStart) {
       return res.status(400).json({ error: "periodEnd deve ser maior ou igual a periodStart" });
     }
+    if (value.category.trim().toLowerCase() === "ia") {
+      return res.status(409).json({
+        error: "Custo de IA já é rastreado automaticamente pelos logs de uso. O lançamento manual de IA está bloqueado para evitar contagem duplicada até a reconciliação de faturas estar conectada.",
+      });
+    }
 
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO platform_cost_entries
