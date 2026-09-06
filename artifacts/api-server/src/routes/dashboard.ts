@@ -7,6 +7,7 @@ import {
   customerIntelligenceTable,
   propostasTable,
   businessProfilesTable,
+  produtosCatalogoTable,
   messagesTable,
   aiUsageLogsTable,
   agentConfigsTable,
@@ -475,6 +476,33 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
   }
 
   const perfil = negocioPerfilRows[0] ?? null;
+  const catalogProducts = perfil
+    ? await db
+        .select({
+          nome: produtosCatalogoTable.nome,
+          descricao: produtosCatalogoTable.descricao,
+          precoBase: produtosCatalogoTable.precoBase,
+        })
+        .from(produtosCatalogoTable)
+        .where(
+          and(
+            eq(produtosCatalogoTable.tenantId, tenantId),
+            eq(produtosCatalogoTable.ativo, true),
+          ),
+        )
+        .orderBy(asc(produtosCatalogoTable.nome), asc(produtosCatalogoTable.id))
+        .limit(20)
+    : [];
+  const productsForDashboard = catalogProducts.length > 0
+    ? catalogProducts.map((product) => {
+        const preco = Number(product.precoBase);
+        return {
+          nome: product.nome,
+          descricao: product.descricao ?? null,
+          preco: Number.isFinite(preco) ? preco : null,
+        };
+      })
+    : perfil?.produtos ?? null;
 
   res.json({
     leads: {
@@ -542,7 +570,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
           canaisVenda: perfil.canaisVenda ?? null,
           diferenciais: perfil.diferenciais ?? null,
           concorrentes: perfil.concorrentes ?? null,
-          produtos: perfil.produtos ?? null,
+          produtos: productsForDashboard,
         }
       : null,
     perfilCompra: {
