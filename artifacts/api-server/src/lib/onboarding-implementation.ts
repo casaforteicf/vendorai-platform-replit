@@ -113,7 +113,12 @@ export function buildImplementationPlan(
   const productHeavy = hasHint(segmentName, PRODUCT_SEGMENT_HINTS);
   const appointmentHeavy = hasHint(segmentName, APPOINTMENT_SEGMENT_HINTS);
   const anyChannel = facts.whatsappConnected || facts.instagramConnected || facts.calendarConnected;
-  const catalogReady = facts.catalogCount > 0 || facts.profileProductCount > 0;
+  // Segmentos que efetivamente vendem catálogo não podem mais ficar "prontos"
+  // apenas porque ainda existe a antiga lista de Produtos e Serviços no perfil.
+  // Para negócios de serviço, mantemos o fallback legado durante a migração.
+  const catalogReady = productHeavy
+    ? facts.catalogCount > 0
+    : facts.catalogCount > 0 || facts.profileProductCount > 0;
 
   return [
     {
@@ -162,7 +167,7 @@ export function buildImplementationPlan(
       id: "catalog",
       title: productHeavy ? "Catálogo mínimo" : "Produtos ou serviços",
       description: productHeavy
-        ? "Cadastrar os itens essenciais que a equipe e os agentes precisam vender."
+        ? "Cadastrar os itens essenciais que a equipe e os agentes precisam vender no Catálogo oficial."
         : "Registrar produtos ou serviços quando fizerem parte do fluxo comercial.",
       href: "/catalogo",
       done: catalogReady,
