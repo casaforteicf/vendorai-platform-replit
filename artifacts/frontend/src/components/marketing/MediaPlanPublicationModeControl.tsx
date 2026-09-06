@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { BrainCircuit, CalendarClock, CheckCircle2, Loader2, MousePointerClick, ServerCog, ShieldCheck, TrendingUp } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 const HOST_ATTR = "data-vendorai-media-plan-publication-mode";
+const USER_CACHE_KEY = "vendorai_user_cache";
+const OVERRIDE_KEY = "vendorai_sa_tenant_override";
+const TOKEN_KEY = "vendorai_token";
 
 type PublicationSettings = {
   modo: "manual" | "automatico";
@@ -35,6 +37,24 @@ type PerformanceInsight = {
   } | null;
 };
 
+function readJsonStorage<T>(key: string): T | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSession() {
+  const tenantOverride = readJsonStorage<{ id?: string }>(OVERRIDE_KEY);
+  const user = readJsonStorage<{ tenantId?: string | null }>(USER_CACHE_KEY);
+  return {
+    token: window.localStorage.getItem(TOKEN_KEY) ?? "",
+    tenantId: tenantOverride?.id ?? user?.tenantId ?? "",
+  };
+}
+
 function defaultTimezone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
@@ -52,8 +72,6 @@ function normalizeSettings(value?: Partial<PublicationSettings>): PublicationSet
 }
 
 export function MediaPlanPublicationModeControl() {
-  const { user, tenantOverride, token } = useAuth();
-  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const { toast } = useToast();
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [plan, setPlan] = useState<MediaPlan | null>(null);
@@ -63,6 +81,7 @@ export function MediaPlanPublicationModeControl() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [location, setLocation] = useState(() => window.location.pathname + window.location.search);
+  const { tenantId, token } = readSession();
 
   const visible = useMemo(() => {
     const [path, query = ""] = location.split("?");
