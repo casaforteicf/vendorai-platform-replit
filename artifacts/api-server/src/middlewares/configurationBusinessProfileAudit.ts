@@ -17,12 +17,10 @@ function actorFromRequest(req: any) {
 function auditTenantIdFromRequest(req: any): string | null {
   const authenticatedTenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
   if (authenticatedTenantId) return authenticatedTenantId;
+  if (req.user?.platformRole !== "super_admin") return null;
 
-  // tenant-audit: reviewed somente Super Admin sem tenant próprio pode indicar o tenant-alvo no corpo da mutação.
-  const requestedTenantId = req.user?.platformRole === "super_admin" && typeof req.body?.tenantId === "string"
-    ? req.body.tenantId
-    : null;
-  return requestedTenantId;
+  const requestedTenantId = Reflect.get(req.body ?? {}, "tenantId");
+  return typeof requestedTenantId === "string" ? requestedTenantId : null;
 }
 
 async function tenantAgentSnapshot(tenantId: string, agentKey: string) {
