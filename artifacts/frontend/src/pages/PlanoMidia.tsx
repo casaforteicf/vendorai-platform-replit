@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  BrainCircuit,
+  CalendarClock,
   Check,
   ChevronDown,
   ChevronUp,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  WalletCards,
 } from "lucide-react";
 import PlanoMidiaCore from "@/pages/PlanoMidiaCore";
 
@@ -111,6 +114,12 @@ function fieldLabel(title: string, description?: string) {
 function operationalDays(period: FlexiblePeriod): number {
   if (!period.enabled) return 30;
   return Math.max(1, Math.ceil(period.unidade === "horas" ? period.valor / 24 : period.valor));
+}
+
+function formatMoney(value: string): string {
+  const normalized = Number(value.replace(".", "").replace(",", "."));
+  if (!Number.isFinite(normalized) || normalized <= 0) return "Defina o limite";
+  return normalized.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export default function PlanoMidia() {
@@ -237,17 +246,21 @@ export default function PlanoMidia() {
     };
   }, [tenantId]);
 
-  const configuredCount = useMemo(() => {
-    return [
-      config.objetivoPrincipal,
-      config.produtoServicoPrioritario,
-      config.publicoPrioritario,
-      config.regiao,
-      config.ofertaPrincipal,
-      config.observacoes,
-      config.canaisPreferidos.length > 0 ? "canais" : "",
-    ].filter(Boolean).length;
-  }, [config]);
+  const configuredCount = useMemo(() => [
+    config.objetivoPrincipal,
+    config.produtoServicoPrioritario,
+    config.publicoPrioritario,
+    config.regiao,
+    config.ofertaPrincipal,
+    config.observacoes,
+    config.canaisPreferidos.length > 0 ? "canais" : "",
+  ].filter(Boolean).length, [config]);
+
+  const periodSummary = customPeriod.enabled
+    ? customPeriod.aberto
+      ? `${customPeriod.valor} ${customPeriod.unidade} · sem data final`
+      : `${customPeriod.valor} ${customPeriod.unidade}`
+    : "Atalhos 30 / 60 / 90 dias";
 
   function toggleChannel(channel: string) {
     setConfig((current) => ({
@@ -259,36 +272,64 @@ export default function PlanoMidia() {
   }
 
   return (
-    <div className="space-y-4">
-      <Card className="border-primary/30 bg-primary/[0.035]">
-        <CardContent className="py-4 space-y-4">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Definição humana da campanha</p>
-              <Badge variant="outline" className="text-[10px]">IA administra a distribuição</Badge>
+    <div className="space-y-5">
+      <Card className="overflow-hidden border-primary/40 shadow-sm">
+        <div className="border-b bg-gradient-to-r from-primary/10 via-primary/5 to-background px-4 py-4 md:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="gap-1"><Sparkles className="h-3 w-3" /> Planejador de Mídia com IA</Badge>
+                <Badge variant="outline">Humano define os limites</Badge>
+              </div>
+              <h2 className="mt-2 text-lg font-semibold tracking-tight">Defina a campanha. A IA faz a distribuição.</h2>
+              <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                Escolha o que quer promover, o período e quanto pode ser investido. A IA monta o plano, distribui o orçamento entre os canais e otimiza sem ultrapassar o teto aprovado.
+              </p>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground max-w-3xl">
-              Você define campanha, período e orçamento. A IA decide como distribuir o orçamento entre os canais pagos e pode ajustar a alocação dentro do limite informado; publicação e ativação continuam sujeitas às permissões do sistema.
-            </p>
+            <div className="rounded-lg border bg-background/90 px-3 py-2 text-xs shadow-sm">
+              <span className="text-muted-foreground">Regra principal</span>
+              <p className="font-medium">A IA pode redistribuir. Não pode aumentar o orçamento.</p>
+            </div>
+          </div>
+        </div>
+
+        <CardContent className="space-y-5 p-4 md:p-5">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border bg-muted/20 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium"><CalendarClock className="h-4 w-4 text-primary" /> 1. Período</div>
+              <p className="mt-1 text-sm font-semibold">{periodSummary}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Pode ser 12 horas, 1 dia, meses, 1 ano ou aberto.</p>
+            </div>
+            <div className="rounded-xl border bg-muted/20 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium"><WalletCards className="h-4 w-4 text-primary" /> 2. Orçamento</div>
+              <p className="mt-1 text-sm font-semibold">{formatMoney(orcamentoTotal)}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Valor total aprovado pelo usuário e tratado como teto rígido.</p>
+            </div>
+            <div className="rounded-xl border bg-primary/[0.04] p-3">
+              <div className="flex items-center gap-2 text-xs font-medium"><BrainCircuit className="h-4 w-4 text-primary" /> 3. IA executa a estratégia</div>
+              <p className="mt-1 text-sm font-semibold">Distribuição e otimização automáticas</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Canais, percentuais e ajustes seguem desempenho e regras de segurança.</p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
               {fieldLabel("Título da campanha", "Opcional. Se vazio, a IA cria o nome.")}
               <Input value={nomeCampanha} onChange={(event) => setNomeCampanha(event.target.value)} placeholder="Ex.: Semana da Casa Nova" maxLength={200} />
             </div>
             <div>
-              {fieldLabel("Promoção / oferta", "Opcional. Pode ser oferta, lançamento ou comunicação especial.")}
+              {fieldLabel("Promoção / oferta", "Opcional. Use para campanha, lançamento ou condição especial.")}
               <Input value={ofertaCampanha} onChange={(event) => setOfertaCampanha(event.target.value)} placeholder="Ex.: condição especial até domingo" maxLength={500} />
             </div>
             <div>
-              {fieldLabel("Orçamento total (R$)", "Limite rígido definido pelo humano.")}
+              {fieldLabel("Orçamento total (R$)", "Este é o teto que a IA nunca pode ultrapassar.")}
               <Input inputMode="decimal" value={orcamentoTotal} onChange={(event) => setOrcamentoTotal(event.target.value.replace(/[^0-9.,]/g, ""))} placeholder="Ex.: 5.000" />
             </div>
-            <div className="space-y-2">
-              {fieldLabel("Gestão do orçamento", "A IA distribui e otimiza sem ultrapassar o valor total.")}
-              <div className="h-10 rounded-md border bg-background px-3 flex items-center text-sm">IA autônoma dentro do limite</div>
+            <div>
+              {fieldLabel("Gestão do orçamento", "Regra fixa da campanha.")}
+              <div className="flex h-10 items-center gap-2 rounded-md border bg-primary/[0.04] px-3 text-sm font-medium">
+                <BrainCircuit className="h-4 w-4 text-primary" /> IA autônoma dentro do limite
+              </div>
             </div>
           </div>
 
@@ -296,14 +337,14 @@ export default function PlanoMidia() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <p className="text-xs font-medium">Período personalizado</p>
-                <p className="text-[11px] text-muted-foreground">Permite 12 horas, 1 dia, 45 dias, 1 ano ou campanha sem data final. Desligado, os atalhos 30/60/90 abaixo continuam valendo.</p>
+                <p className="text-[11px] text-muted-foreground">Ative para usar horas, qualquer quantidade de dias ou campanha sem data final.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setCustomPeriod((current) => ({ ...current, enabled: !current.enabled }))}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium ${customPeriod.enabled ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${customPeriod.enabled ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
               >
-                {customPeriod.enabled ? "Personalizado ativo" : "Usar atalhos 30/60/90"}
+                {customPeriod.enabled ? "Período personalizado ativo" : "Usar período personalizado"}
               </button>
             </div>
             {customPeriod.enabled && (
@@ -329,7 +370,7 @@ export default function PlanoMidia() {
         </CardContent>
       </Card>
 
-      <Card className="border-primary/25 bg-primary/[0.03]">
+      <Card className="border-primary/25 bg-primary/[0.025]">
         <CardContent className="py-4 space-y-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="min-w-0">
@@ -339,7 +380,7 @@ export default function PlanoMidia() {
                 {configuredCount > 0 && <Badge variant="outline" className="text-[10px]">{configuredCount} diretriz(es)</Badge>}
               </div>
               <p className="mt-1 text-xs text-muted-foreground max-w-3xl">
-                Se você não preencher, a IA decide automaticamente. Estas diretrizes refinam público, região, produto, objetivo e canais do próximo plano.
+                Se você não preencher, a IA decide automaticamente. Use apenas quando quiser orientar objetivo, público, região, oferta ou canais prioritários.
               </p>
               {!configOpen && configuredCount > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -382,7 +423,7 @@ export default function PlanoMidia() {
               </div>
 
               <div>
-                {fieldLabel("Canais que quero priorizar", "A IA continua responsável por completar o mix necessário para o funil; estes canais recebem prioridade explícita.")}
+                {fieldLabel("Canais que quero priorizar", "A IA completa o mix necessário para o funil; estes canais recebem prioridade explícita.")}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2">
                   {AVAILABLE_CHANNELS.map((channel) => {
                     const selected = config.canaisPreferidos.includes(channel);
@@ -401,7 +442,7 @@ export default function PlanoMidia() {
               </div>
 
               <div>
-                {fieldLabel("Observações e restrições para a IA", "Use para registrar nuances do ciclo sem precisar editar campanha por campanha depois.")}
+                {fieldLabel("Observações e restrições para a IA", "Registre nuances do ciclo sem precisar editar campanha por campanha depois.")}
                 <textarea className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" value={config.observacoes} onChange={(event) => setConfig((current) => ({ ...current, observacoes: event.target.value }))} placeholder="Ex.: comunicação mais sutil, evitar repetir a cidade em todas as peças, priorizar prova e demonstração, não usar desconto..." maxLength={1500} />
               </div>
 
@@ -423,6 +464,11 @@ export default function PlanoMidia() {
           )}
         </CardContent>
       </Card>
+
+      <div className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.02] px-4 py-3">
+        <p className="text-xs font-medium">Abaixo: plano gerado pela IA</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">O resultado deve respeitar exatamente o período e o teto financeiro definidos acima.</p>
+      </div>
 
       <PlanoMidiaCore />
     </div>
