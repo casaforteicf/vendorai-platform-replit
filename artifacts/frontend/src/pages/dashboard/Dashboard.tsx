@@ -4,6 +4,7 @@ import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter"
 import BusinessGoalsDialog from "@/components/dashboard/BusinessGoalsDialog";
 import StrategicObserver from "@/components/dashboard/StrategicObserver";
 import JarvisHistory from "@/components/dashboard/JarvisHistory";
+import JarvisObserverCaseSync from "@/components/dashboard/JarvisObserverCaseSync";
 
 type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
 type OfficialMetrics = CommandCenterProps["data"];
@@ -118,6 +119,7 @@ export default function Dashboard() {
         official={official}
         refreshKey={refreshKey}
       />
+      <JarvisObserverCaseSync token={token} />
       <JarvisHistory token={token} refreshKey={refreshKey} />
     </>
   );
