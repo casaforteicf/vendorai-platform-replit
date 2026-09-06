@@ -8,7 +8,8 @@ type FacebookOrganicInput = {
   text?: string;
   mediaUrl?: string;
   mediaUrls?: string[];
-  contentType?: "post" | "image" | "carousel";
+  contentType?: "post" | "image" | "carousel" | "story" | "reel";
+  mediaKind?: "image" | "video";
 };
 
 type FacebookCapability = {
@@ -21,6 +22,13 @@ type FacebookCapability = {
 
 class FacebookPublishError extends Error {}
 
+async function parseResponse(response: Response) {
+  const raw = await response.text();
+  let data: any = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+  return { raw, data };
+}
+
 async function graphPost(path: string, params: Record<string, string>) {
   const body = new URLSearchParams(params);
   const response = await fetch(`${META_GRAPH_BASE}/${path}`, {
@@ -28,10 +36,23 @@ async function graphPost(path: string, params: Record<string, string>) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  const raw = await response.text();
-  let data: any = {};
-  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+  const { raw, data } = await parseResponse(response);
   if (!response.ok) throw new FacebookPublishError(`facebook_${path.replace(/\W+/g, "_")}_${response.status}: ${raw.slice(0, 500)}`);
+  return data;
+}
+
+async function uploadHostedVideo(uploadUrl: string, token: string, mediaUrl: string) {
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${token}`,
+      file_url: mediaUrl,
+    },
+  });
+  const { raw, data } = await parseResponse(response);
+  if (!response.ok || data?.success === false) {
+    throw new FacebookPublishError(`facebook_video_upload_${response.status}: ${raw.slice(0, 500)}`);
+  }
   return data;
 }
 
@@ -77,7 +98,14 @@ export async function createFacebookOrganicPublication(tenantId: string, input: 
   if (input.mediaUrl && !mediaUrls.includes(input.mediaUrl)) mediaUrls.unshift(input.mediaUrl);
   if (!input.text && mediaUrls.length === 0) throw new Error("text_or_media_required");
   const contentType = input.contentType || (mediaUrls.length > 1 ? "carousel" : mediaUrls.length === 1 ? "image" : "post");
-  if (!(["post", "image", "carousel"] as string[]).includes(contentType)) throw new Error("facebook_content_type_not_supported");
+  if (!(["post", "image", "carousel", "story", "reel"] as string[]).includes(contentType)) throw new Error("facebook_content_type_not_supported");
+
+  if (contentType === "reel") {
+    if (mediaUrls.length !== 1 || input.mediaKind !== "video") throw new Error("facebook_reel_requires_video");
+  }
+  if (contentType === "story") {
+    if (mediaUrls.length !== 1 || !input.mediaKind) throw new Error("facebook_story_requires_single_media");
+  }
 
   const [created] = await db.insert(socialPublicationsTable).values({
     tenantId,
@@ -91,6 +119,7 @@ export async function createFacebookOrganicPublication(tenantId: string, input: 
       mediaUrls,
       facebookPageId: capability.pageId,
       facebookPageName: capability.pageName,
+      facebookMediaKind: input.mediaKind,
     },
   }).returning();
   return created;
@@ -138,6 +167,63 @@ async function publishCarousel(pageId: string, token: string, mediaUrls: string[
   return externalId;
 }
 
+async function publishPhotoStory(pageId: string, token: string, mediaUrl: string) {
+  const uploaded = await graphPost(`${pageId}/photos`, {
+    url: mediaUrl,
+    published: "false",
+    access_token: token,
+  });
+  const photoId = uploaded?.id as string | undefined;
+  if (!photoId) throw new FacebookPublishError("facebook_story_photo_missing_id");
+  const result = await graphPost(`${pageId}/photo_stories`, {
+    photo_id: photoId,
+    access_token: token,
+  });
+  const externalId = (result?.post_id || result?.id || photoId) as string | undefined;
+  if (!externalId) throw new FacebookPublishError("facebook_photo_story_missing_id");
+  return externalId;
+}
+
+async function publishVideoStory(pageId: string, token: string, mediaUrl: string, text: string) {
+  const started = await graphPost(`${pageId}/video_stories`, {
+    upload_phase: "start",
+    access_token: token,
+  });
+  const videoId = started?.video_id as string | undefined;
+  const uploadUrl = started?.upload_url as string | undefined;
+  if (!videoId || !uploadUrl) throw new FacebookPublishError("facebook_video_story_start_failed");
+
+  await uploadHostedVideo(uploadUrl, token, mediaUrl);
+  const result = await graphPost(`${pageId}/video_stories`, {
+    upload_phase: "finish",
+    video_id: videoId,
+    video_state: "PUBLISHED",
+    description: text,
+    access_token: token,
+  });
+  return (result?.post_id || result?.id || videoId) as string;
+}
+
+async function publishReel(pageId: string, token: string, mediaUrl: string, text: string) {
+  const started = await graphPost(`${pageId}/video_reels`, {
+    upload_phase: "start",
+    access_token: token,
+  });
+  const videoId = started?.video_id as string | undefined;
+  const uploadUrl = started?.upload_url as string | undefined;
+  if (!videoId || !uploadUrl) throw new FacebookPublishError("facebook_reel_start_failed");
+
+  await uploadHostedVideo(uploadUrl, token, mediaUrl);
+  const result = await graphPost(`${pageId}/video_reels`, {
+    upload_phase: "finish",
+    video_id: videoId,
+    video_state: "PUBLISHED",
+    description: text,
+    access_token: token,
+  });
+  return (result?.id || result?.post_id || videoId) as string;
+}
+
 export async function publishFacebookOrganicPublication(tenantId: string, publicationId: string) {
   const [publication] = await db.select().from(socialPublicationsTable).where(and(
     eq(socialPublicationsTable.id, publicationId),
@@ -162,12 +248,24 @@ export async function publishFacebookOrganicPublication(tenantId: string, public
       : [];
     if (publication.mediaUrl && !mediaUrls.includes(publication.mediaUrl)) mediaUrls.unshift(publication.mediaUrl);
     const text = publication.text || "";
+    const mediaKind = metadata.facebookMediaKind === "video" ? "video" : "image";
 
-    const externalId = publication.contentType === "carousel" || mediaUrls.length > 1
-      ? await publishCarousel(capability.pageId, capability.pageAccessToken, mediaUrls, text)
-      : mediaUrls[0]
-        ? await publishImage(capability.pageId, capability.pageAccessToken, mediaUrls[0], text)
-        : await publishText(capability.pageId, capability.pageAccessToken, text);
+    let externalId: string;
+    if (publication.contentType === "reel") {
+      if (!mediaUrls[0] || mediaKind !== "video") throw new FacebookPublishError("facebook_reel_requires_video");
+      externalId = await publishReel(capability.pageId, capability.pageAccessToken, mediaUrls[0], text);
+    } else if (publication.contentType === "story") {
+      if (!mediaUrls[0]) throw new FacebookPublishError("facebook_story_requires_single_media");
+      externalId = mediaKind === "video"
+        ? await publishVideoStory(capability.pageId, capability.pageAccessToken, mediaUrls[0], text)
+        : await publishPhotoStory(capability.pageId, capability.pageAccessToken, mediaUrls[0]);
+    } else if (publication.contentType === "carousel" || mediaUrls.length > 1) {
+      externalId = await publishCarousel(capability.pageId, capability.pageAccessToken, mediaUrls, text);
+    } else if (mediaUrls[0]) {
+      externalId = await publishImage(capability.pageId, capability.pageAccessToken, mediaUrls[0], text);
+    } else {
+      externalId = await publishText(capability.pageId, capability.pageAccessToken, text);
+    }
 
     const [updated] = await db.update(socialPublicationsTable).set({
       externalId,
