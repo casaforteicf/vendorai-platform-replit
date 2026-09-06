@@ -1,12 +1,61 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, gte, lte, count } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, bugReportsTable, tenantsTable, usersTable } from "@workspace/db";
+import { db, bugReportsTable, relatosTecnicosTable, tenantsTable, usersTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
+
+// GET /jarvis/history — histórico do tenant autenticado, reutilizando a persistência existente.
+router.get("/jarvis/history", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.json([]);
+
+  const reports = await db
+    .select({
+      id: bugReportsTable.id,
+      conversationId: bugReportsTable.conversationId,
+      titulo: bugReportsTable.titulo,
+      descricao: bugReportsTable.descricao,
+      categoria: bugReportsTable.categoria,
+      status: bugReportsTable.status,
+      prioridade: bugReportsTable.prioridade,
+      rotaAfetada: bugReportsTable.rotaAfetada,
+      respostaJarvis: bugReportsTable.respostaSuporte,
+      resolvidoPor: bugReportsTable.resolvidoPor,
+      createdAt: bugReportsTable.createdAt,
+      updatedAt: bugReportsTable.updatedAt,
+    })
+    .from(bugReportsTable)
+    .where(eq(bugReportsTable.tenantId, tenantId))
+    .orderBy(desc(bugReportsTable.updatedAt))
+    .limit(20);
+
+  const relatos = await db
+    .select({
+      conversationId: relatosTecnicosTable.conversationId,
+      transcript: relatosTecnicosTable.transcriptRelevante,
+    })
+    .from(relatosTecnicosTable)
+    .where(eq(relatosTecnicosTable.tenantId, tenantId as any))
+    .orderBy(desc(relatosTecnicosTable.criadoEm))
+    .limit(50);
+
+  const transcriptByConversation = new Map(
+    relatos
+      .filter((item) => item.conversationId)
+      .map((item) => [String(item.conversationId), item.transcript ?? null]),
+  );
+
+  return res.json(reports.map((report) => ({
+    ...report,
+    transcript: report.conversationId
+      ? transcriptByConversation.get(String(report.conversationId)) ?? null
+      : null,
+  })));
+});
 
 // GET /admin/bug-reports
 router.get("/admin/bug-reports", requireRole("super_admin"), async (req, res) => {
