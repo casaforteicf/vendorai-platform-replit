@@ -10,12 +10,12 @@ import {
   instagramConnectionsTable,
   leadsTable,
   onboardingProgressTable,
-  produtosCatalogoTable,
   tenantsTable,
   usersTable,
   whatsappConnectionsTable,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
+import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
 import {
   appendImplementationTimeline,
   buildImplementationFollowups,
@@ -67,7 +67,7 @@ async function readImplementationFacts(tenantId: string) {
     [config],
     [activeUsers],
     [leads],
-    [catalog],
+    catalogCount,
     [whatsapp],
     [instagram],
     [calendar],
@@ -93,8 +93,7 @@ async function readImplementationFacts(tenantId: string) {
     db.select({ value: count() }).from(usersTable)
       .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))),
     db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId)),
-    db.select({ value: count() }).from(produtosCatalogoTable)
-      .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true))),
+    getActiveCatalogCount(tenantId),
     db.select({ id: whatsappConnectionsTable.id }).from(whatsappConnectionsTable)
       .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active"))).limit(1),
     db.select({ id: instagramConnectionsTable.id }).from(instagramConnectionsTable)
@@ -114,7 +113,7 @@ async function readImplementationFacts(tenantId: string) {
     instagramConnected: !!instagram,
     calendarConnected: !!calendar?.googleCalendarId,
     leadCount: Number(leads?.value ?? 0),
-    catalogCount: Number(catalog?.value ?? 0),
+    catalogCount,
     profileProductCount: profileProducts,
     agentsConfigured: !!config?.setupCompletedAt,
     autonomyEnabled: !!config?.autonomyEnabledAt,
