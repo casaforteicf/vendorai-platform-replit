@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { logger } from "../lib/logger.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
+import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
   buildSearchConsoleOAuthUrl,
   exchangeCodeForTokens,
@@ -21,6 +22,33 @@ function getAppUrl(): string {
     return "https://app.appvendorai.com";
   }
   return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
+}
+
+function auditActor(req: Request, userId?: string | null) {
+  return {
+    userId: userId ?? req.user?.id ?? req.user?.sub ?? null,
+    ip: req.ip ?? null,
+  };
+}
+
+async function auditSearchConsoleChange(
+  req: Request,
+  tenantId: string,
+  before: unknown,
+  after: unknown,
+  userId?: string | null,
+  action: "criar" | "atualizar" | "excluir" = "atualizar",
+) {
+  const audited = await writeConfigurationAudit({
+    tenantId,
+    action,
+    entity: "search_console_connection",
+    entityId: tenantId,
+    before: action === "criar" ? undefined : before,
+    after: action === "excluir" ? undefined : after,
+    actor: auditActor(req, userId),
+  });
+  if (!audited) logger.warn({ tenantId }, "configuracoes: falha ao auditar Search Console");
 }
 
 router.get("/auth/search-console", authenticate, async (req, res) => {
@@ -52,9 +80,11 @@ router.get("/auth/search-console/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let auditUserId: string | null = null;
   try {
     const decoded = consumeOAuthState(state, "search-console");
     tenantId = decoded.tenantId;
+    auditUserId = decoded.userId ?? null;
   } catch (err) {
     logger.warn({ err }, "Callback Search Console: state inválido, expirado ou reutilizado");
     return res.redirect(`${appUrl}${returnTo}?searchConsoleError=invalid_state`);
@@ -74,7 +104,10 @@ router.get("/auth/search-console/callback", async (req, res) => {
       return res.redirect(`${appUrl}${returnTo}?searchConsoleError=no_refresh_token`);
     }
 
+    const before = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
     await saveSearchConsolePendingConnection(tenantId, tokens.refresh_token, tokens.access_token, tokens.expires_in);
+    const after = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
+    await auditSearchConsoleChange(req, tenantId, before, after, auditUserId, before ? "atualizar" : "criar");
     logger.info({ tenantId }, "Search Console conectado, aguardando verificação da meta tag");
     return res.redirect(`${appUrl}${returnTo}?searchConsoleConnected=pending`);
   } catch (err) {
@@ -119,7 +152,10 @@ router.post("/tenants/:tenantId/search-console-connection/verify", authenticate,
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
+    const before = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
     const result = await verifyAndActivateSearchConsole(tenantId);
+    const after = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
+    await auditSearchConsoleChange(req, tenantId, before, after);
     return res.json(result);
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao verificar Search Console");
@@ -138,6 +174,8 @@ router.post("/tenants/:tenantId/search-console-connection/refresh", authenticate
       return res.status(404).json({ error: "Connection not found" });
     }
     await refreshSearchConsoleToken(conn.id);
+    const after = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
+    await auditSearchConsoleChange(req, tenantId, conn, after);
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao renovar token Search Console");
@@ -151,7 +189,9 @@ router.delete("/tenants/:tenantId/search-console-connection", authenticate, asyn
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
+    const before = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
     await disconnectSearchConsole(tenantId);
+    await auditSearchConsoleChange(req, tenantId, before, null, null, "excluir");
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar Search Console");
