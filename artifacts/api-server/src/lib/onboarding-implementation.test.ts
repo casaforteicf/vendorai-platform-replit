@@ -41,6 +41,15 @@ describe("onboarding implementation lifecycle", () => {
     expect(buildImplementationReadiness(plan).blockers.some((item) => item.id === "catalog")).toBe(false);
   });
 
+  it("does not let legacy profile products mark catalog readiness", () => {
+    const plan = buildImplementationPlan(
+      "Consultoria empresarial",
+      { ...readyFacts, catalogCount: 0, profileProductCount: 12 },
+      state(true),
+    );
+    expect(plan.find((step) => step.id === "catalog")?.done).toBe(false);
+  });
+
   it("keeps system-observed steps non-acknowledgeable", () => {
     const plan = buildImplementationPlan("Loja", readyFacts, state(false));
     expect(plan.filter((step) => step.id !== "test").every((step) => step.canAcknowledge === false)).toBe(true);
