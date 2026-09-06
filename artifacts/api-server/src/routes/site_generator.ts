@@ -15,6 +15,7 @@ import {
   webBehaviorEventsTable,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { getActiveCatalogPreview } from "../lib/catalog-readiness.js";
 import coreRouter, { publicSiteGeneratorRouter as corePublicSiteGeneratorRouter } from "./site_generator_core.js";
 
 function hasAccess(req: any, res: any, tenantId: string): boolean {
@@ -507,7 +508,7 @@ router.post("/tenants/:tenantId/site-generator/briefing-suggestions", async (req
   try {
     const [contextResult, productsResult] = await Promise.allSettled([
       loadSiteGeneratorBusinessContext(tenantId),
-      db.select().from(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenantId)).limit(40),
+      getActiveCatalogPreview(tenantId, 40),
     ]);
     const context = contextResult.status === "fulfilled" ? contextResult.value : { profile: null, sources: { tenant: false, businessProfile: false, whatsapp: false }, degraded: true };
     const profile = context.profile as Record<string, unknown> | null;
@@ -523,12 +524,13 @@ router.post("/tenants/:tenantId/site-generator/briefing-suggestions", async (req
           return value !== null && value !== undefined && value !== "";
         }))
       : {};
-    const catalog = products.map((product: any) => ({
-      id: String(product.id ?? ""),
-      nome: String(product.nome ?? product.name ?? "").slice(0, 180),
-      categoria: String(product.categoria ?? "").slice(0, 120),
-      marca: String(product.marca ?? "").slice(0, 120),
+    const catalog = products.map((product) => ({
+      id: product.id,
+      nome: product.nome.slice(0, 180),
       descricao: String(product.descricao ?? "").slice(0, 500),
+      precoBase: product.precoBase,
+      unidade: product.unidade,
+      tipo: product.productType,
     })).filter((product) => product.nome);
     const prompt = `Analise o Perfil do Negócio e o catálogo do tenant atual e gere opções comerciais úteis para preencher um briefing de site/landing page.
 
@@ -537,6 +539,7 @@ REGRAS OBRIGATÓRIAS:
 - Entenda o segmento a partir dos dados reais informados no perfil.
 - Você pode INFERIR públicos comerciais plausíveis a partir do segmento/descrição, mas não transforme inferências em fatos sobre a empresa.
 - Ofertas devem ser produtos, serviços, categorias ou formas plausíveis de apresentar o que a empresa realmente vende. Não invente preço, certificação, garantia, estoque, unidade, depoimento ou condição comercial.
+- O CATÁLOGO abaixo contém somente itens ativos e é a fonte comercial oficial. Não use `profile.produtos` para contradizer nomes, preços ou itens ativos do catálogo.
 - Se o catálogo tiver produto adequado, devolva exatamente o id informado em productId. Caso contrário, omita productId.
 - Gere de 4 a 8 públicos e de 4 a 8 ofertas. Evite opções redundantes ou genéricas demais.
 - Responda em português do Brasil.
@@ -544,7 +547,7 @@ REGRAS OBRIGATÓRIAS:
 
 MODO DE CRIAÇÃO: ${parsed.data.creationMode ?? "new-site"}
 PERFIL DO NEGÓCIO: ${JSON.stringify(safeProfile).slice(0, 12000)}
-CATÁLOGO: ${JSON.stringify(catalog).slice(0, 14000)}`;
+CATÁLOGO OFICIAL ATIVO: ${JSON.stringify(catalog).slice(0, 14000)}`;
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 2200,
@@ -571,16 +574,28 @@ CATÁLOGO: ${JSON.stringify(catalog).slice(0, 14000)}`;
   } catch (err) {
     req.log?.warn({ err, tenantId }, "site-generator/briefing-suggestions: usando fallback local");
     try {
-      const context = await loadSiteGeneratorBusinessContext(tenantId);
+      const [context, catalog] = await Promise.all([
+        loadSiteGeneratorBusinessContext(tenantId),
+        getActiveCatalogPreview(tenantId, 8),
+      ]);
       const profile = (context.profile ?? {}) as Record<string, any>;
       const audiences = [profile.publicoAlvo, profile.discoveryData?.publicoAlvo, profile.discoveryData?.clienteIdeal]
         .flatMap((value) => typeof value === "string" ? value.split(/\n|;|\||•/g) : [])
         .map((value) => ({ value: value.trim().slice(0, 180), reason: "Perfil do negócio" }))
         .filter((item) => item.value)
         .slice(0, 8);
-      const offers = Array.isArray(profile.produtos)
-        ? profile.produtos.map((item: any) => ({ value: String(item?.nome ?? "").trim().slice(0, 180), reason: "Perfil do negócio" })).filter((item: any) => item.value).slice(0, 8)
-        : [];
+      const offers = catalog.length > 0
+        ? catalog.map((item) => ({
+            value: item.nome.trim().slice(0, 180),
+            productId: item.id,
+            reason: "Catálogo oficial ativo",
+          })).filter((item) => item.value).slice(0, 8)
+        : Array.isArray(profile.produtos)
+          ? profile.produtos.map((item: any) => ({
+              value: String(item?.nome ?? "").trim().slice(0, 180),
+              reason: "Referência legada — Catálogo oficial vazio",
+            })).filter((item: any) => item.value).slice(0, 8)
+          : [];
       res.status(200).json({ audiences, offers, source: "local_fallback", degraded: true });
     } catch {
       res.status(200).json({ audiences: [], offers: [], source: "degraded", degraded: true });
@@ -669,8 +684,12 @@ router.post("/tenants/:tenantId/site-generator/repurpose", async (req, res) => {
       sourceText = `${article.metaDescription ?? ""}\n${article.conteudoMd ?? ""}`.slice(0, 14000);
     } else {
       const [product] = await db.select().from(produtosCatalogoTable)
-        .where(and(eq(produtosCatalogoTable.id, parsed.data.sourceId), eq(produtosCatalogoTable.tenantId, tenantId))).limit(1);
-      if (!product) throw new Error("Produto não encontrado");
+        .where(and(
+          eq(produtosCatalogoTable.id, parsed.data.sourceId),
+          eq(produtosCatalogoTable.tenantId, tenantId),
+          eq(produtosCatalogoTable.ativo, true),
+        )).limit(1);
+      if (!product) throw new Error("Produto ativo não encontrado no Catálogo oficial");
       sourceTitle = String((product as any).nome ?? (product as any).name ?? "Produto");
       sourceText = JSON.stringify(product).slice(0, 12000);
     }
