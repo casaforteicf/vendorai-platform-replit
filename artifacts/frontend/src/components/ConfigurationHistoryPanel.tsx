@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, History, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, History, RefreshCw } from "lucide-react";
 
 type HistoryItem = {
   id: string;
@@ -22,6 +22,8 @@ type HistoryPayload = {
   items?: HistoryItem[];
   limit?: number;
 };
+
+type RiskLevel = "baixo" | "medio" | "alto" | "critico";
 
 const ENTITY_LABELS: Record<string, string> = {
   business_profile: "Empresa",
@@ -47,6 +49,54 @@ const ACTION_LABELS: Record<string, string> = {
   reconectar: "Reconectado",
   desconectar: "Desconectado",
 };
+
+const RISK_LABELS: Record<RiskLevel, string> = {
+  baixo: "Baixo",
+  medio: "Médio",
+  alto: "Alto",
+  critico: "Crítico",
+};
+
+const RISK_CLASSES: Record<RiskLevel, string> = {
+  baixo: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  medio: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  alto: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  critico: "border-destructive/40 bg-destructive/10 text-destructive",
+};
+
+const INTEGRATION_ENTITIES = new Set([
+  "tenant_integrations",
+  "whatsapp_connection",
+  "instagram_connection",
+  "google_ads_connection",
+  "search_console_connection",
+  "google_calendar_connection",
+  "meta_ads_connection",
+  "social_connection",
+]);
+
+const CONTRACT_ENTITIES = new Set(["contract_settings", "contract_template"]);
+const AGENT_ENTITIES = new Set(["agent_config", "tenant_agent_config"]);
+const SENSITIVE_KEY_PATTERN = /(token|secret|senha|password|api.?key|authorization|cookie|credential|webhook.?secret)/i;
+
+function containsSensitiveKey(value: unknown, depth = 0): boolean {
+  if (depth > 5 || value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.some((item) => containsSensitiveKey(item, depth + 1));
+  if (typeof value !== "object") return false;
+  return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
+    SENSITIVE_KEY_PATTERN.test(key) || containsSensitiveKey(child, depth + 1)
+  ));
+}
+
+function riskFor(item: HistoryItem): RiskLevel {
+  if (containsSensitiveKey(item.antes) || containsSensitiveKey(item.depois)) return "critico";
+  if (item.acao === "excluir") return "critico";
+  if (INTEGRATION_ENTITIES.has(item.entidade)) return "alto";
+  if (CONTRACT_ENTITIES.has(item.entidade)) return "alto";
+  if (AGENT_ENTITIES.has(item.entidade)) return "medio";
+  if (item.entidade === "business_profile") return "baixo";
+  return "medio";
+}
 
 function formatValue(value: unknown) {
   if (value === null || value === undefined) return "—";
@@ -76,6 +126,7 @@ export function ConfigurationHistoryPanel() {
   const [expanded, setExpanded] = useState(false);
   const [actionFilter, setActionFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [openItemId, setOpenItemId] = useState<string | null>(null);
 
   const load = async () => {
@@ -106,14 +157,18 @@ export function ConfigurationHistoryPanel() {
     return Array.from(new Set(items.map((item) => ENTITY_LABELS[item.entidade] ?? item.entidade))).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [items]);
 
+  const criticalCount = useMemo(() => items.filter((item) => riskFor(item) === "critico").length, [items]);
+
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
       const area = ENTITY_LABELS[item.entidade] ?? item.entidade;
+      const risk = riskFor(item);
       if (actionFilter !== "all" && item.acao !== actionFilter) return false;
       if (areaFilter !== "all" && area !== areaFilter) return false;
+      if (riskFilter !== "all" && risk !== riskFilter) return false;
       return true;
     });
-  }, [items, actionFilter, areaFilter]);
+  }, [items, actionFilter, areaFilter, riskFilter]);
 
   return (
     <section className="mb-4 rounded-xl border bg-background p-3 sm:p-4" aria-label="Histórico de alterações das configurações">
@@ -124,9 +179,14 @@ export function ConfigurationHistoryPanel() {
             <div className="flex flex-wrap items-center gap-2">
               <strong className="text-sm">Histórico de alterações</strong>
               <Badge variant="secondary" className="text-[10px]">{items.length} registros</Badge>
+              {criticalCount > 0 && (
+                <Badge variant="outline" className={`text-[10px] ${RISK_CLASSES.critico}`}>
+                  <AlertTriangle className="mr-1 h-3 w-3" />{criticalCount} crítico(s)
+                </Badge>
+              )}
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Veja quem alterou as configurações, quando e os valores registrados antes e depois.
+              Veja quem alterou as configurações, quando, o nível de risco e os valores registrados antes e depois.
             </p>
           </div>
         </div>
@@ -144,7 +204,7 @@ export function ConfigurationHistoryPanel() {
 
       {expanded && (
         <div className="mt-4 space-y-3 border-t pt-4">
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             <label className="grid gap-1 text-xs font-medium">
               Ação
               <select className="h-9 rounded-md border bg-background px-2 text-sm" value={actionFilter} onChange={(event) => setActionFilter(event.target.value)}>
@@ -164,6 +224,16 @@ export function ConfigurationHistoryPanel() {
                 {areas.map((area) => <option key={area} value={area}>{area}</option>)}
               </select>
             </label>
+            <label className="grid gap-1 text-xs font-medium">
+              Risco
+              <select className="h-9 rounded-md border bg-background px-2 text-sm" value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as "all" | RiskLevel)}>
+                <option value="all">Todos</option>
+                <option value="critico">Crítico</option>
+                <option value="alto">Alto</option>
+                <option value="medio">Médio</option>
+                <option value="baixo">Baixo</option>
+              </select>
+            </label>
           </div>
 
           {error && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">{error}</p>}
@@ -175,6 +245,7 @@ export function ConfigurationHistoryPanel() {
             {filteredItems.map((item) => {
               const area = ENTITY_LABELS[item.entidade] ?? item.entidade;
               const action = ACTION_LABELS[item.acao] ?? item.acao;
+              const risk = riskFor(item);
               const open = openItemId === item.id;
               const actor = item.actorName || item.actorEmail || "Sistema";
               return (
@@ -188,6 +259,10 @@ export function ConfigurationHistoryPanel() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-semibold">{area}</span>
                         <Badge variant="outline" className="text-[10px]">{action}</Badge>
+                        <Badge variant="outline" className={`text-[10px] ${RISK_CLASSES[risk]}`}>
+                          {risk === "critico" && <AlertTriangle className="mr-1 h-3 w-3" />}
+                          Risco {RISK_LABELS[risk]}
+                        </Badge>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                         <span>{actor}</span>
@@ -212,6 +287,7 @@ export function ConfigurationHistoryPanel() {
                         <span>Entidade: {item.entidade}</span>
                         {item.entidadeId && <span>ID: {item.entidadeId}</span>}
                         {item.ip && <span>IP: {item.ip}</span>}
+                        <span>Risco: {RISK_LABELS[risk]}</span>
                       </div>
                     </div>
                   )}
