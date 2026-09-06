@@ -14,6 +14,7 @@ import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConv
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
 import { startDevAgentSupportHandoff } from "./services/dev-agent-support-handoff.js";
+import { startVieIntelligenceCycle } from "./services/vie-intelligence-cycle.js";
 import { startProductionSentinel } from "./routes/dev_agent_operational_context.js";
 import { applyPendingMigrations } from "@workspace/db";
 
@@ -76,6 +77,7 @@ async function start() {
     startMainGovernanceGuard(logger);
     startServerRuntimeSentinel(logger);
     startDevAgentSupportHandoff(logger);
+    startVieIntelligenceCycle(logger);
 
     // Lifecycle de aquisição, trial e assinatura: primeiro reconcilia sinais
     // financeiros já persistidos, depois converge CRM/assinatura e só então
