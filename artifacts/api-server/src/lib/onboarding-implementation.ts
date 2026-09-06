@@ -33,8 +33,6 @@ export type ImplementationFacts = {
   calendarConnected: boolean;
   leadCount: number;
   catalogCount: number;
-  /** Compatibilidade temporária de leitura; não satisfaz mais readiness operacional. */
-  profileProductCount: number;
   agentsConfigured: boolean;
   autonomyEnabled: boolean;
 };
@@ -116,8 +114,7 @@ export function buildImplementationPlan(
   const anyChannel = facts.whatsappConnected || facts.instagramConnected || facts.calendarConnected;
 
   // Fonte única: readiness de produtos/serviços depende apenas do Catálogo
-  // oficial ativo. `business_profiles.produtos` continua disponível somente
-  // para compatibilidade de leitura e nunca mais marca esta etapa como pronta.
+  // oficial ativo. Nenhum campo legado do perfil participa deste cálculo.
   const catalogReady = facts.catalogCount > 0;
 
   return [
