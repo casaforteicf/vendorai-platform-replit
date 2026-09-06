@@ -9,7 +9,8 @@ import {
   listSocialComments, replyToSocialComment,
   type SocialProvider,
 } from "../services/social-platforms.js";
-import { publishSocialPublication } from "../services/social-publication-publisher.js";
+import { createInstagramOrganicPublication } from "../services/instagram-organic-publication.js";
+import { publishAnySocialPublication } from "../services/social-publication-dispatcher.js";
 import { startSocialPublicationWorker } from "../services/social-publication-worker.js";
 
 const router: IRouter = Router();
@@ -87,19 +88,23 @@ router.post("/tenants/:tenantId/social-connections/:provider/test", authenticate
 const publicationSchema = z.object({
   text: z.string().trim().max(10_000).optional(),
   mediaUrl: z.string().url().optional(),
-  contentType: z.enum(["post", "video", "short", "image"]).optional(),
-}).refine((data) => Boolean(data.text || data.mediaUrl), "text_or_media_required");
+  mediaUrls: z.array(z.string().url()).max(10).optional(),
+  contentType: z.enum(["post", "video", "short", "image", "carousel", "story", "reel"]).optional(),
+}).refine((data) => Boolean(data.text || data.mediaUrl || data.mediaUrls?.length), "text_or_media_required");
 
 router.post("/tenants/:tenantId/social-publications/:provider", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  const selected = provider(req.params.provider);
+  const requestedProvider = String(req.params.provider || "");
+  const selected = requestedProvider === "instagram" ? "instagram" : provider(requestedProvider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = publicationSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_publication", details: parsed.error.flatten() });
   try {
-    const publication = await createSocialPublication(tenantId, selected, parsed.data);
-    void publishSocialPublication(tenantId, publication.id).catch((error) => {
+    const publication = selected === "instagram"
+      ? await createInstagramOrganicPublication(tenantId, parsed.data)
+      : await createSocialPublication(tenantId, selected, parsed.data);
+    void publishAnySocialPublication(tenantId, publication.id).catch((error) => {
       logger.error({ error, tenantId, publicationId: publication.id, provider: selected }, "Falha assíncrona na publicação social");
     });
     return res.status(202).json({ publication, publishing: true });
@@ -113,7 +118,7 @@ router.post("/tenants/:tenantId/social-publications/:publicationId/retry", authe
   const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   try {
-    const publication = await publishSocialPublication(tenantId, String(req.params.publicationId));
+    const publication = await publishAnySocialPublication(tenantId, String(req.params.publicationId));
     return res.json({ publication });
   } catch (error) {
     const message = error instanceof Error ? error.message : "publication_failed";
