@@ -33,6 +33,11 @@ function monthBounds(now = new Date()) {
   };
 }
 
+function usdBrlRate(): number {
+  const raw = Number(process.env.FINOPS_USD_BRL ?? "5.20");
+  return Number.isFinite(raw) && raw > 0 ? raw : 5.2;
+}
+
 async function readPlatformCosts(startDate: string, endDate: string) {
   const { rows } = await pool.query<{
     id: string;
@@ -85,13 +90,23 @@ async function readPlatformCosts(startDate: string, endDate: string) {
 
   const byProvider = new Map<string, number>();
   const byCategory = new Map<string, number>();
+  const directByTenant = new Map<string, number>();
+  let sharedUsd = 0;
+
   for (const entry of entries) {
     byProvider.set(entry.provider, (byProvider.get(entry.provider) ?? 0) + entry.amountUsd);
     byCategory.set(entry.category, (byCategory.get(entry.category) ?? 0) + entry.amountUsd);
+    if (entry.tenantId) {
+      directByTenant.set(entry.tenantId, (directByTenant.get(entry.tenantId) ?? 0) + entry.amountUsd);
+    } else {
+      sharedUsd += entry.amountUsd;
+    }
   }
 
   return {
     totalUsd: entries.reduce((sum, e) => sum + e.amountUsd, 0),
+    sharedUsd,
+    directByTenant,
     byProvider: [...byProvider.entries()]
       .map(([provider, amountUsd]) => ({ provider, amountUsd }))
       .sort((a, b) => b.amountUsd - a.amountUsd),
@@ -154,7 +169,6 @@ router.delete(
   },
 );
 
-// ── GET /admin/financial-summary ─────────────────────────────────────────────
 router.get(
   "/admin/financial-summary",
   authenticate,
@@ -163,6 +177,7 @@ router.get(
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const { startDate, endDate } = monthBounds(now);
+    const usdToBrl = usdBrlRate();
 
     const tenants = await db
       .select({
@@ -195,6 +210,7 @@ router.get(
       .groupBy(aiUsageLogsTable.tenantId);
     const aiCostMap = new Map(aiRows.map((r) => [r.tenantId, Number(r.custoMes)]));
     const aiCostTotalUsd = aiRows.reduce((sum, r) => sum + Number(r.custoMes), 0);
+    const platformCosts = await readPlatformCosts(startDate, endDate);
 
     function mrrDeTenant(t: typeof tenants[number]): number {
       if (t.isDemo) return 0;
@@ -206,10 +222,22 @@ router.get(
       return 0;
     }
 
-    const enriched = tenants.map((t) => {
-      const mrr = mrrDeTenant(t);
-      const custoIaMes = aiCostMap.get(t.id) ?? 0;
-      const plan = t.planId ? planMap.get(t.planId) : undefined;
+    const baseTenants = tenants.map((t) => ({
+      tenant: t,
+      mrr: mrrDeTenant(t),
+      aiUsd: aiCostMap.get(t.id) ?? 0,
+      directExternalUsd: platformCosts.directByTenant.get(t.id) ?? 0,
+      plan: t.planId ? planMap.get(t.planId) : undefined,
+    }));
+
+    const activeCount = baseTenants.filter(({ tenant }) => tenant.status === "active" && !tenant.isDemo).length;
+    const sharedPerActiveTenantUsd = activeCount > 0 ? platformCosts.sharedUsd / activeCount : 0;
+
+    const enriched = baseTenants.map(({ tenant: t, mrr, aiUsd, directExternalUsd, plan }) => {
+      const sharedAllocatedUsd = t.status === "active" && !t.isDemo ? sharedPerActiveTenantUsd : 0;
+      const operationalCostUsd = aiUsd + directExternalUsd + sharedAllocatedUsd;
+      const operationalCostBrl = operationalCostUsd * usdToBrl;
+      const margemMes = mrr - operationalCostBrl;
       return {
         id: t.id,
         name: t.name,
@@ -222,9 +250,13 @@ router.get(
         planStartedAt: t.planStartedAt,
         mensalidadeValor: t.mensalidadeValor ? Number(t.mensalidadeValor) : null,
         mrr,
-        custoIaMes,
-        margemMes: mrr - custoIaMes,
-        margemPercent: mrr > 0 ? ((mrr - custoIaMes) / mrr) * 100 : null,
+        custoIaMes: aiUsd,
+        custoExternoDiretoUsd: directExternalUsd,
+        custoCompartilhadoRateadoUsd: sharedAllocatedUsd,
+        custoOperacionalUsd: operationalCostUsd,
+        custoOperacionalBrl: operationalCostBrl,
+        margemMes,
+        margemPercent: mrr > 0 ? (margemMes / mrr) * 100 : null,
         createdAt: t.createdAt,
       };
     });
@@ -253,6 +285,7 @@ router.get(
         suspendedReason: t.suspendedReason,
         planStartedAt: t.planStartedAt,
         custoIaMes: t.custoIaMes,
+        custoOperacionalUsd: t.custoOperacionalUsd,
       }));
 
     const rankingMargem = [...ativos]
@@ -262,17 +295,22 @@ router.get(
         name: t.name,
         mrr: t.mrr,
         custoIaMes: t.custoIaMes,
+        custoExternoDiretoUsd: t.custoExternoDiretoUsd,
+        custoCompartilhadoRateadoUsd: t.custoCompartilhadoRateadoUsd,
+        custoOperacionalUsd: t.custoOperacionalUsd,
+        custoOperacionalBrl: t.custoOperacionalBrl,
         margemMes: t.margemMes,
         margemPercent: t.margemPercent,
         planNome: t.planNome,
       }));
 
-    const platformCosts = await readPlatformCosts(startDate, endDate);
     const semPlano = ativos.filter((t) => !t.planId && t.mrr === 0).length;
+    const operationalTotalUsd = platformCosts.totalUsd + aiCostTotalUsd;
 
     res.json({
       geradoEm: now.toISOString(),
       periodo: { startDate, endDate },
+      cambio: { usdToBrl, source: process.env.FINOPS_USD_BRL ? "env" : "default" },
       mrr: {
         total: mrrTotal,
         arr: arrTotal,
@@ -292,11 +330,20 @@ router.get(
         rankingMargem,
       },
       custos: {
-        ...platformCosts,
+        totalUsd: platformCosts.totalUsd,
+        sharedUsd: platformCosts.sharedUsd,
+        byProvider: platformCosts.byProvider,
+        byCategory: platformCosts.byCategory,
+        entries: platformCosts.entries,
         aiTrackedUsd: aiCostTotalUsd,
-        operationalTotalUsd: platformCosts.totalUsd + aiCostTotalUsd,
+        operationalTotalUsd,
+        operationalTotalBrl: operationalTotalUsd * usdToBrl,
+        allocation: {
+          method: "equal_active_tenants_v1",
+          sharedPerActiveTenantUsd,
+        },
         tracking: {
-          ai: "automatic",
+          ai: "automatic_estimate",
           infrastructure: platformCosts.entries.length > 0 ? "ledger" : "awaiting_provider_connection",
         },
       },
