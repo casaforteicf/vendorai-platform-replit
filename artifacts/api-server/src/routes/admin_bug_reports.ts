@@ -1,12 +1,31 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, gte, lte, count } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, bugReportsTable, relatosTecnicosTable, tenantsTable, usersTable } from "@workspace/db";
+import { db, bugReportsTable, relatosTecnicosTable, jarvisCasesTable, tenantsTable, usersTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
+
+const jarvisSignalSchema = z.object({
+  signalKey: z.string().min(1).max(255),
+  source: z.string().min(1).max(80).default("internal"),
+  category: z.string().min(1).max(80),
+  severity: z.enum(["opportunity", "attention", "risk"]),
+  title: z.string().min(1).max(255),
+  detail: z.string().min(1).max(5000),
+  metric: z.string().max(500).nullable().optional(),
+  confidence: z.number().int().min(0).max(100).nullable().optional(),
+  impact: z.number().min(0).nullable().optional(),
+  href: z.string().max(1000).nullable().optional(),
+  evidence: z.record(z.string(), z.unknown()).nullable().optional(),
+  recommendedAction: z.string().max(5000).nullable().optional(),
+});
+
+const jarvisSyncSchema = z.object({
+  signals: z.array(jarvisSignalSchema).max(50),
+});
 
 // GET /jarvis/history — histórico do tenant autenticado, reutilizando a persistência existente.
 router.get("/jarvis/history", async (req, res) => {
@@ -55,6 +74,76 @@ router.get("/jarvis/history", async (req, res) => {
       ? transcriptByConversation.get(String(report.conversationId)) ?? null
       : null,
   })));
+});
+
+// GET /jarvis/cases — Casos Vendor persistentes do tenant autenticado.
+router.get("/jarvis/cases", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.json([]);
+
+  const rows = await db
+    .select()
+    .from(jarvisCasesTable)
+    .where(eq(jarvisCasesTable.tenantId, tenantId))
+    .orderBy(desc(jarvisCasesTable.updatedAt))
+    .limit(100);
+
+  return res.json(rows);
+});
+
+// POST /jarvis/cases/sync — upsert idempotente dos sinais já calculados pelo VendorAI.
+router.post("/jarvis/cases/sync", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const parsed = jarvisSyncSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const now = new Date();
+  for (const signal of parsed.data.signals) {
+    await db
+      .insert(jarvisCasesTable)
+      .values({
+        tenantId,
+        signalKey: signal.signalKey,
+        source: signal.source,
+        category: signal.category,
+        severity: signal.severity,
+        title: signal.title,
+        detail: signal.detail,
+        metric: signal.metric ?? null,
+        confidence: signal.confidence ?? null,
+        impact: signal.impact == null ? null : Math.round(signal.impact),
+        href: signal.href ?? null,
+        status: "open",
+        evidence: signal.evidence ?? null,
+        recommendedAction: signal.recommendedAction ?? null,
+        firstDetectedAt: now,
+        lastDetectedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [jarvisCasesTable.tenantId, jarvisCasesTable.signalKey],
+        set: {
+          source: signal.source,
+          category: signal.category,
+          severity: signal.severity,
+          title: signal.title,
+          detail: signal.detail,
+          metric: signal.metric ?? null,
+          confidence: signal.confidence ?? null,
+          impact: signal.impact == null ? null : Math.round(signal.impact),
+          href: signal.href ?? null,
+          status: "open",
+          evidence: signal.evidence ?? null,
+          recommendedAction: signal.recommendedAction ?? null,
+          lastDetectedAt: now,
+          updatedAt: now,
+        },
+      });
+  }
+
+  return res.json({ synced: parsed.data.signals.length });
 });
 
 // GET /admin/bug-reports
