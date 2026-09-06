@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, AlertTriangle, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +27,36 @@ type NewsCase = {
   updatedAt: string;
 };
 
+type VieCoverage = {
+  generatedAt: string;
+  cadenceHours: number;
+  staleAfterHours: number;
+  summary: {
+    activeSources: number;
+    healthySources: number;
+    failingSources: number;
+    staleSources: number;
+    neverCheckedSources: number;
+    collected24h: number;
+    lastCheckedAt: string | null;
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+  };
+  sources: Array<{
+    id: string;
+    code: string;
+    name: string;
+    scope: string;
+    sourceType: string;
+    reliabilityScore: number | null;
+    lastCheckedAt: string | null;
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+    collected24h: number;
+    status: "healthy" | "failing" | "stale" | "never_checked";
+  }>;
+};
+
 function isNewsSource(source: string) {
   const value = source.toLowerCase();
   return value.startsWith("news") || value.includes("noticia") || value.includes("mercado_externo");
@@ -52,31 +82,61 @@ function evidenceNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("pt-BR");
+}
+
+function sourceStatusLabel(status: VieCoverage["sources"][number]["status"]) {
+  if (status === "healthy") return "Saudável";
+  if (status === "failing") return "Falhando";
+  if (status === "stale") return "Atrasada";
+  return "Nunca verificada";
+}
+
 export default function JarvisNewsMarket({ token }: { token?: string | null }) {
   const [items, setItems] = useState<NewsCase[]>([]);
+  const [coverage, setCoverage] = useState<VieCoverage | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!token) {
       setItems([]);
+      setCoverage(null);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-    fetch("/api/jarvis/cases", {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    })
-      .then(async (response) => {
+
+    Promise.all([
+      fetch("/api/jarvis/cases", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }).then(async (response) => {
         if (!response.ok) throw new Error("Falha ao carregar inteligência de notícias");
         return response.json() as Promise<NewsCase[]>;
-      })
-      .then((data) => {
+      }),
+      fetch("/api/jarvis/vie/coverage", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }).then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar cobertura operacional");
+        return response.json() as Promise<VieCoverage>;
+      }),
+    ])
+      .then(([casesData, coverageData]) => {
         if (cancelled) return;
-        setItems(Array.isArray(data) ? data.filter((item) => isNewsSource(String(item.source ?? ""))) : []);
+        setItems(Array.isArray(casesData) ? casesData.filter((item) => isNewsSource(String(item.source ?? ""))) : []);
+        setCoverage(coverageData);
       })
-      .catch(() => { if (!cancelled) setItems([]); })
+      .catch(() => {
+        if (!cancelled) {
+          setItems([]);
+          setCoverage(null);
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
@@ -123,6 +183,8 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
     [items],
   );
 
+  const coverageHealthy = coverage && coverage.summary.activeSources > 0 && coverage.summary.healthySources === coverage.summary.activeSources;
+
   return (
     <section className="mx-auto w-full max-w-[1600px] space-y-4 px-4 pb-8 sm:px-6 lg:px-8">
       <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-card via-card to-primary/[0.035]">
@@ -155,6 +217,50 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
         </CardContent>
       </Card>
 
+      {!loading && coverage && (
+        <Card className={coverageHealthy ? "border-primary/20" : "border-amber-300/60"}>
+          <CardContent className="p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Cobertura operacional do JARVIS</h3>
+                  <Badge variant={coverageHealthy ? "secondary" : "outline"}>{coverageHealthy ? "Operação saudável" : "Requer atenção"}</Badge>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Estado real das fontes ativas do VIE. Coleta automática a cada {coverage.cadenceHours}h; uma fonte é marcada como atrasada após {coverage.staleAfterHours}h sem verificação.
+                </p>
+              </div>
+              <div className="text-xs text-muted-foreground">Último sucesso: <span className="font-medium text-foreground">{formatDate(coverage.summary.lastSuccessAt)}</span></div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-5">
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Fontes ativas</p><p className="mt-1 text-lg font-semibold">{coverage.summary.activeSources}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Saudáveis</p><p className="mt-1 text-lg font-semibold">{coverage.summary.healthySources}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Com falha</p><p className="mt-1 text-lg font-semibold">{coverage.summary.failingSources}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Atrasadas</p><p className="mt-1 text-lg font-semibold">{coverage.summary.staleSources}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Coletados 24h</p><p className="mt-1 text-lg font-semibold">{coverage.summary.collected24h}</p></div>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {coverage.sources.map((source) => (
+                <div key={source.id} className="rounded-xl border p-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-medium">{source.name}</p>
+                    <Badge variant="outline">{sourceStatusLabel(source.status)}</Badge>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <span>24h: <strong className="text-foreground">{source.collected24h}</strong></span>
+                    <span>Confiab.: <strong className="text-foreground">{source.reliabilityScore != null ? `${source.reliabilityScore}%` : "—"}</strong></span>
+                    <span className="col-span-2">Verificada: <strong className="text-foreground">{formatDate(source.lastCheckedAt)}</strong></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && items.length > 0 && (
         <Card>
           <CardContent className="p-5">
@@ -174,22 +280,10 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <div className="rounded-xl border bg-muted/20 p-3.5">
-                <p className="text-xs text-muted-foreground">Sinais relevantes</p>
-                <p className="mt-1 text-lg font-semibold">{items.length}</p>
-              </div>
-              <div className="rounded-xl border bg-muted/20 p-3.5">
-                <p className="text-xs text-muted-foreground">Confiança média</p>
-                <p className="mt-1 text-lg font-semibold">{summary.averageConfidence != null ? `${summary.averageConfidence}%` : "—"}</p>
-              </div>
-              <div className="rounded-xl border bg-muted/20 p-3.5">
-                <p className="text-xs text-muted-foreground">Confiabilidade das fontes</p>
-                <p className="mt-1 text-lg font-semibold">{summary.averageReliability != null ? `${summary.averageReliability}%` : "—"}</p>
-              </div>
-              <div className="rounded-xl border bg-muted/20 p-3.5">
-                <p className="text-xs text-muted-foreground">Última análise</p>
-                <p className="mt-1 text-sm font-semibold">{summary.latestAnalysisAt ? summary.latestAnalysisAt.toLocaleString("pt-BR") : "—"}</p>
-              </div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Sinais relevantes</p><p className="mt-1 text-lg font-semibold">{items.length}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Confiança média</p><p className="mt-1 text-lg font-semibold">{summary.averageConfidence != null ? `${summary.averageConfidence}%` : "—"}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Confiabilidade das fontes</p><p className="mt-1 text-lg font-semibold">{summary.averageReliability != null ? `${summary.averageReliability}%` : "—"}</p></div>
+              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Última análise</p><p className="mt-1 text-sm font-semibold">{summary.latestAnalysisAt ? summary.latestAnalysisAt.toLocaleString("pt-BR") : "—"}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -205,9 +299,6 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               O VIE monitora fontes reais e só cria cards quando encontra relação suficiente com o negócio. A ausência de cards significa que nenhum sinal externo ultrapassou o limiar de relevância disponível para este tenant.
             </p>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              <Badge variant="outline">Nacional</Badge><Badge variant="outline">Regional</Badge><Badge variant="outline">Internacional</Badge><Badge variant="outline">Setorial</Badge><Badge variant="outline">Regulatório</Badge><Badge variant="outline">Economia</Badge>
-            </div>
           </CardContent>
         </Card>
       ) : (
