@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, gte, lte, count } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, bugReportsTable, relatosTecnicosTable, jarvisCasesTable, tenantsTable, usersTable } from "@workspace/db";
+import { db, bugReportsTable, relatosTecnicosTable, jarvisCasesTable, tenantsTable, usersTable, vieSourcesTable, vieItemsTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { logger } from "../lib/logger.js";
@@ -89,6 +89,84 @@ router.get("/jarvis/cases", async (req, res) => {
     .limit(100);
 
   return res.json(rows);
+});
+
+// GET /jarvis/vie/coverage — saúde operacional das fontes reais do VIE.
+router.get("/jarvis/vie/coverage", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+  const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const sources = await db
+    .select({
+      id: vieSourcesTable.id,
+      code: vieSourcesTable.code,
+      name: vieSourcesTable.name,
+      scope: vieSourcesTable.scope,
+      sourceType: vieSourcesTable.sourceType,
+      countryCode: vieSourcesTable.countryCode,
+      regionCode: vieSourcesTable.regionCode,
+      city: vieSourcesTable.city,
+      reliabilityScore: vieSourcesTable.reliabilityScore,
+      lastCheckedAt: vieSourcesTable.lastCheckedAt,
+      lastSuccessAt: vieSourcesTable.lastSuccessAt,
+      lastFailureAt: vieSourcesTable.lastFailureAt,
+    })
+    .from(vieSourcesTable)
+    .where(and(eq(vieSourcesTable.active, true), eq(vieSourcesTable.domain, "news")))
+    .orderBy(vieSourcesTable.name);
+
+  const recentItems = await db
+    .select({ sourceId: vieItemsTable.sourceId, total: count() })
+    .from(vieItemsTable)
+    .where(gte(vieItemsTable.collectedAt, since24h))
+    .groupBy(vieItemsTable.sourceId);
+
+  const collected24hBySource = new Map(recentItems.map((row) => [row.sourceId, Number(row.total ?? 0)]));
+
+  const operationalSources = sources.map((source) => {
+    let status: "healthy" | "failing" | "stale" | "never_checked" = "healthy";
+    if (!source.lastCheckedAt) {
+      status = "never_checked";
+    } else if (source.lastFailureAt && (!source.lastSuccessAt || source.lastFailureAt > source.lastSuccessAt)) {
+      status = "failing";
+    } else if (source.lastCheckedAt < staleBefore) {
+      status = "stale";
+    }
+
+    return {
+      ...source,
+      status,
+      collected24h: collected24hBySource.get(source.id) ?? 0,
+    };
+  });
+
+  const latestDate = (values: Array<Date | null>) => {
+    const valid = values.filter((value): value is Date => value instanceof Date);
+    if (!valid.length) return null;
+    return new Date(Math.max(...valid.map((value) => value.getTime())));
+  };
+
+  return res.json({
+    generatedAt: now,
+    cadenceHours: 6,
+    staleAfterHours: 12,
+    summary: {
+      activeSources: operationalSources.length,
+      healthySources: operationalSources.filter((source) => source.status === "healthy").length,
+      failingSources: operationalSources.filter((source) => source.status === "failing").length,
+      staleSources: operationalSources.filter((source) => source.status === "stale").length,
+      neverCheckedSources: operationalSources.filter((source) => source.status === "never_checked").length,
+      collected24h: operationalSources.reduce((total, source) => total + source.collected24h, 0),
+      lastCheckedAt: latestDate(operationalSources.map((source) => source.lastCheckedAt)),
+      lastSuccessAt: latestDate(operationalSources.map((source) => source.lastSuccessAt)),
+      lastFailureAt: latestDate(operationalSources.map((source) => source.lastFailureAt)),
+    },
+    sources: operationalSources,
+  });
 });
 
 // POST /jarvis/cases/sync — upsert idempotente dos sinais já calculados pelo VendorAI.
