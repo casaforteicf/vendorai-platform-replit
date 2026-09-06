@@ -27,11 +27,7 @@ RUN corepack enable \
 
 COPY . .
 
-# Hotfix de build: o prompt do site generator usa template literal e uma
-# referência inline com crases quebrava o parser do esbuild. Mantém a regra
-# comercial intacta e remove somente as crases antes do CI/build de produção.
-RUN sed -i 's/`profile\.produtos`/profile.produtos/g' artifacts/api-server/src/routes/site_generator.ts \
-  && pnpm install --frozen-lockfile \
+RUN pnpm install --frozen-lockfile \
   && pnpm --filter @workspace/api-server run ci:railway
 
 ENV NODE_ENV=production
