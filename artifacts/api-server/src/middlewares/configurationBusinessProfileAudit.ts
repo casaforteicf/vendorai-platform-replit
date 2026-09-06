@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { db, businessProfilesTable, agentConfigsTable, tenantAgentConfigsTable } from "@workspace/db";
+import { db, businessProfilesTable, agentConfigsTable, tenantAgentConfigsTable, tenantsTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { writeConfigurationAudit } from "../lib/configuration-audit";
 
@@ -48,6 +48,54 @@ async function documentConfigurationSnapshot(tenantId: string) {
     templateName: row.contract_template_name ?? null,
     settings: row.contract_settings ?? null,
   };
+}
+
+const TENANT_INTEGRATION_SETTING_KEYS = [
+  "asaasApiKey",
+  "zapsignApiKey",
+  "webhookEstoqueUrl",
+  "apiKeyEstoque",
+  "integrationType",
+  "whatsappProvider",
+  "instagramProvider",
+  "googleAdsConversionId",
+  "metaPixelId",
+  "linkedinInsightTagId",
+  "tiktokPixelId",
+] as const;
+
+type TenantIntegrationSettingKey = (typeof TENANT_INTEGRATION_SETTING_KEYS)[number];
+
+async function tenantIntegrationSettingsSnapshot(tenantId: string) {
+  return db.select({
+    asaasApiKey: tenantsTable.asaasApiKey,
+    zapsignApiKey: tenantsTable.zapsignApiKey,
+    webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+    apiKeyEstoque: tenantsTable.apiKeyEstoque,
+    integrationType: tenantsTable.integrationType,
+    whatsappProvider: tenantsTable.whatsappProvider,
+    instagramProvider: tenantsTable.instagramProvider,
+    googleAdsConversionId: tenantsTable.googleAdsConversionId,
+    metaPixelId: tenantsTable.metaPixelId,
+    linkedinInsightTagId: tenantsTable.linkedinInsightTagId,
+    tiktokPixelId: tenantsTable.tiktokPixelId,
+  }).from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+}
+
+function requestedTenantIntegrationKeys(body: unknown): TenantIntegrationSettingKey[] {
+  if (!body || typeof body !== "object") return [];
+  return TENANT_INTEGRATION_SETTING_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(body, key));
+}
+
+function selectTenantIntegrationFields(
+  snapshot: Awaited<ReturnType<typeof tenantIntegrationSettingsSnapshot>>,
+  keys: TenantIntegrationSettingKey[],
+): Record<string, unknown> | null {
+  if (!snapshot) return null;
+  return Object.fromEntries(keys.map((key) => [key, snapshot[key]]));
 }
 
 async function auditBusinessProfile(req: any, res: any, next: () => void): Promise<boolean> {
@@ -284,13 +332,60 @@ async function auditDocumentConfiguration(req: any, res: any, next: () => void):
           : (!isSettings && !before?.templateHtml ? "criar" : "atualizar"),
         entity,
         entityId: tenantId,
-        before: isTemplateDelete ? beforeValue : beforeValue,
+        before: beforeValue,
         after: isTemplateDelete ? undefined : afterValue,
         actor: actorFromRequest(req),
       });
       if (!audited) req.log?.warn({ tenantId, entity }, "configuracoes: falha ao auditar Documentos");
     })().catch((error) => {
       req.log?.warn({ error, tenantId }, "configuracoes: auditoria de Documentos indisponível");
+    });
+  });
+
+  next();
+  return true;
+}
+
+async function auditTenantIntegrationSettings(req: any, res: any, next: () => void): Promise<boolean> {
+  const method = req.method.toUpperCase();
+  const match = req.path.match(/^\/tenants\/([^/]+)$/);
+  if (method !== "PATCH" || !match) return false;
+
+  const keys = requestedTenantIntegrationKeys(req.body);
+  if (keys.length === 0) return false;
+
+  const tenantId = decodeURIComponent(match[1]);
+  let beforeSnapshot;
+  try {
+    beforeSnapshot = await tenantIntegrationSettingsSnapshot(tenantId);
+  } catch (error) {
+    req.log?.warn({ error, tenantId }, "configuracoes: snapshot inicial de integrações do tenant indisponível");
+    next();
+    return true;
+  }
+
+  const before = selectTenantIntegrationFields(beforeSnapshot, keys);
+
+  res.once("finish", () => {
+    if (!isSuccessfulWrite(res.statusCode)) return;
+
+    void (async () => {
+      const afterSnapshot = await tenantIntegrationSettingsSnapshot(tenantId);
+      const after = selectTenantIntegrationFields(afterSnapshot, keys);
+      if (!after || JSON.stringify(before) === JSON.stringify(after)) return;
+
+      const audited = await writeConfigurationAudit({
+        tenantId,
+        action: "atualizar",
+        entity: "tenant_integrations",
+        entityId: tenantId,
+        before,
+        after,
+        actor: actorFromRequest(req),
+      });
+      if (!audited) req.log?.warn({ tenantId, keys }, "configuracoes: falha ao auditar integrações salvas no tenant");
+    })().catch((error) => {
+      req.log?.warn({ error, tenantId, keys }, "configuracoes: auditoria de integrações do tenant indisponível");
     });
   });
 
@@ -307,5 +402,6 @@ export const configurationBusinessProfileAudit: RequestHandler = async (req, res
   if (await auditBusinessProfile(req, res, next)) return;
   if (await auditAgentConfiguration(req, res, next)) return;
   if (await auditDocumentConfiguration(req, res, next)) return;
+  if (await auditTenantIntegrationSettings(req, res, next)) return;
   next();
 };
