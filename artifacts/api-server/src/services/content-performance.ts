@@ -6,6 +6,7 @@
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import {
   db,
+  contentCalendarItemsTable,
   contentGenerationsTable,
   contentPublishedPostsTable,
   contentPerformanceInsightsTable,
@@ -122,13 +123,16 @@ export async function refreshPendingMetrics(tenantId: string): Promise<{ atualiz
 
 const ANALYSIS_SYSTEM_PROMPT = `Você analisa o desempenho dos posts recentes de uma marca no Instagram (dados
 reais dela mesma, não de terceiros) e extrai aprendizados pra guiar a
-próxima geração de conteúdo. Responda APENAS com um objeto JSON válido,
+próxima geração de conteúdo e o próximo ciclo do Plano de Mídia. Quando houver
+contexto de plano/campanha/canal/ação, use-o para distinguir em qual estratégia
+o resultado ocorreu; não atribua causalidade quando os dados não permitirem.
+Responda APENAS com um objeto JSON válido,
 sem markdown, no formato exato:
 {
   "temasQueFuncionam": string[] (2 a 5 temas/abordagens com engajamento acima da média),
   "temasQueNaoFuncionam": string[] (0 a 3 temas/abordagens com engajamento abaixo da média — vazio se não der pra distinguir),
   "formatoQueMaisEngaja": string (ex: "Reels com gancho de pergunta", "Feed com prova social"),
-  "observacoes": string (1-2 frases com o principal aprendizado acionável)
+  "observacoes": string (1-2 frases com o principal aprendizado acionável; cite campanha/canal quando esse contexto estiver disponível)
 }
 Compare relativamente entre os posts fornecidos. Nunca invente dado que não esteja na lista.`;
 
@@ -150,11 +154,34 @@ export async function refreshPerformanceInsights(tenantId: string) {
     );
   }
 
+  const calendarItems = await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      mediaPlanId: contentCalendarItemsTable.mediaPlanId,
+      pilar: contentCalendarItemsTable.pilar,
+      temaSugerido: contentCalendarItemsTable.temaSugerido,
+      tipo: contentCalendarItemsTable.tipo,
+      canal: contentCalendarItemsTable.canal,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    })
+    .from(contentCalendarItemsTable)
+    .where(eq(contentCalendarItemsTable.tenantId, tenantId));
+  const calendarByGeneration = new Map(
+    calendarItems
+      .filter((item) => Boolean(item.contentGenerationId))
+      .map((item) => [item.contentGenerationId!, item]),
+  );
+
   const resumo = comMetricas
     .map((p) => {
       const m = p.metricas!;
       const engajamento = (m.likes ?? 0) + (m.comments ?? 0) * 2 + (m.saved ?? 0) * 3 + (m.shares ?? 0) * 3;
-      return `Tema "${p.theme ?? "?"}" (${p.contentType}): alcance ${m.reach ?? "?"}, curtidas ${m.likes ?? "?"}, comentários ${m.comments ?? "?"}, salvos ${m.saved ?? "?"}, compartilhamentos ${m.shares ?? "?"} — score engajamento ~${engajamento}. Legenda: ${(p.captionOuTexto ?? "").slice(0, 200)}`;
+      const calendar = p.contentGenerationId ? calendarByGeneration.get(p.contentGenerationId) : undefined;
+      const campaignName = calendar?.pilar?.split(" · ")[0]?.trim();
+      const attribution = calendar
+        ? ` Plano ${calendar.mediaPlanId ?? "?"}; campanha ${campaignName || "?"}; ação ${calendar.id}; canal ${calendar.canal}; formato planejado ${calendar.tipo}; tema planejado "${calendar.temaSugerido}".`
+        : " Sem atribuição a item do Plano de Mídia.";
+      return `Tema "${p.theme ?? "?"}" (${p.contentType}): alcance ${m.reach ?? "?"}, curtidas ${m.likes ?? "?"}, comentários ${m.comments ?? "?"}, salvos ${m.saved ?? "?"}, compartilhamentos ${m.shares ?? "?"} — score engajamento ~${engajamento}.${attribution} Legenda: ${(p.captionOuTexto ?? "").slice(0, 200)}`;
     })
     .join("\n\n");
 
