@@ -10,6 +10,7 @@ import {
   type SocialProvider,
 } from "../services/social-platforms.js";
 import { createInstagramOrganicPublication } from "../services/instagram-organic-publication.js";
+import { createFacebookOrganicPublication, resolveFacebookOrganicCapability } from "../services/facebook-organic-publication.js";
 import { publishAnySocialPublication } from "../services/social-publication-dispatcher.js";
 import { startSocialPublicationWorker } from "../services/social-publication-worker.js";
 
@@ -67,6 +68,19 @@ router.get("/tenants/:tenantId/social-connections", authenticate, async (req, re
   return res.json({ connections: await listSocialConnections(tenantId) });
 });
 
+router.get("/tenants/:tenantId/facebook-organic-capability", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const capability = await resolveFacebookOrganicCapability(tenantId);
+  return res.json({
+    ready: capability.ready,
+    reason: capability.reason,
+    pageId: capability.pageId,
+    pageName: capability.pageName,
+    reconnectMeta: capability.reason === "page_permission_missing" || capability.reason === "meta_token_expired",
+  });
+});
+
 router.delete("/tenants/:tenantId/social-connections/:provider", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const selected = provider(req.params.provider);
@@ -95,7 +109,9 @@ const publicationSchema = z.object({
 router.post("/tenants/:tenantId/social-publications/:provider", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const requestedProvider = String(req.params.provider || "");
-  const selected = requestedProvider === "instagram" ? "instagram" : provider(requestedProvider);
+  const selected = requestedProvider === "instagram" || requestedProvider === "facebook"
+    ? requestedProvider
+    : provider(requestedProvider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = publicationSchema.safeParse(req.body);
@@ -103,13 +119,19 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
   try {
     const publication = selected === "instagram"
       ? await createInstagramOrganicPublication(tenantId, parsed.data)
-      : await createSocialPublication(tenantId, selected, parsed.data);
+      : selected === "facebook"
+        ? await createFacebookOrganicPublication(tenantId, parsed.data)
+        : await createSocialPublication(tenantId, selected, parsed.data);
     void publishAnySocialPublication(tenantId, publication.id).catch((error) => {
       logger.error({ error, tenantId, publicationId: publication.id, provider: selected }, "Falha assíncrona na publicação social");
     });
     return res.status(202).json({ publication, publishing: true });
   } catch (error) {
-    if (error instanceof Error && error.message === "connection_not_found") return res.status(409).json({ error: error.message });
+    const message = error instanceof Error ? error.message : "publication_failed";
+    if (["connection_not_found", "meta_not_connected", "meta_token_expired", "instagram_not_connected", "page_permission_missing", "linked_page_not_found"].includes(message)) {
+      return res.status(409).json({ error: message });
+    }
+    if (message === "facebook_content_type_not_supported") return res.status(422).json({ error: message });
     throw error;
   }
 });
@@ -123,7 +145,9 @@ router.post("/tenants/:tenantId/social-publications/:publicationId/retry", authe
   } catch (error) {
     const message = error instanceof Error ? error.message : "publication_failed";
     if (message === "publication_not_found") return res.status(404).json({ error: message });
-    if (message === "connection_not_found") return res.status(409).json({ error: message });
+    if (["connection_not_found", "meta_not_connected", "meta_token_expired", "instagram_not_connected", "page_permission_missing", "linked_page_not_found"].includes(message)) {
+      return res.status(409).json({ error: message });
+    }
     return res.status(422).json({ error: "publication_failed", detail: message });
   }
 });

@@ -16,6 +16,7 @@ import {
 } from "../services/meta-ads-oauth.js";
 
 const router: IRouter = Router();
+const META_PAGE_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"];
 
 function getAppUrl(): string {
   const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
@@ -41,8 +42,11 @@ router.get("/auth/meta-ads", authenticate, async (req, res) => {
 
     const redirectUri = getMetaAdsRedirectUri();
     const state = createOAuthState(tenantId, userId, "meta-ads", redirectUri);
-    const url = buildMetaAdsOAuthUrl(state, redirectUri);
-    logger.info({ tenantId, userId, redirectUri }, "Retornando URL OAuth Meta Ads");
+    const oauthUrl = new URL(buildMetaAdsOAuthUrl(state, redirectUri));
+    const currentScopes = (oauthUrl.searchParams.get("scope") || "").split(",").map((value) => value.trim()).filter(Boolean);
+    oauthUrl.searchParams.set("scope", Array.from(new Set([...currentScopes, ...META_PAGE_SCOPES])).join(","));
+    const url = oauthUrl.toString();
+    logger.info({ tenantId, userId, redirectUri, pagePublishingScopes: META_PAGE_SCOPES }, "Retornando URL OAuth Meta com Ads + Page orgânica");
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Meta Ads");
