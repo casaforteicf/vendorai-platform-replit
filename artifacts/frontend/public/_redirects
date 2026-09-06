@@ -1,0 +1,3 @@
+/api/* https://vendorai-platform-replit-production.up.railway.app/api/:splat 200
+/obrasgov/* https://api-publica.obrasgov.gestao.gov.br/obras/:splat 200
+/* /index.html 200
