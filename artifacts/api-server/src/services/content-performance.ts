@@ -170,7 +170,7 @@ export async function refreshPerformanceInsights(tenantId: string) {
 
   if (comMetricas.length < MIN_POSTS_FOR_ANALYSIS) {
     throw new PerformanceError(
-      `Ainda faltam posts com métricas coletadas (${comMetricas.length}/${MIN_POSTS_FOR_ANALYSIS}). Publique mais conteúdo e clique em "Atualizar métricas" depois de ~24h.`,
+      `Ainda faltam posts com métricas coletadas (${comMetricas.length}/${MIN_POSTS_FOR_ANALYSIS}). A coleta é automática após ~24h e o aprendizado será atualizado quando houver volume suficiente.`,
     );
   }
 
