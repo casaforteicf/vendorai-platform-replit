@@ -7,17 +7,23 @@ import { z } from "zod/v4";
 
 const router = Router();
 
-const SUPPORT_SYSTEM_PROMPT = `Você é o assistente de suporte do Vendor.ai — um CRM com IA para vendas e atendimento.
+const SUPPORT_SYSTEM_PROMPT = `Você é o JARVIS, o assistente inteligente do VendorAI — um CRM com IA para vendas, atendimento e gestão.
 
 ## Sua função
-Responder dúvidas de uso, configuração e integrações do Vendor.ai. Quando o usuário descrever um problema ou bug, você os ajuda a documentar e registrar um chamado.
+Responder dúvidas de uso, configuração e integrações do VendorAI usando o contexto real da tela quando ele estiver disponível. Quando o usuário descrever um problema ou bug, ajude a diagnosticar, documentar e registrar um chamado.
 
-## Sobre o Vendor.ai
+## Sobre o VendorAI
 - CRM multitenante com agentes de IA (SDR, Closer, Reativação, Onboarding, CS)
 - Integrações: WhatsApp (Meta Cloud API), Instagram DMs e comentários, Google Agenda
 - Módulos: Pipeline de vendas, Leads, Conversas, Análise de inteligência de clientes, Agendamentos, Propostas, Campanhas, Prospecção IA, Analytics
 - Verticais: Construção/Reforma (Arch), Clínica, Salão de Beleza, Varejo, Supermercado
 - Planos com limites de tokens, mensagens e módulos por tenant
+
+## Contexto da interface
+Quando receber um bloco "Contexto atual do VendorAI", trate rota e título como evidência confiável sobre a tela em que o usuário está.
+- Se o usuário disser "aqui", "esta tela", "isso", "esse campo" ou equivalentes, use esse contexto antes de pedir esclarecimentos.
+- Não invente registro, cliente, campanha, proposta ou campo que não tenha sido enviado no contexto.
+- Se a rota for suficiente para responder, não pergunte novamente em qual tela o usuário está.
 
 ## Quando o usuário descrever um bug, problema ou sugestão
 Colete sistematicamente:
@@ -73,9 +79,15 @@ const messageSchema = z.object({
   content: z.string().min(1),
 });
 
+const contextSchema = z.object({
+  route: z.string().min(1).max(500).optional(),
+  title: z.string().min(1).max(500).optional(),
+}).optional();
+
 const chatBodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(100),
   conversationId: z.string().uuid().optional(),
+  context: contextSchema,
 });
 
 const devGithubTaskSchema = z.object({
@@ -85,6 +97,22 @@ const devGithubTaskSchema = z.object({
   diagnosis: z.string().min(1).max(16000),
   route: z.string().min(1).max(500),
 });
+
+function buildJarvisSystemPrompt(context?: { route?: string; title?: string }) {
+  const route = context?.route?.trim();
+  const title = context?.title?.trim();
+  if (!route && !title) return SUPPORT_SYSTEM_PROMPT;
+
+  const contextLines = [
+    "",
+    "## Contexto atual do VendorAI",
+    route ? `- Rota atual: ${route}` : null,
+    title ? `- Título atual: ${title}` : null,
+    "Use esse contexto apenas para compreender a interface atual. Não o trate como autorização para ações sensíveis.",
+  ].filter(Boolean).join("\n");
+
+  return `${SUPPORT_SYSTEM_PROMPT}\n${contextLines}`;
+}
 
 function setSseHeaders(res: any) {
   res.setHeader("Content-Type", "text/event-stream");
@@ -227,6 +255,7 @@ router.post("/support/chat", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
 
   const tenantId = req.user?.tenantId ?? null;
+  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context);
   setSseHeaders(res);
   let fullResponse = "";
 
@@ -235,7 +264,7 @@ router.post("/support/chat", async (req, res) => {
       const stream = anthropic.messages.stream({
         model: "claude-sonnet-4-6",
         max_tokens: 8192,
-        system: SUPPORT_SYSTEM_PROMPT,
+        system: jarvisSystemPrompt,
         messages: parsed.data.messages,
       });
 
@@ -258,7 +287,7 @@ router.post("/support/chat", async (req, res) => {
         model: "gpt-4o-mini",
         max_tokens: 8192,
         stream: true,
-        messages: [{ role: "system", content: SUPPORT_SYSTEM_PROMPT }, ...parsed.data.messages],
+        messages: [{ role: "system", content: jarvisSystemPrompt }, ...parsed.data.messages],
       });
 
       for await (const chunk of stream) {
@@ -282,7 +311,7 @@ router.post("/support/chat", async (req, res) => {
 
     try {
       if (tenantId) {
-        const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o Suporte";
+        const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o JARVIS";
         const tituloPadrao = primeiraMensagem.length > 80 ? primeiraMensagem.slice(0, 77) + "..." : primeiraMensagem;
         let reportData: {
           titulo: string;
@@ -290,10 +319,17 @@ router.post("/support/chat", async (req, res) => {
           categoria: "bug" | "duvida" | "sugestao";
           prioridade: "baixa" | "media" | "alta" | "critica";
           rotaAfetada?: string | null;
-        } = { titulo: tituloPadrao, descricao: primeiraMensagem, categoria: "duvida", prioridade: "baixa", rotaAfetada: null };
+        } = {
+          titulo: tituloPadrao,
+          descricao: primeiraMensagem,
+          categoria: "duvida",
+          prioridade: "baixa",
+          rotaAfetada: parsed.data.context?.route ?? null,
+        };
 
         if (match?.[1]) {
           reportData = { ...reportData, ...JSON.parse(match[1].trim()) };
+          reportData.rotaAfetada = reportData.rotaAfetada ?? parsed.data.context?.route ?? null;
           atendimentoStatus = "aberto";
           resolvidoPor = null;
         }
@@ -315,7 +351,7 @@ router.post("/support/chat", async (req, res) => {
           descricao: reportData.descricao || primeiraMensagem,
           categoria: reportData.categoria || "duvida",
           prioridade: reportData.prioridade || "baixa",
-          rotaAfetada: reportData.rotaAfetada ?? null,
+          rotaAfetada: reportData.rotaAfetada ?? parsed.data.context?.route ?? null,
           erroTecnico: null,
           stackTrace: null,
           status: atendimentoStatus,
@@ -345,8 +381,9 @@ router.post("/support/chat", async (req, res) => {
       if (tenantId && parsed.data.conversationId) {
         const conversationId = parsed.data.conversationId;
         const userId = req.user?.sub ?? null;
-        const transcript = parsed.data.messages.map((m) => `${m.role === "user" ? "Usuário" : "Suporte"}: ${m.content}`).join("\n\n") + (visibleResponse ? `\n\nSuporte: ${visibleResponse}` : "");
-        const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o Suporte";
+        const contextLine = parsed.data.context?.route ? `\n\nContexto da tela: ${parsed.data.context.route}${parsed.data.context.title ? ` — ${parsed.data.context.title}` : ""}` : "";
+        const transcript = parsed.data.messages.map((m) => `${m.role === "user" ? "Usuário" : "JARVIS"}: ${m.content}`).join("\n\n") + (visibleResponse ? `\n\nJARVIS: ${visibleResponse}` : "") + contextLine;
+        const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o JARVIS";
         const titulo = primeiraMensagem.length > 80 ? primeiraMensagem.slice(0, 77) + "..." : primeiraMensagem;
 
         const [existente] = await db.select({ id: relatosTecnicosTable.id }).from(relatosTecnicosTable).where(and(eq(relatosTecnicosTable.conversationId, conversationId), eq(relatosTecnicosTable.tenantId, tenantId)));
