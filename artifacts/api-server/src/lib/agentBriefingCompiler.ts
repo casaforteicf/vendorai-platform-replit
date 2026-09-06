@@ -3,7 +3,11 @@
 // agentes do tenant — mesmo padrão aditivo já suportado nativamente por
 // agent-engine.ts (parâmetro `customPrompt`), só que agora preenchido
 // automaticamente em vez de depender do tenant escrever isso à mão.
-import { eq } from "drizzle-orm";
+//
+// Regra de fonte única: quando existe Catálogo ativo, ele é a fonte oficial de
+// produtos/serviços. A lista legada de business_profiles.produtos só é usada
+// como fallback para tenants que ainda não possuem itens ativos no Catálogo.
+import { and, eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -26,10 +30,44 @@ export async function compileAgentBusinessBriefing(
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   const produtos = await db
-    .select({ nome: produtosCatalogoTable.nome, descricao: produtosCatalogoTable.descricao, precoBase: produtosCatalogoTable.precoBase })
+    .select({
+      nome: produtosCatalogoTable.nome,
+      descricao: produtosCatalogoTable.descricao,
+      precoBase: produtosCatalogoTable.precoBase,
+      productType: produtosCatalogoTable.productType,
+    })
     .from(produtosCatalogoTable)
-    .where(eq(produtosCatalogoTable.tenantId, tenantId))
+    .where(and(
+      eq(produtosCatalogoTable.tenantId, tenantId),
+      eq(produtosCatalogoTable.ativo, true),
+    ))
     .limit(15);
+
+  const produtosOficiais = produtos
+    .filter((p) => p.nome?.trim())
+    .map((p) => {
+      const tipo = p.productType === "service"
+        ? "Serviço"
+        : p.productType === "saas_plan"
+          ? "Plano SaaS"
+          : p.productType === "saas_addon"
+            ? "Adicional SaaS"
+            : "Produto";
+      const descricao = p.descricao?.trim() ? ` — ${p.descricao.trim()}` : "";
+      const preco = p.precoBase != null ? ` — preço base R$ ${p.precoBase}` : "";
+      return `${tipo}: ${p.nome.trim()}${descricao}${preco}`;
+    });
+
+  const produtosLegados = (profile?.produtos ?? [])
+    .map((p) => p.nome?.trim())
+    .filter((nome): nome is string => Boolean(nome))
+    .slice(0, 15);
+
+  const produtosContexto = produtosOficiais.length > 0
+    ? `Catálogo oficial ativo:\n${produtosOficiais.map((item) => `- ${item}`).join("\n")}`
+    : produtosLegados.length > 0
+      ? `Produtos/serviços (referência legada, usada apenas porque o Catálogo ainda está vazio): ${produtosLegados.join(", ")}`
+      : "";
 
   const raw = [
     profile?.nomeFantasia ? `Nome: ${profile.nomeFantasia}` : "",
@@ -39,9 +77,7 @@ export async function compileAgentBusinessBriefing(
     profile?.metodoVendas ? `Método de vendas: ${profile.metodoVendas}` : "",
     profile?.concorrentes?.length ? `Concorrentes conhecidos: ${profile.concorrentes.join(", ")}` : "",
     profile?.canaisVenda?.length ? `Canais de venda: ${profile.canaisVenda.join(", ")}` : "",
-    (profile?.produtos?.length || produtos.length)
-      ? `Produtos/serviços: ${[...(profile?.produtos ?? []).map((p) => p.nome), ...produtos.map((p) => p.nome)].filter(Boolean).slice(0, 15).join(", ")}`
-      : "",
+    produtosContexto,
     extraNotes ? `Observações adicionais informadas pelo usuário: ${extraNotes}` : "",
   ].filter(Boolean).join("\n");
 
@@ -52,6 +88,7 @@ export async function compileAgentBusinessBriefing(
   const prompt = [
     "Compile as informações abaixo num texto curto (120-200 palavras) de instruções pra um agente de IA de atendimento/vendas usar como contexto fixo da empresa.",
     "O texto deve: descrever o que a empresa vende/oferece, pra quem, o principal diferencial, e uma orientação de tom.",
+    "Quando houver 'Catálogo oficial ativo', trate esse catálogo como fonte de verdade para produtos, serviços e preços e não use informações conflitantes de outras fontes.",
     "Escreva em português brasileiro, direto, sem enrolação, em parágrafo corrido (não lista). Não invente nenhuma informação que não esteja nos dados abaixo.",
     "",
     "DADOS DA EMPRESA:",
