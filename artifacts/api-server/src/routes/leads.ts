@@ -42,6 +42,7 @@ import { pickNextVendedor } from "../lib/round-robin.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
+import { getActiveCatalogPreview, compactCatalogNames } from "../lib/catalog-readiness.js";
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
@@ -1060,7 +1061,7 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
 
   const tenantId = lead.tenantId;
 
-  const [profile, recentMessages] = await Promise.all([
+  const [profile, recentMessages, catalogPreview] = await Promise.all([
     db
       .select({
         nomeFantasia: businessProfilesTable.nomeFantasia,
@@ -1068,7 +1069,6 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
         metodoVendas: businessProfilesTable.metodoVendas,
         diferenciais: businessProfilesTable.diferenciais,
         publicoAlvo: businessProfilesTable.publicoAlvo,
-        produtos: businessProfilesTable.produtos,
       })
       .from(businessProfilesTable)
       .where(eq(businessProfilesTable.tenantId, tenantId))
@@ -1079,6 +1079,7 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
       .where(and(eq(messagesTable.leadId, leadId), eq(messagesTable.tenantId, tenantId)))
       .orderBy(desc(messagesTable.createdAt))
       .limit(12),
+    getActiveCatalogPreview(tenantId, 5),
   ]);
 
   const metodoMap: Record<string, string> = {
@@ -1091,9 +1092,7 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
   };
   const abordagem = metodoMap[(profile?.metodoVendas ?? "")] ?? (profile?.metodoVendas ?? "Venda Consultiva");
 
-  const produtosDesc = Array.isArray(profile?.produtos) && (profile?.produtos as any[]).length
-    ? (profile?.produtos as any[]).slice(0, 5).map((p: any) => p.nome).join(", ")
-    : null;
+  const produtosDesc = compactCatalogNames(catalogPreview, 5).join(", ") || null;
 
   const conversaTexto = recentMessages.length
     ? recentMessages
@@ -1124,7 +1123,7 @@ Objetivo registrado: ${lead.objetivo ?? "não informado"}
 Nome: ${profile?.nomeFantasia ?? "nossa empresa"}
 Segmento: ${profile?.vertical ?? "não especificado"}
 Método de vendas: ${abordagem}
-${produtosDesc ? `Produtos/serviços: ${produtosDesc}` : ""}
+${produtosDesc ? `Catálogo oficial ativo: ${produtosDesc}` : ""}
 ${profile?.diferenciais ? `Diferenciais: ${profile.diferenciais}` : ""}
 
 ${conversaTexto ? `## Trechos recentes da conversa com o cliente\n${conversaTexto}\n` : ""}
@@ -1208,24 +1207,24 @@ router.post("/leads/:leadId/briefing/summarize", async (req, res) => {
     .from(leadBriefingsTable)
     .where(eq(leadBriefingsTable.leadId, leadId));
 
-  const [profile] = await db
-    .select({
-      nomeFantasia: businessProfilesTable.nomeFantasia,
-      vertical: businessProfilesTable.vertical,
-      metodoVendas: businessProfilesTable.metodoVendas,
-      diferenciais: businessProfilesTable.diferenciais,
-      produtos: businessProfilesTable.produtos,
-    })
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, tenantId));
+  const [[profile], catalogPreview] = await Promise.all([
+    db
+      .select({
+        nomeFantasia: businessProfilesTable.nomeFantasia,
+        vertical: businessProfilesTable.vertical,
+        metodoVendas: businessProfilesTable.metodoVendas,
+        diferenciais: businessProfilesTable.diferenciais,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId)),
+    getActiveCatalogPreview(tenantId, 5),
+  ]);
 
   // ── Format briefing sections for the prompt ──────────────────────────────
   const fmt = (items: Array<{ question: string; answer: string }> | null | undefined) =>
     (items ?? []).filter((i) => i.answer?.trim()).map((i) => `- P: ${i.question}\n  R: ${i.answer}`).join("\n");
 
-  const produtosDesc = Array.isArray(profile?.produtos) && profile.produtos.length
-    ? (profile.produtos as any[]).slice(0, 5).map((p: any) => p.nome).join(", ")
-    : "produtos/serviços da empresa";
+  const produtosDesc = compactCatalogNames(catalogPreview, 5).join(", ") || "produtos/serviços da empresa";
 
   const objecoesText = (briefing?.objections ?? [])
     .map((o: any) => `  • Objeção: ${o.objection} → Resposta dada: ${o.response ?? "—"}`)
@@ -1264,7 +1263,7 @@ router.post("/leads/:leadId/briefing/summarize", async (req, res) => {
 
   const prompt = `Você é um coach de vendas especialista em fechamento. Analise o briefing abaixo e produza um resumo executivo do cliente para o vendedor usar na próxima abordagem de fechamento.
 
-EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Segmento: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Produtos: ${produtosDesc}
+EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Segmento: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Catálogo oficial ativo: ${produtosDesc}
 
 CLIENTE:
 - Nome/Empresa: ${lead.empresa ?? lead.nome}
