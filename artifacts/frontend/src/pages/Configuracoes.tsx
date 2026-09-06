@@ -46,7 +46,8 @@ export default function Configuracoes() {
       });
 
       const primaryTabList = root.querySelector<HTMLElement>("[role='tablist']");
-      primaryTabList?.querySelectorAll<HTMLElement>("[role='tab']").forEach((tab) => {
+      const tabs = primaryTabList ? Array.from(primaryTabList.querySelectorAll<HTMLElement>("[role='tab']")) : [];
+      tabs.forEach((tab) => {
         const current = tab.textContent?.replace(/\s+/g, " ").trim() ?? "";
         const next = SECTION_LABELS[current];
         if (!next) return;
@@ -59,6 +60,44 @@ export default function Configuracoes() {
         tab.dataset.configSection = next.label.toLowerCase().replace(/\s+/g, "-");
       });
 
+      if (primaryTabList && !root.querySelector("[data-mobile-config-selector='true']")) {
+        const wrapper = document.createElement("div");
+        wrapper.dataset.mobileConfigSelector = "true";
+        wrapper.className = "mobile-config-selector";
+
+        const label = document.createElement("label");
+        label.textContent = "Área de configuração";
+        label.className = "mobile-config-selector__label";
+
+        const select = document.createElement("select");
+        select.className = "mobile-config-selector__select";
+        select.setAttribute("aria-label", "Área de configuração");
+
+        tabs.forEach((tab, index) => {
+          if (tab.offsetParent === null && tab.getAttribute("aria-hidden") === "true") return;
+          const option = document.createElement("option");
+          option.value = String(index);
+          option.textContent = tab.getAttribute("aria-label") || tab.textContent?.replace(/\s+/g, " ").trim() || `Seção ${index + 1}`;
+          option.selected = tab.getAttribute("aria-selected") === "true";
+          select.appendChild(option);
+        });
+
+        select.addEventListener("change", () => {
+          const index = Number(select.value);
+          const target = tabs[index];
+          target?.click();
+        });
+
+        wrapper.append(label, select);
+        primaryTabList.parentElement?.insertBefore(wrapper, primaryTabList);
+      }
+
+      const mobileSelect = root.querySelector<HTMLSelectElement>("[data-mobile-config-selector='true'] select");
+      if (mobileSelect && tabs.length > 0) {
+        const selectedIndex = tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");
+        if (selectedIndex >= 0) mobileSelect.value = String(selectedIndex);
+      }
+
       // Produtos e Serviços do contexto antigo deixam de parecer um segundo cadastro.
       root.querySelectorAll<HTMLElement>("h2, h3, h4, label").forEach((element) => {
         const text = element.textContent?.replace(/\s+/g, " ").trim();
@@ -68,8 +107,6 @@ export default function Configuracoes() {
         if (!block) return;
         block.dataset.legacyProductsReadonly = "true";
 
-        // Preserva os dados antigos para leitura/rollback, mas bloqueia novas
-        // edições para evitar duas fontes concorrentes de produto/preço.
         block.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select").forEach((control) => {
           control.disabled = true;
           control.setAttribute("aria-disabled", "true");
@@ -87,8 +124,6 @@ export default function Configuracoes() {
         block.prepend(note);
       });
 
-      // A URL não é um segundo cadastro de portfólio. Ela pode complementar o
-      // conhecimento com uma fonte pública, mas nunca substituir o Catálogo.
       root.querySelectorAll<HTMLElement>("label").forEach((label) => {
         const text = label.textContent?.replace(/\s+/g, " ").trim();
         if (text !== "URL da linha de produtos (opcional)" && text !== "Fonte externa de produtos (opcional)") return;
@@ -102,7 +137,6 @@ export default function Configuracoes() {
         block.appendChild(note);
       });
 
-      // Consolida a linguagem da antiga aba Contrato dentro da nova área Documentos.
       const documentHeadings: Record<string, string> = {
         "Modelo de Contrato": "Contratos — modelo padrão",
         "Modelos de Proposta por Linha de Produto": "Propostas — modelos por linha de produto",
@@ -124,7 +158,7 @@ export default function Configuracoes() {
 
     normalizeLegacyUi();
     const observer = new MutationObserver(normalizeLegacyUi);
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected"] });
     return () => observer.disconnect();
   }, []);
 
@@ -158,6 +192,7 @@ export default function Configuracoes() {
         .vendor-config-without-site [role="tablist"] > [role="tab"] {
           flex: 0 0 auto !important; width: auto !important; min-width: max-content !important; white-space: nowrap !important;
         }
+        .mobile-config-selector { display: none; }
         .vendor-config-without-site textarea {
           width: 100%; min-height: 6rem; max-height: 18rem; resize: vertical; transition: min-height 160ms ease;
         }
@@ -173,8 +208,13 @@ export default function Configuracoes() {
         .external-source-note { margin-top: .4rem; font-size: .75rem; line-height: 1.35; color: hsl(var(--muted-foreground)); }
         @media (max-width: 640px) {
           .vendor-config-without-site { overflow-x: clip; padding-bottom: 9rem; }
-          .vendor-config-without-site [role="tablist"] { position: relative; padding: .25rem; }
-          .vendor-config-without-site [role="tablist"] > [role="tab"] { font-size: .875rem; padding-left: .75rem; padding-right: .75rem; }
+          .vendor-config-without-site [role="tablist"] { display: none !important; }
+          .mobile-config-selector { display: grid; gap: .35rem; margin: .5rem 0 1rem; }
+          .mobile-config-selector__label { font-size: .78rem; font-weight: 600; color: hsl(var(--muted-foreground)); }
+          .mobile-config-selector__select {
+            width: 100% !important; min-height: 2.75rem; padding: 0 .8rem; border: 1px solid hsl(var(--border));
+            border-radius: .65rem; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: .95rem;
+          }
           .vendor-config-without-site [role="tabpanel"] { overflow-x: clip; }
           .vendor-config-without-site input,
           .vendor-config-without-site textarea,
