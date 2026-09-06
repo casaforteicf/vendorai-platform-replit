@@ -36,6 +36,7 @@ import { sendWelcomeEmail } from "../lib/email.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { createCustomHostname } from "../lib/cloudflare.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
 import { parseCsvLine, normalizeCsvHeader } from "./produtos_catalogo.js";
 
 const router: IRouter = Router();
@@ -91,10 +92,6 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
     const [tenant] = await db.insert(tenantsTable).values(insertData).returning();
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
-    // Programa de marca (white-label, ex: "arqdor") — aplica logo/cor como
-    // ponto de partida. O admin do tenant ainda pode trocar depois em
-    // Configurações → Perfil, isso só evita nascer com a marca padrão
-    // Vendor.ai quando o tenant já entra vinculado a um programa.
     let finalTenant = tenant;
     if (tenant.programaMarca) {
       const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, tenant.programaMarca));
@@ -132,9 +129,6 @@ router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
     return;
   }
 
-  // Compatibilidade com tenants criados antes de o onboarding preencher
-  // tenants.vertical. O perfil comercial já possuía o segmento correto, mas
-  // o menu e os gates dos módulos especializados consultam o tenant.
   if (!tenant.vertical) {
     const [profile] = await db
       .select({ vertical: businessProfilesTable.vertical })
@@ -151,10 +145,6 @@ router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
     }
   }
 
-  // planSlug embutido aqui pro frontend gatear o menu por plano (ex: Start
-  // só vê Catálogo/Pedidos/Configurações) sem precisar de outra chamada —
-  // rota admin de planos é super_admin-only, mas todo tenant precisa saber
-  // o próprio slug de plano.
   let planSlug: string | null = null;
   if (tenant.planId) {
     const [plan] = await db.select({ slug: plansTable.slug }).from(plansTable).where(eq(plansTable.id, tenant.planId));
@@ -299,9 +289,6 @@ router.post("/superadmin/tenants/:id/zapi-test", requireRole("super_admin"), asy
   }
 });
 
-// Liberação mestre do Praça.ai é uma decisão de plataforma. O lojista pode
-// escolher quais itens publicar depois de habilitado, mas não pode liberar
-// o próprio tenant no marketplace.
 router.patch("/superadmin/tenants/:id/praca-ai", requireRole("super_admin"), async (req, res) => {
   const tenantId = String(req.params.id);
   const enabled = req.body?.enabled;
@@ -346,9 +333,6 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
     return;
   }
 
-  // Liberação do tenant no Praça.ai e comissão são decisões de plataforma.
-  // O lojista gerencia os itens publicados somente depois que o SuperAdmin
-  // libera o tenant; ele não pode habilitar o próprio acesso via API.
   const PRACA_AI_PLATFORM_FIELDS = ["comissaoPracaAiPercentual", "vendeNoPracaAi"] as const;
   const hasPracaAiPlatformField = PRACA_AI_PLATFORM_FIELDS.some(
     (field) => field in parsed.data && parsed.data[field] !== undefined,
@@ -375,9 +359,6 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
       return;
     }
 
-    // Programa de marca definido/trocado agora — aplica logo/cor do
-    // programa nessa hora (sobrescreve, é uma escolha explícita do admin
-    // ao vincular esse tenant à marca). Continua editável depois.
     let finalTenant = tenant;
     if ("programaMarca" in parsed.data && parsed.data.programaMarca) {
       const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, parsed.data.programaMarca));
@@ -403,8 +384,6 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
     throw err;
   }
 });
-
-// ── Integration Settings ──────────────────────────────────────────────────────
 
 router.get("/tenants/:id/integration-settings", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const [tenant] = await db
@@ -504,10 +483,11 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
     .where(eq(agentConfigsTable.tenantId, tenantId));
   const [businessProfile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
   const [leadCountRow] = await db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId));
+  const catalogCount = await getActiveCatalogCount(tenantId);
 
   const onboardingComplete    = !!tenant.setupCompletedAt;
   const businessProfileConfigured = !!businessProfile;
-  const productsConfigured    = Array.isArray(businessProfile?.produtos) && (businessProfile.produtos as unknown[]).length > 0;
+  const productsConfigured    = catalogCount > 0;
   const agentConfigured       = !!agentConfig?.setupCompletedAt;
   const autonomyEnabled       = !!agentConfig?.autonomyEnabledAt;
   const whatsappConnected     = !!((agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken) || agentConfig?.evolutionConnected);
@@ -559,9 +539,6 @@ router.delete("/tenants/:id", requireRole("super_admin"), async (req, res) => {
   res.status(204).send();
 });
 
-// ── POST /admin/tenants/demo ────────────────────────────────────────────
-// Cria um tenant de demonstração com expiração de 5 dias, sem dados fictícios
-
 router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) => {
   const { nomeEmpresa, emailContato } = req.body;
   if (!nomeEmpresa || typeof nomeEmpresa !== "string") {
@@ -587,9 +564,6 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
 
   await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
-  // Não popula produtos, leads, conversas ou negócios fictícios. A experiência
-  // Demo começa vazia e o usuário inclui seus próprios dados durante o uso.
-
   res.status(201).json({
     tenant,
     demoExpiresAt,
@@ -597,13 +571,9 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
   });
 });
 
-// ── Fixture interna opcional para ambientes de teste/desenvolvimento ──────
-// Não chamar automaticamente em fluxos reais de criação de Demo.
-
 export async function seedDemoData(tenantId: string) {
   const now = new Date();
 
-  // 1. Produtos fake (10)
   const produtosFake = [
     { nome: "Implantação Sistema Premium", sku: "DEMO-001", descricao: "Implantação completa do CRM", precoBase: "5000", unidade: "unidade" },
     { nome: "Plano Mensal Growth", sku: "DEMO-002", descricao: "Licença mensal", precoBase: "1000", unidade: "mês" },
@@ -620,7 +590,6 @@ export async function seedDemoData(tenantId: string) {
     produtosFake.map((p) => ({ ...p, tenantId }))
   );
 
-  // 2. Leads fake (20)
   const leadDefs = [
     { nome: "Construtora Horizonte", status: "novo", score: 45, churnRisk: 20, empresa: "Construtora Horizonte", telefone: "5548999900001", email: "contato1@demo.com", tipo: "cliente" as const },
     { nome: "Distribuidora Sul", status: "qualificado", score: 72, churnRisk: 15, empresa: "Distribuidora Sul", telefone: "5548999900002", email: "contato2@demo.com", tipo: "cliente" as const },
@@ -643,7 +612,7 @@ export async function seedDemoData(tenantId: string) {
     { nome: "Marmoraria Arte", status: "negociacao", score: 80, churnRisk: 15, empresa: "Marmoraria Arte", telefone: "5548999900019", email: "contato19@demo.com", tipo: "prospect" as const },
     { nome: "Gráfica Express", status: "ganho", score: 93, churnRisk: 4, empresa: "Gráfica Express", telefone: "5548999900020", email: "contato20@demo.com", tipo: "prospect" as const },
   ];
-  const leadsFake = leadDefs.map((l, i) => ({
+  const leadsFake = leadDefs.map((l) => ({
     tenantId,
     nome: l.nome,
     empresa: l.empresa,
@@ -657,7 +626,6 @@ export async function seedDemoData(tenantId: string) {
   }));
   const leadsCriados = await db.insert(leadsTable).values(leadsFake).returning();
 
-  // 3. Customer Intelligence fake
   const ciFake = leadsCriados.map((l, i) => ({
     tenantId,
     leadId: l.id,
@@ -672,7 +640,6 @@ export async function seedDemoData(tenantId: string) {
   }));
   await db.insert(customerIntelligenceTable).values(ciFake);
 
-  // 4. Conversas fake (8)
   const convLeads = leadsCriados.slice(0, 8);
   const convsCriadas = await db.insert(conversationsTable).values(
     convLeads.map((l, i) => ({
@@ -684,7 +651,6 @@ export async function seedDemoData(tenantId: string) {
     }))
   ).returning();
 
-  // 5. Mensagens fake
   const mensagensFake = [];
   for (const conv of convsCriadas) {
     const lead = convLeads.find((l) => l.id === conv.leadId)!;
@@ -696,7 +662,6 @@ export async function seedDemoData(tenantId: string) {
   }
   await db.insert(messagesTable).values(mensagensFake as any);
 
-  // 6. Deals fake (10)
   const dealDefs = [
     { leadIdx: 0, titulo: "Proposta — Construtora Horizonte", valor: "5000", etapa: "novo" as const },
     { leadIdx: 1, titulo: "Proposta — Distribuidora Sul", valor: "8500", etapa: "qualificado" as const },
@@ -718,7 +683,6 @@ export async function seedDemoData(tenantId: string) {
   }));
   await db.insert(dealsTable).values(dealsFake);
 
-  // 7. Propostas fake (6)
   const propostasFake = [
     { leadId: leadsCriados[2]!.id, titulo: "Orçamento Mensal — Mercado Bom Preço", valor: "12000", status: "enviada" as const, recorrente: true, itens: [{ nome: "Plano Mensal Growth", quantidade: 1, valorUnitario: 1000 }] },
     { leadId: leadsCriados[3]!.id, titulo: "Orçamento — Auto Peças Central", valor: "6500", status: "rascunho" as const, recorrente: false, itens: [{ nome: "Implantação Sistema Premium", quantidade: 1, valorUnitario: 5000 }, { nome: "Integração WhatsApp", quantidade: 1, valorUnitario: 300 }] },
@@ -731,7 +695,6 @@ export async function seedDemoData(tenantId: string) {
     propostasFake.map((p) => ({ ...p, tenantId }))
   );
 
-  // 8. Inventory fake (5) — precisa produtoId primeiro
   const produtosInseridos = await db.select({ id: produtosCatalogoTable.id }).from(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenantId));
   const inventoryFake = [
     { produtoId: produtosInseridos[0]!.id, quantidadeAtual: "10", localizacao: "Serviço", unidade: "un" },
@@ -744,14 +707,12 @@ export async function seedDemoData(tenantId: string) {
     inventoryFake.map((i) => ({ ...i, tenantId }))
   );
 
-  // 9. Agendas fake (1)
   const [agenda] = await db.insert(agendasTable).values({
     tenantId,
     nome: "Agenda Demo",
     isDefault: true,
   }).returning();
 
-  // 10. Atividades fake (8)
   const atividadesFake = [
     { leadId: leadsCriados[0]!.id, tipo: "ligacao" as const, titulo: "Ligar para Construtora Horizonte", descricao: "Apresentar sistema", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 86400000) },
     { leadId: leadsCriados[1]!.id, tipo: "whatsapp" as const, titulo: "Enviar catálogo Distribuidora Sul", descricao: "Enviar PDF", status: "concluida" as const, dataVencimento: new Date(now.getTime() - 86400000), concluidaEm: new Date(now.getTime() - 3600000) },
@@ -771,21 +732,18 @@ export async function seedDemoData(tenantId: string) {
     }))
   );
 
-  // 11. Agent tasks fake (3)
   await db.insert(agentTasksTable).values([
     { tenantId, leadId: leadsCriados[0]!.id, agentName: "sdr", actionType: "enviar_whatsapp", payload: { leadId: leadsCriados[0]!.id, conteudo: "Olá! Vi que você tem interesse em nosso CRM. Posso te ajudar?", agentName: "sdr", canal: "whatsapp" }, status: "executando" as const, executedAt: new Date(now.getTime() - 3600000) },
     { tenantId, leadId: leadsCriados[1]!.id, agentName: "closer", actionType: "enviar_email", payload: { leadId: leadsCriados[1]!.id, conteudo: "Proposta enviada! Aguardo sua resposta.", agentName: "closer", canal: "email" }, status: "pendente_aprovacao" as const },
     { tenantId, leadId: leadsCriados[3]!.id, agentName: "reactivation", actionType: "enviar_whatsapp", payload: { leadId: leadsCriados[3]!.id, conteudo: "Sentimos sua falta! Temos novidades.", agentName: "reactivation", canal: "whatsapp" }, status: "pendente_aprovacao" as const },
   ]);
 
-  // 12. Marcar como seedado
   await db
     .update(tenantsTable)
     .set({ demoSeeded: true, updatedAt: new Date() })
     .where(eq(tenantsTable.id, tenantId));
 }
 
-// ── GET /tenant/:id/uso-ia ───────────────────────────────────────────────
 router.get("/tenants/:id/uso-ia", requireSameTenanOrSuperAdmin(), async (req, res) => {
   const tenantId = String(req.params.id);
 
@@ -811,7 +769,6 @@ router.get("/tenants/:id/uso-ia", requireSameTenanOrSuperAdmin(), async (req, re
     return;
   }
 
-  // Contagens de análises no mês
   const analysesCount = await db
     .select({ count: count() })
     .from(intelligenceAnalysisLogTable)
@@ -823,7 +780,6 @@ router.get("/tenants/:id/uso-ia", requireSameTenanOrSuperAdmin(), async (req, re
     )
     .then((rows) => rows[0]?.count ?? 0);
 
-  // Contagens de agent_actions no dia
   const messagesToday = await db
     .select({ count: count() })
     .from(agentActionsLogTable)
@@ -855,9 +811,6 @@ router.get("/tenants/:id/uso-ia", requireSameTenanOrSuperAdmin(), async (req, re
     },
   });
 });
-
-// ── PATCH /tenants/:id/openai-key ───────────────────────────────────────────────
-// Configura a chave OpenAI própria do tenant (BYOK). Requer super_admin ou admin do tenant.
 
 router.patch("/tenants/:id/openai-key", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const tenantId = String(req.params.id);
@@ -902,7 +855,6 @@ router.patch("/tenants/:id/openai-key", requireRole("super_admin", "tenant_admin
   }
 });
 
-// ── Provision tenant (super admin) ──────────────────────────────────────────
 function generateTempPassword(length = 8): string {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   let result = "";
@@ -948,7 +900,6 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     phone: z.string().optional(),
     countryCode: z.enum(["BR", "PY", "AR", "UY", "CL"]).optional().default("BR"),
     taxIdentifier: z.string().optional(),
-    // Compatibilidade com clientes antigos do formulário brasileiro.
     cnpj: z.string().optional(),
     planId: z.string().optional(),
     billingCycle: z.enum(["monthly", "annual"]).optional(),
@@ -1018,9 +969,7 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     if (!tenant) throw new Error("Failed to create tenant");
 
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
-
-    // Create Cloudflare custom hostname for {slug}.appvendorai.com (fire-and-forget, non-critical)
-    createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { /* CF not configured or error */ });
+    createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { });
 
     const [user] = await db.insert(usersTable).values({
       tenantId: tenant.id,
@@ -1061,10 +1010,6 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
   }
 });
 
-// POST /superadmin/tenants/import — cadastro em massa de lojistas via CSV.
-// Reaproveita a mesma lógica de criação de tenant+usuário+e-mail de boas-vindas
-// do /superadmin/tenants/provision acima, linha por linha do CSV. Cada lojista
-// recebe o e-mail de acesso automaticamente (mesmo texto do fluxo manual).
 router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req, res) => {
   const { z } = await import("zod/v4");
   const bodySchema = z.object({ csv: z.string().min(1) });
@@ -1173,7 +1118,7 @@ router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req
       if (!tenant) throw new Error("Falha ao criar tenant");
 
       await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
-      createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { /* CF não configurado ou erro — não crítico */ });
+      createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { });
 
       const [user] = await db.insert(usersTable).values({
         tenantId: tenant.id,
@@ -1246,8 +1191,6 @@ router.post("/superadmin/tenants/:id/resend-access", requireRole("super_admin"),
   res.json({ tempPassword, emailSent, email: adminUser.email });
 });
 
-// ── PATCH /tenants/:id/users/:userId/role ────────────────────────────────────
-// Apenas tenant_admin ou super_admin podem alterar roles de membros do tenant
 router.patch(
   "/tenants/:id/users/:userId/role",
   requireRole("tenant_admin", "super_admin"),
