@@ -9,8 +9,9 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
  * as configurações existentes (perfil, análise, calendário, integrações, IA,
  * contrato, equipe e faturamento) sem duplicar lógica ou arriscar regressões.
  *
- * Esta camada também corrige a experiência mobile e padroniza pontos de
- * usabilidade do legado sem alterar os endpoints nem a persistência atual.
+ * Esta camada corrige a experiência mobile, reduz redundâncias visuais e
+ * apresenta nomes de seção mais próximos da arquitetura final do produto,
+ * sem alterar endpoints, persistência ou regras de negócio do legado.
  */
 export default function Configuracoes() {
   const params = new URLSearchParams(window.location.search);
@@ -58,6 +59,65 @@ export default function Configuracoes() {
           button.textContent = "Adicionar";
         }
       });
+
+      // A primeira barra de abas é a navegação principal de Configurações.
+      // Renomeamos apenas os rótulos visuais para refletir a arquitetura final,
+      // preservando values, estado, deep links e componentes legados.
+      const primaryTabList = root.querySelector<HTMLElement>("[role='tablist']");
+      if (primaryTabList) {
+        const labels: Record<string, { label: string; title: string }> = {
+          Perfil: {
+            label: "Empresa",
+            title: "Dados da empresa, marca, posicionamento e contexto institucional",
+          },
+          "Análise": {
+            label: "Inteligência",
+            title: "Parâmetros, análises e sinais usados pela inteligência comercial",
+          },
+          "Calendário": {
+            label: "Agenda",
+            title: "Regras de agenda, disponibilidade e calendários conectados",
+          },
+          "Integrações": {
+            label: "Integrações",
+            title: "WhatsApp, Meta, Google e demais conexões externas",
+          },
+          IA: {
+            label: "IA e Agentes",
+            title: "Configurações, limites e comportamento dos agentes de IA",
+          },
+          Contrato: {
+            label: "Documentos",
+            title: "Contratos, modelos, variáveis e assinatura eletrônica",
+          },
+          Equipe: {
+            label: "Equipe",
+            title: "Usuários, acessos e gestão da equipe",
+          },
+          Faturamento: {
+            label: "Faturamento",
+            title: "Plano, consumo, cobrança e dados de faturamento",
+          },
+        };
+
+        primaryTabList.querySelectorAll<HTMLElement>("[role='tab']").forEach((tab) => {
+          const current = tab.textContent?.replace(/\s+/g, " ").trim() ?? "";
+          const next = labels[current];
+          if (!next) return;
+
+          const textNodes = Array.from(tab.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE);
+          const targetTextNode = textNodes.find((node) => node.textContent?.trim());
+          if (targetTextNode) {
+            targetTextNode.textContent = ` ${next.label}`;
+          } else if (tab.textContent !== next.label) {
+            tab.append(document.createTextNode(` ${next.label}`));
+          }
+
+          tab.title = next.title;
+          tab.setAttribute("aria-label", next.label);
+          tab.dataset.configSection = next.label.toLowerCase().replace(/\s+/g, "-");
+        });
+      }
 
       // Evita que controles legados criem largura maior que o viewport.
       root.querySelectorAll<HTMLElement>("input, textarea, select, [role='combobox']").forEach((element) => {
@@ -141,9 +201,14 @@ export default function Configuracoes() {
 
         .vendor-config-without-site textarea {
           width: 100%;
-          min-height: 7rem;
+          min-height: 6rem;
           max-height: 18rem;
           resize: vertical;
+          transition: min-height 160ms ease;
+        }
+
+        .vendor-config-without-site textarea:focus {
+          min-height: 10rem;
         }
 
         @media (max-width: 640px) {
@@ -171,6 +236,15 @@ export default function Configuracoes() {
           .vendor-config-without-site textarea,
           .vendor-config-without-site [role="combobox"] {
             width: 100% !important;
+          }
+
+          .vendor-config-without-site textarea {
+            min-height: 5.5rem;
+            max-height: 14rem;
+          }
+
+          .vendor-config-without-site textarea:focus {
+            min-height: 9rem;
           }
 
           .vendor-config-without-site button {
