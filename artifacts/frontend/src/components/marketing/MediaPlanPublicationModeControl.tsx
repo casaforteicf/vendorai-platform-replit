@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarClock, CheckCircle2, Loader2, MousePointerClick, ServerCog, ShieldCheck } from "lucide-react";
+import { BrainCircuit, CalendarClock, CheckCircle2, Loader2, MousePointerClick, ServerCog, ShieldCheck, TrendingUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,17 @@ type MediaPlan = {
     statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
     publicacaoOrganica?: Partial<PublicationSettings>;
   };
+};
+
+type PerformanceInsight = {
+  baseadoEmPosts: number;
+  atualizadoEm?: string | null;
+  aprendizados?: {
+    temasQueFuncionam: string[];
+    temasQueNaoFuncionam: string[];
+    formatoQueMaisEngaja: string;
+    observacoes: string;
+  } | null;
 };
 
 function defaultTimezone() {
@@ -46,6 +57,7 @@ export function MediaPlanPublicationModeControl() {
   const { toast } = useToast();
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [plan, setPlan] = useState<MediaPlan | null>(null);
+  const [performanceInsight, setPerformanceInsight] = useState<PerformanceInsight | null>(null);
   const [settings, setSettings] = useState<PublicationSettings>(() => normalizeSettings());
   const [saved, setSaved] = useState<PublicationSettings>(() => normalizeSettings());
   const [loading, setLoading] = useState(false);
@@ -99,14 +111,20 @@ export function MediaPlanPublicationModeControl() {
     if (!visible || !tenantId || !token) return;
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/tenants/${tenantId}/media-plan`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Não foi possível carregar o modo de publicação.");
-        return response.json() as Promise<MediaPlan | null>;
+    Promise.all([
+      fetch(`/api/tenants/${tenantId}/media-plan`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+      fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+    ])
+      .then(async ([planResponse, insightResponse]) => {
+        if (!planResponse.ok) throw new Error("Não foi possível carregar o modo de publicação.");
+        const nextPlan = await planResponse.json() as MediaPlan | null;
+        const nextInsight = insightResponse.ok ? await insightResponse.json() as PerformanceInsight | null : null;
+        return { nextPlan, nextInsight };
       })
-      .then((nextPlan) => {
+      .then(({ nextPlan, nextInsight }) => {
         if (cancelled) return;
         setPlan(nextPlan);
+        setPerformanceInsight(nextInsight);
         const next = normalizeSettings(nextPlan?.conteudo.publicacaoOrganica);
         setSettings(next);
         setSaved(next);
@@ -206,6 +224,37 @@ export function MediaPlanPublicationModeControl() {
                 <Input value={settings.timezone} onChange={(event) => setSettings((current) => ({ ...current, timezone: event.target.value }))} placeholder="America/Sao_Paulo" />
               </div>
             </div>
+          </div>
+        )}
+
+        {performanceInsight?.aprendizados && (
+          <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/10">
+            <div className="flex flex-wrap items-center gap-2">
+              <BrainCircuit className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+              <p className="text-sm font-semibold">Aprendizado real do ciclo</p>
+              <Badge variant="outline" className="text-[10px]">{performanceInsight.baseadoEmPosts} posts analisados</Badge>
+              <Badge variant="outline" className="gap-1 text-[10px]"><TrendingUp className="h-3 w-3" /> Usado no próximo plano</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              O Planejador reaproveita estes aprendizados junto com Paid Media e Design QA para decidir o próximo ciclo — sem alterar automaticamente um plano já aprovado.
+            </p>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              <div className="rounded-lg border bg-background/80 p-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">O que funcionou</p>
+                <p className="mt-1 text-xs font-medium">{performanceInsight.aprendizados.temasQueFuncionam.join(" · ") || "Ainda sem padrão suficiente"}</p>
+              </div>
+              <div className="rounded-lg border bg-background/80 p-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Formato mais forte</p>
+                <p className="mt-1 text-xs font-medium">{performanceInsight.aprendizados.formatoQueMaisEngaja || "Ainda em aprendizado"}</p>
+              </div>
+              <div className="rounded-lg border bg-background/80 p-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ajuste recomendado</p>
+                <p className="mt-1 text-xs font-medium">{performanceInsight.aprendizados.observacoes || "Continuar coletando dados reais."}</p>
+              </div>
+            </div>
+            {performanceInsight.aprendizados.temasQueNaoFuncionam.length > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">Reformular/evitar: <span className="font-medium text-foreground">{performanceInsight.aprendizados.temasQueNaoFuncionam.join(" · ")}</span></p>
+            )}
           </div>
         )}
 
