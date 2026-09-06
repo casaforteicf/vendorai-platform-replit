@@ -14,6 +14,15 @@ function actorFromRequest(req: any) {
   };
 }
 
+function auditTenantIdFromRequest(req: any): string | null {
+  const authenticatedTenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (authenticatedTenantId) return authenticatedTenantId;
+  if (req.user?.platformRole !== "super_admin") return null;
+
+  const requestedTenantId = Reflect.get(req.body ?? {}, "tenantId");
+  return typeof requestedTenantId === "string" ? requestedTenantId : null;
+}
+
 async function tenantAgentSnapshot(tenantId: string, agentKey: string) {
   return db.select().from(tenantAgentConfigsTable)
     .where(and(eq(tenantAgentConfigsTable.tenantId, tenantId), eq(tenantAgentConfigsTable.agentKey, agentKey)))
@@ -60,7 +69,7 @@ async function auditBusinessProfile(req: any, res: any, next: () => void): Promi
 
     void (async () => {
       if (isCreate) {
-        const tenantId = typeof req.body?.tenantId === "string" ? req.body.tenantId : req.user?.tenantId;
+        const tenantId = auditTenantIdFromRequest(req);
         if (!tenantId) return;
         const after = await db.select().from(businessProfilesTable)
           .where(eq(businessProfilesTable.tenantId, tenantId)).limit(1)
@@ -118,7 +127,7 @@ async function auditBusinessProfile(req: any, res: any, next: () => void): Promi
 
 async function auditAgentConfiguration(req: any, res: any, next: () => void): Promise<boolean> {
   const method = req.method.toUpperCase();
-  const tenantId = req.user?.tenantId ?? (typeof req.body?.tenantId === "string" ? req.body.tenantId : null);
+  const tenantId = auditTenantIdFromRequest(req);
   const isCreate = method === "POST" && req.path === "/agent-configs";
   const direct = req.path.match(/^\/agent-configs\/([^/]+)$/);
   const action = req.path.match(/^\/agent-configs\/([^/]+)\/(activate|deactivate|reset|complete-setup|regenerate-webhook-secret)$/);
