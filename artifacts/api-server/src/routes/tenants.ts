@@ -36,6 +36,7 @@ import { sendWelcomeEmail } from "../lib/email.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { createCustomHostname } from "../lib/cloudflare.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
 import { parseCsvLine, normalizeCsvHeader } from "./produtos_catalogo.js";
 
 const router: IRouter = Router();
@@ -504,10 +505,11 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
     .where(eq(agentConfigsTable.tenantId, tenantId));
   const [businessProfile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
   const [leadCountRow] = await db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId));
+  const catalogCount = await getActiveCatalogCount(tenantId);
 
   const onboardingComplete    = !!tenant.setupCompletedAt;
   const businessProfileConfigured = !!businessProfile;
-  const productsConfigured    = Array.isArray(businessProfile?.produtos) && (businessProfile.produtos as unknown[]).length > 0;
+  const productsConfigured    = catalogCount > 0;
   const agentConfigured       = !!agentConfig?.setupCompletedAt;
   const autonomyEnabled       = !!agentConfig?.autonomyEnabledAt;
   const whatsappConnected     = !!((agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken) || agentConfig?.evolutionConnected);
