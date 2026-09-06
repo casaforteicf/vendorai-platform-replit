@@ -1,7 +1,7 @@
 import { and, eq, lt, or } from "drizzle-orm";
 import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { publishSocialPublication } from "./social-publication-publisher.js";
+import { publishAnySocialPublication } from "./social-publication-dispatcher.js";
 
 const POLL_MS = 60_000;
 const STALE_AFTER_MS = 15 * 60_000;
@@ -27,7 +27,7 @@ export async function processPendingSocialPublications() {
 
     for (const publication of pending) {
       try {
-        await publishSocialPublication(publication.tenantId, publication.id);
+        await publishAnySocialPublication(publication.tenantId, publication.id);
       } catch (error) {
         logger.warn({ error, tenantId: publication.tenantId, publicationId: publication.id }, "Worker social não conseguiu concluir publicação");
       }
