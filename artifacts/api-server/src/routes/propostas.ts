@@ -20,6 +20,7 @@ import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.js";
 import { calcularOrcamentoProdutoArea, ErroCalculoOrcamento, type ProdutoCalculo, type TipoCalculo } from "../lib/calculoOrcamentoM2.js";
 import { resolverECalcularOrcamento, ErroResolucaoOrcamento } from "../lib/calculoOrcamentoM2Resolver.js";
+import { buildProposalProductContext, proposalProductPromptRules } from "../lib/proposal-catalog-context.js";
 const router: IRouter = Router();
 
 // ── Proposal number generation ────────────────────────────────────────────────
@@ -479,28 +480,23 @@ router.post("/tenants/:tenantId/propostas/suggest-items", async (req, res) => {
     .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
     .limit(20);
 
+  const productContext = buildProposalProductContext(
+    catalog,
+    (profile?.produtos as Array<{ nome?: string | null; preco?: number | null }> | null | undefined),
+  );
+
   const contextParts: string[] = [`Título do orçamento: ${parsed.data.titulo}`];
   if (parsed.data.leadNome) contextParts.push(`Cliente: ${parsed.data.leadNome}`);
   if (parsed.data.contexto) contextParts.push(`Contexto adicional: ${parsed.data.contexto}`);
   if (profile?.nomeFantasia) contextParts.push(`Empresa vendedora: ${profile.nomeFantasia}`);
   if (profile?.vertical) contextParts.push(`Segmento: ${profile.vertical}`);
-  if (profile?.urlLinhaProdutos) contextParts.push(`Linha de produtos: ${profile.urlLinhaProdutos}`);
-  if ((profile?.produtos as unknown[])?.length) {
-    contextParts.push(
-      `Produtos da empresa: ${(profile.produtos as Array<{ nome: string; preco?: number }>)
-        .map((p) => `${p.nome}${p.preco ? ` (R$ ${p.preco})` : ""}`)
-        .join(", ")}`
-    );
-  }
-  if (catalog.length > 0) {
-    contextParts.push(
-      `Catálogo disponível: ${catalog
-        .map((c) => `${c.nome} · R$ ${c.precoBase}/${c.unidade}${c.categoria ? ` (${c.categoria})` : ""}`)
-        .join("; ")}`
-    );
-  }
+  if (profile?.urlLinhaProdutos) contextParts.push(`Fonte externa complementar: ${profile.urlLinhaProdutos}`);
+  contextParts.push(productContext.context);
 
   try {
+    const sourceRules = proposalProductPromptRules(productContext.source)
+      .map((rule) => `- ${rule}`)
+      .join("\n");
     const aiResult = await gatewayCallOpenAI(
       tenantId,
       "proposal_generator",
@@ -513,8 +509,7 @@ Retorne APENAS JSON válido:
 {"itens":[{"nome":"nome do item","quantidade":número,"valorUnitario":número_decimal}]}
 Regras:
 - Sugira entre 3 e 7 itens relevantes ao contexto
-- Valores coerentes com mercado brasileiro em R$
-- Prefira itens do catálogo disponível quando relevante
+${sourceRules}
 - Retorne SOMENTE o JSON, sem texto extra`,
         },
         { role: "user", content: contextParts.join("\n") },
