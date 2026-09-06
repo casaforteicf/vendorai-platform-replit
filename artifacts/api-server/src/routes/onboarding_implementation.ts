@@ -93,7 +93,8 @@ async function readImplementationFacts(tenantId: string) {
     db.select({ value: count() }).from(usersTable)
       .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))),
     db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId)),
-    db.select({ value: count() }).from(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenantId)),
+    db.select({ value: count() }).from(produtosCatalogoTable)
+      .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true))),
     db.select({ id: whatsappConnectionsTable.id }).from(whatsappConnectionsTable)
       .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active"))).limit(1),
     db.select({ id: instagramConnectionsTable.id }).from(instagramConnectionsTable)
