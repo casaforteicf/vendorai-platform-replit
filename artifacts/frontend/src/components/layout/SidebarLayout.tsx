@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
 import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
 import { AdsMediaPlanContextBanner } from "@/components/marketing/AdsMediaPlanContextBanner";
+import { MessagingMediaPlanBridge } from "@/components/marketing/MessagingMediaPlanBridge";
 import { getGetBusinessProfileByTenantQueryKey, useGetBusinessProfileByTenant } from "@workspace/api-client-react";
 
 type TenantNavModule = {
@@ -49,9 +50,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";
 
-  // Gestão ERP é add-on pago e deve falhar FECHADO: sem confirmação positiva
-  // do entitlement, o menu não aparece. Isso evita que uma indisponibilidade
-  // temporária de /nav-modules (ex.: 502) exponha o ERP novamente.
   const { data: tenantNavModules = [], isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
     queryKey: ["tenant-nav-modules", effectiveTenantId],
     enabled: !!effectiveTenantId && !!token,
@@ -344,6 +342,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarLayoutLegacy>
       <AdsMediaPlanContextBanner pathname={location} />
+      <MessagingMediaPlanBridge pathname={location} />
       {children}
       <MarketingAgentDock pathname={location} />
     </SidebarLayoutLegacy>
