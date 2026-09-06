@@ -62,15 +62,29 @@ export default function Configuracoes() {
       // Produtos e Serviços do contexto antigo deixam de parecer um segundo cadastro.
       root.querySelectorAll<HTMLElement>("h2, h3, h4, label").forEach((element) => {
         const text = element.textContent?.replace(/\s+/g, " ").trim();
-        if (text !== "Produtos e Serviços") return;
+        if (text !== "Produtos e Serviços" && text !== "Produtos e Serviços — referência legada") return;
         element.textContent = "Produtos e Serviços — referência legada";
-        const container = element.parentElement;
-        if (!container || container.querySelector("[data-catalog-source-note='true']")) return;
+        const block = element.closest<HTMLElement>(".space-y-2") ?? element.parentElement;
+        if (!block) return;
+        block.dataset.legacyProductsReadonly = "true";
+
+        // Preserva os dados antigos para leitura/rollback, mas bloqueia novas
+        // edições para evitar duas fontes concorrentes de produto/preço.
+        block.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select").forEach((control) => {
+          control.disabled = true;
+          control.setAttribute("aria-disabled", "true");
+        });
+        block.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+          button.disabled = true;
+          button.setAttribute("aria-disabled", "true");
+        });
+
+        if (block.querySelector("[data-catalog-source-note='true']")) return;
         const note = document.createElement("div");
         note.dataset.catalogSourceNote = "true";
         note.className = "catalog-source-note";
-        note.innerHTML = '<strong>Fonte oficial: Catálogo.</strong><span> Cadastre e mantenha produtos, serviços, preços, estoque e imagens somente no Catálogo.</span><a href="/catalogo">Abrir Catálogo</a>';
-        container.appendChild(note);
+        note.innerHTML = '<strong>Fonte oficial: Catálogo.</strong><span> Esta lista antiga fica somente para consulta. Produtos, serviços, preços, estoque e imagens devem ser mantidos no Catálogo.</span><a href="/catalogo">Abrir Catálogo</a>';
+        block.prepend(note);
       });
 
       root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
@@ -122,8 +136,11 @@ export default function Configuracoes() {
           width: 100%; min-height: 6rem; max-height: 18rem; resize: vertical; transition: min-height 160ms ease;
         }
         .vendor-config-without-site textarea:focus { min-height: 10rem; }
+        .vendor-config-without-site [data-legacy-products-readonly="true"] :disabled {
+          opacity: .72; cursor: not-allowed;
+        }
         .catalog-source-note {
-          display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .55rem; margin-top: .6rem; padding: .75rem;
+          display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .55rem; margin-bottom: .65rem; padding: .75rem;
           border: 1px solid hsl(var(--border)); border-radius: .65rem; background: hsl(var(--muted) / .45); font-size: .8rem;
         }
         .catalog-source-note a { margin-left: auto; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
