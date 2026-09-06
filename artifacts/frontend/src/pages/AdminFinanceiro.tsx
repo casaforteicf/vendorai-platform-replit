@@ -1,15 +1,25 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  RefreshCw, Loader2, TrendingUp, DollarSign, AlertTriangle,
-  Users, BarChart3, Activity,
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Cloud,
+  DollarSign,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 
 interface PlanBreakdown {
@@ -17,16 +27,6 @@ interface PlanBreakdown {
   planNome: string;
   count: number;
   mrr: number;
-}
-
-interface InadimplenteTenant {
-  id: string;
-  name: string;
-  mrr: number;
-  planNome: string | null;
-  suspendedReason: string | null;
-  planStartedAt: string | null;
-  custoIaMes: number;
 }
 
 interface MargemTenant {
@@ -39,8 +39,24 @@ interface MargemTenant {
   planNome: string | null;
 }
 
+interface CostEntry {
+  id: string;
+  provider: string;
+  category: string;
+  amountUsd: number;
+  periodStart: string;
+  periodEnd: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  source: string;
+  externalReference: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
 interface FinancialSummary {
   geradoEm: string;
+  periodo: { startDate: string; endDate: string };
   mrr: {
     total: number;
     arr: number;
@@ -52,323 +68,313 @@ interface FinancialSummary {
   inadimplencia: {
     total: number;
     mrrEmRisco: number;
-    tenants: InadimplenteTenant[];
+    tenants: Array<{ id: string; name: string; mrr: number }>;
   };
   ia: {
     custoTotalMes: number;
     margemTotalMes: number;
     rankingMargem: MargemTenant[];
   };
+  custos: {
+    totalUsd: number;
+    aiTrackedUsd: number;
+    operationalTotalUsd: number;
+    byProvider: Array<{ provider: string; amountUsd: number }>;
+    byCategory: Array<{ category: string; amountUsd: number }>;
+    entries: CostEntry[];
+    tracking: {
+      ai: string;
+      infrastructure: string;
+    };
+  };
 }
 
-function fmt(val: number): string {
-  return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function brl(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function fmtUsd(val: number): string {
-  return `$ ${val.toFixed(4)} USD`;
+function usd(value: number) {
+  return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-function fmtPct(val: number | null): string {
-  if (val === null) return "—";
-  return `${val.toFixed(1)}%`;
+function pct(value: number | null) {
+  return value == null ? "—" : `${value.toFixed(1)}%`;
 }
+
+const providers = ["Cloudflare", "Supabase", "Railway", "OpenAI", "Meta/WhatsApp", "Google", "E-mail/SMS", "Outro"];
+const categories = ["Infraestrutura", "IA", "Comunicação", "Mídia", "Storage", "Observabilidade", "API externa", "Outro"];
 
 export default function AdminFinanceiro() {
   const { token } = useAuth();
   const { toast } = useToast();
   const [data, setData] = useState<FinancialSummary | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [provider, setProvider] = useState("Cloudflare");
+  const [category, setCategory] = useState("Infraestrutura");
+  const [amountUsd, setAmountUsd] = useState("");
+  const [note, setNote] = useState("");
 
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/financial-summary", {
+      const response = await fetch("/api/admin/financial-summary", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(await res.text());
-      setData(await res.json());
-    } catch {
-      toast({ title: "Erro ao carregar painel financeiro", variant: "destructive" });
+      if (!response.ok) throw new Error(await response.text());
+      setData(await response.json());
+    } catch (error) {
+      toast({ title: "Erro ao carregar Gestão de Custos", description: String(error), variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const costRatio = useMemo(() => {
+    if (!data || data.mrr.total <= 0) return null;
+    // Ainda não converte USD->BRL aqui: objetivo é exibir o ratio somente quando
+    // houver uma futura taxa de câmbio consolidada no backend.
+    return null;
+  }, [data]);
+
+  async function addCost() {
+    if (!data) return;
+    const parsed = Number(amountUsd.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast({ title: "Informe um valor válido em USD", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/platform-costs", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider,
+          category,
+          amountUsd: parsed,
+          periodStart: data.periodo.startDate,
+          periodEnd: data.periodo.endDate,
+          source: "manual",
+          note: note || null,
+        }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setAmountUsd("");
+      setNote("");
+      toast({ title: "Custo real registrado" });
+      await load();
+    } catch (error) {
+      toast({ title: "Não foi possível registrar o custo", description: String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeCost(id: string) {
+    try {
+      const response = await fetch(`/api/admin/platform-costs/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+    } catch (error) {
+      toast({ title: "Erro ao remover custo", description: String(error), variant: "destructive" });
+    }
+  }
+
+  if (loading && !data) {
+    return (
+      <div className="p-6 flex min-h-[50vh] items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" /> Carregando custos reais...
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <BarChart3 className="h-7 w-7 text-emerald-500" />
           <div>
-            <h1 className="text-2xl font-bold">Painel Financeiro da Plataforma</h1>
+            <h1 className="text-2xl font-bold">Gestão de Custos & FinOps</h1>
             <p className="text-sm text-muted-foreground">
-              {data
-                ? `Atualizado em ${new Date(data.geradoEm).toLocaleString("pt-BR")}`
-                : "Saúde financeira do SaaS — visão super_admin"}
+              Receita, margem e custo real do VendorAI · atualizado em {new Date(data.geradoEm).toLocaleString("pt-BR")}
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={load} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Atualizar
+        <Button variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Atualizar
         </Button>
       </div>
 
-      {loading && !data ? (
-        <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Calculando métricas financeiras...</span>
-        </div>
-      ) : data ? (
-        <>
-          {/* ─── Bloco 1: MRR / ARR ─────────────────────────────────────────── */}
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              MRR / ARR
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="border-emerald-200">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <DollarSign className="h-4 w-4 text-emerald-500" />
-                    <span className="text-xs text-muted-foreground">MRR</span>
-                  </div>
-                  <p className="text-2xl font-bold text-emerald-600">{fmt(data.mrr.total)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">mensal recorrente</p>
-                </CardContent>
-              </Card>
-              <Card className="border-emerald-200">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
-                    <span className="text-xs text-muted-foreground">ARR</span>
-                  </div>
-                  <p className="text-2xl font-bold text-emerald-600">{fmt(data.mrr.arr)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">= MRR × 12</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Users className="h-4 w-4 text-blue-500" />
-                    <span className="text-xs text-muted-foreground">Tenants Ativos</span>
-                  </div>
-                  <p className="text-2xl font-bold">{data.mrr.tenantsAtivos}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {data.mrr.tenantsDemo} demo · {data.mrr.tenantsSemPlano} sem plano
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Activity className="h-4 w-4 text-violet-500" />
-                    <span className="text-xs text-muted-foreground">Margem IA (mês)</span>
-                  </div>
-                  <p className={`text-2xl font-bold ${data.ia.margemTotalMes >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {fmt(data.ia.margemTotalMes)}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    custo IA: {fmtUsd(data.ia.custoTotalMes)}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Metric icon={<DollarSign className="h-4 w-4" />} label="MRR" value={brl(data.mrr.total)} tone="emerald" />
+        <Metric icon={<TrendingUp className="h-4 w-4" />} label="ARR" value={brl(data.mrr.arr)} tone="emerald" />
+        <Metric icon={<Users className="h-4 w-4" />} label="Tenants ativos" value={String(data.mrr.tenantsAtivos)} />
+        <Metric icon={<Activity className="h-4 w-4" />} label="IA rastreada" value={usd(data.custos.aiTrackedUsd)} tone="violet" />
+        <Metric icon={<Cloud className="h-4 w-4" />} label="Custo operacional" value={usd(data.custos.operationalTotalUsd)} tone="orange" />
+      </div>
 
-          {/* ─── Bloco 2: Receita por plano ─────────────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" /> Receita por Plano
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {data.planBreakdown.length === 0 ? (
-                  <p className="text-sm text-muted-foreground p-4">Nenhum plano com tenants ativos.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Plano</TableHead>
-                        <TableHead className="text-right">Tenants</TableHead>
-                        <TableHead className="text-right">MRR</TableHead>
-                        <TableHead className="text-right">%</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.planBreakdown.map((p) => (
-                        <TableRow key={p.planId}>
-                          <TableCell className="font-medium">{p.planNome}</TableCell>
-                          <TableCell className="text-right">{p.count}</TableCell>
-                          <TableCell className="text-right font-mono">{fmt(p.mrr)}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {data.mrr.total > 0
-                              ? `${((p.mrr / data.mrr.total) * 100).toFixed(1)}%`
-                              : "—"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow className="font-semibold bg-muted/30">
-                        <TableCell>Total</TableCell>
-                        <TableCell className="text-right">{data.mrr.tenantsAtivos}</TableCell>
-                        <TableCell className="text-right font-mono">{fmt(data.mrr.total)}</TableCell>
-                        <TableCell className="text-right">100%</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* ─── Bloco 3: Inadimplência ──────────────────────────────────── */}
-            <Card className={data.inadimplencia.total > 0 ? "border-orange-200" : ""}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <AlertTriangle className={`h-4 w-4 ${data.inadimplencia.total > 0 ? "text-orange-500" : "text-muted-foreground"}`} />
-                  Inadimplência / Suspensos
-                  {data.inadimplencia.total > 0 && (
-                    <Badge variant="destructive" className="ml-auto">
-                      {data.inadimplencia.total}
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {data.inadimplencia.total === 0 ? (
-                  <div className="p-4 text-sm text-muted-foreground text-center">
-                    <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                    Nenhum tenant suspenso — tudo em dia!
-                  </div>
-                ) : (
-                  <>
-                    <div className="px-4 py-2 bg-orange-50 dark:bg-orange-950/20 border-b">
-                      <p className="text-xs text-orange-700 dark:text-orange-400">
-                        MRR em risco: <strong>{fmt(data.inadimplencia.mrrEmRisco)}</strong>
-                      </p>
-                    </div>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Tenant</TableHead>
-                          <TableHead className="text-right">MRR</TableHead>
-                          <TableHead>Motivo</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {data.inadimplencia.tenants.map((t) => (
-                          <TableRow key={t.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium text-sm">{t.name}</p>
-                                {t.planNome && (
-                                  <p className="text-xs text-muted-foreground">{t.planNome}</p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {t.mrr > 0 ? fmt(t.mrr) : "—"}
-                            </TableCell>
-                            <TableCell>
-                              <span className="text-xs text-orange-600 bg-orange-100 dark:bg-orange-950/40 px-2 py-0.5 rounded">
-                                {t.suspendedReason ?? "Suspenso"}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* ─── Bloco 4: Ranking de margem por tenant (IA vs Receita) ─────── */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Activity className="h-4 w-4 text-violet-500" />
-                Custo IA vs Receita — Ranking por Margem
-                <span className="text-xs font-normal text-muted-foreground ml-1">
-                  (piores primeiro — risco de prejuízo)
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {data.ia.rankingMargem.length === 0 ? (
-                <p className="text-sm text-muted-foreground p-4">Nenhum tenant ativo com dados.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>Tenant</TableHead>
-                      <TableHead className="text-right">MRR</TableHead>
-                      <TableHead className="text-right">Custo IA (mês)</TableHead>
-                      <TableHead className="text-right">Margem</TableHead>
-                      <TableHead className="text-right">% Margem</TableHead>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Custos reais por fornecedor</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.custos.byProvider.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                Ainda não há faturas de infraestrutura registradas neste mês. A IA já é rastreada automaticamente; Cloudflare,
+                Supabase, Railway e demais fornecedores entram no ledger abaixo até conectarmos as APIs de billing.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Fornecedor</TableHead><TableHead className="text-right">Custo</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {data.custos.byProvider.map((row) => (
+                    <TableRow key={row.provider}>
+                      <TableCell className="font-medium">{row.provider}</TableCell>
+                      <TableCell className="text-right font-mono">{usd(row.amountUsd)}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.ia.rankingMargem.map((t, i) => {
-                      const isNeg = t.margemMes < 0;
-                      const isLow = t.margemPercent !== null && t.margemPercent < 30 && t.margemPercent >= 0;
-                      return (
-                        <TableRow key={t.id} className={isNeg ? "bg-red-50 dark:bg-red-950/10" : ""}>
-                          <TableCell className="text-muted-foreground text-sm w-8">{i + 1}</TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium text-sm">{t.name}</p>
-                              {t.planNome && (
-                                <p className="text-xs text-muted-foreground">{t.planNome}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
-                            {t.mrr > 0 ? fmt(t.mrr) : "—"}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm text-orange-600">
-                            {t.custoIaMes > 0 ? fmtUsd(t.custoIaMes) : "—"}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
-                            <span className={isNeg ? "text-red-600 font-semibold" : isLow ? "text-orange-500" : "text-emerald-600"}>
-                              {t.mrr > 0 ? fmt(t.margemMes) : "—"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {t.mrr > 0 ? (
-                              <Badge
-                                variant="secondary"
-                                className={
-                                  isNeg
-                                    ? "bg-red-100 text-red-700"
-                                    : isLow
-                                    ? "bg-orange-100 text-orange-700"
-                                    : "bg-emerald-100 text-emerald-700"
-                                }
-                              >
-                                {fmtPct(t.margemPercent)}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">sem plano</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Registrar custo real</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-1.5">
+              <Label>Fornecedor</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{providers.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Categoria</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Valor real (USD)</Label>
+              <Input inputMode="decimal" value={amountUsd} onChange={(e) => setAmountUsd(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Observação</Label>
+              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex.: fatura setembro" />
+            </div>
+            <Button className="w-full" onClick={() => void addCost()} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+              Registrar
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Cloud className="h-4 w-4" /> Ledger do mês
+            <Badge variant="secondary" className="ml-auto">{data.custos.entries.length} lançamentos</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fornecedor</TableHead><TableHead>Categoria</TableHead><TableHead>Origem</TableHead>
+                <TableHead>Tenant</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="w-12" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.custos.entries.length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum custo externo registrado.</TableCell></TableRow>
+              ) : data.custos.entries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="font-medium">{entry.provider}</TableCell>
+                  <TableCell>{entry.category}</TableCell>
+                  <TableCell><Badge variant="outline">{entry.source}</Badge></TableCell>
+                  <TableCell>{entry.tenantName ?? "Plataforma"}</TableCell>
+                  <TableCell className="text-right font-mono">{usd(entry.amountUsd)}</TableCell>
+                  <TableCell><Button size="icon" variant="ghost" onClick={() => void removeCost(entry.id)}><Trash2 className="h-4 w-4" /></Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-base">Receita por plano</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader><TableRow><TableHead>Plano</TableHead><TableHead className="text-right">Tenants</TableHead><TableHead className="text-right">MRR</TableHead></TableRow></TableHeader>
+              <TableBody>{data.planBreakdown.map((p) => <TableRow key={p.planId}><TableCell>{p.planNome}</TableCell><TableCell className="text-right">{p.count}</TableCell><TableCell className="text-right">{brl(p.mrr)}</TableCell></TableRow>)}</TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className={data.inadimplencia.total > 0 ? "border-orange-300" : ""}>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> Risco financeiro</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between"><span>Tenants suspensos</span><strong>{data.inadimplencia.total}</strong></div>
+            <div className="flex justify-between"><span>MRR em risco</span><strong>{brl(data.inadimplencia.mrrEmRisco)}</strong></div>
+            <div className="flex justify-between"><span>Tenants sem plano</span><strong>{data.mrr.tenantsSemPlano}</strong></div>
+            <div className="flex justify-between"><span>Tracking IA</span><Badge variant="secondary">automático</Badge></div>
+            <div className="flex justify-between"><span>Tracking infraestrutura</span><Badge variant="outline">{data.custos.tracking.infrastructure}</Badge></div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Margem por tenant — custo de IA</CardTitle></CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Tenant</TableHead><TableHead className="text-right">MRR</TableHead><TableHead className="text-right">IA</TableHead><TableHead className="text-right">Margem</TableHead><TableHead className="text-right">%</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {data.ia.rankingMargem.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell><div className="font-medium">{t.name}</div><div className="text-xs text-muted-foreground">{t.planNome ?? "Sem plano"}</div></TableCell>
+                  <TableCell className="text-right">{brl(t.mrr)}</TableCell>
+                  <TableCell className="text-right font-mono">{usd(t.custoIaMes)}</TableCell>
+                  <TableCell className="text-right">{brl(t.margemMes)}</TableCell>
+                  <TableCell className="text-right"><Badge variant={t.margemPercent != null && t.margemPercent < 50 ? "destructive" : "secondary"}>{pct(t.margemPercent)}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {costRatio !== null ? <div>{costRatio}</div> : null}
     </div>
+  );
+}
+
+function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone?: "emerald" | "violet" | "orange" }) {
+  const toneClass = tone === "emerald" ? "text-emerald-600" : tone === "violet" ? "text-violet-600" : tone === "orange" ? "text-orange-600" : "";
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">{icon}{label}</div>
+        <div className={`text-xl font-bold ${toneClass}`}>{value}</div>
+      </CardContent>
+    </Card>
   );
 }
