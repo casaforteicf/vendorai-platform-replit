@@ -24,6 +24,10 @@ Os arquivos `artifacts/frontend/public/_redirects` e `_headers` são copiados pe
 - `/assets/*` -> cache imutável
 - HTML -> no-store
 
+## Compatibilidade Dublê Digital
+
+O fluxo legado `/content-studio/video/avatar?capture=mobile` agora é tratado pelo próprio frontend e redirecionado para `/content-studio/video/avatar/captura`, preservando os demais parâmetros do QR. Assim o fluxo não depende mais do matching por query string específico da Vercel.
+
 ## Homologação antes de trocar DNS
 
 Validar no hostname temporário do Cloudflare Pages:
@@ -35,7 +39,7 @@ Validar no hostname temporário do Cloudflare Pages:
 5. Meta/Instagram/WhatsApp;
 6. Google OAuth;
 7. uploads e anexos;
-8. Dublê Digital e captura mobile;
+8. Dublê Digital e captura mobile por QR;
 9. Marketing/Content Studio;
 10. Revenue Scout/JARVIS;
 11. Gestão de Custos & FinOps;
@@ -43,12 +47,9 @@ Validar no hostname temporário do Cloudflare Pages:
 13. `/api/health` e principais endpoints autenticados;
 14. CORS, cookies, Authorization e headers de origem.
 
-## Atenção: redirect de captura mobile
+## Variáveis
 
-O `vercel.json` atual possui uma regra condicional por query string para
-`/content-studio/video/avatar?capture=mobile` -> `/content-studio/video/avatar/captura`.
-Cloudflare Pages `_redirects` não suporta matching de query parameters. Antes do cutover,
-esta regra deve ser implementada no app ou em uma regra/Worker específico e validada no fluxo QR/mobile.
+- `FINOPS_USD_BRL`: câmbio operacional USD/BRL usado para converter custos externos/IA em margem BRL. Se ausente, o backend usa 5.20 como fallback temporário. Em produção deve ser configurado e atualizado pela rotina financeira.
 
 ## DNS
 
@@ -75,4 +76,5 @@ Após frontend estável no Cloudflare:
 4. Hyperdrive -> Supabase PostgreSQL;
 5. medir workloads restantes no Railway;
 6. remover Railway apenas onde Workers cobrir com segurança;
-7. conectar APIs de billing Cloudflare/Supabase/Railway/Meta ao ledger FinOps.
+7. conectar APIs de billing Cloudflare/Supabase/Railway/Meta ao ledger FinOps;
+8. substituir o rateio igual de custos compartilhados por rateio ponderado por requisições, storage e processamento quando a telemetria estiver disponível.
