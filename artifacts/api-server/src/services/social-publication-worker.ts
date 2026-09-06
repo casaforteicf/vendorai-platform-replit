@@ -1,6 +1,7 @@
 import { and, eq, lt, or } from "drizzle-orm";
 import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { produceUpcomingMediaPlanOrganicContent, reconcileAutomatedReelVideos } from "./media-plan-auto-production.js";
 import { enqueueDueMediaPlanPublications } from "./media-plan-scheduled-publication.js";
 import { publishAnySocialPublication } from "./social-publication-dispatcher.js";
 
@@ -14,6 +15,12 @@ export async function processPendingSocialPublications() {
   if (running) return;
   running = true;
   try {
+    await produceUpcomingMediaPlanOrganicContent().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu produzir conteúdos próximos do Plano de Mídia");
+    });
+    await reconcileAutomatedReelVideos().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu reconciliar vídeos automáticos do Plano de Mídia");
+    });
     await enqueueDueMediaPlanPublications().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu preparar publicações vencidas do Plano de Mídia");
     });
