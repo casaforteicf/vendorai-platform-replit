@@ -3,12 +3,12 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 
 const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Perfil: { label: "Empresa", title: "Dados da empresa, marca, posicionamento e contexto institucional" },
-  "Análise": { label: "Inteligência", title: "Parâmetros, análises e sinais usados pela inteligência comercial" },
-  "Calendário": { label: "Agenda", title: "Regras de agenda, disponibilidade e calendários conectados" },
+  "Análise": { label: "Comercial", title: "Parâmetros comerciais, análises e sinais usados pela inteligência" },
+  "Calendário": { label: "Agenda e Automações", title: "Regras de agenda, disponibilidade, calendários e automações relacionadas" },
   "Integrações": { label: "Integrações", title: "WhatsApp, Meta, Google e demais conexões externas" },
   IA: { label: "IA e Agentes", title: "Configurações, limites e comportamento dos agentes de IA" },
   Contrato: { label: "Documentos", title: "Contratos, modelos, variáveis e assinatura eletrônica" },
-  Equipe: { label: "Equipe", title: "Usuários, acessos e gestão da equipe" },
+  Equipe: { label: "Equipe e Acessos", title: "Usuários, acessos, permissões e governança da equipe" },
   Faturamento: { label: "Faturamento", title: "Plano, consumo, cobrança e dados de faturamento" },
 };
 
@@ -59,6 +59,27 @@ export default function Configuracoes() {
         tab.setAttribute("aria-label", next.label);
         tab.dataset.configSection = next.label.toLowerCase().replace(/\s+/g, "-");
       });
+
+      if (primaryTabList && !root.querySelector("[data-config-governance='true']")) {
+        const governance = document.createElement("section");
+        governance.dataset.configGovernance = "true";
+        governance.className = "config-governance";
+        governance.setAttribute("aria-label", "Governança das configurações");
+        governance.innerHTML = `
+          <div class="config-governance__copy">
+            <strong>Configuração central do negócio</strong>
+            <span>Cada informação deve ter uma única fonte oficial para evitar divergências entre CRM, IA, propostas, marketing e automações.</span>
+          </div>
+          <div class="config-governance__sources" aria-label="Fontes oficiais">
+            <span><b>Empresa</b> identidade e posicionamento</span>
+            <span><b>Catálogo</b> produtos, serviços, preços e estoque</span>
+            <span><b>IA e Agentes</b> comportamento e limites</span>
+            <span><b>Integrações</b> conexões e saúde</span>
+            <span><b>Documentos</b> modelos e assinatura</span>
+          </div>
+        `;
+        primaryTabList.parentElement?.insertBefore(governance, primaryTabList);
+      }
 
       if (primaryTabList && !root.querySelector("[data-mobile-config-selector='true']")) {
         const wrapper = document.createElement("div");
@@ -145,6 +166,14 @@ export default function Configuracoes() {
         const text = heading.textContent?.replace(/\s+/g, " ").trim() ?? "";
         const next = documentHeadings[text];
         if (next) heading.textContent = next;
+
+        if ((text === "Modelos de Proposta por Linha de Produto" || text === "Propostas — modelos por linha de produto") && !heading.parentElement?.querySelector("[data-proposal-catalog-note='true']")) {
+          const note = document.createElement("p");
+          note.dataset.proposalCatalogNote = "true";
+          note.className = "external-source-note";
+          note.innerHTML = 'A linha do produto deve corresponder ao Catálogo. Novos cadastros e alterações de produto devem ser feitos em <a href="/catalogo">Catálogo</a>; este vínculo permanece compatível com modelos existentes até a migração completa.';
+          heading.insertAdjacentElement("afterend", note);
+        }
       });
 
       root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
@@ -193,6 +222,19 @@ export default function Configuracoes() {
           flex: 0 0 auto !important; width: auto !important; min-width: max-content !important; white-space: nowrap !important;
         }
         .mobile-config-selector { display: none; }
+        .config-governance {
+          display: grid; gap: .75rem; margin: .5rem 0 1rem; padding: .9rem 1rem; border: 1px solid hsl(var(--border));
+          border-radius: .8rem; background: hsl(var(--muted) / .3);
+        }
+        .config-governance__copy { display: grid; gap: .2rem; }
+        .config-governance__copy strong { font-size: .9rem; }
+        .config-governance__copy span { font-size: .78rem; line-height: 1.4; color: hsl(var(--muted-foreground)); }
+        .config-governance__sources { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
+        .config-governance__sources span {
+          display: grid; gap: .1rem; min-width: 0; padding: .55rem .65rem; border: 1px solid hsl(var(--border));
+          border-radius: .6rem; background: hsl(var(--background)); font-size: .7rem; line-height: 1.25; color: hsl(var(--muted-foreground));
+        }
+        .config-governance__sources b { color: hsl(var(--foreground)); font-size: .73rem; }
         .vendor-config-without-site textarea {
           width: 100%; min-height: 6rem; max-height: 18rem; resize: vertical; transition: min-height 160ms ease;
         }
@@ -206,6 +248,10 @@ export default function Configuracoes() {
         }
         .catalog-source-note a { margin-left: auto; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
         .external-source-note { margin-top: .4rem; font-size: .75rem; line-height: 1.35; color: hsl(var(--muted-foreground)); }
+        .external-source-note a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: hsl(var(--foreground)); }
+        @media (max-width: 900px) {
+          .config-governance__sources { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         @media (max-width: 640px) {
           .vendor-config-without-site { overflow-x: clip; padding-bottom: 9rem; }
           .vendor-config-without-site [role="tablist"] { display: none !important; }
@@ -215,6 +261,8 @@ export default function Configuracoes() {
             width: 100% !important; min-height: 2.75rem; padding: 0 .8rem; border: 1px solid hsl(var(--border));
             border-radius: .65rem; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: .95rem;
           }
+          .config-governance { padding: .8rem; }
+          .config-governance__sources { grid-template-columns: 1fr; }
           .vendor-config-without-site [role="tabpanel"] { overflow-x: clip; }
           .vendor-config-without-site input,
           .vendor-config-without-site textarea,
