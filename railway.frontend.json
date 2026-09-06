@@ -1,0 +1,24 @@
+{
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @workspace/frontend build",
+    "watchPatterns": [
+      "artifacts/frontend/**",
+      "lib/**",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "tsconfig.json",
+      "tsconfig.base.json",
+      ".npmrc",
+      "railway.frontend.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "node artifacts/frontend/scripts/railway-static-server.mjs",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 120,
+    "numReplicas": 1,
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
