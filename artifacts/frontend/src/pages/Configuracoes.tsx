@@ -23,6 +23,19 @@ const CONFIG_SEARCH_INDEX = [
   { section: "Faturamento", terms: "faturamento plano cobrança consumo créditos assinatura mensalidade pagamento" },
 ] as const;
 
+type IntegrationHealthPayload = {
+  whatsapp?: { connected?: boolean; phone?: string | null };
+  googleCalendar?: { connected?: boolean };
+  instagram?: { connected?: boolean; username?: string | null };
+  googleAds?: { connected?: boolean; pendingAccountSelection?: boolean; descriptiveName?: string | null };
+  asaas?: { connected?: boolean };
+  zapsign?: { connected?: boolean };
+  domain?: { configured?: boolean; active?: boolean; name?: string | null; status?: string | null };
+  searchConsole?: { connected?: boolean; verified?: boolean };
+  tracking?: { googleAds?: boolean; metaPixel?: boolean; linkedinInsightTag?: boolean; tiktokPixel?: boolean };
+  social?: { linkedin?: boolean; tiktok?: boolean };
+};
+
 export default function Configuracoes() {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
@@ -34,6 +47,77 @@ export default function Configuracoes() {
   useEffect(() => {
     const root = document.querySelector<HTMLElement>(".vendor-config-without-site");
     if (!root) return;
+
+    const loadIntegrationHealth = async (panel: HTMLElement) => {
+      const summary = panel.querySelector<HTMLElement>("[data-integration-health-summary]");
+      const grid = panel.querySelector<HTMLElement>("[data-integration-health-grid]");
+      if (!summary || !grid) return;
+
+      summary.textContent = "Verificando conexões...";
+      grid.innerHTML = '<span class="integration-health__loading">Consultando o status real das integrações do tenant.</span>';
+
+      try {
+        const response = await fetch("/api/onboarding/integracoes", { credentials: "include" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json() as IntegrationHealthPayload;
+
+        const integrations = [
+          { label: "WhatsApp", connected: data.whatsapp?.connected === true, detail: data.whatsapp?.phone || "Canal de atendimento" },
+          { label: "Instagram", connected: data.instagram?.connected === true, detail: data.instagram?.username ? `@${data.instagram.username.replace(/^@/, "")}` : "Mensagens e perfil" },
+          { label: "Google Calendar", connected: data.googleCalendar?.connected === true, detail: "Agenda e compromissos" },
+          {
+            label: "Google Ads",
+            connected: data.googleAds?.connected === true,
+            attention: data.googleAds?.pendingAccountSelection === true,
+            detail: data.googleAds?.pendingAccountSelection ? "Selecionar conta" : (data.googleAds?.descriptiveName || "Mídia paga"),
+          },
+          { label: "Asaas", connected: data.asaas?.connected === true, detail: "Cobranças e pagamentos" },
+          { label: "ZapSign", connected: data.zapsign?.connected === true, detail: "Assinatura eletrônica" },
+          {
+            label: "Search Console",
+            connected: data.searchConsole?.connected === true && data.searchConsole?.verified === true,
+            attention: data.searchConsole?.connected === true && data.searchConsole?.verified !== true,
+            detail: data.searchConsole?.connected && !data.searchConsole?.verified ? "Aguardando verificação" : "SEO e indexação",
+          },
+          { label: "LinkedIn", connected: data.social?.linkedin === true, detail: "Canal social" },
+          { label: "TikTok", connected: data.social?.tiktok === true, detail: "Canal social" },
+          {
+            label: "Domínio",
+            connected: data.domain?.active === true,
+            attention: data.domain?.configured === true && data.domain?.active !== true,
+            detail: data.domain?.name || "Domínio personalizado",
+          },
+        ];
+
+        const connectedCount = integrations.filter((item) => item.connected).length;
+        const attentionCount = integrations.filter((item) => item.attention).length;
+        summary.textContent = `${connectedCount} de ${integrations.length} conexões ativas${attentionCount ? ` · ${attentionCount} requer${attentionCount > 1 ? "em" : ""} atenção` : ""}`;
+        grid.replaceChildren();
+
+        integrations.forEach((item) => {
+          const card = document.createElement("div");
+          card.className = `integration-health__item ${item.connected ? "is-connected" : item.attention ? "is-attention" : "is-off"}`;
+
+          const header = document.createElement("div");
+          header.className = "integration-health__item-header";
+          const name = document.createElement("strong");
+          name.textContent = item.label;
+          const badge = document.createElement("span");
+          badge.className = "integration-health__badge";
+          badge.textContent = item.connected ? "Conectado" : item.attention ? "Atenção" : "Desconectado";
+          header.append(name, badge);
+
+          const detail = document.createElement("span");
+          detail.className = "integration-health__detail";
+          detail.textContent = item.detail;
+          card.append(header, detail);
+          grid.appendChild(card);
+        });
+      } catch {
+        summary.textContent = "Não foi possível consultar as integrações agora.";
+        grid.innerHTML = '<span class="integration-health__loading">O restante das Configurações continua disponível. Tente atualizar o status em alguns instantes.</span>';
+      }
+    };
 
     const normalizeLegacyUi = () => {
       root.querySelectorAll<HTMLHeadingElement>("h2").forEach((heading) => {
@@ -167,6 +251,27 @@ export default function Configuracoes() {
           </div>
         `;
         primaryTabList.parentElement?.insertBefore(governance, primaryTabList);
+      }
+
+      if (primaryTabList && !root.querySelector("[data-integration-health='true']")) {
+        const health = document.createElement("section");
+        health.dataset.integrationHealth = "true";
+        health.className = "integration-health";
+        health.setAttribute("aria-label", "Saúde das integrações");
+        health.innerHTML = `
+          <div class="integration-health__header">
+            <div>
+              <strong>Saúde das integrações</strong>
+              <span data-integration-health-summary>Verificando conexões...</span>
+            </div>
+            <button type="button" class="integration-health__refresh">Atualizar status</button>
+          </div>
+          <div class="integration-health__grid" data-integration-health-grid></div>
+        `;
+        const refresh = health.querySelector<HTMLButtonElement>(".integration-health__refresh");
+        refresh?.addEventListener("click", () => void loadIntegrationHealth(health));
+        primaryTabList.parentElement?.insertBefore(health, primaryTabList);
+        void loadIntegrationHealth(health);
       }
 
       if (primaryTabList && !root.querySelector("[data-mobile-config-selector='true']")) {
@@ -339,6 +444,30 @@ export default function Configuracoes() {
           border-radius: .6rem; background: hsl(var(--background)); font-size: .7rem; line-height: 1.25; color: hsl(var(--muted-foreground));
         }
         .config-governance__sources b { color: hsl(var(--foreground)); font-size: .73rem; }
+        .integration-health {
+          display: grid; gap: .7rem; margin: .5rem 0 1rem; padding: .9rem 1rem; border: 1px solid hsl(var(--border));
+          border-radius: .8rem; background: hsl(var(--background));
+        }
+        .integration-health__header { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
+        .integration-health__header > div { display: grid; gap: .15rem; }
+        .integration-health__header strong { font-size: .9rem; }
+        .integration-health__header span { font-size: .75rem; color: hsl(var(--muted-foreground)); }
+        .integration-health__refresh {
+          flex: 0 0 auto; padding: .45rem .65rem; border: 1px solid hsl(var(--border)); border-radius: .55rem;
+          background: hsl(var(--muted) / .35); font-size: .73rem; font-weight: 600;
+        }
+        .integration-health__grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
+        .integration-health__item { min-width: 0; padding: .55rem .6rem; border: 1px solid hsl(var(--border)); border-radius: .6rem; }
+        .integration-health__item-header { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
+        .integration-health__item-header strong { min-width: 0; font-size: .72rem; }
+        .integration-health__badge { flex: 0 0 auto; font-size: .62rem; font-weight: 700; }
+        .integration-health__detail { display: block; margin-top: .2rem; font-size: .66rem; color: hsl(var(--muted-foreground)); }
+        .integration-health__item.is-connected { background: hsl(142 70% 45% / .08); border-color: hsl(142 55% 45% / .3); }
+        .integration-health__item.is-connected .integration-health__badge { color: hsl(142 55% 35%); }
+        .integration-health__item.is-attention { background: hsl(38 90% 50% / .09); border-color: hsl(38 80% 50% / .35); }
+        .integration-health__item.is-attention .integration-health__badge { color: hsl(32 75% 38%); }
+        .integration-health__item.is-off .integration-health__badge { color: hsl(var(--muted-foreground)); }
+        .integration-health__loading { grid-column: 1 / -1; padding: .35rem 0; font-size: .74rem; color: hsl(var(--muted-foreground)); }
         .vendor-config-without-site textarea {
           width: 100%; min-height: 6rem; max-height: 18rem; resize: vertical; transition: min-height 160ms ease;
         }
@@ -354,7 +483,7 @@ export default function Configuracoes() {
         .external-source-note { margin-top: .4rem; font-size: .75rem; line-height: 1.35; color: hsl(var(--muted-foreground)); }
         .external-source-note a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: hsl(var(--foreground)); }
         @media (max-width: 900px) {
-          .config-governance__sources { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .config-governance__sources, .integration-health__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 640px) {
           .vendor-config-without-site { overflow-x: clip; padding-bottom: 9rem; }
@@ -365,8 +494,10 @@ export default function Configuracoes() {
             width: 100% !important; min-height: 2.75rem; padding: 0 .8rem; border: 1px solid hsl(var(--border));
             border-radius: .65rem; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: .95rem;
           }
-          .config-governance { padding: .8rem; }
-          .config-governance__sources { grid-template-columns: 1fr; }
+          .config-governance, .integration-health { padding: .8rem; }
+          .config-governance__sources, .integration-health__grid { grid-template-columns: 1fr; }
+          .integration-health__header { align-items: flex-start; }
+          .integration-health__refresh { white-space: nowrap !important; }
           .vendor-config-without-site [role="tabpanel"] { overflow-x: clip; }
           .vendor-config-without-site input,
           .vendor-config-without-site textarea,
