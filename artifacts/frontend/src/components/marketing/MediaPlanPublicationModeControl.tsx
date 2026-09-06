@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarClock, CheckCircle2, Loader2, MousePointerClick, ShieldCheck } from "lucide-react";
+import { CalendarClock, CheckCircle2, Loader2, MousePointerClick, ServerCog, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,10 +135,10 @@ export function MediaPlanPublicationModeControl() {
       setPlan(body);
       setSaved(settings);
       toast({
-        title: settings.modo === "automatico" ? "Publicação automática autorizada" : "Revisão manual mantida",
+        title: settings.modo === "automatico" ? "Execução automática autorizada" : "Revisão manual mantida",
         description: settings.modo === "automatico"
-          ? `As peças orgânicas geradas serão publicadas na data do calendário às ${settings.horario}, no fuso ${settings.timezone}.`
-          : "Nenhuma peça orgânica será publicada sem ação humana.",
+          ? `O servidor prepara as peças antes da data e publica no calendário às ${settings.horario}, no fuso ${settings.timezone}. Não é necessário deixar o VendorAI aberto.`
+          : "As peças podem ser preparadas pelo plano, mas nenhuma publicação orgânica será disparada sem ação humana.",
       });
     } catch (error) {
       toast({ title: "Não foi possível salvar", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -158,10 +158,11 @@ export function MediaPlanPublicationModeControl() {
               <CalendarClock className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">Execução das publicações orgânicas</p>
               <Badge variant="outline" className="text-[10px]">Instagram · Facebook · LinkedIn</Badge>
+              <Badge variant="outline" className="gap-1 text-[10px]"><ServerCog className="h-3 w-3" /> Execução no servidor</Badge>
               {plan.conteudo.statusPlanejamento === "aprovado" && <Badge className="bg-emerald-600 text-[10px]">Plano aprovado</Badge>}
             </div>
             <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-              A aprovação do plano autoriza a produção dos materiais. A publicação automática é uma autorização separada e pode permanecer manual.
+              A aprovação do plano autoriza a produção dos materiais. No modo automático, o backend prepara as peças orgânicas antes da data programada e a publicação acontece no horário definido, mesmo sem ninguém estar com o sistema aberto.
             </p>
           </div>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -174,7 +175,7 @@ export function MediaPlanPublicationModeControl() {
             className={`rounded-xl border p-3 text-left transition-colors ${settings.modo === "manual" ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
           >
             <div className="flex items-center gap-2 text-sm font-semibold"><MousePointerClick className="h-4 w-4" /> Revisão manual</div>
-            <p className="mt-1 text-xs text-muted-foreground">O sistema prepara a peça e aguarda o usuário clicar em Publicar.</p>
+            <p className="mt-1 text-xs text-muted-foreground">O plano pode preparar os rascunhos, mas o usuário continua responsável pelo clique final de publicação.</p>
           </button>
           <button
             type="button"
@@ -182,19 +183,28 @@ export function MediaPlanPublicationModeControl() {
             className={`rounded-xl border p-3 text-left transition-colors ${settings.modo === "automatico" ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
           >
             <div className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4" /> Automático no calendário</div>
-            <p className="mt-1 text-xs text-muted-foreground">Somente peças já geradas e pertencentes a um plano aprovado entram na fila quando a data chegar.</p>
+            <p className="mt-1 text-xs text-muted-foreground">O servidor prepara Feed, Stories, Carrossel, LinkedIn e Reels até cerca de 24h antes. Se a peça já existir, não gera outra. Na data e hora definidas, o publicador executa.</p>
           </button>
         </div>
 
         {settings.modo === "automatico" && (
-          <div className="grid gap-3 rounded-xl border bg-background p-3 sm:grid-cols-[180px_1fr] sm:items-end">
-            <div>
-              <p className="mb-1.5 text-xs font-medium">Horário padrão</p>
-              <Input type="time" value={settings.horario} onChange={(event) => setSettings((current) => ({ ...current, horario: event.target.value }))} />
+          <div className="space-y-3 rounded-xl border bg-background p-3">
+            <div className="flex items-start gap-2 rounded-lg border border-primary/15 bg-primary/[0.035] p-3 text-xs text-muted-foreground">
+              <ServerCog className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="font-medium text-foreground">Produção antecipada no backend</p>
+                <p className="mt-0.5">O worker verifica o plano continuamente, cria o rascunho antes da publicação, acompanha a geração do vídeo quando houver Reel e só libera o disparo depois que a mídia real estiver pronta.</p>
+              </div>
             </div>
-            <div>
-              <p className="mb-1.5 text-xs font-medium">Fuso horário</p>
-              <Input value={settings.timezone} onChange={(event) => setSettings((current) => ({ ...current, timezone: event.target.value }))} placeholder="America/Sao_Paulo" />
+            <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
+              <div>
+                <p className="mb-1.5 text-xs font-medium">Horário padrão</p>
+                <Input type="time" value={settings.horario} onChange={(event) => setSettings((current) => ({ ...current, horario: event.target.value }))} />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium">Fuso horário</p>
+                <Input value={settings.timezone} onChange={(event) => setSettings((current) => ({ ...current, timezone: event.target.value }))} placeholder="America/Sao_Paulo" />
+              </div>
             </div>
           </div>
         )}
@@ -202,7 +212,7 @@ export function MediaPlanPublicationModeControl() {
         <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            Stories, Reels, Feed, Carrossel e LinkedIn usam o mesmo publicador e o mesmo status real: Na fila → Publicando → Publicado/Falhou.
+            Produção e publicação são etapas separadas. A peça precisa existir e estar pronta antes de entrar em Na fila → Publicando → Publicado/Falhou.
           </div>
           <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saving || !settings.horario.trim() || !settings.timezone.trim()}>
             {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
