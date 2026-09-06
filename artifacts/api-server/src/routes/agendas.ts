@@ -7,8 +7,36 @@ import {
   exchangeCodeAndStore,
   getGoogleRedirectUri,
 } from "../lib/google-calendar";
+import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 
 const router: IRouter = Router();
+
+async function googleCalendarSnapshot(agendaId: string) {
+  return db.select({
+    id: agendasTable.id,
+    tenantId: agendasTable.tenantId,
+    nome: agendasTable.nome,
+    googleCalendarId: agendasTable.googleCalendarId,
+    googleEmail: agendasTable.googleEmail,
+    googleAccessToken: agendasTable.googleAccessToken,
+    googleRefreshToken: agendasTable.googleRefreshToken,
+    googleTokenExpiresAt: agendasTable.googleTokenExpiresAt,
+    updatedAt: agendasTable.updatedAt,
+  }).from(agendasTable).where(eq(agendasTable.id, agendaId)).limit(1).then((rows) => rows[0] ?? null);
+}
+
+async function auditGoogleCalendar(req: any, tenantId: string, agendaId: string, before: unknown, after: unknown, action: "criar" | "atualizar" | "excluir") {
+  const audited = await writeConfigurationAudit({
+    tenantId,
+    action,
+    entity: "google_calendar_connection",
+    entityId: agendaId,
+    before: action === "criar" ? undefined : before,
+    after: action === "excluir" ? undefined : after,
+    actor: { userId: req.user?.id ?? req.user?.sub ?? null, ip: req.ip ?? null },
+  });
+  if (!audited) req.log?.warn({ tenantId, agendaId }, "configuracoes: falha ao auditar Google Calendar");
+}
 
 // ── List agendas ─────────────────────────────────────────────────────────────
 
@@ -233,6 +261,7 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
     return;
   }
 
+  const before = await googleCalendarSnapshot(existing.id);
   const [updated] = await db
     .update(agendasTable)
     .set({
@@ -256,6 +285,7 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
       updatedAt: agendasTable.updatedAt,
     });
 
+  await auditGoogleCalendar(req, existing.tenantId, existing.id, before, null, "excluir");
   res.json(updated);
 });
 
@@ -298,7 +328,12 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   }
 
   try {
+    const before = await googleCalendarSnapshot(agendaId);
     await exchangeCodeAndStore(code, agendaId);
+    const after = await googleCalendarSnapshot(agendaId);
+    if (after) {
+      await auditGoogleCalendar(req, after.tenantId, agendaId, before, after, before?.googleCalendarId ? "atualizar" : "criar");
+    }
     res.redirect(`${appUrl}${returnTo}?googleConnected=1`);
   } catch (err) {
     req.log.error({ err }, "Google Calendar OAuth exchange failed");
