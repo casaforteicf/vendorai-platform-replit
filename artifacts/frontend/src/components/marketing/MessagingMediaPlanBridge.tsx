@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Mail, MessageCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentAutopilotMediaPlanBanner";
+import { OrganicCalendarPublisher } from "@/components/marketing/OrganicCalendarPublisher";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
@@ -112,6 +113,10 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
 
   if (route === "/content-autopilot" && fromMediaPlan) {
     return <ContentAutopilotMediaPlanBanner pathname={pathname} />;
+  }
+
+  if (route === "/content" && (params.get("tab") || "gerador") === "gerador" && fromMediaPlan) {
+    return <OrganicCalendarPublisher pathname={pathname} />;
   }
 
   const isMessagingView = route === "/content"
