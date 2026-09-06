@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
 import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
+import { AdsMediaPlanContextBanner } from "@/components/marketing/AdsMediaPlanContextBanner";
 import { getGetBusinessProfileByTenantQueryKey, useGetBusinessProfileByTenant } from "@workspace/api-client-react";
 
 type TenantNavModule = {
@@ -118,8 +119,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return () => observer.disconnect();
   }, [erpEntitled]);
 
-  // Orçamentos já faz parte da Central de Trabalho. Mantemos /propostas e
-  // todo o fluxo funcional, removendo apenas o atalho duplicado do menu lateral.
   useEffect(() => {
     const enforceBudgetSidebarPolicy = () => {
       document.querySelectorAll<HTMLAnchorElement>('a[href="/propostas"]').forEach((link) => {
@@ -145,10 +144,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Praça.AI é um conjunto opcional por tenant. Fica oculto por padrão e
-  // só aparece quando o Super Admin ativa o módulo "Praça.AI" no painel
-  // gerencial do tenant. O bloqueio cobre tanto os itens de Marketing
-  // (Stories/Variedades) quanto os módulos operacionais/logísticos.
   useEffect(() => {
     if (!PRACA_AI_LINK_SELECTOR) return;
 
@@ -176,9 +171,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return () => observer.disconnect();
   }, [pracaAiEntitled]);
 
-  // Também fecha o acesso por URL direta quando o módulo não foi liberado.
-  // Espera a leitura do entitlement terminar para não redirecionar um tenant
-  // que já tem Praça.AI ativo durante o primeiro carregamento da tela.
   useEffect(() => {
     if (!effectiveTenantId || tenantNavModulesLoading || pracaAiEntitled) return;
     const pathname = location.split("?")[0];
@@ -289,9 +281,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
 
     const enforceCompanyProfileLogo = () => {
-      // O SidebarLayoutLegacy ainda conhece o antigo tenant.logoUrl. Aqui ele
-      // deixa de ser fonte visual: em sessões de tenant usamos exclusivamente
-      // BusinessProfile.logoUrl, que é o mesmo campo editado em Perfil da Empresa.
       document.querySelectorAll<HTMLImageElement>('img[alt="Vendor.ai"]').forEach((vendorLogo) => {
         const parent = vendorLogo.parentElement;
         if (!parent) return;
@@ -314,8 +303,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         }
       });
 
-      // Também cobre o modo white-label legado, que pode renderizar somente a
-      // imagem do cliente sem a logo VendorAI ao lado.
       document.querySelectorAll<HTMLImageElement>('img[alt="Logo"]').forEach((clientLogo) => {
         if (!isBrandingClientLogo(clientLogo)) return;
 
@@ -356,6 +343,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarLayoutLegacy>
+      <AdsMediaPlanContextBanner pathname={location} />
       {children}
       <MarketingAgentDock pathname={location} />
     </SidebarLayoutLegacy>
