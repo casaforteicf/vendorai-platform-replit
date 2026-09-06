@@ -12,6 +12,7 @@ import {
 } from "../services/instagram-oauth.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
+import { auditIntegrationChange } from "../lib/integration-configuration-audit.js";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,10 @@ function getAppUrl(host?: string): string {
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}`;
   return "http://localhost:3000";
+}
+
+function auditActor(req: any, userId?: string | null) {
+  return { userId: userId ?? req.user?.sub ?? req.user?.id ?? null, ip: req.ip ?? null };
 }
 
 router.get("/auth/instagram", authenticate, async (req, res) => {
@@ -68,10 +73,12 @@ router.get("/auth/instagram/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let userId: string;
   let exactRedirectUri: string | undefined;
   try {
     const decoded = consumeOAuthState(state, "instagram");
     tenantId = decoded.tenantId;
+    userId = decoded.userId;
     exactRedirectUri = decoded.returnTo?.startsWith("https://") ? decoded.returnTo : undefined;
   } catch (err) {
     logger.warn({ err }, "Callback Instagram: state inválido, expirado ou reutilizado");
@@ -80,6 +87,7 @@ router.get("/auth/instagram/callback", async (req, res) => {
 
   try {
     logger.info({ tenantId }, "Processando callback Instagram");
+    const before = await getInstagramConnectionByTenantId(tenantId).catch(() => null);
     let tokenResponse;
     try {
       tokenResponse = await exchangeShortCodeForToken(code, req.hostname, exactRedirectUri);
@@ -108,6 +116,16 @@ router.get("/auth/instagram/callback", async (req, res) => {
         `${appUrl}/configuracoes?tab=integracoes&instagramError=${accountInUse ? "account_in_use" : "persist_failed"}`,
       );
     }
+    const after = await getInstagramConnectionByTenantId(tenantId).catch(() => null);
+    const audited = await auditIntegrationChange({
+      tenantId,
+      provider: "instagram",
+      action: before ? "atualizar" : "criar",
+      before,
+      after,
+      actor: auditActor(req, userId),
+    });
+    if (!audited) logger.warn({ tenantId }, "configuracoes: falha ao auditar conexão do Instagram");
     logger.info({ tenantId, username: directAccount.username }, "Instagram conectado com sucesso");
     return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramConnected=1`);
 
@@ -197,6 +215,7 @@ router.post("/tenants/:tenantId/instagram-connection/refresh", authenticate, asy
 
     await refreshInstagramToken(conn.id);
     const updated = await getInstagramConnectionByTenantId(tenantId);
+    await auditIntegrationChange({ tenantId, provider: "instagram", action: "atualizar", before: conn, after: updated, actor: auditActor(req) });
     return res.json({
       id: updated?.id,
       tokenExpiresAt: updated?.tokenExpiresAt?.toISOString() ?? null,
@@ -216,7 +235,9 @@ router.delete("/tenants/:tenantId/instagram-connection", authenticate, async (re
       return res.status(403).json({ error: "Forbidden" });
     }
 
+    const before = await getInstagramConnectionByTenantId(tenantId);
     await disconnectInstagram(tenantId);
+    await auditIntegrationChange({ tenantId, provider: "instagram", action: "excluir", before, actor: auditActor(req) });
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar Instagram");

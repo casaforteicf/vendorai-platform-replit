@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
+import { auditIntegrationChange } from "../lib/integration-configuration-audit.js";
 import {
   buildWhatsappOAuthUrl,
   exchangeShortCodeForToken,
@@ -31,6 +32,10 @@ function getAppUrl(): string {
   }
 
   return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
+}
+
+function auditActor(req: any, userId?: string | null) {
+  return { userId: userId ?? req.user?.sub ?? req.user?.id ?? null, ip: req.ip ?? null };
 }
 
 router.get("/auth/whatsapp", authenticate, async (req, res) => {
@@ -79,6 +84,7 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
 
   try {
     logger.info({ tenantId }, "Processando callback WhatsApp");
+    const beforeConnections = await listWhatsappConnections(tenantId).catch(() => []);
     let tokenResponse;
     try {
       tokenResponse = await exchangeShortCodeForToken(code);
@@ -112,6 +118,16 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
     for (const { waba, phone } of selections) {
       await saveWhatsappConnection(tenantId, waba.id, phone, longLived.access_token, longLived.expires_in, userId);
     }
+    const afterConnections = await listWhatsappConnections(tenantId).catch(() => []);
+    const audited = await auditIntegrationChange({
+      tenantId,
+      provider: "whatsapp",
+      action: beforeConnections.length > 0 ? "atualizar" : "criar",
+      before: beforeConnections,
+      after: afterConnections,
+      actor: auditActor(req, userId),
+    });
+    if (!audited) logger.warn({ tenantId }, "configuracoes: falha ao auditar conexão do WhatsApp");
     logger.info({ tenantId, count: selections.length }, "Numeros do WhatsApp conectados com sucesso");
     return res.redirect(`${appUrl}/configuracoes?whatsappConnected=1`);
   } catch (err) {
@@ -159,10 +175,13 @@ router.patch("/tenants/:tenantId/whatsapp-connections/:connectionId", authentica
   const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
   if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  const connectionId = String(req.params.connectionId);
+  const before = (await listWhatsappConnections(tenantId)).find((connection) => connection.id === connectionId) ?? null;
   const assignedUserId = typeof req.body?.assignedUserId === "string" ? req.body.assignedUserId : req.body?.assignedUserId === null ? null : undefined;
   const isDefault = typeof req.body?.isDefault === "boolean" ? req.body.isDefault : undefined;
-  const updated = await updateWhatsappConnectionRouting(tenantId, String(req.params.connectionId), { assignedUserId, isDefault });
+  const updated = await updateWhatsappConnectionRouting(tenantId, connectionId, { assignedUserId, isDefault });
   if (!updated) return res.status(404).json({ error: "Connection not found" });
+  await auditIntegrationChange({ tenantId, provider: "whatsapp", action: "atualizar", before, after: updated, actor: auditActor(req) });
   const { accessToken: _accessToken, ...safe } = updated;
   return res.json(safe);
 });
@@ -181,6 +200,7 @@ router.post("/tenants/:tenantId/whatsapp-connection/refresh", authenticate, asyn
 
     await refreshWhatsappToken(conn.id);
     const updated = await getWhatsappConnectionByTenantId(tenantId);
+    await auditIntegrationChange({ tenantId, provider: "whatsapp", action: "atualizar", before: conn, after: updated, actor: auditActor(req) });
     return res.json({
       id: updated?.id,
       tokenExpiresAt: updated?.tokenExpiresAt?.toISOString() ?? null,
@@ -200,7 +220,9 @@ router.delete("/tenants/:tenantId/whatsapp-connection", authenticate, async (req
       return res.status(403).json({ error: "Forbidden" });
     }
 
+    const before = await listWhatsappConnections(tenantId);
     await disconnectWhatsapp(tenantId);
+    await auditIntegrationChange({ tenantId, provider: "whatsapp", action: "excluir", before, actor: auditActor(req) });
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar WhatsApp");
