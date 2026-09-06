@@ -60,6 +60,12 @@ export default function Configuracoes() {
       const tabs = primaryTabList ? Array.from(primaryTabList.querySelectorAll<HTMLElement>("[role='tab']")) : [];
       tabs.forEach((tab) => {
         const current = tab.textContent?.replace(/\s+/g, " ").trim() ?? "";
+        if (current === "Site") {
+          tab.hidden = true;
+          tab.setAttribute("aria-hidden", "true");
+          tab.dataset.legacySiteTabHidden = "true";
+          return;
+        }
         const next = SECTION_LABELS[current];
         if (!next) return;
         const textNodes = Array.from(tab.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE);
@@ -278,7 +284,6 @@ export default function Configuracoes() {
   return (
     <div className="vendor-config-without-site">
       <style>{`
-        .vendor-config-without-site > div > div:nth-child(2) > div:first-child [role="tablist"] > button:nth-child(3) { display: none !important; }
         .vendor-config-without-site,
         .vendor-config-without-site > div,
         .vendor-config-without-site form,
