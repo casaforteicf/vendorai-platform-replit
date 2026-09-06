@@ -1,10 +1,9 @@
 {
   "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "backend/Dockerfile",
+    "builder": "RAILPACK",
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @workspace/frontend build",
     "watchPatterns": [
-      "backend/**",
-      "artifacts/api-server/**",
+      "artifacts/frontend/**",
       "lib/**",
       "package.json",
       "pnpm-lock.yaml",
@@ -12,11 +11,13 @@
       "tsconfig.json",
       "tsconfig.base.json",
       ".npmrc",
-      ".dockerignore",
       "railway.json"
     ]
   },
   "deploy": {
+    "startCommand": "node artifacts/frontend/scripts/railway-static-server.mjs",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 120,
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE"
   }
