@@ -10,10 +10,11 @@ import {
   db,
   businessProfilesTable,
   mediaPlansTable,
+  produtosCatalogoTable,
   tenantsTable,
   type MediaPlanConteudo,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   isDataForSeoConfigured,
@@ -48,7 +49,7 @@ type MediaPlanProfile = {
   concorrentes: string[] | null;
   canaisVenda: string[] | null;
   instagramUrl: string | null;
-  produtos: { nome: string; descricao?: string }[] | null;
+  produtos: { nome: string; descricao?: string | null }[] | null;
   site: string | null;
 };
 
@@ -155,7 +156,7 @@ function buildProfileContext(profile: MediaPlanProfile): string {
 }
 
 async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfile | null> {
-  const [[profile], [tenant]] = await Promise.all([
+  const [[profile], [tenant], catalog] = await Promise.all([
     db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db
       .select({
@@ -170,6 +171,11 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
       .from(tenantsTable)
       .where(eq(tenantsTable.id, tenantId))
       .limit(1),
+    db
+      .select({ nome: produtosCatalogoTable.nome, descricao: produtosCatalogoTable.descricao })
+      .from(produtosCatalogoTable)
+      .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
+      .limit(20),
   ]);
 
   // Só existe erro de dados quando o tenant realmente não existe. Um tenant
@@ -178,6 +184,8 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
 
   const razaoSocial =
     profile?.razaoSocial?.trim() || tenant?.nomeEmpresa?.trim() || tenant?.name?.trim() || "Empresa";
+  const legacyProducts = (profile?.produtos as { nome: string; descricao?: string | null }[] | null) || null;
+  const officialProducts = catalog.length > 0 ? catalog : legacyProducts;
 
   return {
     razaoSocial,
@@ -189,7 +197,7 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
     concorrentes: (profile?.concorrentes as string[] | null) || null,
     canaisVenda: (profile?.canaisVenda as string[] | null) || null,
     instagramUrl: profile?.instagramUrl || null,
-    produtos: (profile?.produtos as { nome: string; descricao?: string }[] | null) || null,
+    produtos: officialProducts,
     site: tenant?.site || null,
   };
 }
