@@ -1,6 +1,7 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import type { MediaPlanCampaign, MediaPlanCampaignChannel, MediaPlanConteudo } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { buildOwnPerformancePromptBlock } from "./content-performance.js";
 import {
   MEDIA_FUNCTION_VERSION,
   alignMediaChannelFunction,
@@ -207,7 +208,7 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: number): Me
       objetivo: objective,
       produtoServico: "Produto ou serviço prioritário do período",
       publico: "Público prioritário definido no perfil do negócio",
-      oferta: conteudo.ofertaCampanha || "Oferta ou próximo passo comercial adequado à etapa",
+      oferta: conteudoBaseFallbackOffer(conteudo),
       mensagemCentral: pillars[index % pillars.length] ?? "Mensagem principal da campanha",
       fase: phase,
       inicioOffsetDias: Math.max(0, inicio),
@@ -221,6 +222,10 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: number): Me
       status: "planejada",
     };
   });
+}
+
+function conteudoBaseFallbackOffer(conteudo: MediaPlanConteudo): string {
+  return conteudo.ofertaCampanha || "Oferta ou próximo passo comercial adequado à etapa";
 }
 
 export function alignMediaFunctionsInContent(conteudo: MediaPlanConteudo): MediaPlanConteudo {
@@ -289,6 +294,8 @@ ${mediaFunctionCatalogForPrompt()}
 
 A arquitetura mínima precisa considerar descoberta/orgânico, mídia paga, captura de intenção, conversão direta e destino próprio. Na prática, quando fizer sentido ao negócio, use Instagram, Meta Ads, Google Search, WhatsApp e Landing Page, além de E-mail, Blog/SEO, YouTube, Performance Max, Site ou outros canais relevantes.
 
+Quando receber aprendizado do próprio negócio, trate-o como evidência histórica: preserve temas/canais/formatos que performaram melhor, reformule os fracos e corrija alertas recorrentes de qualidade. Não copie mecanicamente o ciclo anterior e não extrapole além dos dados apresentados.
+
 REGRA GEOGRÁFICA IMPORTANTE: localização e bairro podem orientar a segmentação sem aparecer em todo material. Em campanhas locais, use normalmente intensidade baixa ou média. Em conteúdo orgânico e descoberta, priorize dor, benefício, educação, arquitetura, prova e produto. Mencione a localização explicitamente apenas em parte das peças (em geral 20–30%), aumentando o uso em Google Search, SEO local, LP e conteúdos de alta intenção. Evite títulos repetitivos do tipo “no bairro X” em todas as peças.
 
 Frequência: respeite a função oficial de cada canal. Mídia paga pode ficar contínua com renovação por fadiga/performance; WhatsApp/e-mail devem responder a comportamento e estágio; Site/LP são destinos e não devem receber uma falsa frequência de postagem; SMS é gatilho pontual, não mídia de descoberta.
@@ -307,6 +314,10 @@ export async function enrichMediaPlanForPeriod(
   const normalizedDays = Math.max(1, Math.ceil(periodoDias));
   const fallback = fallbackCampaigns(conteudoBase, normalizedDays);
   let campanhas = fallback;
+  const performanceLearning = await buildOwnPerformancePromptBlock(tenantId).catch((error) => {
+    logger.warn({ error, tenantId }, "media-plan-period: aprendizado histórico indisponível");
+    return "";
+  });
 
   try {
     const response = await anthropic.messages.create({
@@ -328,6 +339,7 @@ export async function enrichMediaPlanForPeriod(
             pilaresConteudo: conteudoBase.pilaresConteudo,
             canaisPrioritariosJaAnalisados: conteudoBase.canais,
             keywordsRelevantes: conteudoBase.keywordsRelevantes,
+            aprendizadoDoProprioNegocio: performanceLearning || undefined,
           }),
         },
       ],
