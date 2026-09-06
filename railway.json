@@ -1,7 +1,7 @@
 {
   "build": {
-    "builder": "RAILPACK",
-    "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @workspace/frontend build",
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "artifacts/frontend/Dockerfile.recovery",
     "watchPatterns": [
       "artifacts/frontend/**",
       "lib/**",
