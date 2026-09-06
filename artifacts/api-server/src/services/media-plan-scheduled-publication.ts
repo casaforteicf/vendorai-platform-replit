@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   contentCalendarItemsTable,
   contentGenerationsTable,
@@ -15,7 +15,8 @@ const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/
 const DEFAULT_PUBLISH_TIME = process.env["MARKETING_DEFAULT_PUBLISH_TIME"] || "10:00";
 const MAX_DUE_ITEMS_PER_TICK = 50;
 
-const AUTO_TYPES = new Set(["feed", "stories", "reels", "carrossel", "linkedin_post"]);
+const AUTO_TYPES = ["feed", "stories", "reels", "carrossel", "linkedin_post"] as const;
+const AUTO_TYPE_SET = new Set<string>(AUTO_TYPES);
 
 type OrganicPublicationSettings = {
   modo?: "manual" | "automatico";
@@ -126,7 +127,7 @@ async function createScheduledPublication(input: {
 }) {
   const { tenantId, item } = input;
   const provider = providerFor(item);
-  if (!provider || !AUTO_TYPES.has(item.tipo)) return null;
+  if (!provider || !AUTO_TYPE_SET.has(item.tipo)) return null;
 
   const preview = variationData(input.generationResult, item.variationIdx);
   const text = preview.text || item.temaSugerido;
@@ -211,6 +212,9 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
       eq(contentCalendarItemsTable.status, "gerado"),
       isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
+      inArray(contentCalendarItemsTable.tipo, [...AUTO_TYPES]),
+      sql`${mediaPlansTable.conteudo}->>'statusPlanejamento' = 'aprovado'`,
+      sql`${mediaPlansTable.conteudo}->'publicacaoOrganica'->>'modo' = 'automatico'`,
     ))
     .orderBy(asc(contentCalendarItemsTable.dataAgendada))
     .limit(MAX_DUE_ITEMS_PER_TICK);
@@ -218,11 +222,8 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
   let queued = 0;
   for (const row of rows) {
     if (!row.contentGenerationId || !row.mediaPlanId) continue;
-    if (!AUTO_TYPES.has(row.tipo)) continue;
-    const planContent = row.planContent as Record<string, unknown>;
-    if (planContent.statusPlanejamento !== "aprovado") continue;
-    const settings = (planContent.publicacaoOrganica ?? {}) as OrganicPublicationSettings;
-    if (settings.modo !== "automatico") continue;
+    const planContent = row.planContent;
+    const settings = planContent.publicacaoOrganica ?? { modo: "manual" as const };
     const schedule = isDue(row.dataAgendada, settings, now);
     if (!schedule.due) continue;
     if (!providerFor(row)) continue;
