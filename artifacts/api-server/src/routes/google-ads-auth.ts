@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { logger } from "../lib/logger.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
+import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
   buildGoogleAdsOAuthUrl,
   exchangeCodeForTokens,
@@ -25,6 +26,33 @@ function getAppUrl(): string {
   }
 
   return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
+}
+
+function auditActor(req: Request, userId?: string | null) {
+  return {
+    userId: userId ?? req.user?.id ?? req.user?.sub ?? null,
+    ip: req.ip ?? null,
+  };
+}
+
+async function auditGoogleAdsChange(
+  req: Request,
+  tenantId: string,
+  before: unknown,
+  after: unknown,
+  userId?: string | null,
+  action: "criar" | "atualizar" | "excluir" = "atualizar",
+) {
+  const audited = await writeConfigurationAudit({
+    tenantId,
+    action,
+    entity: "google_ads_connection",
+    entityId: tenantId,
+    before: action === "criar" ? undefined : before,
+    after: action === "excluir" ? undefined : after,
+    actor: auditActor(req, userId),
+  });
+  if (!audited) logger.warn({ tenantId }, "configuracoes: falha ao auditar Google Ads");
 }
 
 router.get("/auth/google-ads", authenticate, async (req, res) => {
@@ -59,9 +87,11 @@ router.get("/auth/google-ads/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let auditUserId: string | null = null;
   try {
     const decoded = consumeOAuthState(state, "google-ads");
     tenantId = decoded.tenantId;
+    auditUserId = decoded.userId ?? null;
     if (decoded.returnTo === "/onboarding/integracoes") returnTo = decoded.returnTo;
   } catch (err) {
     logger.warn({ err }, "Callback Google Ads: state inválido, expirado ou reutilizado");
@@ -83,7 +113,17 @@ router.get("/auth/google-ads/callback", async (req, res) => {
       return res.redirect(`${appUrl}${returnTo}?googleAdsError=no_refresh_token`);
     }
 
+    const beforeConnection = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
     await saveGoogleAdsPendingConnection(tenantId, tokens.refresh_token, tokens.access_token, tokens.expires_in);
+    const pendingConnection = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
+    await auditGoogleAdsChange(
+      req,
+      tenantId,
+      beforeConnection,
+      pendingConnection,
+      auditUserId,
+      beforeConnection ? "atualizar" : "criar",
+    );
 
     let accounts;
     try {
@@ -100,7 +140,10 @@ router.get("/auth/google-ads/callback", async (req, res) => {
 
     if (accounts.length === 1 && accounts[0]) {
       try {
+        const beforeSelection = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
         await selectGoogleAdsAccount(tenantId, accounts[0].customerId);
+        const afterSelection = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
+        await auditGoogleAdsChange(req, tenantId, beforeSelection, afterSelection, auditUserId);
         logger.info({ tenantId, customerId: accounts[0].customerId }, "Google Ads/Data Manager conectado com sucesso");
         return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=1`);
       } catch (err) {
@@ -172,11 +215,14 @@ router.put("/tenants/:tenantId/google-ads-connection/data-manager", authenticate
       return value;
     };
 
+    const before = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
     const configured = await configureGoogleDataManagerActions(tenantId, {
       leadConversionActionId: normalizeInput("leadConversionActionId"),
       trialConversionActionId: normalizeInput("trialConversionActionId"),
       saleConversionActionId: normalizeInput("saleConversionActionId"),
     });
+    const after = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
+    await auditGoogleAdsChange(req, tenantId, before, after);
 
     return res.json({
       success: true,
@@ -225,8 +271,10 @@ router.post("/tenants/:tenantId/google-ads-connection/select-account", authentic
       return res.status(400).json({ error: "customerId is required" });
     }
 
+    const before = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
     await selectGoogleAdsAccount(tenantId, customerId);
     const updated = await getGoogleAdsConnectionByTenantId(tenantId);
+    await auditGoogleAdsChange(req, tenantId, before, updated);
     return res.json({
       connected: true,
       customerId: updated?.customerId,
@@ -253,6 +301,7 @@ router.post("/tenants/:tenantId/google-ads-connection/refresh", authenticate, as
 
     await refreshGoogleAdsToken(conn.id);
     const updated = await getGoogleAdsConnectionByTenantId(tenantId);
+    await auditGoogleAdsChange(req, tenantId, conn, updated);
     return res.json({
       id: updated?.id,
       tokenExpiresAt: updated?.tokenExpiresAt?.toISOString() ?? null,
@@ -271,7 +320,9 @@ router.delete("/tenants/:tenantId/google-ads-connection", authenticate, async (r
       return res.status(403).json({ error: "Forbidden" });
     }
 
+    const before = await getGoogleAdsConnectionByTenantId(tenantId).catch(() => null);
     await disconnectGoogleAds(tenantId);
+    await auditGoogleAdsChange(req, tenantId, before, null, null, "excluir");
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar Google Ads");
