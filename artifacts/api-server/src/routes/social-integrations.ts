@@ -104,6 +104,7 @@ const publicationSchema = z.object({
   mediaUrl: z.string().url().optional(),
   mediaUrls: z.array(z.string().url()).max(10).optional(),
   contentType: z.enum(["post", "video", "short", "image", "carousel", "story", "reel"]).optional(),
+  mediaKind: z.enum(["image", "video"]).optional(),
 }).refine((data) => Boolean(data.text || data.mediaUrl || data.mediaUrls?.length), "text_or_media_required");
 
 router.post("/tenants/:tenantId/social-publications/:provider", authenticate, async (req, res) => {
@@ -131,7 +132,9 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
     if (["connection_not_found", "meta_not_connected", "meta_token_expired", "instagram_not_connected", "page_permission_missing", "linked_page_not_found"].includes(message)) {
       return res.status(409).json({ error: message });
     }
-    if (message === "facebook_content_type_not_supported") return res.status(422).json({ error: message });
+    if (["facebook_content_type_not_supported", "facebook_reel_requires_video", "facebook_story_requires_single_media"].includes(message)) {
+      return res.status(422).json({ error: message });
+    }
     throw error;
   }
 });
@@ -173,7 +176,7 @@ router.post("/tenants/:tenantId/social-comments/:provider/:commentId/replies", a
   const text = z.string().trim().min(1).max(2_000).safeParse(req.body?.text);
   if (!text.success) return res.status(400).json({ error: "invalid_reply" });
   try {
-    return res.json({ reply: await replyToSocialComment(tenantId, selected, String(req.params.commentId), text.data) });
+    return res.json({ reply: await replyToSocialComment(tenantId, selected, String(req.params.commentId), text.data });
   } catch (error) {
     if (error instanceof Error && error.message === "capability_not_available") return res.status(422).json({ error: error.message });
     throw error;
