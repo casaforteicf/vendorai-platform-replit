@@ -176,7 +176,7 @@ router.post("/tenants/:tenantId/social-comments/:provider/:commentId/replies", a
   const text = z.string().trim().min(1).max(2_000).safeParse(req.body?.text);
   if (!text.success) return res.status(400).json({ error: "invalid_reply" });
   try {
-    return res.json({ reply: await replyToSocialComment(tenantId, selected, String(req.params.commentId), text.data });
+    return res.json({ reply: await replyToSocialComment(tenantId, selected, String(req.params.commentId), text.data) });
   } catch (error) {
     if (error instanceof Error && error.message === "capability_not_available") return res.status(422).json({ error: error.message });
     throw error;
