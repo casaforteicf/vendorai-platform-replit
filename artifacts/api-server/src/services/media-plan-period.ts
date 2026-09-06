@@ -208,7 +208,7 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: number): Me
       objetivo: objective,
       produtoServico: "Produto ou serviço prioritário do período",
       publico: "Público prioritário definido no perfil do negócio",
-      oferta: conteudoBaseFallbackOffer(conteudo),
+      oferta: conteudo.ofertaCampanha || "Oferta ou próximo passo comercial adequado à etapa",
       mensagemCentral: pillars[index % pillars.length] ?? "Mensagem principal da campanha",
       fase: phase,
       inicioOffsetDias: Math.max(0, inicio),
@@ -222,10 +222,6 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: number): Me
       status: "planejada",
     };
   });
-}
-
-function conteudoBaseFallbackOffer(conteudo: MediaPlanConteudo): string {
-  return conteudo.ofertaCampanha || "Oferta ou próximo passo comercial adequado à etapa";
 }
 
 export function alignMediaFunctionsInContent(conteudo: MediaPlanConteudo): MediaPlanConteudo {
