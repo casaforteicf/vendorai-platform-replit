@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3, Store } from "lucide-react";
+import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3, Store, BrainCircuit, ShieldCheck, Sparkles } from "lucide-react";
 import MarketingVerticals from "@/pages/MarketingVerticals";
 import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
@@ -58,6 +58,43 @@ export default function CampanhasHub() {
       <p className="text-sm text-muted-foreground max-w-3xl">
         Acompanhe intenção, trial, venda, receita e retenção. Depois gere uma ação assistida, escolha o canal ou selecione o mercado oficial para usar a jornada, os agentes e a LP daquela vertical.
       </p>
+
+      <Card className="overflow-hidden border-primary/30 bg-gradient-to-r from-primary/[0.08] via-background to-background shadow-sm">
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="mt-0.5 rounded-xl border border-primary/25 bg-primary/10 p-2.5 text-primary">
+                <BrainCircuit className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold">Agente de Marketing ativo nesta área</h2>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    <Sparkles className="h-3 w-3" /> Contextual
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <ShieldCheck className="h-3 w-3" /> Autonomia controlada
+                  </span>
+                </div>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+                  Ele acompanha a campanha ativa, objetivo, público, produto, canal e regras do tenant. Usa essas informações para orientar planejamento, criativos, publicação e otimização sem ultrapassar orçamento ou permissões definidos pelo usuário.
+                </p>
+                <p className="mt-2 text-[11px] font-medium text-foreground/80">
+                  O botão “Marketing AI” no canto abre a inteligência específica da tela em que você está.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => setLocation("/plano-midia")}>
+                Planejar campanha
+              </Button>
+              <Button size="sm" onClick={() => setLocation("/content?tab=gerador")}>
+                Gerar conteúdo <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <LaunchCommandCenter />
       <AssistedMarketingManager />
