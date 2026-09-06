@@ -1,0 +1,8 @@
+FROM node:24-bookworm-slim
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+COPY . .
+RUN pnpm install --frozen-lockfile && pnpm --filter @workspace/frontend build
+ENV NODE_ENV=production
+EXPOSE 8080
+CMD ["node","artifacts/frontend/scripts/railway-static-server.mjs"]
