@@ -87,6 +87,32 @@ export default function Configuracoes() {
         block.prepend(note);
       });
 
+      // A URL não é um segundo cadastro de portfólio. Ela pode complementar o
+      // conhecimento com uma fonte pública, mas nunca substituir o Catálogo.
+      root.querySelectorAll<HTMLElement>("label").forEach((label) => {
+        const text = label.textContent?.replace(/\s+/g, " ").trim();
+        if (text !== "URL da linha de produtos (opcional)" && text !== "Fonte externa de produtos (opcional)") return;
+        label.textContent = "Fonte externa de produtos (opcional)";
+        const block = label.parentElement;
+        if (!block || block.querySelector("[data-external-product-source-note='true']")) return;
+        const note = document.createElement("p");
+        note.dataset.externalProductSourceNote = "true";
+        note.className = "external-source-note";
+        note.textContent = "Use somente como referência pública complementar. O Catálogo continua sendo a fonte oficial de produtos, serviços, preços e estoque.";
+        block.appendChild(note);
+      });
+
+      // Consolida a linguagem da antiga aba Contrato dentro da nova área Documentos.
+      const documentHeadings: Record<string, string> = {
+        "Modelo de Contrato": "Contratos — modelo padrão",
+        "Modelos de Proposta por Linha de Produto": "Propostas — modelos por linha de produto",
+      };
+      root.querySelectorAll<HTMLElement>("h2, h3, h4").forEach((heading) => {
+        const text = heading.textContent?.replace(/\s+/g, " ").trim() ?? "";
+        const next = documentHeadings[text];
+        if (next) heading.textContent = next;
+      });
+
       root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
         if (button.textContent?.trim() === "Add") button.textContent = "Adicionar";
       });
@@ -144,6 +170,7 @@ export default function Configuracoes() {
           border: 1px solid hsl(var(--border)); border-radius: .65rem; background: hsl(var(--muted) / .45); font-size: .8rem;
         }
         .catalog-source-note a { margin-left: auto; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+        .external-source-note { margin-top: .4rem; font-size: .75rem; line-height: 1.35; color: hsl(var(--muted-foreground)); }
         @media (max-width: 640px) {
           .vendor-config-without-site { overflow-x: clip; padding-bottom: 9rem; }
           .vendor-config-without-site [role="tablist"] { position: relative; padding: .25rem; }
