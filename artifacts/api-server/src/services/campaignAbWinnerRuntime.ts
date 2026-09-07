@@ -1,25 +1,16 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { campaignsTable, db, tenantsTable } from "@workspace/db";
-import { logger } from "../lib/logger.js";
+import type { Logger } from "pino";
 import { applyCampaignAbWinner } from "./campaignAbWinner.js";
 import { resolveMarketingAgentAutonomyPolicy } from "./marketingAgentAutonomyPolicy.js";
 
-const FIRST_RUN_DELAY_MS = 2 * 60 * 1000;
-const INTERVAL_MS = 60 * 60 * 1000;
 const BATCH_SIZE = 100;
 
-type RuntimeState = {
-  started: boolean;
-  timer?: ReturnType<typeof setInterval>;
-  startup?: ReturnType<typeof setTimeout>;
-};
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __vendoraiMarketingAbWinnerRuntime: RuntimeState | undefined;
-}
-
-async function processCampaign(campaign: { id: string; tenantId: string }, activeTenantIds: Set<string>) {
+async function processCampaign(
+  campaign: { id: string; tenantId: string },
+  activeTenantIds: Set<string>,
+  log: Logger,
+) {
   if (!activeTenantIds.has(campaign.tenantId)) return;
   try {
     const policy = await resolveMarketingAgentAutonomyPolicy(campaign.tenantId);
@@ -30,7 +21,7 @@ async function processCampaign(campaign: { id: string; tenantId: string }, activ
       authorization: "agent-autonomous",
     });
   } catch (error) {
-    logger.warn({
+    log.warn({
       error,
       tenantId: campaign.tenantId,
       campaignId: campaign.id,
@@ -38,7 +29,13 @@ async function processCampaign(campaign: { id: string; tenantId: string }, activ
   }
 }
 
-async function runCycle() {
+/**
+ * Executa uma rodada do autopiloto A/B.
+ *
+ * Deliberadamente não agenda timers e não possui side effects de importação.
+ * O ciclo é orquestrado pelo bootstrap central da API, junto dos demais jobs.
+ */
+export async function runCampaignAbWinnerCycle(log: Logger): Promise<void> {
   const tenants = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
@@ -63,7 +60,7 @@ async function runCycle() {
     if (campaigns.length === 0) break;
 
     for (const campaign of campaigns) {
-      await processCampaign(campaign, activeTenantIds);
+      await processCampaign(campaign, activeTenantIds, log);
       processed += 1;
     }
 
@@ -71,16 +68,5 @@ async function runCycle() {
     offset += campaigns.length;
   }
 
-  logger.info({ processed }, "marketing-ab-winner-runtime: ciclo concluído");
+  log.info({ processed }, "marketing-ab-winner-runtime: ciclo concluído");
 }
-
-function startRuntime() {
-  const state = globalThis.__vendoraiMarketingAbWinnerRuntime ?? { started: false };
-  if (state.started) return;
-  state.started = true;
-  state.startup = setTimeout(() => { void runCycle(); }, FIRST_RUN_DELAY_MS);
-  state.timer = setInterval(() => { void runCycle(); }, INTERVAL_MS);
-  globalThis.__vendoraiMarketingAbWinnerRuntime = state;
-}
-
-startRuntime();
