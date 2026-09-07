@@ -12,6 +12,7 @@ import { runVendorAiSubscriptionPaymentSync } from "./jobs/vendorAiSubscriptionP
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { runMarketingBudgetAutopilot } from "./jobs/marketingBudgetAutopilot.js";
+import { runCampaignAbWinnerCycle } from "./services/campaignAbWinnerRuntime.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
 import { startDevAgentSupportHandoff } from "./services/dev-agent-support-handoff.js";
@@ -112,6 +113,19 @@ async function start() {
     };
     setTimeout(() => { void syncMarketingBudgetAutopilot(); }, 2 * 60 * 1000).unref();
     setInterval(() => { void syncMarketingBudgetAutopilot(); }, 6 * 60 * 60 * 1000).unref();
+
+    // Marketing IA nível 4: avaliação/aplicação de vencedores A/B em ciclo
+    // explícito e centralizado. O job permanece sujeito aos guardrails do teste
+    // e à política server-side de autonomia completa.
+    const syncCampaignAbWinner = async () => {
+      try {
+        await runCampaignAbWinnerCycle(logger);
+      } catch (syncErr) {
+        logger.error({ err: syncErr }, "marketing-ab-winner-runtime: unhandled sync error");
+      }
+    };
+    setTimeout(() => { void syncCampaignAbWinner(); }, 2 * 60 * 1000).unref();
+    setInterval(() => { void syncCampaignAbWinner(); }, 60 * 60 * 1000).unref();
   });
 }
 
