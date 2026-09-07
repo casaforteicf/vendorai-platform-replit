@@ -10,6 +10,7 @@ import {
 
 export type ConfigurationChangeKind = "editar" | "credencial" | "desconectar" | "permissao" | "financeiro";
 export const CONFIGURATION_IMPACT_EVENT = "vendorai:configuration-impact";
+export const CONFIGURATION_IMPACT_APPROVED_EVENT = "vendorai:configuration-impact-approved";
 
 type ChangeScenario = {
   value: ConfigurationChangeKind;
@@ -23,6 +24,7 @@ type ImpactEventDetail = {
   section?: string;
   changeKind?: ConfigurationChangeKind;
   actionLabel?: string;
+  requestId?: string;
 };
 
 const CHANGE_SCENARIOS: ChangeScenario[] = [
@@ -82,6 +84,8 @@ export function ConfigurationImpactSimulator() {
   const [section, setSection] = useState(CONFIGURATION_SECTION_POLICIES[0]?.section ?? "Empresa");
   const [changeKind, setChangeKind] = useState<ConfigurationChangeKind>("editar");
   const [detectedAction, setDetectedAction] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const onImpactRequest = (event: Event) => {
@@ -93,6 +97,8 @@ export function ConfigurationImpactSimulator() {
         setChangeKind(detail.changeKind);
       }
       setDetectedAction(detail.actionLabel?.trim() || "Alteração crítica");
+      setRequestId(detail.requestId ?? null);
+      setCheckedItems(new Set());
       setExpanded(true);
       window.requestAnimationFrame(() => {
         containerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -117,6 +123,24 @@ export function ConfigurationImpactSimulator() {
   const score = Math.min(8, BASE_SCORE[policy.level] + scenario.modifier);
   const risk = riskLabel(score);
   const needsStrongConfirmation = score >= 5;
+  const checklist = [...scenario.checks, `Revisar os módulos dependentes: ${policy.dependencies.join(", ")}.`];
+  const checklistRequired = Boolean(requestId && needsStrongConfirmation);
+  const checklistComplete = !checklistRequired || checkedItems.size === checklist.length;
+
+  const toggleCheck = (index: number) => {
+    setCheckedItems((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const approveImpact = () => {
+    if (!requestId || !checklistComplete) return;
+    window.dispatchEvent(new CustomEvent(CONFIGURATION_IMPACT_APPROVED_EVENT, { detail: { requestId } }));
+    setDetectedAction((current) => current ? `${current} — impacto revisado` : current);
+  };
 
   return (
     <section ref={containerRef} className="mb-4 scroll-mt-4 rounded-xl border bg-background p-3 sm:p-4" aria-label="Simulador de impacto de configurações">
@@ -142,7 +166,7 @@ export function ConfigurationImpactSimulator() {
         <div className="mt-4 space-y-4 border-t pt-4">
           {detectedAction && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
-              <strong>Revisão automática antes de executar:</strong> {detectedAction}. Confira o impacto abaixo e repita a ação original para continuar.
+              <strong>Revisão automática antes de executar:</strong> {detectedAction}. {checklistRequired ? "Marque todas as validações obrigatórias para liberar a próxima tentativa." : "Confira o impacto abaixo e repita a ação original para continuar."}
             </div>
           )}
 
@@ -155,6 +179,8 @@ export function ConfigurationImpactSimulator() {
                 onChange={(event) => {
                   setSection(event.target.value);
                   setDetectedAction(null);
+                  setRequestId(null);
+                  setCheckedItems(new Set());
                 }}
               >
                 {CONFIGURATION_SECTION_POLICIES.map((item) => (
@@ -170,6 +196,8 @@ export function ConfigurationImpactSimulator() {
                 onChange={(event) => {
                   setChangeKind(event.target.value as ConfigurationChangeKind);
                   setDetectedAction(null);
+                  setRequestId(null);
+                  setCheckedItems(new Set());
                 }}
               >
                 {CHANGE_SCENARIOS.map((item) => (
@@ -214,21 +242,35 @@ export function ConfigurationImpactSimulator() {
 
           <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
             <article className="rounded-lg border p-3">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <CheckCircle2 className="h-4 w-4 text-muted-foreground" /> Checklist antes de aplicar
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" /> Checklist antes de aplicar
+                </div>
+                {checklistRequired && <Badge variant="outline" className="text-[10px]">{checkedItems.size}/{checklist.length}</Badge>}
               </div>
               <div className="mt-3 space-y-2">
-                {scenario.checks.map((check) => (
+                {checklist.map((check, index) => checklistRequired ? (
+                  <label key={check} className="flex cursor-pointer items-start gap-2 rounded-md border p-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4"
+                      checked={checkedItems.has(index)}
+                      onChange={() => toggleCheck(index)}
+                    />
+                    <span>{check}</span>
+                  </label>
+                ) : (
                   <div key={check} className="flex items-start gap-2 text-xs text-muted-foreground">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
                     <span>{check}</span>
                   </div>
                 ))}
-                <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                  <span>Revisar os módulos dependentes: {policy.dependencies.join(", ")}.</span>
-                </div>
               </div>
+              {requestId && (
+                <Button type="button" size="sm" className="mt-3" disabled={!checklistComplete} onClick={approveImpact}>
+                  {checklistComplete ? "Impacto revisado — liberar ação" : "Concluir validações obrigatórias"}
+                </Button>
+              )}
             </article>
 
             <article className={`rounded-lg border p-3 ${needsStrongConfirmation ? "border-destructive/30 bg-destructive/5" : "bg-muted/20"}`}>
