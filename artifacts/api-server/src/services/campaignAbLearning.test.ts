@@ -47,7 +47,7 @@ describe("evaluateVariantEvidence", () => {
     expect(result.winner).toBeNull();
   });
 
-  it("declara vencedor somente com conversões suficientes e lift mínimo", () => {
+  it("não declara vencedor quando há lift, mas os intervalos de 95% ainda se sobrepõem", () => {
     const result = evaluateVariantEvidence({
       sampleA: 100,
       sampleB: 100,
@@ -57,8 +57,26 @@ describe("evaluateVariantEvidence", () => {
       conversionsB: 5,
     });
 
+    expect(result.relativeLift).toBeGreaterThanOrEqual(0.2);
+    expect(result.status).toBe("inconclusivo");
+    expect(result.winner).toBeNull();
+    expect(result.reason).toContain("95%");
+  });
+
+  it("declara vencedor somente quando lift e confiança estatística concordam", () => {
+    const result = evaluateVariantEvidence({
+      sampleA: 200,
+      sampleB: 200,
+      readsA: 110,
+      readsB: 120,
+      conversionsA: 50,
+      conversionsB: 20,
+    });
+
     expect(result.status).toBe("vencedor");
     expect(result.winner).toBe("A");
     expect(result.provisionalLeader).toBeNull();
+    expect(result.confidenceLevel).toBe(0.95);
+    expect(result.conversionIntervalA[0]).toBeGreaterThan(result.conversionIntervalB[1]);
   });
 });
