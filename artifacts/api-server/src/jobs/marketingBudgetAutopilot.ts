@@ -5,6 +5,7 @@ import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { resolveMarketingAgentAutonomyPolicy } from "../services/marketingAgentAutonomyPolicy.js";
 import { buildTenantPaidMediaBudgetRedistributionPlan } from "../services/paidMediaBudgetOptimizer.js";
 import { executePaidMediaBudgetDecision } from "../services/paidMediaBudgetExecution.js";
+import { runMarketingBudgetDecisionLearning } from "../services/marketingBudgetDecisionLearning.js";
 
 const AUTOPILOT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const MAX_PLANS_PER_CYCLE = 100;
@@ -91,18 +92,16 @@ async function applyAutomaticDecision(input: {
 
 /**
  * Otimização autônoma de verba para tenants que escolheram nível 3 ou 4.
- *
- * O ciclo é deliberadamente conservador:
- * - só tenant ativo, campanha ativa Meta/Google e já publicada;
- * - política server-side precisa liberar canOptimizeBudget;
- * - cooldown de 6h por plano evita oscilação;
- * - primeiro reduz no máximo uma campanha doadora;
- * - depois recalcula com maxTransferFractionPerCycle=0 e aumenta no máximo uma
- *   vencedora usando SOMENTE verba já efetivamente desalocada;
- * - assim o estado persistido nunca depende de uma redução futura para respeitar
- *   o teto humano, inclusive quando uma API externa falha no meio do ciclo.
+ * Antes de uma nova rodada, o mesmo ciclo avalia decisões com pelo menos 24h
+ * e registra aprendizado determinístico no histórico de Ads.
  */
 export async function runMarketingBudgetAutopilot(log: Logger): Promise<void> {
+  try {
+    await runMarketingBudgetDecisionLearning(log);
+  } catch (err) {
+    log.warn({ err }, "scheduler/marketing-budget-autopilot: aprendizado pós-decisão falhou sem bloquear otimização");
+  }
+
   const [activeTenants, activeCampaigns] = await Promise.all([
     db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.status, "active")),
     db.select().from(adCampaignsTable).where(eq(adCampaignsTable.status, "ativo")).limit(1000),
@@ -146,7 +145,6 @@ export async function runMarketingBudgetAutopilot(log: Logger): Promise<void> {
       });
       if (!initial.hasSufficientEvidence || !initial.humanCeilingRespected) continue;
 
-      // 1) Libera verba real. Apenas uma doadora por ciclo mantém o comportamento previsível.
       const donor = initial.decisions
         .filter((decision) => decision.delta < 0)
         .sort((a, b) => a.delta - b.delta)[0];
@@ -163,13 +161,10 @@ export async function runMarketingBudgetAutopilot(log: Logger): Promise<void> {
         } catch (err) {
           failures++;
           log.warn({ err, tenantId: group.tenantId, mediaPlanId: group.mediaPlanId, campaignId: donor.campaignId }, "scheduler/marketing-budget-autopilot: donor adjustment failed safely");
-          // Sem redução confirmada, não tentamos financiar aumento com essa verba.
           continue;
         }
       }
 
-      // 2) Recalcula sem permitir novas retiradas. Qualquer delta positivo agora
-      // nasce apenas do saldo já desalocado no plano, nunca de verba futura.
       const funded = await buildTenantPaidMediaBudgetRedistributionPlan(group.tenantId, group.mediaPlanId, {
         maxTransferFractionPerCycle: 0,
       });
