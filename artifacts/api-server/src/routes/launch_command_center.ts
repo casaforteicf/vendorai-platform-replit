@@ -3,6 +3,9 @@ import { z } from "zod/v4";
 import { getFilteredLaunchCommandCenter } from "../services/launchCommandCenter.js";
 import { getLaunchRevenueScout } from "../services/launchRevenueScout.js";
 import { buildAssistedMarketingDraft } from "../services/launchMarketingAssistant.js";
+import { buildTenantPaidMediaBudgetRedistributionPlan } from "../services/paidMediaBudgetOptimizer.js";
+import { executePaidMediaBudgetDecision } from "../services/paidMediaBudgetExecution.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
@@ -18,6 +21,15 @@ const querySchema = z.object({
 const assistedDraftSchema = z.object({
   kind: z.enum(["creative", "landing_page", "audience", "keyword"]),
   filters: querySchema.optional(),
+});
+
+const budgetQuerySchema = z.object({
+  maxTransferFractionPerCycle: z.coerce.number().min(0).max(1).optional(),
+});
+
+const budgetApplySchema = z.object({
+  authorization: z.enum(["human-approved", "agent-autonomous"]).default("human-approved"),
+  maxTransferFractionPerCycle: z.number().min(0).max(1).optional(),
 });
 
 function canAccess(req: Express.Request, tenantId: string) {
@@ -57,6 +69,80 @@ router.get("/tenants/:tenantId/marketing/launch-command-center/revenue-scout", a
 
   const result = await getLaunchRevenueScout(tenantId, parsed.data);
   res.json(result);
+});
+
+router.get("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const mediaPlanId = String(req.params["mediaPlanId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsed = budgetQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Parâmetros inválidos", details: parsed.error.issues });
+    return;
+  }
+
+  try {
+    const plan = await buildTenantPaidMediaBudgetRedistributionPlan(tenantId, mediaPlanId, {
+      maxTransferFractionPerCycle: parsed.data.maxTransferFractionPerCycle,
+    });
+    res.json(plan);
+  } catch (err) {
+    req.log.warn({ err, tenantId, mediaPlanId }, "marketing: falha ao calcular redistribuição de orçamento");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível calcular a redistribuição." });
+  }
+});
+
+router.post("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution/:campaignId/apply", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const mediaPlanId = String(req.params["mediaPlanId"]);
+  const campaignId = String(req.params["campaignId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsed = budgetApplySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Solicitação inválida", details: parsed.error.issues });
+    return;
+  }
+
+  try {
+    const result = await executePaidMediaBudgetDecision({
+      tenantId,
+      mediaPlanId,
+      campaignId,
+      authorization: parsed.data.authorization,
+      maxTransferFractionPerCycle: parsed.data.maxTransferFractionPerCycle,
+    });
+
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId,
+      userId: (req as any).user?.sub ?? null,
+      eventType: result.applied ? "budget_redistribution_applied" : "budget_redistribution_hold",
+      severity: result.applied ? "success" : "info",
+      message: result.applied
+        ? `Redistribuição aplicada: ${result.decision.delta > 0 ? "+" : ""}R$ ${result.decision.delta.toFixed(2)} no orçamento total aprovado.`
+        : `Redistribuição não aplicada: ${result.reason}`,
+      metadata: {
+        mediaPlanId,
+        authorization: parsed.data.authorization,
+        decision: result.decision,
+        schedule: result.applied ? result.schedule : null,
+        humanCeilingRespected: result.applied ? result.humanCeilingRespected : result.plan.humanCeilingRespected,
+      },
+    });
+
+    res.json(result);
+  } catch (err) {
+    req.log.warn({ err, tenantId, mediaPlanId, campaignId }, "marketing: falha ao aplicar redistribuição de orçamento");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível aplicar a redistribuição." });
+  }
 });
 
 router.post("/tenants/:tenantId/marketing/launch-command-center/assisted-draft", async (req, res) => {
