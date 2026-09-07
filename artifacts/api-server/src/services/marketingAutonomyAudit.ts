@@ -59,14 +59,16 @@ export async function getMarketingAutonomyAudit(input: {
       inArray(adCampaignEventsTable.eventType, [...AUTONOMY_EVENT_TYPES]),
     ))
     .orderBy(desc(adCampaignEventsTable.createdAt))
-    .limit(Math.max(limit * 3, input.mediaPlanId ? 150 : limit * 3));
+    .limit(Math.max(limit * 4, input.mediaPlanId ? 200 : limit * 4));
 
   const learningBySource = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
     if (row.eventType !== "budget_redistribution_learning_evaluated") continue;
     const metadata = asRecord(row.metadata) ?? {};
     const sourceEventId = typeof metadata.sourceEventId === "string" ? metadata.sourceEventId : null;
-    if (sourceEventId) learningBySource.set(sourceEventId, metadata);
+    // rows já estão em ordem descrescente; preserve a avaliação mais recente
+    // (72h substitui visualmente a preliminar de 24h quando existir).
+    if (sourceEventId && !learningBySource.has(sourceEventId)) learningBySource.set(sourceEventId, metadata);
   }
 
   const items: MarketingAutonomyAuditItem[] = [];
