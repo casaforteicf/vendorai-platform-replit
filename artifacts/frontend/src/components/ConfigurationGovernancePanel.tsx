@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ChevronDown, ChevronUp, Network, ShieldCheck } from "lucide-react";
 
-type SectionPolicy = {
+export type ConfigurationSectionPolicy = {
   section: string;
   level: "operacional" | "administrativo" | "critico";
   who: string;
@@ -12,7 +12,7 @@ type SectionPolicy = {
   impact: string;
 };
 
-const POLICIES: SectionPolicy[] = [
+export const CONFIGURATION_SECTION_POLICIES: ConfigurationSectionPolicy[] = [
   {
     section: "Empresa",
     level: "operacional",
@@ -71,13 +71,13 @@ const POLICIES: SectionPolicy[] = [
   },
 ];
 
-const LEVEL_LABELS = {
+export const CONFIGURATION_LEVEL_LABELS = {
   operacional: "Operacional",
   administrativo: "Administrativo",
   critico: "Crítico",
 } as const;
 
-const LEVEL_CLASSES = {
+export const CONFIGURATION_LEVEL_CLASSES = {
   operacional: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   administrativo: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   critico: "border-destructive/40 bg-destructive/10 text-destructive",
@@ -87,7 +87,7 @@ export function ConfigurationGovernancePanel() {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
   const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin" || user?.userFunction === "administrador";
-  const criticalCount = useMemo(() => POLICIES.filter((item) => item.level === "critico").length, []);
+  const criticalCount = useMemo(() => CONFIGURATION_SECTION_POLICIES.filter((item) => item.level === "critico").length, []);
 
   if (!user?.tenantId) return null;
 
@@ -100,7 +100,7 @@ export function ConfigurationGovernancePanel() {
             <div className="flex flex-wrap items-center gap-2">
               <strong className="text-sm">Governança por seção</strong>
               <Badge variant="secondary" className="text-[10px]">8 áreas</Badge>
-              <Badge variant="outline" className={`text-[10px] ${LEVEL_CLASSES.critico}`}>
+              <Badge variant="outline" className={`text-[10px] ${CONFIGURATION_LEVEL_CLASSES.critico}`}>
                 <AlertTriangle className="mr-1 h-3 w-3" />{criticalCount} críticas
               </Badge>
             </div>
@@ -124,12 +124,12 @@ export function ConfigurationGovernancePanel() {
           )}
 
           <div className="grid gap-2 lg:grid-cols-2">
-            {POLICIES.map((policy) => (
+            {CONFIGURATION_SECTION_POLICIES.map((policy) => (
               <article key={policy.section} className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-semibold">{policy.section}</div>
-                  <Badge variant="outline" className={`text-[10px] ${LEVEL_CLASSES[policy.level]}`}>
-                    {LEVEL_LABELS[policy.level]}
+                  <Badge variant="outline" className={`text-[10px] ${CONFIGURATION_LEVEL_CLASSES[policy.level]}`}>
+                    {CONFIGURATION_LEVEL_LABELS[policy.level]}
                   </Badge>
                 </div>
                 <div className="mt-2 text-[11px] text-muted-foreground">
