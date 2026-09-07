@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { logger } from "../lib/logger.js";
-import { authenticate } from "../middlewares/auth.js";
+import { authenticate, requireRole } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
@@ -16,6 +16,7 @@ import {
 import { configureGoogleDataManagerActions } from "../services/google-data-manager-config.js";
 
 const router: IRouter = Router();
+const requireIntegrationAdmin = requireRole("tenant_admin", "super_admin");
 
 function getAppUrl(): string {
   const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
@@ -55,7 +56,7 @@ async function auditGoogleAdsChange(
   if (!audited) logger.warn({ tenantId }, "configuracoes: falha ao auditar Google Ads");
 }
 
-router.get("/auth/google-ads", authenticate, async (req, res) => {
+router.get("/auth/google-ads", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const userId = req.user?.sub;
     const tenantId = req.user?.tenantId;
@@ -200,7 +201,7 @@ router.get("/tenants/:tenantId/google-ads-connection", authenticate, async (req,
   }
 });
 
-router.put("/tenants/:tenantId/google-ads-connection/data-manager", authenticate, async (req, res) => {
+router.put("/tenants/:tenantId/google-ads-connection/data-manager", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) {
@@ -259,7 +260,7 @@ router.get("/tenants/:tenantId/google-ads-connection/accounts", authenticate, as
   }
 });
 
-router.post("/tenants/:tenantId/google-ads-connection/select-account", authenticate, async (req, res) => {
+router.post("/tenants/:tenantId/google-ads-connection/select-account", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) {
@@ -287,7 +288,7 @@ router.post("/tenants/:tenantId/google-ads-connection/select-account", authentic
   }
 });
 
-router.post("/tenants/:tenantId/google-ads-connection/refresh", authenticate, async (req, res) => {
+router.post("/tenants/:tenantId/google-ads-connection/refresh", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) {
@@ -313,7 +314,7 @@ router.post("/tenants/:tenantId/google-ads-connection/refresh", authenticate, as
   }
 });
 
-router.delete("/tenants/:tenantId/google-ads-connection", authenticate, async (req, res) => {
+router.delete("/tenants/:tenantId/google-ads-connection", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) {
