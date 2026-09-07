@@ -21,6 +21,7 @@ import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/
 import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanAutoProductionBridge";
 import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
 import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaPlanPreparationActionsBridge";
+import { MediaPlanLifecycleSummary } from "./components/marketing/MediaPlanLifecycleSummary";
 import { MediaPlanPerformanceCommandCenter } from "./components/marketing/MediaPlanPerformanceCommandCenter";
 import { MediaPlanBudgetExecutionBridge } from "./components/marketing/MediaPlanBudgetExecutionBridge";
 import { MarketingAutonomyControl } from "./components/marketing/MarketingAutonomyControl";
@@ -92,6 +93,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaPlanAutoProductionBridge />
           <MediaPlanPublicationModeControl />
           <MediaPlanPreparationActionsBridge />
+          <MediaPlanLifecycleSummary />
           <MediaPlanPerformanceCommandCenter />
           <MediaPlanBudgetExecutionBridge />
           <MarketingAutonomyControl />
