@@ -1,0 +1,23 @@
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY artifacts ./artifacts
+COPY lib ./lib
+COPY scripts ./scripts
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @workspace/frontend run build
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends zip \
+  && rm -rf /var/lib/apt/lists/* \
+  && cd /app/artifacts/frontend/dist/public \
+  && zip -r /app/vendorai-cloudflare.zip .
+
+FROM nginx:alpine
+COPY --from=build /app/artifacts/frontend/dist/public /usr/share/nginx/html
+COPY --from=build /app/vendorai-cloudflare.zip /usr/share/nginx/html/vendorai-cloudflare.zip
+EXPOSE 80
