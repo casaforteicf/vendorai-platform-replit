@@ -1,0 +1,110 @@
+.marketing-plan-responsive {
+  min-width: 0;
+  padding-bottom: 9rem;
+}
+
+.marketing-plan-responsive * {
+  min-width: 0;
+}
+
+.marketing-plan-responsive [class*="overflow-x"] {
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  .marketing-plan-responsive {
+    width: 100%;
+    overflow-x: clip;
+  }
+
+  .marketing-plan-responsive .vendor-page-title {
+    font-size: 1.15rem;
+    line-height: 1.4;
+  }
+
+  .marketing-plan-responsive .grid.grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .marketing-plan-responsive .flex.items-start.gap-3 {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .marketing-plan-responsive .flex.items-start.gap-3 > .text-center.shrink-0.w-12 {
+    width: auto;
+    display: flex;
+    align-items: baseline;
+    gap: .4rem;
+    text-align: left;
+    padding-top: 0;
+  }
+
+  .marketing-plan-responsive .flex.items-start.gap-3 > .flex-1.min-w-0 {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .marketing-plan-responsive .shrink-0.flex.flex-col.items-end.gap-2 {
+    width: 100%;
+    align-items: stretch;
+    gap: .5rem;
+    padding-top: .25rem;
+    border-top: 1px solid hsl(var(--border));
+  }
+
+  .marketing-plan-responsive .shrink-0.flex.flex-col.items-end.gap-2 > [data-slot="badge"],
+  .marketing-plan-responsive .shrink-0.flex.flex-col.items-end.gap-2 > span {
+    align-self: flex-start;
+  }
+
+  .marketing-plan-responsive .shrink-0.flex.flex-col.items-end.gap-2 > .flex {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .marketing-plan-responsive .shrink-0.flex.flex-col.items-end.gap-2 button {
+    flex: 1 1 auto;
+    min-width: max-content;
+  }
+
+  .marketing-plan-responsive [class*="Badge"],
+  .marketing-plan-responsive .rounded-full,
+  .marketing-plan-responsive [class*="badge"] {
+    max-width: 100%;
+  }
+
+  .marketing-plan-responsive p,
+  .marketing-plan-responsive span,
+  .marketing-plan-responsive button,
+  .marketing-plan-responsive a {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .marketing-plan-responsive .line-clamp-1,
+  .marketing-plan-responsive .line-clamp-2 {
+    white-space: normal;
+  }
+
+  .marketing-plan-responsive .flex.items-center.justify-between.gap-3,
+  .marketing-plan-responsive .flex.items-center.justify-between.gap-2,
+  .marketing-plan-responsive .flex.items-start.justify-between.gap-3 {
+    align-items: flex-start;
+  }
+
+  .marketing-plan-responsive .flex.items-center.justify-between.gap-3 > :first-child,
+  .marketing-plan-responsive .flex.items-start.justify-between.gap-3 > :first-child {
+    flex: 1 1 100%;
+  }
+
+  .marketing-plan-responsive button.text-left {
+    width: 100%;
+  }
+
+  .marketing-plan-responsive input,
+  .marketing-plan-responsive select,
+  .marketing-plan-responsive textarea {
+    max-width: 100%;
+  }
+}
