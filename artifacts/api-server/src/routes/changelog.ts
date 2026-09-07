@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, isNotNull, gt, count } from "drizzle-orm";
+import { eq, and, desc, isNotNull, gt, gte, lte, count } from "drizzle-orm";
 import {
   db,
   changelogEntriesTable,
@@ -25,6 +25,12 @@ function automaticEntries() {
 
 function canAccessTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+function parseOptionalDate(value: unknown): Date | null | "invalid" {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "invalid" : date;
 }
 
 router.get("/changelog", async (_req, res) => {
@@ -77,30 +83,71 @@ router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin"
   const limit = Number.isFinite(requestedLimit)
     ? Math.max(1, Math.min(100, Math.trunc(requestedLimit)))
     : 50;
+  const requestedPage = Number(req.query.page);
+  const page = Number.isFinite(requestedPage)
+    ? Math.max(1, Math.trunc(requestedPage))
+    : 1;
+  const offset = (page - 1) * limit;
 
-  const items = await db.select({
-    id: erpAuditoriaTable.id,
-    usuarioId: erpAuditoriaTable.usuarioId,
-    actorName: usersTable.name,
-    actorEmail: usersTable.email,
-    acao: erpAuditoriaTable.acao,
-    entidade: erpAuditoriaTable.entidade,
-    entidadeId: erpAuditoriaTable.entidadeId,
-    antes: erpAuditoriaTable.antes,
-    depois: erpAuditoriaTable.depois,
-    ip: erpAuditoriaTable.ip,
-    createdAt: erpAuditoriaTable.createdAt,
-  })
-    .from(erpAuditoriaTable)
-    .leftJoin(usersTable, eq(usersTable.id, erpAuditoriaTable.usuarioId))
-    .where(and(
-      eq(erpAuditoriaTable.tenantId, tenantId),
-      eq(erpAuditoriaTable.modulo, "configuracoes"),
-    ))
-    .orderBy(desc(erpAuditoriaTable.createdAt))
-    .limit(limit);
+  const action = typeof req.query.action === "string" && req.query.action.trim()
+    ? req.query.action.trim()
+    : null;
+  const entity = typeof req.query.entity === "string" && req.query.entity.trim()
+    ? req.query.entity.trim()
+    : null;
+  const from = parseOptionalDate(req.query.from);
+  const to = parseOptionalDate(req.query.to);
+  if (from === "invalid" || to === "invalid") {
+    return res.status(400).json({ error: "Invalid date filter" });
+  }
+  if (from && to && from > to) {
+    return res.status(400).json({ error: "Invalid date range" });
+  }
 
-  return res.json({ items, limit });
+  const filters = [
+    eq(erpAuditoriaTable.tenantId, tenantId),
+    eq(erpAuditoriaTable.modulo, "configuracoes"),
+  ];
+  if (action) filters.push(eq(erpAuditoriaTable.acao, action));
+  if (entity) filters.push(eq(erpAuditoriaTable.entidade, entity));
+  if (from) filters.push(gte(erpAuditoriaTable.createdAt, from));
+  if (to) filters.push(lte(erpAuditoriaTable.createdAt, to));
+  const where = and(...filters);
+
+  const [items, totalRows] = await Promise.all([
+    db.select({
+      id: erpAuditoriaTable.id,
+      usuarioId: erpAuditoriaTable.usuarioId,
+      actorName: usersTable.name,
+      actorEmail: usersTable.email,
+      acao: erpAuditoriaTable.acao,
+      entidade: erpAuditoriaTable.entidade,
+      entidadeId: erpAuditoriaTable.entidadeId,
+      antes: erpAuditoriaTable.antes,
+      depois: erpAuditoriaTable.depois,
+      ip: erpAuditoriaTable.ip,
+      createdAt: erpAuditoriaTable.createdAt,
+    })
+      .from(erpAuditoriaTable)
+      .leftJoin(usersTable, eq(usersTable.id, erpAuditoriaTable.usuarioId))
+      .where(where)
+      .orderBy(desc(erpAuditoriaTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() })
+      .from(erpAuditoriaTable)
+      .where(where),
+  ]);
+
+  const total = totalRows[0]?.total ?? 0;
+  return res.json({
+    items,
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    filters: { action, entity, from: from?.toISOString() ?? null, to: to?.toISOString() ?? null },
+  });
 });
 
 router.get("/admin/changelog", requireRole("super_admin"), async (_req, res) => {
