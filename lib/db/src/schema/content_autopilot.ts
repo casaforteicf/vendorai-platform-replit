@@ -10,6 +10,13 @@ export interface ContentAutopilotBrandTone {
   exemplos?: string[];
 }
 
+export type MarketingAutonomyLevel = 0 | 1 | 2 | 3 | 4;
+export interface MarketingAutonomyPolicy {
+  level: MarketingAutonomyLevel;
+  maxTransferFractionPerCycle: number;
+  updatedAt?: string;
+}
+
 export const CONTENT_AUTOPILOT_CANAIS = ["wordpress", "site_proprio", "praca_ai"] as const;
 export type ContentAutopilotCanal = (typeof CONTENT_AUTOPILOT_CANAIS)[number];
 
@@ -30,6 +37,7 @@ export const contentAutopilotConfigTable = pgTable("content_autopilot_config", {
   tetoGastoMensal: numeric("teto_gasto_mensal", { precision: 10, scale: 2 }),
   gastoAcumulado: numeric("gasto_acumulado", { precision: 10, scale: 4 }).notNull().default("0"),
   automationMode: text("automation_mode").$type<ContentAutopilotAutomationMode>().notNull().default("suggestion"),
+  marketingAutonomyPolicy: jsonb("marketing_autonomy_policy").$type<MarketingAutonomyPolicy>().notNull().default({ level: 0, maxTransferFractionPerCycle: 0.2 }),
   ativo: boolean("ativo").notNull().default(false),
   ultimaAnaliseSiteEm: timestamp("ultima_analise_site_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
