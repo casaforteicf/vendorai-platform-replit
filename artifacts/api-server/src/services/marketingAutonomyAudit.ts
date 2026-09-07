@@ -7,6 +7,7 @@ const AUTONOMY_EVENT_TYPES = [
   "budget_redistribution_auto_failed",
   "budget_redistribution_applied",
   "budget_redistribution_hold",
+  "budget_redistribution_learning_evaluated",
 ] as const;
 
 export type MarketingAutonomyAuditItem = {
@@ -24,6 +25,7 @@ export type MarketingAutonomyAuditItem = {
   humanCeilingRespected: boolean | null;
   decision: Record<string, unknown> | null;
   schedule: Record<string, unknown> | null;
+  learning: Record<string, unknown> | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -57,10 +59,19 @@ export async function getMarketingAutonomyAudit(input: {
       inArray(adCampaignEventsTable.eventType, [...AUTONOMY_EVENT_TYPES]),
     ))
     .orderBy(desc(adCampaignEventsTable.createdAt))
-    .limit(Math.max(limit, input.mediaPlanId ? 100 : limit));
+    .limit(Math.max(limit * 3, input.mediaPlanId ? 150 : limit * 3));
+
+  const learningBySource = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    if (row.eventType !== "budget_redistribution_learning_evaluated") continue;
+    const metadata = asRecord(row.metadata) ?? {};
+    const sourceEventId = typeof metadata.sourceEventId === "string" ? metadata.sourceEventId : null;
+    if (sourceEventId) learningBySource.set(sourceEventId, metadata);
+  }
 
   const items: MarketingAutonomyAuditItem[] = [];
   for (const row of rows) {
+    if (row.eventType === "budget_redistribution_learning_evaluated") continue;
     const metadata = asRecord(row.metadata) ?? {};
     const mediaPlanId = typeof metadata.mediaPlanId === "string" ? metadata.mediaPlanId : null;
     if (input.mediaPlanId && mediaPlanId !== input.mediaPlanId) continue;
@@ -81,6 +92,7 @@ export async function getMarketingAutonomyAudit(input: {
       humanCeilingRespected: typeof metadata.humanCeilingRespected === "boolean" ? metadata.humanCeilingRespected : null,
       decision: asRecord(metadata.decision),
       schedule: asRecord(metadata.schedule),
+      learning: learningBySource.get(row.id) ?? null,
     });
     if (items.length >= limit) break;
   }
@@ -88,10 +100,14 @@ export async function getMarketingAutonomyAudit(input: {
   const applied = items.filter((item) => item.eventType.includes("applied")).length;
   const failed = items.filter((item) => item.eventType.includes("failed")).length;
   const holds = items.filter((item) => item.eventType.includes("hold")).length;
+  const improved = items.filter((item) => item.learning?.verdict === "melhorou").length;
+  const worsened = items.filter((item) => item.learning?.verdict === "piorou").length;
+  const inconclusive = items.filter((item) => item.learning?.verdict === "inconclusivo").length;
+  const awaitingLearning = items.filter((item) => item.eventType.includes("applied") && !item.learning).length;
 
   return {
     generatedAt: new Date().toISOString(),
-    summary: { total: items.length, applied, failed, holds },
+    summary: { total: items.length, applied, failed, holds, improved, worsened, inconclusive, awaitingLearning },
     items,
   };
 }
