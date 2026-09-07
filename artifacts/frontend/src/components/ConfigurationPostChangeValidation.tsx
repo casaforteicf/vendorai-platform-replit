@@ -22,6 +22,17 @@ type ValidationResult = {
   provider?: string;
 };
 
+type ConfigurationHealth = {
+  overall: "ok" | "warning" | "failed";
+  checks: {
+    asaas: { status: string; message: string; configured: boolean; reachable: boolean | null };
+    zapsign: { status: string; message: string; configured: boolean; reachable: boolean | null };
+    stock: { status: string; message: string; configured: boolean; ready: boolean };
+    documents: { status: string; message: string; contractRequired: boolean; templateConfigured: boolean };
+    commercial: { status: string; message: string; closureType: string };
+  };
+};
+
 const STATUS_STYLE: Record<ValidationStatus, string> = {
   idle: "border-muted bg-muted/20 text-muted-foreground",
   validating: "border-blue-500/30 bg-blue-500/5 text-blue-700 dark:text-blue-300",
@@ -47,6 +58,7 @@ function providerFromAction(label: string) {
   if (/you\s*tube/.test(normalized)) return "youtube";
   if (/linked\s*in/.test(normalized)) return "linkedin";
   if (/tik\s*tok/.test(normalized)) return "tiktok";
+  if (/asaas|zapsign|estoque|webhook|contrato|documento|proposta|fechamento|fatur|cobran|pagamento/.test(normalized)) return "configuration_health";
   return null;
 }
 
@@ -61,6 +73,7 @@ function providerLabel(provider: string) {
     youtube: "YouTube",
     linkedin: "LinkedIn",
     tiktok: "TikTok",
+    configuration_health: "Configuração crítica",
   } as Record<string, string>)[provider] ?? provider;
 }
 
@@ -103,6 +116,60 @@ async function readConnection(tenantId: string, provider: string): Promise<Recor
   }
 
   throw new Error("Provider sem teste automático");
+}
+
+async function validateConfigurationHealth(tenantId: string, label: string, section?: string): Promise<ValidationResult> {
+  const health = await fetchJson(`/api/tenants/${tenantId}/configuration-health`) as ConfigurationHealth;
+  const normalized = label.toLowerCase();
+
+  const pick = (() => {
+    if (/asaas/.test(normalized)) return { name: "Asaas", ...health.checks.asaas };
+    if (/zapsign/.test(normalized)) return { name: "ZapSign", ...health.checks.zapsign };
+    if (/estoque|webhook/.test(normalized)) return { name: "Estoque / Webhook", ...health.checks.stock };
+    if (/contrato|documento|proposta/.test(normalized) || section === "Documentos") return { name: "Documentos", ...health.checks.documents };
+    if (/fechamento|comercial/.test(normalized)) return { name: "Comercial", ...health.checks.commercial };
+    return null;
+  })();
+
+  if (pick) {
+    const nextStatus: ValidationResult["status"] = pick.status === "ok" ? "ok" : pick.status === "failed" ? "failed" : "warning";
+    return {
+      status: nextStatus,
+      title: `${pick.name}: ${nextStatus === "ok" ? "configuração validada" : nextStatus === "failed" ? "correção necessária" : "revisão recomendada"}`,
+      message: pick.message,
+      provider: pick.name,
+    };
+  }
+
+  const problems = Object.entries(health.checks)
+    .filter(([, value]) => value.status === "failed")
+    .map(([key]) => key);
+  const warnings = Object.entries(health.checks)
+    .filter(([, value]) => value.status === "warning" || value.status === "not_configured")
+    .map(([key]) => key);
+
+  if (health.overall === "failed") {
+    return {
+      status: "failed",
+      title: "A configuração crítica ainda possui pendências",
+      message: `Falhas detectadas em: ${problems.join(", ") || "configuração crítica"}. Corrija antes de considerar a mudança concluída.`,
+      provider: "Saúde da configuração",
+    };
+  }
+  if (health.overall === "warning") {
+    return {
+      status: "warning",
+      title: "Configuração salva com pontos de atenção",
+      message: `Itens opcionais ou incompletos: ${warnings.join(", ") || "configuração crítica"}. O fluxo principal foi preservado, mas vale revisar esses pontos.`,
+      provider: "Saúde da configuração",
+    };
+  }
+  return {
+    status: "ok",
+    title: "Configuração crítica validada",
+    message: "Pagamentos, documentos, regra comercial e integração de estoque estão coerentes com a configuração persistida.",
+    provider: "Saúde da configuração",
+  };
 }
 
 async function validateIntegration(
@@ -208,12 +275,13 @@ export function ConfigurationPostChangeValidation() {
     const provider = providerFromAction(label);
     const tenantId = user?.tenantId;
     const changeKind = nextDetail.changeKind ?? "editar";
+    const shouldUseHealth = provider === "configuration_health" || (!provider && ["Documentos", "Faturamento", "Integrações"].includes(nextDetail.section ?? ""));
 
-    if (!tenantId || !provider) {
+    if (!tenantId) {
       const manualResult: ValidationResult = {
         status: "manual",
-        title: "Alteração concluída; validação funcional necessária",
-        message: "Esta área ainda não possui teste automático específico. Confira o módulo dependente e o Histórico de Configurações antes de encerrar a mudança.",
+        title: "Alteração concluída; tenant não identificado para validação",
+        message: "A mudança foi executada, mas não foi possível reler o estado do tenant nesta sessão.",
       };
       setStatus(manualResult.status);
       setResult(manualResult);
@@ -222,7 +290,15 @@ export function ConfigurationPostChangeValidation() {
     }
 
     try {
-      const nextResult = await validateIntegration(tenantId, provider, changeKind);
+      const nextResult = shouldUseHealth
+        ? await validateConfigurationHealth(tenantId, label, nextDetail.section)
+        : provider
+          ? await validateIntegration(tenantId, provider, changeKind)
+          : {
+              status: "manual" as const,
+              title: "Alteração concluída; validação funcional necessária",
+              message: "Esta ação não possui teste automático específico. Confira o módulo dependente e o Histórico de Configurações.",
+            };
       setStatus(nextResult.status);
       setResult(nextResult);
     } catch (error) {

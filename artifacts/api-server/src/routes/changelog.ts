@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, isNotNull, gt, gte, lte, count } from "drizzle-orm";
+import { eq, and, desc, isNotNull, gt, gte, lte, count, sql } from "drizzle-orm";
 import {
   db,
   changelogEntriesTable,
@@ -14,6 +14,7 @@ import {
 import { requireRole } from "../middlewares/auth.js";
 import { automaticChangelogEntries } from "../data/automatic-changelog.js";
 import { writeConfigurationAudit } from "../lib/configuration-audit.js";
+import { getTenantAsaasApiKey } from "../lib/asaas.js";
 
 const router: IRouter = Router();
 
@@ -67,6 +68,55 @@ function safeBusinessProfileRollbackInput(snapshot: unknown) {
   return Object.keys(selected).length > 0 ? selected : null;
 }
 
+function validHttpUrl(value: string | null | undefined) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+type ExternalHealth = {
+  configured: boolean;
+  reachable: boolean | null;
+  status: "ok" | "warning" | "failed" | "not_configured";
+  message: string;
+};
+
+async function checkAsaasHealth(tenantId: string, configured: boolean): Promise<ExternalHealth> {
+  if (!configured) return { configured: false, reachable: null, status: "not_configured", message: "Asaas não configurado." };
+  try {
+    const apiKey = await getTenantAsaasApiKey(tenantId);
+    if (!apiKey) return { configured: true, reachable: false, status: "failed", message: "Chave Asaas salva, mas não pôde ser descriptografada." };
+    const response = await fetch("https://api.asaas.com/api/v3/myAccount", {
+      headers: { access_token: apiKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    return response.ok
+      ? { configured: true, reachable: true, status: "ok", message: "Asaas autenticado e respondendo." }
+      : { configured: true, reachable: false, status: "failed", message: `Asaas respondeu HTTP ${response.status}.` };
+  } catch {
+    return { configured: true, reachable: false, status: "failed", message: "Não foi possível validar a conexão com Asaas." };
+  }
+}
+
+async function checkZapSignHealth(apiKey: string | null | undefined): Promise<ExternalHealth> {
+  if (!apiKey) return { configured: false, reachable: null, status: "not_configured", message: "ZapSign não configurado." };
+  try {
+    const response = await fetch("https://api.zapsign.com.br/api/v1/users/me/", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(6000),
+    });
+    return response.ok
+      ? { configured: true, reachable: true, status: "ok", message: "ZapSign autenticado e respondendo." }
+      : { configured: true, reachable: false, status: "failed", message: `ZapSign respondeu HTTP ${response.status}.` };
+  } catch {
+    return { configured: true, reachable: false, status: "failed", message: "Não foi possível validar a conexão com ZapSign." };
+  }
+}
+
 router.get("/changelog", async (_req, res) => {
   const rows = await db.select()
     .from(changelogEntriesTable)
@@ -106,6 +156,90 @@ router.post("/changelog/marcar-lido", async (req, res) => {
 
   await db.update(usersTable).set({ changelogLidoEm: new Date() }).where(eq(usersTable.id, userId));
   return res.json({ ok: true });
+});
+
+router.get("/tenants/:tenantId/configuration-health", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  const tenantId = String(req.params.tenantId || "");
+  if (!tenantId || !canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tenant] = await db.select({
+    asaasApiKey: tenantsTable.asaasApiKey,
+    zapsignApiKey: tenantsTable.zapsignApiKey,
+    webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+    apiKeyEstoque: tenantsTable.apiKeyEstoque,
+    integrationType: tenantsTable.integrationType,
+    tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+
+  const contractResult = await db.execute(
+    sql`SELECT contract_template_html, contract_template_name, contract_settings FROM tenants WHERE id = ${tenantId}`,
+  );
+  const contractRow = (contractResult as any).rows?.[0] ?? (contractResult as any)[0] ?? null;
+  const contractTemplateConfigured = Boolean(contractRow?.contract_template_html || contractRow?.contract_template_name);
+  const contractSettingsConfigured = Boolean(contractRow?.contract_settings && Object.keys(contractRow.contract_settings).length > 0);
+  const closureType = tenant.tipoFechamentoDefault ?? "pedido";
+  const contractRequired = closureType === "contrato" || closureType === "pedido_e_contrato";
+
+  const stockUrlValid = validHttpUrl(tenant.webhookEstoqueUrl);
+  const stockConfigured = Boolean(tenant.webhookEstoqueUrl || tenant.apiKeyEstoque);
+  const stockReady = stockConfigured && stockUrlValid;
+
+  const [asaas, zapsign] = await Promise.all([
+    checkAsaasHealth(tenantId, Boolean(tenant.asaasApiKey)),
+    checkZapSignHealth(tenant.zapsignApiKey),
+  ]);
+
+  const documentsStatus = contractRequired && !contractTemplateConfigured ? "failed" : contractTemplateConfigured ? "ok" : "warning";
+  const commercialStatus = ["pedido", "contrato", "pedido_e_contrato"].includes(closureType) ? "ok" : "failed";
+  const stockStatus = !stockConfigured ? "warning" : stockReady ? "ok" : "failed";
+
+  const checks = {
+    asaas,
+    zapsign,
+    stock: {
+      configured: stockConfigured,
+      ready: stockReady,
+      status: stockStatus,
+      integrationType: tenant.integrationType ?? "api",
+      hasWebhookUrl: Boolean(tenant.webhookEstoqueUrl),
+      webhookUrlValid: stockUrlValid,
+      hasApiKey: Boolean(tenant.apiKeyEstoque),
+      message: !stockConfigured
+        ? "Integração de estoque não configurada."
+        : stockReady
+          ? "Webhook/API de estoque possui URL válida e configuração persistida."
+          : "Integração de estoque está incompleta ou com URL inválida.",
+    },
+    documents: {
+      status: documentsStatus,
+      contractRequired,
+      templateConfigured: contractTemplateConfigured,
+      settingsConfigured: contractSettingsConfigured,
+      message: contractRequired && !contractTemplateConfigured
+        ? "O tipo de fechamento exige contrato, mas não há modelo de contrato configurado."
+        : contractTemplateConfigured
+          ? "Modelo de contrato disponível para o fluxo documental."
+          : "Contrato não é obrigatório no fechamento atual; modelo continua opcional.",
+    },
+    commercial: {
+      status: commercialStatus,
+      closureType,
+      message: commercialStatus === "ok"
+        ? `Regra de fechamento ativa: ${closureType}.`
+        : "Tipo de fechamento inválido; revise a configuração comercial.",
+    },
+  };
+
+  const statuses = [asaas.status, zapsign.status, stockStatus, documentsStatus, commercialStatus];
+  const overall = statuses.includes("failed") ? "failed" : statuses.includes("warning") || statuses.includes("not_configured") ? "warning" : "ok";
+
+  return res.json({
+    overall,
+    checkedAt: new Date().toISOString(),
+    checks,
+  });
 });
 
 router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin", "tenant_admin"), async (req, res) => {
