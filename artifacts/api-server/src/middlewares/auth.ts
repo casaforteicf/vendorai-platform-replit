@@ -26,6 +26,53 @@ function isTrustedInternalActor(user?: JwtPayload): boolean {
   return user?.actorType === "ai" || user?.actorType === "system";
 }
 
+const CRITICAL_CONFIGURATION_OAUTH_STARTS = new Set([
+  "/auth/whatsapp",
+  "/auth/instagram",
+  "/auth/google-ads",
+  "/auth/search-console",
+  "/auth/meta-ads",
+  "/auth/youtube",
+  "/auth/linkedin",
+  "/auth/tiktok",
+]);
+
+const CRITICAL_TENANT_INTEGRATION_KEYS = new Set([
+  "asaasApiKey",
+  "zapsignApiKey",
+  "webhookEstoqueUrl",
+  "apiKeyEstoque",
+  "integrationType",
+  "whatsappProvider",
+  "instagramProvider",
+  "googleAdsConversionId",
+  "metaPixelId",
+  "linkedinInsightTagId",
+  "tiktokPixelId",
+]);
+
+function isConfigurationAdmin(user?: JwtPayload): boolean {
+  return user?.platformRole === "super_admin"
+    || user?.platformRole === "tenant_admin"
+    || user?.userFunction === "administrador";
+}
+
+function isCriticalConfigurationMutation(req: Request): boolean {
+  if (req.method === "GET" && CRITICAL_CONFIGURATION_OAUTH_STARTS.has(req.path)) return true;
+  if (req.method === "GET" && /^\/agendas\/[^/]+\/google-auth-url$/.test(req.path)) return true;
+  if (req.method === "POST" && /^\/agendas\/[^/]+\/google\/disconnect$/.test(req.path)) return true;
+
+  if (req.method === "PATCH" && /^\/tenants\/[^/]+$/.test(req.path)) {
+    const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
+    if (Object.keys(body).some((key) => CRITICAL_TENANT_INTEGRATION_KEYS.has(key))) return true;
+  }
+
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
+  if (/^\/tenants\/[^/]+\/social-connections\/(?:youtube|linkedin|tiktok)\/test$/.test(req.path)) return false;
+
+  return /^\/tenants\/[^/]+\/(?:whatsapp-connections\/[^/]+|whatsapp-connection(?:\/refresh)?|instagram-connection(?:\/refresh)?|google-ads-connection(?:\/(?:select-account|refresh|data-manager))?|search-console-connection(?:\/(?:verify|refresh))?|meta-ads-connection(?:\/(?:select-account|refresh))?|social-connections\/(?:youtube|linkedin|tiktok))$/.test(req.path);
+}
+
 export const authenticate: RequestHandler = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   if (!authHeader?.startsWith("Bearer ")) {
@@ -36,6 +83,13 @@ export const authenticate: RequestHandler = (req, res, next) => {
   const token = authHeader.slice(7);
   try {
     req.user = verifyToken(token);
+    if (isCriticalConfigurationMutation(req) && !isConfigurationAdmin(req.user)) {
+      res.status(403).json({
+        error: "CONFIGURATION_ADMIN_REQUIRED",
+        message: "Esta alteração crítica de Configurações exige perfil administrador.",
+      });
+      return;
+    }
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
