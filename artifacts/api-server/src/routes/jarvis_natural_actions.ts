@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { db, agentConfigsTable, agentTasksTable, jarvisCasesTable } from "@workspace/db";
 import { executeTaskAction } from "./agent_tasks.js";
 import { resolveJarvisNaturalAction } from "../services/jarvis-natural-action-intent.js";
+import { loadJarvisWatchlistIntelligence } from "../services/jarvis-watchlist-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -158,6 +159,34 @@ router.patch("/jarvis/cases/:id/outcome", async (req, res) => {
 
   if (!updated) return res.status(404).json({ error: "Caso Vendor não encontrado" });
   return res.json(updated);
+});
+
+// Watchlist automática: deriva o que merece acompanhamento das fontes oficiais já configuradas.
+router.get("/jarvis/watchlist", async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const intelligence = await loadJarvisWatchlistIntelligence(tenantId);
+  return res.json({
+    generatedAt: intelligence.generatedAt,
+    windowDays: intelligence.windowDays,
+    summary: intelligence.summary,
+    items: intelligence.watchlist,
+  });
+});
+
+// Pontos cegos: só aponta lacunas verificáveis de configuração/cobertura; não inventa ameaças.
+router.get("/jarvis/blind-spots", async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const intelligence = await loadJarvisWatchlistIntelligence(tenantId);
+  return res.json({
+    generatedAt: intelligence.generatedAt,
+    windowDays: intelligence.windowDays,
+    summary: intelligence.summary,
+    blindSpots: intelligence.blindSpots,
+  });
 });
 
 router.post("/support/chat", async (req, res, next) => {

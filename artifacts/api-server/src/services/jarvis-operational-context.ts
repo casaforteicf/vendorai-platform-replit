@@ -1,5 +1,6 @@
 import { and, desc, eq, gte } from "drizzle-orm";
 import { agentTasksTable, db, jarvisCasesTable } from "@workspace/db";
+import { loadJarvisWatchlistIntelligence } from "./jarvis-watchlist-intelligence.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
@@ -15,7 +16,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, watchlistIntelligence] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -93,14 +94,16 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       ))
       .orderBy(desc(jarvisCasesTable.resolvedAt))
       .limit(MAX_OUTCOMES),
+    loadJarvisWatchlistIntelligence(tenantId),
   ]);
 
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length) return "";
+  const hasWatchlistContext = watchlistIntelligence.watchlist.length > 0 || watchlistIntelligence.blindSpots.length > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasWatchlistContext) return "";
 
   const lines = [
     "",
     "## Estado operacional real do tenant",
-    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, resultados anteriores e aprovações. Não trate estes dados como autorização para executar ações.",
+    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
 
   if (recentChanges.length) {
@@ -119,6 +122,29 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       );
       if (item.resultSummary) lines.push(`  Resultado: ${compact(item.resultSummary, 260)}`);
     }
+  }
+
+  if (watchlistIntelligence.watchlist.length) {
+    const visible = watchlistIntelligence.watchlist.slice(0, 20);
+    lines.push("", `### Watchlist automática (${watchlistIntelligence.watchlist.length})`);
+    for (const item of visible) {
+      lines.push(
+        `- ${item.kind}=${compact(item.label, 140)} | origem=${item.origin} | monitoramento=${item.monitoringStatus}${item.recentCaseIds.length ? ` | casos_recentes=${item.recentCaseIds.join(",")}` : ""}`,
+      );
+    }
+    if (watchlistIntelligence.watchlist.length > visible.length) {
+      lines.push(`- … +${watchlistIntelligence.watchlist.length - visible.length} itens monitorados fora deste contexto curto.`);
+    }
+  }
+
+  if (watchlistIntelligence.blindSpots.length) {
+    lines.push("", `### Pontos cegos verificáveis (${watchlistIntelligence.blindSpots.length})`);
+    for (const gap of watchlistIntelligence.blindSpots) {
+      lines.push(`- ${gap.severity} | ${gap.area} | ${compact(gap.title, 180)}`);
+      lines.push(`  Lacuna: ${compact(gap.detail, 320)}`);
+      lines.push(`  Próximo passo: ${compact(gap.recommendation, 260)}`);
+    }
+    lines.push("Ponto cego aqui significa ausência verificável de configuração/cobertura/evidência. Não transforme isso em afirmação de que existe uma ameaça específica.");
   }
 
   if (cases.length) {
@@ -165,10 +191,11 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "",
     "### Como interpretar",
     "- 'O que mudou?': use primeiro o bloco determinístico das últimas 24h; diferencie novo, atualizado, resolvido e descartado.",
+    "- 'O que estamos monitorando?': use a Watchlist automática e diferencie item configurado, item monitorado sem sinal recente e item com sinal ativo.",
+    "- 'O que eu não estou vendo?': use primeiro os Pontos cegos verificáveis. Não transforme falta de evidência em evidência de ausência nem invente concorrente, risco ou evento.",
     "- 'Por que tomamos essa decisão?': combine evidências, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
     "- 'O que funcionou?': use somente resultados registrados; não atribua causalidade sem evidência.",
     "- 'O que é prioridade?': ordene por risco/oportunidade, impacto, confiança e urgência; não invente valor financeiro ausente.",
-    "- 'O que eu não estou vendo?': aponte lacunas apenas como hipótese e diferencie ausência de evidência de evidência de ausência.",
     "- 'Tem algo para aprovar?': use somente a lista de aprovações pendentes acima.",
   );
 
