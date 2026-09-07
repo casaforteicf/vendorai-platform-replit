@@ -26,6 +26,7 @@ import { MediaPlanBudgetExecutionBridge } from "./components/marketing/MediaPlan
 import { MarketingAutonomyControl } from "./components/marketing/MarketingAutonomyControl";
 import { MarketingAutonomyAudit } from "./components/marketing/MarketingAutonomyAudit";
 import { CampaignAbTestControl } from "./components/marketing/CampaignAbTestControl";
+import { CampaignAbWinnerApprovalBridge } from "./components/marketing/CampaignAbWinnerApprovalBridge";
 import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPlanProductionRuntimeBridge";
 import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
@@ -96,6 +97,7 @@ createRoot(document.getElementById("root")!).render(
           <MarketingAutonomyControl />
           <MarketingAutonomyAudit />
           <CampaignAbTestControl />
+          <CampaignAbWinnerApprovalBridge />
           <MediaPlanProductionRuntimeBridge />
           <AdsCreativePreviewBridge />
         </>
