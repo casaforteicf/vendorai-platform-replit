@@ -86,6 +86,80 @@ function normalizedPeriod(periodo?: z.infer<typeof flexiblePeriodSchema>): Media
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function snapshotValue(snapshot: string, label: string): string {
+  const prefix = `${label}:`;
+  const line = snapshot.split(/\r?\n/).find((item) => item.trim().startsWith(prefix));
+  return line ? line.trim().slice(prefix.length).trim() : "";
+}
+
+function derivePlanningContext(contextoUsado: unknown): PlanningConfig {
+  const context = asRecord(contextoUsado);
+  const snapshot = typeof context.profileSnapshot === "string" ? context.profileSnapshot : "";
+  const business = snapshotValue(snapshot, "Negócio");
+  const segment = snapshotValue(snapshot, "Segmento");
+  const audience = snapshotValue(snapshot, "Público-alvo");
+  const region = snapshotValue(snapshot, "Localização");
+  const productList = snapshotValue(snapshot, "Produtos/serviços");
+  const firstProduct = productList.split(",").map((item) => item.trim()).find(Boolean) ?? "";
+  const product = firstProduct || segment;
+
+  return {
+    ...EMPTY_PLANNING_CONFIG,
+    produtoServicoPrioritario: product,
+    publicoPrioritario: audience || (segment ? `Pessoas interessadas em ${segment}` : ""),
+    regiao: region,
+    ofertaPrincipal: business ? `Falar com ${business}` : "",
+  };
+}
+
+function readSavedPlanningConfig(contextoUsado: unknown): PlanningConfig {
+  const context = asRecord(contextoUsado);
+  const parsed = planningConfigSchema.safeParse(context.configuracaoPlanejamento ?? {});
+  return parsed.success ? parsed.data : EMPTY_PLANNING_CONFIG;
+}
+
+function isGenericCampaignValue(value: string | undefined, kind: "product" | "audience" | "offer"): boolean {
+  if (!value?.trim()) return true;
+  const normalized = normalizedChannel(value);
+  if (kind === "product") {
+    return normalized.includes("produto ou servico prioritario") || normalized === "oferta principal" || normalized.includes("oferta prioritaria do negocio");
+  }
+  if (kind === "audience") {
+    return normalized.includes("publico prioritario definido") || normalized.includes("publico prioritario do negocio");
+  }
+  return normalized.includes("oferta ou proximo passo")
+    || normalized.includes("proximo passo comercial claro")
+    || normalized.includes("proximo passo comercial definido");
+}
+
+function groundCampaignPlaceholders(conteudo: MediaPlanConteudo, contextoUsado: unknown): MediaPlanConteudo {
+  if (!conteudo.campanhas?.length) return conteudo;
+  const derived = derivePlanningContext(contextoUsado);
+  const campanhas = conteudo.campanhas.map((campaign) => ({
+    ...campaign,
+    produtoServico: isGenericCampaignValue(campaign.produtoServico, "product") && derived.produtoServicoPrioritario
+      ? derived.produtoServicoPrioritario
+      : campaign.produtoServico,
+    publico: isGenericCampaignValue(campaign.publico, "audience") && derived.publicoPrioritario
+      ? derived.publicoPrioritario
+      : campaign.publico,
+    regiao: campaign.regiao || derived.regiao || undefined,
+    oferta: isGenericCampaignValue(campaign.oferta, "offer") && derived.ofertaPrincipal
+      ? derived.ofertaPrincipal
+      : campaign.oferta,
+  }));
+  return alignMediaFunctionsInContent({ ...conteudo, campanhas });
+}
+
+function groundAndApplySavedConfig(conteudo: MediaPlanConteudo, contextoUsado: unknown): MediaPlanConteudo {
+  const grounded = groundCampaignPlaceholders(conteudo, contextoUsado);
+  return applyPlanningConfigurationToCampaigns(grounded, readSavedPlanningConfig(contextoUsado));
+}
+
 function planningConfigLines(config: PlanningConfig): string[] {
   return [
     config.objetivoPrincipal && `Objetivo principal do período: ${config.objetivoPrincipal}`,
@@ -185,10 +259,12 @@ router.post("/tenants/:tenantId/media-plan/gerar", async (req, res) => {
       orcamento: parsed.data.orcamento,
     };
     const enriched = await enrichMediaPlanForPeriod(tenantId, conteudoBase, diasOperacionais);
-    const conteudo = applyPlanningConfigurationToCampaigns(enriched, parsed.data.configuracao);
+    const grounded = groundCampaignPlaceholders(enriched, plan.contextoUsado);
+    const conteudo = applyPlanningConfigurationToCampaigns(grounded, parsed.data.configuracao);
     const contextoUsado = {
       ...(plan.contextoUsado ?? {}),
       configuracaoPlanejamento: parsed.data.configuracao,
+      configuracaoDerivada: derivePlanningContext(plan.contextoUsado),
       configuracaoResumo: planningConfigLines(parsed.data.configuracao),
       periodoPlanejamento: conteudo.periodo ?? { duracaoValor: diasOperacionais, duracaoUnidade: "dias" },
       orcamentoPlanejamento: conteudo.orcamento ?? null,
@@ -227,15 +303,19 @@ router.get("/tenants/:tenantId/media-plan", async (req, res) => {
     return;
   }
 
-  if ((latest.conteudo.campanhas?.length ?? 0) > 0 && latest.conteudo.versaoFuncoesMidia !== MEDIA_FUNCTION_VERSION) {
-    const conteudo = alignMediaFunctionsInContent(latest.conteudo);
-    const [updated] = await db
-      .update(mediaPlansTable)
-      .set({ conteudo })
-      .where(eq(mediaPlansTable.id, latest.id))
-      .returning();
-    res.json(updated ?? { ...latest, conteudo });
-    return;
+  if ((latest.conteudo.campanhas?.length ?? 0) > 0) {
+    const conteudo = groundAndApplySavedConfig(latest.conteudo, latest.contextoUsado);
+    const changed = conteudo.versaoFuncoesMidia !== latest.conteudo.versaoFuncoesMidia
+      || JSON.stringify(conteudo) !== JSON.stringify(latest.conteudo);
+    if (changed || latest.conteudo.versaoFuncoesMidia !== MEDIA_FUNCTION_VERSION) {
+      const [updated] = await db
+        .update(mediaPlansTable)
+        .set({ conteudo })
+        .where(eq(mediaPlansTable.id, latest.id))
+        .returning();
+      res.json(updated ?? { ...latest, conteudo });
+      return;
+    }
   }
 
   res.json(latest);
@@ -269,11 +349,13 @@ router.post("/tenants/:tenantId/media-plan/:planId/completar", async (req, res) 
 
   try {
     if (hasRequiredMultichannelCoverage(existing.conteudo)) {
-      if (existing.conteudo.versaoFuncoesMidia === MEDIA_FUNCTION_VERSION) {
+      const conteudo = groundAndApplySavedConfig(existing.conteudo, existing.contextoUsado);
+      const changed = JSON.stringify(conteudo) !== JSON.stringify(existing.conteudo)
+        || existing.conteudo.versaoFuncoesMidia !== MEDIA_FUNCTION_VERSION;
+      if (!changed) {
         res.json(existing);
         return;
       }
-      const conteudo = alignMediaFunctionsInContent(existing.conteudo);
       const [updated] = await db
         .update(mediaPlansTable)
         .set({ conteudo })
@@ -284,7 +366,8 @@ router.post("/tenants/:tenantId/media-plan/:planId/completar", async (req, res) 
     }
 
     const periodoDias = parsed.data.periodoDias ?? existing.conteudo.periodoDias ?? 30;
-    const conteudo = await enrichMediaPlanForPeriod(tenantId, existing.conteudo, periodoDias);
+    const enriched = await enrichMediaPlanForPeriod(tenantId, existing.conteudo, periodoDias);
+    const conteudo = groundAndApplySavedConfig(enriched, existing.contextoUsado);
     const [updated] = await db
       .update(mediaPlansTable)
       .set({ conteudo })
