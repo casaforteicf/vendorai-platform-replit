@@ -5,6 +5,7 @@ import { contentCalendarItemsTable, db, socialPublicationsTable } from "@workspa
 import { authenticate } from "../middlewares/auth.js";
 import { consumeOAuthState, createOAuthState } from "../lib/oauth-state.js";
 import { logger } from "../lib/logger.js";
+import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
   buildSocialOAuthUrl, createSocialPublication, disconnectSocial, exchangeSocialCode,
   getActiveSocialConnection, listSocialConnections, providerAvailability, saveSocialConnection,
@@ -34,6 +35,27 @@ function frontendUrl() {
   return (process.env["FRONTEND_APP_URL"] || (process.env["NODE_ENV"] === "production" ? "https://app.appvendorai.com" : "http://localhost:3000")).replace(/\/$/, "");
 }
 
+async function auditSocialConnectionChange(input: {
+  tenantId: string;
+  selected: SocialProvider;
+  action: "criar" | "atualizar" | "excluir";
+  before?: unknown;
+  after?: unknown;
+  userId?: string | null;
+  ip?: string | null;
+}) {
+  const audited = await writeConfigurationAudit({
+    tenantId: input.tenantId,
+    action: input.action,
+    entity: `integration_${input.selected}`,
+    entityId: input.tenantId,
+    before: input.before,
+    after: input.after,
+    actor: { userId: input.userId ?? null, ip: input.ip ?? null },
+  });
+  if (!audited) logger.warn({ tenantId: input.tenantId, provider: input.selected }, "configuracoes: falha ao auditar integração social");
+}
+
 router.get("/auth/:provider", authenticate, (req, res) => {
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
@@ -55,8 +77,19 @@ callbackRouter.get("/auth/:provider/callback", async (req, res) => {
   if (error || !code || !state) return res.redirect(`${redirect}?socialError=access_denied&provider=${selected}`);
   try {
     const payload = consumeOAuthState(state, selected);
+    const before = await getActiveSocialConnection(payload.tenantId, selected);
     const tokens = await exchangeSocialCode(selected, code);
     await saveSocialConnection(payload.tenantId, selected, tokens);
+    const after = await getActiveSocialConnection(payload.tenantId, selected);
+    await auditSocialConnectionChange({
+      tenantId: payload.tenantId,
+      selected,
+      action: before ? "atualizar" : "criar",
+      before: before ?? undefined,
+      after: after ?? undefined,
+      userId: payload.userId ?? null,
+      ip: req.ip ?? null,
+    });
     return res.redirect(`${redirect}?socialConnected=${selected}`);
   } catch (callbackError) {
     logger.error({ error: callbackError, provider: selected }, "Falha no callback social");
@@ -98,7 +131,16 @@ router.delete("/tenants/:tenantId/social-connections/:provider", authenticate, a
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const before = await getActiveSocialConnection(tenantId, selected);
   await disconnectSocial(tenantId, selected);
+  await auditSocialConnectionChange({
+    tenantId,
+    selected,
+    action: "excluir",
+    before: before ?? undefined,
+    userId: req.user?.sub ?? null,
+    ip: req.ip ?? null,
+  });
   return res.json({ success: true });
 });
 

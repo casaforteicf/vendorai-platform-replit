@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import ProspectorClassic from "./ProspectorClassic";
 import ConstructionRadar from "./prospector/ConstructionRadar";
+import JarvisProspectingSignals from "./prospector/JarvisProspectingSignals";
 import ProspectorOverview, { type ProspectorNavigationTarget } from "./prospector/ProspectorOverview";
 
+// Frontend deployment marker: JARVIS → Prospector flow included.
 type ProspectorMode = "painel" | "empresas" | "obras";
 
 function initialMode(): ProspectorMode {
@@ -94,6 +96,7 @@ export default function Prospector() {
         </Card>
       </div>
 
+      <JarvisProspectingSignals onNavigate={navigate} compact={mode !== "painel"} />
       {mode === "painel" && <ProspectorOverview onNavigate={navigate} />}
       {mode === "empresas" && <ProspectorClassic key={classicKey} />}
       {mode === "obras" && <ConstructionRadar />}

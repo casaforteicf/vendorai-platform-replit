@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, AlertTriangle, Building2, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+
+type ExternalSignalType = "competitor" | "supplier" | "regional" | "sectoral" | "market";
 
 type NewsEvidence = {
   sourceId?: unknown;
@@ -11,6 +13,12 @@ type NewsEvidence = {
   sourceReliability?: unknown;
   publishedAt?: unknown;
   relevanceScore?: unknown;
+  signalType?: unknown;
+  matchedCompetitors?: unknown;
+  matchedSuppliers?: unknown;
+  matchedRegions?: unknown;
+  matchedTerms?: unknown;
+  rationale?: unknown;
 };
 
 type NewsCase = {
@@ -82,6 +90,47 @@ function evidenceNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function evidenceTextArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+    : [];
+}
+
+function signalType(value: unknown): ExternalSignalType {
+  return value === "competitor" || value === "supplier" || value === "regional" || value === "sectoral" || value === "market"
+    ? value
+    : "market";
+}
+
+function signalTypeLabel(value: ExternalSignalType) {
+  if (value === "competitor") return "Concorrente";
+  if (value === "supplier") return "Fornecedor";
+  if (value === "regional") return "Regional";
+  if (value === "sectoral") return "Setorial";
+  return "Mercado";
+}
+
+function signalWhy(item: NewsCase): string | null {
+  const competitors = evidenceTextArray(item.evidence?.matchedCompetitors);
+  const suppliers = evidenceTextArray(item.evidence?.matchedSuppliers);
+  const regions = evidenceTextArray(item.evidence?.matchedRegions);
+  const rationale = evidenceText(item.evidence?.rationale);
+
+  if (competitors.length) return `Movimento relacionado a concorrente monitorado: ${competitors.join(", ")}.`;
+  if (suppliers.length) return `Movimento relacionado a fornecedor do tenant: ${suppliers.join(", ")}.`;
+  if (regions.length) return `Sinal ligado ao território do negócio: ${regions.join(", ")}.`;
+  return rationale;
+}
+
+function prospectorHref(item: NewsCase) {
+  const params = new URLSearchParams({ mode: "empresas", tab: "busca", jarvisCase: item.id });
+  const term = evidenceTextArray(item.evidence?.matchedTerms)[0];
+  const region = evidenceTextArray(item.evidence?.matchedRegions)[0];
+  if (term) params.set("jarvisTerm", term);
+  if (region) params.set("jarvisRegion", region);
+  return `/prospector?${params.toString()}`;
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
@@ -147,6 +196,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
     const sourceNames = new Set<string>();
     const reliability: number[] = [];
     const confidences: number[] = [];
+    const typeCounts: Record<ExternalSignalType, number> = { competitor: 0, supplier: 0, regional: 0, sectoral: 0, market: 0 };
 
     for (const item of items) {
       const sourceId = evidenceText(item.evidence?.sourceId);
@@ -159,6 +209,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
       const sourceReliability = evidenceNumber(item.evidence?.sourceReliability);
       if (sourceReliability != null) reliability.push(sourceReliability);
       if (typeof item.confidence === "number" && Number.isFinite(item.confidence)) confidences.push(item.confidence);
+      typeCounts[signalType(item.evidence?.signalType)] += 1;
     }
 
     const latestTimestamp = items.reduce((latest, item) => {
@@ -172,6 +223,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
       attention: items.filter((item) => item.severity === "attention").length,
       sources: sourceKeys.size,
       sourceNames: [...sourceNames].sort(),
+      typeCounts,
       averageReliability: reliability.length ? Math.round(reliability.reduce((sum, value) => sum + value, 0) / reliability.length) : null,
       averageConfidence: confidences.length ? Math.round(confidences.reduce((sum, value) => sum + value, 0) / confidences.length) : null,
       latestAnalysisAt: latestTimestamp ? new Date(latestTimestamp) : null,
@@ -214,6 +266,14 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
             <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Em atenção</p><p className="mt-1 text-xl font-bold">{summary.attention}</p></div>
             <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Fontes com sinais</p><p className="mt-1 text-xl font-bold">{summary.sources}</p></div>
           </div>
+
+          {items.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(Object.entries(summary.typeCounts) as Array<[ExternalSignalType, number]>).filter(([, count]) => count > 0).map(([type, count]) => (
+                <Badge key={type} variant="outline">{signalTypeLabel(type)} · {count}</Badge>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -305,6 +365,8 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
         <div className="grid gap-3 lg:grid-cols-2">
           {visible.map((item) => {
             const sourceName = evidenceText(item.evidence?.sourceName) ?? "Fonte monitorada";
+            const externalType = signalType(item.evidence?.signalType);
+            const why = signalWhy(item);
             return (
               <Card key={item.id} className="transition-shadow hover:shadow-md">
                 <CardContent className="p-5">
@@ -312,17 +374,32 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className={severityTone(item.severity)}>{severityLabel(item.severity)}</Badge>
+                        <Badge variant="outline">{signalTypeLabel(externalType)}</Badge>
                         <Badge variant="outline">{item.category}</Badge>
                         {item.confidence != null && <span className="text-[11px] text-muted-foreground">confiança {item.confidence}%</span>}
                       </div>
                       <h3 className="mt-3 text-sm font-semibold leading-5">{item.title}</h3>
                       <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                      {why && (
+                        <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2.5 text-xs leading-5">
+                          <span className="font-medium text-foreground">Por que importa: </span>
+                          <span className="text-muted-foreground">{why}</span>
+                        </div>
+                      )}
                     </div>
                     {item.severity === "risk" ? <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" /> : <Globe2 className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs">
                     <div className="text-muted-foreground"><span className="font-medium text-foreground">{sourceName}</span> · {new Date(item.updatedAt).toLocaleString("pt-BR")}</div>
-                    {item.href && <a href={item.href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir contexto <ExternalLink className="h-3.5 w-3.5" /></a>}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={prospectorHref(item)}>
+                          <Building2 className="mr-1.5 h-3.5 w-3.5" />
+                          {item.severity === "opportunity" ? "Prospectar oportunidade" : "Explorar no Prospector"}
+                        </a>
+                      </Button>
+                      {item.href && <a href={item.href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir contexto <ExternalLink className="h-3.5 w-3.5" /></a>}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

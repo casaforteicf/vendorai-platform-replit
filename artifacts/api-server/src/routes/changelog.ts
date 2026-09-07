@@ -4,6 +4,7 @@ import {
   db,
   changelogEntriesTable,
   usersTable,
+  erpAuditoriaTable,
   insertChangelogEntrySchema,
   updateChangelogEntrySchema,
 } from "@workspace/db";
@@ -20,6 +21,10 @@ function automaticEntries() {
     updatedAt: new Date(entry.publicadoEm),
     automatico: true,
   }));
+}
+
+function canAccessTenant(req: any, tenantId: string) {
+  return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
 router.get("/changelog", async (_req, res) => {
@@ -61,6 +66,40 @@ router.post("/changelog/marcar-lido", async (req, res) => {
 
   await db.update(usersTable).set({ changelogLidoEm: new Date() }).where(eq(usersTable.id, userId));
   return res.json({ ok: true });
+});
+
+router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const requestedLimit = Number(req.query.limit);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.max(1, Math.min(100, Math.trunc(requestedLimit)))
+    : 50;
+
+  const items = await db.select({
+    id: erpAuditoriaTable.id,
+    usuarioId: erpAuditoriaTable.usuarioId,
+    actorName: usersTable.name,
+    actorEmail: usersTable.email,
+    acao: erpAuditoriaTable.acao,
+    entidade: erpAuditoriaTable.entidade,
+    entidadeId: erpAuditoriaTable.entidadeId,
+    antes: erpAuditoriaTable.antes,
+    depois: erpAuditoriaTable.depois,
+    ip: erpAuditoriaTable.ip,
+    createdAt: erpAuditoriaTable.createdAt,
+  })
+    .from(erpAuditoriaTable)
+    .leftJoin(usersTable, eq(usersTable.id, erpAuditoriaTable.usuarioId))
+    .where(and(
+      eq(erpAuditoriaTable.tenantId, tenantId),
+      eq(erpAuditoriaTable.modulo, "configuracoes"),
+    ))
+    .orderBy(desc(erpAuditoriaTable.createdAt))
+    .limit(limit);
+
+  return res.json({ items, limit });
 });
 
 router.get("/admin/changelog", requireRole("super_admin"), async (_req, res) => {

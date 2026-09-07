@@ -247,6 +247,9 @@ router.use(enforceModulePermission);
 // Universal App Builder runtime — tenant scoped, published snapshots only.
 router.use(appRuntimeRouter);
 
+// Trilha de Configurações precisa observar mutações do tenant e dos hubs abaixo.
+router.use(configurationBusinessProfileAudit);
+
 // Tenants — super_admin only for write, tenant scope for reads
 router.use(tenantsRouter);
 
@@ -260,7 +263,6 @@ router.use(agentActionsLogRouter);
 router.use(consentsRouter);
 
 // Business Hub
-router.use(configurationBusinessProfileAudit);
 router.use(businessProfilesRouter);
 
 // Agent Config

@@ -487,6 +487,15 @@ export default function ProspectorClassic() {
   const requestedTab = params.get("tab");
   const defaultTab = ["busca", "cnpj", "anunciantes", "fila", "aprovacoes"].includes(requestedTab ?? "") ? requestedTab! : "busca";
   const campaignFilterId = params.get("campaignId");
+  const jarvisCaseId = params.get("jarvisCase");
+  const jarvisTerm = params.get("jarvisTerm")?.trim() ?? "";
+  const jarvisRegion = params.get("jarvisRegion")?.trim() ?? "";
+
+  useEffect(() => {
+    if (!jarvisCaseId) return;
+    if (jarvisTerm) setNichos((current) => cleanUnique([...current, jarvisTerm]).slice(0, 10));
+    if (jarvisRegion) setLocalidades((current) => cleanUnique([...current, jarvisRegion]).slice(0, 20));
+  }, [jarvisCaseId, jarvisRegion, jarvisTerm]);
 
   function tenantField() {
     return isSuperAdmin && tenantId ? { tenantId } : {};
@@ -841,6 +850,18 @@ export default function ProspectorClassic() {
         </TabsList>
 
         <TabsContent value="busca" className="mt-4 space-y-4">
+          {jarvisCaseId && (
+            <Card className="border-primary/20 bg-primary/[0.02]">
+              <CardContent className="flex flex-wrap items-center gap-2 p-3 text-xs">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="font-medium">Contexto trazido pelo JARVIS</span>
+                {jarvisTerm && <Badge variant="secondary">{jarvisTerm}</Badge>}
+                {jarvisRegion && <Badge variant="outline"><MapPin className="mr-1 h-3 w-3" />{jarvisRegion}</Badge>}
+                <span className="text-muted-foreground">Revise os campos e execute a busca quando quiser.</span>
+              </CardContent>
+            </Card>
+          )}
+
           <ProspectorAutoConfig tenantId={tenantId} isSuperAdmin={isSuperAdmin} />
 
           <Card>
