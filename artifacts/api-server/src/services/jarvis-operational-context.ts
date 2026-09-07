@@ -1,6 +1,7 @@
 import { and, desc, eq, gte } from "drizzle-orm";
 import { agentTasksTable, db, jarvisCasesTable } from "@workspace/db";
 import { loadJarvisWatchlistIntelligence } from "./jarvis-watchlist-intelligence.js";
+import { loadJarvisPriorityIntelligence } from "./jarvis-priority-intelligence.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
@@ -16,7 +17,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes, watchlistIntelligence] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, watchlistIntelligence, priorityIntelligence] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -95,10 +96,12 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       .orderBy(desc(jarvisCasesTable.resolvedAt))
       .limit(MAX_OUTCOMES),
     loadJarvisWatchlistIntelligence(tenantId),
+    loadJarvisPriorityIntelligence(tenantId, 5),
   ]);
 
   const hasWatchlistContext = watchlistIntelligence.watchlist.length > 0 || watchlistIntelligence.blindSpots.length > 0;
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasWatchlistContext) return "";
+  const hasPriorityContext = priorityIntelligence.items.length > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasWatchlistContext && !hasPriorityContext) return "";
 
   const lines = [
     "",
@@ -122,6 +125,21 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       );
       if (item.resultSummary) lines.push(`  Resultado: ${compact(item.resultSummary, 260)}`);
     }
+  }
+
+  if (priorityIntelligence.items.length) {
+    lines.push("", `### Prioridades do JARVIS (${priorityIntelligence.items.length})`);
+    for (const item of priorityIntelligence.items) {
+      const financial = item.explicitFinancialImpact
+        ? ` | impacto_financeiro_explícito=R$ ${item.explicitFinancialImpact.amount.toFixed(2)}`
+        : " | impacto_financeiro_explícito=desconhecido";
+      lines.push(
+        `- [${item.id}] prioridade=${item.priorityScore}/100 | mudança=${item.changeType} | ${compact(item.title, 180)} | gravidade=${item.severity} | impacto=${item.impact ?? "desconhecido"} | confiança=${item.confidence ?? "desconhecida"}${financial}`,
+      );
+      if (item.metric) lines.push(`  Métrica informada: ${compact(item.metric, 180)}`);
+      if (item.recommendedAction) lines.push(`  Ação recomendada: ${compact(item.recommendedAction, 260)}`);
+    }
+    lines.push("Prioridade é um ranking determinístico de gravidade, impacto, confiança, recência e existência de valor financeiro explícito. Valor financeiro só pode ser citado quando vier explicitamente da métrica persistida; caso contrário, trate como desconhecido.");
   }
 
   if (watchlistIntelligence.watchlist.length) {
@@ -191,11 +209,12 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "",
     "### Como interpretar",
     "- 'O que mudou?': use primeiro o bloco determinístico das últimas 24h; diferencie novo, atualizado, resolvido e descartado.",
+    "- 'O que é prioridade?': use primeiro Prioridades do JARVIS. Explique score, mudança, impacto, confiança e a ação recomendada; não invente valor financeiro ausente.",
+    "- 'Qual o impacto financeiro?': cite apenas `impacto_financeiro_explícito` quando houver valor BRL persistido na métrica. Se estiver desconhecido, diga que ainda falta quantificação financeira em vez de estimar.",
     "- 'O que estamos monitorando?': use a Watchlist automática e diferencie item configurado, item monitorado sem sinal recente e item com sinal ativo.",
     "- 'O que eu não estou vendo?': use primeiro os Pontos cegos verificáveis. Não transforme falta de evidência em evidência de ausência nem invente concorrente, risco ou evento.",
     "- 'Por que tomamos essa decisão?': combine evidências, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
     "- 'O que funcionou?': use somente resultados registrados; não atribua causalidade sem evidência.",
-    "- 'O que é prioridade?': ordene por risco/oportunidade, impacto, confiança e urgência; não invente valor financeiro ausente.",
     "- 'Tem algo para aprovar?': use somente a lista de aprovações pendentes acima.",
   );
 
