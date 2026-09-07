@@ -74,8 +74,8 @@ export function buildRemainingBudgetSchedule(input: {
 async function assertAuthorization(tenantId: string, authorization: BudgetChangeAuthorization) {
   if (authorization === 'human-approved') return null;
   const autonomy = await resolveMarketingAgentAutonomyPolicy(tenantId);
-  if (!autonomy.allowed) {
-    throw new Error(`Marketing Agent sem autorização autônoma para alterar orçamento: ${autonomy.reason}`);
+  if (!autonomy.canOptimizeBudget) {
+    throw new Error(`Marketing Agent sem nível de autonomia para alterar orçamento: ${autonomy.reason}`);
   }
   return autonomy;
 }
@@ -188,14 +188,18 @@ export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudg
   const endDate = segmentacao.campaignControl?.endDate;
   if (!endDate) throw new Error('Campanha sem data final aprovada.');
 
+  const requestedFraction = input.maxTransferFractionPerCycle;
+  const effectiveTransferFraction = autonomyPolicy
+    ? Math.min(requestedFraction ?? autonomyPolicy.maxTransferFractionPerCycle, autonomyPolicy.maxTransferFractionPerCycle)
+    : requestedFraction;
   const plan = await buildTenantPaidMediaBudgetRedistributionPlan(input.tenantId, input.mediaPlanId, {
-    maxTransferFractionPerCycle: input.maxTransferFractionPerCycle,
+    maxTransferFractionPerCycle: effectiveTransferFraction,
   });
   if (!plan.humanCeilingRespected) throw new Error('Execução bloqueada: plano calculado ultrapassa o teto humano.');
   const decision = plan.decisions.find((row) => row.campaignId === input.campaignId);
   if (!decision) throw new Error('Campanha não possui decisão de orçamento no plano atual.');
   if (decision.action === 'hold' || decision.delta === 0) {
-    return { applied: false, reason: decision.reason, decision, plan, autonomyPolicy };
+    return { applied: false, reason: decision.reason, decision, plan, autonomyPolicy, effectiveTransferFraction };
   }
 
   const schedule = buildRemainingBudgetSchedule({
@@ -241,6 +245,7 @@ export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudg
     decision,
     schedule,
     external,
+    effectiveTransferFraction,
     humanCeilingRespected: plan.humanCeilingRespected,
     planBudgetTotal: plan.planBudgetTotal,
   };
