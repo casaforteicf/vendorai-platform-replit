@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { campaignsTable, campaignSentLogsTable, db } from "@workspace/db";
 
 export type CampaignAbStatus = "sem_teste" | "coletando" | "inconclusivo" | "sinal_provisorio" | "vencedor";
@@ -198,11 +198,13 @@ export async function buildCampaignAbLearningPromptBlock(tenantId: string): Prom
   const campaigns = await db
     .select({ id: campaignsTable.id, nome: campaignsTable.nome })
     .from(campaignsTable)
-    .where(and(eq(campaignsTable.tenantId, tenantId), eq(campaignsTable.abTestEnabled, 1)));
+    .where(and(eq(campaignsTable.tenantId, tenantId), eq(campaignsTable.abTestEnabled, 1)))
+    .orderBy(desc(campaignsTable.updatedAt))
+    .limit(12);
 
   if (campaigns.length === 0) return "";
 
-  const results = await Promise.all(campaigns.slice(0, 12).map(async (campaign) => ({
+  const results = await Promise.all(campaigns.map(async (campaign) => ({
     campaign,
     result: await evaluateCampaignAbTest(campaign.id),
   })));
