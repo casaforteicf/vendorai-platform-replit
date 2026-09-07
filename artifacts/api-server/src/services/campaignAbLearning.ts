@@ -19,14 +19,34 @@ export type CampaignAbVerdict = {
   readRateB: number;
   conversionRateA: number;
   conversionRateB: number;
+  relativeLift: number;
+  confidenceLevel: number;
+  conversionIntervalA: [number, number];
+  conversionIntervalB: [number, number];
 };
 
 const MIN_PER_VARIANT = 20;
 const MIN_CONVERSIONS_TOTAL = 2;
 const MIN_RELATIVE_LIFT = 0.2;
+const CONFIDENCE_Z = 1.96;
+const CONFIDENCE_LEVEL = 0.95;
 
 function rate(num: number, den: number) {
   return den > 0 ? num / den : 0;
+}
+
+function wilsonInterval(successes: number, trials: number, z = CONFIDENCE_Z): [number, number] {
+  if (trials <= 0) return [0, 1];
+  const p = successes / trials;
+  const z2 = z * z;
+  const denominator = 1 + z2 / trials;
+  const center = (p + z2 / (2 * trials)) / denominator;
+  const margin = (z / denominator) * Math.sqrt((p * (1 - p) / trials) + (z2 / (4 * trials * trials)));
+  return [Math.max(0, center - margin), Math.min(1, center + margin)];
+}
+
+function intervalsAreSeparated(a: [number, number], b: [number, number]) {
+  return a[0] > b[1] || b[0] > a[1];
 }
 
 export type VariantEvidenceInput = {
@@ -48,6 +68,9 @@ export type VariantEvidence = {
   conversionRateA: number;
   conversionRateB: number;
   relativeLift: number;
+  confidenceLevel: number;
+  conversionIntervalA: [number, number];
+  conversionIntervalB: [number, number];
 };
 
 export function evaluateVariantEvidence(input: VariantEvidenceInput): VariantEvidence {
@@ -56,6 +79,8 @@ export function evaluateVariantEvidence(input: VariantEvidenceInput): VariantEvi
   const conversionRateA = rate(input.conversionsA, input.sampleA);
   const conversionRateB = rate(input.conversionsB, input.sampleB);
   const totalConversions = input.conversionsA + input.conversionsB;
+  const conversionIntervalA = wilsonInterval(input.conversionsA, input.sampleA);
+  const conversionIntervalB = wilsonInterval(input.conversionsB, input.sampleB);
 
   const base = {
     winner: null,
@@ -65,6 +90,9 @@ export function evaluateVariantEvidence(input: VariantEvidenceInput): VariantEvi
     conversionRateA,
     conversionRateB,
     relativeLift: 0,
+    confidenceLevel: CONFIDENCE_LEVEL,
+    conversionIntervalA,
+    conversionIntervalB,
   } as const;
 
   if (input.sampleA < MIN_PER_VARIANT || input.sampleB < MIN_PER_VARIANT) {
@@ -102,12 +130,21 @@ export function evaluateVariantEvidence(input: VariantEvidenceInput): VariantEvi
     };
   }
 
+  if (!intervalsAreSeparated(conversionIntervalA, conversionIntervalB)) {
+    return {
+      ...base,
+      relativeLift,
+      status: "inconclusivo",
+      reason: `Há lift de ${(relativeLift * 100).toFixed(1)}% em conversão, mas os intervalos de confiança de 95% ainda se sobrepõem. Continue coletando dados antes de declarar vencedor.`,
+    };
+  }
+
   return {
     ...base,
     winner: leader,
     relativeLift,
     status: "vencedor",
-    reason: `Vencedor por conversão, com lift relativo de ${(relativeLift * 100).toFixed(1)}%.`,
+    reason: `Vencedor por conversão: variante ${leader}, lift relativo de ${(relativeLift * 100).toFixed(1)}% e intervalos de confiança de 95% sem sobreposição.`,
   };
 }
 
@@ -146,6 +183,10 @@ export async function evaluateCampaignAbTest(campaignId: string): Promise<Campai
       readRateB: 0,
       conversionRateA: 0,
       conversionRateB: 0,
+      relativeLift: 0,
+      confidenceLevel: CONFIDENCE_LEVEL,
+      conversionIntervalA: [0, 1],
+      conversionIntervalB: [0, 1],
     };
   }
 
@@ -191,6 +232,10 @@ export async function evaluateCampaignAbTest(campaignId: string): Promise<Campai
     readRateB: evidence.readRateB,
     conversionRateA: evidence.conversionRateA,
     conversionRateB: evidence.conversionRateB,
+    relativeLift: evidence.relativeLift,
+    confidenceLevel: evidence.confidenceLevel,
+    conversionIntervalA: evidence.conversionIntervalA,
+    conversionIntervalB: evidence.conversionIntervalB,
   };
 }
 
@@ -213,15 +258,15 @@ export async function buildCampaignAbLearningPromptBlock(tenantId: string): Prom
     .filter(({ result }) => result.status === "vencedor" || result.status === "sinal_provisorio" || result.status === "inconclusivo")
     .map(({ campaign, result }) => {
       if (result.winner) {
-        return `- ${campaign.nome}: variante ${result.winner} venceu por conversão. A ${result.sampleA} envios (${(result.conversionRateA * 100).toFixed(1)}% conv.); B ${result.sampleB} envios (${(result.conversionRateB * 100).toFixed(1)}% conv.).`;
+        return `- ${campaign.nome}: variante ${result.winner} venceu por conversão com evidência estatística de 95%. A ${result.sampleA} envios (${(result.conversionRateA * 100).toFixed(1)}% conv.); B ${result.sampleB} envios (${(result.conversionRateB * 100).toFixed(1)}% conv.).`;
       }
       if (result.provisionalLeader) {
         return `- ${campaign.nome}: variante ${result.provisionalLeader} lidera provisoriamente por leitura, mas ainda NÃO é vencedora; aguarde conversões suficientes antes de promover.`;
       }
-      return `- ${campaign.nome}: teste inconclusivo após A ${result.sampleA} / B ${result.sampleB} envios; não repetir como verdade causal.`;
+      return `- ${campaign.nome}: teste inconclusivo após A ${result.sampleA} / B ${result.sampleB} envios; lift isolado não basta sem confiança estatística suficiente.`;
     });
 
   if (lines.length === 0) return "";
 
-  return `\n## Aprendizado de testes A/B controlados\n${lines.join("\n")}\nRegra: altere uma variável principal por teste (gancho, oferta, CTA, formato ou mensagem), preserve o restante e priorize conversão sobre abertura. Sinal de leitura é apenas provisório e nunca deve promover automaticamente uma variante. Não generalize vencedor para outro público/canal sem novo teste.\n`;
+  return `\n## Aprendizado de testes A/B controlados\n${lines.join("\n")}\nRegra: altere uma variável principal por teste (gancho, oferta, CTA, formato ou mensagem), preserve o restante e priorize conversão sobre abertura. Vencedor comercial exige amostra mínima, lift relativo de pelo menos 20% e intervalos de confiança de 95% sem sobreposição. Sinal de leitura é apenas provisório e nunca deve promover automaticamente uma variante. Não generalize vencedor para outro público/canal sem novo teste.\n`;
 }
