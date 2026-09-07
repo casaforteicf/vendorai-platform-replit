@@ -6,9 +6,12 @@ import { resolveMarketingAgentAutonomyPolicy } from "./marketingAgentAutonomyPol
 const FIRST_RUN_DELAY_MS = 2 * 60 * 1000;
 const INTERVAL_MS = 60 * 60 * 1000;
 const MAX_CAMPAIGNS_PER_CYCLE = 100;
-const RUNTIME_KEY = "__vendoraiMarketingAbWinnerRuntime";
 
-type RuntimeState = { started: boolean; timer?: ReturnType<typeof setInterval>; startup?: ReturnType<typeof setTimeout> };
+type RuntimeState = {
+  started: boolean;
+  timer?: ReturnType<typeof setInterval>;
+  startup?: ReturnType<typeof setTimeout>;
+};
 
 declare global {
   // eslint-disable-next-line no-var
@@ -47,13 +50,12 @@ async function runCycle() {
 }
 
 function startRuntime() {
-  const scope = globalThis as typeof globalThis & { [RUNTIME_KEY]?: RuntimeState };
-  const state = scope[RUNTIME_KEY] ?? { started: false };
+  const state = globalThis.__vendoraiMarketingAbWinnerRuntime ?? { started: false };
   if (state.started) return;
   state.started = true;
   state.startup = setTimeout(() => { void runCycle(); }, FIRST_RUN_DELAY_MS);
   state.timer = setInterval(() => { void runCycle(); }, INTERVAL_MS);
-  scope[RUNTIME_KEY] = state;
+  globalThis.__vendoraiMarketingAbWinnerRuntime = state;
 }
 
 startRuntime();
