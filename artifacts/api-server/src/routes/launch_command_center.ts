@@ -8,6 +8,11 @@ import { executePaidMediaBudgetDecision } from "../services/paidMediaBudgetExecu
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { getMarketingAutonomySettings, updateMarketingAutonomySettings } from "../services/marketingAutonomyConfig.js";
 import { getMarketingAutonomyAudit } from "../services/marketingAutonomyAudit.js";
+import {
+  configureControlledCampaignAbTest,
+  getControlledCampaignAbStatus,
+  stopControlledCampaignAbTest,
+} from "../services/campaignAbExperiment.js";
 
 const router: IRouter = Router();
 
@@ -42,6 +47,11 @@ const budgetQuerySchema = z.object({
 const budgetApplySchema = z.object({
   authorization: z.enum(["human-approved", "agent-autonomous"]).default("human-approved"),
   maxTransferFractionPerCycle: z.number().min(0).max(1).optional(),
+});
+
+const campaignAbConfigureSchema = z.object({
+  variable: z.enum(["gancho", "oferta", "cta", "formato", "mensagem"]),
+  samplePct: z.number().int().min(10).max(50).optional().default(30),
 });
 
 function canAccess(req: Express.Request, tenantId: string) {
@@ -135,6 +145,66 @@ router.get("/tenants/:tenantId/marketing/autonomy/audit", async (req, res) => {
   } catch (err) {
     req.log.warn({ err, tenantId }, "marketing: falha ao carregar auditoria da autonomia");
     res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível carregar a auditoria." });
+  }
+});
+
+router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/configure", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const campaignId = String(req.params["campaignId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsed = campaignAbConfigureSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: "Configuração de teste A/B inválida", details: parsed.error.issues });
+    return;
+  }
+
+  try {
+    const result = await configureControlledCampaignAbTest({
+      tenantId,
+      campaignId,
+      variable: parsed.data.variable,
+      samplePct: parsed.data.samplePct,
+    });
+    res.json(result);
+  } catch (err) {
+    req.log.warn({ err, tenantId, campaignId }, "marketing: falha ao configurar teste A/B");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível configurar o teste A/B." });
+  }
+});
+
+router.get("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const campaignId = String(req.params["campaignId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  try {
+    res.json(await getControlledCampaignAbStatus(tenantId, campaignId));
+  } catch (err) {
+    req.log.warn({ err, tenantId, campaignId }, "marketing: falha ao carregar teste A/B");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível carregar o teste A/B." });
+  }
+});
+
+router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/stop", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const campaignId = String(req.params["campaignId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  try {
+    res.json(await stopControlledCampaignAbTest(tenantId, campaignId));
+  } catch (err) {
+    req.log.warn({ err, tenantId, campaignId }, "marketing: falha ao pausar teste A/B");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível pausar o teste A/B." });
   }
 });
 
