@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { adCampaignEventsTable, adCampaignsTable, db } from "@workspace/db";
 
 const LEARNING_EVENT = "budget_redistribution_learning_evaluated";
-const MAX_EVENTS = 40;
+const MAX_EVENTS = 80;
 
 type Verdict = "melhorou" | "piorou" | "inconclusivo";
 
@@ -44,20 +44,21 @@ function formatDecision(row: LearningRow): string | null {
   const deltas = asRecord(metadata.deltas) ?? {};
   const reason = typeof metadata.reason === "string" ? metadata.reason : "Sem justificativa registrada.";
   const windowHours = num(metadata.evaluationWindowHours);
+  const stage = typeof metadata.evaluationStage === "string" ? ` · janela ${metadata.evaluationStage}` : "";
   const incrementalRoas = formatRoas(metadata.postIncrementalRoas);
   const campaign = row.campaignName?.trim() || `campanha ${row.campaignId.slice(0, 8)}`;
   const platform = row.platform ? ` · ${row.platform}` : "";
 
-  return `- ${verdict.toUpperCase()}: ${campaign}${platform}. Referência ROAS ${formatRoas(before.roas)}; pós-decisão +R$ ${Math.max(0, num(deltas.spend) ?? 0).toFixed(2)} de gasto, +${Math.max(0, num(deltas.leads) ?? 0)} lead(s), +${Math.max(0, num(deltas.sales) ?? 0)} venda(s), ROAS incremental ${incrementalRoas}${windowHours !== null ? ` em ~${Math.round(windowHours)}h` : ""}. ${reason}`;
+  return `- ${verdict.toUpperCase()}: ${campaign}${platform}${stage}. Referência ROAS ${formatRoas(before.roas)}; pós-decisão +R$ ${Math.max(0, num(deltas.spend) ?? 0).toFixed(2)} de gasto, +${Math.max(0, num(deltas.leads) ?? 0)} lead(s), +${Math.max(0, num(deltas.sales) ?? 0)} venda(s), ROAS incremental ${incrementalRoas}${windowHours !== null ? ` em ~${Math.round(windowHours)}h` : ""}. ${reason}`;
 }
 
 /**
  * Transforma a trilha real de aprendizado pós-redistribuição em memória
  * estratégica consumível pelo próximo Plano de Mídia.
  *
- * Não cria score opaco nem memória paralela: lê apenas eventos já auditados.
- * O bloco instrui o planejador a usar recorrência como evidência e a manter
- * casos isolados/inconclusivos com baixa confiança.
+ * Quando existe mais de uma janela para a mesma decisão (24h/72h), somente
+ * a avaliação mais recente entra na memória e nas contagens. Assim uma leitura
+ * preliminar não infla a evidência nem compete com a avaliação final.
  */
 export async function buildMarketingDecisionStrategyLearningBlock(tenantId: string): Promise<string> {
   const rows = await db
@@ -77,13 +78,27 @@ export async function buildMarketingDecisionStrategyLearningBlock(tenantId: stri
     .orderBy(desc(adCampaignEventsTable.createdAt))
     .limit(MAX_EVENTS);
 
-  const normalized: LearningRow[] = rows.map((row) => ({
-    campaignId: row.campaignId,
-    campaignName: row.campaignName ?? null,
-    platform: row.platform ?? null,
-    metadata: (asRecord(row.metadata) ?? {}),
-    createdAt: row.createdAt,
-  }));
+  const latestBySource = new Map<string, LearningRow>();
+  const legacy: LearningRow[] = [];
+  for (const row of rows) {
+    const normalized: LearningRow = {
+      campaignId: row.campaignId,
+      campaignName: row.campaignName ?? null,
+      platform: row.platform ?? null,
+      metadata: asRecord(row.metadata) ?? {},
+      createdAt: row.createdAt,
+    };
+    const sourceEventId = typeof normalized.metadata.sourceEventId === "string" ? normalized.metadata.sourceEventId : null;
+    if (!sourceEventId) {
+      legacy.push(normalized);
+      continue;
+    }
+    if (!latestBySource.has(sourceEventId)) latestBySource.set(sourceEventId, normalized);
+  }
+
+  const normalized = [...latestBySource.values(), ...legacy]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 40);
 
   const counts = normalized.reduce((acc, row) => {
     const verdict = verdictOf(row.metadata);
@@ -104,5 +119,5 @@ export async function buildMarketingDecisionStrategyLearningBlock(tenantId: stri
     ? meaningful.join("\n")
     : "- Ainda não existem decisões com resultado conclusivo; preserve a estratégia atual e continue coletando evidência.";
 
-  return `\n## Memória de decisões de orçamento do próprio tenant\nForam avaliadas ${normalized.length} decisão(ões): ${counts.melhorou} melhoraram, ${counts.piorou} pioraram e ${counts.inconclusivo} ficaram inconclusivas. Confiança global atual: ${confidence}.\n${evidence}\n\nRegra para o próximo planejamento: trate decisões que melhoraram repetidamente como sinal para aumentar a prioridade relativa de combinações semelhantes de plataforma/objetivo, e decisões que pioraram repetidamente como sinal para reduzir prioridade, revisar mensagem/oferta/segmentação ou exigir nova evidência antes de escalar. Não copie orçamento passado mecanicamente, não transforme um único caso em regra geral e não interprete casos inconclusivos como sucesso ou fracasso. O teto humano continua soberano.\n`;
+  return `\n## Memória de decisões de orçamento do próprio tenant\nForam avaliadas ${normalized.length} decisão(ões) únicas: ${counts.melhorou} melhoraram, ${counts.piorou} pioraram e ${counts.inconclusivo} ficaram inconclusivas. Quando há janelas de 24h e 72h para a mesma decisão, vale apenas a leitura mais recente. Confiança global atual: ${confidence}.\n${evidence}\n\nRegra para o próximo planejamento: trate decisões que melhoraram repetidamente como sinal para aumentar a prioridade relativa de combinações semelhantes de plataforma/objetivo, e decisões que pioraram repetidamente como sinal para reduzir prioridade, revisar mensagem/oferta/segmentação ou exigir nova evidência antes de escalar. Não copie orçamento passado mecanicamente, não transforme um único caso em regra geral e não interprete casos inconclusivos como sucesso ou fracasso. O teto humano continua soberano.\n`;
 }
