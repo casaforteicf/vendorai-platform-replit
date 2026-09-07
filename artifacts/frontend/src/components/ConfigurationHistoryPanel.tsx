@@ -204,6 +204,15 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function actorKey(item: HistoryItem) {
+  return item.usuarioId || item.actorEmail || item.actorName || "__system__";
+}
+
+function actorLabel(item: HistoryItem) {
+  if (item.actorName && item.actorEmail) return `${item.actorName} · ${item.actorEmail}`;
+  return item.actorName || item.actorEmail || "Sistema";
+}
+
 export function ConfigurationHistoryPanel() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -214,6 +223,9 @@ export function ConfigurationHistoryPanel() {
   const [actionFilter, setActionFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
+  const [actorFilter, setActorFilter] = useState("all");
+  const [dateFromFilter, setDateFromFilter] = useState("");
+  const [dateToFilter, setDateToFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [openItemId, setOpenItemId] = useState<string | null>(null);
 
@@ -245,16 +257,32 @@ export function ConfigurationHistoryPanel() {
     return Array.from(new Set(items.map((item) => ENTITY_LABELS[item.entidade] ?? item.entidade))).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [items]);
 
+  const actors = useMemo(() => {
+    const byKey = new Map<string, string>();
+    items.forEach((item) => byKey.set(actorKey(item), actorLabel(item)));
+    return Array.from(byKey.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [items]);
+
   const criticalCount = useMemo(() => items.filter((item) => riskFor(item) === "critico").length, [items]);
 
   const filteredItems = useMemo(() => {
     const query = searchFilter.trim().toLocaleLowerCase("pt-BR");
+    const from = dateFromFilter ? new Date(`${dateFromFilter}T00:00:00`) : null;
+    const to = dateToFilter ? new Date(`${dateToFilter}T23:59:59.999`) : null;
+
     return items.filter((item) => {
       const area = ENTITY_LABELS[item.entidade] ?? item.entidade;
       const risk = riskFor(item);
       if (actionFilter !== "all" && item.acao !== actionFilter) return false;
       if (areaFilter !== "all" && area !== areaFilter) return false;
       if (riskFilter !== "all" && risk !== riskFilter) return false;
+      if (actorFilter !== "all" && actorKey(item) !== actorFilter) return false;
+
+      const createdAt = new Date(item.createdAt);
+      if (from && !Number.isNaN(createdAt.getTime()) && createdAt < from) return false;
+      if (to && !Number.isNaN(createdAt.getTime()) && createdAt > to) return false;
       if (!query) return true;
 
       const searchable = [
@@ -268,7 +296,27 @@ export function ConfigurationHistoryPanel() {
 
       return searchable.includes(query);
     });
-  }, [items, actionFilter, areaFilter, riskFilter, searchFilter]);
+  }, [items, actionFilter, areaFilter, riskFilter, actorFilter, dateFromFilter, dateToFilter, searchFilter]);
+
+  const hasFilters = Boolean(
+    searchFilter ||
+    actionFilter !== "all" ||
+    areaFilter !== "all" ||
+    riskFilter !== "all" ||
+    actorFilter !== "all" ||
+    dateFromFilter ||
+    dateToFilter
+  );
+
+  const clearFilters = () => {
+    setSearchFilter("");
+    setActionFilter("all");
+    setAreaFilter("all");
+    setRiskFilter("all");
+    setActorFilter("all");
+    setDateFromFilter("");
+    setDateToFilter("");
+  };
 
   return (
     <section className="mb-4 rounded-xl border bg-background p-3 sm:p-4" aria-label="Histórico de alterações das configurações">
@@ -347,17 +395,39 @@ export function ConfigurationHistoryPanel() {
                 <option value="baixo">Baixo</option>
               </select>
             </label>
+            <label className="grid gap-1 text-xs font-medium sm:col-span-2 lg:col-span-2">
+              Usuário
+              <select className="h-9 rounded-md border bg-background px-2 text-sm" value={actorFilter} onChange={(event) => setActorFilter(event.target.value)}>
+                <option value="all">Todos os usuários</option>
+                {actors.map((actor) => <option key={actor.key} value={actor.key}>{actor.label}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-medium">
+              De
+              <input
+                type="date"
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+                value={dateFromFilter}
+                max={dateToFilter || undefined}
+                onChange={(event) => setDateFromFilter(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-medium">
+              Até
+              <input
+                type="date"
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+                value={dateToFilter}
+                min={dateFromFilter || undefined}
+                onChange={(event) => setDateToFilter(event.target.value)}
+              />
+            </label>
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span>{filteredItems.length} alteração(ões) exibida(s)</span>
-            {(searchFilter || actionFilter !== "all" || areaFilter !== "all" || riskFilter !== "all") && (
-              <button type="button" className="font-medium underline underline-offset-2" onClick={() => {
-                setSearchFilter("");
-                setActionFilter("all");
-                setAreaFilter("all");
-                setRiskFilter("all");
-              }}>Limpar filtros</button>
+            {hasFilters && (
+              <button type="button" className="font-medium underline underline-offset-2" onClick={clearFilters}>Limpar filtros</button>
             )}
           </div>
 
