@@ -7,6 +7,7 @@ import ConstructionRadar from "./prospector/ConstructionRadar";
 import JarvisProspectingSignals from "./prospector/JarvisProspectingSignals";
 import ProspectorOverview, { type ProspectorNavigationTarget } from "./prospector/ProspectorOverview";
 
+// Frontend deployment marker: JARVIS → Prospector flow included.
 type ProspectorMode = "painel" | "empresas" | "obras";
 
 function initialMode(): ProspectorMode {
