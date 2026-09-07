@@ -68,7 +68,10 @@ function resolveActionTarget(action: string, planId: string): ActionTarget {
   if (text.includes("landing") || text.includes("pagina de destino") || text.includes("site") || text.includes("lp")) {
     return { label: "Criar / revisar LP", route: `/content?tab=campanhas&view=lp&${common}`, kind: "lp" };
   }
-  if (text.includes("meta") || text.includes("google") || text.includes("ads") || text.includes("anuncio") || text.includes("pesquisa")) {
+  if (text.includes("keyword") || text.includes("concorrent") || text.includes("pesquisa de mercado") || text.includes("estudo de mercado") || text.includes("analise de mercado")) {
+    return { label: "Abrir análise", route: `/marketing/plano-de-midia?${common}`, kind: "research" };
+  }
+  if (text.includes("meta") || text.includes("google") || text.includes("ads") || text.includes("anuncio") || text.includes("rede de pesquisa") || text.includes("google search")) {
     return { label: "Abrir Ads", route: `/ads?${common}`, kind: "ads" };
   }
   if (text.includes("whatsapp") || text.includes("inside sales") || text.includes("crm") || text.includes("qualificacao") || text.includes("follow-up")) {
@@ -76,9 +79,6 @@ function resolveActionTarget(action: string, planId: string): ActionTarget {
   }
   if (text.includes("metrica") || text.includes("cpl") || text.includes("cac") || text.includes("roas") || text.includes("conversao") || text.includes("acompanhar")) {
     return { label: "Abrir performance", route: `/analytics?${common}`, kind: "analytics" };
-  }
-  if (text.includes("keyword") || text.includes("concorrent") || text.includes("pesquisa de mercado")) {
-    return { label: "Abrir análise", route: `/marketing/plano-de-midia?${common}`, kind: "research" };
   }
   return { label: "Produzir conteúdo", route: `/content?tab=gerador&${common}`, kind: "content" };
 }
