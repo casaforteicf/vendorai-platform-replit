@@ -86,7 +86,9 @@ export function MediaPlanPublicationModeControl() {
   const visible = useMemo(() => {
     const [path, query = ""] = location.split("?");
     const params = new URLSearchParams(query);
-    return path === "/content" && (params.get("tab") ?? "gerador") === "planejamento";
+    const contentPlanner = path === "/content" && (params.get("tab") ?? "gerador") === "planejamento";
+    const dedicatedPlanner = path === "/marketing/plano-de-midia" || path === "/marketing/media-plan" || path === "/plano-de-midia";
+    return contentPlanner || dedicatedPlanner;
   }, [location]);
 
   useEffect(() => {
