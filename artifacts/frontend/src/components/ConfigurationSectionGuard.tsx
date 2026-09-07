@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  CONFIGURATION_IMPACT_APPROVED_EVENT,
   CONFIGURATION_IMPACT_EVENT,
   type ConfigurationChangeKind,
 } from "@/components/ConfigurationImpactSimulator";
@@ -13,6 +14,11 @@ const SECTION_IMPACT: Record<string, string> = {
   Documentos: "Esta ação pode alterar contratos, propostas, modelos, variáveis ou o fluxo de assinatura.",
   "Equipe e Acessos": "Esta ação pode modificar quem acessa dados, módulos e ações administrativas do tenant.",
   Faturamento: "Esta ação pode alterar cobrança, plano, créditos, consumo ou continuidade do serviço.",
+};
+
+type ReviewState = {
+  key: string;
+  requestId: string;
 };
 
 function isAdmin(user: any) {
@@ -80,9 +86,13 @@ function impactReviewKey(section: string, changeKind: ConfigurationChangeKind, l
   return `${section}::${changeKind}::${label || "alterar configuração"}`;
 }
 
-function openImpactReview(section: string, changeKind: ConfigurationChangeKind, label: string) {
+function createRequestId() {
+  return `cfg-impact-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function openImpactReview(section: string, changeKind: ConfigurationChangeKind, label: string, requestId: string) {
   window.dispatchEvent(new CustomEvent(CONFIGURATION_IMPACT_EVENT, {
-    detail: { section, changeKind, actionLabel: label || "Alterar configuração" },
+    detail: { section, changeKind, actionLabel: label || "Alterar configuração", requestId },
   }));
 }
 
@@ -98,8 +108,14 @@ export function ConfigurationSectionGuard() {
     const settingsAllowed = canEditSettings(user);
     const allowedButtons = new WeakSet<HTMLButtonElement>();
     const allowedForms = new WeakSet<HTMLFormElement>();
-    const reviewedButtons = new WeakMap<HTMLButtonElement, string>();
-    const reviewedForms = new WeakMap<HTMLFormElement, string>();
+    const reviewedButtons = new WeakMap<HTMLButtonElement, ReviewState>();
+    const reviewedForms = new WeakMap<HTMLFormElement, ReviewState>();
+    const approvedRequests = new Set<string>();
+
+    const onImpactApproved = (event: Event) => {
+      const detail = (event as CustomEvent<{ requestId?: string }>).detail;
+      if (detail?.requestId) approvedRequests.add(detail.requestId);
+    };
 
     const applyPolicy = () => {
       scheduled = false;
@@ -152,19 +168,24 @@ export function ConfigurationSectionGuard() {
 
       const changeKind = inferChangeKind(section, label);
       const reviewKey = impactReviewKey(section, changeKind, label);
-      if (reviewedButtons.get(button) !== reviewKey) {
+      let reviewState = reviewedButtons.get(button);
+      if (!reviewState || reviewState.key !== reviewKey) {
+        reviewState = { key: reviewKey, requestId: createRequestId() };
+        reviewedButtons.set(button, reviewState);
+      }
+      if (!approvedRequests.has(reviewState.requestId)) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        reviewedButtons.set(button, reviewKey);
-        openImpactReview(section, changeKind, label);
+        openImpactReview(section, changeKind, label, reviewState.requestId);
         return;
       }
+      approvedRequests.delete(reviewState.requestId);
       reviewedButtons.delete(button);
 
       event.preventDefault();
       event.stopImmediatePropagation();
       const impact = SECTION_IMPACT[section] || "Esta ação altera uma configuração crítica do tenant.";
-      const confirmed = window.confirm(`Confirmar alteração crítica em ${section}?\n\nAção: ${label || "alterar configuração"}\n\n${impact}\n\nA mudança ficará registrada no Histórico de Configurações.`);
+      const confirmed = window.confirm(`Confirmar alteração crítica em ${section}?\n\nAção: ${label || "alterar configuração"}\n\n${impact}\n\nO checklist de impacto foi concluído e a mudança ficará registrada no Histórico de Configurações.`);
       if (!confirmed) return;
 
       allowedButtons.add(button);
@@ -198,19 +219,24 @@ export function ConfigurationSectionGuard() {
       const label = submitter ? actionLabel(submitter) : "Salvar alterações";
       const changeKind = inferChangeKind(section, label);
       const reviewKey = impactReviewKey(section, changeKind, label);
-      if (reviewedForms.get(form) !== reviewKey) {
+      let reviewState = reviewedForms.get(form);
+      if (!reviewState || reviewState.key !== reviewKey) {
+        reviewState = { key: reviewKey, requestId: createRequestId() };
+        reviewedForms.set(form, reviewState);
+      }
+      if (!approvedRequests.has(reviewState.requestId)) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        reviewedForms.set(form, reviewKey);
-        openImpactReview(section, changeKind, label);
+        openImpactReview(section, changeKind, label, reviewState.requestId);
         return;
       }
+      approvedRequests.delete(reviewState.requestId);
       reviewedForms.delete(form);
 
       event.preventDefault();
       event.stopImmediatePropagation();
       const impact = SECTION_IMPACT[section] || "Esta ação altera uma configuração crítica do tenant.";
-      if (!window.confirm(`Confirmar alteração crítica em ${section}?\n\nAção: ${label}\n\n${impact}\n\nA mudança ficará registrada no Histórico de Configurações.`)) return;
+      if (!window.confirm(`Confirmar alteração crítica em ${section}?\n\nAção: ${label}\n\n${impact}\n\nO checklist de impacto foi concluído e a mudança ficará registrada no Histórico de Configurações.`)) return;
       allowedForms.add(form);
       window.setTimeout(() => form.requestSubmit(), 0);
     };
@@ -219,12 +245,15 @@ export function ConfigurationSectionGuard() {
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected", "hidden"] });
     root.addEventListener("click", onClickCapture, true);
     root.addEventListener("submit", onSubmitCapture, true);
+    window.addEventListener(CONFIGURATION_IMPACT_APPROVED_EVENT, onImpactApproved as EventListener);
     schedulePolicy();
 
     return () => {
       observer.disconnect();
       root.removeEventListener("click", onClickCapture, true);
       root.removeEventListener("submit", onSubmitCapture, true);
+      window.removeEventListener(CONFIGURATION_IMPACT_APPROVED_EVENT, onImpactApproved as EventListener);
+      approvedRequests.clear();
       restoreDisabledControls(root);
     };
   }, [user]);
