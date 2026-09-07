@@ -16,6 +16,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import PlanoMidiaCore from "@/pages/PlanoMidiaCore";
+import "./PlanoMidia.responsive.css";
 
 type PlanningConfig = {
   objetivoPrincipal: string;
@@ -470,7 +471,9 @@ export default function PlanoMidia() {
         <p className="mt-0.5 text-[11px] text-muted-foreground">O resultado deve respeitar exatamente o período e o teto financeiro definidos acima.</p>
       </div>
 
-      <PlanoMidiaCore />
+      <div className="marketing-plan-responsive">
+        <PlanoMidiaCore />
+      </div>
     </div>
   );
 }
