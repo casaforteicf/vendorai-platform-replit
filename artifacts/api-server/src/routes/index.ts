@@ -138,6 +138,7 @@ import sdrTemplatesRouter from "./sdr_templates";
 import renderRouter from "./render";
 import siteRouter from "./site";
 import spinRouter from "./spin";
+import jarvisNaturalActionsRouter from "./jarvis_natural_actions";
 import supportRouter from "./support";
 import devAgentAutonomyRouter from "./dev_agent_autonomy";
 import adminBugReportsRouter from "./admin_bug_reports";
@@ -457,6 +458,9 @@ router.use(renderRouter);
 
 // SPIN Selling Briefing Hub
 router.use(spinRouter);
+
+// JARVIS: comandos naturais controlados precisam interceptar o chat antes do LLM.
+router.use(jarvisNaturalActionsRouter);
 
 // Support chat + Dev IA
 router.use(supportRouter);
