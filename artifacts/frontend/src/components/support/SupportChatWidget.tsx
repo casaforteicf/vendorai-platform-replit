@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff } from "lucide-react";
+import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff, ShieldCheck, Check, Ban, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -14,6 +15,15 @@ interface BugReportResult {
   protocolo: string;
   status: "aberto" | "em_analise" | "resolvido";
   resolvidoPor: "agente" | "humano" | null;
+}
+
+interface AgentTaskApproval {
+  id: string;
+  agentName: string;
+  actionType: string;
+  status: "pendente_aprovacao" | "aprovado" | "executando" | "concluido" | "rejeitado" | "erro";
+  payload?: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 interface BrowserSpeechRecognitionEvent extends Event {
@@ -42,18 +52,61 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
 };
 
+function approvalLabel(task: AgentTaskApproval) {
+  const payload = task.payload ?? {};
+  if (task.actionType === "aprovacao_desconto") {
+    const discount = typeof payload.discountPercent === "number" ? payload.discountPercent : null;
+    return discount == null ? "Aprovação de desconto" : `Desconto de ${discount}%`;
+  }
+  if (task.actionType === "aprovacao_fechamento") return "Fechamento de negócio";
+  if (task.actionType === "conferencia_estoque") return "Conferência de estoque";
+  if (task.actionType === "enviar_whatsapp") return "Envio de mensagem WhatsApp";
+  return task.actionType.replace(/_/g, " ");
+}
+
+function approvalRiskLevel(actionType: string) {
+  if (["enviar_whatsapp", "aprovacao_fechamento", "aprovacao_desconto"].includes(actionType)) return 3;
+  if (actionType === "conferencia_estoque") return 2;
+  return 2;
+}
+
 export function SupportChatWidget() {
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [listening, setListening] = useState(false);
   const [bugReport, setBugReport] = useState<BugReportResult | null>(null);
+  const [approvalQueue, setApprovalQueue] = useState<AgentTaskApproval[]>([]);
+  const [approvalsOpen, setApprovalsOpen] = useState(false);
+  const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const conversationIdRef = useRef<string>(crypto.randomUUID());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+
+  const loadApprovalQueue = useCallback(async () => {
+    if (!tenantId) {
+      setApprovalQueue([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/agent-tasks`);
+      if (!res.ok) return;
+      const rows = (await res.json()) as AgentTaskApproval[];
+      const queue = rows
+        .filter((task) => task.status === "pendente_aprovacao" || task.status === "aprovado")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 8);
+      setApprovalQueue(queue);
+    } catch {
+      // A fila é auxiliar e nunca deve bloquear a conversa com o JARVIS.
+    }
+  }, [tenantId]);
 
   useEffect(() => {
     const openFromHelp = (event: Event) => {
@@ -68,12 +121,16 @@ export function SupportChatWidget() {
   }, []);
 
   useEffect(() => {
+    if (open) void loadApprovalQueue();
+  }, [open, loadApprovalQueue]);
+
+  useEffect(() => {
     if (open && messages.length === 0) {
       setMessages([
         {
           role: "assistant",
           content:
-            "Olá. Sou o JARVIS, seu assistente inteligente no VendorAI. Posso orientar sobre o sistema, ajudar com configurações e integrações e acompanhar problemas até a resolução. Você pode falar ou digitar.",
+            "Olá. Sou o JARVIS, seu Agente Mestre no VendorAI. Posso analisar o negócio, orientar o uso do sistema, mostrar prioridades e acompanhar ações que precisam da sua aprovação. Você pode falar ou digitar.",
         },
       ]);
     }
@@ -136,6 +193,49 @@ export function SupportChatWidget() {
     setListening(true);
     recognition.start();
   }, [listening, stopListening]);
+
+  const runApprovalAction = useCallback(async (
+    task: AgentTaskApproval,
+    action: "approve" | "reject" | "execute",
+  ) => {
+    if (!tenantId || approvalBusyId) return;
+    setApprovalBusyId(task.id);
+
+    const labels = {
+      approve: "aprovada",
+      reject: "rejeitada",
+      execute: "executada",
+    } as const;
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/agent-tasks/${task.id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = await res.json() as AgentTaskApproval & { error?: string };
+      if (!res.ok) throw new Error(result.error ?? "Falha ao processar aprovação");
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `${approvalLabel(task)} ${labels[action]}. Status atual: ${result.status}.`,
+        },
+      ]);
+      await loadApprovalQueue();
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: err instanceof Error ? err.message : "Não foi possível processar esta aprovação.",
+        },
+      ]);
+    } finally {
+      setApprovalBusyId(null);
+    }
+  }, [approvalBusyId, loadApprovalQueue, tenantId]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -256,8 +356,9 @@ export function SupportChatWidget() {
       setStreaming(false);
       abortRef.current = null;
       setTimeout(() => textareaRef.current?.focus(), 50);
+      void loadApprovalQueue();
     }
-  }, [input, messages, streaming]);
+  }, [input, loadApprovalQueue, messages, streaming]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -297,7 +398,7 @@ export function SupportChatWidget() {
               </div>
               <div className="min-w-0">
                 <div className="font-semibold text-sm leading-tight">JARVIS</div>
-                <div className="text-[10px] opacity-80 truncate">Assistente inteligente do VendorAI</div>
+                <div className="text-[10px] opacity-80 truncate">Agente Mestre do VendorAI</div>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -321,6 +422,82 @@ export function SupportChatWidget() {
               </Button>
             </div>
           </div>
+
+          {approvalQueue.length > 0 && (
+            <div className="shrink-0 border-b border-border bg-muted/30">
+              <button
+                type="button"
+                className="w-full px-3 py-2 flex items-center justify-between text-left"
+                onClick={() => setApprovalsOpen((value) => !value)}
+              >
+                <span className="flex items-center gap-2 text-xs font-medium">
+                  <ShieldCheck className="h-4 w-4" />
+                  Fila de aprovações
+                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                    {approvalQueue.length}
+                  </span>
+                </span>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", approvalsOpen && "rotate-180")} />
+              </button>
+
+              {approvalsOpen && (
+                <div className="max-h-48 overflow-y-auto px-3 pb-2 space-y-2">
+                  {approvalQueue.map((task) => {
+                    const busy = approvalBusyId === task.id;
+                    const riskLevel = approvalRiskLevel(task.actionType);
+                    return (
+                      <div key={task.id} className="rounded-lg border bg-background p-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{approvalLabel(task)}</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">
+                              {task.agentName} · Nível {riskLevel} · {task.status === "aprovado" ? "aprovado, aguardando execução" : "aguardando decisão"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex gap-1.5">
+                          {task.status === "pendente_aprovacao" ? (
+                            <>
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-xs"
+                                disabled={busy}
+                                onClick={() => void runApprovalAction(task, "approve")}
+                              >
+                                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                Aprovar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 flex-1 text-xs"
+                                disabled={busy}
+                                onClick={() => void runApprovalAction(task, "reject")}
+                              >
+                                <Ban className="h-3.5 w-3.5" />
+                                Rejeitar
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-7 w-full text-xs"
+                              disabled={busy}
+                              onClick={() => void runApprovalAction(task, "execute")}
+                            >
+                              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                              Executar ação aprovada
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0">
             {messages.map((msg, i) => (
@@ -409,18 +586,25 @@ export function SupportChatWidget() {
         </div>
       )}
 
-      <Button
-        size="icon"
-        className={cn(
-          "fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg transition-transform",
-          open && "scale-90"
+      <div className="fixed bottom-4 right-4 z-50">
+        {approvalQueue.length > 0 && !open && (
+          <span className="absolute -right-1 -top-1 z-10 min-w-5 h-5 rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground flex items-center justify-center">
+            {approvalQueue.length}
+          </span>
         )}
-        onClick={() => setOpen((v) => !v)}
-        title="JARVIS"
-        aria-label="Abrir JARVIS"
-      >
-        {open ? <X className="h-5 w-5" /> : <Sparkles className="h-6 w-6" />}
-      </Button>
+        <Button
+          size="icon"
+          className={cn(
+            "h-12 w-12 rounded-full shadow-lg transition-transform",
+            open && "scale-90"
+          )}
+          onClick={() => setOpen((v) => !v)}
+          title="JARVIS"
+          aria-label="Abrir JARVIS"
+        >
+          {open ? <X className="h-5 w-5" /> : <Sparkles className="h-6 w-6" />}
+        </Button>
+      </div>
     </>
   );
 }

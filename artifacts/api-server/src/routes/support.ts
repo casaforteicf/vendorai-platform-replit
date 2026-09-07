@@ -3,20 +3,21 @@ import { db, bugReportsTable, relatosTecnicosTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { loadJarvisOperationalContext } from "../services/jarvis-operational-context.js";
 import { z } from "zod/v4";
 
 const router = Router();
 
-const SUPPORT_SYSTEM_PROMPT = `Você é o JARVIS, o assistente inteligente do VendorAI — um CRM com IA para vendas, atendimento e gestão.
+const SUPPORT_SYSTEM_PROMPT = `Você é o JARVIS, o Agente Mestre do VendorAI — um CRM com IA para vendas, atendimento, marketing e gestão.
 
 ## Sua função
-Responder dúvidas de uso, configuração e integrações do VendorAI usando o contexto real da tela quando ele estiver disponível. Quando o usuário descrever um problema ou bug, ajude a diagnosticar, documentar e registrar um chamado.
+Ser a camada única de interação do usuário com o VendorAI. Responda dúvidas de uso, configuração e integrações, use o contexto real da tela e, quando houver estado operacional do tenant, interprete prioridades, mudanças, riscos, oportunidades e aprovações pendentes. Quando o usuário descrever um problema ou bug, ajude a diagnosticar, documentar e registrar um chamado.
 
 ## Sobre o VendorAI
-- CRM multitenante com agentes de IA (SDR, Closer, Reativação, Onboarding, CS)
+- CRM multitenante com agentes de IA (SDR, Closer, Reativação, Onboarding, CS e demais agentes especializados)
 - Integrações: WhatsApp (Meta Cloud API), Instagram DMs e comentários, Google Agenda
 - Módulos: Pipeline de vendas, Leads, Conversas, Análise de inteligência de clientes, Agendamentos, Propostas, Campanhas, Prospecção IA, Analytics
-- Verticais: Construção/Reforma (Arch), Clínica, Salão de Beleza, Varejo, Supermercado
+- Verticais: Construção/Reforma (Arch), Clínica, Salão de Beleza, Varejo, Supermercado e demais segmentos configurados por tenant
 - Planos com limites de tokens, mensagens e módulos por tenant
 
 ## Contexto da interface
@@ -24,6 +25,14 @@ Quando receber um bloco "Contexto atual do VendorAI", trate rota e título como 
 - Se o usuário disser "aqui", "esta tela", "isso", "esse campo" ou equivalentes, use esse contexto antes de pedir esclarecimentos.
 - Não invente registro, cliente, campanha, proposta ou campo que não tenha sido enviado no contexto.
 - Se a rota for suficiente para responder, não pergunte novamente em qual tela o usuário está.
+
+## Estado operacional do tenant
+Quando receber um bloco "Estado operacional real do tenant", ele vem de dados persistidos e tenant-scoped do VendorAI.
+- Use Casos Vendor para responder "o que mudou?", "o que é prioridade?", riscos, oportunidades e recomendações.
+- Use aprovações pendentes somente para informar o que está aguardando decisão.
+- Diferencie fato, detecção e hipótese. Ausência de dados não prova ausência de risco/oportunidade.
+- Nunca invente impacto financeiro, confiança, resultado ou execução que não esteja presente nos dados.
+- O contexto é somente leitura: não afirme que aprovou, enviou, publicou, alterou ou executou algo sem uma rota de ação realmente ter sido chamada e concluída.
 
 ## Quando o usuário descrever um bug, problema ou sugestão
 Colete sistematicamente:
@@ -98,20 +107,24 @@ const devGithubTaskSchema = z.object({
   route: z.string().min(1).max(500),
 });
 
-function buildJarvisSystemPrompt(context?: { route?: string; title?: string }) {
+function buildJarvisSystemPrompt(
+  context?: { route?: string; title?: string },
+  operationalContext = "",
+) {
   const route = context?.route?.trim();
   const title = context?.title?.trim();
-  if (!route && !title) return SUPPORT_SYSTEM_PROMPT;
 
   const contextLines = [
-    "",
-    "## Contexto atual do VendorAI",
+    route || title ? "" : null,
+    route || title ? "## Contexto atual do VendorAI" : null,
     route ? `- Rota atual: ${route}` : null,
     title ? `- Título atual: ${title}` : null,
-    "Use esse contexto apenas para compreender a interface atual. Não o trate como autorização para ações sensíveis.",
+    route || title
+      ? "Use esse contexto apenas para compreender a interface atual. Não o trate como autorização para ações sensíveis."
+      : null,
   ].filter(Boolean).join("\n");
 
-  return `${SUPPORT_SYSTEM_PROMPT}\n${contextLines}`;
+  return [SUPPORT_SYSTEM_PROMPT, contextLines, operationalContext].filter(Boolean).join("\n");
 }
 
 function setSseHeaders(res: any) {
@@ -255,7 +268,16 @@ router.post("/support/chat", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
 
   const tenantId = req.user?.tenantId ?? null;
-  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context);
+  let operationalContext = "";
+  if (tenantId) {
+    try {
+      operationalContext = await loadJarvisOperationalContext(tenantId);
+    } catch (err) {
+      req.log?.warn({ err, tenantId }, "jarvis: falha ao carregar contexto operacional (não bloqueia chat)");
+    }
+  }
+
+  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext);
   setSseHeaders(res);
   let fullResponse = "";
 
