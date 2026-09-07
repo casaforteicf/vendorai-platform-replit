@@ -1,10 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { campaignsTable, campaignSentLogsTable, db } from "@workspace/db";
 
+export type CampaignAbStatus = "sem_teste" | "coletando" | "inconclusivo" | "sinal_provisorio" | "vencedor";
+
 export type CampaignAbVerdict = {
   campaignId: string;
   winner: "A" | "B" | null;
-  status: "sem_teste" | "coletando" | "inconclusivo" | "vencedor";
+  provisionalLeader: "A" | "B" | null;
+  status: CampaignAbStatus;
   reason: string;
   sampleA: number;
   sampleB: number;
@@ -26,6 +29,88 @@ function rate(num: number, den: number) {
   return den > 0 ? num / den : 0;
 }
 
+export type VariantEvidenceInput = {
+  sampleA: number;
+  sampleB: number;
+  readsA: number;
+  readsB: number;
+  conversionsA: number;
+  conversionsB: number;
+};
+
+export type VariantEvidence = {
+  winner: "A" | "B" | null;
+  provisionalLeader: "A" | "B" | null;
+  status: Exclude<CampaignAbStatus, "sem_teste">;
+  reason: string;
+  readRateA: number;
+  readRateB: number;
+  conversionRateA: number;
+  conversionRateB: number;
+  relativeLift: number;
+};
+
+export function evaluateVariantEvidence(input: VariantEvidenceInput): VariantEvidence {
+  const readRateA = rate(input.readsA, input.sampleA);
+  const readRateB = rate(input.readsB, input.sampleB);
+  const conversionRateA = rate(input.conversionsA, input.sampleA);
+  const conversionRateB = rate(input.conversionsB, input.sampleB);
+  const totalConversions = input.conversionsA + input.conversionsB;
+
+  const base = {
+    winner: null,
+    provisionalLeader: null,
+    readRateA,
+    readRateB,
+    conversionRateA,
+    conversionRateB,
+    relativeLift: 0,
+  } as const;
+
+  if (input.sampleA < MIN_PER_VARIANT || input.sampleB < MIN_PER_VARIANT) {
+    return {
+      ...base,
+      status: "coletando",
+      reason: "Aguardando amostra mínima por variante.",
+    };
+  }
+
+  const useConversion = totalConversions >= MIN_CONVERSIONS_TOTAL;
+  const metricA = useConversion ? conversionRateA : readRateA;
+  const metricB = useConversion ? conversionRateB : readRateB;
+  const best = Math.max(metricA, metricB);
+  const worst = Math.min(metricA, metricB);
+  const relativeLift = worst > 0 ? (best - worst) / worst : best > 0 ? 1 : 0;
+
+  if (relativeLift < MIN_RELATIVE_LIFT) {
+    return {
+      ...base,
+      relativeLift,
+      status: "inconclusivo",
+      reason: "Diferença menor que 20%; não há evidência suficiente para declarar vencedor.",
+    };
+  }
+
+  const leader: "A" | "B" = metricA > metricB ? "A" : "B";
+  if (!useConversion) {
+    return {
+      ...base,
+      provisionalLeader: leader,
+      relativeLift,
+      status: "sinal_provisorio",
+      reason: `Liderança provisória por leitura da variante ${leader}, com lift relativo de ${(relativeLift * 100).toFixed(1)}%; conversões ainda insuficientes para declarar vencedor.`,
+    };
+  }
+
+  return {
+    ...base,
+    winner: leader,
+    relativeLift,
+    status: "vencedor",
+    reason: `Vencedor por conversão, com lift relativo de ${(relativeLift * 100).toFixed(1)}%.`,
+  };
+}
+
 export async function evaluateCampaignAbTest(campaignId: string): Promise<CampaignAbVerdict> {
   const [campaign] = await db
     .select({
@@ -43,6 +128,7 @@ export async function evaluateCampaignAbTest(campaignId: string): Promise<Campai
     return {
       campaignId,
       winner: null,
+      provisionalLeader: null,
       status: "sem_teste",
       reason: "Campanha sem teste A/B ativo e duas variantes válidas.",
       sampleA: 0,
@@ -75,58 +161,38 @@ export async function evaluateCampaignAbTest(campaignId: string): Promise<Campai
   const readsB = b.filter((row) => row.readAt).length;
   const conversionsA = a.filter((row) => row.convertedAt).length;
   const conversionsB = b.filter((row) => row.convertedAt).length;
-  const readRateA = rate(readsA, a.length);
-  const readRateB = rate(readsB, b.length);
-  const conversionRateA = rate(conversionsA, a.length);
-  const conversionRateB = rate(conversionsB, b.length);
-
-  const base: CampaignAbVerdict = {
-    campaignId,
-    winner: null,
-    status: "coletando",
-    reason: "Aguardando amostra mínima por variante.",
+  const evidence = evaluateVariantEvidence({
     sampleA: a.length,
     sampleB: b.length,
     readsA,
     readsB,
     conversionsA,
     conversionsB,
-    readRateA,
-    readRateB,
-    conversionRateA,
-    conversionRateB,
-  };
+  });
 
-  if (a.length < MIN_PER_VARIANT || b.length < MIN_PER_VARIANT) return base;
-
-  const totalConversions = conversionsA + conversionsB;
-  const metricA = totalConversions >= MIN_CONVERSIONS_TOTAL ? conversionRateA : readRateA;
-  const metricB = totalConversions >= MIN_CONVERSIONS_TOTAL ? conversionRateB : readRateB;
-  const best = Math.max(metricA, metricB);
-  const worst = Math.min(metricA, metricB);
-  const relativeLift = worst > 0 ? (best - worst) / worst : best > 0 ? 1 : 0;
-
-  if (relativeLift < MIN_RELATIVE_LIFT) {
-    return {
-      ...base,
-      status: "inconclusivo",
-      reason: "Diferença menor que 20%; não há evidência suficiente para declarar vencedor.",
-    };
+  if (evidence.status === "vencedor" && evidence.winner && campaign.winningVariant !== evidence.winner) {
+    await db
+      .update(campaignsTable)
+      .set({ winningVariant: evidence.winner, updatedAt: new Date() })
+      .where(eq(campaignsTable.id, campaignId));
   }
 
-  const winner: "A" | "B" = metricA > metricB ? "A" : "B";
-  await db
-    .update(campaignsTable)
-    .set({ winningVariant: winner, updatedAt: new Date() })
-    .where(eq(campaignsTable.id, campaignId));
-
   return {
-    ...base,
-    winner,
-    status: "vencedor",
-    reason: totalConversions >= MIN_CONVERSIONS_TOTAL
-      ? `Vencedor por conversão, com lift relativo de ${(relativeLift * 100).toFixed(1)}%.`
-      : `Vencedor provisório por leitura, com lift relativo de ${(relativeLift * 100).toFixed(1)}%; conversões ainda insuficientes.`,
+    campaignId,
+    winner: evidence.winner,
+    provisionalLeader: evidence.provisionalLeader,
+    status: evidence.status,
+    reason: evidence.reason,
+    sampleA: a.length,
+    sampleB: b.length,
+    readsA,
+    readsB,
+    conversionsA,
+    conversionsB,
+    readRateA: evidence.readRateA,
+    readRateB: evidence.readRateB,
+    conversionRateA: evidence.conversionRateA,
+    conversionRateB: evidence.conversionRateB,
   };
 }
 
@@ -144,15 +210,18 @@ export async function buildCampaignAbLearningPromptBlock(tenantId: string): Prom
   })));
 
   const lines = results
-    .filter(({ result }) => result.status === "vencedor" || result.status === "inconclusivo")
+    .filter(({ result }) => result.status === "vencedor" || result.status === "sinal_provisorio" || result.status === "inconclusivo")
     .map(({ campaign, result }) => {
-      const metric = result.conversionsA + result.conversionsB >= MIN_CONVERSIONS_TOTAL ? "conversão" : "leitura";
-      return result.winner
-        ? `- ${campaign.nome}: variante ${result.winner} venceu por ${metric}. A ${result.sampleA} envios (${(result.conversionRateA * 100).toFixed(1)}% conv.); B ${result.sampleB} envios (${(result.conversionRateB * 100).toFixed(1)}% conv.).`
-        : `- ${campaign.nome}: teste inconclusivo após A ${result.sampleA} / B ${result.sampleB} envios; não repetir como verdade causal.`;
+      if (result.winner) {
+        return `- ${campaign.nome}: variante ${result.winner} venceu por conversão. A ${result.sampleA} envios (${(result.conversionRateA * 100).toFixed(1)}% conv.); B ${result.sampleB} envios (${(result.conversionRateB * 100).toFixed(1)}% conv.).`;
+      }
+      if (result.provisionalLeader) {
+        return `- ${campaign.nome}: variante ${result.provisionalLeader} lidera provisoriamente por leitura, mas ainda NÃO é vencedora; aguarde conversões suficientes antes de promover.`;
+      }
+      return `- ${campaign.nome}: teste inconclusivo após A ${result.sampleA} / B ${result.sampleB} envios; não repetir como verdade causal.`;
     });
 
   if (lines.length === 0) return "";
 
-  return `\n## Aprendizado de testes A/B controlados\n${lines.join("\n")}\nRegra: altere uma variável principal por teste (gancho, oferta, CTA, formato ou mensagem), preserve o restante e priorize conversão sobre abertura quando houver volume. Não generalize vencedor para outro público/canal sem novo teste.\n`;
+  return `\n## Aprendizado de testes A/B controlados\n${lines.join("\n")}\nRegra: altere uma variável principal por teste (gancho, oferta, CTA, formato ou mensagem), preserve o restante e priorize conversão sobre abertura. Sinal de leitura é apenas provisório e nunca deve promover automaticamente uma variante. Não generalize vencedor para outro público/canal sem novo teste.\n`;
 }
