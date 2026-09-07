@@ -11,6 +11,7 @@ import { runVendorAiSubscriptionBilling } from "./jobs/vendorAiSubscriptionBilli
 import { runVendorAiSubscriptionPaymentSync } from "./jobs/vendorAiSubscriptionPaymentSync.js";
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
+import { runMarketingBudgetAutopilot } from "./jobs/marketingBudgetAutopilot.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
 import { startDevAgentSupportHandoff } from "./services/dev-agent-support-handoff.js";
@@ -98,6 +99,19 @@ async function start() {
     };
     void syncMarketingLifecycle();
     setInterval(() => { void syncMarketingLifecycle(); }, 10 * 60 * 1000).unref();
+
+    // Marketing IA nível 3/4: roda em ciclo conservador de 6h. O próprio job
+    // exige política server-side, evidência suficiente, teto humano e cooldown.
+    // Executa depois do startup para não bloquear a subida da API.
+    const syncMarketingBudgetAutopilot = async () => {
+      try {
+        await runMarketingBudgetAutopilot(logger);
+      } catch (syncErr) {
+        logger.error({ err: syncErr }, "marketing-budget-autopilot: unhandled sync error");
+      }
+    };
+    setTimeout(() => { void syncMarketingBudgetAutopilot(); }, 2 * 60 * 1000).unref();
+    setInterval(() => { void syncMarketingBudgetAutopilot(); }, 6 * 60 * 60 * 1000).unref();
   });
 }
 
