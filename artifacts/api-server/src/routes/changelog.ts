@@ -159,6 +159,7 @@ router.post("/changelog/marcar-lido", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/configuration-health", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccessTenant before tenant data access
   const tenantId = String(req.params.tenantId || "");
   if (!tenantId || !canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -319,6 +320,7 @@ router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin"
 });
 
 router.post("/tenants/:tenantId/configuration-history/:auditId/rollback", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccessTenant before tenant data access
   const tenantId = String(req.params.tenantId || "");
   const auditId = String(req.params.auditId || "");
   if (!tenantId || !auditId || !canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
