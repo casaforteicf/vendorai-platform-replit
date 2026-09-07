@@ -5,6 +5,7 @@ import {
   CONFIGURATION_IMPACT_EVENT,
   type ConfigurationChangeKind,
 } from "@/components/ConfigurationImpactSimulator";
+import { CONFIGURATION_POST_CHANGE_EVENT } from "@/components/ConfigurationPostChangeValidation";
 
 const CRITICAL_SECTIONS = new Set(["Integrações", "Documentos", "Equipe e Acessos", "Faturamento"]);
 const WRITE_ACTION_PATTERN = /(salvar|conectar|reconectar|desconectar|excluir|remover|revogar|atualizar|alterar|confirmar|ativar|desativar|renovar|assinar|cobrar|publicar)/i;
@@ -94,6 +95,12 @@ function createRequestId() {
 function openImpactReview(section: string, changeKind: ConfigurationChangeKind, label: string, requestId: string) {
   window.dispatchEvent(new CustomEvent(CONFIGURATION_IMPACT_EVENT, {
     detail: { section, changeKind, actionLabel: label || "Alterar configuração", requestId },
+  }));
+}
+
+function notifyPostChange(section: string, changeKind: ConfigurationChangeKind, label: string) {
+  window.dispatchEvent(new CustomEvent(CONFIGURATION_POST_CHANGE_EVENT, {
+    detail: { section, changeKind, actionLabel: label || "Alterar configuração" },
   }));
 }
 
@@ -216,6 +223,7 @@ export function ConfigurationSectionGuard() {
       allowedButtons.add(button);
       const form = button.closest("form");
       if (form) allowedForms.add(form);
+      notifyPostChange(section, changeKind, label);
       window.setTimeout(() => button.click(), 0);
     };
 
@@ -263,6 +271,7 @@ export function ConfigurationSectionGuard() {
       const impact = SECTION_IMPACT[section] || "Esta ação altera uma configuração crítica do tenant.";
       if (!window.confirm(`Confirmar alteração crítica em ${section}?\n\nAção: ${label}\n\n${impact}\n\nO checklist de impacto foi concluído e a mudança ficará registrada no Histórico de Configurações.`)) return;
       allowedForms.add(form);
+      notifyPostChange(section, changeKind, label);
       window.setTimeout(() => form.requestSubmit(), 0);
     };
 

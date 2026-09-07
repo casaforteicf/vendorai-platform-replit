@@ -4,6 +4,7 @@ import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel"
 import { ConfigurationRollbackPanel } from "@/components/ConfigurationRollbackPanel";
 import { ConfigurationGovernancePanel } from "@/components/ConfigurationGovernancePanel";
 import { ConfigurationImpactSimulator } from "@/components/ConfigurationImpactSimulator";
+import { ConfigurationPostChangeValidation } from "@/components/ConfigurationPostChangeValidation";
 import { ConfigurationSectionGuard } from "@/components/ConfigurationSectionGuard";
 
 export default function Configuracoes() {
@@ -15,6 +16,7 @@ export default function Configuracoes() {
       {!legacySiteDeepLink && <ConfigurationAccessPanel />}
       {!legacySiteDeepLink && <ConfigurationGovernancePanel />}
       {!legacySiteDeepLink && <ConfigurationImpactSimulator />}
+      {!legacySiteDeepLink && <ConfigurationPostChangeValidation />}
       {!legacySiteDeepLink && <ConfigurationHistoryPanel />}
       {!legacySiteDeepLink && <ConfigurationRollbackPanel />}
       <ConfiguracoesNormalized />
