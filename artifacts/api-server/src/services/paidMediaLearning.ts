@@ -1,4 +1,5 @@
 import { getAdsOverview } from './adCampaignIntelligence';
+import { buildMarketingDecisionStrategyLearningBlock } from './marketingDecisionStrategyLearning.js';
 
 type CampaignLearningRow = {
   campaignId?: string;
@@ -42,17 +43,30 @@ function campaignEvidence(row: CampaignLearningRow): string {
   ].filter(Boolean).join(' · ');
 }
 
+function creativeExecutionRule(decisionLearning: string): string {
+  if (!decisionLearning) return '';
+  return `\n## Regra de aplicação do aprendizado na criação\nAo gerar a próxima peça, use a memória de decisões como evidência comercial, não como receita fixa. Quando houver padrão positivo recorrente, preserve a lógica que provavelmente contribuiu para o resultado e crie variações coerentes de gancho, promessa, oferta, prova, formato e CTA para o mesmo objetivo/canal. Quando houver padrão negativo recorrente, reformule esses elementos antes de repetir a combinação. Nunca atribua venda a uma palavra, cor, CTA ou criativo específico se os dados não isolarem essa causa; transforme a evidência em hipótese testável. Casos isolados ou inconclusivos devem gerar exploração controlada, não regra.\n`;
+}
+
 /**
  * Converte a inteligência de mídia paga já existente em contexto de learning.
  * Não persiste nada e não cria analytics paralelo: usa getAdsOverview(), que
  * já consolida snapshots de plataforma, leads, trials, negócios e receita.
+ *
+ * Também incorpora a memória auditada das decisões de redistribuição para que
+ * Plano de Mídia, Gerador de Conteúdo, Content Studio, publicação e produção
+ * automática recebam a mesma evidência comercial sem uma memória paralela.
  */
 export async function buildPaidMediaLearningPromptBlock(tenantId: string): Promise<string> {
-  const overview = await getAdsOverview(tenantId);
+  const [overview, decisionLearning] = await Promise.all([
+    getAdsOverview(tenantId),
+    buildMarketingDecisionStrategyLearningBlock(tenantId).catch(() => ''),
+  ]);
   const rows = extractCampaignRows(overview)
     .filter((row) => Number(row.spend ?? 0) > 0 || Number(row.clicks ?? 0) > 0 || Number(row.leads ?? 0) > 0 || Number(row.sales ?? 0) > 0);
 
-  if (rows.length === 0) return '';
+  const decisionCreativeBlock = decisionLearning + creativeExecutionRule(decisionLearning);
+  if (rows.length === 0) return decisionCreativeBlock;
 
   const winners = rows
     .filter((row) => Number(row.sales ?? 0) >= 2 && typeof row.roas === 'number' && row.roas >= 3)
@@ -94,8 +108,8 @@ export async function buildPaidMediaLearningPromptBlock(tenantId: string): Promi
   if (recommended.length) learned.push(`Diagnósticos já calculados pelo Ads Intelligence: ${recommended.join(' | ')}.`);
 
   if (learned.length === 0) {
-    return `\n## Aprendizado de mídia paga do próprio tenant\nExistem ${rows.length} campanha(s) com dados, mas ainda não há evidência suficiente de vencedor ou gargalo recorrente. Não generalizar por CTR/CPL isolado; continuar coletando cliques, leads, vendas, receita e ROAS.\n`;
+    return `\n## Aprendizado de mídia paga do próprio tenant\nExistem ${rows.length} campanha(s) com dados, mas ainda não há evidência suficiente de vencedor ou gargalo recorrente. Não generalizar por CTR/CPL isolado; continuar coletando cliques, leads, vendas, receita e ROAS.\n${decisionCreativeBlock}`;
   }
 
-  return `\n## Aprendizado de mídia paga do próprio tenant (dados reais de Ads + CRM)\n${learned.join('\n')}\n`;
+  return `\n## Aprendizado de mídia paga do próprio tenant (dados reais de Ads + CRM)\n${learned.join('\n')}\n${decisionCreativeBlock}`;
 }
