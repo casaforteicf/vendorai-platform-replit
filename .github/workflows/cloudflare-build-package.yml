@@ -1,0 +1,42 @@
+name: Cloudflare Build Package
+
+on:
+  push:
+    branches:
+      - chore/cloudflare-build-package
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend run build
+
+      - name: Package static site
+        run: |
+          cd artifacts/frontend/dist/public
+          zip -r ../../../../vendorai-cloudflare.zip .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendorai-cloudflare
+          path: vendorai-cloudflare.zip
+          if-no-files-found: error
