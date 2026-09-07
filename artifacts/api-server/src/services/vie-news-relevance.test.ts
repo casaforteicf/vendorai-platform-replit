@@ -7,7 +7,9 @@ const constructionTenant = {
   audience: "famílias que desejam construir casas de alto desempenho",
   differentiators: "conforto térmico rapidez de obra eficiência energética",
   competitors: ["Construtora Alfa"],
+  suppliers: ["Fornecedor Beta"],
   products: ["Casa ICF", "obra chave na mão", "projeto residencial"],
+  regions: ["Chapecó SC"],
 };
 
 describe("scoreVieNewsForTenant", () => {
@@ -21,6 +23,7 @@ describe("scoreVieNewsForTenant", () => {
 
     expect(result.relevant).toBe(true);
     expect(result.category).toBe("Oportunidade");
+    expect(result.signalType).toBe("sectoral");
     expect(result.score).toBeGreaterThanOrEqual(60);
     expect(result.confidence).toBeGreaterThan(60);
   });
@@ -35,6 +38,7 @@ describe("scoreVieNewsForTenant", () => {
 
     expect(result.relevant).toBe(false);
     expect(result.matchedTerms).toHaveLength(0);
+    expect(result.signalType).toBe("market");
   });
 
   it("identifica sinal de risco quando há aderência ao negócio", () => {
@@ -48,5 +52,46 @@ describe("scoreVieNewsForTenant", () => {
     expect(result.relevant).toBe(true);
     expect(result.category).toBe("Risco");
     expect(result.severity).toBe("risk");
+    expect(result.signalType).toBe("sectoral");
+  });
+
+  it("prioriza concorrente conhecido como natureza do sinal", () => {
+    const result = scoreVieNewsForTenant(constructionTenant, {
+      title: "Construtora Alfa anuncia expansão e novo projeto residencial",
+      excerpt: "A concorrente pretende ampliar sua atuação em casas e obras residenciais.",
+      categories: ["Negócios", "Construção"],
+      sourceReliability: 86,
+    });
+
+    expect(result.relevant).toBe(true);
+    expect(result.signalType).toBe("competitor");
+    expect(result.matchedCompetitors).toEqual(["Construtora Alfa"]);
+  });
+
+  it("identifica fornecedor conhecido e risco de abastecimento", () => {
+    const result = scoreVieNewsForTenant(constructionTenant, {
+      title: "Fornecedor Beta alerta para atraso e alta de preço",
+      excerpt: "A empresa informou restrição temporária de abastecimento.",
+      categories: ["Indústria"],
+      sourceReliability: 84,
+    });
+
+    expect(result.relevant).toBe(true);
+    expect(result.category).toBe("Risco");
+    expect(result.signalType).toBe("supplier");
+    expect(result.matchedSuppliers).toEqual(["Fornecedor Beta"]);
+  });
+
+  it("identifica sinal regional quando a notícia menciona território do tenant", () => {
+    const result = scoreVieNewsForTenant(constructionTenant, {
+      title: "Chapecó amplia crédito para novas obras residenciais",
+      excerpt: "O programa regional busca estimular construção de casas e novos investimentos.",
+      categories: ["Regional", "Construção"],
+      sourceReliability: 82,
+    });
+
+    expect(result.relevant).toBe(true);
+    expect(result.signalType).toBe("regional");
+    expect(result.matchedRegions).toEqual(["Chapecó SC"]);
   });
 });
