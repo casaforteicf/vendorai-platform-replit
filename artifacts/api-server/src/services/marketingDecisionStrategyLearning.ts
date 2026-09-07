@@ -14,6 +14,15 @@ type LearningRow = {
   createdAt: Date;
 };
 
+type PlatformAggregate = {
+  platform: string;
+  total: number;
+  melhorou: number;
+  piorou: number;
+  inconclusivo: number;
+  meaningful: number;
+};
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -52,6 +61,57 @@ function formatDecision(row: LearningRow): string | null {
   return `- ${verdict.toUpperCase()}: ${campaign}${platform}${stage}. Referência ROAS ${formatRoas(before.roas)}; pós-decisão +R$ ${Math.max(0, num(deltas.spend) ?? 0).toFixed(2)} de gasto, +${Math.max(0, num(deltas.leads) ?? 0)} lead(s), +${Math.max(0, num(deltas.sales) ?? 0)} venda(s), ROAS incremental ${incrementalRoas}${windowHours !== null ? ` em ~${Math.round(windowHours)}h` : ""}. ${reason}`;
 }
 
+function normalizePlatform(value: string | null): string {
+  const normalized = value?.trim();
+  return normalized || "plataforma não identificada";
+}
+
+function aggregateByPlatform(rows: LearningRow[]): PlatformAggregate[] {
+  const aggregates = new Map<string, PlatformAggregate>();
+  for (const row of rows) {
+    const verdict = verdictOf(row.metadata);
+    if (!verdict) continue;
+    const platform = normalizePlatform(row.platform);
+    const current = aggregates.get(platform) ?? {
+      platform,
+      total: 0,
+      melhorou: 0,
+      piorou: 0,
+      inconclusivo: 0,
+      meaningful: 0,
+    };
+    current.total++;
+    current[verdict]++;
+    if (verdict !== "inconclusivo") current.meaningful++;
+    aggregates.set(platform, current);
+  }
+  return Array.from(aggregates.values()).sort((a, b) => b.meaningful - a.meaningful || b.total - a.total);
+}
+
+function formatRecurringPatterns(rows: LearningRow[]): string {
+  const patterns = aggregateByPlatform(rows)
+    .filter((group) => group.meaningful >= 2)
+    .slice(0, 8)
+    .map((group) => {
+      const positiveShare = group.meaningful > 0 ? group.melhorou / group.meaningful : 0;
+      const negativeShare = group.meaningful > 0 ? group.piorou / group.meaningful : 0;
+      const sample = `${group.meaningful} decisão(ões) conclusiva(s)`;
+
+      if (group.meaningful >= 3 && positiveShare >= 0.67) {
+        return `- PADRÃO POSITIVO em ${group.platform}: ${group.melhorou} melhoraram e ${group.piorou} pioraram (${sample}). Pode elevar a prioridade relativa de estratégias semelhantes nessa plataforma, sempre dentro do teto humano e com nova validação.`;
+      }
+      if (group.meaningful >= 3 && negativeShare >= 0.67) {
+        return `- PADRÃO NEGATIVO em ${group.platform}: ${group.piorou} pioraram e ${group.melhorou} melhoraram (${sample}). Reduza a prioridade relativa ou revise oferta, mensagem, segmentação e destino antes de escalar.`;
+      }
+      return `- PADRÃO MISTO em ${group.platform}: ${group.melhorou} melhoraram e ${group.piorou} pioraram (${sample}). Não generalize; mantenha testes controlados até separar quais condições explicam a diferença.`;
+    });
+
+  if (patterns.length === 0) {
+    return "- Ainda não existe recorrência suficiente por plataforma para formar um padrão confiável. Casos isolados continuam apenas como evidência exploratória.";
+  }
+  return patterns.join("\n");
+}
+
 /**
  * Transforma a trilha real de aprendizado pós-redistribuição em memória
  * estratégica consumível pelo próximo Plano de Mídia.
@@ -59,6 +119,9 @@ function formatDecision(row: LearningRow): string | null {
  * Quando existe mais de uma janela para a mesma decisão (24h/72h), somente
  * a avaliação mais recente entra na memória e nas contagens. Assim uma leitura
  * preliminar não infla a evidência nem compete com a avaliação final.
+ *
+ * A recorrência é calculada explicitamente por plataforma. O planejador não
+ * precisa inferir repetição a partir de uma lista de casos isolados.
  */
 export async function buildMarketingDecisionStrategyLearningBlock(tenantId: string): Promise<string> {
   const rows = await db
@@ -106,18 +169,22 @@ export async function buildMarketingDecisionStrategyLearningBlock(tenantId: stri
     return acc;
   }, { melhorou: 0, piorou: 0, inconclusivo: 0 });
 
-  const meaningful = normalized
-    .filter((row) => verdictOf(row.metadata) !== "inconclusivo")
+  const meaningfulRows = normalized.filter((row) => {
+    const verdict = verdictOf(row.metadata);
+    return verdict === "melhorou" || verdict === "piorou";
+  });
+  const meaningful = meaningfulRows
     .slice(0, 12)
     .map(formatDecision)
     .filter((line): line is string => Boolean(line));
 
   if (normalized.length === 0) return "";
 
-  const confidence = meaningful.length >= 6 ? "moderada" : meaningful.length >= 3 ? "baixa a moderada" : "baixa";
+  const recurringPatterns = formatRecurringPatterns(normalized);
+  const confidence = meaningfulRows.length >= 8 ? "moderada" : meaningfulRows.length >= 4 ? "baixa a moderada" : "baixa";
   const evidence = meaningful.length
     ? meaningful.join("\n")
     : "- Ainda não existem decisões com resultado conclusivo; preserve a estratégia atual e continue coletando evidência.";
 
-  return `\n## Memória de decisões de orçamento do próprio tenant\nForam avaliadas ${normalized.length} decisão(ões) únicas: ${counts.melhorou} melhoraram, ${counts.piorou} pioraram e ${counts.inconclusivo} ficaram inconclusivas. Quando há janelas de 24h e 72h para a mesma decisão, vale apenas a leitura mais recente. Confiança global atual: ${confidence}.\n${evidence}\n\nRegra para o próximo planejamento: trate decisões que melhoraram repetidamente como sinal para aumentar a prioridade relativa de combinações semelhantes de plataforma/objetivo, e decisões que pioraram repetidamente como sinal para reduzir prioridade, revisar mensagem/oferta/segmentação ou exigir nova evidência antes de escalar. Não copie orçamento passado mecanicamente, não transforme um único caso em regra geral e não interprete casos inconclusivos como sucesso ou fracasso. O teto humano continua soberano.\n`;
+  return `\n## Memória de decisões de orçamento do próprio tenant\nForam avaliadas ${normalized.length} decisão(ões) únicas: ${counts.melhorou} melhoraram, ${counts.piorou} pioraram e ${counts.inconclusivo} ficaram inconclusivas. Quando há janelas de 24h e 72h para a mesma decisão, vale apenas a leitura mais recente. Confiança global atual: ${confidence}.\n\n### Padrões recorrentes calculados\n${recurringPatterns}\n\n### Evidências recentes\n${evidence}\n\nRegra para o próximo planejamento: use PRIMEIRO os padrões recorrentes calculados acima e só depois os casos individuais como contexto. Um padrão positivo exige recorrência; um padrão negativo exige recorrência; padrão misto exige novos testes. Não copie orçamento passado mecanicamente, não transforme um único caso em regra geral e não interprete casos inconclusivos como sucesso ou fracasso. O teto humano continua soberano.\n`;
 }
