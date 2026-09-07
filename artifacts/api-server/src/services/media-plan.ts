@@ -33,8 +33,10 @@ e ao tamanho real do negócio (não assuma orçamento de grande empresa). Priori
 pra cada um baseado no perfil recebido.
 
 Use obrigatoriamente a ferramenta submit_media_plan para entregar o plano final. Preencha todas as propriedades da ferramenta.
-Em prioridade, use somente alta, media ou baixa. Em percentualOrcamento, use um número de 0 a 100 e distribua os canais para
-somarem aproximadamente 100.`;
+Em prioridade, use somente alta, media ou baixa. percentualOrcamento representa exclusivamente PARTICIPAÇÃO DA VERBA DE MÍDIA PAGA:
+- canais pagos (Meta Ads, Google Ads/Search/Display/PMax, LinkedIn Ads, TikTok Ads, YouTube Ads etc.) devem dividir aproximadamente 100% entre si;
+- canais orgânicos, próprios ou diretos (Instagram orgânico, LinkedIn orgânico, WhatsApp, e-mail, SEO/blog, site, landing page etc.) devem usar percentualOrcamento = 0;
+- não transforme esforço editorial, produção ou CRM em percentual de orçamento de mídia.`;
 
 type JsonRecord = Record<string, unknown>;
 type GenerationMode = "ai" | "fallback";
@@ -93,6 +95,53 @@ function requireBudget(value: unknown): number {
   return parsed;
 }
 
+function normalizeChannelName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isPaidMediaChannel(channel: string): boolean {
+  const normalized = normalizeChannelName(channel);
+  if (normalized.includes("seo") || normalized.includes("organico") || normalized.includes("organica")) return false;
+  if (normalized.includes("whatsapp") || normalized.includes("email") || normalized.includes("e-mail")) return false;
+  if (normalized.includes("blog") || normalized.includes("site") || normalized.includes("landing")) return false;
+  if (normalized.includes("meta ads") || normalized.includes("facebook ads") || normalized.includes("instagram ads")) return true;
+  if (normalized.includes("google ads") || normalized.includes("google search") || normalized.includes("google display")) return true;
+  if (normalized.includes("performance max") || normalized.includes("pmax")) return true;
+  if (normalized.includes("linkedin ads") || normalized.includes("tiktok ads") || normalized.includes("youtube ads")) return true;
+  return false;
+}
+
+function normalizePaidMediaBudget<T extends { canal: string; percentualOrcamento: number }>(channels: T[]): T[] {
+  const paidIndexes = channels
+    .map((channel, index) => isPaidMediaChannel(channel.canal) ? index : -1)
+    .filter((index) => index >= 0);
+
+  if (paidIndexes.length === 0) {
+    return channels.map((channel) => ({ ...channel, percentualOrcamento: 0 }));
+  }
+
+  const paidRawTotal = paidIndexes.reduce((sum, index) => sum + channels[index]!.percentualOrcamento, 0);
+  const equalShare = 100 / paidIndexes.length;
+  const lastPaidIndex = paidIndexes[paidIndexes.length - 1]!;
+  let allocated = 0;
+
+  return channels.map((channel, index) => {
+    if (!paidIndexes.includes(index)) return { ...channel, percentualOrcamento: 0 };
+    if (index === lastPaidIndex) {
+      return { ...channel, percentualOrcamento: Math.max(0, Number((100 - allocated).toFixed(2))) };
+    }
+    const share = paidRawTotal > 0
+      ? Number(((channel.percentualOrcamento / paidRawTotal) * 100).toFixed(2))
+      : Number(equalShare.toFixed(2));
+    allocated += share;
+    return { ...channel, percentualOrcamento: share };
+  });
+}
+
 function parseMediaPlanPayload(parsed: unknown): MediaPlanConteudo {
   if (!isRecord(parsed)) {
     throw new Error("Plano não é um objeto");
@@ -102,7 +151,7 @@ function parseMediaPlanPayload(parsed: unknown): MediaPlanConteudo {
     throw new Error("Campo inválido: canais");
   }
 
-  const canais = parsed.canais.map((item, index) => {
+  const canaisRaw = parsed.canais.map((item, index) => {
     if (!isRecord(item)) {
       throw new Error(`Canal inválido: ${index}`);
     }
@@ -117,6 +166,7 @@ function parseMediaPlanPayload(parsed: unknown): MediaPlanConteudo {
       percentualOrcamento: requireBudget(item.percentualOrcamento),
     };
   });
+  const canais = normalizePaidMediaBudget(canaisRaw);
 
   return {
     diagnostico: requireString(parsed.diagnostico, "diagnostico"),
@@ -265,21 +315,21 @@ function buildFallbackMediaPlan(
         prioridade: "alta",
         motivo: `Capturar pessoas que já procuram por ${principalKeyword?.termo || principalProduto || segmento}, priorizando intenção de compra ou contato.`,
         tiposCampanhaSugeridos: ["Pesquisa por intenção", "Campanha geográfica com conversão"],
-        percentualOrcamento: 45,
+        percentualOrcamento: 55,
       },
       {
         canal: "Meta Ads — Instagram e Facebook",
         prioridade: "alta",
         motivo: `Gerar descoberta, prova visual e remarketing para ${nome}, usando ofertas e conteúdos ligados ao que a empresa realmente vende.`,
         tiposCampanhaSugeridos: ["Prova social e demonstração", "Remarketing para visitantes e engajados"],
-        percentualOrcamento: 35,
+        percentualOrcamento: 45,
       },
       {
         canal: "SEO e conteúdo",
         prioridade: "media",
         motivo: `Construir presença própria para buscas relacionadas a ${principalProduto || segmento} e reduzir dependência de mídia paga no médio prazo.`,
         tiposCampanhaSugeridos: ["Conteúdo orientado a buscas", "Páginas de serviço e autoridade"],
-        percentualOrcamento: 20,
+        percentualOrcamento: 0,
       },
     ],
     pilaresConteudo: [
