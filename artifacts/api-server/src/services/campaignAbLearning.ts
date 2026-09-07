@@ -111,6 +111,12 @@ export function evaluateVariantEvidence(input: VariantEvidenceInput): VariantEvi
   };
 }
 
+/**
+ * Avalia o estado atual do experimento sem persistir qualquer decisão.
+ * Isso mantém GETs, painéis e builders de prompt como operações somente leitura.
+ * A persistência do vencedor acontece exclusivamente no fluxo explícito de
+ * aplicação (`applyCampaignAbWinner`), sujeito à autorização humana/autonomia.
+ */
 export async function evaluateCampaignAbTest(campaignId: string): Promise<CampaignAbVerdict> {
   const [campaign] = await db
     .select({
@@ -118,7 +124,6 @@ export async function evaluateCampaignAbTest(campaignId: string): Promise<Campai
       abTestEnabled: campaignsTable.abTestEnabled,
       variantAText: campaignsTable.variantAText,
       variantBText: campaignsTable.variantBText,
-      winningVariant: campaignsTable.winningVariant,
     })
     .from(campaignsTable)
     .where(eq(campaignsTable.id, campaignId))
@@ -169,13 +174,6 @@ export async function evaluateCampaignAbTest(campaignId: string): Promise<Campai
     conversionsA,
     conversionsB,
   });
-
-  if (evidence.status === "vencedor" && evidence.winner && campaign.winningVariant !== evidence.winner) {
-    await db
-      .update(campaignsTable)
-      .set({ winningVariant: evidence.winner, updatedAt: new Date() })
-      .where(eq(campaignsTable.id, campaignId));
-  }
 
   return {
     campaignId,
