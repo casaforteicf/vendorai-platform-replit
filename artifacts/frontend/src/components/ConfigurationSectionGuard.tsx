@@ -1,5 +1,9 @@
 import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  CONFIGURATION_IMPACT_EVENT,
+  type ConfigurationChangeKind,
+} from "@/components/ConfigurationImpactSimulator";
 
 const CRITICAL_SECTIONS = new Set(["Integrações", "Documentos", "Equipe e Acessos", "Faturamento"]);
 const WRITE_ACTION_PATTERN = /(salvar|conectar|reconectar|desconectar|excluir|remover|revogar|atualizar|alterar|confirmar|ativar|desativar|renovar|assinar|cobrar|publicar)/i;
@@ -63,6 +67,25 @@ function actionLabel(button: HTMLButtonElement) {
   return [button.textContent, button.getAttribute("aria-label"), button.title].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
+function inferChangeKind(section: string, label: string): ConfigurationChangeKind {
+  const normalized = label.toLowerCase();
+  if (section === "Equipe e Acessos" || /(permiss|acesso|usu[aá]rio|fun[cç][aã]o|revogar)/i.test(normalized)) return "permissao";
+  if (section === "Faturamento" || /(cobr|fatur|plano|cr[eé]dito|comiss|desconto|margem|finance)/i.test(normalized)) return "financeiro";
+  if (/(desconectar|excluir|remover|revogar|desativar)/i.test(normalized)) return "desconectar";
+  if (/(conectar|reconectar|credencial|token|chave|api|renovar|oauth)/i.test(normalized)) return "credencial";
+  return "editar";
+}
+
+function impactReviewKey(section: string, changeKind: ConfigurationChangeKind, label: string) {
+  return `${section}::${changeKind}::${label || "alterar configuração"}`;
+}
+
+function openImpactReview(section: string, changeKind: ConfigurationChangeKind, label: string) {
+  window.dispatchEvent(new CustomEvent(CONFIGURATION_IMPACT_EVENT, {
+    detail: { section, changeKind, actionLabel: label || "Alterar configuração" },
+  }));
+}
+
 export function ConfigurationSectionGuard() {
   const { user } = useAuth();
 
@@ -75,6 +98,8 @@ export function ConfigurationSectionGuard() {
     const settingsAllowed = canEditSettings(user);
     const allowedButtons = new WeakSet<HTMLButtonElement>();
     const allowedForms = new WeakSet<HTMLFormElement>();
+    const reviewedButtons = new WeakMap<HTMLButtonElement, string>();
+    const reviewedForms = new WeakMap<HTMLFormElement, string>();
 
     const applyPolicy = () => {
       scheduled = false;
@@ -125,6 +150,17 @@ export function ConfigurationSectionGuard() {
         return;
       }
 
+      const changeKind = inferChangeKind(section, label);
+      const reviewKey = impactReviewKey(section, changeKind, label);
+      if (reviewedButtons.get(button) !== reviewKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        reviewedButtons.set(button, reviewKey);
+        openImpactReview(section, changeKind, label);
+        return;
+      }
+      reviewedButtons.delete(button);
+
       event.preventDefault();
       event.stopImmediatePropagation();
       const impact = SECTION_IMPACT[section] || "Esta ação altera uma configuração crítica do tenant.";
@@ -158,10 +194,23 @@ export function ConfigurationSectionGuard() {
         return;
       }
 
+      const submitter = event instanceof SubmitEvent && event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+      const label = submitter ? actionLabel(submitter) : "Salvar alterações";
+      const changeKind = inferChangeKind(section, label);
+      const reviewKey = impactReviewKey(section, changeKind, label);
+      if (reviewedForms.get(form) !== reviewKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        reviewedForms.set(form, reviewKey);
+        openImpactReview(section, changeKind, label);
+        return;
+      }
+      reviewedForms.delete(form);
+
       event.preventDefault();
       event.stopImmediatePropagation();
       const impact = SECTION_IMPACT[section] || "Esta ação altera uma configuração crítica do tenant.";
-      if (!window.confirm(`Confirmar alteração crítica em ${section}?\n\n${impact}\n\nA mudança ficará registrada no Histórico de Configurações.`)) return;
+      if (!window.confirm(`Confirmar alteração crítica em ${section}?\n\nAção: ${label}\n\n${impact}\n\nA mudança ficará registrada no Histórico de Configurações.`)) return;
       allowedForms.add(form);
       window.setTimeout(() => form.requestSubmit(), 0);
     };
