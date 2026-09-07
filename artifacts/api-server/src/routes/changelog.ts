@@ -69,8 +69,9 @@ router.post("/changelog/marcar-lido", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin", "tenant_admin"), async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const requestedTenantId = Reflect.get(req.params, "tenantId");
+  const tenantId = typeof requestedTenantId === "string" ? requestedTenantId : "";
+  if (!tenantId || !canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const requestedLimit = Number(req.query.limit);
   const limit = Number.isFinite(requestedLimit)
