@@ -6,6 +6,7 @@ import { buildAssistedMarketingDraft } from "../services/launchMarketingAssistan
 import { buildTenantPaidMediaBudgetRedistributionPlan } from "../services/paidMediaBudgetOptimizer.js";
 import { executePaidMediaBudgetDecision } from "../services/paidMediaBudgetExecution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { getMarketingAutonomySettings, updateMarketingAutonomySettings } from "../services/marketingAutonomyConfig.js";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,11 @@ const querySchema = z.object({
 const assistedDraftSchema = z.object({
   kind: z.enum(["creative", "landing_page", "audience", "keyword"]),
   filters: querySchema.optional(),
+});
+
+const autonomySchema = z.object({
+  level: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  maxTransferFractionPerCycle: z.number().min(0.01).max(0.5).default(0.2),
 });
 
 const budgetQuerySchema = z.object({
@@ -69,6 +75,35 @@ router.get("/tenants/:tenantId/marketing/launch-command-center/revenue-scout", a
 
   const result = await getLaunchRevenueScout(tenantId, parsed.data);
   res.json(result);
+});
+
+router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  res.json(await getMarketingAutonomySettings(tenantId));
+});
+
+router.put("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const parsed = autonomySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: "Configuração de autonomia inválida", details: parsed.error.issues });
+    return;
+  }
+  try {
+    const result = await updateMarketingAutonomySettings({ tenantId, ...parsed.data });
+    res.json(result);
+  } catch (err) {
+    req.log.warn({ err, tenantId }, "marketing: falha ao atualizar autonomia");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível atualizar a autonomia." });
+  }
 });
 
 router.get("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution", async (req, res) => {
