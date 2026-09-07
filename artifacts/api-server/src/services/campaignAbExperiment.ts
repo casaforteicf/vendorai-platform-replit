@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { campaignsTable, db } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { evaluateCampaignAbTest } from "./campaignAbLearning.js";
+import "./campaignAbWinnerRuntime.js";
 
 export type CampaignAbVariable = "gancho" | "oferta" | "cta" | "formato" | "mensagem";
 
