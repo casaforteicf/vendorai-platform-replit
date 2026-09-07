@@ -53,6 +53,17 @@ export async function applyCampaignAbWinner(input: {
     };
   }
 
+  const totalConversions = verdict.conversionsA + verdict.conversionsB;
+  if (totalConversions < 2) {
+    return {
+      applied: false,
+      reason: "Há sinal provisório por leitura, mas ainda faltam pelo menos 2 conversões totais para promoção automática.",
+      verdict,
+      campaignId: input.campaignId,
+      winner: verdict.winner,
+    };
+  }
+
   const winningText = verdict.winner === "A" ? campaign.variantAText : campaign.variantBText;
   if (!winningText?.trim()) throw new Error("A variante vencedora não possui conteúdo válido.");
 
@@ -108,7 +119,7 @@ export async function applyCampaignAbWinner(input: {
 
   return {
     applied: true,
-    reason: `Variante ${verdict.winner} promovida e teste encerrado com evidência suficiente.`,
+    reason: `Variante ${verdict.winner} promovida e teste encerrado com evidência de conversão suficiente.`,
     verdict,
     campaign: saved,
     winner: verdict.winner,
