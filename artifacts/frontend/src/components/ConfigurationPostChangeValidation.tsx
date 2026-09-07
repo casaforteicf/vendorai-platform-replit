@@ -41,8 +41,12 @@ function providerFromAction(label: string) {
   if (/google\s*ads|data\s*manager/.test(normalized)) return "google_ads";
   if (/meta\s*ads|facebook\s*ads/.test(normalized)) return "meta_ads";
   if (/search\s*console/.test(normalized)) return "search_console";
+  if (/google\s*(calendar|agenda)|calendar\s*google|agenda\s*google/.test(normalized)) return "google_calendar";
   if (/whats\s*app/.test(normalized)) return "whatsapp";
   if (/instagram/.test(normalized)) return "instagram";
+  if (/you\s*tube/.test(normalized)) return "youtube";
+  if (/linked\s*in/.test(normalized)) return "linkedin";
+  if (/tik\s*tok/.test(normalized)) return "tiktok";
   return null;
 }
 
@@ -51,24 +55,54 @@ function providerLabel(provider: string) {
     google_ads: "Google Ads",
     meta_ads: "Meta Ads",
     search_console: "Search Console",
+    google_calendar: "Google Calendar",
     whatsapp: "WhatsApp",
     instagram: "Instagram",
+    youtube: "YouTube",
+    linkedin: "LinkedIn",
+    tiktok: "TikTok",
   } as Record<string, string>)[provider] ?? provider;
 }
 
-async function readConnection(tenantId: string, provider: string) {
-  const route = ({
+async function fetchJson(route: string) {
+  const response = await fetch(route, { headers: tokenHeaders() });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return await response.json() as any;
+}
+
+async function readConnection(tenantId: string, provider: string): Promise<Record<string, unknown>> {
+  const directRoute = ({
     google_ads: `/api/tenants/${tenantId}/google-ads-connection`,
     meta_ads: `/api/tenants/${tenantId}/meta-ads-connection`,
     search_console: `/api/tenants/${tenantId}/search-console-connection`,
     whatsapp: `/api/tenants/${tenantId}/whatsapp-connection`,
     instagram: `/api/tenants/${tenantId}/instagram-connection`,
   } as Record<string, string>)[provider];
-  if (!route) throw new Error("Provider sem teste automático");
 
-  const response = await fetch(route, { headers: tokenHeaders() });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return await response.json() as Record<string, unknown>;
+  if (directRoute) return await fetchJson(directRoute) as Record<string, unknown>;
+
+  if (provider === "google_calendar") {
+    const agendas = await fetchJson(`/api/tenants/${tenantId}/agendas`) as Array<Record<string, unknown>>;
+    const connected = agendas.filter((agenda) => Boolean(agenda.googleCalendarId));
+    return {
+      connected: connected.length > 0,
+      connectedCount: connected.length,
+      totalAgendas: agendas.length,
+      accounts: connected.map((agenda) => agenda.googleEmail).filter(Boolean),
+    };
+  }
+
+  if (["youtube", "linkedin", "tiktok"].includes(provider)) {
+    const data = await fetchJson(`/api/tenants/${tenantId}/social-connections`) as { connections?: Array<Record<string, unknown>> };
+    const connection = data.connections?.find((item) => item.provider === provider);
+    return {
+      connected: Boolean(connection?.connected),
+      accountName: connection?.accountName ?? null,
+      configured: connection?.configured ?? null,
+    };
+  }
+
+  throw new Error("Provider sem teste automático");
 }
 
 async function validateIntegration(
@@ -82,26 +116,40 @@ async function validateIntegration(
   const label = providerLabel(provider);
 
   if (expectedDisconnected) {
-    return connected
-      ? {
-          status: "failed",
-          title: `${label} ainda aparece conectado`,
-          message: "A desconexão foi executada, mas a leitura de estado ainda indica conexão ativa. Revise antes de continuar.",
-          provider: label,
-        }
-      : {
-          status: "ok",
-          title: `${label} desconectado conforme esperado`,
-          message: "A leitura pós-mudança confirmou que a conexão foi removida.",
-          provider: label,
-        };
+    if (!connected) {
+      return {
+        status: "ok",
+        title: `${label} desconectado conforme esperado`,
+        message: "A leitura pós-mudança confirmou que a conexão foi removida.",
+        provider: label,
+      };
+    }
+
+    if (provider === "google_calendar" && Number(data.totalAgendas ?? 0) > 1) {
+      return {
+        status: "warning",
+        title: "Ainda existem agendas conectadas ao Google Calendar",
+        message: `${Number(data.connectedCount ?? 0)} agenda(s) continuam conectadas. Isso pode ser esperado quando apenas uma agenda foi desconectada; confirme a agenda alterada.`,
+        provider: label,
+      };
+    }
+
+    return {
+      status: "failed",
+      title: `${label} ainda aparece conectado`,
+      message: "A desconexão foi executada, mas a leitura de estado ainda indica conexão ativa. Revise antes de continuar.",
+      provider: label,
+    };
   }
 
   if (!connected) {
+    const configuredHint = data.configured === false
+      ? " O provider também aparece como não configurado no servidor."
+      : "";
     return {
       status: "failed",
       title: `${label} não confirmou conexão ativa`,
-      message: "A validação pós-mudança encontrou a integração desconectada. Revise credenciais, permissões e a ação executada.",
+      message: `A validação pós-mudança encontrou a integração desconectada. Revise credenciais, permissões e a ação executada.${configuredHint}`,
       provider: label,
     };
   }
@@ -120,6 +168,15 @@ async function validateIntegration(
       status: "warning",
       title: "Search Console conectado, verificação pendente",
       message: "A conexão existe, porém a propriedade ainda não está verificada. Conclua a verificação antes de considerar o fluxo operacional.",
+      provider: label,
+    };
+  }
+
+  if (provider === "google_calendar" && Number(data.connectedCount ?? 0) > 1) {
+    return {
+      status: "ok",
+      title: `Google Calendar operacional em ${Number(data.connectedCount)} agendas`,
+      message: "A leitura pós-mudança confirmou que há agendas com calendário Google vinculado.",
       provider: label,
     };
   }
@@ -152,7 +209,7 @@ export function ConfigurationPostChangeValidation() {
     const tenantId = user?.tenantId;
     const changeKind = nextDetail.changeKind ?? "editar";
 
-    if (!tenantId || nextDetail.section !== "Integrações" || !provider) {
+    if (!tenantId || !provider) {
       const manualResult: ValidationResult = {
         status: "manual",
         title: "Alteração concluída; validação funcional necessária",

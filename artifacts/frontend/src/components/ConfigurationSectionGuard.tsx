@@ -9,6 +9,7 @@ import { CONFIGURATION_POST_CHANGE_EVENT } from "@/components/ConfigurationPostC
 
 const CRITICAL_SECTIONS = new Set(["Integrações", "Documentos", "Equipe e Acessos", "Faturamento"]);
 const WRITE_ACTION_PATTERN = /(salvar|conectar|reconectar|desconectar|excluir|remover|revogar|atualizar|alterar|confirmar|ativar|desativar|renovar|assinar|cobrar|publicar)/i;
+const GOOGLE_CALENDAR_ACTION_PATTERN = /google\s*(calendar|agenda)|calendar\s*google|agenda\s*google/i;
 const IMPACT_APPROVAL_TTL_MS = 2 * 60 * 1000;
 
 const SECTION_IMPACT: Record<string, string> = {
@@ -190,8 +191,13 @@ export function ConfigurationSectionGuard() {
         return;
       }
 
-      if (!admin || !CRITICAL_SECTIONS.has(section)) return;
       const label = actionLabel(button);
+      if (section === "Calendário" && WRITE_ACTION_PATTERN.test(label) && GOOGLE_CALENDAR_ACTION_PATTERN.test(label)) {
+        notifyPostChange(section, inferChangeKind(section, label), label);
+        return;
+      }
+
+      if (!admin || !CRITICAL_SECTIONS.has(section)) return;
       if (!WRITE_ACTION_PATTERN.test(label)) return;
       if (allowedButtons.has(button)) {
         allowedButtons.delete(button);
@@ -242,14 +248,19 @@ export function ConfigurationSectionGuard() {
         return;
       }
 
+      const submitter = event instanceof SubmitEvent && event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+      const label = submitter ? actionLabel(submitter) : "Salvar alterações";
+      if (section === "Calendário" && WRITE_ACTION_PATTERN.test(label) && GOOGLE_CALENDAR_ACTION_PATTERN.test(label)) {
+        notifyPostChange(section, inferChangeKind(section, label), label);
+        return;
+      }
+
       if (!admin || !CRITICAL_SECTIONS.has(section)) return;
       if (allowedForms.has(form)) {
         allowedForms.delete(form);
         return;
       }
 
-      const submitter = event instanceof SubmitEvent && event.submitter instanceof HTMLButtonElement ? event.submitter : null;
-      const label = submitter ? actionLabel(submitter) : "Salvar alterações";
       const changeKind = inferChangeKind(section, label);
       const reviewKey = impactReviewKey(section, changeKind, label);
       let reviewState = reviewedForms.get(form);
