@@ -1,0 +1,61 @@
+name: Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/frontend/**"
+      - "lib/api-client-react/**"
+      - "lib/vendor-brain/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".node-version"
+      - ".github/workflows/cloudflare-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy VendorAI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend build
+
+      - name: Verify Cloudflare Pages bundle
+        run: |
+          test -f artifacts/frontend/dist/index.html
+          test -f artifacts/frontend/dist/_worker.js
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy artifacts/frontend/dist --project-name "${{ secrets.CLOUDFLARE_PAGES_PROJECT_NAME }}" --branch main
