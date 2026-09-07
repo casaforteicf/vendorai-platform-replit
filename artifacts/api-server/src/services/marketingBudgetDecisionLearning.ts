@@ -1,14 +1,17 @@
-import { and, desc, eq, inArray, lte } from "drizzle-orm";
+import { and, desc, inArray, lte } from "drizzle-orm";
 import type { Logger } from "pino";
 import { adCampaignEventsTable, db } from "@workspace/db";
 import { getAdsOverview, recordAdCampaignEvent } from "./adCampaignIntelligence.js";
 
 const APPLIED_TYPES = ["budget_redistribution_applied", "budget_redistribution_auto_applied"] as const;
-const MIN_EVALUATION_AGE_MS = 24 * 60 * 60 * 1000;
+const EARLY_EVALUATION_HOURS = 24;
+const FINAL_EVALUATION_HOURS = 72;
+const MIN_EVALUATION_AGE_MS = EARLY_EVALUATION_HOURS * 60 * 60 * 1000;
 const MAX_SOURCE_EVENTS = 200;
 
 type OverviewRow = { campaignId?: string; spend?: number; leads?: number; sales?: number; revenue?: number; roas?: number | null };
 type Verdict = "melhorou" | "piorou" | "inconclusivo";
+type EvaluationStage = "24h" | "72h";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -31,7 +34,6 @@ function num(value: unknown) {
 
 function classify(input: {
   baselineRoas: number | null;
-  baselineSales: number;
   spendDelta: number;
   leadsDelta: number;
   salesDelta: number;
@@ -59,6 +61,13 @@ function classify(input: {
   }
 
   return { verdict: "inconclusivo", postRoas, reason: "Os sinais pós-decisão ainda são mistos; a IA mantém a decisão sob observação." };
+}
+
+function stageForAge(createdAt: Date): { stage: EvaluationStage; targetHours: number } {
+  const ageHours = (Date.now() - createdAt.getTime()) / 3_600_000;
+  return ageHours >= FINAL_EVALUATION_HOURS
+    ? { stage: "72h", targetHours: FINAL_EVALUATION_HOURS }
+    : { stage: "24h", targetHours: EARLY_EVALUATION_HOURS };
 }
 
 export async function runMarketingBudgetDecisionLearning(log: Logger): Promise<void> {
@@ -109,9 +118,11 @@ export async function runMarketingBudgetDecisionLearning(log: Logger): Promise<v
         revenue: Math.max(0, after.revenue - baseline.revenue),
       };
       const assessment = classify({
-        baselineRoas: baseline.roas, baselineSales: baseline.sales,
+        baselineRoas: baseline.roas,
         spendDelta: deltas.spend, leadsDelta: deltas.leads, salesDelta: deltas.sales, revenueDelta: deltas.revenue,
       });
+      const stage = stageForAge(source.createdAt);
+      const evaluationWindowHours = Math.round((Date.now() - source.createdAt.getTime()) / 3_600_000);
 
       try {
         await recordAdCampaignEvent({
@@ -119,15 +130,18 @@ export async function runMarketingBudgetDecisionLearning(log: Logger): Promise<v
           campaignId: source.campaignId,
           eventType: "budget_redistribution_learning_evaluated",
           severity: assessment.verdict === "melhorou" ? "success" : assessment.verdict === "piorou" ? "warning" : "info",
-          message: `Aprendizado pós-decisão: ${assessment.verdict}. ${assessment.reason}`,
-          dedupeKey: `budget-learning:${source.id}`,
+          message: `Aprendizado pós-decisão (${stage.stage}): ${assessment.verdict}. ${assessment.reason}`,
+          dedupeKey: `budget-learning:${source.id}:${stage.stage}`,
           metadata: {
             sourceEventId: source.id,
             mediaPlanId: typeof metadata.mediaPlanId === "string" ? metadata.mediaPlanId : null,
+            evaluationStage: stage.stage,
+            targetWindowHours: stage.targetHours,
+            isFinalEvaluation: stage.stage === "72h",
             verdict: assessment.verdict,
             reason: assessment.reason,
             evaluatedAt: new Date().toISOString(),
-            evaluationWindowHours: Math.round((Date.now() - source.createdAt.getTime()) / 3_600_000),
+            evaluationWindowHours,
             before: baseline,
             after,
             deltas,
@@ -137,10 +151,10 @@ export async function runMarketingBudgetDecisionLearning(log: Logger): Promise<v
         evaluated++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (!message.toLowerCase().includes("unique")) log.warn({ err, tenantId, sourceEventId: source.id }, "marketing-learning: falha ao registrar avaliação");
+        if (!message.toLowerCase().includes("unique")) log.warn({ err, tenantId, sourceEventId: source.id, stage: stage.stage }, "marketing-learning: falha ao registrar avaliação");
       }
     }
   }
 
-  log.info({ evaluated }, "marketing-learning: ciclo pós-decisão concluído");
+  log.info({ evaluated, stages: ["24h", "72h"] }, "marketing-learning: ciclo pós-decisão concluído");
 }
