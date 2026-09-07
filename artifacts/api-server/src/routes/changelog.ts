@@ -5,13 +5,36 @@ import {
   changelogEntriesTable,
   usersTable,
   erpAuditoriaTable,
+  businessProfilesTable,
+  tenantsTable,
+  updateBusinessProfileSchema,
   insertChangelogEntrySchema,
   updateChangelogEntrySchema,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { automaticChangelogEntries } from "../data/automatic-changelog.js";
+import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 
 const router: IRouter = Router();
+
+const SAFE_BUSINESS_PROFILE_ROLLBACK_KEYS = [
+  "razaoSocial",
+  "nomeFantasia",
+  "cnpj",
+  "endereco",
+  "telefone",
+  "email",
+  "vertical",
+  "logoUrl",
+  "faviconUrl",
+  "urlLinhaProdutos",
+  "instagramUrl",
+  "diferenciais",
+  "publicoAlvo",
+  "concorrentes",
+  "canaisVenda",
+  "metodoVendas",
+] as const;
 
 function automaticEntries() {
   return automaticChangelogEntries.map((entry) => ({
@@ -31,6 +54,17 @@ function parseOptionalDate(value: unknown): Date | null | "invalid" {
   if (typeof value !== "string" || !value.trim()) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "invalid" : date;
+}
+
+function safeBusinessProfileRollbackInput(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+  const source = snapshot as Record<string, unknown>;
+  const selected = Object.fromEntries(
+    SAFE_BUSINESS_PROFILE_ROLLBACK_KEYS
+      .filter((key) => Object.prototype.hasOwnProperty.call(source, key))
+      .map((key) => [key, source[key]]),
+  );
+  return Object.keys(selected).length > 0 ? selected : null;
 }
 
 router.get("/changelog", async (_req, res) => {
@@ -147,6 +181,80 @@ router.get("/tenants/:tenantId/configuration-history", requireRole("super_admin"
     total,
     totalPages: Math.max(1, Math.ceil(total / limit)),
     filters: { action, entity, from: from?.toISOString() ?? null, to: to?.toISOString() ?? null },
+  });
+});
+
+router.post("/tenants/:tenantId/configuration-history/:auditId/rollback", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  const tenantId = String(req.params.tenantId || "");
+  const auditId = String(req.params.auditId || "");
+  if (!tenantId || !auditId || !canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (req.body?.confirm !== "RESTAURAR") {
+    return res.status(422).json({ error: "Confirmação explícita necessária" });
+  }
+
+  const [sourceAudit] = await db.select().from(erpAuditoriaTable).where(and(
+    eq(erpAuditoriaTable.id, auditId),
+    eq(erpAuditoriaTable.tenantId, tenantId),
+    eq(erpAuditoriaTable.modulo, "configuracoes"),
+  )).limit(1);
+
+  if (!sourceAudit) return res.status(404).json({ error: "Alteração não encontrada" });
+  if (sourceAudit.entidade !== "business_profile" || sourceAudit.acao !== "atualizar" || !sourceAudit.entidadeId) {
+    return res.status(409).json({
+      error: "Rollback automático não permitido para esta alteração",
+      reason: "Nesta fase, apenas atualizações do Perfil da Empresa podem ser restauradas automaticamente.",
+    });
+  }
+
+  const rollbackInput = safeBusinessProfileRollbackInput(sourceAudit.antes);
+  if (!rollbackInput) {
+    return res.status(409).json({ error: "Snapshot anterior não contém campos restauráveis" });
+  }
+
+  const parsed = updateBusinessProfileSchema.safeParse(rollbackInput);
+  if (!parsed.success) {
+    return res.status(422).json({ error: "Snapshot anterior não é compatível com o perfil atual" });
+  }
+
+  const [current] = await db.select().from(businessProfilesTable).where(and(
+    eq(businessProfilesTable.id, sourceAudit.entidadeId),
+    eq(businessProfilesTable.tenantId, tenantId),
+  )).limit(1);
+  if (!current) return res.status(404).json({ error: "Perfil da empresa atual não encontrado" });
+
+  const [restored] = await db.update(businessProfilesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(businessProfilesTable.id, current.id),
+      eq(businessProfilesTable.tenantId, tenantId),
+    ))
+    .returning();
+
+  if (parsed.data.vertical !== undefined) {
+    await db.update(tenantsTable)
+      .set({ vertical: parsed.data.vertical || null, segmento: parsed.data.vertical || null, updatedAt: new Date() })
+      .where(eq(tenantsTable.id, tenantId));
+  }
+
+  await writeConfigurationAudit({
+    tenantId,
+    action: "atualizar",
+    entity: "business_profile",
+    entityId: current.id,
+    before: current,
+    after: restored,
+    actor: {
+      userId: req.user?.id ?? req.user?.sub ?? null,
+      ip: req.ip ?? null,
+    },
+  });
+
+  return res.json({
+    ok: true,
+    sourceAuditId: sourceAudit.id,
+    entity: sourceAudit.entidade,
+    entityId: current.id,
+    restored,
   });
 });
 
