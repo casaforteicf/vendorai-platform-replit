@@ -95,6 +95,7 @@ router.get("/tenants/:tenantId/marketing/launch-command-center/revenue-scout", a
 });
 
 router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
@@ -104,6 +105,7 @@ router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
@@ -124,6 +126,7 @@ router.put("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/marketing/autonomy/audit", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
@@ -147,6 +150,7 @@ router.get("/tenants/:tenantId/marketing/autonomy/audit", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/configure", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const campaignId = String(req.params["campaignId"]);
   if (!canAccess(req, tenantId)) {
@@ -175,6 +179,7 @@ router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/configur
 });
 
 router.get("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const campaignId = String(req.params["campaignId"]);
   if (!canAccess(req, tenantId)) {
@@ -191,6 +196,7 @@ router.get("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test", async (
 });
 
 router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/stop", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const campaignId = String(req.params["campaignId"]);
   if (!canAccess(req, tenantId)) {
@@ -207,6 +213,7 @@ router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/stop", a
 });
 
 router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/apply-winner", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const campaignId = String(req.params["campaignId"]);
   if (!canAccess(req, tenantId)) {
@@ -228,6 +235,7 @@ router.post("/tenants/:tenantId/marketing/campaigns/:campaignId/ab-test/apply-wi
 });
 
 router.get("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const mediaPlanId = String(req.params["mediaPlanId"]);
   if (!canAccess(req, tenantId)) {
@@ -253,6 +261,7 @@ router.get("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistri
 });
 
 router.post("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution/:campaignId/apply", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const mediaPlanId = String(req.params["mediaPlanId"]);
   const campaignId = String(req.params["campaignId"]);
