@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bot, CheckCircle2, Clock3, History, Loader2, PauseCircle, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Clock3, History, Loader2, PauseCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +28,18 @@ type AuditSchedule = {
   remainingDays?: number;
 };
 
+type LearningSnapshot = { spend?: number; leads?: number; sales?: number; revenue?: number; roas?: number | null };
+type AuditLearning = {
+  verdict?: "melhorou" | "piorou" | "inconclusivo";
+  reason?: string;
+  evaluatedAt?: string;
+  evaluationWindowHours?: number;
+  before?: LearningSnapshot;
+  after?: LearningSnapshot;
+  deltas?: { spend?: number; leads?: number; sales?: number; revenue?: number };
+  postIncrementalRoas?: number | null;
+};
+
 type AuditItem = {
   id: string;
   campaignId: string;
@@ -43,11 +55,15 @@ type AuditItem = {
   humanCeilingRespected: boolean | null;
   decision: AuditDecision | null;
   schedule: AuditSchedule | null;
+  learning: AuditLearning | null;
 };
 
 type AuditResponse = {
   generatedAt: string;
-  summary: { total: number; applied: number; failed: number; holds: number };
+  summary: {
+    total: number; applied: number; failed: number; holds: number;
+    improved: number; worsened: number; inconclusive: number; awaitingLearning: number;
+  };
   items: AuditItem[];
 };
 
@@ -90,12 +106,17 @@ function when(value: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("pt-BR");
 }
 
-function eventLabel(eventType: string) {
-  if (eventType === "budget_redistribution_auto_applied") return "IA aplicou";
-  if (eventType === "budget_redistribution_auto_failed") return "Falha automática";
-  if (eventType === "budget_redistribution_auto_hold") return "IA manteve";
-  if (eventType === "budget_redistribution_applied") return "Humano aplicou";
-  return "Mantido";
+function eventLabel(item: AuditItem) {
+  if (item.eventType.includes("failed")) return "Falha automática";
+  if (item.eventType.includes("hold")) return item.authorization === "agent-autonomous" ? "IA manteve" : "Mantido";
+  if (item.eventType.includes("applied")) return item.authorization === "agent-autonomous" ? "IA aplicou" : "Humano aplicou";
+  return "Decisão";
+}
+
+function learningLabel(verdict: AuditLearning["verdict"]) {
+  if (verdict === "melhorou") return "Melhorou";
+  if (verdict === "piorou") return "Piorou";
+  return "Inconclusivo";
 }
 
 export function MarketingAutonomyAudit() {
@@ -141,8 +162,7 @@ export function MarketingAutonomyAudit() {
     setMessage("");
     try {
       const response = await fetch(`/api/tenants/${tenantId}/marketing/autonomy/audit?limit=40`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Falha ao carregar auditoria");
@@ -166,7 +186,6 @@ export function MarketingAutonomyAudit() {
       });
       const current = await currentResponse.json().catch(() => null) as Policy | null;
       if (!currentResponse.ok || !current) throw new Error("Não foi possível ler a política atual.");
-
       const response = await fetch(`/api/tenants/${tenantId}/marketing/autonomy`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -194,10 +213,10 @@ export function MarketingAutonomyAudit() {
             <div className="flex flex-wrap items-center gap-2">
               <History className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">Auditoria do Marketing IA</p>
-              <Badge variant="outline" className="text-[10px]">trilha de decisão</Badge>
+              <Badge variant="outline" className="text-[10px]">decisão + aprendizado</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              Mostra o que a IA tentou, o que realmente foi aplicado, o orçamento antes/depois e os guardrails usados na decisão.
+              Mostra o que foi aplicado e, após pelo menos 24 horas, compara o desempenho pós-decisão para classificar o aprendizado como melhorou, piorou ou inconclusivo.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -211,22 +230,21 @@ export function MarketingAutonomyAudit() {
         </div>
 
         <div className="grid gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Decisões</p><p className="mt-1 text-lg font-semibold">{data?.summary.total ?? "—"}</p></div>
           <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Aplicadas</p><p className="mt-1 text-lg font-semibold">{data?.summary.applied ?? "—"}</p></div>
-          <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Mantidas</p><p className="mt-1 text-lg font-semibold">{data?.summary.holds ?? "—"}</p></div>
-          <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Falhas</p><p className="mt-1 text-lg font-semibold">{data?.summary.failed ?? "—"}</p></div>
+          <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Melhoraram</p><p className="mt-1 text-lg font-semibold">{data?.summary.improved ?? "—"}</p></div>
+          <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Pioraram</p><p className="mt-1 text-lg font-semibold">{data?.summary.worsened ?? "—"}</p></div>
+          <div className="rounded-xl border bg-muted/20 p-3"><p className="text-[10px] uppercase text-muted-foreground">Aguardando leitura</p><p className="mt-1 text-lg font-semibold">{data?.summary.awaitingLearning ?? "—"}</p></div>
         </div>
 
         <div className="space-y-2">
           {visibleItems.length === 0 && !loading ? (
-            <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-              Ainda não há decisões de redistribuição registradas para este tenant.
-            </div>
+            <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">Ainda não há decisões de redistribuição registradas para este tenant.</div>
           ) : visibleItems.map((item) => {
             const decision = item.decision;
             const applied = item.eventType.includes("applied");
             const failed = item.eventType.includes("failed");
             const delta = decision?.delta;
+            const learning = item.learning;
             return (
               <div key={item.id} className="rounded-xl border p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -234,17 +252,13 @@ export function MarketingAutonomyAudit() {
                     <div className="flex flex-wrap items-center gap-2">
                       {failed ? <AlertTriangle className="h-4 w-4 text-destructive" /> : applied ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <Clock3 className="h-4 w-4 text-muted-foreground" />}
                       <p className="text-xs font-semibold">{item.campaignName ?? `Campanha ${item.campaignId.slice(0, 8)}`}</p>
-                      <Badge variant={applied ? "default" : failed ? "destructive" : "secondary"} className="text-[10px]">{eventLabel(item.eventType)}</Badge>
+                      <Badge variant={applied ? "default" : failed ? "destructive" : "secondary"} className="text-[10px]">{eventLabel(item)}</Badge>
                       {item.autonomyLevel !== null && <Badge variant="outline" className="text-[10px]">nível {item.autonomyLevel}</Badge>}
                       {item.platform && <Badge variant="outline" className="text-[10px]">{item.platform}</Badge>}
                     </div>
                     <p className="mt-1 text-[11px] text-muted-foreground">{when(item.createdAt)}</p>
                   </div>
-                  {item.humanCeilingRespected !== null && (
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                      <ShieldCheck className="h-3.5 w-3.5" /> teto humano {item.humanCeilingRespected ? "respeitado" : "bloqueado"}
-                    </div>
-                  )}
+                  {item.humanCeilingRespected !== null && <div className="flex items-center gap-1 text-[10px] text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> teto humano {item.humanCeilingRespected ? "respeitado" : "bloqueado"}</div>}
                 </div>
 
                 {decision && (
@@ -257,10 +271,29 @@ export function MarketingAutonomyAudit() {
                 )}
 
                 <p className="mt-3 text-[11px] leading-4 text-muted-foreground">{decision?.reason ?? item.message}</p>
-                {item.schedule && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    Novo orçamento diário: {brl(item.schedule.dailyBudget)} · saldo futuro: {brl(item.schedule.remainingBudget)} · {item.schedule.remainingDays ?? "—"} dia(s)
-                  </p>
+                {item.schedule && <p className="mt-1 text-[10px] text-muted-foreground">Novo orçamento diário: {brl(item.schedule.dailyBudget)} · saldo futuro: {brl(item.schedule.remainingBudget)} · {item.schedule.remainingDays ?? "—"} dia(s)</p>}
+
+                {applied && (
+                  <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+                    {learning ? (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {learning.verdict === "melhorou" ? <TrendingUp className="h-4 w-4 text-primary" /> : learning.verdict === "piorou" ? <TrendingDown className="h-4 w-4 text-destructive" /> : <Clock3 className="h-4 w-4 text-muted-foreground" />}
+                          <p className="text-[11px] font-semibold">Aprendizado: {learningLabel(learning.verdict)}</p>
+                          <Badge variant={learning.verdict === "piorou" ? "destructive" : learning.verdict === "melhorou" ? "default" : "secondary"} className="text-[10px]">{learning.evaluationWindowHours ?? "—"}h depois</Badge>
+                        </div>
+                        <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{learning.reason}</p>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                          <div className="rounded-md bg-background p-2"><p className="text-[10px] text-muted-foreground">Gasto depois</p><p className="text-xs font-semibold">{brl(learning.deltas?.spend)}</p></div>
+                          <div className="rounded-md bg-background p-2"><p className="text-[10px] text-muted-foreground">Novos leads</p><p className="text-xs font-semibold">{learning.deltas?.leads ?? 0}</p></div>
+                          <div className="rounded-md bg-background p-2"><p className="text-[10px] text-muted-foreground">Novas vendas</p><p className="text-xs font-semibold">{learning.deltas?.sales ?? 0}</p></div>
+                          <div className="rounded-md bg-background p-2"><p className="text-[10px] text-muted-foreground">ROAS incremental</p><p className="text-xs font-semibold">{typeof learning.postIncrementalRoas === "number" ? `${learning.postIncrementalRoas.toFixed(2)}x` : "—"}</p></div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />Aguardando pelo menos 24h e volume mínimo para avaliar o efeito desta decisão.</div>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -270,7 +303,7 @@ export function MarketingAutonomyAudit() {
         {message && <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs">{message}</div>}
         <div className="flex items-center gap-2 border-t pt-3 text-[11px] text-muted-foreground">
           <Bot className="h-3.5 w-3.5 text-primary" />
-          <span>Reverter orçamento automaticamente não é permitido pela auditoria: o mercado e o gasto podem ter mudado. A reversão deve passar novamente pelo motor seguro de orçamento.</span>
+          <span>O aprendizado é conservador: só classifica piora com gasto pós-decisão relevante; sinais fracos ou mistos permanecem inconclusivos.</span>
         </div>
       </CardContent>
     </Card>,
