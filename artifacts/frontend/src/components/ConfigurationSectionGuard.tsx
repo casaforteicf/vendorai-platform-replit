@@ -8,6 +8,7 @@ import {
 
 const CRITICAL_SECTIONS = new Set(["Integrações", "Documentos", "Equipe e Acessos", "Faturamento"]);
 const WRITE_ACTION_PATTERN = /(salvar|conectar|reconectar|desconectar|excluir|remover|revogar|atualizar|alterar|confirmar|ativar|desativar|renovar|assinar|cobrar|publicar)/i;
+const IMPACT_APPROVAL_TTL_MS = 2 * 60 * 1000;
 
 const SECTION_IMPACT: Record<string, string> = {
   Integrações: "Esta ação pode interromper canais, autenticações, mídia paga, rastreamento ou sincronizações externas.",
@@ -104,17 +105,30 @@ export function ConfigurationSectionGuard() {
     if (!root) return;
 
     let scheduled = false;
+    let lastSection: string | null = null;
     const admin = isAdmin(user);
     const settingsAllowed = canEditSettings(user);
     const allowedButtons = new WeakSet<HTMLButtonElement>();
     const allowedForms = new WeakSet<HTMLFormElement>();
     const reviewedButtons = new WeakMap<HTMLButtonElement, ReviewState>();
     const reviewedForms = new WeakMap<HTMLFormElement, ReviewState>();
-    const approvedRequests = new Set<string>();
+    const approvedRequests = new Map<string, number>();
+
+    const invalidateApprovals = () => approvedRequests.clear();
+
+    const hasApprovedRequest = (requestId: string) => {
+      const expiresAt = approvedRequests.get(requestId);
+      if (!expiresAt) return false;
+      if (expiresAt <= Date.now()) {
+        approvedRequests.delete(requestId);
+        return false;
+      }
+      return true;
+    };
 
     const onImpactApproved = (event: Event) => {
       const detail = (event as CustomEvent<{ requestId?: string }>).detail;
-      if (detail?.requestId) approvedRequests.add(detail.requestId);
+      if (detail?.requestId) approvedRequests.set(detail.requestId, Date.now() + IMPACT_APPROVAL_TTL_MS);
     };
 
     const applyPolicy = () => {
@@ -123,6 +137,9 @@ export function ConfigurationSectionGuard() {
       const section = activeSection(root);
       const panel = activePanel(root);
       if (!section || !panel) return;
+
+      if (lastSection && lastSection !== section) invalidateApprovals();
+      lastSection = section;
 
       if (!settingsAllowed) {
         lockPanel(panel, section, "Seu usuário não possui a permissão Configurações. Solicite a um administrador para realizar alterações.");
@@ -138,6 +155,14 @@ export function ConfigurationSectionGuard() {
       if (scheduled) return;
       scheduled = true;
       window.requestAnimationFrame(applyPolicy);
+    };
+
+    const onConfigurationEdited = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !root.contains(target)) return;
+      const panel = activePanel(root);
+      if (!panel || !panel.contains(target)) return;
+      invalidateApprovals();
     };
 
     const onClickCapture = (event: Event) => {
@@ -173,7 +198,7 @@ export function ConfigurationSectionGuard() {
         reviewState = { key: reviewKey, requestId: createRequestId() };
         reviewedButtons.set(button, reviewState);
       }
-      if (!approvedRequests.has(reviewState.requestId)) {
+      if (!hasApprovedRequest(reviewState.requestId)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         openImpactReview(section, changeKind, label, reviewState.requestId);
@@ -224,7 +249,7 @@ export function ConfigurationSectionGuard() {
         reviewState = { key: reviewKey, requestId: createRequestId() };
         reviewedForms.set(form, reviewState);
       }
-      if (!approvedRequests.has(reviewState.requestId)) {
+      if (!hasApprovedRequest(reviewState.requestId)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         openImpactReview(section, changeKind, label, reviewState.requestId);
@@ -245,6 +270,8 @@ export function ConfigurationSectionGuard() {
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected", "hidden"] });
     root.addEventListener("click", onClickCapture, true);
     root.addEventListener("submit", onSubmitCapture, true);
+    root.addEventListener("input", onConfigurationEdited, true);
+    root.addEventListener("change", onConfigurationEdited, true);
     window.addEventListener(CONFIGURATION_IMPACT_APPROVED_EVENT, onImpactApproved as EventListener);
     schedulePolicy();
 
@@ -252,8 +279,10 @@ export function ConfigurationSectionGuard() {
       observer.disconnect();
       root.removeEventListener("click", onClickCapture, true);
       root.removeEventListener("submit", onSubmitCapture, true);
+      root.removeEventListener("input", onConfigurationEdited, true);
+      root.removeEventListener("change", onConfigurationEdited, true);
       window.removeEventListener(CONFIGURATION_IMPACT_APPROVED_EVENT, onImpactApproved as EventListener);
-      approvedRequests.clear();
+      invalidateApprovals();
       restoreDisabledControls(root);
     };
   }, [user]);
