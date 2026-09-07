@@ -21,11 +21,10 @@ export interface MarketingAgentAutonomyPolicyResult {
   reason: string;
 }
 
-function normalizeLevel(raw: unknown, automaticMode: boolean, autonomyEnabled: boolean): MarketingAutonomyLevel {
+function normalizeStoredLevel(raw: unknown): MarketingAutonomyLevel | null {
   const value = Number(raw);
   if (Number.isInteger(value) && value >= 0 && value <= 4) return value as MarketingAutonomyLevel;
-  if (automaticMode && autonomyEnabled) return 4;
-  return 0;
+  return null;
 }
 
 function normalizeTransferFraction(raw: unknown) {
@@ -38,7 +37,10 @@ function normalizeTransferFraction(raw: unknown) {
  * Fonte de verdade server-side para autonomia do Marketing IA.
  * Níveis:
  * 0 recomenda; 1 produz; 2 publica; 3 otimiza verba; 4 operação completa.
- * Nenhum payload de execução pode elevar o nível definido no tenant.
+ *
+ * A política dedicada do Marketing é independente da autonomia global dos outros
+ * agentes. O Agent Config é consultado somente para compatibilidade com tenants
+ * antigos que ainda não possuem marketingAutonomyPolicy persistida.
  */
 export async function resolveMarketingAgentAutonomyPolicy(
   tenantId: string,
@@ -61,16 +63,22 @@ export async function resolveMarketingAgentAutonomyPolicy(
   ]);
 
   const automaticMode = Boolean(autopilot?.ativo && autopilot.automationMode === 'automatic');
-  const autonomyEnabled = Boolean(agentConfig?.autonomyEnabledAt);
-  const stored = autopilot?.marketingAutonomyPolicy as { level?: unknown; maxTransferFractionPerCycle?: unknown } | null | undefined;
-  const level = normalizeLevel(stored?.level, automaticMode, autonomyEnabled);
+  const legacyAgentAutonomyEnabled = Boolean(agentConfig?.autonomyEnabledAt);
+  const stored = autopilot?.marketingAutonomyPolicy as {
+    level?: unknown;
+    maxTransferFractionPerCycle?: unknown;
+  } | null | undefined;
+  const storedLevel = normalizeStoredLevel(stored?.level);
+  const level: MarketingAutonomyLevel = storedLevel
+    ?? (automaticMode && legacyAgentAutonomyEnabled ? 4 : 0);
   const maxTransferFractionPerCycle = normalizeTransferFraction(stored?.maxTransferFractionPerCycle);
 
   const canRecommend = true;
   const canProduce = level >= 1;
-  const canPublish = level >= 2 && automaticMode && autonomyEnabled;
-  const canOptimizeBudget = level >= 3 && automaticMode && autonomyEnabled;
-  const canOperateFull = level >= 4 && automaticMode && autonomyEnabled;
+  const canPublish = level >= 2 && automaticMode;
+  const canOptimizeBudget = level >= 3 && automaticMode;
+  const canOperateFull = level >= 4 && automaticMode;
+  const autonomyEnabled = canPublish;
   const allowed = canPublish;
 
   return {
@@ -86,11 +94,9 @@ export async function resolveMarketingAgentAutonomyPolicy(
     canOperateFull,
     maxTransferFractionPerCycle,
     reason: canPublish
-      ? `Marketing IA no nível ${level}, com modo Automático e autonomia server-side habilitados.`
+      ? `Marketing IA no nível ${level}, com modo Automático habilitado pela política dedicada do Marketing.`
       : level < 2
         ? `Nível ${level}: publicação autônoma não está autorizada.`
-        : !automaticMode
-          ? 'Marketing não está no modo Automático.'
-          : 'Autonomia do tenant não está habilitada no Agent Config.',
+        : 'Marketing não está no modo Automático.',
   };
 }
