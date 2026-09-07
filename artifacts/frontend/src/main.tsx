@@ -20,6 +20,7 @@ import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/M
 import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/MediaPlanProjectKindCompatibilityBridge";
 import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanAutoProductionBridge";
 import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
+import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaPlanPreparationActionsBridge";
 import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPlanProductionRuntimeBridge";
 import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
@@ -96,6 +97,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaPlanProjectKindCompatibilityBridge />
           <MediaPlanAutoProductionBridge />
           <MediaPlanPublicationModeControl />
+          <MediaPlanPreparationActionsBridge />
           <MediaPlanProductionRuntimeBridge />
           <AdsCreativePreviewBridge />
         </>
