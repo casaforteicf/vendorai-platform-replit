@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import {
-  agentConfigsTable,
   contentAutopilotConfigTable,
   db,
   type ContentAutopilotAutomationMode,
@@ -46,24 +44,8 @@ export async function updateMarketingAutonomySettings(input: {
     },
   });
 
-  const [existingAgentConfig] = await db
-    .select({ id: agentConfigsTable.id })
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.tenantId, input.tenantId))
-    .limit(1);
-
-  if (existingAgentConfig) {
-    await db.update(agentConfigsTable).set({
-      autonomyEnabledAt: input.level >= 2 ? now : null,
-      updatedAt: now,
-    }).where(eq(agentConfigsTable.tenantId, input.tenantId));
-  } else {
-    await db.insert(agentConfigsTable).values({
-      tenantId: input.tenantId,
-      setupCompletedAt: now,
-      autonomyEnabledAt: input.level >= 2 ? now : null,
-    });
-  }
-
+  // A configuração do Marketing não deve ligar/desligar autonomyEnabledAt do
+  // Agent Config. Esse campo é compartilhado por outros agentes e precisa ser
+  // governado fora da UI de Marketing.
   return resolveMarketingAgentAutonomyPolicy(input.tenantId);
 }
