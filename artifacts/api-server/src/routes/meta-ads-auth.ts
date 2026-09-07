@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { logger } from "../lib/logger.js";
-import { authenticate } from "../middlewares/auth.js";
+import { authenticate, requireRole } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
@@ -18,6 +18,7 @@ import {
 
 const router: IRouter = Router();
 const META_PAGE_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"];
+const requireIntegrationAdmin = requireRole("tenant_admin", "super_admin");
 
 function getAppUrl(): string {
   const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
@@ -63,7 +64,7 @@ async function auditMetaAdsChange(input: {
   }
 }
 
-router.get("/auth/meta-ads", authenticate, async (req, res) => {
+router.get("/auth/meta-ads", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const userId = req.user?.sub;
     const tenantId = req.user?.tenantId;
@@ -223,7 +224,7 @@ router.get("/tenants/:tenantId/meta-ads-connection/accounts", authenticate, asyn
   }
 });
 
-router.post("/tenants/:tenantId/meta-ads-connection/select-account", authenticate, async (req, res) => {
+router.post("/tenants/:tenantId/meta-ads-connection/select-account", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -254,7 +255,7 @@ router.post("/tenants/:tenantId/meta-ads-connection/select-account", authenticat
   }
 });
 
-router.post("/tenants/:tenantId/meta-ads-connection/refresh", authenticate, async (req, res) => {
+router.post("/tenants/:tenantId/meta-ads-connection/refresh", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -277,7 +278,7 @@ router.post("/tenants/:tenantId/meta-ads-connection/refresh", authenticate, asyn
   }
 });
 
-router.delete("/tenants/:tenantId/meta-ads-connection", authenticate, async (req, res) => {
+router.delete("/tenants/:tenantId/meta-ads-connection", authenticate, requireIntegrationAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
