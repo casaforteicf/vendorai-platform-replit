@@ -78,6 +78,7 @@ router.get("/tenants/:tenantId/marketing/launch-command-center/revenue-scout", a
 });
 
 router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
@@ -87,6 +88,7 @@ router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
