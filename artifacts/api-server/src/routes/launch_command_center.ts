@@ -7,6 +7,7 @@ import { buildTenantPaidMediaBudgetRedistributionPlan } from "../services/paidMe
 import { executePaidMediaBudgetDecision } from "../services/paidMediaBudgetExecution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { getMarketingAutonomySettings, updateMarketingAutonomySettings } from "../services/marketingAutonomyConfig.js";
+import { getMarketingAutonomyAudit } from "../services/marketingAutonomyAudit.js";
 
 const router: IRouter = Router();
 
@@ -27,6 +28,11 @@ const assistedDraftSchema = z.object({
 const autonomySchema = z.object({
   level: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   maxTransferFractionPerCycle: z.number().min(0.01).max(0.5).default(0.2),
+});
+
+const autonomyAuditQuerySchema = z.object({
+  mediaPlanId: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 const budgetQuerySchema = z.object({
@@ -78,7 +84,6 @@ router.get("/tenants/:tenantId/marketing/launch-command-center/revenue-scout", a
 });
 
 router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
-  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
@@ -88,7 +93,6 @@ router.get("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
 });
 
 router.put("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
-  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   if (!canAccess(req, tenantId)) {
     res.status(403).json({ error: "Forbidden" });
@@ -108,8 +112,30 @@ router.put("/tenants/:tenantId/marketing/autonomy", async (req, res) => {
   }
 });
 
+router.get("/tenants/:tenantId/marketing/autonomy/audit", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const parsed = autonomyAuditQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Filtros de auditoria inválidos", details: parsed.error.issues });
+    return;
+  }
+  try {
+    res.json(await getMarketingAutonomyAudit({
+      tenantId,
+      mediaPlanId: parsed.data.mediaPlanId,
+      limit: parsed.data.limit,
+    }));
+  } catch (err) {
+    req.log.warn({ err, tenantId }, "marketing: falha ao carregar auditoria da autonomia");
+    res.status(422).json({ error: err instanceof Error ? err.message : "Não foi possível carregar a auditoria." });
+  }
+});
+
 router.get("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution", async (req, res) => {
-  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const mediaPlanId = String(req.params["mediaPlanId"]);
   if (!canAccess(req, tenantId)) {
@@ -135,7 +161,6 @@ router.get("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistri
 });
 
 router.post("/tenants/:tenantId/marketing/media-plan/:mediaPlanId/budget-redistribution/:campaignId/apply", async (req, res) => {
-  // tenant-audit: reviewed route tenant is immediately checked by canAccess before tenant data access
   const tenantId = String(req.params["tenantId"]);
   const mediaPlanId = String(req.params["mediaPlanId"]);
   const campaignId = String(req.params["campaignId"]);
