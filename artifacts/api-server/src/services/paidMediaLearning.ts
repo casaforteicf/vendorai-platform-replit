@@ -1,5 +1,6 @@
 import { getAdsOverview } from './adCampaignIntelligence';
 import { buildMarketingDecisionStrategyLearningBlock } from './marketingDecisionStrategyLearning.js';
+import { buildCampaignAbLearningPromptBlock } from './campaignAbLearning.js';
 
 type CampaignLearningRow = {
   campaignId?: string;
@@ -48,24 +49,16 @@ function creativeExecutionRule(decisionLearning: string): string {
   return `\n## Regra de aplicação do aprendizado na criação\nAo gerar a próxima peça, use a memória de decisões como evidência comercial, não como receita fixa. Quando houver padrão positivo recorrente, preserve a lógica que provavelmente contribuiu para o resultado e crie variações coerentes de gancho, promessa, oferta, prova, formato e CTA para o mesmo objetivo/canal. Quando houver padrão negativo recorrente, reformule esses elementos antes de repetir a combinação. Nunca atribua venda a uma palavra, cor, CTA ou criativo específico se os dados não isolarem essa causa; transforme a evidência em hipótese testável. Casos isolados ou inconclusivos devem gerar exploração controlada, não regra.\n`;
 }
 
-/**
- * Converte a inteligência de mídia paga já existente em contexto de learning.
- * Não persiste nada e não cria analytics paralelo: usa getAdsOverview(), que
- * já consolida snapshots de plataforma, leads, trials, negócios e receita.
- *
- * Também incorpora a memória auditada das decisões de redistribuição para que
- * Plano de Mídia, Gerador de Conteúdo, Content Studio, publicação e produção
- * automática recebam a mesma evidência comercial sem uma memória paralela.
- */
 export async function buildPaidMediaLearningPromptBlock(tenantId: string): Promise<string> {
-  const [overview, decisionLearning] = await Promise.all([
+  const [overview, decisionLearning, abLearning] = await Promise.all([
     getAdsOverview(tenantId),
     buildMarketingDecisionStrategyLearningBlock(tenantId).catch(() => ''),
+    buildCampaignAbLearningPromptBlock(tenantId).catch(() => ''),
   ]);
   const rows = extractCampaignRows(overview)
     .filter((row) => Number(row.spend ?? 0) > 0 || Number(row.clicks ?? 0) > 0 || Number(row.leads ?? 0) > 0 || Number(row.sales ?? 0) > 0);
 
-  const decisionCreativeBlock = decisionLearning + creativeExecutionRule(decisionLearning);
+  const decisionCreativeBlock = decisionLearning + creativeExecutionRule(decisionLearning) + abLearning;
   if (rows.length === 0) return decisionCreativeBlock;
 
   const winners = rows
