@@ -2,7 +2,6 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import type { MediaPlanCampaign, MediaPlanCampaignChannel, MediaPlanConteudo } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { buildOwnPerformancePromptBlock } from "./content-performance.js";
-import { buildMarketingDecisionStrategyLearningBlock } from "./marketingDecisionStrategyLearning.js";
 import {
   MEDIA_FUNCTION_VERSION,
   alignMediaChannelFunction,
@@ -311,16 +310,10 @@ export async function enrichMediaPlanForPeriod(
   const normalizedDays = Math.max(1, Math.ceil(periodoDias));
   const fallback = fallbackCampaigns(conteudoBase, normalizedDays);
   let campanhas = fallback;
-  const [performanceLearning, decisionStrategyLearning] = await Promise.all([
-    buildOwnPerformancePromptBlock(tenantId).catch((error) => {
-      logger.warn({ error, tenantId }, "media-plan-period: aprendizado histórico indisponível");
-      return "";
-    }),
-    buildMarketingDecisionStrategyLearningBlock(tenantId).catch((error) => {
-      logger.warn({ error, tenantId }, "media-plan-period: memória de decisões indisponível");
-      return "";
-    }),
-  ]);
+  const performanceLearning = await buildOwnPerformancePromptBlock(tenantId).catch((error) => {
+    logger.warn({ error, tenantId }, "media-plan-period: aprendizado histórico indisponível");
+    return "";
+  });
 
   try {
     const response = await anthropic.messages.create({
@@ -343,7 +336,6 @@ export async function enrichMediaPlanForPeriod(
             canaisPrioritariosJaAnalisados: conteudoBase.canais,
             keywordsRelevantes: conteudoBase.keywordsRelevantes,
             aprendizadoDoProprioNegocio: performanceLearning || undefined,
-            memoriaDeDecisoesDeOrcamento: decisionStrategyLearning || undefined,
           }),
         },
       ],
