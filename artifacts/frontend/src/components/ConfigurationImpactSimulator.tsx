@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, GitBranch, Network, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,21 @@ import {
   CONFIGURATION_SECTION_POLICIES,
 } from "@/components/ConfigurationGovernancePanel";
 
-type ChangeKind = "editar" | "credencial" | "desconectar" | "permissao" | "financeiro";
+export type ConfigurationChangeKind = "editar" | "credencial" | "desconectar" | "permissao" | "financeiro";
+export const CONFIGURATION_IMPACT_EVENT = "vendorai:configuration-impact";
 
 type ChangeScenario = {
-  value: ChangeKind;
+  value: ConfigurationChangeKind;
   label: string;
   modifier: number;
   consequence: string;
   checks: string[];
+};
+
+type ImpactEventDetail = {
+  section?: string;
+  changeKind?: ConfigurationChangeKind;
+  actionLabel?: string;
 };
 
 const CHANGE_SCENARIOS: ChangeScenario[] = [
@@ -70,9 +77,31 @@ function riskLabel(score: number) {
 }
 
 export function ConfigurationImpactSimulator() {
+  const containerRef = useRef<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [section, setSection] = useState(CONFIGURATION_SECTION_POLICIES[0]?.section ?? "Empresa");
-  const [changeKind, setChangeKind] = useState<ChangeKind>("editar");
+  const [changeKind, setChangeKind] = useState<ConfigurationChangeKind>("editar");
+  const [detectedAction, setDetectedAction] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onImpactRequest = (event: Event) => {
+      const detail = (event as CustomEvent<ImpactEventDetail>).detail ?? {};
+      if (detail.section && CONFIGURATION_SECTION_POLICIES.some((item) => item.section === detail.section)) {
+        setSection(detail.section);
+      }
+      if (detail.changeKind && CHANGE_SCENARIOS.some((item) => item.value === detail.changeKind)) {
+        setChangeKind(detail.changeKind);
+      }
+      setDetectedAction(detail.actionLabel?.trim() || "Alteração crítica");
+      setExpanded(true);
+      window.requestAnimationFrame(() => {
+        containerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+
+    window.addEventListener(CONFIGURATION_IMPACT_EVENT, onImpactRequest as EventListener);
+    return () => window.removeEventListener(CONFIGURATION_IMPACT_EVENT, onImpactRequest as EventListener);
+  }, []);
 
   const policy = useMemo(
     () => CONFIGURATION_SECTION_POLICIES.find((item) => item.section === section) ?? CONFIGURATION_SECTION_POLICIES[0],
@@ -90,7 +119,7 @@ export function ConfigurationImpactSimulator() {
   const needsStrongConfirmation = score >= 5;
 
   return (
-    <section className="mb-4 rounded-xl border bg-background p-3 sm:p-4" aria-label="Simulador de impacto de configurações">
+    <section ref={containerRef} className="mb-4 scroll-mt-4 rounded-xl border bg-background p-3 sm:p-4" aria-label="Simulador de impacto de configurações">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-2.5">
           <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -111,13 +140,22 @@ export function ConfigurationImpactSimulator() {
 
       {expanded && (
         <div className="mt-4 space-y-4 border-t pt-4">
+          {detectedAction && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
+              <strong>Revisão automática antes de executar:</strong> {detectedAction}. Confira o impacto abaixo e repita a ação original para continuar.
+            </div>
+          )}
+
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-xs font-medium">
               Área afetada
               <select
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm font-normal"
                 value={section}
-                onChange={(event) => setSection(event.target.value)}
+                onChange={(event) => {
+                  setSection(event.target.value);
+                  setDetectedAction(null);
+                }}
               >
                 {CONFIGURATION_SECTION_POLICIES.map((item) => (
                   <option key={item.section} value={item.section}>{item.section}</option>
@@ -129,7 +167,10 @@ export function ConfigurationImpactSimulator() {
               <select
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm font-normal"
                 value={changeKind}
-                onChange={(event) => setChangeKind(event.target.value as ChangeKind)}
+                onChange={(event) => {
+                  setChangeKind(event.target.value as ConfigurationChangeKind);
+                  setDetectedAction(null);
+                }}
               >
                 {CHANGE_SCENARIOS.map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
