@@ -26,7 +26,8 @@ type CampaignRow = {
 type Verdict = {
   campaignId: string;
   winner: "A" | "B" | null;
-  status: "sem_teste" | "coletando" | "inconclusivo" | "vencedor";
+  provisionalLeader: "A" | "B" | null;
+  status: "sem_teste" | "coletando" | "inconclusivo" | "sinal_provisorio" | "vencedor";
   reason: string;
   sampleA: number;
   sampleB: number;
@@ -71,6 +72,12 @@ function isCampaignPath() {
 
 function pct(value: number) {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function statusLabel(status: Verdict["status"]) {
+  if (status === "sinal_provisorio") return "sinal provisório";
+  if (status === "sem_teste") return "sem teste";
+  return status.replace(/_/g, " ");
 }
 
 export function CampaignAbTestControl() {
@@ -251,13 +258,22 @@ export function CampaignAbTestControl() {
 
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={active ? "default" : "secondary"}>{active ? "Teste ativo" : "Sem teste ativo"}</Badge>
-              {verdict && <Badge variant="outline">{verdict.status.replace("_", " ")}</Badge>}
+              {verdict && <Badge variant="outline">{statusLabel(verdict.status)}</Badge>}
+              {verdict?.provisionalLeader && !verdict.winner && (
+                <Badge variant="secondary">Sinal provisório · variante {verdict.provisionalLeader}</Badge>
+              )}
               {verdict?.winner && <Badge className="gap-1"><Trophy className="h-3 w-3" /> Vencedor {verdict.winner}</Badge>}
               <Button type="button" size="sm" variant="ghost" onClick={() => void loadStatus()} disabled={!campaignId || loading}>
                 <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />Atualizar leitura
               </Button>
               {active && <Button type="button" size="sm" variant="outline" onClick={() => void stop()} disabled={saving}><Pause className="mr-2 h-3.5 w-3.5" />Pausar teste</Button>}
             </div>
+
+            {verdict?.provisionalLeader && !verdict.winner && (
+              <div className="rounded-xl border border-dashed p-3 text-xs leading-5 text-muted-foreground">
+                <span className="font-medium text-foreground">Ainda não há vencedor comercial.</span> A variante {verdict.provisionalLeader} lidera apenas em leitura. O sistema continuará coletando conversões e não promoverá essa variante enquanto a evidência de conversão não atingir os guardrails.
+              </div>
+            )}
 
             {status?.experiment?.hypothesis && (
               <Card><CardContent className="pt-5"><p className="text-xs font-semibold">Hipótese</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{status.experiment.hypothesis}</p></CardContent></Card>
@@ -273,10 +289,16 @@ export function CampaignAbTestControl() {
                   const readRate = isA ? verdict.readRateA : verdict.readRateB;
                   const conversionRate = isA ? verdict.conversionRateA : verdict.conversionRateB;
                   const text = isA ? selected?.variantAText : selected?.variantBText;
+                  const isWinner = verdict.winner === variant;
+                  const isProvisional = !verdict.winner && verdict.provisionalLeader === variant;
                   return (
-                    <Card key={variant} className={verdict.winner === variant ? "border-primary" : ""}>
+                    <Card key={variant} className={isWinner ? "border-primary" : isProvisional ? "border-dashed" : ""}>
                       <CardContent className="space-y-3 pt-5">
-                        <div className="flex items-center justify-between"><p className="font-semibold">Variante {variant}</p>{verdict.winner === variant && <Trophy className="h-4 w-4 text-primary" />}</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold">Variante {variant}</p>
+                          {isWinner && <Trophy className="h-4 w-4 text-primary" />}
+                          {isProvisional && <Badge variant="secondary">liderança provisória</Badge>}
+                        </div>
                         {text && <p className="rounded-lg bg-muted/40 p-3 text-xs leading-5">{text}</p>}
                         <div className="grid grid-cols-3 gap-2 text-center">
                           <div className="rounded-lg border p-2"><p className="text-lg font-semibold">{sample}</p><p className="text-[10px] text-muted-foreground">envios</p></div>
@@ -293,7 +315,7 @@ export function CampaignAbTestControl() {
             {verdict && (
               <div className="rounded-xl border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
                 <span className="font-medium text-foreground">Leitura do experimento:</span> {verdict.reason}
-                <br />Guardrails: mínimo de 20 envios por variante, conversão priorizada quando houver volume e lift relativo mínimo de 20% para declarar vencedor.
+                <br />Guardrails: mínimo de 20 envios por variante, pelo menos 2 conversões totais para declarar vencedor comercial e lift relativo mínimo de 20%. Diferença de leitura gera apenas sinal provisório.
               </div>
             )}
 
