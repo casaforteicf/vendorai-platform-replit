@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { campaignsTable, db, tenantsTable } from "@workspace/db";
+import { logger } from "../lib/logger.js";
 import { applyCampaignAbWinner } from "./campaignAbWinner.js";
 import { resolveMarketingAgentAutonomyPolicy } from "./marketingAgentAutonomyPolicy.js";
 
 const FIRST_RUN_DELAY_MS = 2 * 60 * 1000;
 const INTERVAL_MS = 60 * 60 * 1000;
-const MAX_CAMPAIGNS_PER_CYCLE = 100;
+const BATCH_SIZE = 100;
 
 type RuntimeState = {
   started: boolean;
@@ -18,35 +19,59 @@ declare global {
   var __vendoraiMarketingAbWinnerRuntime: RuntimeState | undefined;
 }
 
+async function processCampaign(campaign: { id: string; tenantId: string }, activeTenantIds: Set<string>) {
+  if (!activeTenantIds.has(campaign.tenantId)) return;
+  try {
+    const policy = await resolveMarketingAgentAutonomyPolicy(campaign.tenantId);
+    if (!policy.canOperateFull) return;
+    await applyCampaignAbWinner({
+      tenantId: campaign.tenantId,
+      campaignId: campaign.id,
+      authorization: "agent-autonomous",
+    });
+  } catch (error) {
+    logger.warn({
+      error,
+      tenantId: campaign.tenantId,
+      campaignId: campaign.id,
+    }, "marketing-ab-winner-runtime: campanha preservada após falha");
+  }
+}
+
 async function runCycle() {
-  const [tenants, campaigns] = await Promise.all([
-    db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.status, "active")),
-    db
-      .select({ id: campaignsTable.id, tenantId: campaignsTable.tenantId })
-      .from(campaignsTable)
-      .where(eq(campaignsTable.abTestEnabled, 1))
-      .limit(MAX_CAMPAIGNS_PER_CYCLE),
-  ]);
+  const tenants = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.status, "active"));
   const activeTenantIds = new Set(tenants.map((tenant) => tenant.id));
 
-  for (const campaign of campaigns) {
-    if (!activeTenantIds.has(campaign.tenantId)) continue;
-    try {
-      const policy = await resolveMarketingAgentAutonomyPolicy(campaign.tenantId);
-      if (!policy.canOperateFull) continue;
-      await applyCampaignAbWinner({
-        tenantId: campaign.tenantId,
-        campaignId: campaign.id,
-        authorization: "agent-autonomous",
-      });
-    } catch (err) {
-      console.warn("marketing-ab-winner-runtime: campaign preserved after failure", {
-        tenantId: campaign.tenantId,
-        campaignId: campaign.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+  let offset = 0;
+  let processed = 0;
+
+  while (true) {
+    const campaigns = await db
+      .select({
+        id: campaignsTable.id,
+        tenantId: campaignsTable.tenantId,
+      })
+      .from(campaignsTable)
+      .where(eq(campaignsTable.abTestEnabled, 1))
+      .orderBy(desc(campaignsTable.updatedAt), asc(campaignsTable.id))
+      .limit(BATCH_SIZE)
+      .offset(offset);
+
+    if (campaigns.length === 0) break;
+
+    for (const campaign of campaigns) {
+      await processCampaign(campaign, activeTenantIds);
+      processed += 1;
     }
+
+    if (campaigns.length < BATCH_SIZE) break;
+    offset += campaigns.length;
   }
+
+  logger.info({ processed }, "marketing-ab-winner-runtime: ciclo concluído");
 }
 
 function startRuntime() {
