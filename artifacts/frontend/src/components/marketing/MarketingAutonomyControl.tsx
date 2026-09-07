@@ -121,6 +121,14 @@ export function MarketingAutonomyControl() {
 
   useEffect(() => { if (visible && tenantId && token) void load(); }, [visible, tenantId, token]);
 
+  useEffect(() => {
+    const sync = () => {
+      if (visible && tenantId && token) void load();
+    };
+    window.addEventListener("vendorai:marketing-autonomy-changed", sync);
+    return () => window.removeEventListener("vendorai:marketing-autonomy-changed", sync);
+  }, [visible, tenantId, token]);
+
   async function save() {
     if (!tenantId || !token) return;
     setSaving(true);
@@ -135,6 +143,7 @@ export function MarketingAutonomyControl() {
       if (!response.ok) throw new Error(body?.error ?? "Falha ao salvar autonomia");
       setPolicy(body as Policy);
       setMessage(`Nível ${level} salvo. A política server-side já está valendo.`);
+      window.dispatchEvent(new CustomEvent("vendorai:marketing-autonomy-changed"));
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Falha ao salvar autonomia");
     } finally {
