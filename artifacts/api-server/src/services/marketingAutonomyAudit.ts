@@ -42,7 +42,7 @@ export async function getMarketingAutonomyAudit(input: {
     .select({
       id: adCampaignEventsTable.id,
       campaignId: adCampaignEventsTable.campaignId,
-      campaignName: adCampaignsTable.nome,
+      campaignName: adCampaignsTable.itemLabel,
       platform: adCampaignsTable.plataforma,
       eventType: adCampaignEventsTable.eventType,
       severity: adCampaignEventsTable.severity,
