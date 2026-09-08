@@ -1,0 +1,26 @@
+@media (max-width: 640px) {
+  button[aria-label="Abrir Dev IA"] {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    min-height: 48px !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    border-radius: 9999px !important;
+    justify-content: center !important;
+    right: 16px !important;
+    bottom: 88px !important;
+    overflow: hidden !important;
+    font-size: 0 !important;
+  }
+
+  button[aria-label="Abrir Dev IA"] > span {
+    display: none !important;
+  }
+
+  button[aria-label="Abrir Dev IA"] svg {
+    width: 20px !important;
+    height: 20px !important;
+    margin: 0 !important;
+  }
+}
