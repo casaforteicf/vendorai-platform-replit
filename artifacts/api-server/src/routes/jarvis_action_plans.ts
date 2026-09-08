@@ -5,6 +5,7 @@ import {
   db,
   agentConfigsTable,
   agentTasksTable,
+  dealsTable,
   jarvisCasesTable,
   leadsTable,
   resolveAgentAutonomyLevel,
@@ -51,14 +52,13 @@ function isSensitiveAction(actionType: string) {
     || actionType === "conferencia_estoque";
 }
 
-function validateSupportedPayload(actionType: string, payload: Record<string, unknown>, leadId: string) {
+function validateSupportedPayload(actionType: string, payload: Record<string, unknown>) {
   if (actionType === "enviar_whatsapp") {
     const parsed = z.object({
       conteudo: z.string().trim().min(1),
       canal: z.enum(["whatsapp", "instagram", "email", "chat"]).optional(),
     }).passthrough().safeParse(payload);
-    if (!parsed.success) return parsed.error.message;
-    return null;
+    return parsed.success ? null : parsed.error.message;
   }
   if (actionType === "aprovacao_desconto") {
     const parsed = z.object({
@@ -87,7 +87,7 @@ function validateSupportedPayload(actionType: string, payload: Record<string, un
     }).passthrough().safeParse(payload);
     return parsed.success ? null : parsed.error.message;
   }
-  return `Executor não suportado para ${actionType} / ${leadId}`;
+  return `Executor não suportado para ${actionType}`;
 }
 
 router.get("/jarvis/action-plans", async (req, res) => {
@@ -155,7 +155,7 @@ router.post("/jarvis/cases/:id/action-plan", async (req, res) => {
   if (!result) return res.status(404).json({ error: "Caso Vendor não encontrado" });
   return res.status(result.created ? 201 : 200).json({
     ...result,
-    guardrail: "O plano organiza e acompanha o trabalho, mas só delega quando há lead do tenant, agente habilitado, executor suportado e autorização compatível.",
+    guardrail: "O plano organiza e acompanha o trabalho, mas só delega quando há lead/negócio do tenant, agente habilitado, executor suportado e autorização compatível.",
   });
 });
 
@@ -180,7 +180,7 @@ router.post("/jarvis/cases/:id/action-plan/steps/:stepId/delegate", async (req, 
   }
 
   const { leadId, agentName, actionType, payload } = parsed.data;
-  const payloadError = validateSupportedPayload(actionType, payload, leadId);
+  const payloadError = validateSupportedPayload(actionType, payload);
   if (payloadError) return res.status(422).json({ error: payloadError });
 
   const [lead] = await db
@@ -189,6 +189,19 @@ router.post("/jarvis/cases/:id/action-plan/steps/:stepId/delegate", async (req, 
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
   if (!lead) return res.status(404).json({ error: "Lead não encontrado neste tenant" });
+
+  const dealId = typeof payload.dealId === "string" ? payload.dealId : null;
+  if (dealId) {
+    const [deal] = await db
+      .select({ id: dealsTable.id, leadId: dealsTable.leadId })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId)))
+      .limit(1);
+    if (!deal) return res.status(404).json({ error: "Negócio não encontrado neste tenant" });
+    if (deal.leadId && deal.leadId !== leadId) {
+      return res.status(422).json({ error: "O negócio informado não pertence ao lead usado na delegação" });
+    }
+  }
 
   const [config] = await db
     .select({ agents: agentConfigsTable.agents, autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
@@ -261,7 +274,8 @@ router.post("/jarvis/cases/:id/action-plan/steps/:stepId/delegate", async (req, 
       ...(finished.errorMessage ? { errorMessage: finished.errorMessage } : {}),
     },
   });
-  return res.status(201).json({ task: finished, autonomyLevel, sensitive, executedImmediately: true, plan: "error" in (updatedPlan ?? {}) ? null : updatedPlan?.plan });
+  const planResponse = updatedPlan && !("error" in updatedPlan) ? updatedPlan.plan : null;
+  return res.status(201).json({ task: finished, autonomyLevel, sensitive, executedImmediately: true, plan: planResponse });
 });
 
 router.patch("/jarvis/cases/:id/action-plan/steps/:stepId", async (req, res) => {
