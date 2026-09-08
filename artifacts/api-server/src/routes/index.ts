@@ -138,6 +138,7 @@ import sdrTemplatesRouter from "./sdr_templates";
 import renderRouter from "./render";
 import siteRouter from "./site";
 import spinRouter from "./spin";
+import jarvisExternalActionsRouter from "./jarvis_external_actions";
 import jarvisNaturalActionsRouter from "./jarvis_natural_actions";
 import jarvisActionPlansRouter from "./jarvis_action_plans";
 import supportRouter from "./support";
@@ -284,7 +285,9 @@ router.use(messagesRouter);
 // Customer Intelligence Hub
 router.use(customerIntelligenceRouter);
 
-// AI Hub
+// AI Hub — ações externas do JARVIS interceptam apenas tipos próprios e
+// reutilizam a mesma fila/endpoints antes do executor padrão.
+router.use(jarvisExternalActionsRouter);
 router.use(agentTasksRouter);
 router.use(agentsRouter);
 
