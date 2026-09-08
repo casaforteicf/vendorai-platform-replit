@@ -45,6 +45,7 @@ import "./site-generator-fix.css";
 import "./video-route-theme.css";
 import "./budget-dialog-policy.css";
 import "./leads-table-fix.css";
+import "./mobile-floating-controls.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 
