@@ -19,11 +19,15 @@ export const AGENT_TYPES = [
 
 export type AgentType = (typeof AGENT_TYPES)[number];
 
+export const AGENT_AUTONOMY_LEVELS = ["manual", "assistido", "autonomo"] as const;
+export type AgentAutonomyLevel = (typeof AGENT_AUTONOMY_LEVELS)[number];
+
 export const agentEntrySchema = z.object({
   enabled: z.boolean().default(false),
   prompt: z.string().optional(),
   nomePerfil: z.string().optional(),
   tom: z.string().optional(),
+  autonomyLevel: z.enum(AGENT_AUTONOMY_LEVELS).optional(),
 });
 
 export const agentsMapSchema = z.object({
@@ -41,6 +45,16 @@ export const agentsMapSchema = z.object({
 });
 
 export type AgentsMap = z.infer<typeof agentsMapSchema>;
+
+export function resolveAgentAutonomyLevel(
+  agents: AgentsMap | null | undefined,
+  agentName: string,
+  legacyAutonomyEnabled = false,
+): AgentAutonomyLevel {
+  const entry = agents?.[agentName as AgentType];
+  if (entry?.autonomyLevel) return entry.autonomyLevel;
+  return legacyAutonomyEnabled ? "autonomo" : "manual";
+}
 
 export const agentConfigsTable = pgTable(
   "agent_configs",
