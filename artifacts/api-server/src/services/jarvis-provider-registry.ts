@@ -258,7 +258,12 @@ async function executeMarketProvider(text: string): Promise<JarvisProviderExecut
 
 export async function executeJarvisProvider(text: string): Promise<JarvisProviderExecution> {
   const capability = resolveJarvisCapability(text);
-  if (capability.family === "market_data") return executeMarketProvider(text);
+  const hasMarketAsset =
+    detectFiatCurrencies(text).length > 0 ||
+    detectCryptoAssets(text).length > 0 ||
+    detectStockSymbols(text).length > 0;
+
+  if (capability.family === "market_data" || hasMarketAsset) return executeMarketProvider(text);
 
   return {
     status: "not_applicable",
