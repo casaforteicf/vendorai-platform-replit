@@ -4,6 +4,7 @@ import { loadJarvisWatchlistIntelligence } from "./jarvis-watchlist-intelligence
 import { loadJarvisPriorityIntelligence } from "./jarvis-priority-intelligence.js";
 import { loadJarvisComparisonIntelligence } from "./jarvis-comparison-intelligence.js";
 import { loadJarvisScenarioIntelligence } from "./jarvis-scenario-intelligence.js";
+import { loadJarvisTenantLearningIntelligence } from "./jarvis-tenant-learning-intelligence.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
@@ -20,7 +21,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence, scenarioIntelligence] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence, scenarioIntelligence, tenantLearning] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -136,6 +137,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     loadJarvisPriorityIntelligence(tenantId, 5),
     loadJarvisComparisonIntelligence(tenantId),
     loadJarvisScenarioIntelligence(tenantId),
+    loadJarvisTenantLearningIntelligence(tenantId),
   ]);
 
   const activeUpcomingAppointments = upcomingAppointments
@@ -150,12 +152,13 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const hasAgendaContext = activeUpcomingAppointments.length > 0;
   const hasComparisonContext = comparisonIntelligence.competitors.length > 0 || comparisonIntelligence.suppliers.length > 0 || comparisonIntelligence.products.length > 0;
   const hasScenarioContext = scenarioIntelligence.summary.activeDeals > 0 || scenarioIntelligence.summary.openCasesEvaluated > 0;
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext && !hasScenarioContext) return "";
+  const hasLearningContext = tenantLearning.sampleSize > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext && !hasScenarioContext && !hasLearningContext) return "";
 
   const lines = [
     "",
     "## Estado operacional real do tenant",
-    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, cenários, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
+    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, cenários, resultados anteriores, monitoramento, aprendizado acumulado e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
 
   if (recentChanges.length) {
@@ -351,6 +354,17 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     lines.push("A Biblioteca de Decisões é tenant-scoped e deriva dos próprios Casos Vendor encerrados. Ela não cria uma memória paralela e não compartilha aprendizado entre tenants. Casos sem resultado documentado contam como lacuna de aprendizado, não como sucesso ou fracasso.");
   }
 
+  if (hasLearningContext) {
+    lines.push("", "### Aprendizado acumulado do tenant — memória operacional isolada");
+    lines.push(`Amostra recente=${tenantLearning.sampleSize} | casos_resolvidos=${tenantLearning.resolvedCases} | casos_com_resultado=${tenantLearning.casesWithOutcome} | cobertura_resultados=${tenantLearning.outcomeCoveragePercent}% | feedbacks=${tenantLearning.feedbackCount} | relevantes=${tenantLearning.relevantFeedback} | irrelevantes=${tenantLearning.irrelevantFeedback}`);
+    for (const insight of tenantLearning.insights) {
+      lines.push(`- aprendizado=${insight.kind} | confiança=${insight.confidence}% | amostra=${insight.sampleSize} | ${compact(insight.title, 180)}`);
+      lines.push(`  Leitura: ${compact(insight.detail, 420)}`);
+      if (insight.caseIds.length) lines.push(`  Evidências/Casos: ${insight.caseIds.join(",")}`);
+    }
+    lines.push("Este aprendizado pertence exclusivamente ao tenant atual. Use recorrência e feedback para ajustar prioridade e contexto, nunca para esconder sinais críticos. Resultados documentados podem servir como precedente, mas não prove causalidade sem evidência explícita. Não transfira preferências, padrões ou conclusões entre tenants.");
+  }
+
   if (approvals.length) {
     lines.push("", `### Aprovações pendentes (${approvals.length})`);
     for (const task of approvals) {
@@ -377,7 +391,8 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "- 'O que eu não estou vendo?': use primeiro os Pontos cegos verificáveis. Não transforme falta de evidência em evidência de ausência nem invente concorrente, risco ou evento.",
     "- 'Por que tomamos essa decisão?': use a Biblioteca de Decisões e combine sinal/evidência, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
     "- 'O que funcionou?': use somente casos da Biblioteca com resultado observado registrado. Não atribua causalidade à recomendação sem documentação explícita.",
-    "- 'O que aprendemos?': sintetize padrões apenas a partir de resultados registrados deste tenant. Se a amostra for pequena, incompleta ou heterogênea, sinalize a limitação em vez de generalizar.",
+    "- 'O que aprendemos?' ou 'o que você sabe sobre minha empresa?': use primeiro Aprendizado acumulado do tenant, depois a Biblioteca de Decisões. Diferencie padrão observado, feedback, resultado e lacuna de cobertura. Nunca use aprendizado de outro tenant.",
+    "- 'Como você está ficando mais inteligente?': explique a amostra, cobertura de resultados, feedbacks e padrões do tenant; não diga que o modelo-base foi treinado quando o que ocorreu foi aprendizado operacional persistido.",
     "- 'Tem algo para aprovar?': use somente a lista de aprovações pendentes acima.",
   );
 
