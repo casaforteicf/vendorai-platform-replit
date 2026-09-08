@@ -90,13 +90,41 @@ function ensureUxStyle() {
         margin-right: 0 !important;
       }
 
+      [${CARD_ATTR}] > div:first-child {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: .75rem !important;
+        width: 100% !important;
+      }
+
+      [${CARD_ATTR}] > div:first-child > div:first-child {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 0 0 100% !important;
+      }
+
+      [${CARD_ATTR}] > div:first-child > div:last-child {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 0 0 100% !important;
+      }
+
+      [${CARD_ATTR}] p {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
       [${CARD_ATTR}] [data-vendorai-card-actions] {
-        margin-top: .75rem !important;
+        margin-top: 0 !important;
+        padding-top: .25rem !important;
       }
 
       [${CARD_ATTR}] [data-vendorai-card-actions] button,
       [${CARD_ATTR}] [data-vendorai-card-actions] a {
         min-height: 2.5rem !important;
+        flex: 1 1 auto !important;
       }
 
       [${CARD_ATTR}] [data-vendorai-executor-button] {
@@ -105,6 +133,49 @@ function ensureUxStyle() {
 
       [${CARD_ATTR}] [data-vendorai-preview-button] {
         order: 10;
+      }
+
+      button[aria-label="Carregar Dev IA"] {
+        width: 3.25rem !important;
+        height: 3.25rem !important;
+        min-width: 3.25rem !important;
+        padding: 0 !important;
+        right: 1rem !important;
+        bottom: 5rem !important;
+        font-size: 0 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      button[aria-label="Carregar Dev IA"]::after {
+        content: "IA";
+        font-size: .75rem;
+        font-weight: 700;
+      }
+
+      button[aria-label="Abrir seleção de mídias"] {
+        width: 3.25rem !important;
+        height: 3.25rem !important;
+        min-width: 3.25rem !important;
+        padding: 0 !important;
+        left: 1rem !important;
+        bottom: 1rem !important;
+        gap: 0 !important;
+        font-size: 0 !important;
+        justify-content: center !important;
+      }
+
+      button[aria-label="Abrir seleção de mídias"] > svg {
+        width: 1.1rem !important;
+        height: 1.1rem !important;
+      }
+
+      button[aria-label="Abrir seleção de mídias"] > span {
+        position: absolute !important;
+        top: -.2rem !important;
+        right: -.2rem !important;
+        font-size: .625rem !important;
       }
     }
   `;
