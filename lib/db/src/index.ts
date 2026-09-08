@@ -40,6 +40,7 @@ export const db = drizzle(pool, { schema });
 
 export * from "./schema";
 export * from "./schema/jarvis_cases";
+export * from "./schema/jarvis_key_people";
 export * from "./schema/vie_sources";
 export * from "./schema/vie_items";
 export * from "./schema/tenant_user_functions";
