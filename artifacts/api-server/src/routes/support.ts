@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { loadJarvisOperationalContext } from "../services/jarvis-operational-context.js";
+import { buildJarvisCapabilityContext, JARVIS_UNIVERSAL_PROFILE } from "../services/jarvis-capability-profile.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -110,6 +111,7 @@ const devGithubTaskSchema = z.object({
 function buildJarvisSystemPrompt(
   context?: { route?: string; title?: string },
   operationalContext = "",
+  capabilityContext = "",
 ) {
   const route = context?.route?.trim();
   const title = context?.title?.trim();
@@ -124,7 +126,9 @@ function buildJarvisSystemPrompt(
       : null,
   ].filter(Boolean).join("\n");
 
-  return [SUPPORT_SYSTEM_PROMPT, contextLines, operationalContext].filter(Boolean).join("\n");
+  return [SUPPORT_SYSTEM_PROMPT, JARVIS_UNIVERSAL_PROFILE, capabilityContext, contextLines, operationalContext]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function setSseHeaders(res: any) {
@@ -277,7 +281,9 @@ router.post("/support/chat", async (req, res) => {
     }
   }
 
-  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext);
+  const lastUserText = [...parsed.data.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  const capabilityContext = buildJarvisCapabilityContext(lastUserText);
+  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext, capabilityContext);
   setSseHeaders(res);
   let fullResponse = "";
 
