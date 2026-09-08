@@ -1,6 +1,7 @@
 @import "./sites-autopilot-consolidation.css";
 @import "./content-production-mobile.css";
 @import "./ads-mobile.css";
+@import "./reports-mobile-10.css";
 
 @media (max-width: 1200px), (pointer: coarse) {
   button[aria-label="Abrir Dev IA"],
