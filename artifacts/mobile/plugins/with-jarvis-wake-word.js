@@ -1,4 +1,9 @@
-const { withAndroidManifest, withMainActivity, withDangerousMod } = require('@expo/config-plugins');
+const {
+  withAndroidManifest,
+  withAppBuildGradle,
+  withMainActivity,
+  withDangerousMod,
+} = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -10,15 +15,33 @@ function ensurePermission(manifest, name) {
 }
 
 module.exports = function withJarvisWakeWord(config) {
+  const accessKey = (process.env.PICOVOICE_ACCESS_KEY || '').trim();
+  const picovoiceEnabled = accessKey.length > 0;
+
   config = withAndroidManifest(config, (mod) => {
     const manifest = mod.modResults;
+    // O microfone continua necessário para a voz manual dentro do app.
     ensurePermission(manifest, 'android.permission.RECORD_AUDIO');
-    ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE');
-    ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE_MICROPHONE');
-    ensurePermission(manifest, 'android.permission.POST_NOTIFICATIONS');
 
     const application = manifest.manifest.application?.[0];
     if (!application) return mod;
+
+    if (!picovoiceEnabled) {
+      // Sem AccessKey não existe wake word de background neste build.
+      // Não declarar serviço/foreground permissions evita compilar e iniciar
+      // uma camada nativa que não será utilizada.
+      application.service = (application.service || []).filter(
+        (item) => item.$?.['android:name'] !== '.jarvis.JarvisWakeWordService',
+      );
+      application['meta-data'] = (application['meta-data'] || []).filter(
+        (item) => item.$?.['android:name'] !== 'com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY',
+      );
+      return mod;
+    }
+
+    ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE');
+    ensurePermission(manifest, 'android.permission.FOREGROUND_SERVICE_MICROPHONE');
+    ensurePermission(manifest, 'android.permission.POST_NOTIFICATIONS');
 
     application.service = application.service || [];
     if (!application.service.some((item) => item.$?.['android:name'] === '.jarvis.JarvisWakeWordService')) {
@@ -32,7 +55,6 @@ module.exports = function withJarvisWakeWord(config) {
       });
     }
 
-    const accessKey = process.env.PICOVOICE_ACCESS_KEY || '';
     application['meta-data'] = application['meta-data'] || [];
     const existing = application['meta-data'].find(
       (item) => item.$?.['android:name'] === 'com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY',
@@ -49,23 +71,69 @@ module.exports = function withJarvisWakeWord(config) {
     return mod;
   });
 
-  config = withMainActivity(config, (mod) => {
+  config = withAppBuildGradle(config, (mod) => {
+    if (!picovoiceEnabled) return mod;
     let src = mod.modResults.contents;
-    if (!src.includes('JarvisWakeWordService')) {
+    if (!src.includes('ai.picovoice:porcupine-android:4.0.0')) {
       src = src.replace(
-        /import android\.os\.Bundle\s*/,
-        (match) => `${match}\nimport android.Manifest\nimport android.content.Intent\nimport android.content.pm.PackageManager\nimport androidx.core.content.ContextCompat\nimport com.appvendorai.vendorai.jarvis.JarvisWakeWordService\n`,
-      );
-      src = src.replace(
-        /super\.onResume\(\)/,
-        `super.onResume()\n    if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {\n      ContextCompat.startForegroundService(this, Intent(this, JarvisWakeWordService::class.java))\n    }`,
+        /dependencies\s*\{/,
+        (match) => `${match}\n    implementation 'ai.picovoice:porcupine-android:4.0.0'`,
       );
     }
     mod.modResults.contents = src;
     return mod;
   });
 
+  config = withMainActivity(config, (mod) => {
+    if (!picovoiceEnabled) return mod;
+
+    let src = mod.modResults.contents;
+    if (!src.includes('com.appvendorai.vendorai.jarvis.JarvisWakeWordService')) {
+      const imports = [
+        'import android.Manifest',
+        'import android.content.Intent',
+        'import android.content.pm.PackageManager',
+        'import androidx.core.content.ContextCompat',
+        'import com.appvendorai.vendorai.jarvis.JarvisWakeWordService',
+      ].join('\n');
+
+      src = src.replace(
+        /^(package\s+[^\n]+\n)/m,
+        (match) => `${match}\n${imports}\n`,
+      );
+    }
+
+    const startServiceBlock = `if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {\n      ContextCompat.startForegroundService(this, Intent(this, JarvisWakeWordService::class.java))\n    }`;
+
+    if (src.includes('override fun onResume()')) {
+      if (!src.includes('ContextCompat.startForegroundService(this, Intent(this, JarvisWakeWordService::class.java))')) {
+        src = src.replace(
+          /super\.onResume\(\)/,
+          `super.onResume()\n    ${startServiceBlock}`,
+        );
+      }
+    } else {
+      src = src.replace(
+        /\n}\s*$/,
+        `\n\n  override fun onResume() {\n    super.onResume()\n    ${startServiceBlock}\n  }\n}\n`,
+      );
+    }
+
+    mod.modResults.contents = src;
+    return mod;
+  });
+
   config = withDangerousMod(config, ['android', async (mod) => {
+    const target = path.join(
+      mod.modRequest.platformProjectRoot,
+      'app/src/main/java/com/appvendorai/vendorai/jarvis/JarvisWakeWordService.kt',
+    );
+
+    if (!picovoiceEnabled) {
+      if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+      return mod;
+    }
+
     const sourceDir = path.join(mod.modRequest.projectRoot, 'assets/jarvis');
     const modelSource = path.join(sourceDir, 'porcupine_params_pt.pv');
     const keywordSource = path.join(sourceDir, 'jarvis_android.ppn');
@@ -79,10 +147,6 @@ module.exports = function withJarvisWakeWord(config) {
       fs.copyFileSync(keywordSource, path.join(targetAssetsDir, 'jarvis_android.ppn'));
     }
 
-    const target = path.join(
-      mod.modRequest.platformProjectRoot,
-      'app/src/main/java/com/appvendorai/vendorai/jarvis/JarvisWakeWordService.kt',
-    );
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, `package com.appvendorai.vendorai.jarvis
 
