@@ -60,6 +60,12 @@ function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function isTransientNetworkError(error: unknown) {
+  if (error instanceof TypeError) return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("failed to fetch") || message.includes("network") || message.includes("load failed");
+}
+
 export function MediaMarketingContentBridge() {
   const initial = readStoredSelection();
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -134,22 +140,35 @@ export function MediaMarketingContentBridge() {
 
     const runGenerationRequest = async (input: RequestInfo | URL, init: RequestInit, body: Record<string, unknown>) => {
       let lastResponse: Response | null = null;
+      const requestId = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `gen-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
         headers.set("x-vendorai-generation-attempt", String(attempt + 1));
-        const response = await previousFetch(input, { ...init, headers, body: JSON.stringify(body) });
-        lastResponse = response;
-        if (response.ok || !TRANSIENT_GENERATION_STATUSES.has(response.status) || attempt === 2) return response;
-        const retryAfter = Number(response.headers.get("retry-after") ?? "0");
-        const delay = Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(retryAfter * 1000, 5000)
-          : 500 * (attempt + 1);
-        await wait(delay);
+        headers.set("x-vendorai-generation-request-id", requestId);
+
+        try {
+          const response = await previousFetch(input, { ...init, headers, body: JSON.stringify(body) });
+          lastResponse = response;
+          if (response.ok || !TRANSIENT_GENERATION_STATUSES.has(response.status) || attempt === 2) return response;
+          const retryAfter = Number(response.headers.get("retry-after") ?? "0");
+          const delay = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 5000)
+            : 600 * (attempt + 1);
+          await wait(delay);
+        } catch (error) {
+          if (!isTransientNetworkError(error) || attempt === 2) throw error;
+          await wait(700 * (attempt + 1));
+        }
       }
-      return lastResponse!;
+      if (lastResponse) return lastResponse;
+      throw new TypeError("Failed to fetch after automatic retries");
     };
 
     const mediaAwareFetch: typeof window.fetch = async (input, init = {}) => {
+      let handledGeneration = false;
       try {
         const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const url = new URL(requestUrl, window.location.origin);
@@ -158,6 +177,7 @@ export function MediaMarketingContentBridge() {
         const isGenerate = /^\/api\/tenants\/[^/]+\/content\/generate\/?$/.test(url.pathname);
 
         if (method === "POST" && isGenerate && typeof init.body === "string") {
+          handledGeneration = true;
           const body = JSON.parse(init.body) as Record<string, unknown>;
           if (selected.length > 0) {
             if (modeRef.current === "style_reference") {
@@ -171,7 +191,8 @@ export function MediaMarketingContentBridge() {
           if (response.ok && selected.length > 0) window.setTimeout(() => setAssets([]), 0);
           return response;
         }
-      } catch {
+      } catch (error) {
+        if (handledGeneration) throw error;
         // Em qualquer request não compatível, mantém o comportamento original.
       }
       return previousFetch(input, init);
