@@ -86,16 +86,16 @@ export default function VideoHome() {
   const [showBrandKit, setShowBrandKit] = useState(false);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 pb-24 sm:space-y-6 sm:pb-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card shadow-sm">
               <Sparkles className="h-4 w-4 text-primary" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo com IA</h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                 {planExecution
                   ? "O briefing aprovado do Plano de Mídia já foi carregado. Revise as referências e gere o vídeo."
                   : "Crie, edite e padronize vídeos com o VendorAI Media Engine."}
@@ -104,32 +104,26 @@ export default function VideoHome() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setShowBrandKit((value) => !value)}>
-            <Settings2 className="mr-2 h-4 w-4" />
-            Brand Kit
-          </Button>
-          <Button onClick={() => setShowGenerator((value) => !value)}>
-            <WandSparkles className="mr-2 h-4 w-4" />
-            {showGenerator ? "Fechar gerador" : "Novo vídeo"}
-          </Button>
-        </div>
+        <Button onClick={() => setShowGenerator((value) => !value)} className="w-full lg:w-auto">
+          <WandSparkles className="mr-2 h-4 w-4" />
+          {showGenerator ? "Fechar gerador" : "Novo vídeo"}
+        </Button>
       </header>
 
       <section className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <WandSparkles className="h-5 w-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-foreground">{planExecution ? "Produzir vídeo do planejamento" : "Criar vídeo do zero"}</h2>
+                <h2 className="text-base font-semibold text-foreground sm:text-sm">{planExecution ? "Produzir vídeo do planejamento" : "Criar vídeo do zero"}</h2>
                 <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                   {planExecution ? "Briefing do plano" : "Media Engine"}
                 </span>
               </div>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                 {planExecution
                   ? "Campanha, objetivo, público, oferta, canal e direção criativa vêm do calendário; você não precisa preencher a estratégia novamente."
                   : "Descreva a ideia, escolha formato e duração. O gerador abre somente quando necessário para manter a tela leve."}
@@ -139,7 +133,7 @@ export default function VideoHome() {
           <Button
             variant={showGenerator ? "outline" : "default"}
             onClick={() => setShowGenerator((value) => !value)}
-            className="shrink-0"
+            className="w-full sm:w-auto sm:shrink-0"
           >
             {showGenerator ? "Fechar" : "Abrir gerador"}
           </Button>
@@ -155,13 +149,13 @@ export default function VideoHome() {
       <section className="space-y-3">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-foreground">Ferramentas de vídeo</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Escolha o fluxo conforme o material que você já possui.</p>
+            <h2 className="text-lg font-semibold text-foreground sm:text-base">Ferramentas de vídeo</h2>
+            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">Escolha o fluxo conforme o material que você já possui.</p>
           </div>
           <span className="hidden text-xs text-muted-foreground sm:inline">6 ferramentas disponíveis</span>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 sm:gap-4">
           {CARDS.map((card) => {
             const Icon = card.icon;
             return (
@@ -170,27 +164,27 @@ export default function VideoHome() {
                 type="button"
                 onClick={() => navigate(card.route)}
                 className={cn(
-                  "group flex min-h-[190px] flex-col rounded-xl border border-border bg-card p-5 text-left shadow-sm",
+                  "group flex min-h-0 flex-col rounded-xl border border-border bg-card p-4 text-left shadow-sm sm:min-h-[190px] sm:p-5",
                   "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     Disponível
                   </span>
                 </div>
 
-                <div className="mt-4 flex-1">
-                  <h3 className="text-sm font-semibold text-foreground">{card.title}</h3>
-                  <p className="mt-1.5 text-sm leading-5 text-muted-foreground">{card.description}</p>
+                <div className="mt-3 flex-1 sm:mt-4">
+                  <h3 className="text-base font-semibold text-foreground sm:text-sm">{card.title}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{card.description}</p>
                 </div>
 
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-primary">
+                <div className="mt-3 flex items-center gap-1.5 text-sm font-medium text-primary sm:mt-4 sm:text-xs">
                   {card.action}
                   <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -201,20 +195,23 @@ export default function VideoHome() {
       </section>
 
       <section className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
               <Settings2 className="h-5 w-5" />
             </div>
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Brand Video Kit</h2>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-semibold text-foreground">Padrão visual dos vídeos</h2>
+                <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Brand Video Kit</span>
+              </div>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                 Defina logo, abertura, encerramento, trilha e padrão de legendas usados automaticamente nos vídeos.
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => setShowBrandKit((value) => !value)} className="shrink-0">
-            {showBrandKit ? "Fechar configurações" : "Configurar"}
+          <Button variant="outline" onClick={() => setShowBrandKit((value) => !value)} className="w-full sm:w-auto sm:shrink-0">
+            {showBrandKit ? "Fechar configurações" : "Configurar padrão"}
           </Button>
         </div>
       </section>
