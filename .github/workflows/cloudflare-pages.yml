@@ -78,15 +78,18 @@ jobs:
 
           current=$(curl -fsS "${auth[@]}" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains/$domain" || true)
           if [ "$(jq -r '.success // false' <<<"$current")" != "true" ]; then
-            curl -fsS "${auth[@]}" -X POST               "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains"               --data '{"name":"app.appvendorai.com"}' | jq -e '.success == true'
+            curl -fsS "${auth[@]}" -X POST \
+              "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains" \
+              --data '{"name":"app.appvendorai.com"}' | jq -e '.success == true'
           fi
 
-          zone_id=$(curl -fsS "${auth[@]}" "$api/zones?name=appvendorai.com" | jq -er '.result[0].id')
-          record_id=$(curl -fsS "${auth[@]}" "$api/zones/$zone_id/dns_records?name=$domain" | jq -r '.result[0].id // empty')
-          payload='{"type":"CNAME","name":"app","content":"vendorai.pages.dev","ttl":1,"proxied":true}'
+          for attempt in {1..12}; do
+            status=$(curl -fsS "${auth[@]}" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains/$domain" | jq -r '.result.status // empty')
+            echo "Custom domain status: ${status:-unknown}"
+            if [ "$status" = "active" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
 
-          if [ -n "$record_id" ]; then
-            curl -fsS "${auth[@]}" -X PUT "$api/zones/$zone_id/dns_records/$record_id" --data "$payload" | jq -e '.success == true'
-          else
-            curl -fsS "${auth[@]}" -X POST "$api/zones/$zone_id/dns_records" --data "$payload" | jq -e '.success == true'
-          fi
+          echo "Custom domain was attached but is not active yet."
