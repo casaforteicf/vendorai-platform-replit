@@ -1,0 +1,45 @@
+/* Revenue Scout 10/10 — menu simples e regras técnicas fora do fluxo principal. */
+[class*="bg-sidebar"] a[href="/scout/regras"],
+[class*="bg-sidebar"] a[href="/scout/oportunidades"],
+[class*="bg-sidebar"] a[href="/scout/pipeline"] {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  /* Tela avançada de regras: continua disponível, mas deixa de parecer a tela principal. */
+  main a[href="/scout"] + * {
+    min-width: 0;
+  }
+
+  /* Cards de regras — reduz altura e evita título quebrando em muitas linhas. */
+  main [class*="space-y-2"] > [class*="rounded"] [class*="p-4"] {
+    min-width: 0;
+  }
+
+  main [class*="space-y-2"] p.font-semibold.text-sm {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  /* Dialog de regra ocupa a viewport útil e mantém ações acessíveis com teclado aberto. */
+  [role="dialog"][class*="max-w-md"] {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 22px !important;
+    padding: 16px !important;
+  }
+
+  [role="dialog"] input,
+  [role="dialog"] textarea,
+  [role="dialog"] button[role="combobox"] {
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  [role="dialog"] textarea {
+    resize: vertical;
+  }
+}
