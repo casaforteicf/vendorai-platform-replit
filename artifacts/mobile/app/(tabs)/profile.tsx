@@ -107,6 +107,7 @@ export default function ProfileScreen() {
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
+        <Row icon="mic" label="Jarvis — ativação por voz" onPress={() => router.push("/jarvis")} />
         <Row icon="target" label="Anúncios" onPress={() => router.push("/ads")} />
       </View>
 
