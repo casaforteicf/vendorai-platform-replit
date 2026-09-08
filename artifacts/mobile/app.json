@@ -19,11 +19,19 @@
       "infoPlist": {
         "NSCameraUsageDescription": "A câmera é usada para cadastrar produtos, documentos e comprovantes.",
         "NSPhotoLibraryUsageDescription": "Suas fotos podem ser anexadas a produtos, clientes e documentos.",
-        "NSLocationWhenInUseUsageDescription": "A localização ajuda no atendimento, nas visitas e na logística da operação."
+        "NSLocationWhenInUseUsageDescription": "A localização ajuda no atendimento, nas visitas e na logística da operação.",
+        "NSMicrophoneUsageDescription": "O microfone é usado para conversar com o Jarvis por voz.",
+        "NSSpeechRecognitionUsageDescription": "O reconhecimento de fala transforma seus comandos de voz em ações do Jarvis."
       }
     },
     "android": {
       "package": "com.appvendorai.vendorai",
+      "permissions": [
+        "RECORD_AUDIO",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
@@ -36,7 +44,16 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Permita que o Vendor.ai use o microfone para conversar com o Jarvis.",
+          "speechRecognitionPermission": "Permita que o Vendor.ai reconheça seus comandos de voz.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ],
+      "./plugins/with-jarvis-wake-word"
     ],
     "experiments": {
       "typedRoutes": true,
