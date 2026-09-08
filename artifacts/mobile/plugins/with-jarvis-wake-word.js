@@ -34,7 +34,9 @@ module.exports = function withJarvisWakeWord(config) {
 
     const accessKey = process.env.PICOVOICE_ACCESS_KEY || '';
     application['meta-data'] = application['meta-data'] || [];
-    const existing = application['meta-data'].find((item) => item.$?.['android:name'] === 'com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY');
+    const existing = application['meta-data'].find(
+      (item) => item.$?.['android:name'] === 'com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY',
+    );
     const meta = {
       $: {
         'android:name': 'com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY',
@@ -64,20 +66,26 @@ module.exports = function withJarvisWakeWord(config) {
   });
 
   config = withDangerousMod(config, ['android', async (mod) => {
-    const modelSource = path.join(mod.modRequest.projectRoot, 'assets/jarvis/porcupine_params_pt.pv');
-    if (!fs.existsSync(modelSource)) {
-      throw new Error('Jarvis: modelo Porcupine pt ausente em assets/jarvis/porcupine_params_pt.pv');
+    const sourceDir = path.join(mod.modRequest.projectRoot, 'assets/jarvis');
+    const modelSource = path.join(sourceDir, 'porcupine_params_pt.pv');
+    const keywordSource = path.join(sourceDir, 'jarvis_android.ppn');
+    const targetAssetsDir = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/assets/jarvis');
+
+    fs.mkdirSync(targetAssetsDir, { recursive: true });
+    if (fs.existsSync(modelSource)) {
+      fs.copyFileSync(modelSource, path.join(targetAssetsDir, 'porcupine_params_pt.pv'));
+    }
+    if (fs.existsSync(keywordSource)) {
+      fs.copyFileSync(keywordSource, path.join(targetAssetsDir, 'jarvis_android.ppn'));
     }
 
-    const modelTargetDir = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/assets/jarvis');
-    fs.mkdirSync(modelTargetDir, { recursive: true });
-    fs.copyFileSync(modelSource, path.join(modelTargetDir, 'porcupine_params_pt.pv'));
-
-    const target = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/java/com/appvendorai/vendorai/jarvis/JarvisWakeWordService.kt');
+    const target = path.join(
+      mod.modRequest.platformProjectRoot,
+      'app/src/main/java/com/appvendorai/vendorai/jarvis/JarvisWakeWordService.kt',
+    );
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, `package com.appvendorai.vendorai.jarvis
 
-import ai.picovoice.porcupine.Porcupine
 import ai.picovoice.porcupine.PorcupineManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -104,45 +112,87 @@ class JarvisWakeWordService : Service() {
 
   override fun onCreate() {
     super.onCreate()
+    if (!isWakeWordConfigured()) {
+      stopSelf()
+      return
+    }
     createChannel()
     val openIntent = Intent(this, MainActivity::class.java)
-    val pending = PendingIntent.getActivity(this, 0, openIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-    startForeground(7011, NotificationCompat.Builder(this, CHANNEL_ID)
-      .setSmallIcon(R.mipmap.ic_launcher)
-      .setContentTitle("Jarvis ativo")
-      .setContentText("Escutando apenas a palavra de ativação.")
-      .setOngoing(true)
-      .setContentIntent(pending)
-      .build())
+    val pending = PendingIntent.getActivity(
+      this,
+      0,
+      openIntent,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+    startForeground(
+      7011,
+      NotificationCompat.Builder(this, CHANNEL_ID)
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .setContentTitle("Jarvis ativo")
+        .setContentText("Escutando apenas a palavra de ativação.")
+        .setOngoing(true)
+        .setContentIntent(pending)
+        .build(),
+    )
     startDetector()
   }
 
-  private fun startDetector() {
-    if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-      stopSelf()
-      return
-    }
+  private fun accessKey(): String {
     val appInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
-    val accessKey = appInfo.metaData?.getString("com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY").orEmpty()
-    if (accessKey.isBlank()) {
+    return appInfo.metaData?.getString("com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY").orEmpty()
+  }
+
+  private fun assetExists(assetPath: String): Boolean = try {
+    assets.open(assetPath).close()
+    true
+  } catch (_: Exception) {
+    false
+  }
+
+  private fun isWakeWordConfigured(): Boolean {
+    if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
+    if (accessKey().isBlank()) return false
+    return assetExists("jarvis/jarvis_android.ppn") && assetExists("jarvis/porcupine_params_pt.pv")
+  }
+
+  private fun materializeAsset(assetPath: String, fileName: String): String {
+    val dir = File(filesDir, "jarvis")
+    if (!dir.exists()) dir.mkdirs()
+    val target = File(dir, fileName)
+    if (!target.exists() || target.length() == 0L) {
+      assets.open(assetPath).use { input ->
+        target.outputStream().use { output -> input.copyTo(output) }
+      }
+    }
+    return target.absolutePath
+  }
+
+  private fun startDetector() {
+    if (!isWakeWordConfigured()) {
       stopSelf()
       return
     }
+
     try {
-      val keyword = File(filesDir, "jarvis_android.ppn")
-      if (!keyword.exists()) {
-        Porcupine.trainWakeWordFromPhrase(accessKey, keyword.absolutePath, "pt", "Jarvis")
-      }
+      val keywordPath = materializeAsset("jarvis/jarvis_android.ppn", "jarvis_android.ppn")
+      val modelPath = materializeAsset("jarvis/porcupine_params_pt.pv", "porcupine_params_pt.pv")
       manager = PorcupineManager.Builder()
-        .setAccessKey(accessKey)
-        .setKeywordPath(keyword.absolutePath)
-        .setModelPath("jarvis/porcupine_params_pt.pv")
+        .setAccessKey(accessKey())
+        .setKeywordPath(keywordPath)
+        .setModelPath(modelPath)
         .build(this) {
           try { manager?.stop() } catch (_: Exception) {}
           mainHandler.removeCallbacks(resumeDetector)
           mainHandler.postDelayed(resumeDetector, 30000)
-          val intent = Intent(Intent.ACTION_VIEW, Uri.parse("vendorai://jarvis?wake=1"), this, MainActivity::class.java)
-          intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+          val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("vendorai://jarvis?wake=1"),
+            this,
+            MainActivity::class.java,
+          )
+          intent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP,
+          )
           startActivity(intent)
         }
       manager?.start()
@@ -152,7 +202,7 @@ class JarvisWakeWordService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (manager == null) startDetector()
+    if (manager == null && isWakeWordConfigured()) startDetector()
     return START_STICKY
   }
 

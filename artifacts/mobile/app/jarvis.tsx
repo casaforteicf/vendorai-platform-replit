@@ -36,6 +36,7 @@ export default function JarvisScreen() {
   const [enabled, setEnabled] = useState(false);
   const sendingRef = useRef(false);
   const wakeHandledRef = useRef(false);
+  const openedByWakeWord = params.wake === "1";
   const conversationId = useMemo(
     () => `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     [],
@@ -52,6 +53,7 @@ export default function JarvisScreen() {
         return;
       }
     }
+    setEnabled(true);
     setTranscript("");
     setVoiceState("listening");
     ExpoSpeechRecognitionModule.start({
@@ -101,7 +103,7 @@ export default function JarvisScreen() {
             route: "/jarvis",
             title: "JARVIS Mobile",
             source: "android_voice",
-            wakeWord: params.wake === "1",
+            wakeWord: openedByWakeWord,
           },
         }),
       });
@@ -145,7 +147,7 @@ export default function JarvisScreen() {
     } finally {
       sendingRef.current = false;
     }
-  }, [conversationId, params.wake, speak, token]);
+  }, [conversationId, openedByWakeWord, speak, token]);
 
   useSpeechRecognitionEvent("result", (event) => {
     const text = event.results[0]?.transcript?.trim() ?? "";
@@ -170,7 +172,7 @@ export default function JarvisScreen() {
     if (!sendingRef.current && voiceState === "listening") setVoiceState("idle");
   });
 
-  const enableWakeWord = useCallback(async () => {
+  const enableVoice = useCallback(async () => {
     const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permission.granted) {
       setVoiceState("error");
@@ -178,21 +180,21 @@ export default function JarvisScreen() {
       return;
     }
     setEnabled(true);
-    setAnswer("Ativação por voz habilitada. Você pode fechar a interface e dizer “Jarvis”.");
-    speak("Ativação por voz habilitada. Pode me chamar dizendo Jarvis.", false);
+    setAnswer("Voz habilitada. Você já pode falar com o JARVIS pelo microfone.");
+    speak("Voz habilitada. Estou pronto para conversar.", false);
   }, [speak]);
 
   useEffect(() => {
-    if (isLoading || wakeHandledRef.current || params.wake !== "1") return;
+    if (isLoading || wakeHandledRef.current || !openedByWakeWord) return;
     wakeHandledRef.current = true;
     if (!token || !user) {
       router.replace("/login");
       return;
     }
     setEnabled(true);
-    setAnswer("Ativado por voz.");
+    setAnswer("Ativado pela palavra de chamada.");
     speak("Bom dia. Estou ouvindo.", true);
-  }, [isLoading, params.wake, speak, token, user]);
+  }, [isLoading, openedByWakeWord, speak, token, user]);
 
   useEffect(() => () => {
     Speech.stop();
@@ -200,7 +202,7 @@ export default function JarvisScreen() {
   }, []);
 
   const stateLabel: Record<VoiceState, string> = {
-    idle: enabled ? "Jarvis ativo" : "Ativação desligada",
+    idle: enabled ? "Voz pronta" : "Microfone não habilitado",
     listening: "Ouvindo...",
     thinking: "Analisando...",
     speaking: "Respondendo...",
@@ -229,7 +231,11 @@ export default function JarvisScreen() {
             )}
           </View>
           <Text style={[styles.state, { color: colors.foreground }]}>{stateLabel[voiceState]}</Text>
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>Diga “Jarvis” com o app em segundo plano para abrir esta sessão.</Text>
+          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+            {openedByWakeWord
+              ? "Sessão aberta pela palavra de ativação Jarvis."
+              : "O microfone funciona neste APK. A ativação com o app em segundo plano depende do wake word configurado no build."}
+          </Text>
         </View>
 
         {transcript ? (
@@ -245,9 +251,9 @@ export default function JarvisScreen() {
         </View>
 
         {!enabled ? (
-          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary }]} onPress={() => void enableWakeWord()}>
-            <Feather name="power" size={18} color="#fff" />
-            <Text style={styles.primaryButtonText}>Ativar “Jarvis” em segundo plano</Text>
+          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary }]} onPress={() => void enableVoice()}>
+            <Feather name="mic" size={18} color="#fff" />
+            <Text style={styles.primaryButtonText}>Habilitar voz do JARVIS</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -256,11 +262,11 @@ export default function JarvisScreen() {
             disabled={voiceState === "thinking" || voiceState === "speaking"}
           >
             <Feather name="mic" size={18} color="#fff" />
-            <Text style={styles.primaryButtonText}>Falar com o Jarvis</Text>
+            <Text style={styles.primaryButtonText}>Falar com o JARVIS</Text>
           </TouchableOpacity>
         )}
 
-        <Text style={[styles.privacy, { color: colors.mutedForeground }]}>A escuta de fundo processa somente a palavra de ativação no aparelho. O comando seguinte é enviado ao VendorAI autenticado para execução conforme suas permissões e níveis de autonomia.</Text>
+        <Text style={[styles.privacy, { color: colors.mutedForeground }]}>Quando o wake word estiver configurado, a escuta de fundo processa somente a palavra de ativação no aparelho. O comando seguinte é enviado ao VendorAI autenticado para execução conforme suas permissões e níveis de autonomia.</Text>
       </ScrollView>
     </View>
   );
