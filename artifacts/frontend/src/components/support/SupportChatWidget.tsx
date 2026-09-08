@@ -26,6 +26,30 @@ interface AgentTaskApproval {
   createdAt: string;
 }
 
+interface JarvisProactiveItem {
+  id: string;
+  title: string;
+  priorityScore: number;
+  severity: string;
+  confidence: number | null;
+  impact: number | null;
+  recommendedAction: string | null;
+  explicitFinancialImpact?: { amount: number } | null;
+  historicalFinancialEstimate?: {
+    medianAmount: number;
+    sampleSize: number;
+    confidence: number;
+  } | null;
+}
+
+interface JarvisProactivityResponse {
+  proactivity: {
+    interruptNow: JarvisProactiveItem[];
+    briefing: JarvisProactiveItem[];
+    silentCount: number;
+  };
+}
+
 interface BrowserSpeechRecognitionEvent extends Event {
   results: {
     [index: number]: {
@@ -70,6 +94,56 @@ function approvalRiskLevel(actionType: string) {
   return 2;
 }
 
+function formatBrl(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function defaultGreeting() {
+  return "Olá. Sou o JARVIS, seu Agente Mestre no VendorAI. Posso analisar o negócio, orientar o uso do sistema, mostrar prioridades e acompanhar ações que precisam da sua aprovação. Você pode falar ou digitar.";
+}
+
+function buildProactiveGreeting(data: JarvisProactivityResponse) {
+  const urgent = data.proactivity.interruptNow ?? [];
+  const briefing = data.proactivity.briefing ?? [];
+
+  if (urgent.length) {
+    const lines = [
+      `Tenho ${urgent.length === 1 ? "1 ponto que merece sua atenção agora" : `${urgent.length} pontos que merecem sua atenção agora`}:`,
+    ];
+    urgent.slice(0, 3).forEach((item, index) => {
+      lines.push(`${index + 1}. ${item.title} — prioridade ${item.priorityScore}/100.`);
+      if (item.explicitFinancialImpact?.amount != null) {
+        lines.push(`   Impacto financeiro atual informado: ${formatBrl(item.explicitFinancialImpact.amount)}.`);
+      } else if (item.historicalFinancialEstimate) {
+        lines.push(
+          `   Precedente histórico do tenant: mediana ${formatBrl(item.historicalFinancialEstimate.medianAmount)} em ${item.historicalFinancialEstimate.sampleSize} casos, confiança ${item.historicalFinancialEstimate.confidence}%.`,
+        );
+      }
+      if (item.recommendedAction) lines.push(`   Próxima ação sugerida: ${item.recommendedAction}`);
+    });
+    lines.push("Posso detalhar qualquer um deles antes de você decidir o que fazer.");
+    return lines.join("\n");
+  }
+
+  if (briefing.length) {
+    const lines = [
+      "Não encontrei nada que justifique interromper você agora.",
+      `Tenho ${briefing.length === 1 ? "1 ponto" : `${briefing.length} pontos`} para o próximo briefing:`,
+    ];
+    briefing.slice(0, 5).forEach((item, index) => {
+      lines.push(`${index + 1}. ${item.title} — prioridade ${item.priorityScore}/100.`);
+    });
+    lines.push("Se quiser, eu abro o mais importante primeiro.");
+    return lines.join("\n");
+  }
+
+  return "Não encontrei nenhuma prioridade que justifique interromper você agora. Continuo acompanhando os sinais do negócio e posso analisar qualquer área que você quiser.";
+}
+
 export function SupportChatWidget() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -108,6 +182,27 @@ export function SupportChatWidget() {
     }
   }, [tenantId]);
 
+  const loadProactiveGreeting = useCallback(async () => {
+    if (!tenantId) {
+      setMessages((current) => current.length ? current : [{ role: "assistant", content: defaultGreeting() }]);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch("/api/jarvis/proactivity", {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error("Falha ao carregar prioridades proativas");
+      const data = await res.json() as JarvisProactivityResponse;
+      setMessages((current) => current.length
+        ? current
+        : [{ role: "assistant", content: buildProactiveGreeting(data) }]);
+    } catch {
+      setMessages((current) => current.length ? current : [{ role: "assistant", content: defaultGreeting() }]);
+    }
+  }, [tenantId]);
+
   useEffect(() => {
     const openFromHelp = (event: Event) => {
       const detail = (event as CustomEvent<{ question?: string }>).detail;
@@ -125,16 +220,8 @@ export function SupportChatWidget() {
   }, [open, loadApprovalQueue]);
 
   useEffect(() => {
-    if (open && messages.length === 0) {
-      setMessages([
-        {
-          role: "assistant",
-          content:
-            "Olá. Sou o JARVIS, seu Agente Mestre no VendorAI. Posso analisar o negócio, orientar o uso do sistema, mostrar prioridades e acompanhar ações que precisam da sua aprovação. Você pode falar ou digitar.",
-        },
-      ]);
-    }
-  }, [open, messages.length]);
+    if (open && messages.length === 0) void loadProactiveGreeting();
+  }, [open, messages.length, loadProactiveGreeting]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
