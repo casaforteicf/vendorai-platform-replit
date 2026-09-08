@@ -80,6 +80,17 @@ function caseSearchText(item: {
   ].join(" "));
 }
 
+function sourceIdentity(item: {
+  source: string;
+  evidence: Record<string, unknown> | null;
+}) {
+  const evidence = item.evidence ?? {};
+  const sourceId = typeof evidence.sourceId === "string" ? evidence.sourceId : null;
+  const sourceCode = typeof evidence.sourceCode === "string" ? evidence.sourceCode : null;
+  const sourceName = typeof evidence.sourceName === "string" ? evidence.sourceName : null;
+  return sourceId ?? sourceCode ?? sourceName ?? item.source;
+}
+
 function itemKey(kind: JarvisWatchlistKind, label: string) {
   return `${kind}:${normalize(label).replaceAll(" ", "-")}`;
 }
@@ -257,6 +268,25 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
     }
   }
 
+  for (const monitoredItem of watchlist) {
+    if (monitoredItem.recentCaseIds.length < 2) continue;
+    const relatedCases = recentCases.filter((item) => monitoredItem.recentCaseIds.includes(item.id));
+    const sources = new Set(relatedCases.map(sourceIdentity));
+    const normalizedCategories = new Set(relatedCases.map((item) => normalize(item.category)));
+    const hasRisk = normalizedCategories.has("risco");
+    const hasOpportunity = normalizedCategories.has("oportunidade");
+    if (sources.size < 2 || !hasRisk || !hasOpportunity) continue;
+
+    blindSpots.push({
+      code: `source_divergence:${monitoredItem.key}`,
+      severity: "attention",
+      area: "fontes",
+      title: `Sinais divergentes entre fontes sobre ${monitoredItem.label}`,
+      detail: `Nos últimos 7 dias, fontes diferentes geraram sinais em direções opostas para o mesmo item monitorado (${monitoredItem.kind}). Casos relacionados: ${relatedCases.map((item) => item.id).join(", ")}. Isso indica divergência de interpretação/impacto e não prova, sozinho, contradição factual.`,
+      recommendation: "Comparar as evidências e a confiabilidade de cada fonte antes de transformar o sinal em decisão ou ação automática.",
+    });
+  }
+
   const outcomesWithLearning = outcomeRows.filter((item) => Boolean(item.resultSummary?.trim()));
   if (!outcomesWithLearning.length) {
     blindSpots.push({
@@ -278,6 +308,7 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
       configuredOnly: watchlist.filter((item) => item.monitoringStatus === "configured_only").length,
       blindSpots: blindSpots.length,
       riskBlindSpots: blindSpots.filter((item) => item.severity === "risk").length,
+      sourceDivergences: blindSpots.filter((item) => item.code.startsWith("source_divergence:" )).length,
       activeExternalSources: activeNewsSources.length,
     },
     watchlist,
