@@ -26,14 +26,15 @@ export function jarvisArtifactFormatLabel(format: JarvisArtifactFormat) {
 
 export function detectJarvisArtifactRequest(text: string): JarvisArtifactFormat | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const intent = /(gere|gerar|crie|criar|converta|converter|transforme|transformar|exporte|exportar|baixe|baixar|arquivo|planilha|documento)/.test(normalized);
-  if (!intent) return null;
+  const hasCreationVerb = /\b(gere|gerar|crie|criar|converta|converter|transforme|transformar|exporte|exportar|baixe|baixar|faca|fazer|monte|montar|salve|salvar)\b/.test(normalized);
+  const hasDirectRequest = /\b(quero|preciso|mande|mandar|envie|enviar)\b[\s\S]{0,60}\b(xlsx|excel|planilha|csv|docx|word|pdf|markdown|txt)\b/.test(normalized);
+  if (!hasCreationVerb && !hasDirectRequest) return null;
 
   if (/\b(xlsx|excel|planilha)\b/.test(normalized)) return "xlsx";
   if (/\bcsv\b/.test(normalized)) return "csv";
   if (/\b(docx|word)\b/.test(normalized)) return "docx";
   if (/\bpdf\b/.test(normalized)) return "pdf";
-  if (/\b(markdown|\.md\b)\b/.test(normalized)) return "md";
+  if (/\b(markdown|md)\b/.test(normalized)) return "md";
   if (/\b(txt|texto simples)\b/.test(normalized)) return "txt";
   return null;
 }
