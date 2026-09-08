@@ -18,6 +18,22 @@ function currentBundleReloadKey() {
   return `${RELOAD_FLAG_PREFIX}:${entryScript?.src || "bootstrap"}`;
 }
 
+function bundleRecoveryWasTried() {
+  try {
+    return sessionStorage.getItem(currentBundleReloadKey()) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markBundleRecoveryTried() {
+  try {
+    sessionStorage.setItem(currentBundleReloadKey(), "1");
+  } catch {
+    // sessionStorage pode estar indisponível em alguns navegadores embutidos.
+  }
+}
+
 async function clearObsoleteFrontendState() {
   try {
     if ("serviceWorker" in navigator) {
@@ -52,7 +68,7 @@ async function carregarVersaoAtual(force = false) {
   try {
     if (!force && wasRecoveredRecently()) return;
     sessionStorage.setItem(RECOVERY_AT_KEY, String(now));
-    sessionStorage.removeItem(currentBundleReloadKey());
+    if (force) sessionStorage.removeItem(currentBundleReloadKey());
   } catch {
     // sessionStorage indisponível não deve bloquear a recuperação.
   }
@@ -68,18 +84,24 @@ async function carregarVersaoAtual(force = false) {
   }
 }
 
-// A sessão pode permanecer aberta enquanto um novo deploy troca os hashes dos
-// chunks. Recuperamos automaticamente uma única vez numa janela curta. Se a
-// versão recém-carregada falhar de novo, paramos e mostramos o erro em vez de
-// criar um loop de recarregamento.
+// Um deploy pode trocar os hashes dos chunks enquanto a sessão continua aberta.
+// Também há WebViews mobile que reportam esse mesmo cenário com mensagens genéricas.
+// Por isso fazemos uma única tentativa automática por bundle. Se o mesmo bundle
+// falhar novamente, mostramos o erro normalmente e evitamos qualquer loop.
 function tentarRecuperarDeVersaoAntiga(error: Error): boolean {
-  const recoverable =
+  const knownStaleAssetError =
     CHUNK_ERROR_PATTERN.test(error.message) ||
     STALE_LAZY_MODULE_PATTERN.test(error.message) ||
     STALE_MINIFIED_RUNTIME_PATTERN.test(error.message.trim());
 
-  if (!recoverable) return false;
-  if (wasRecoveredRecently()) return false;
+  if (wasRecoveredRecently() || bundleRecoveryWasTried()) return false;
+
+  // Erros conhecidos de asset antigo sempre recuperam. Para mensagens genéricas,
+  // permitimos a mesma tentativa única: um ErrorBoundary de topo já perdeu o estado
+  // da tela, então um reload controlado é preferível a expor uma falha transitória.
+  if (!knownStaleAssetError && !error.message) return false;
+
+  markBundleRecoveryTried();
   void carregarVersaoAtual(false);
   return true;
 }
