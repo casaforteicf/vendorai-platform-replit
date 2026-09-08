@@ -130,13 +130,15 @@ export default function VideoHome() {
               </p>
             </div>
           </div>
-          <Button
-            variant={showGenerator ? "outline" : "default"}
-            onClick={() => setShowGenerator((value) => !value)}
-            className="w-full sm:w-auto sm:shrink-0"
-          >
-            {showGenerator ? "Fechar" : "Abrir gerador"}
-          </Button>
+          {!showGenerator && (
+            <Button
+              variant="default"
+              onClick={() => setShowGenerator(true)}
+              className="w-full sm:w-auto sm:shrink-0"
+            >
+              Abrir gerador
+            </Button>
+          )}
         </div>
       </section>
 
