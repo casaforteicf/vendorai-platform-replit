@@ -1,0 +1,68 @@
+name: Build Jarvis Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.1 --activate
+
+      - name: Validar secrets
+        shell: bash
+        run: |
+          test -n "$EXPO_TOKEN" || (echo "Secret EXPO_TOKEN ausente" && exit 1)
+          test -n "$PICOVOICE_ACCESS_KEY" || (echo "Secret PICOVOICE_ACCESS_KEY ausente" && exit 1)
+
+      - name: Baixar modelo Porcupine pt-BR
+        shell: bash
+        run: |
+          mkdir -p artifacts/mobile/assets/jarvis
+          curl -fL \
+            https://raw.githubusercontent.com/Picovoice/porcupine/master/lib/common/porcupine_params_pt.pv \
+            -o artifacts/mobile/assets/jarvis/porcupine_params_pt.pv
+          test -s artifacts/mobile/assets/jarvis/porcupine_params_pt.pv
+
+      - name: Instalar dependências
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Instalar EAS CLI
+        run: npm install --global eas-cli
+
+      - name: Inicializar projeto EAS
+        working-directory: artifacts/mobile
+        run: eas init --force --non-interactive
+
+      - name: Sincronizar Picovoice no EAS
+        working-directory: artifacts/mobile
+        run: |
+          eas env:set preview \
+            --name PICOVOICE_ACCESS_KEY \
+            --value "$PICOVOICE_ACCESS_KEY" \
+            --visibility secret \
+            --scope project \
+            --non-interactive
+
+      - name: Gerar APK Android
+        working-directory: artifacts/mobile
+        run: eas build --platform android --profile preview --non-interactive --wait

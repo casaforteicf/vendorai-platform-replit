@@ -64,6 +64,15 @@ module.exports = function withJarvisWakeWord(config) {
   });
 
   config = withDangerousMod(config, ['android', async (mod) => {
+    const modelSource = path.join(mod.modRequest.projectRoot, 'assets/jarvis/porcupine_params_pt.pv');
+    if (!fs.existsSync(modelSource)) {
+      throw new Error('Jarvis: modelo Porcupine pt ausente em assets/jarvis/porcupine_params_pt.pv');
+    }
+
+    const modelTargetDir = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/assets/jarvis');
+    fs.mkdirSync(modelTargetDir, { recursive: true });
+    fs.copyFileSync(modelSource, path.join(modelTargetDir, 'porcupine_params_pt.pv'));
+
     const target = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/java/com/appvendorai/vendorai/jarvis/JarvisWakeWordService.kt');
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, `package com.appvendorai.vendorai.jarvis
@@ -120,13 +129,14 @@ class JarvisWakeWordService : Service() {
       return
     }
     try {
-      val model = File(filesDir, "jarvis_android.ppn")
-      if (!model.exists()) {
-        Porcupine.trainWakeWordFromPhrase(accessKey, model.absolutePath, "pt", "Jarvis")
+      val keyword = File(filesDir, "jarvis_android.ppn")
+      if (!keyword.exists()) {
+        Porcupine.trainWakeWordFromPhrase(accessKey, keyword.absolutePath, "pt", "Jarvis")
       }
       manager = PorcupineManager.Builder()
         .setAccessKey(accessKey)
-        .setKeywordPath(model.absolutePath)
+        .setKeywordPath(keyword.absolutePath)
+        .setModelPath("jarvis/porcupine_params_pt.pv")
         .build(this) {
           try { manager?.stop() } catch (_: Exception) {}
           mainHandler.removeCallbacks(resumeDetector)
