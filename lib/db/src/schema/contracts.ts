@@ -1,8 +1,25 @@
-import { pgTable, text, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { dealsTable } from "./deals";
+
+export interface ContractObligation {
+  id?: string;
+  title: string;
+  dueAt?: string | null;
+  owner?: string | null;
+  status?: "pending" | "completed" | "waived" | string;
+  notes?: string | null;
+}
+
+export interface ContractRiskClause {
+  id?: string;
+  title: string;
+  summary?: string | null;
+  severity?: "low" | "medium" | "high" | "critical" | string;
+  sourceReference?: string | null;
+}
 
 export const contractsTable = pgTable("contracts", {
   id: text("id")
@@ -19,6 +36,18 @@ export const contractsTable = pgTable("contracts", {
   pdfUrl: text("pdf_url"),
   sentAt: timestamp("sent_at"),
   signedAt: timestamp("signed_at"),
+
+  // Ciclo de vida contratual. Todos os campos são opcionais para manter
+  // compatibilidade com contratos históricos que só registravam assinatura/PDF.
+  effectiveAt: timestamp("effective_at"),
+  expiresAt: timestamp("expires_at"),
+  renewalType: text("renewal_type"), // none | manual | automatic
+  renewalNoticeDays: integer("renewal_notice_days"),
+  nextAdjustmentAt: timestamp("next_adjustment_at"),
+  adjustmentIndex: text("adjustment_index"),
+  obligations: jsonb("obligations").$type<ContractObligation[]>(),
+  riskClauses: jsonb("risk_clauses").$type<ContractRiskClause[]>(),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -26,11 +55,17 @@ export const contractsTable = pgTable("contracts", {
 export const insertContractSchema = createInsertSchema(contractsTable, {
   sentAt: z.coerce.date().optional(),
   signedAt: z.coerce.date().optional(),
+  effectiveAt: z.coerce.date().optional(),
+  expiresAt: z.coerce.date().optional(),
+  nextAdjustmentAt: z.coerce.date().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateContractSchema = createSelectSchema(contractsTable, {
   sentAt: z.coerce.date().optional(),
   signedAt: z.coerce.date().optional(),
+  effectiveAt: z.coerce.date().optional(),
+  expiresAt: z.coerce.date().optional(),
+  nextAdjustmentAt: z.coerce.date().optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
