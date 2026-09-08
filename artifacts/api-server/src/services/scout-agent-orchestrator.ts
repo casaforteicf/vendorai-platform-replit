@@ -1,10 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
   leadsTable,
   scoutOportunidadesTable,
   scoutRegrasTable,
+  propostasTable,
+  beautyAgendamentosTable,
+  clinicConsultasTable,
 } from "@workspace/db";
 import { processAgentInternal } from "./agent-dispatch.js";
 import type { AgentName } from "../lib/agent-engine.js";
@@ -42,8 +45,9 @@ export function resolveScoutAgent(tipo?: string | null): AgentName {
 function actionForType(tipo?: string | null) {
   switch (tipo) {
     case "orcamento_parado": return "Retomar a proposta usando o contexto existente e conduzir para decisão.";
+    case "follow_up": return "Retomar a oportunidade comercial no ponto em que parou, sem tratar o lead como cliente antes da venda.";
     case "reativacao":
-    case "reativacao_sazonal": return "Reabrir o relacionamento de forma contextual, sem abordagem genérica.";
+    case "reativacao_sazonal": return "Reabrir o relacionamento de forma contextual com base no histórico real de cliente.";
     case "cross_sell":
     case "grade_incompleta": return "Apresentar o complemento mais aderente ao histórico do cliente.";
     case "upgrade": return "Apresentar uma evolução de solução com benefício concreto e sem pressionar.";
@@ -58,6 +62,46 @@ function actionForType(tipo?: string | null) {
     case "indicacao": return "Pedir indicação no momento adequado, sem forçar nova compra.";
     default: return "Validar o contexto e executar a próxima melhor ação comercial.";
   }
+}
+
+async function hasRealCustomerHistory(tenantId: string, leadId: string) {
+  const [acceptedProposal] = await db
+    .select({ id: propostasTable.id })
+    .from(propostasTable)
+    .where(and(
+      eq(propostasTable.tenantId, tenantId),
+      eq(propostasTable.leadId, leadId),
+      eq(propostasTable.status, "aceita"),
+    ))
+    .limit(1);
+  if (acceptedProposal) return true;
+
+  const [beautyHistory] = await db
+    .select({ id: beautyAgendamentosTable.id })
+    .from(beautyAgendamentosTable)
+    .where(and(
+      eq(beautyAgendamentosTable.tenantId, tenantId),
+      eq(beautyAgendamentosTable.clienteId, leadId),
+      ne(beautyAgendamentosTable.status, "cancelado"),
+    ))
+    .limit(1);
+  if (beautyHistory) return true;
+
+  const [clinicHistory] = await db
+    .select({ id: clinicConsultasTable.id })
+    .from(clinicConsultasTable)
+    .where(and(
+      eq(clinicConsultasTable.tenantId, tenantId),
+      eq(clinicConsultasTable.pacienteId, leadId),
+      ne(clinicConsultasTable.status, "cancelada"),
+    ))
+    .limit(1);
+
+  return !!clinicHistory;
+}
+
+function looksLikeBudgetOrProposal(text?: string | null) {
+  return /or[çc]amento|proposta/i.test(text ?? "");
 }
 
 export async function executeScoutOpportunityWithAgent(params: {
@@ -86,17 +130,33 @@ export async function executeScoutOpportunityWithAgent(params: {
   if (!row.lead) throw new Error("Lead da oportunidade não encontrado.");
 
   const op = row.opportunity;
-  const agent = resolveScoutAgent(op.tipo);
+  let effectiveType = op.tipo;
+  let relationship = "lead";
+
+  const customerHistory = await hasRealCustomerHistory(tenantId, row.lead.id);
+  if (customerHistory) relationship = "cliente";
+
+  // Guarda semântica: reativação só existe quando houve relação comercial real.
+  // Lead que nunca comprou continua sendo follow-up/oportunidade comercial.
+  if ((op.tipo === "reativacao" || op.tipo === "reativacao_sazonal") && !customerHistory) {
+    effectiveType = looksLikeBudgetOrProposal(row.ruleName) || looksLikeBudgetOrProposal(op.descricao)
+      ? "orcamento_parado"
+      : "follow_up";
+  }
+
+  const agent = resolveScoutAgent(effectiveType);
   const explanation = (op.explanation ?? {}) as any;
   const facts = explanation?.facts ?? {};
   const inference = explanation?.inference ?? {};
-  const nextAction = actionForType(op.tipo);
+  const nextAction = actionForType(effectiveType);
 
   const scenario = {
     source: "revenue_scout",
     revenueScout: {
       opportunityId: op.id,
-      type: op.tipo,
+      originalType: op.tipo,
+      type: effectiveType,
+      relationship,
       description: op.descricao,
       estimatedValue: op.valorEstimado ? Number(op.valorEstimado) : null,
       opportunityScore: op.scoreOportunidade ? Number(op.scoreOportunidade) : null,
@@ -112,7 +172,9 @@ export async function executeScoutOpportunityWithAgent(params: {
 
   const mensagem = [
     "PROATIVO REVENUE SCOUT.",
-    `Oportunidade: ${op.descricao ?? op.tipo}.`,
+    `Relação atual: ${relationship}.`,
+    `Oportunidade: ${op.descricao ?? effectiveType}.`,
+    effectiveType !== op.tipo ? `Classificação corrigida para ${effectiveType}; não tratar como reativação de cliente.` : "",
     op.valorEstimado ? `Potencial estimado: R$ ${Number(op.valorEstimado).toFixed(2)}.` : "",
     op.scoreOportunidade ? `Prioridade: ${Number(op.scoreOportunidade).toFixed(0)}/100.` : "",
     `Próxima melhor ação: ${nextAction}`,
@@ -131,15 +193,22 @@ export async function executeScoutOpportunityWithAgent(params: {
 
   await db.update(scoutOportunidadesTable)
     .set({
+      ...(effectiveType !== op.tipo ? { tipo: effectiveType } : {}),
       pipelineStage: result.status === "failed" ? "em_analise" : "em_contato",
       ...(approvedBy ? { approvedBy, approvedAt: new Date() } : {}),
       explanation: {
         ...explanation,
+        relationship: {
+          kind: relationship,
+          hasRealCustomerHistory: customerHistory,
+        },
         orchestration: {
           agent,
           executedAt: new Date().toISOString(),
           resultStatus: result.status,
           resultReason: "reason" in result ? result.reason : undefined,
+          originalType: op.tipo,
+          effectiveType,
           nextBestAction: nextAction,
         },
       },
@@ -149,6 +218,6 @@ export async function executeScoutOpportunityWithAgent(params: {
       eq(scoutOportunidadesTable.tenantId, tenantId),
     ));
 
-  log.info({ tenantId, opportunityId, leadId: row.lead.id, agent, result }, "scout-agent: oportunidade roteada para agente");
-  return { agent, result, nextBestAction: nextAction };
+  log.info({ tenantId, opportunityId, leadId: row.lead.id, agent, originalType: op.tipo, effectiveType, relationship, result }, "scout-agent: oportunidade roteada para agente");
+  return { agent, result, nextBestAction: nextAction, originalType: op.tipo, effectiveType, relationship };
 }
