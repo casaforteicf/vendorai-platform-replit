@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { db, bugReportsTable, relatosTecnicosTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -6,9 +7,14 @@ import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { loadJarvisOperationalContext } from "../services/jarvis-operational-context.js";
 import { buildJarvisCapabilityContext, JARVIS_UNIVERSAL_PROFILE } from "../services/jarvis-capability-profile.js";
 import { executeJarvisProvider } from "../services/jarvis-provider-registry.js";
+import { interpretJarvisUpload } from "../services/jarvis-document-provider.js";
 import { z } from "zod/v4";
 
 const router = Router();
+const jarvisUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+});
 
 const SUPPORT_SYSTEM_PROMPT = `Você é o JARVIS, o Agente Mestre do VendorAI — um CRM com IA para vendas, atendimento, marketing e gestão.
 
@@ -95,10 +101,17 @@ const contextSchema = z.object({
   title: z.string().min(1).max(500).optional(),
 }).optional();
 
+const attachmentSchema = z.object({
+  name: z.string().min(1).max(255),
+  mimeType: z.string().min(1).max(160),
+  content: z.string().min(1).max(16000),
+});
+
 const chatBodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(100),
   conversationId: z.string().uuid().optional(),
   context: contextSchema,
+  attachments: z.array(attachmentSchema).max(3).optional(),
 });
 
 const devGithubTaskSchema = z.object({
@@ -268,6 +281,31 @@ router.post("/support/dev/github-task", async (req, res) => {
   }
 });
 
+router.post("/support/file/interpret", jarvisUpload.single("file"), async (req, res) => {
+  const tenantId = req.user?.tenantId ?? null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado." });
+  if (!req.file) return res.status(400).json({ error: "Arquivo não enviado." });
+
+  try {
+    const content = await interpretJarvisUpload({
+      tenantId,
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      fileName: req.file.originalname,
+    });
+    return res.json({
+      name: req.file.originalname,
+      mimeType: req.file.mimetype || "application/octet-stream",
+      content,
+    });
+  } catch (err) {
+    req.log?.warn({ err, fileName: req.file.originalname }, "jarvis: falha ao interpretar anexo");
+    return res.status(415).json({
+      error: err instanceof Error ? err.message : "Não foi possível interpretar o arquivo.",
+    });
+  }
+});
+
 router.post("/support/chat", async (req, res) => {
   const parsed = chatBodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
@@ -298,7 +336,19 @@ router.post("/support/chat", async (req, res) => {
     providerContext = "## Providers reais\nA consulta externa necessária falhou. Não invente dados atuais; informe a indisponibilidade quando ela for relevante para a resposta.";
   }
 
-  const capabilityContext = [buildJarvisCapabilityContext(lastUserText), providerContext].filter(Boolean).join("\n");
+  const attachmentContext = parsed.data.attachments?.length
+    ? [
+        "## Anexos interpretados nesta solicitação",
+        "Use somente o conteúdo abaixo como evidência dos arquivos enviados. Se algo estiver ilegível ou ausente, diga isso explicitamente.",
+        ...parsed.data.attachments.map((attachment) => `### ${attachment.name} (${attachment.mimeType})\n${attachment.content}`),
+      ].join("\n")
+    : "";
+
+  const capabilityContext = [
+    buildJarvisCapabilityContext(lastUserText),
+    providerContext,
+    attachmentContext,
+  ].filter(Boolean).join("\n");
   const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext, capabilityContext);
   setSseHeaders(res);
   let fullResponse = "";
