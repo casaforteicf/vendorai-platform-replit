@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { db, scoutRegrasTable, tenantsTable } from "@workspace/db";
+import { db, scoutRegrasTable, scoutOportunidadesTable, tenantsTable } from "@workspace/db";
 import { resolveVerticalRevenueProfile } from "./verticalRevenueEngine.js";
 
 const MINIMUM_RULES_PER_TENANT = 50;
@@ -25,6 +25,75 @@ const WINDOWS = [
   { label: "estratégica", days: 90 },
 ] as const;
 
+function looksLikeBudgetRecovery(name: string | null | undefined) {
+  return /or[çc]amento|proposta/i.test(name ?? "");
+}
+
+/**
+ * Corrige um legado semântico importante: algumas regras antigas de recuperação
+ * de orçamento foram gravadas como `reativacao`. Isso faz um lead que nunca
+ * comprou aparecer como "cliente reativado" e ainda roteia para o agente errado.
+ *
+ * A correção é idempotente e roda junto da manutenção da biblioteca:
+ * - regra orçamento/proposta + tipo reativacao -> orcamento_parado;
+ * - converte diasSemVisita em diasParado quando necessário;
+ * - corrige oportunidades já abertas para o mesmo tipo;
+ * - substitui a explicação antiga por uma leitura compatível com lead/proposta.
+ */
+async function repairLegacyBudgetRecoveryRules(tx: any, tenantId: string) {
+  const legacyRules = await tx
+    .select({
+      id: scoutRegrasTable.id,
+      nome: scoutRegrasTable.nome,
+      tipo: scoutRegrasTable.tipo,
+      condicoes: scoutRegrasTable.condicoes,
+    })
+    .from(scoutRegrasTable)
+    .where(eq(scoutRegrasTable.tenantId, tenantId));
+
+  for (const rule of legacyRules) {
+    if (rule.tipo !== "reativacao" || !looksLikeBudgetRecovery(rule.nome)) continue;
+
+    const cond = (rule.condicoes ?? {}) as Record<string, unknown>;
+    const diasParado = Number(cond.diasParado ?? cond.diasSemVisita ?? 7);
+    const normalizedConditions = {
+      ...cond,
+      diasParado: Number.isFinite(diasParado) && diasParado > 0 ? diasParado : 7,
+      classificacaoCorrigida: "orcamento_parado",
+    };
+
+    await tx
+      .update(scoutRegrasTable)
+      .set({
+        tipo: "orcamento_parado",
+        condicoes: normalizedConditions,
+      } as any)
+      .where(eq(scoutRegrasTable.id, rule.id));
+
+    await tx
+      .update(scoutOportunidadesTable)
+      .set({
+        tipo: "orcamento_parado",
+        explanation: {
+          facts: {
+            regra: rule.nome,
+            classificacao_corrigida: true,
+            origem: "orçamento/proposta sem avanço",
+          },
+          inference: {
+            resumo: "Há uma oportunidade comercial sem conclusão registrada para este lead.",
+            motivo: "A regra de recuperação de orçamento identificou uma proposta ou negociação parada. Isso é follow-up comercial, não reativação de cliente.",
+          },
+          autonomy: {
+            requer_confirmacao_humana: true,
+            contato_automatico: false,
+          },
+        },
+      } as any)
+      .where(eq(scoutOportunidadesTable.regraId, rule.id));
+  }
+}
+
 /**
  * Garante uma biblioteca inicial sem apagar, alterar ou reativar regras do
  * cliente. Os modelos entram inativos para revisão humana e podem ser
@@ -38,6 +107,9 @@ export async function ensureMinimumScoutRulesForTenant(
     // Dashboard e tela de regras podem carregar juntos. O lock por tenant
     // impede duas requisições simultâneas de inserirem a mesma biblioteca.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`scout-rule-library:${tenantId}`}))`);
+
+    await repairLegacyBudgetRecoveryRules(tx, tenantId);
+
     const [tenant] = await tx.select({ vertical: tenantsTable.vertical })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, tenantId))
@@ -72,7 +144,11 @@ export async function ensureMinimumScoutRulesForTenant(
           acao: {
             canal: "human_approval",
             automaticContact: false,
-            mensagem: `Validar ${signal} e confirmar o contexto antes de contatar o cliente.`,
+            mensagem: strategy.tipo === "reativacao"
+              ? `Validar ${signal} somente para relacionamento com histórico real antes de contatar o cliente.`
+              : strategy.tipo === "orcamento_parado" || strategy.tipo === "follow_up"
+                ? `Validar ${signal} e retomar a oportunidade comercial sem tratar o lead como cliente antes da venda.`
+                : `Validar ${signal} e confirmar o contexto antes de contatar o cliente.`,
           },
           ativo: false,
         };
