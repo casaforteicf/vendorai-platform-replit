@@ -3,9 +3,10 @@ import { db, jarvisCasesTable } from "@workspace/db";
 import { loadJarvisRelationshipIntelligence } from "./jarvis-relationship-intelligence.js";
 import { loadJarvisTemporalIntelligence } from "./jarvis-temporal-intelligence.js";
 import { loadJarvisAnomalyCorrelationIntelligence } from "./jarvis-anomaly-correlation-intelligence.js";
+import { loadJarvisDecisionEffectivenessIntelligence } from "./jarvis-decision-effectiveness-intelligence.js";
 
 const MAX_CASES = 80;
-const MAX_INSIGHTS = 16;
+const MAX_INSIGHTS = 20;
 
 type Feedback = {
   relevance?: "relevant" | "irrelevant";
@@ -18,7 +19,7 @@ type Evidence = Record<string, unknown> & {
 
 export type JarvisTenantLearningInsight = {
   key: string;
-  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship" | "temporal" | "correlation";
+  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship" | "temporal" | "correlation" | "decision_effectiveness";
   title: string;
   detail: string;
   confidence: number;
@@ -40,6 +41,8 @@ export type JarvisTenantLearningIntelligence = {
   temporalDealsConsidered: number;
   temporalAnomalies: number;
   correlationFindings: number;
+  structuredDecisionOutcomes: number;
+  decisionPatterns: number;
   insights: JarvisTenantLearningInsight[];
 };
 
@@ -87,7 +90,7 @@ function correlationDimensionLabel(dimension: string) {
 export async function loadJarvisTenantLearningIntelligence(
   tenantId: string,
 ): Promise<JarvisTenantLearningIntelligence> {
-  const [rows, relationships, temporal] = await Promise.all([
+  const [rows, relationships, temporal, decisions] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -107,6 +110,7 @@ export async function loadJarvisTenantLearningIntelligence(
       .limit(MAX_CASES),
     loadJarvisRelationshipIntelligence(tenantId),
     loadJarvisTemporalIntelligence(tenantId),
+    loadJarvisDecisionEffectivenessIntelligence(tenantId),
   ]);
 
   const correlation = await loadJarvisAnomalyCorrelationIntelligence(tenantId, temporal);
@@ -154,6 +158,36 @@ export async function loadJarvisTenantLearningIntelligence(
       detail: `${finding.detail} Variação observada=${change}; amostra=${finding.sampleSize}; evidência=${finding.evidence}; anomalias relacionadas=${finding.relatedAnomalies.join(", ")}. Use isto para localizar onde a mudança está concentrada. Correlação temporal não prova causa; confirme com dados adicionais antes de atribuir responsabilidade ou efeito financeiro.`,
       confidence: finding.confidence,
       sampleSize: finding.sampleSize,
+      caseIds: [],
+    });
+  }
+
+  for (const pattern of decisions.patterns.slice(0, 6)) {
+    const rate = pattern.positiveRatePercent == null
+      ? "amostra conclusiva ainda insuficiente para calcular taxa histórica"
+      : `${pattern.positiveRatePercent}% dos ${pattern.conclusiveSample} resultados conclusivos foram positivos`;
+    const financial = pattern.documentedFinancialImpactBrl == null
+      ? "sem impacto financeiro estruturado suficiente"
+      : `impacto financeiro explicitamente documentado somado: R$ ${pattern.documentedFinancialImpactBrl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    insights.push({
+      key: `decision:${pattern.key}`,
+      kind: "decision_effectiveness",
+      title: `Precedente de decisão em ${pattern.category}: ${pattern.actionLabel}`,
+      detail: `Histórico deste tenant: ${pattern.sampleSize} resultado(s) estruturado(s); positivos=${pattern.positive}, neutros=${pattern.neutral}, negativos=${pattern.negative}, inconclusivos=${pattern.inconclusive}; ${rate}; ${financial}. Use como precedente local para priorizar recomendações semelhantes, nunca como prova de causalidade ou garantia de repetir o resultado.`,
+      confidence: pattern.confidence,
+      sampleSize: pattern.sampleSize,
+      caseIds: pattern.caseIds,
+    });
+  }
+
+  if (decisions.resolvedCasesObserved >= 3 && decisions.outcomeCoveragePercent < 70) {
+    insights.push({
+      key: "coverage:structured-decision-outcomes",
+      kind: "coverage",
+      title: "Lacuna de aprendizado de eficácia das decisões",
+      detail: `${decisions.structuredOutcomes}/${decisions.resolvedCasesObserved} casos resolvidos (${decisions.outcomeCoveragePercent}%) possuem resultado estruturado para aprender eficácia. O JARVIS deve tratar o restante apenas como histórico textual, sem calcular taxa de sucesso.`,
+      confidence: 95,
+      sampleSize: decisions.resolvedCasesObserved,
       caseIds: [],
     });
   }
@@ -276,7 +310,7 @@ export async function loadJarvisTenantLearningIntelligence(
 
   return {
     tenantId,
-    sampleSize: Math.max(rows.length, relationships.summary.nodes, temporal.coverage.dealsConsidered),
+    sampleSize: Math.max(rows.length, relationships.summary.nodes, temporal.coverage.dealsConsidered, decisions.structuredOutcomes),
     resolvedCases: resolved.length,
     casesWithOutcome: withOutcome.length,
     outcomeCoveragePercent,
@@ -288,6 +322,8 @@ export async function loadJarvisTenantLearningIntelligence(
     temporalDealsConsidered: temporal.coverage.dealsConsidered,
     temporalAnomalies: temporal.anomalies.length,
     correlationFindings: correlation.findings.length,
+    structuredDecisionOutcomes: decisions.structuredOutcomes,
+    decisionPatterns: decisions.patterns.length,
     insights: insights.slice(0, MAX_INSIGHTS),
   };
 }
