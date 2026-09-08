@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/jarvis-android-apk.yml
+      - artifacts/mobile/**
 
 permissions:
   contents: read
