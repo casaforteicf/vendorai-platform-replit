@@ -1,4 +1,4 @@
-@media (max-width: 900px) {
+@media (max-width: 1200px), (pointer: coarse) {
   button[aria-label="Abrir Dev IA"] {
     right: 0.75rem !important;
     bottom: 5.75rem !important;
