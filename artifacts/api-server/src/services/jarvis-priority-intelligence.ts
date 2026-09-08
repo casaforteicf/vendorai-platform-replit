@@ -7,6 +7,7 @@ import {
 } from "./jarvis-financial-prioritization-intelligence.js";
 
 export type JarvisPriorityChangeType = "new" | "updated" | "ongoing";
+export type JarvisProactivityLevel = "interrupt" | "briefing" | "silent";
 
 export type JarvisExplicitFinancialImpact = {
   amount: number;
@@ -27,6 +28,12 @@ export type JarvisHistoricalFinancialEstimate = {
   precedentCaseIds: string[];
 };
 
+export type JarvisProactivityDecision = {
+  level: JarvisProactivityLevel;
+  reason: string;
+  interruptEligible: boolean;
+};
+
 export type JarvisPriorityItem = {
   id: string;
   title: string;
@@ -41,6 +48,7 @@ export type JarvisPriorityItem = {
   explicitFinancialImpact: JarvisExplicitFinancialImpact | null;
   historicalFinancialEstimate: JarvisHistoricalFinancialEstimate | null;
   recommendedAction: string | null;
+  proactivity: JarvisProactivityDecision;
   updatedAt: Date;
 };
 
@@ -147,6 +155,54 @@ export function scoreJarvisPriority(item: PriorityCaseInput, now = new Date()) {
   return Math.round(clamp(severityWeight + confidenceWeight + impactWeight + recencyWeight + financialWeight));
 }
 
+export function classifyJarvisProactivity(item: Omit<JarvisPriorityItem, "proactivity">): JarvisProactivityDecision {
+  const confidence = item.confidence ?? 0;
+  const materialFinancialSignal = Boolean(
+    (item.explicitFinancialImpact?.amount ?? 0) >= 20_000 ||
+    ((item.historicalFinancialEstimate?.medianAmount ?? 0) >= 50_000 &&
+      (item.historicalFinancialEstimate?.confidence ?? 0) >= 70),
+  );
+  const materialOperationalSignal = (item.impact ?? 0) >= 75;
+  const actionableChange = item.changeType === "new" || item.changeType === "updated";
+  const highSeverity = item.severity === "risk" || item.severity === "opportunity";
+
+  if (
+    item.priorityScore >= 85 &&
+    confidence >= 70 &&
+    actionableChange &&
+    highSeverity &&
+    (materialOperationalSignal || materialFinancialSignal)
+  ) {
+    return {
+      level: "interrupt",
+      interruptEligible: true,
+      reason: materialFinancialSignal
+        ? "Sinal novo/atualizado de alta prioridade, confiança suficiente e materialidade financeira."
+        : "Sinal novo/atualizado de alta prioridade, confiança suficiente e alto impacto operacional.",
+    };
+  }
+
+  if (
+    item.priorityScore >= 65 ||
+    (actionableChange && confidence >= 55) ||
+    materialFinancialSignal
+  ) {
+    return {
+      level: "briefing",
+      interruptEligible: false,
+      reason: actionableChange
+        ? "Relevante para o próximo briefing/conversa, mas abaixo do limiar de interrupção."
+        : "Relevante para acompanhamento, sem mudança recente suficiente para interromper.",
+    };
+  }
+
+  return {
+    level: "silent",
+    interruptEligible: false,
+    reason: "Registrar e acompanhar silenciosamente até surgir mudança, confiança ou impacto material.",
+  };
+}
+
 export function buildJarvisPriorityItem(
   item: PriorityCaseInput,
   now = new Date(),
@@ -154,7 +210,7 @@ export function buildJarvisPriorityItem(
 ): JarvisPriorityItem {
   const explicit = extractExplicitFinancialImpact(item.metric);
   const historyWeight = explicit ? 0 : historicalFinancialWeight(precedent);
-  return {
+  const base = {
     id: item.id,
     title: item.title,
     category: item.category,
@@ -170,6 +226,7 @@ export function buildJarvisPriorityItem(
     recommendedAction: item.recommendedAction,
     updatedAt: item.updatedAt,
   };
+  return { ...base, proactivity: classifyJarvisProactivity(base) };
 }
 
 export async function loadJarvisPriorityIntelligence(tenantId: string, limit = 5) {
@@ -210,6 +267,10 @@ export async function loadJarvisPriorityIntelligence(tenantId: string, limit = 5
       return buildJarvisPriorityItem(item, now, precedent);
     })
     .sort((a, b) => b.priorityScore - a.priorityScore || b.updatedAt.getTime() - a.updatedAt.getTime());
+
+  const interruptNow = ranked.filter((item) => item.proactivity.level === "interrupt").slice(0, 3);
+  const briefing = ranked.filter((item) => item.proactivity.level === "briefing").slice(0, 5);
+  const silent = ranked.filter((item) => item.proactivity.level === "silent");
   const items = ranked.slice(0, Math.max(1, Math.min(limit, 20)));
 
   return {
@@ -222,6 +283,15 @@ export async function loadJarvisPriorityIntelligence(tenantId: string, limit = 5
       comparableFinancialPatterns: financialLearning.comparableFinancialPatterns,
       minFinancialSample: financialLearning.minFinancialSample,
       newOrUpdated: items.filter((item) => item.changeType !== "ongoing").length,
+      interruptEligible: ranked.filter((item) => item.proactivity.level === "interrupt").length,
+      briefingEligible: ranked.filter((item) => item.proactivity.level === "briefing").length,
+      silentCount: silent.length,
+    },
+    proactivity: {
+      interruptNow,
+      briefing,
+      silentCount: silent.length,
+      guardrail: "Interrupção é apenas uma decisão de atenção. Não autoriza execução, envio, publicação, pagamento ou alteração sensível.",
     },
     items,
   };
