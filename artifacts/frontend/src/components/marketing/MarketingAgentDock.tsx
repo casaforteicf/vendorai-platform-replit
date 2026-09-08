@@ -418,11 +418,11 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
 
       <Button
         type="button"
-        className="pointer-events-auto gap-2 rounded-full px-4 shadow-lg"
+        className="pointer-events-auto h-12 w-12 gap-0 rounded-full px-0 shadow-lg sm:h-10 sm:w-auto sm:gap-2 sm:px-4"
         onClick={() => setOpen((value) => !value)}
       >
         <Sparkles className="h-4 w-4" />
-        Marketing AI
+        <span className="sr-only sm:not-sr-only">Marketing AI</span>
       </Button>
     </div>
   );
