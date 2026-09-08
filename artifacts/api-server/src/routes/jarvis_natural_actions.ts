@@ -13,6 +13,11 @@ const outcomeSchema = z.object({
   resultSummary: z.string().trim().min(3).max(5000).nullable().optional(),
 });
 
+const relevanceFeedbackSchema = z.object({
+  relevance: z.enum(["relevant", "irrelevant"]),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
 function writeSse(res: any, content: string, extra: Record<string, unknown> = {}) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -158,6 +163,60 @@ router.patch("/jarvis/cases/:id/outcome", async (req, res) => {
     .returning();
 
   if (!updated) return res.status(404).json({ error: "Caso Vendor não encontrado" });
+  return res.json(updated);
+});
+
+// Feedback rápido de relevância: persiste no próprio Caso Vendor, sem memória paralela.
+router.patch("/jarvis/cases/:id/relevance-feedback", async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const caseId = String(req.params.id ?? "").trim();
+  if (!caseId) return res.status(400).json({ error: "Caso Vendor obrigatório" });
+
+  const parsed = relevanceFeedbackSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [current] = await db
+    .select({
+      id: jarvisCasesTable.id,
+      evidence: jarvisCasesTable.evidence,
+    })
+    .from(jarvisCasesTable)
+    .where(and(
+      eq(jarvisCasesTable.id, caseId),
+      eq(jarvisCasesTable.tenantId, tenantId),
+    ))
+    .limit(1);
+
+  if (!current) return res.status(404).json({ error: "Caso Vendor não encontrado" });
+
+  const now = new Date();
+  const actorId = req.user?.id ?? req.user?.sub ?? null;
+  const evidence = current.evidence && typeof current.evidence === "object"
+    ? current.evidence
+    : {};
+
+  const [updated] = await db
+    .update(jarvisCasesTable)
+    .set({
+      evidence: {
+        ...evidence,
+        jarvisFeedback: {
+          relevance: parsed.data.relevance,
+          note: parsed.data.note ?? null,
+          actorId,
+          recordedAt: now.toISOString(),
+        },
+      },
+      updatedAt: now,
+    })
+    .where(and(
+      eq(jarvisCasesTable.id, caseId),
+      eq(jarvisCasesTable.tenantId, tenantId),
+    ))
+    .returning();
+
   return res.json(updated);
 });
 
