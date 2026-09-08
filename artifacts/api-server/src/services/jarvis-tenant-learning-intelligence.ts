@@ -1,9 +1,10 @@
 import { desc, eq } from "drizzle-orm";
 import { db, jarvisCasesTable } from "@workspace/db";
 import { loadJarvisRelationshipIntelligence } from "./jarvis-relationship-intelligence.js";
+import { loadJarvisTemporalIntelligence } from "./jarvis-temporal-intelligence.js";
 
 const MAX_CASES = 80;
-const MAX_INSIGHTS = 10;
+const MAX_INSIGHTS = 12;
 
 type Feedback = {
   relevance?: "relevant" | "irrelevant";
@@ -16,7 +17,7 @@ type Evidence = Record<string, unknown> & {
 
 export type JarvisTenantLearningInsight = {
   key: string;
-  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship";
+  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship" | "temporal";
   title: string;
   detail: string;
   confidence: number;
@@ -35,6 +36,8 @@ export type JarvisTenantLearningIntelligence = {
   irrelevantFeedback: number;
   relationshipNodes: number;
   relationshipEdges: number;
+  temporalDealsConsidered: number;
+  temporalAnomalies: number;
   insights: JarvisTenantLearningInsight[];
 };
 
@@ -63,10 +66,18 @@ function caseIdsFromRelationships(
   return [...ids].slice(0, 6);
 }
 
+function temporalLabel(metric: string) {
+  if (metric === "created_deals") return "entrada de novos negócios";
+  if (metric === "won_revenue") return "receita de negócios ganhos";
+  if (metric === "average_ticket") return "ticket médio dos ganhos";
+  if (metric === "conversion") return "conversão de fechamentos";
+  return metric;
+}
+
 export async function loadJarvisTenantLearningIntelligence(
   tenantId: string,
 ): Promise<JarvisTenantLearningIntelligence> {
-  const [rows, relationships] = await Promise.all([
+  const [rows, relationships, temporal] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -85,6 +96,7 @@ export async function loadJarvisTenantLearningIntelligence(
       .orderBy(desc(jarvisCasesTable.updatedAt))
       .limit(MAX_CASES),
     loadJarvisRelationshipIntelligence(tenantId),
+    loadJarvisTemporalIntelligence(tenantId),
   ]);
 
   const resolved = rows.filter((row) => row.status === "resolved");
@@ -103,6 +115,34 @@ export async function loadJarvisTenantLearningIntelligence(
     : 0;
 
   const insights: JarvisTenantLearningInsight[] = [];
+
+  for (const anomaly of temporal.anomalies) {
+    const direction = anomaly.direction === "up" ? "acima" : "abaixo";
+    const change = anomaly.changePoints != null
+      ? `${Math.abs(anomaly.changePoints).toFixed(1)} p.p.`
+      : `${Math.abs(anomaly.changePercent ?? 0).toFixed(1)}%`;
+    insights.push({
+      key: `temporal:${anomaly.metric}`,
+      kind: "temporal",
+      title: `${temporalLabel(anomaly.metric)} fora do padrão recente`,
+      detail: `Nos últimos ${temporal.currentWindow.days} dias, ${temporalLabel(anomaly.metric)} ficou ${direction} do período imediatamente anterior em ${change}. ${anomaly.detail} Trate como desvio temporal observado; não atribua causa sem cruzar com vendedor, cidade, produto, desconto, campanha ou outro dado persistido.`,
+      confidence: anomaly.confidence,
+      sampleSize: Math.max(temporal.coverage.currentClosed, temporal.coverage.previousClosed, 1),
+      caseIds: [],
+    });
+  }
+
+  if (temporal.coverage.dealsConsidered > 0) {
+    insights.push({
+      key: "temporal:coverage",
+      kind: "temporal",
+      title: "Baseline temporal comercial disponível",
+      detail: `O JARVIS comparou ${temporal.currentWindow.days} dias atuais com ${temporal.previousWindow.days} dias anteriores usando ${temporal.coverage.dealsConsidered} negócios persistidos. Fechamentos observados: atual=${temporal.coverage.currentClosed}, anterior=${temporal.coverage.previousClosed}. Se a amostra for pequena, não generalize tendências nem transforme ausência de anomalia em prova de estabilidade.`,
+      confidence: Math.min(95, 55 + Math.min(40, temporal.coverage.dealsConsidered * 2)),
+      sampleSize: temporal.coverage.dealsConsidered,
+      caseIds: [],
+    });
+  }
 
   const byCategory = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -210,7 +250,7 @@ export async function loadJarvisTenantLearningIntelligence(
 
   return {
     tenantId,
-    sampleSize: Math.max(rows.length, relationships.summary.nodes),
+    sampleSize: Math.max(rows.length, relationships.summary.nodes, temporal.coverage.dealsConsidered),
     resolvedCases: resolved.length,
     casesWithOutcome: withOutcome.length,
     outcomeCoveragePercent,
@@ -219,6 +259,8 @@ export async function loadJarvisTenantLearningIntelligence(
     irrelevantFeedback,
     relationshipNodes: relationships.summary.nodes,
     relationshipEdges: relationships.summary.edges,
+    temporalDealsConsidered: temporal.coverage.dealsConsidered,
+    temporalAnomalies: temporal.anomalies.length,
     insights: insights.slice(0, MAX_INSIGHTS),
   };
 }
