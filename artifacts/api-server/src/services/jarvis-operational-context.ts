@@ -1,11 +1,12 @@
-import { and, desc, eq, gte } from "drizzle-orm";
-import { agentTasksTable, db, jarvisCasesTable } from "@workspace/db";
+import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { agendamentosTable, agentTasksTable, db, jarvisCasesTable } from "@workspace/db";
 import { loadJarvisWatchlistIntelligence } from "./jarvis-watchlist-intelligence.js";
 import { loadJarvisPriorityIntelligence } from "./jarvis-priority-intelligence.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
 const MAX_OUTCOMES = 6;
+const MAX_UPCOMING_APPOINTMENTS = 8;
 
 function compact(value: string | null | undefined, max = 420) {
   if (!value) return "";
@@ -17,7 +18,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes, watchlistIntelligence, priorityIntelligence] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -95,18 +96,46 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       ))
       .orderBy(desc(jarvisCasesTable.resolvedAt))
       .limit(MAX_OUTCOMES),
+    db
+      .select({
+        id: agendamentosTable.id,
+        leadId: agendamentosTable.leadId,
+        dealId: agendamentosTable.dealId,
+        tipo: agendamentosTable.tipo,
+        modalidade: agendamentosTable.modalidade,
+        titulo: agendamentosTable.titulo,
+        dataHoraInicio: agendamentosTable.dataHoraInicio,
+        dataHoraFim: agendamentosTable.dataHoraFim,
+        local: agendamentosTable.local,
+        status: agendamentosTable.status,
+        responsavelId: agendamentosTable.responsavelId,
+        observacoes: agendamentosTable.observacoes,
+        meetLink: agendamentosTable.meetLink,
+        criadoPor: agendamentosTable.criadoPor,
+      })
+      .from(agendamentosTable)
+      .where(and(
+        eq(agendamentosTable.tenantId, tenantId),
+        gte(agendamentosTable.dataHoraInicio, now),
+      ))
+      .orderBy(asc(agendamentosTable.dataHoraInicio))
+      .limit(MAX_UPCOMING_APPOINTMENTS * 2),
     loadJarvisWatchlistIntelligence(tenantId),
     loadJarvisPriorityIntelligence(tenantId, 5),
   ]);
 
+  const activeUpcomingAppointments = upcomingAppointments
+    .filter((item) => item.status === "agendado" || item.status === "confirmado")
+    .slice(0, MAX_UPCOMING_APPOINTMENTS);
   const hasWatchlistContext = watchlistIntelligence.watchlist.length > 0 || watchlistIntelligence.blindSpots.length > 0;
   const hasPriorityContext = priorityIntelligence.items.length > 0;
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasWatchlistContext && !hasPriorityContext) return "";
+  const hasAgendaContext = activeUpcomingAppointments.length > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext) return "";
 
   const lines = [
     "",
     "## Estado operacional real do tenant",
-    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
+    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
 
   if (recentChanges.length) {
@@ -140,6 +169,35 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       if (item.recommendedAction) lines.push(`  Ação recomendada: ${compact(item.recommendedAction, 260)}`);
     }
     lines.push("Prioridade é um ranking determinístico de gravidade, impacto, confiança, recência e existência de valor financeiro explícito. Valor financeiro só pode ser citado quando vier explicitamente da métrica persistida; caso contrário, trate como desconhecido.");
+  }
+
+  if (activeUpcomingAppointments.length) {
+    lines.push("", `### Agenda de Inteligência — próximos compromissos (${activeUpcomingAppointments.length})`);
+    for (const item of activeUpcomingAppointments) {
+      const minutesUntil = Math.max(0, Math.round((item.dataHoraInicio.getTime() - now.getTime()) / 60000));
+      const timing = minutesUntil < 60
+        ? `em_${minutesUntil}_min`
+        : minutesUntil < 24 * 60
+          ? `em_${Math.round(minutesUntil / 60)}h`
+          : `em_${Math.round(minutesUntil / (24 * 60))}d`;
+      const metadata = [
+        `tipo=${item.tipo}`,
+        item.modalidade ? `modalidade=${item.modalidade}` : null,
+        `status=${item.status}`,
+        `início=${item.dataHoraInicio.toISOString()}`,
+        `fim=${item.dataHoraFim.toISOString()}`,
+        `proximidade=${timing}`,
+        item.leadId ? `lead=${item.leadId}` : null,
+        item.dealId ? `deal=${item.dealId}` : null,
+        item.responsavelId ? `responsável=${item.responsavelId}` : null,
+        item.criadoPor ? `criado_por=${item.criadoPor}` : null,
+      ].filter(Boolean).join(" | ");
+      lines.push(`- [${item.id}] ${compact(item.titulo, 180)} — ${metadata}`);
+      if (item.local) lines.push(`  Local: ${compact(item.local, 180)}`);
+      if (item.meetLink) lines.push(`  Meet: disponível`);
+      if (item.observacoes) lines.push(`  Observações: ${compact(item.observacoes, 280)}`);
+    }
+    lines.push("A Agenda de Inteligência usa somente compromissos persistidos e futuros do tenant. Não invente preparação, risco ou prioridade sem cruzar o compromisso com Casos Vendor, prioridades, lead/deal ou outra evidência disponível.");
   }
 
   if (watchlistIntelligence.watchlist.length) {
@@ -211,6 +269,8 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "- 'O que mudou?': use primeiro o bloco determinístico das últimas 24h; diferencie novo, atualizado, resolvido e descartado.",
     "- 'O que é prioridade?': use primeiro Prioridades do JARVIS. Explique score, mudança, impacto, confiança e a ação recomendada; não invente valor financeiro ausente.",
     "- 'Qual o impacto financeiro?': cite apenas `impacto_financeiro_explícito` quando houver valor BRL persistido na métrica. Se estiver desconhecido, diga que ainda falta quantificação financeira em vez de estimar.",
+    "- 'O que tenho na agenda?': use a Agenda de Inteligência futura e diferencie agendado de confirmado. Para preparação, cruze lead/deal e Casos Vendor quando houver evidência.",
+    "- 'O que precisa de preparação?': priorize compromissos mais próximos que tenham vínculo com lead/deal e contexto relevante disponível; se o contexto não existir, diga que falta informação em vez de inventar briefing.",
     "- 'O que estamos monitorando?': use a Watchlist automática e diferencie item configurado, item monitorado sem sinal recente e item com sinal ativo.",
     "- 'O que eu não estou vendo?': use primeiro os Pontos cegos verificáveis. Não transforme falta de evidência em evidência de ausência nem invente concorrente, risco ou evento.",
     "- 'Por que tomamos essa decisão?': combine evidências, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
