@@ -122,6 +122,6 @@ export const updateAgentConfigSchema = createSelectSchema(agentConfigsTable, {
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
 
-export type InsertContract = z.infer<typeof insertAgentConfigSchema>;
+export type InsertAgentConfig = z.infer<typeof insertAgentConfigSchema>;
 export type UpdateAgentConfig = z.infer<typeof updateAgentConfigSchema>;
 export type AgentConfig = typeof agentConfigsTable.$inferSelect;
