@@ -36,6 +36,76 @@ async function proxyRequest(request, targetUrl, { cacheControl, preserveForwarde
   return response;
 }
 
+function perceptionText(value) {
+  if (value == null) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const parts = value.map(perceptionText).filter(Boolean);
+    return parts.length ? parts.join(" · ") : null;
+  }
+  if (typeof value === "object") {
+    const preferredKeys = [
+      "summary",
+      "resumo",
+      "reason",
+      "motivo",
+      "signal",
+      "sinal",
+      "sinal_observado",
+      "description",
+      "descricao",
+      "context",
+      "contexto",
+      "opportunity",
+      "oportunidade",
+    ];
+    for (const key of preferredKeys) {
+      const text = perceptionText(value[key]);
+      if (text) return text;
+    }
+    const parts = Object.values(value).map(perceptionText).filter(Boolean);
+    return parts.length ? parts.slice(0, 3).join(" · ") : null;
+  }
+  return null;
+}
+
+function normalizeScoutOpportunities(payload) {
+  if (!Array.isArray(payload)) return payload;
+  return payload.map((item) => {
+    if (!item || typeof item !== "object" || item.percepcao == null || typeof item.percepcao === "string") return item;
+    return {
+      ...item,
+      percepcaoEstruturada: item.percepcao,
+      percepcao: perceptionText(item.percepcao) || "Sinal encontrado no histórico e contexto do cliente.",
+    };
+  });
+}
+
+async function normalizeScoutOpportunityResponse(response) {
+  if (!response.ok) return response;
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) return response;
+
+  try {
+    const payload = await response.clone().json();
+    const normalized = normalizeScoutOpportunities(payload);
+    if (normalized === payload) return response;
+
+    const headers = new Headers(response.headers);
+    headers.set("content-type", "application/json; charset=utf-8");
+    headers.delete("content-length");
+    headers.set("Cache-Control", "private, no-store, max-age=0");
+    return new Response(JSON.stringify(normalized), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch {
+    return response;
+  }
+}
+
 async function serveSpaAsset(request, env) {
   const url = new URL(request.url);
   let response = await env.ASSETS.fetch(request);
@@ -66,11 +136,20 @@ export default {
       const suffix = pathAfterPrefix(url.pathname, "/api/");
       const target = new URL(`/api/${suffix}`, RAILWAY_ORIGIN);
       target.search = url.search;
-      return proxyRequest(request, target.toString(), {
+      const response = await proxyRequest(request, target.toString(), {
         cacheControl: "private, no-store, max-age=0",
         preserveForwardedHost: true,
         redirect: "manual",
       });
+
+      if (
+        request.method === "GET" &&
+        /^\/api\/tenants\/[^/]+\/scout\/oportunidades\/?$/.test(url.pathname)
+      ) {
+        return normalizeScoutOpportunityResponse(response);
+      }
+
+      return response;
     }
 
     if (url.pathname.startsWith("/obrasgov/")) {
