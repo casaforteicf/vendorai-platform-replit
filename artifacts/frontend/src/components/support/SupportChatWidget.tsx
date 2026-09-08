@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff, ShieldCheck, Check, Ban, Play } from "lucide-react";
+import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff, ShieldCheck, Check, Ban, Play, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +7,12 @@ import { cn } from "@/lib/utils";
 
 interface Message {
   role: "user" | "assistant";
+  content: string;
+}
+
+interface JarvisAttachment {
+  name: string;
+  mimeType: string;
   content: string;
 }
 
@@ -90,8 +96,12 @@ function approvalLabel(task: AgentTaskApproval) {
 
 function approvalRiskLevel(actionType: string) {
   if (["enviar_whatsapp", "aprovacao_fechamento", "aprovacao_desconto"].includes(actionType)) return 3;
-  if (actionType === "conferencia_estoque") return 2;
+  if (taskActionIsStock(actionType)) return 2;
   return 2;
+}
+
+function taskActionIsStock(actionType: string) {
+  return actionType === "conferencia_estoque";
 }
 
 function formatBrl(value: number) {
@@ -103,7 +113,7 @@ function formatBrl(value: number) {
 }
 
 function defaultGreeting() {
-  return "Olá. Sou o JARVIS, seu Agente Mestre no VendorAI. Posso analisar o negócio, orientar o uso do sistema, mostrar prioridades e acompanhar ações que precisam da sua aprovação. Você pode falar ou digitar.";
+  return "Olá. Sou o JARVIS, seu Agente Mestre no VendorAI. Posso analisar o negócio, orientar o uso do sistema, mostrar prioridades e acompanhar ações que precisam da sua aprovação. Você pode falar, digitar ou anexar documentos e imagens.";
 }
 
 function buildProactiveGreeting(data: JarvisProactivityResponse) {
@@ -152,6 +162,8 @@ export function SupportChatWidget() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [listening, setListening] = useState(false);
+  const [attachments, setAttachments] = useState<JarvisAttachment[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [bugReport, setBugReport] = useState<BugReportResult | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<AgentTaskApproval[]>([]);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
@@ -159,6 +171,7 @@ export function SupportChatWidget() {
   const conversationIdRef = useRef<string>(crypto.randomUUID());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
@@ -281,6 +294,55 @@ export function SupportChatWidget() {
     recognition.start();
   }, [listening, stopListening]);
 
+  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || uploadingAttachment || attachments.length >= 3) return;
+
+    setUploadingAttachment(true);
+    try {
+      if (/\.(xlsx|xls)$/i.test(file.name)) {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        const sheets = workbook.SheetNames.slice(0, 6).map((sheetName) => {
+          const sheet = workbook.Sheets[sheetName];
+          return `### Aba: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet)}`;
+        });
+        setAttachments((current) => [
+          ...current,
+          {
+            name: file.name,
+            mimeType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            content: `[Planilha Excel: \"${file.name}\"]\n${sheets.join("\n\n").slice(0, 16000)}`,
+          },
+        ]);
+        return;
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch("/api/support/file/interpret", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const result = await res.json() as JarvisAttachment & { error?: string };
+      if (!res.ok) throw new Error(result.error ?? "Não foi possível interpretar o arquivo.");
+      setAttachments((current) => [...current, result]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: err instanceof Error ? err.message : "Não foi possível interpretar o arquivo anexado.",
+        },
+      ]);
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }, [attachments.length, uploadingAttachment]);
+
   const runApprovalAction = useCallback(async (
     task: AgentTaskApproval,
     action: "approve" | "reject" | "execute",
@@ -325,10 +387,14 @@ export function SupportChatWidget() {
   }, [approvalBusyId, loadApprovalQueue, tenantId]);
 
   const sendMessage = useCallback(async () => {
-    const text = input.trim();
-    if (!text || streaming) return;
+    const text = input.trim() || (attachments.length ? "Analise o arquivo anexado." : "");
+    if (!text || streaming || uploadingAttachment) return;
 
-    const userMsg: Message = { role: "user", content: text };
+    const sentAttachments = attachments;
+    const userMsg: Message = {
+      role: "user",
+      content: sentAttachments.length ? `${text}\n\n[Anexo: ${sentAttachments.map((item) => item.name).join(", ")}]` : text,
+    };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
@@ -348,6 +414,7 @@ export function SupportChatWidget() {
         body: JSON.stringify({
           messages: newMessages,
           conversationId: conversationIdRef.current,
+          attachments: sentAttachments,
           context: {
             route: window.location.pathname,
             title: document.title,
@@ -359,6 +426,7 @@ export function SupportChatWidget() {
       if (!res.ok || !res.body) {
         throw new Error("Falha na conexão com o JARVIS");
       }
+      setAttachments([]);
 
       let assistantContent = "";
       const assistantMsg: Message = { role: "assistant", content: "" };
@@ -445,7 +513,7 @@ export function SupportChatWidget() {
       setTimeout(() => textareaRef.current?.focus(), 50);
       void loadApprovalQueue();
     }
-  }, [input, loadApprovalQueue, messages, streaming]);
+  }, [attachments, input, loadApprovalQueue, messages, streaming, uploadingAttachment]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -464,6 +532,7 @@ export function SupportChatWidget() {
     abortRef.current?.abort();
     stopListening();
     setMessages([]);
+    setAttachments([]);
     setBugReport(null);
     conversationIdRef.current = crypto.randomUUID();
     setInput("");
@@ -634,14 +703,50 @@ export function SupportChatWidget() {
           </div>
 
           <div className="px-3 pb-3 pt-2 shrink-0 border-t border-border">
+            {attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {attachments.map((attachment, index) => (
+                  <span key={`${attachment.name}-${index}`} className="inline-flex max-w-full items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-[10px]">
+                    <Paperclip className="h-3 w-3 shrink-0" />
+                    <span className="max-w-[240px] truncate">{attachment.name}</span>
+                    <button
+                      type="button"
+                      className="ml-1 text-muted-foreground hover:text-foreground"
+                      onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      aria-label={`Remover ${attachment.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf,.docx,.txt,.csv,.md,.xlsx,.xls"
+              onChange={(event) => void handleFileSelected(event)}
+            />
             <div className="flex items-end gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="h-9 w-9 shrink-0"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={streaming || uploadingAttachment || attachments.length >= 3}
+                title="Anexar arquivo"
+              >
+                {uploadingAttachment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+              </Button>
               <Button
                 type="button"
                 size="icon"
                 variant={listening ? "default" : "outline"}
                 className="h-9 w-9 shrink-0"
                 onClick={startListening}
-                disabled={streaming}
+                disabled={streaming || uploadingAttachment}
                 title={listening ? "Parar de ouvir" : "Falar com JARVIS"}
               >
                 {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -651,23 +756,27 @@ export function SupportChatWidget() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={listening ? "Estou ouvindo..." : "Fale ou digite para o JARVIS..."}
+                placeholder={listening ? "Estou ouvindo..." : attachments.length ? "Diga o que quer fazer com o arquivo..." : "Fale ou digite para o JARVIS..."}
                 className="min-h-[40px] max-h-[120px] resize-none text-sm leading-relaxed py-2 px-3"
-                disabled={streaming}
+                disabled={streaming || uploadingAttachment}
                 rows={1}
               />
               <Button
                 size="icon"
                 className="h-9 w-9 shrink-0"
                 onClick={() => void sendMessage()}
-                disabled={!input.trim() || streaming}
+                disabled={(!input.trim() && attachments.length === 0) || streaming || uploadingAttachment}
                 title="Enviar"
               >
                 {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-              {listening ? "Escutando em português do Brasil" : "Voz ou texto · Enter para enviar · Shift+Enter para nova linha"}
+              {uploadingAttachment
+                ? "Interpretando arquivo..."
+                : listening
+                  ? "Escutando em português do Brasil"
+                  : "Voz, texto ou arquivo · PDF, imagem, Word, Excel, CSV e TXT"}
             </p>
           </div>
         </div>
