@@ -316,7 +316,7 @@ export default function Configuracoes() {
       root.querySelectorAll<HTMLElement>("h2, h3, h4, label").forEach((element) => {
         const text = element.textContent?.replace(/\s+/g, " ").trim();
         if (text !== "Produtos e Serviços" && text !== "Produtos e Serviços — referência legada") return;
-        element.textContent = "Produtos e Serviços — referência legada";
+        if (text !== "Produtos e Serviços — referência legada") {\n          element.textContent = "Produtos e Serviços — referência legada";\n        }
         const block = element.closest<HTMLElement>(".space-y-2") ?? element.parentElement;
         if (!block) return;
         block.dataset.legacyProductsReadonly = "true";
@@ -341,7 +341,7 @@ export default function Configuracoes() {
       root.querySelectorAll<HTMLElement>("label").forEach((label) => {
         const text = label.textContent?.replace(/\s+/g, " ").trim();
         if (text !== "URL da linha de produtos (opcional)" && text !== "Fonte externa de produtos (opcional)") return;
-        label.textContent = "Fonte externa de produtos (opcional)";
+        if (text !== "Fonte externa de produtos (opcional)") {\n          label.textContent = "Fonte externa de produtos (opcional)";\n        }
         const block = label.parentElement;
         if (!block || block.querySelector("[data-external-product-source-note='true']")) return;
         const note = document.createElement("p");
