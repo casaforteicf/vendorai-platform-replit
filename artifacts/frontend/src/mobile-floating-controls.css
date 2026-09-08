@@ -1,3 +1,5 @@
+@import "./sites-autopilot-consolidation.css";
+
 @media (max-width: 1200px), (pointer: coarse) {
   button[aria-label="Abrir Dev IA"],
   button[aria-label="Carregar Dev IA"],
