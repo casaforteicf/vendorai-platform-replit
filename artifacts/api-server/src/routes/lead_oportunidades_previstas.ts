@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc } from "drizzle-orm";
 import { db, leadOportunidadesPrevistasTable, leadsTable } from "@workspace/db";
+import { executeScoutOpportunityWithAgent } from "../services/scout-agent-orchestrator.js";
 
 const router: IRouter = Router();
 
@@ -71,6 +72,26 @@ router.delete("/oportunidades-previstas/:id", async (req, res) => {
 
   await db.delete(leadOportunidadesPrevistasTable).where(eq(leadOportunidadesPrevistasTable.id, req.params.id as string));
   return res.status(204).send();
+});
+
+// Revenue Scout -> Agentes: execução aprovada usa o dispatcher central já existente.
+// A rota fica neste router protegido para evitar criar outro módulo HTTP paralelo.
+router.post("/tenants/:tenantId/scout/oportunidades/:id/executar-com-agente", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!isSuperAdmin(req) && tid(req) !== tenantId) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const result = await executeScoutOpportunityWithAgent({
+      tenantId,
+      opportunityId: req.params.id as string,
+      log: req.log,
+      approvedBy: (req as any).user?.sub ?? (req as any).user?.id ?? null,
+    });
+    return res.json(result);
+  } catch (error: any) {
+    req.log.error({ error, tenantId, opportunityId: req.params.id }, "scout-agent: falha ao executar oportunidade");
+    return res.status(422).json({ error: error?.message ?? "Não foi possível executar a oportunidade com o agente." });
+  }
 });
 
 export default router;
