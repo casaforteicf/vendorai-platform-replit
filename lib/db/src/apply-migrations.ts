@@ -30,6 +30,10 @@ export const CONTROL_TABLE = "vendorai_schema_migrations";
 // primeira versão.
 const LEGACY_CHECKSUMS: Readonly<Record<string, readonly string[]>> = {
   "161": ["a52c13b2b5c54e67b3acb36efe8317772f6ea2ba19e59acdcfaacf9f521c3f87"],
+  // A migration de múltiplos números WhatsApp chegou primeiro a produção
+  // com a versão 209. Ela agora é 229, liberando 209 para a política de
+  // autonomia de marketing sem invalidar o histórico já registrado.
+  "209": ["69bf9ffc9a006584e2168840d8c7318bea3b243fd7c40bf30a352893b110716b"],
 };
 
 export function isAcceptedMigrationChecksum(
