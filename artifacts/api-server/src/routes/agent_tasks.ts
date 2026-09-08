@@ -10,6 +10,7 @@ import {
   activitiesTable,
   insertAgentTaskSchema,
   updateAgentTaskSchema,
+  resolveAgentAutonomyLevel,
 } from "@workspace/db";
 import type { AgentTask, AgentType } from "@workspace/db";
 import { z } from "zod";
@@ -526,9 +527,9 @@ router.get("/tenants/:tenantId/agent-tasks/pending", async (req, res) => {
 });
 
 // ── POST /tenants/:tenantId/agent-tasks/:id/approve ───────────────────────────
-// Transitions: pendente_aprovacao → executando (+ runs action) when autonomous
-//              pendente_aprovacao → executando (+ runs action) for enviar_whatsapp always
-//              pendente_aprovacao → aprovado for non-whatsapp tasks without autonomy
+// manual: aprovação mantém a tarefa em "aprovado" aguardando execução explícita.
+// assistido/autonomo: executam após a aprovação humana.
+// ações críticas abaixo sempre podem executar depois da aprovação humana, independentemente do nível.
 router.post(
   "/tenants/:tenantId/agent-tasks/:id/approve",
   async (req, res) => {
@@ -562,51 +563,67 @@ router.post(
     }
 
     const [config] = await db
-      .select({ id: agentConfigsTable.id, autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
+      .select({
+        id: agentConfigsTable.id,
+        autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+        agents: agentConfigsTable.agents,
+      })
       .from(agentConfigsTable)
       .where(eq(agentConfigsTable.tenantId, String(tenantId)));
 
     const now = new Date();
-    const autonomy = config?.autonomyEnabledAt;
-    const isAutonomous =
-      autonomy !== null && autonomy !== undefined && autonomy <= now;
-
-    // enviar_whatsapp, aprovacao_fechamento and conferencia_estoque always
-    // execute immediately on approval (no holding state) — the human
-    // approval IS the trigger.
-    const shouldExecuteNow =
-      isAutonomous ||
-      task.actionType === "enviar_whatsapp" ||
+    const legacyAutonomyEnabled = Boolean(config?.autonomyEnabledAt && config.autonomyEnabledAt <= now);
+    const autonomyLevel = resolveAgentAutonomyLevel(config?.agents, task.agentName, legacyAutonomyEnabled);
+    const requiresHumanApproval =
       task.actionType === "aprovacao_fechamento" ||
       task.actionType === "aprovacao_desconto" ||
       task.actionType === "conferencia_estoque";
+    const shouldExecuteNow = autonomyLevel !== "manual" || requiresHumanApproval;
 
     if (shouldExecuteNow) {
-      // Move to "executando" first, then run the action
+      // Move to "executando" first, then run the action. For sensitive actions,
+      // reaching this point means a human has just approved the task.
       const [executing] = await db
         .update(agentTasksTable)
         .set({ status: "executando", executedAt: now, updatedAt: now })
-        .where(eq(agentTasksTable.id, String(id)))
+        .where(and(
+          eq(agentTasksTable.id, String(id)),
+          eq(agentTasksTable.tenantId, String(tenantId)),
+          eq(agentTasksTable.status, "pendente_aprovacao"),
+        ))
         .returning();
 
+      if (!executing) {
+        res.status(409).json({ error: "Task state changed before approval could be applied" });
+        return;
+      }
+
       const finished = await executeTaskAction(executing, req.log);
-      res.json(finished);
+      res.json({ ...finished, autonomyLevel });
     } else {
-      // Non-autonomous, non-whatsapp: hold in "aprovado" for explicit execute
       const [updated] = await db
         .update(agentTasksTable)
         .set({ status: "aprovado", updatedAt: now })
-        .where(eq(agentTasksTable.id, String(id)))
+        .where(and(
+          eq(agentTasksTable.id, String(id)),
+          eq(agentTasksTable.tenantId, String(tenantId)),
+          eq(agentTasksTable.status, "pendente_aprovacao"),
+        ))
         .returning();
 
-      res.json(updated);
+      if (!updated) {
+        res.status(409).json({ error: "Task state changed before approval could be applied" });
+        return;
+      }
+
+      res.json({ ...updated, autonomyLevel });
     }
   }
 );
 
 // ── POST /tenants/:tenantId/agent-tasks/:id/execute ───────────────────────────
 // Explicitly executes a task in "aprovado" status.
-// Useful for non-autonomous tasks or future action types that need manual trigger.
+// Useful for manual tasks or future action types that need explicit execution.
 router.post(
   "/tenants/:tenantId/agent-tasks/:id/execute",
   async (req, res) => {
