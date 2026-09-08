@@ -75,26 +75,32 @@ jobs:
           api="https://api.cloudflare.com/client/v4"
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
           domain="app.appvendorai.com"
+          endpoint="$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains"
 
-          current=$(curl -fsS "${auth[@]}" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains/$domain" || true)
+          current=$(curl -sS "${auth[@]}" "$endpoint/$domain")
           if [ "$(jq -r '.success // false' <<<"$current")" != "true" ]; then
-            curl -fsS "${auth[@]}" -X POST \
-              "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains" \
-              --data '{"name":"app.appvendorai.com"}' | jq -e '.success == true'
+            echo "Custom domain is not attached yet; attaching it to Pages."
+            attach=$(curl -sS "${auth[@]}" -X POST "$endpoint" --data "{\"name\":\"$domain\"}")
+            if [ "$(jq -r '.success // false' <<<"$attach")" != "true" ]; then
+              echo "Cloudflare could not attach the custom domain:"
+              jq -c '{errors, messages}' <<<"$attach"
+              exit 1
+            fi
           fi
 
-          zone_id=$(curl -fsS "${auth[@]}" "$api/zones?name=appvendorai.com" | jq -er '.result[0].id')
-          record_id=$(curl -fsS "${auth[@]}" "$api/zones/$zone_id/dns_records?name=$domain" | jq -r '.result[0].id // empty')
-          payload='{"type":"CNAME","name":"app","content":"vendorai.pages.dev","ttl":1,"proxied":true}'
+          # Cloudflare Pages manages the DNS association for a custom domain.
+          # Do not call the Zone DNS API here: the Pages deploy token only needs
+          # account-level Pages permissions and may intentionally lack Zone access.
+          for attempt in {1..18}; do
+            domain_state=$(curl -sS "${auth[@]}" "$endpoint/$domain")
+            if [ "$(jq -r '.success // false' <<<"$domain_state")" != "true" ]; then
+              echo "Unable to read custom-domain state on attempt $attempt."
+              jq -c '{errors, messages}' <<<"$domain_state"
+              sleep 10
+              continue
+            fi
 
-          if [ -n "$record_id" ]; then
-            curl -fsS "${auth[@]}" -X PUT "$api/zones/$zone_id/dns_records/$record_id" --data "$payload" | jq -e '.success == true'
-          else
-            curl -fsS "${auth[@]}" -X POST "$api/zones/$zone_id/dns_records" --data "$payload" | jq -e '.success == true'
-          fi
-
-          for attempt in {1..12}; do
-            status=$(curl -fsS "${auth[@]}" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains/$domain" | jq -r '.result.status // empty')
+            status=$(jq -r '.result.status // empty' <<<"$domain_state")
             echo "Custom domain status: ${status:-unknown}"
             if [ "$status" = "active" ]; then
               exit 0
@@ -103,3 +109,4 @@ jobs:
           done
 
           echo "Custom domain was attached but is not active yet."
+          exit 1
