@@ -25,6 +25,73 @@ const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? "https://appvendorai.com").
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
+type ProactiveItem = {
+  id: string;
+  title: string;
+  priorityScore: number;
+  recommendedAction: string | null;
+  explicitFinancialImpact?: { amount: number } | null;
+  historicalFinancialEstimate?: {
+    medianAmount: number;
+    sampleSize: number;
+    confidence: number;
+  } | null;
+};
+
+type ProactivityResponse = {
+  proactivity: {
+    interruptNow: ProactiveItem[];
+    briefing: ProactiveItem[];
+    silentCount: number;
+  };
+};
+
+function formatBrl(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function buildMobileProactiveOpening(data: ProactivityResponse) {
+  const urgent = data.proactivity.interruptNow ?? [];
+  const briefing = data.proactivity.briefing ?? [];
+
+  if (urgent.length) {
+    const visible = urgent.slice(0, 3);
+    const display = [
+      `Tenho ${urgent.length === 1 ? "1 ponto que merece sua atenção agora" : `${urgent.length} pontos que merecem sua atenção agora`}.`,
+      ...visible.map((item, index) => {
+        const financial = item.explicitFinancialImpact?.amount != null
+          ? ` Impacto atual informado: ${formatBrl(item.explicitFinancialImpact.amount)}.`
+          : item.historicalFinancialEstimate
+            ? ` Precedente histórico: mediana ${formatBrl(item.historicalFinancialEstimate.medianAmount)} em ${item.historicalFinancialEstimate.sampleSize} casos.`
+            : "";
+        return `${index + 1}. ${item.title} — prioridade ${item.priorityScore}/100.${financial}`;
+      }),
+    ].join("\n");
+    const spoken = `Tenho ${urgent.length === 1 ? "um ponto" : `${urgent.length} pontos`} que merecem sua atenção agora. O principal é: ${visible[0]?.title ?? "uma prioridade do negócio"}. Posso detalhar ou ouvir seu comando.`;
+    return { display, spoken };
+  }
+
+  if (briefing.length) {
+    const visible = briefing.slice(0, 5);
+    const display = [
+      "Não encontrei nada que justifique interromper você agora.",
+      `Tenho ${briefing.length === 1 ? "1 ponto" : `${briefing.length} pontos`} para o próximo briefing:`,
+      ...visible.map((item, index) => `${index + 1}. ${item.title} — prioridade ${item.priorityScore}/100.`),
+    ].join("\n");
+    const spoken = `Não há nada urgente agora. Tenho ${briefing.length === 1 ? "um ponto" : `${briefing.length} pontos`} para o briefing. O principal é: ${visible[0]?.title ?? "uma prioridade do negócio"}.`;
+    return { display, spoken };
+  }
+
+  return {
+    display: "Não encontrei nenhuma prioridade que justifique interromper você agora. Continuo acompanhando os sinais do negócio.",
+    spoken: "Não há nenhuma prioridade urgente agora. Continuo acompanhando o negócio.",
+  };
+}
+
 export default function JarvisScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -35,7 +102,7 @@ export default function JarvisScreen() {
   const [answer, setAnswer] = useState("JARVIS pronto para conversar.");
   const [enabled, setEnabled] = useState(false);
   const sendingRef = useRef(false);
-  const wakeHandledRef = useRef(false);
+  const proactiveHandledRef = useRef(false);
   const openedByWakeWord = params.wake === "1";
   const conversationId = useMemo(
     () => `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -185,15 +252,35 @@ export default function JarvisScreen() {
   }, [speak]);
 
   useEffect(() => {
-    if (isLoading || wakeHandledRef.current || !openedByWakeWord) return;
-    wakeHandledRef.current = true;
+    if (isLoading || proactiveHandledRef.current) return;
     if (!token || !user) {
-      router.replace("/login");
+      if (openedByWakeWord) router.replace("/login");
       return;
     }
+
+    proactiveHandledRef.current = true;
     setEnabled(true);
-    setAnswer("Ativado pela palavra de chamada.");
-    speak("Bom dia. Estou ouvindo.", true);
+
+    const loadOpening = async () => {
+      try {
+        const response = await expoFetch(`${API_BASE}/api/jarvis/proactivity`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error("Falha ao carregar prioridades");
+        const data = await response.json() as ProactivityResponse;
+        const opening = buildMobileProactiveOpening(data);
+        setAnswer(opening.display);
+        const prefix = openedByWakeWord ? "Bom dia. " : "";
+        speak(`${prefix}${opening.spoken}`, openedByWakeWord);
+      } catch {
+        if (openedByWakeWord) {
+          setAnswer("Ativado pela palavra de chamada.");
+          speak("Bom dia. Estou ouvindo.", true);
+        }
+      }
+    };
+
+    void loadOpening();
   }, [isLoading, openedByWakeWord, speak, token, user]);
 
   useEffect(() => () => {
