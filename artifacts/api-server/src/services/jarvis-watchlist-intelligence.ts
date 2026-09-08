@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { getActiveCatalogPreview } from "../lib/catalog-readiness.js";
 import { loadJarvisContractDocumentIntelligence } from "./jarvis-contract-document-intelligence.js";
+import { loadJarvisKeyPeopleIntelligence } from "./jarvis-key-people-intelligence.js";
 
 export type JarvisWatchlistKind =
   | "empresa"
@@ -15,13 +16,14 @@ export type JarvisWatchlistKind =
   | "fornecedor"
   | "produto"
   | "localidade"
-  | "tema";
+  | "tema"
+  | "pessoa_chave";
 
 export type JarvisWatchlistItem = {
   key: string;
   kind: JarvisWatchlistKind;
   label: string;
-  origin: "business_profile" | "supplier_registry" | "official_catalog";
+  origin: "business_profile" | "supplier_registry" | "official_catalog" | "key_people_registry";
   monitoringStatus: "active_signal" | "monitored_no_recent_signal" | "configured_only";
   recentCaseIds: string[];
 };
@@ -29,7 +31,7 @@ export type JarvisWatchlistItem = {
 export type JarvisBlindSpot = {
   code: string;
   severity: "attention" | "risk";
-  area: "perfil" | "concorrencia" | "fornecedores" | "catalogo" | "geografia" | "fontes" | "aprendizado" | "contratos";
+  area: "perfil" | "concorrencia" | "fornecedores" | "catalogo" | "geografia" | "fontes" | "aprendizado" | "contratos" | "pessoas";
   title: string;
   detail: string;
   recommendation: string;
@@ -100,7 +102,7 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
   const now = new Date();
   const recentSince = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [profileRows, suppliers, catalog, recentCases, activeNewsSources, outcomeRows, contractIntelligence] = await Promise.all([
+  const [profileRows, suppliers, catalog, recentCases, activeNewsSources, outcomeRows, contractIntelligence, keyPeopleIntelligence] = await Promise.all([
     db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db
       .select({ nome: fornecedoresTable.nome })
@@ -139,11 +141,13 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
       .orderBy(desc(jarvisCasesTable.resolvedAt))
       .limit(20),
     loadJarvisContractDocumentIntelligence(tenantId),
+    loadJarvisKeyPeopleIntelligence(tenantId),
   ]);
 
   const profile = profileRows[0] ?? null;
   const hasExternalMonitoring = activeNewsSources.length > 0;
   const searchableCases = recentCases.map((item) => ({ item, search: caseSearchText(item) }));
+  const keyPeopleByName = new Map(keyPeopleIntelligence.items.map((item) => [normalize(item.name), item]));
 
   const rawItems: Array<Omit<JarvisWatchlistItem, "monitoringStatus" | "recentCaseIds">> = [];
   if (profile) {
@@ -173,10 +177,30 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
     rawItems.push({ key: itemKey("produto", label), kind: "produto", label, origin: "official_catalog" });
   }
 
+  for (const person of keyPeopleIntelligence.items) {
+    const label = compact(person.name);
+    if (!label) continue;
+    rawItems.push({ key: itemKey("pessoa_chave", label), kind: "pessoa_chave", label, origin: "key_people_registry" });
+  }
+
   const deduped = new Map<string, Omit<JarvisWatchlistItem, "monitoringStatus" | "recentCaseIds">>();
   for (const item of rawItems) deduped.set(item.key, item);
 
   const watchlist: JarvisWatchlistItem[] = [...deduped.values()].map((item) => {
+    if (item.kind === "pessoa_chave") {
+      const person = keyPeopleByName.get(normalize(item.label));
+      const recentCaseIds = person?.recentSignals.map((signal) => signal.caseId) ?? [];
+      return {
+        ...item,
+        monitoringStatus: person?.status === "active_public_signal"
+          ? "active_signal"
+          : person?.status === "no_recent_public_signal"
+            ? "monitored_no_recent_signal"
+            : "configured_only",
+        recentCaseIds,
+      };
+    }
+
     const needle = normalize(item.label);
     const matchedCases = needle.length >= 3
       ? searchableCases.filter(({ search }) => search.includes(needle)).slice(0, 5)
@@ -270,6 +294,17 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
     }
   }
 
+  if (keyPeopleIntelligence.summary.coverageInsufficient > 0) {
+    blindSpots.push({
+      code: "key_people_public_coverage_insufficient",
+      severity: "attention",
+      area: "pessoas",
+      title: "Cobertura pública insuficiente para parte das pessoas-chave",
+      detail: `${keyPeopleIntelligence.summary.coverageInsufficient}/${keyPeopleIntelligence.summary.monitoredPeople} pessoa(s)-chave ativa(s) não possuem fonte pública configurada. Isso impede concluir se houve ou não mudança relevante.`,
+      recommendation: "Associar somente fontes públicas permitidas e verificáveis às pessoas-chave que realmente precisam ser monitoradas.",
+    });
+  }
+
   if (contractIntelligence.summary.contracts > 0) {
     if (contractIntelligence.summary.lifecycleCoveragePercent < 100) {
       blindSpots.push({
@@ -352,6 +387,9 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
       contractAlerts: contractIntelligence.summary.alerts,
       contractCriticalAlerts: contractIntelligence.summary.criticalAlerts,
       contractLifecycleCoveragePercent: contractIntelligence.summary.lifecycleCoveragePercent,
+      monitoredKeyPeople: keyPeopleIntelligence.summary.monitoredPeople,
+      keyPeopleWithPublicSignals: keyPeopleIntelligence.summary.activePublicSignals,
+      keyPeopleCoverageInsufficient: keyPeopleIntelligence.summary.coverageInsufficient,
     },
     watchlist,
     blindSpots,
