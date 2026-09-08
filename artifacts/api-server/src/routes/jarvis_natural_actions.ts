@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, gte, or } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, agentConfigsTable, agentTasksTable, jarvisCasesTable } from "@workspace/db";
+import { db, agentConfigsTable, agentTasksTable, jarvisCasesTable, resolveAgentAutonomyLevel } from "@workspace/db";
 import { executeTaskAction } from "./agent_tasks.js";
 import { resolveJarvisNaturalAction } from "../services/jarvis-natural-action-intent.js";
 import { loadJarvisWatchlistIntelligence } from "../services/jarvis-watchlist-intelligence.js";
@@ -293,19 +293,22 @@ router.post("/support/chat", async (req, res, next) => {
     }
 
     const [config] = await db
-      .select({ autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
+      .select({
+        autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+        agents: agentConfigsTable.agents,
+      })
       .from(agentConfigsTable)
       .where(eq(agentConfigsTable.tenantId, tenantId))
       .limit(1);
 
     const now = new Date();
-    const isAutonomous = Boolean(config?.autonomyEnabledAt && config.autonomyEnabledAt <= now);
-    const shouldExecuteNow =
-      isAutonomous ||
-      task.actionType === "enviar_whatsapp" ||
+    const legacyAutonomyEnabled = Boolean(config?.autonomyEnabledAt && config.autonomyEnabledAt <= now);
+    const autonomyLevel = resolveAgentAutonomyLevel(config?.agents, task.agentName, legacyAutonomyEnabled);
+    const requiresHumanApproval =
       task.actionType === "aprovacao_fechamento" ||
       task.actionType === "aprovacao_desconto" ||
       task.actionType === "conferencia_estoque";
+    const shouldExecuteNow = autonomyLevel !== "manual" || requiresHumanApproval;
 
     if (shouldExecuteNow) {
       const [executing] = await db
@@ -330,7 +333,7 @@ router.post("/support/chat", async (req, res, next) => {
       writeSse(
         res,
         `${actionLabel(task.actionType)} aprovada e processada. Status atual: ${finished.status}.`,
-        { jarvisAction: "approve", actionStatus: finished.status, taskId: task.id },
+        { jarvisAction: "approve", actionStatus: finished.status, taskId: task.id, autonomyLevel },
       );
       return;
     }
@@ -355,8 +358,8 @@ router.post("/support/chat", async (req, res, next) => {
 
     writeSse(
       res,
-      `${actionLabel(task.actionType)} aprovada. Ela continua aguardando o comando explícito de execução.`,
-      { jarvisAction: "approve", actionStatus: approved.status, taskId: task.id },
+      `${actionLabel(task.actionType)} aprovada. Ela continua aguardando o comando explícito de execução porque o agente está em modo manual.`,
+      { jarvisAction: "approve", actionStatus: approved.status, taskId: task.id, autonomyLevel },
     );
   } catch (err) {
     req.log?.warn({ err, tenantId }, "jarvis: comando natural controlado falhou; seguindo para chat normal");
