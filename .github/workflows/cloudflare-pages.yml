@@ -79,7 +79,17 @@ jobs:
           endpoint="$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains"
 
           current=$(curl -sS "${auth[@]}" "$endpoint/$domain")
-          if [ "$(jq -r '.success // false' <<<"$current")" != "true" ]; then
+          current_ok=$(jq -r '.success // false' <<<"$current")
+          current_status=$(jq -r '.result.status // empty' <<<"$current")
+
+          # If the custom domain is already active, the deployment is complete.
+          # Do not require Zone/DNS permissions on every frontend publish.
+          if [ "$current_ok" = "true" ] && [ "$current_status" = "active" ]; then
+            echo "Custom domain already active: $domain"
+            exit 0
+          fi
+
+          if [ "$current_ok" != "true" ]; then
             echo "Custom domain is not attached yet; attaching it to Pages."
             attach=$(curl -sS "${auth[@]}" -X POST "$endpoint" --data "{\"name\":\"$domain\"}")
             if [ "$(jq -r '.success // false' <<<"$attach")" != "true" ]; then
@@ -89,11 +99,27 @@ jobs:
             fi
           fi
 
-          # Replace the existing frontend DNS target (currently Railway) with Pages.
-          # The backend remains on Railway and is not changed by this record.
+          # DNS is only needed when the domain is not active yet.
           zone_response=$(curl -sS "${auth[@]}" "$api/zones?name=appvendorai.com")
-          zone_id=$(jq -er '.result[0].id' <<<"$zone_response")
+          if [ "$(jq -r '.success // false' <<<"$zone_response")" != "true" ]; then
+            echo "Cloudflare could not read the appvendorai.com zone:"
+            jq -c '{errors, messages}' <<<"$zone_response"
+            exit 1
+          fi
+
+          zone_id=$(jq -r '.result[0].id // empty' <<<"$zone_response")
+          if [ -z "$zone_id" ]; then
+            echo "Cloudflare zone appvendorai.com was not found for this token/account."
+            exit 1
+          fi
+
           record_response=$(curl -sS "${auth[@]}" "$api/zones/$zone_id/dns_records?type=CNAME&name=$domain")
+          if [ "$(jq -r '.success // false' <<<"$record_response")" != "true" ]; then
+            echo "Cloudflare could not read the production DNS record:"
+            jq -c '{errors, messages}' <<<"$record_response"
+            exit 1
+          fi
+
           record_id=$(jq -r '.result[0].id // empty' <<<"$record_response")
           payload='{"type":"CNAME","name":"app","content":"vendorai.pages.dev","ttl":1,"proxied":true}'
 
