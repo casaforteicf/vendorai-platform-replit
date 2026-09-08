@@ -88,9 +88,25 @@ jobs:
             fi
           fi
 
-          # Cloudflare Pages manages the DNS association for a custom domain.
-          # Do not call the Zone DNS API here: the Pages deploy token only needs
-          # account-level Pages permissions and may intentionally lack Zone access.
+          # Replace the existing frontend DNS target (currently Railway) with Pages.
+          # The backend remains on Railway and is not changed by this record.
+          zone_response=$(curl -sS "${auth[@]}" "$api/zones?name=appvendorai.com")
+          zone_id=$(jq -er '.result[0].id' <<<"$zone_response")
+          record_response=$(curl -sS "${auth[@]}" "$api/zones/$zone_id/dns_records?type=CNAME&name=$domain")
+          record_id=$(jq -r '.result[0].id // empty' <<<"$record_response")
+          payload='{"type":"CNAME","name":"app","content":"vendorai.pages.dev","ttl":1,"proxied":true}'
+
+          if [ -n "$record_id" ]; then
+            dns_result=$(curl -sS "${auth[@]}" -X PUT "$api/zones/$zone_id/dns_records/$record_id" --data "$payload")
+          else
+            dns_result=$(curl -sS "${auth[@]}" -X POST "$api/zones/$zone_id/dns_records" --data "$payload")
+          fi
+          if [ "$(jq -r '.success // false' <<<"$dns_result")" != "true" ]; then
+            echo "Cloudflare could not update the production DNS record:"
+            jq -c '{errors, messages}' <<<"$dns_result"
+            exit 1
+          fi
+
           for attempt in {1..18}; do
             domain_state=$(curl -sS "${auth[@]}" "$endpoint/$domain")
             if [ "$(jq -r '.success // false' <<<"$domain_state")" != "true" ]; then
