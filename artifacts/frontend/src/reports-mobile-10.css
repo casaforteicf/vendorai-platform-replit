@@ -1,0 +1,141 @@
+/* Relatórios mobile 10/10 — compactação, hierarquia e estados vazios.
+   Escopo estrutural: página de Visão Geral de Relatórios possui KPIs + card tracejado de cobertura + tabs. */
+@media (max-width: 900px) {
+  /* Página principal */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) {
+    gap: 14px !important;
+    padding-inline: 12px !important;
+  }
+
+  /* Cabeçalho */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > div:first-child {
+    gap: 6px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) h1 {
+    font-size: 22px !important;
+    line-height: 1.15 !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) h1 svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) h1 + p {
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+    margin-top: 4px !important;
+  }
+
+  /* KPIs principais: faixa compacta em 4 colunas, sem cards gigantes */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .grid.grid-cols-2 {
+    gap: 8px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .grid.grid-cols-2 > div {
+    min-width: 0 !important;
+    border-radius: 16px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .grid.grid-cols-2 > div > div:first-child {
+    padding: 12px 12px 4px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .grid.grid-cols-2 > div > div:last-child {
+    padding: 0 12px 12px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .grid.grid-cols-2 .text-2xl {
+    font-size: 20px !important;
+    line-height: 1.1 !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .grid.grid-cols-2 .text-xs {
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+  }
+
+  /* Cobertura de dados vira resumo executivo compacto */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .border-dashed {
+    border-radius: 16px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .border-dashed > div:first-child {
+    padding: 12px 14px 6px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .border-dashed > div:last-child {
+    padding: 4px 14px 12px !important;
+    gap: 10px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) > .border-dashed p {
+    margin-top: 2px !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+  }
+
+  /* Tabs: barra horizontal simples, sem bloco alto 2x3 */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tablist"] {
+    display: flex !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 42px !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 4px !important;
+    border-radius: 14px !important;
+    scrollbar-width: none !important;
+    white-space: nowrap !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tablist"]::-webkit-scrollbar {
+    display: none !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tab"] {
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+    height: 34px !important;
+    padding: 0 14px !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+  }
+
+  /* Conteúdo das abas: menos espaço e cards menores */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] {
+    margin-top: 10px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .grid {
+    gap: 10px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] [data-slot="card"],
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .rounded-xl.border.bg-card {
+    border-radius: 16px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] [data-slot="card-header"],
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .flex.flex-col.space-y-1\.5.p-6 {
+    padding: 14px 14px 6px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] [data-slot="card-content"],
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .p-6.pt-0 {
+    padding: 8px 14px 14px !important;
+  }
+
+  /* Títulos e dados */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .text-base {
+    font-size: 15px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .text-2xl {
+    font-size: 22px !important;
+  }
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .space-y-3 {
+    gap: 8px !important;
+  }
+
+  /* Estados vazios deixam de parecer cards de conteúdo completo */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] p.text-sm.text-muted-foreground.py-3 {
+    padding-block: 2px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Cards de KPI internos ficam mais baixos */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] .grid.grid-cols-2 > div {
+    min-height: 0 !important;
+  }
+
+  /* Evita corte pelos botões flutuantes na lateral */
+  div.space-y-6:has(> .border-dashed):has([role="tablist"]) [role="tabpanel"] {
+    padding-bottom: 76px !important;
+  }
+}
