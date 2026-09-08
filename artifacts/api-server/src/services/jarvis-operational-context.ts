@@ -3,6 +3,7 @@ import { agendamentosTable, agentTasksTable, db, jarvisCasesTable } from "@works
 import { loadJarvisWatchlistIntelligence } from "./jarvis-watchlist-intelligence.js";
 import { loadJarvisPriorityIntelligence } from "./jarvis-priority-intelligence.js";
 import { loadJarvisComparisonIntelligence } from "./jarvis-comparison-intelligence.js";
+import { loadJarvisScenarioIntelligence } from "./jarvis-scenario-intelligence.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
@@ -19,7 +20,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence, scenarioIntelligence] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -124,6 +125,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     loadJarvisWatchlistIntelligence(tenantId),
     loadJarvisPriorityIntelligence(tenantId, 5),
     loadJarvisComparisonIntelligence(tenantId),
+    loadJarvisScenarioIntelligence(tenantId),
   ]);
 
   const activeUpcomingAppointments = upcomingAppointments
@@ -133,12 +135,13 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const hasPriorityContext = priorityIntelligence.items.length > 0;
   const hasAgendaContext = activeUpcomingAppointments.length > 0;
   const hasComparisonContext = comparisonIntelligence.competitors.length > 0 || comparisonIntelligence.suppliers.length > 0 || comparisonIntelligence.products.length > 0;
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext) return "";
+  const hasScenarioContext = scenarioIntelligence.summary.activeDeals > 0 || scenarioIntelligence.summary.openCasesEvaluated > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext && !hasScenarioContext) return "";
 
   const lines = [
     "",
     "## Estado operacional real do tenant",
-    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
+    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, cenários, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
 
   if (recentChanges.length) {
@@ -201,6 +204,20 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       if (item.observacoes) lines.push(`  Observações: ${compact(item.observacoes, 280)}`);
     }
     lines.push("A Agenda de Inteligência usa somente compromissos persistidos e futuros do tenant. Não invente preparação, risco ou prioridade sem cruzar o compromisso com Casos Vendor, prioridades, lead/deal ou outra evidência disponível.");
+  }
+
+  if (hasScenarioContext) {
+    lines.push("", "### Cenários e Previsões — testes de cenário verificáveis");
+    lines.push(`Cobertura: negócios_ativos=${scenarioIntelligence.summary.activeDeals} | negócios_com_valor_e_probabilidade=${scenarioIntelligence.summary.measurableDeals} | casos_abertos=${scenarioIntelligence.summary.openCasesEvaluated} | cobertura_pipeline=${Math.round(scenarioIntelligence.summary.coverageRatio * 100)}%`);
+    if (scenarioIntelligence.summary.explicitRiskAmountBrl != null) lines.push(`Impacto financeiro explícito em riscos: R$ ${scenarioIntelligence.summary.explicitRiskAmountBrl.toFixed(2)}`);
+    if (scenarioIntelligence.summary.explicitOpportunityAmountBrl != null) lines.push(`Impacto financeiro explícito em oportunidades: R$ ${scenarioIntelligence.summary.explicitOpportunityAmountBrl.toFixed(2)}`);
+    for (const scenario of scenarioIntelligence.scenarios) {
+      const projected = scenario.projectedPipelineBrl == null ? "desconhecido" : `R$ ${scenario.projectedPipelineBrl.toFixed(2)}`;
+      lines.push(`- ${scenario.label} | pipeline_projetado=${projected} | ${scenario.description}`);
+      lines.push(`  Premissas: ${scenario.assumptions.join(" ")}`);
+      if (scenario.supportingCaseIds.length) lines.push(`  Casos de suporte: ${scenario.supportingCaseIds.join(",")}`);
+    }
+    lines.push("Cenários são testes condicionais construídos sobre dados persistidos, não previsões garantidas. Nunca apresente cenário otimista/adverso como probabilidade real sem um modelo validado e dados históricos suficientes.");
   }
 
   if (hasComparisonContext) {
@@ -320,6 +337,8 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "- 'Qual o impacto financeiro?': cite apenas `impacto_financeiro_explícito` quando houver valor BRL persistido na métrica. Se estiver desconhecido, diga que ainda falta quantificação financeira em vez de estimar.",
     "- 'O que tenho na agenda?': use a Agenda de Inteligência futura e diferencie agendado de confirmado. Para preparação, cruze lead/deal e Casos Vendor quando houver evidência.",
     "- 'O que precisa de preparação?': priorize compromissos mais próximos que tenham vínculo com lead/deal e contexto relevante disponível; se o contexto não existir, diga que falta informação em vez de inventar briefing.",
+    "- 'Crie cenários' ou 'o que pode acontecer?': use Cenários e Previsões. Diferencie sempre dado observado, premissa e resultado do teste. Base usa pipeline ponderado persistido; otimista/adverso só incorporam impactos financeiros explícitos dos Casos Vendor.",
+    "- 'Qual a previsão?': não transforme os cenários em probabilidade estatística. Informe a cobertura dos dados e explique que são testes condicionais até existir histórico suficiente para um modelo validado.",
     "- 'Compare X com Y': use primeiro a Base do Comparador Inteligente e compare somente critérios presentes dos dois lados. Separe fato persistido de sinal observado e diga quais critérios faltam para uma conclusão melhor.",
     "- 'Qual é melhor?': não dê vencedor genérico. Defina o critério pedido (preço, margem, prazo, estoque, condição, sinais etc.) e só conclua quando houver dados equivalentes para os candidatos.",
     "- 'O que estamos monitorando?': use a Watchlist automática e diferencie item configurado, item monitorado sem sinal recente e item com sinal ativo.",
