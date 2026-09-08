@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte } from "drizzle-orm";
 import { agendamentosTable, agentTasksTable, db, jarvisCasesTable } from "@workspace/db";
 import { loadJarvisWatchlistIntelligence } from "./jarvis-watchlist-intelligence.js";
 import { loadJarvisPriorityIntelligence } from "./jarvis-priority-intelligence.js";
+import { loadJarvisComparisonIntelligence } from "./jarvis-comparison-intelligence.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
@@ -18,7 +19,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -122,6 +123,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       .limit(MAX_UPCOMING_APPOINTMENTS * 2),
     loadJarvisWatchlistIntelligence(tenantId),
     loadJarvisPriorityIntelligence(tenantId, 5),
+    loadJarvisComparisonIntelligence(tenantId),
   ]);
 
   const activeUpcomingAppointments = upcomingAppointments
@@ -130,12 +132,13 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const hasWatchlistContext = watchlistIntelligence.watchlist.length > 0 || watchlistIntelligence.blindSpots.length > 0;
   const hasPriorityContext = priorityIntelligence.items.length > 0;
   const hasAgendaContext = activeUpcomingAppointments.length > 0;
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext) return "";
+  const hasComparisonContext = comparisonIntelligence.competitors.length > 0 || comparisonIntelligence.suppliers.length > 0 || comparisonIntelligence.products.length > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext) return "";
 
   const lines = [
     "",
     "## Estado operacional real do tenant",
-    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
+    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, resultados anteriores, monitoramento e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
 
   if (recentChanges.length) {
@@ -198,6 +201,52 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       if (item.observacoes) lines.push(`  Observações: ${compact(item.observacoes, 280)}`);
     }
     lines.push("A Agenda de Inteligência usa somente compromissos persistidos e futuros do tenant. Não invente preparação, risco ou prioridade sem cruzar o compromisso com Casos Vendor, prioridades, lead/deal ou outra evidência disponível.");
+  }
+
+  if (hasComparisonContext) {
+    lines.push("", "### Comparador Inteligente — base verificável");
+    if (comparisonIntelligence.competitors.length) {
+      lines.push(`Concorrentes configurados (${comparisonIntelligence.competitors.length}):`);
+      for (const item of comparisonIntelligence.competitors.slice(0, 20)) {
+        lines.push(`- concorrente=${compact(item.name, 140)} | sinais_30d=${item.recentSignalCount}${item.caseIds.length ? ` | casos=${item.caseIds.join(",")}` : ""}`);
+      }
+    }
+    if (comparisonIntelligence.suppliers.length) {
+      lines.push(`Fornecedores comparáveis (${comparisonIntelligence.suppliers.length}):`);
+      for (const item of comparisonIntelligence.suppliers.slice(0, 25)) {
+        const metadata = [
+          `fornecedor=${compact(item.name, 140)}`,
+          `cobertura_contato=${item.contactCoverage}/3`,
+          `amostras_compra=${item.purchaseSamples}`,
+          item.latestQuote == null ? null : `cotação_atual=R$ ${item.latestQuote.toFixed(2)}`,
+          item.latestPaid == null ? null : `último_pago=R$ ${item.latestPaid.toFixed(2)}`,
+          item.latestDeliveryDays == null ? null : `prazo_dias=${item.latestDeliveryDays}`,
+          item.latestPaymentTerms ? `pagamento=${compact(item.latestPaymentTerms, 120)}` : null,
+          `sinais_30d=${item.recentSignalCount}`,
+        ].filter(Boolean).join(" | ");
+        lines.push(`- [${item.id}] ${metadata}`);
+      }
+    }
+    if (comparisonIntelligence.products.length) {
+      lines.push(`Produtos comparáveis (${comparisonIntelligence.products.length}):`);
+      for (const item of comparisonIntelligence.products.slice(0, 35)) {
+        const metadata = [
+          `produto=${compact(item.name, 140)}`,
+          item.sku ? `sku=${compact(item.sku, 80)}` : null,
+          item.brand ? `marca=${compact(item.brand, 100)}` : null,
+          item.price == null ? null : `preço=R$ ${item.price.toFixed(2)}`,
+          item.promotionalPrice == null ? null : `promo=R$ ${item.promotionalPrice.toFixed(2)}`,
+          item.cost == null ? null : `custo=R$ ${item.cost.toFixed(2)}`,
+          item.marginPercent == null ? null : `margem=${item.marginPercent}%`,
+          item.deliveryDays == null ? null : `prazo_dias=${item.deliveryDays}`,
+          item.supplier ? `fornecedor=${compact(item.supplier, 100)}` : null,
+          item.stockControlled ? `estoque=${item.stockQuantity ?? 0}` : "estoque=não_controlado",
+          `sinais_30d=${item.recentSignalCount}`,
+        ].filter(Boolean).join(" | ");
+        lines.push(`- [${item.id}] ${metadata}`);
+      }
+    }
+    lines.push("O Comparador Inteligente só compara atributos persistidos e sinais reais do tenant. Para concorrentes, quantidade de sinais indica cobertura observada, não superioridade. Não declare vencedor quando os critérios necessários estiverem ausentes; explicite quais dados faltam.");
   }
 
   if (watchlistIntelligence.watchlist.length) {
@@ -271,6 +320,8 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "- 'Qual o impacto financeiro?': cite apenas `impacto_financeiro_explícito` quando houver valor BRL persistido na métrica. Se estiver desconhecido, diga que ainda falta quantificação financeira em vez de estimar.",
     "- 'O que tenho na agenda?': use a Agenda de Inteligência futura e diferencie agendado de confirmado. Para preparação, cruze lead/deal e Casos Vendor quando houver evidência.",
     "- 'O que precisa de preparação?': priorize compromissos mais próximos que tenham vínculo com lead/deal e contexto relevante disponível; se o contexto não existir, diga que falta informação em vez de inventar briefing.",
+    "- 'Compare X com Y': use primeiro a Base do Comparador Inteligente e compare somente critérios presentes dos dois lados. Separe fato persistido de sinal observado e diga quais critérios faltam para uma conclusão melhor.",
+    "- 'Qual é melhor?': não dê vencedor genérico. Defina o critério pedido (preço, margem, prazo, estoque, condição, sinais etc.) e só conclua quando houver dados equivalentes para os candidatos.",
     "- 'O que estamos monitorando?': use a Watchlist automática e diferencie item configurado, item monitorado sem sinal recente e item com sinal ativo.",
     "- 'O que eu não estou vendo?': use primeiro os Pontos cegos verificáveis. Não transforme falta de evidência em evidência de ausência nem invente concorrente, risco ou evento.",
     "- 'Por que tomamos essa decisão?': combine evidências, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
