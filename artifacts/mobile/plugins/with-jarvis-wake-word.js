@@ -78,7 +78,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.appvendorai.vendorai.MainActivity
 import com.appvendorai.vendorai.R
@@ -86,6 +88,10 @@ import java.io.File
 
 class JarvisWakeWordService : Service() {
   private var manager: PorcupineManager? = null
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private val resumeDetector = Runnable {
+    try { manager?.start() } catch (_: Exception) {}
+  }
 
   override fun onCreate() {
     super.onCreate()
@@ -122,6 +128,9 @@ class JarvisWakeWordService : Service() {
         .setAccessKey(accessKey)
         .setKeywordPath(model.absolutePath)
         .build(this) {
+          try { manager?.stop() } catch (_: Exception) {}
+          mainHandler.removeCallbacks(resumeDetector)
+          mainHandler.postDelayed(resumeDetector, 30000)
           val intent = Intent(Intent.ACTION_VIEW, Uri.parse("vendorai://jarvis?wake=1"), this, MainActivity::class.java)
           intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
           startActivity(intent)
@@ -132,7 +141,13 @@ class JarvisWakeWordService : Service() {
     }
   }
 
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (manager == null) startDetector()
+    return START_STICKY
+  }
+
   override fun onDestroy() {
+    mainHandler.removeCallbacks(resumeDetector)
     try { manager?.stop() } catch (_: Exception) {}
     try { manager?.delete() } catch (_: Exception) {}
     manager = null
