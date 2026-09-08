@@ -11,6 +11,9 @@ const router: IRouter = Router();
 const outcomeSchema = z.object({
   status: z.enum(["open", "resolved", "dismissed"]),
   resultSummary: z.string().trim().min(3).max(5000).nullable().optional(),
+  effectiveness: z.enum(["positive", "neutral", "negative", "inconclusive"]).optional(),
+  actionTaken: z.string().trim().min(3).max(2000).nullable().optional(),
+  financialImpactBrl: z.coerce.number().finite().min(-1_000_000_000_000).max(1_000_000_000_000).nullable().optional(),
 });
 
 const relevanceFeedbackSchema = z.object({
@@ -148,11 +151,45 @@ router.patch("/jarvis/cases/:id/outcome", async (req, res) => {
     });
   }
 
+  if (parsed.data.effectiveness && !parsed.data.actionTaken) {
+    return res.status(422).json({
+      error: "Informe a ação realmente tomada para registrar a eficácia da decisão.",
+    });
+  }
+
+  const [current] = await db
+    .select({ id: jarvisCasesTable.id, evidence: jarvisCasesTable.evidence })
+    .from(jarvisCasesTable)
+    .where(and(
+      eq(jarvisCasesTable.id, caseId),
+      eq(jarvisCasesTable.tenantId, tenantId),
+    ))
+    .limit(1);
+
+  if (!current) return res.status(404).json({ error: "Caso Vendor não encontrado" });
+
+  const evidence = current.evidence && typeof current.evidence === "object"
+    ? { ...current.evidence }
+    : {} as Record<string, unknown>;
+
+  if (status === "open") {
+    delete evidence.jarvisOutcome;
+  } else if (parsed.data.effectiveness) {
+    evidence.jarvisOutcome = {
+      effectiveness: parsed.data.effectiveness,
+      actionTaken: parsed.data.actionTaken ?? null,
+      financialImpactBrl: parsed.data.financialImpactBrl ?? null,
+      actorId: req.user?.id ?? req.user?.sub ?? null,
+      recordedAt: now.toISOString(),
+    };
+  }
+
   const [updated] = await db
     .update(jarvisCasesTable)
     .set({
       status,
       resultSummary,
+      evidence,
       resolvedAt: status === "open" ? null : now,
       updatedAt: now,
     })
@@ -162,7 +199,6 @@ router.patch("/jarvis/cases/:id/outcome", async (req, res) => {
     ))
     .returning();
 
-  if (!updated) return res.status(404).json({ error: "Caso Vendor não encontrado" });
   return res.json(updated);
 });
 
