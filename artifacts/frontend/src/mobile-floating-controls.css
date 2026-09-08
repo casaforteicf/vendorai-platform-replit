@@ -1,9 +1,13 @@
-@media (max-width: 640px) {
-  button[aria-label="Abrir Dev IA"] {
+@media (max-width: 1200px), (pointer: coarse) {
+  button[aria-label="Abrir Dev IA"],
+  button[aria-label="Carregar Dev IA"],
+  button[aria-label="Tentar Dev IA novamente"] {
     width: 48px !important;
     height: 48px !important;
     min-width: 48px !important;
     min-height: 48px !important;
+    max-width: 48px !important;
+    max-height: 48px !important;
     padding: 0 !important;
     gap: 0 !important;
     border-radius: 9999px !important;
@@ -12,13 +16,18 @@
     bottom: 88px !important;
     overflow: hidden !important;
     font-size: 0 !important;
+    line-height: 0 !important;
   }
 
-  button[aria-label="Abrir Dev IA"] > span {
+  button[aria-label="Abrir Dev IA"] > span,
+  button[aria-label="Carregar Dev IA"] > span,
+  button[aria-label="Tentar Dev IA novamente"] > span {
     display: none !important;
   }
 
-  button[aria-label="Abrir Dev IA"] svg {
+  button[aria-label="Abrir Dev IA"] svg,
+  button[aria-label="Carregar Dev IA"] svg,
+  button[aria-label="Tentar Dev IA novamente"] svg {
     width: 20px !important;
     height: 20px !important;
     margin: 0 !important;
