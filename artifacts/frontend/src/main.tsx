@@ -35,6 +35,7 @@ import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
+import "./lib/jarvisArtifactFetchBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
