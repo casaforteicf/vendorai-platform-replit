@@ -7,6 +7,7 @@ import {
   vieSourcesTable,
 } from "@workspace/db";
 import { getActiveCatalogPreview } from "../lib/catalog-readiness.js";
+import { loadJarvisContractDocumentIntelligence } from "./jarvis-contract-document-intelligence.js";
 
 export type JarvisWatchlistKind =
   | "empresa"
@@ -28,7 +29,7 @@ export type JarvisWatchlistItem = {
 export type JarvisBlindSpot = {
   code: string;
   severity: "attention" | "risk";
-  area: "perfil" | "concorrencia" | "fornecedores" | "catalogo" | "geografia" | "fontes" | "aprendizado";
+  area: "perfil" | "concorrencia" | "fornecedores" | "catalogo" | "geografia" | "fontes" | "aprendizado" | "contratos";
   title: string;
   detail: string;
   recommendation: string;
@@ -99,7 +100,7 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
   const now = new Date();
   const recentSince = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [profileRows, suppliers, catalog, recentCases, activeNewsSources, outcomeRows] = await Promise.all([
+  const [profileRows, suppliers, catalog, recentCases, activeNewsSources, outcomeRows, contractIntelligence] = await Promise.all([
     db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db
       .select({ nome: fornecedoresTable.nome })
@@ -137,6 +138,7 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
       ))
       .orderBy(desc(jarvisCasesTable.resolvedAt))
       .limit(20),
+    loadJarvisContractDocumentIntelligence(tenantId),
   ]);
 
   const profile = profileRows[0] ?? null;
@@ -268,6 +270,43 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
     }
   }
 
+  if (contractIntelligence.summary.contracts > 0) {
+    if (contractIntelligence.summary.lifecycleCoveragePercent < 100) {
+      blindSpots.push({
+        code: "contract_lifecycle_coverage_gap",
+        severity: "attention",
+        area: "contratos",
+        title: "Cobertura incompleta do ciclo de vida contratual",
+        detail: `${contractIntelligence.summary.contractsWithLifecycleMetadata}/${contractIntelligence.summary.contracts} contrato(s) possuem metadados estruturados de vigência, renovação, reajuste, obrigação ou risco. Ausência de metadados não significa ausência de obrigação ou risco.`,
+        recommendation: "Completar vencimento, renovação, reajustes, obrigações e cláusulas relevantes nos contratos ativos prioritários.",
+      });
+    }
+
+    const critical = contractIntelligence.alerts.filter((item) => item.severity === "critical").slice(0, 5);
+    if (critical.length) {
+      blindSpots.push({
+        code: "contract_critical_alerts",
+        severity: "risk",
+        area: "contratos",
+        title: `${critical.length} alerta(s) contratual(is) crítico(s) prioritário(s)`,
+        detail: critical.map((item) => `[${item.contractId}] ${item.title}${item.dueAt ? ` (${item.dueAt.toISOString()})` : ""}`).join(" | "),
+        recommendation: "Revisar os contratos indicados antes de renovar, reajustar, assumir compromisso ou concluir que não há pendência.",
+      });
+    }
+
+    const risks = contractIntelligence.alerts.filter((item) => item.severity === "risk").slice(0, 5);
+    if (risks.length) {
+      blindSpots.push({
+        code: "contract_risk_alerts",
+        severity: "attention",
+        area: "contratos",
+        title: `${risks.length} alerta(s) contratual(is) de risco prioritário(s)`,
+        detail: risks.map((item) => `[${item.contractId}] ${item.title}${item.dueAt ? ` (${item.dueAt.toISOString()})` : ""}`).join(" | "),
+        recommendation: "Planejar a ação contratual com base na data e no dado persistido; não inferir cláusulas ou valores ausentes.",
+      });
+    }
+  }
+
   for (const monitoredItem of watchlist) {
     if (monitoredItem.recentCaseIds.length < 2) continue;
     const relatedCases = recentCases.filter((item) => monitoredItem.recentCaseIds.includes(item.id));
@@ -310,6 +349,9 @@ export async function loadJarvisWatchlistIntelligence(tenantId: string) {
       riskBlindSpots: blindSpots.filter((item) => item.severity === "risk").length,
       sourceDivergences: blindSpots.filter((item) => item.code.startsWith("source_divergence:" )).length,
       activeExternalSources: activeNewsSources.length,
+      contractAlerts: contractIntelligence.summary.alerts,
+      contractCriticalAlerts: contractIntelligence.summary.criticalAlerts,
+      contractLifecycleCoveragePercent: contractIntelligence.summary.lifecycleCoveragePercent,
     },
     watchlist,
     blindSpots,
