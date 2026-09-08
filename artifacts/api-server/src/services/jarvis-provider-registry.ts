@@ -1,4 +1,9 @@
 import { resolveJarvisCapability, type JarvisCapabilityFamily } from "./jarvis-capability-profile.js";
+import {
+  formatJarvisWebResearchContext,
+  researchJarvisWeb,
+  shouldUseJarvisWebResearch,
+} from "./jarvis-web-research-provider.js";
 
 export type JarvisProviderStatus = "executed" | "not_applicable" | "needs_configuration" | "failed";
 
@@ -256,7 +261,26 @@ async function executeMarketProvider(text: string): Promise<JarvisProviderExecut
   }
 }
 
-export async function executeJarvisProvider(text: string): Promise<JarvisProviderExecution> {
+async function executeWebResearchProvider(
+  text: string,
+  family: JarvisCapabilityFamily,
+  tenantId?: string,
+): Promise<JarvisProviderExecution> {
+  const result = await researchJarvisWeb({
+    tenantId: tenantId ?? "",
+    family,
+    query: text,
+  });
+  return {
+    status: result.status === "executed" ? "executed" : "failed",
+    family,
+    provider: "openai-web-search",
+    retrievedAt: result.retrievedAt,
+    context: formatJarvisWebResearchContext(result),
+  };
+}
+
+export async function executeJarvisProvider(text: string, tenantId?: string): Promise<JarvisProviderExecution> {
   const capability = resolveJarvisCapability(text);
   const hasMarketAsset =
     detectFiatCurrencies(text).length > 0 ||
@@ -264,6 +288,9 @@ export async function executeJarvisProvider(text: string): Promise<JarvisProvide
     detectStockSymbols(text).length > 0;
 
   if (capability.family === "market_data" || hasMarketAsset) return executeMarketProvider(text);
+  if (shouldUseJarvisWebResearch(capability.family)) {
+    return executeWebResearchProvider(text, capability.family, tenantId);
+  }
 
   return {
     status: "not_applicable",
