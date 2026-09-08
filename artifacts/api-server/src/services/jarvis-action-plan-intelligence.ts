@@ -148,6 +148,18 @@ function buildDefaultPlan(args: {
   return plan;
 }
 
+function releaseReadyDependencies(steps: JarvisPlanStep[]) {
+  const byId = new Map(steps.map((step) => [step.id, step]));
+  return steps.map((step) => {
+    if (step.status !== "WAITING" || step.dependsOn.length === 0) return step;
+    const dependenciesFinished = step.dependsOn.every((dependencyId) => {
+      const dependency = byId.get(dependencyId);
+      return dependency && (dependency.status === "COMPLETED" || dependency.status === "SKIPPED");
+    });
+    return dependenciesFinished ? { ...step, status: "READY" as const } : step;
+  });
+}
+
 export function readJarvisActionPlan(evidence: unknown): JarvisActionPlan | null {
   const record = asRecord(evidence);
   const candidate = record.jarvisActionPlan;
@@ -243,17 +255,18 @@ export async function updateJarvisActionPlanStep(args: {
     completedAt: completed ? now : undefined,
   };
 
-  const steps = [...plan.steps];
-  steps[index] = updatedStep;
+  const changedSteps = [...plan.steps];
+  changedSteps[index] = updatedStep;
+  const steps = releaseReadyDependencies(changedSteps);
 
   const allFinished = steps.every((item) => ["COMPLETED", "SKIPPED"].includes(item.status));
   const anyFailed = steps.some((item) => item.status === "FAILED");
-  const anyRunning = steps.some((item) => item.status === "RUNNING");
+  const anyStarted = steps.some((item) => ["RUNNING", "COMPLETED", "FAILED", "SKIPPED"].includes(item.status));
   const status: JarvisPlanStatus = anyFailed
     ? "FAILED"
     : allFinished
       ? "COMPLETED"
-      : anyRunning
+      : anyStarted
         ? "RUNNING"
         : "PENDING";
 
