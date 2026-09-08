@@ -65,7 +65,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Bind app.appvendorai.com
+      - name: Bind and validate app.appvendorai.com
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -75,18 +75,37 @@ jobs:
           api="https://api.cloudflare.com/client/v4"
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
           domain="app.appvendorai.com"
+          endpoint="$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains/$domain"
 
-          current=$(curl -fsS "${auth[@]}" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains/$domain" || true)
+          current=$(curl -sS "${auth[@]}" "$endpoint")
           if [ "$(jq -r '.success // false' <<<"$current")" != "true" ]; then
-            curl -fsS "${auth[@]}" -X POST               "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains"               --data '{"name":"app.appvendorai.com"}' | jq -e '.success == true'
+            created=$(curl -fsS "${auth[@]}" -X POST \
+              "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vendorai/domains" \
+              --data '{"name":"app.appvendorai.com"}')
+            jq -e '.success == true' <<<"$created" >/dev/null
           fi
 
-          zone_id=$(curl -fsS "${auth[@]}" "$api/zones?name=appvendorai.com" | jq -er '.result[0].id')
-          record_id=$(curl -fsS "${auth[@]}" "$api/zones/$zone_id/dns_records?name=$domain" | jq -r '.result[0].id // empty')
-          payload='{"type":"CNAME","name":"app","content":"vendorai.pages.dev","ttl":1,"proxied":true}'
+          # For zones already managed by Cloudflare, Pages creates the CNAME
+          # automatically after the custom domain is associated. Avoid requiring
+          # separate Zone Read / DNS Edit permissions in this deployment token.
+          for attempt in $(seq 1 12); do
+            status_json=$(curl -fsS "${auth[@]}" "$endpoint")
+            status=$(jq -r '.result.status // "unknown"' <<<"$status_json")
+            validation=$(jq -r '.result.validation_data.status // "unknown"' <<<"$status_json")
+            echo "Cloudflare Pages custom domain: status=$status validation=$validation"
 
-          if [ -n "$record_id" ]; then
-            curl -fsS "${auth[@]}" -X PUT "$api/zones/$zone_id/dns_records/$record_id" --data "$payload" | jq -e '.success == true'
-          else
-            curl -fsS "${auth[@]}" -X POST "$api/zones/$zone_id/dns_records" --data "$payload" | jq -e '.success == true'
-          fi
+            if [ "$status" = "active" ]; then
+              exit 0
+            fi
+            if [ "$status" = "error" ] || [ "$status" = "blocked" ] || [ "$status" = "deactivated" ]; then
+              jq '{success, errors, result: {name: .result.name, status: .result.status, validation_data: .result.validation_data}}' <<<"$status_json"
+              exit 1
+            fi
+
+            if [ "$attempt" -lt 12 ]; then
+              sleep 10
+            fi
+          done
+
+          echo "Custom domain was associated, but is not active yet. Cloudflare may still be provisioning DNS/certificate."
+          exit 1
