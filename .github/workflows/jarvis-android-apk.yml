@@ -2,6 +2,10 @@ name: Build Jarvis Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/jarvis-android-apk.yml
 
 permissions:
   contents: read
@@ -28,13 +32,16 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.26.1 --activate
 
-      - name: Validar secrets
+      - name: Validar EXPO_TOKEN
         shell: bash
         run: |
           test -n "$EXPO_TOKEN" || (echo "Secret EXPO_TOKEN ausente" && exit 1)
-          test -n "$PICOVOICE_ACCESS_KEY" || (echo "Secret PICOVOICE_ACCESS_KEY ausente" && exit 1)
+          if [ -z "$PICOVOICE_ACCESS_KEY" ]; then
+            echo "PICOVOICE_ACCESS_KEY ainda ausente: APK será gerado com voz do JARVIS, mas wake word em segundo plano ficará desativada."
+          fi
 
       - name: Baixar modelo Porcupine pt-BR
+        if: ${{ env.PICOVOICE_ACCESS_KEY != '' }}
         shell: bash
         run: |
           mkdir -p artifacts/mobile/assets/jarvis
@@ -54,6 +61,7 @@ jobs:
         run: eas init --force --non-interactive
 
       - name: Sincronizar Picovoice no EAS
+        if: ${{ env.PICOVOICE_ACCESS_KEY != '' }}
         working-directory: artifacts/mobile
         run: |
           eas env:set preview \
