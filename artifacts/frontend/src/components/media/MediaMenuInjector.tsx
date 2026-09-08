@@ -39,17 +39,6 @@ const MARKETING_MENU_COPY: Record<string, { label: string; title: string }> = {
   },
 };
 
-const MARKETING_ORDER = [
-  "/marketing/plano-de-midia",
-  "/content",
-  "/marketing/instagram",
-  "/content-studio/video",
-  "/midias",
-  "/content-autopilot",
-  "/content?tab=campanhas",
-  "/ads",
-] as const;
-
 const AUTONOMY_LABELS: Record<number, string> = {
   0: "Sugestão",
   1: "Assistido",
@@ -88,20 +77,20 @@ function normalizeMarketingLink(link: HTMLAnchorElement) {
   const copy = MARKETING_MENU_COPY[href];
   if (!copy) return;
 
-  link.setAttribute("aria-label", copy.title);
-  link.setAttribute("title", copy.title);
-  link.dataset.marketingRole = href;
+  if (link.getAttribute("aria-label") !== copy.title) link.setAttribute("aria-label", copy.title);
+  if (link.getAttribute("title") !== copy.title) link.setAttribute("title", copy.title);
+  if (link.dataset.marketingRole !== href) link.dataset.marketingRole = href;
 
   let label = link.querySelector<HTMLSpanElement>(":scope > span");
   if (!label) {
     label = document.createElement("span");
     link.appendChild(label);
   }
-  label.textContent = copy.label;
+  if (label.textContent !== copy.label) label.textContent = copy.label;
 }
 
 function ensureGuide(container: HTMLElement) {
-  let guide = container.querySelector<HTMLElement>(`[${GUIDE_ATTR}]`);
+  let guide = container.querySelector<HTMLElement>(`:scope > [${GUIDE_ATTR}]`);
   if (!guide) {
     guide = document.createElement("div");
     guide.setAttribute(GUIDE_ATTR, "true");
@@ -117,8 +106,8 @@ function ensureGuide(container: HTMLElement) {
         <span>Próxima ação</span><span aria-hidden="true">→</span>
       </a>
     `;
+    container.insertBefore(guide, container.firstElementChild);
   }
-  if (container.firstElementChild !== guide) container.insertBefore(guide, container.firstElementChild);
   return guide;
 }
 
@@ -126,12 +115,14 @@ function applyGuideState(guide: HTMLElement, state: MarketingGuideState) {
   const mode = guide.querySelector<HTMLElement>("[data-guide-mode]");
   const review = guide.querySelector<HTMLElement>("[data-guide-review]");
   const next = guide.querySelector<HTMLAnchorElement>("[data-guide-next]");
-  if (mode) mode.textContent = `Modo: ${state.mode}`;
-  if (review) review.textContent = `Em revisão: ${state.reviewCount}`;
+  const modeText = `Modo: ${state.mode}`;
+  const reviewText = `Em revisão: ${state.reviewCount}`;
+  if (mode && mode.textContent !== modeText) mode.textContent = modeText;
+  if (review && review.textContent !== reviewText) review.textContent = reviewText;
   if (next) {
-    next.href = state.nextHref;
+    if (next.getAttribute("href") !== state.nextHref) next.setAttribute("href", state.nextHref);
     const label = next.querySelector("span");
-    if (label) label.textContent = state.nextLabel;
+    if (label && label.textContent !== state.nextLabel) label.textContent = state.nextLabel;
   }
 }
 
@@ -173,28 +164,37 @@ export function MediaMenuInjector() {
       document.querySelectorAll<HTMLElement>(`[${GUIDE_ATTR}]`).forEach((guide) => applyGuideState(guide, state));
     };
 
-    const ensureMarketingOrder = () => {
+    const ensureMarketingUi = () => {
       document.querySelectorAll<HTMLAnchorElement>('a[href="/content"]').forEach((contentLink) => {
         const container = contentLink.parentElement;
         if (!container) return;
 
-        let mediaLink = container.querySelector<HTMLAnchorElement>(`a[href="${MEDIA_HREF}"]`);
-        const isActive = window.location.pathname === MEDIA_HREF;
+        // Só atua quando o submenu realmente está aberto. Não move elementos
+        // gerenciados pelo React; isso evita o loop de MutationObserver que
+        // impedia o toque em Marketing no menu mobile.
+        Object.keys(MARKETING_MENU_COPY).forEach((href) => {
+          const link = container.querySelector<HTMLAnchorElement>(`:scope > a[href="${href}"]`);
+          if (link) normalizeMarketingLink(link);
+        });
 
+        let mediaLink = container.querySelector<HTMLAnchorElement>(`:scope > a[href="${MEDIA_HREF}"]`);
+        const isActive = window.location.pathname === MEDIA_HREF;
         if (!mediaLink) {
           mediaLink = document.createElement("a");
           mediaLink.href = MEDIA_HREF;
           mediaLink.dataset.mediaCenterMenuEntry = "true";
-
           const icon = contentLink.querySelector("svg")?.cloneNode(true);
           if (icon) mediaLink.appendChild(icon);
           const label = document.createElement("span");
+          label.textContent = MARKETING_MENU_COPY[MEDIA_HREF].label;
           mediaLink.appendChild(label);
-
           mediaLink.addEventListener("click", (event) => {
             event.preventDefault();
             window.location.assign(MEDIA_HREF);
           });
+          const videoLink = container.querySelector<HTMLAnchorElement>(':scope > a[href="/content-studio/video"]');
+          if (videoLink) videoLink.insertAdjacentElement("afterend", mediaLink);
+          else contentLink.insertAdjacentElement("afterend", mediaLink);
         }
 
         mediaLink.className = [
@@ -203,16 +203,7 @@ export function MediaMenuInjector() {
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
         ].join(" ");
-
-        MARKETING_ORDER.forEach((href) => {
-          const link = href === MEDIA_HREF
-            ? mediaLink
-            : container.querySelector<HTMLAnchorElement>(`a[href="${href}"]`);
-          if (!link) return;
-          normalizeMarketingLink(link);
-          container.appendChild(link);
-        });
-
+        normalizeMarketingLink(mediaLink);
         ensureGuide(container);
       });
 
@@ -223,8 +214,8 @@ export function MediaMenuInjector() {
       }
     };
 
-    ensureMarketingOrder();
-    const observer = new MutationObserver(ensureMarketingOrder);
+    ensureMarketingUi();
+    const observer = new MutationObserver(ensureMarketingUi);
     observer.observe(document.body, { childList: true, subtree: true });
     const timer = window.setInterval(() => void refreshGuides(), 60000);
     const autonomyListener = () => void refreshGuides();
