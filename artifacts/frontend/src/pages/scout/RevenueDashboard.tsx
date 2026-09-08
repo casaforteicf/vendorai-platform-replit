@@ -142,18 +142,21 @@ function statusLabel(status: string | null | undefined) {
   return labels[status ?? ""] ?? status ?? "—";
 }
 
-function OpportunityCard({ op, onConfirm, onIgnore, busy }: {
+function OpportunityCard({ op, onConfirm, onIgnore, onExecute, busy }: {
   op: any;
   onConfirm: (id: string) => void;
   onIgnore: (id: string) => void;
+  onExecute: (id: string) => void;
   busy: boolean;
 }) {
   const score = scoreOf(op);
   const confidence = confidenceOf(op);
   const confirmable = op.status === "pendente";
   const legacyApproval = op.status === "pendente_aprovacao";
+  const executable = op.status === "aprovado" && op.pipelineStage !== "em_contato";
   const recommendedWindow = Number(op?.explanation?.inference?.recommendedWindowDays ?? 0);
   const optimalHour = Number(op?.explanation?.inference?.optimalContactHour);
+  const routedAgent = op?.explanation?.orchestration?.agent;
   return (
     <Card className="p-4 md:p-5">
       <div className="flex items-start justify-between gap-3">
@@ -162,6 +165,7 @@ function OpportunityCard({ op, onConfirm, onIgnore, busy }: {
             <Badge variant="outline">{TYPE_LABELS[op.tipo] ?? op.tipo ?? "Oportunidade"}</Badge>
             <Badge variant="secondary">{revenueClass(op.tipo)}</Badge>
             <Badge variant="outline">{priorityLabel(score)} · {Math.round(score)}</Badge>
+            {routedAgent && <Badge variant="secondary" className="gap-1"><Bot className="h-3 w-3" /> {routedAgent}</Badge>}
           </div>
           <div className="mt-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -186,7 +190,7 @@ function OpportunityCard({ op, onConfirm, onIgnore, busy }: {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Próxima melhor ação</p>
-              <p className="mt-1 text-xs leading-relaxed">{nextBestAction(op)}</p>
+              <p className="mt-1 text-xs leading-relaxed">{op?.explanation?.orchestration?.nextBestAction ?? nextBestAction(op)}</p>
             </div>
           </div>
 
@@ -207,6 +211,13 @@ function OpportunityCard({ op, onConfirm, onIgnore, busy }: {
           </Button>
           <Button variant="outline" size="sm" disabled={busy} onClick={() => onIgnore(op.id)}>
             <X className="mr-1.5 h-4 w-4" /> Ignorar
+          </Button>
+        </div>
+      )}
+      {executable && (
+        <div className="mt-4 border-t pt-3">
+          <Button className="w-full" size="sm" disabled={busy} onClick={() => onExecute(op.id)}>
+            <Bot className="mr-1.5 h-4 w-4" /> Executar próxima ação com IA
           </Button>
         </div>
       )}
@@ -267,7 +278,7 @@ export default function RevenueDashboard() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] });
       qc.invalidateQueries({ queryKey: ["scout-dashboard", tenantId] });
-      toast({ title: "Oportunidade confirmada" });
+      toast({ title: "Oportunidade confirmada", description: "Agora você pode executar a próxima ação com o agente indicado pela IA." });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -284,6 +295,21 @@ export default function RevenueDashboard() {
       toast({ title: "Oportunidade ignorada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const executeWithAgent = useMutation({
+    mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/executar-com-agente`, { method: "POST", headers: authHeaders(), body: "{}" }).then(async (r) => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? "Não foi possível executar com IA");
+      return body;
+    }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] });
+      qc.invalidateQueries({ queryKey: ["scout-dashboard", tenantId] });
+      qc.invalidateQueries({ queryKey: ["scout-pipeline", tenantId] });
+      toast({ title: "Agente acionado", description: `${data?.agent ?? "IA"} recebeu o contexto completo e a próxima melhor ação.` });
+    },
+    onError: (e: any) => toast({ title: "Erro ao acionar agente", description: e.message, variant: "destructive" }),
   });
 
   const toggleRule = useMutation({
@@ -327,7 +353,7 @@ export default function RevenueDashboard() {
   }, [openOps]);
 
   const activeRules = rulesArr.filter((r) => r.ativo !== false).length;
-  const busy = confirm.isPending || ignore.isPending;
+  const busy = confirm.isPending || ignore.isPending || executeWithAgent.isPending;
 
   return (
     <div className="space-y-5 pb-24 md:pb-8">
@@ -338,11 +364,11 @@ export default function RevenueDashboard() {
             <h1 className="text-2xl font-bold tracking-tight">Revenue Scout</h1>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Encontra receita nova, recuperável e em risco em toda a carteira — e mostra o que fazer agora.
+            Encontra receita nova, recuperável e em risco em toda a carteira — e aciona o agente certo para executar a próxima ação.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="gap-1.5"><Bot className="h-3.5 w-3.5" /> Análise automática</Badge>
+          <Badge variant="outline" className="gap-1.5"><Bot className="h-3.5 w-3.5" /> Análise + agentes</Badge>
           {dash?.verticalProfile?.label && <Badge variant="secondary">{dash.verticalProfile.label}</Badge>}
           <Button variant="outline" size="sm" onClick={() => { void refetchDash(); void refetchOps(); }}>
             <RefreshCw className="mr-1.5 h-4 w-4" /> Atualizar
@@ -378,7 +404,7 @@ export default function RevenueDashboard() {
 
           <div>
             <div className="mb-2 flex items-center justify-between"><div><p className="font-semibold">Prioridades de agora</p><p className="text-xs text-muted-foreground">Maior combinação de urgência, valor e contexto.</p></div><Button variant="ghost" size="sm" onClick={() => setTab("oportunidades")}>Ver todas</Button></div>
-            <div className="grid gap-3 lg:grid-cols-2">{loadingOps ? [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-52 w-full" />) : (urgentOps.length ? urgentOps : openOps).slice(0, 4).map((op) => <OpportunityCard key={op.id} op={op} onConfirm={(id) => confirm.mutate(id)} onIgnore={(id) => ignore.mutate(id)} busy={busy} />)}</div>
+            <div className="grid gap-3 lg:grid-cols-2">{loadingOps ? [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-52 w-full" />) : (urgentOps.length ? urgentOps : openOps).slice(0, 4).map((op) => <OpportunityCard key={op.id} op={op} onConfirm={(id) => confirm.mutate(id)} onIgnore={(id) => ignore.mutate(id)} onExecute={(id) => executeWithAgent.mutate(id)} busy={busy} />)}</div>
           </div>
 
           {byClient.length > 0 && <Card className="p-4 md:p-5"><div className="mb-3 flex items-center gap-2"><Users className="h-4 w-4" /><p className="font-semibold">Mapa de oportunidades por cliente</p></div><div className="divide-y">{byClient.map((client) => <div key={client.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-0">{client.id !== "sem-cliente" ? <Link href={`/leads/${client.id}`} className="font-medium hover:underline">{client.name}</Link> : <span className="font-medium">{client.name}</span>}<p className="text-xs text-muted-foreground">{client.count} oportunidade(s) · melhor prioridade {Math.round(client.best)}/100</p></div><p className="shrink-0 font-semibold">{client.value > 0 ? money(client.value) : "—"}</p></div>)}</div></Card>}
@@ -386,18 +412,18 @@ export default function RevenueDashboard() {
 
         <TabsContent value="oportunidades" className="mt-4 space-y-3">
           <div className="flex items-center justify-between gap-3"><div><p className="font-semibold">Todas as oportunidades</p><p className="text-xs text-muted-foreground">Um cliente pode ter várias oportunidades ao mesmo tempo; o Scout mantém cada hipótese separada e priorizada.</p></div><Badge variant="outline">{openOps.length} abertas</Badge></div>
-          {loadingOps ? [1,2,3].map((i) => <Skeleton key={i} className="h-52 w-full" />) : openOps.length === 0 ? <Card className="p-8 text-center"><Radar className="mx-auto h-8 w-8 opacity-30" /><p className="mt-2 text-sm text-muted-foreground">Nenhuma oportunidade aberta.</p></Card> : [...openOps].sort((a, b) => scoreOf(b) - scoreOf(a)).map((op) => <OpportunityCard key={op.id} op={op} onConfirm={(id) => confirm.mutate(id)} onIgnore={(id) => ignore.mutate(id)} busy={busy} />)}
+          {loadingOps ? [1,2,3].map((i) => <Skeleton key={i} className="h-52 w-full" />) : openOps.length === 0 ? <Card className="p-8 text-center"><Radar className="mx-auto h-8 w-8 opacity-30" /><p className="mt-2 text-sm text-muted-foreground">Nenhuma oportunidade aberta.</p></Card> : [...openOps].sort((a, b) => scoreOf(b) - scoreOf(a)).map((op) => <OpportunityCard key={op.id} op={op} onConfirm={(id) => confirm.mutate(id)} onIgnore={(id) => ignore.mutate(id)} onExecute={(id) => executeWithAgent.mutate(id)} busy={busy} />)}
         </TabsContent>
 
         <TabsContent value="acoes" className="mt-4 space-y-4">
-          <Card className="p-4 md:p-5"><div className="flex items-start gap-3"><Activity className="mt-0.5 h-5 w-5 text-primary" /><div><p className="font-semibold">Fila operacional</p><p className="text-sm text-muted-foreground">Ações aprovadas, contatos enviados, respostas, negociações e itens que precisam de intervenção humana.</p></div></div></Card>
-          {actionOps.length === 0 ? <Card className="p-8 text-center"><ListChecks className="mx-auto h-8 w-8 opacity-30" /><p className="mt-2 text-sm text-muted-foreground">Nenhuma ação em execução agora.</p></Card> : actionOps.map((op) => <Card key={op.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-semibold truncate">{op.clienteNome ?? "Cliente"}</p><p className="mt-1 text-sm text-muted-foreground line-clamp-2">{nextBestAction(op)}</p></div><Badge variant="outline" className="shrink-0">{statusLabel(op.status)}</Badge></div><div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground"><span>{TYPE_LABELS[op.tipo] ?? op.tipo}</span>{op.canal && <span>· {op.canal}</span>}{op.valorEstimado && <span>· {money(op.valorEstimado)}</span>}</div></Card>)}
+          <Card className="p-4 md:p-5"><div className="flex items-start gap-3"><Activity className="mt-0.5 h-5 w-5 text-primary" /><div><p className="font-semibold">Fila operacional</p><p className="text-sm text-muted-foreground">Ações aprovadas, agentes acionados, contatos enviados, respostas, negociações e itens que precisam de intervenção humana.</p></div></div></Card>
+          {actionOps.length === 0 ? <Card className="p-8 text-center"><ListChecks className="mx-auto h-8 w-8 opacity-30" /><p className="mt-2 text-sm text-muted-foreground">Nenhuma ação em execução agora.</p></Card> : actionOps.map((op) => <Card key={op.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-semibold truncate">{op.clienteNome ?? "Cliente"}</p><p className="mt-1 text-sm text-muted-foreground line-clamp-2">{op?.explanation?.orchestration?.nextBestAction ?? nextBestAction(op)}</p></div><Badge variant="outline" className="shrink-0">{statusLabel(op.status)}</Badge></div><div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground"><span>{TYPE_LABELS[op.tipo] ?? op.tipo}</span>{op.canal && <span>· {op.canal}</span>}{op.valorEstimado && <span>· {money(op.valorEstimado)}</span>}{op?.explanation?.orchestration?.agent && <span>· IA: {op.explanation.orchestration.agent}</span>}</div>{op.status === "aprovado" && op.pipelineStage !== "em_contato" && <Button className="mt-3 w-full" size="sm" disabled={executeWithAgent.isPending} onClick={() => executeWithAgent.mutate(op.id)}><Bot className="mr-1.5 h-4 w-4" /> Executar com IA</Button>}</Card>)}
           <div className="text-center"><Link href="/scout/pipeline"><Button variant="outline" size="sm">Ver fluxo operacional avançado</Button></Link></div>
         </TabsContent>
 
         <TabsContent value="resultados" className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4"><Card className="p-4"><CircleDollarSign className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs text-muted-foreground">Receita convertida</p><p className="mt-1 text-lg font-bold">{money(convertedValue || dash?.receitaGerada)}</p></Card><Card className="p-4"><CheckCircle2 className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs text-muted-foreground">Convertidas</p><p className="mt-1 text-lg font-bold">{converted.length || dash?.convertidas || 0}</p></Card><Card className="p-4"><Gauge className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs text-muted-foreground">Conversão</p><p className="mt-1 text-lg font-bold">{Number(dash?.taxaConversao ?? 0).toFixed(1)}%</p></Card><Card className="p-4"><Target className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs text-muted-foreground">Oportunidades totais</p><p className="mt-1 text-lg font-bold">{dash?.totalOportunidades ?? ops.length}</p></Card></div>
-          <Card className="p-4 md:p-5"><p className="font-semibold">O que o Scout está aprendendo</p><p className="mt-1 text-sm text-muted-foreground">Cada resultado confirmado alimenta o histórico para melhorar prioridade, timing e próxima ação. O objetivo é medir não só volume de oportunidades, mas receita realmente recuperada, protegida e expandida.</p><div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-xl border p-3"><WalletCards className="h-4 w-4" /><p className="mt-2 text-xs text-muted-foreground">Receita nova em aberto</p><p className="font-bold">{money(classes.nova)}</p></div><div className="rounded-xl border p-3"><RefreshCw className="h-4 w-4" /><p className="mt-2 text-xs text-muted-foreground">Receita para recuperar</p><p className="font-bold">{money(classes.recuperada)}</p></div><div className="rounded-xl border p-3"><ShieldCheck className="h-4 w-4" /><p className="mt-2 text-xs text-muted-foreground">Receita para proteger</p><p className="font-bold">{money(classes.protegida)}</p></div></div></Card>
+          <Card className="p-4 md:p-5"><p className="font-semibold">O que o Scout está aprendendo</p><p className="mt-1 text-sm text-muted-foreground">Cada resultado confirmado alimenta o histórico para melhorar prioridade, timing, agente responsável e próxima ação. O objetivo é medir não só volume de oportunidades, mas receita realmente recuperada, protegida e expandida.</p><div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-xl border p-3"><WalletCards className="h-4 w-4" /><p className="mt-2 text-xs text-muted-foreground">Receita nova em aberto</p><p className="font-bold">{money(classes.nova)}</p></div><div className="rounded-xl border p-3"><RefreshCw className="h-4 w-4" /><p className="mt-2 text-xs text-muted-foreground">Receita para recuperar</p><p className="font-bold">{money(classes.recuperada)}</p></div><div className="rounded-xl border p-3"><ShieldCheck className="h-4 w-4" /><p className="mt-2 text-xs text-muted-foreground">Receita para proteger</p><p className="font-bold">{money(classes.protegida)}</p></div></div></Card>
         </TabsContent>
 
         <TabsContent value="config" className="mt-4 space-y-4">
