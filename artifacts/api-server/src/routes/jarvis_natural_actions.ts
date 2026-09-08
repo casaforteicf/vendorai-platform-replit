@@ -189,6 +189,143 @@ router.get("/jarvis/blind-spots", async (req, res) => {
   });
 });
 
+// Modo Diretoria: resumo verificável para leitura executiva semanal/mensal.
+router.get("/jarvis/board-brief", async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const hours = resolveWindowHours(req.query.hours ?? 24 * 7);
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const [cases, tasks] = await Promise.all([
+    db.select({
+      id: jarvisCasesTable.id,
+      category: jarvisCasesTable.category,
+      severity: jarvisCasesTable.severity,
+      title: jarvisCasesTable.title,
+      impact: jarvisCasesTable.impact,
+      confidence: jarvisCasesTable.confidence,
+      status: jarvisCasesTable.status,
+      recommendedAction: jarvisCasesTable.recommendedAction,
+      resultSummary: jarvisCasesTable.resultSummary,
+      updatedAt: jarvisCasesTable.updatedAt,
+      resolvedAt: jarvisCasesTable.resolvedAt,
+    }).from(jarvisCasesTable)
+      .where(and(eq(jarvisCasesTable.tenantId, tenantId), gte(jarvisCasesTable.updatedAt, since)))
+      .orderBy(desc(jarvisCasesTable.updatedAt))
+      .limit(100),
+    db.select({
+      id: agentTasksTable.id,
+      agentName: agentTasksTable.agentName,
+      actionType: agentTasksTable.actionType,
+      status: agentTasksTable.status,
+      createdAt: agentTasksTable.createdAt,
+      executedAt: agentTasksTable.executedAt,
+      updatedAt: agentTasksTable.updatedAt,
+    }).from(agentTasksTable)
+      .where(and(eq(agentTasksTable.tenantId, tenantId), gte(agentTasksTable.updatedAt, since)))
+      .orderBy(desc(agentTasksTable.updatedAt))
+      .limit(100),
+  ]);
+
+  const open = cases.filter((item) => item.status === "open");
+  const resolved = cases.filter((item) => item.status === "resolved");
+  const pendingApprovals = tasks.filter((item) => item.status === "pendente_aprovacao");
+  const failedActions = tasks.filter((item) => item.status === "erro" || item.status === "rejeitado");
+
+  return res.json({
+    generatedAt: new Date(),
+    mode: "diretoria",
+    windowHours: hours,
+    since,
+    summary: {
+      casesObserved: cases.length,
+      openCases: open.length,
+      resolvedCases: resolved.length,
+      risks: cases.filter((item) => item.severity === "risk").length,
+      opportunities: cases.filter((item) => item.severity === "opportunity").length,
+      pendingApprovals: pendingApprovals.length,
+      failedOrRejectedActions: failedActions.length,
+    },
+    priorities: open.slice(0, 12),
+    recentResults: resolved.filter((item) => item.resultSummary).slice(0, 10),
+    pendingApprovals,
+    failedOrRejectedActions: failedActions,
+    guardrail: "Este modo resume apenas fatos persistidos do tenant. Não infere causalidade, resultado financeiro ou autorização ausente.",
+  });
+});
+
+// Modo Auditor: trilha cronológica de sinais, decisões e ações sem reconstruir fatos ausentes.
+router.get("/jarvis/audit-trail", async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const hours = resolveWindowHours(req.query.hours ?? 24 * 30);
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const [cases, tasks] = await Promise.all([
+    db.select({
+      id: jarvisCasesTable.id,
+      source: jarvisCasesTable.source,
+      category: jarvisCasesTable.category,
+      severity: jarvisCasesTable.severity,
+      title: jarvisCasesTable.title,
+      status: jarvisCasesTable.status,
+      recommendedAction: jarvisCasesTable.recommendedAction,
+      resultSummary: jarvisCasesTable.resultSummary,
+      firstDetectedAt: jarvisCasesTable.firstDetectedAt,
+      resolvedAt: jarvisCasesTable.resolvedAt,
+      updatedAt: jarvisCasesTable.updatedAt,
+    }).from(jarvisCasesTable)
+      .where(and(eq(jarvisCasesTable.tenantId, tenantId), gte(jarvisCasesTable.updatedAt, since)))
+      .orderBy(desc(jarvisCasesTable.updatedAt))
+      .limit(200),
+    db.select({
+      id: agentTasksTable.id,
+      agentName: agentTasksTable.agentName,
+      actionType: agentTasksTable.actionType,
+      status: agentTasksTable.status,
+      errorMessage: agentTasksTable.errorMessage,
+      createdAt: agentTasksTable.createdAt,
+      executedAt: agentTasksTable.executedAt,
+      updatedAt: agentTasksTable.updatedAt,
+    }).from(agentTasksTable)
+      .where(and(eq(agentTasksTable.tenantId, tenantId), gte(agentTasksTable.updatedAt, since)))
+      .orderBy(desc(agentTasksTable.updatedAt))
+      .limit(200),
+  ]);
+
+  const events = [
+    ...cases.map((item) => ({
+      type: "jarvis_case" as const,
+      id: item.id,
+      at: item.updatedAt,
+      data: item,
+    })),
+    ...tasks.map((item) => ({
+      type: "agent_task" as const,
+      id: item.id,
+      at: item.updatedAt,
+      data: item,
+    })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime());
+
+  return res.json({
+    generatedAt: new Date(),
+    mode: "auditor",
+    windowHours: hours,
+    since,
+    summary: {
+      caseEvents: cases.length,
+      actionEvents: tasks.length,
+      pendingApprovals: tasks.filter((item) => item.status === "pendente_aprovacao").length,
+      completedActions: tasks.filter((item) => item.status === "concluido").length,
+      failedActions: tasks.filter((item) => item.status === "erro").length,
+      rejectedActions: tasks.filter((item) => item.status === "rejeitado").length,
+    },
+    events,
+    guardrail: "A trilha mostra o que está persistido. Ausência de evento não deve ser apresentada como prova de que uma decisão ou autorização não ocorreu fora do sistema.",
+  });
+});
+
 router.post("/support/chat", async (req, res, next) => {
   const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
   const text = lastUserMessage(req.body);
