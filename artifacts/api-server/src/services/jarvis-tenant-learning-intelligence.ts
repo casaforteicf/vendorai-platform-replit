@@ -2,9 +2,10 @@ import { desc, eq } from "drizzle-orm";
 import { db, jarvisCasesTable } from "@workspace/db";
 import { loadJarvisRelationshipIntelligence } from "./jarvis-relationship-intelligence.js";
 import { loadJarvisTemporalIntelligence } from "./jarvis-temporal-intelligence.js";
+import { loadJarvisAnomalyCorrelationIntelligence } from "./jarvis-anomaly-correlation-intelligence.js";
 
 const MAX_CASES = 80;
-const MAX_INSIGHTS = 12;
+const MAX_INSIGHTS = 16;
 
 type Feedback = {
   relevance?: "relevant" | "irrelevant";
@@ -17,7 +18,7 @@ type Evidence = Record<string, unknown> & {
 
 export type JarvisTenantLearningInsight = {
   key: string;
-  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship" | "temporal";
+  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship" | "temporal" | "correlation";
   title: string;
   detail: string;
   confidence: number;
@@ -38,6 +39,7 @@ export type JarvisTenantLearningIntelligence = {
   relationshipEdges: number;
   temporalDealsConsidered: number;
   temporalAnomalies: number;
+  correlationFindings: number;
   insights: JarvisTenantLearningInsight[];
 };
 
@@ -74,6 +76,14 @@ function temporalLabel(metric: string) {
   return metric;
 }
 
+function correlationDimensionLabel(dimension: string) {
+  if (dimension === "seller") return "vendedor";
+  if (dimension === "city") return "cidade";
+  if (dimension === "product") return "produto";
+  if (dimension === "discount") return "desconto";
+  return dimension;
+}
+
 export async function loadJarvisTenantLearningIntelligence(
   tenantId: string,
 ): Promise<JarvisTenantLearningIntelligence> {
@@ -99,6 +109,7 @@ export async function loadJarvisTenantLearningIntelligence(
     loadJarvisTemporalIntelligence(tenantId),
   ]);
 
+  const correlation = await loadJarvisAnomalyCorrelationIntelligence(tenantId, temporal);
   const resolved = rows.filter((row) => row.status === "resolved");
   const withOutcome = resolved.filter((row) => Boolean(row.resultSummary?.trim()));
   const feedbackRows = rows
@@ -128,6 +139,21 @@ export async function loadJarvisTenantLearningIntelligence(
       detail: `Nos últimos ${temporal.currentWindow.days} dias, ${temporalLabel(anomaly.metric)} ficou ${direction} do período imediatamente anterior em ${change}. ${anomaly.detail} Trate como desvio temporal observado; não atribua causa sem cruzar com vendedor, cidade, produto, desconto, campanha ou outro dado persistido.`,
       confidence: anomaly.confidence,
       sampleSize: Math.max(temporal.coverage.currentClosed, temporal.coverage.previousClosed, 1),
+      caseIds: [],
+    });
+  }
+
+  for (const finding of correlation.findings.slice(0, 6)) {
+    const change = finding.changePoints != null
+      ? `${Math.abs(finding.changePoints).toFixed(1)} p.p.`
+      : `${Math.abs(finding.changePercent ?? 0).toFixed(1)}%`;
+    insights.push({
+      key: `correlation:${finding.dimension}:${finding.key}:${finding.signal}`,
+      kind: "correlation",
+      title: `Anomalia concentrada por ${correlationDimensionLabel(finding.dimension)}: ${finding.label}`,
+      detail: `${finding.detail} Variação observada=${change}; amostra=${finding.sampleSize}; evidência=${finding.evidence}; anomalias relacionadas=${finding.relatedAnomalies.join(", ")}. Use isto para localizar onde a mudança está concentrada. Correlação temporal não prova causa; confirme com dados adicionais antes de atribuir responsabilidade ou efeito financeiro.`,
+      confidence: finding.confidence,
+      sampleSize: finding.sampleSize,
       caseIds: [],
     });
   }
@@ -261,6 +287,7 @@ export async function loadJarvisTenantLearningIntelligence(
     relationshipEdges: relationships.summary.edges,
     temporalDealsConsidered: temporal.coverage.dealsConsidered,
     temporalAnomalies: temporal.anomalies.length,
+    correlationFindings: correlation.findings.length,
     insights: insights.slice(0, MAX_INSIGHTS),
   };
 }
