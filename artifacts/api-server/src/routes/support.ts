@@ -5,6 +5,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { loadJarvisOperationalContext } from "../services/jarvis-operational-context.js";
 import { buildJarvisCapabilityContext, JARVIS_UNIVERSAL_PROFILE } from "../services/jarvis-capability-profile.js";
+import { executeJarvisProvider } from "../services/jarvis-provider-registry.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -282,7 +283,22 @@ router.post("/support/chat", async (req, res) => {
   }
 
   const lastUserText = [...parsed.data.messages].reverse().find((message) => message.role === "user")?.content ?? "";
-  const capabilityContext = buildJarvisCapabilityContext(lastUserText);
+  let providerContext = "";
+  try {
+    const providerExecution = await executeJarvisProvider(lastUserText);
+    providerContext = providerExecution.context;
+    if (providerExecution.status !== "not_applicable") {
+      req.log?.info(
+        { provider: providerExecution.provider, status: providerExecution.status, family: providerExecution.family },
+        "jarvis: provider executado",
+      );
+    }
+  } catch (err) {
+    req.log?.warn({ err }, "jarvis: falha no provider externo (não bloqueia chat)");
+    providerContext = "## Providers reais\nA consulta externa necessária falhou. Não invente dados atuais; informe a indisponibilidade quando ela for relevante para a resposta.";
+  }
+
+  const capabilityContext = [buildJarvisCapabilityContext(lastUserText), providerContext].filter(Boolean).join("\n");
   const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext, capabilityContext);
   setSseHeaders(res);
   let fullResponse = "";
