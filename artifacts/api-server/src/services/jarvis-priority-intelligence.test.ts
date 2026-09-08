@@ -116,4 +116,43 @@ describe("jarvis priority intelligence", () => {
     expect(item.explicitFinancialImpact?.amount).toBe(120000);
     expect(item.historicalFinancialEstimate).toBeNull();
   });
+
+  it("interrompe somente sinal recente, confiável e material", () => {
+    const item = buildJarvisPriorityItem(baseCase({
+      metric: "Exposição atual R$ 120.000,00",
+      confidence: 90,
+      impact: 95,
+    }), now);
+
+    expect(item.priorityScore).toBeGreaterThanOrEqual(85);
+    expect(item.proactivity.level).toBe("interrupt");
+    expect(item.proactivity.interruptEligible).toBe(true);
+  });
+
+  it("leva sinal relevante mas abaixo do limiar urgente para briefing", () => {
+    const item = buildJarvisPriorityItem(baseCase({
+      severity: "attention",
+      confidence: 65,
+      impact: 55,
+      metric: null,
+    }), now);
+
+    expect(item.proactivity.level).toBe("briefing");
+    expect(item.proactivity.interruptEligible).toBe(false);
+  });
+
+  it("mantém sinal antigo e fraco em acompanhamento silencioso", () => {
+    const item = buildJarvisPriorityItem(baseCase({
+      severity: "info",
+      confidence: 35,
+      impact: 20,
+      firstDetectedAt: new Date("2026-08-01T08:00:00.000Z"),
+      lastDetectedAt: new Date("2026-08-02T08:00:00.000Z"),
+      updatedAt: new Date("2026-08-02T08:00:00.000Z"),
+    }), now);
+
+    expect(item.changeType).toBe("ongoing");
+    expect(item.proactivity.level).toBe("silent");
+    expect(item.proactivity.interruptEligible).toBe(false);
+  });
 });
