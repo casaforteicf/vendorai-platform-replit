@@ -5,6 +5,7 @@ import { db, agentConfigsTable, agentTasksTable, jarvisCasesTable, resolveAgentA
 import { executeTaskAction } from "./agent_tasks.js";
 import { resolveJarvisNaturalAction } from "../services/jarvis-natural-action-intent.js";
 import { loadJarvisWatchlistIntelligence } from "../services/jarvis-watchlist-intelligence.js";
+import { loadJarvisPriorityIntelligence } from "../services/jarvis-priority-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -61,6 +62,19 @@ function resolveWindowHours(raw: unknown) {
   if (!Number.isFinite(parsed)) return 24;
   return Math.max(1, Math.min(24 * 30, Math.trunc(parsed)));
 }
+
+// Abertura proativa compartilhada entre web/mobile. Só leitura; não executa ações.
+router.get("/jarvis/proactivity", async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const intelligence = await loadJarvisPriorityIntelligence(tenantId, 8);
+  return res.json({
+    generatedAt: intelligence.generatedAt,
+    summary: intelligence.summary,
+    proactivity: intelligence.proactivity,
+  });
+});
 
 // Leitura determinística para o modo "O que mudou?".
 router.get("/jarvis/changes", async (req, res) => {
