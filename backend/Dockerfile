@@ -27,7 +27,9 @@ RUN corepack enable \
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile \
+# O workspace pode receber um pacote novo antes da regeneração do lockfile.
+# Permitir a atualização durante o build evita derrubar a API por lock drift.
+RUN pnpm install --no-frozen-lockfile \
   && pnpm --filter @workspace/api-server run ci:railway
 
 ENV NODE_ENV=production
