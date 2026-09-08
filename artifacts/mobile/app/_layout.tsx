@@ -7,7 +7,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setBaseUrl } from "@workspace/api-client-react";
-import { Stack, router } from "expo-router";
+import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -33,21 +33,29 @@ const queryClient = new QueryClient({
 
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
+  const segments = useSegments();
 
   useEffect(() => {
-    if (!isLoading) {
-      if (!token) {
-        router.replace("/login");
-      } else {
-        router.replace("/(tabs)");
-      }
+    if (isLoading) return;
+
+    const firstSegment = segments[0];
+    const isLoginRoute = firstSegment === "login";
+
+    if (!token) {
+      if (!isLoginRoute) router.replace("/login");
+      return;
     }
-  }, [token, isLoading]);
+
+    // Preserve deep links such as vendorai://jarvis?wake=1. Only leave the
+    // login screen automatically after a valid persisted session is loaded.
+    if (isLoginRoute) router.replace("/(tabs)");
+  }, [token, isLoading, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" options={{ animation: "fade" }} />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="jarvis" options={{ headerShown: false }} />
       <Stack.Screen
         name="leads/[id]"
         options={{
