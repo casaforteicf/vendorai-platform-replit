@@ -130,6 +130,11 @@ async function start() {
 }
 
 start().catch((err) => {
-  logger.error({ err }, "API startup failed");
+  const startupError =
+    err instanceof Error
+      ? { name: err.name, message: err.message, stack: err.stack }
+      : { message: String(err) };
+  logger.error({ startupError }, "API startup failed");
+  console.error("API startup failed:", startupError);
   process.exit(1);
 });
