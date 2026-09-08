@@ -23,7 +23,9 @@ export type JarvisCapabilityResolution = {
   guidance: string;
 };
 
-const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResolution, "family"> & { patterns: RegExp[] }> = {
+type CapabilityConfig = Omit<JarvisCapabilityResolution, "family"> & { patterns: RegExp[] };
+
+const CAPABILITIES: Record<JarvisCapabilityFamily, CapabilityConfig> = {
   vendorai_business: {
     label: "Negócio e operação VendorAI",
     freshnessRequired: false,
@@ -40,7 +42,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: true,
     transientByDefault: false,
     guidance: "Pode analisar contas, fluxo de caixa, conciliação, duplicidades, custos, formação de preço, margem, comissões e anomalias. Diferencie análise gerencial de auditoria/certificação contábil formal.",
-    patterns: [/financeir/, /conta/, /fluxo de caixa/, /concilia/, /custo/, /pre[cç]o de venda/, /auditor/, /comiss[aã]o/, /despesa/, /receita/],
+    patterns: [/financeir/, /\bcontas?\b/, /fluxo de caixa/, /concilia/, /custo/, /preco de venda/, /auditor/, /comissao/, /despesa/, /receita/],
   },
   tax: {
     label: "Tributário",
@@ -58,7 +60,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: true,
     transientByDefault: false,
     guidance: "Pode calcular landed cost, Incoterms, frete, seguro, câmbio, classificação fiscal, impostos, despacho, armazenagem, lead time, regimes especiais e viabilidade. Use dados atuais quando câmbio, tarifa ou norma fizer diferença.",
-    patterns: [/importa/, /exporta/, /incoterm/, /landed cost/, /desembara[cç]/, /aduan/, /drawback/, /frete internacional/],
+    patterns: [/importa/, /exporta/, /incoterm/, /landed cost/, /desembarac/, /aduan/, /drawback/, /frete internacional/],
   },
   credit: {
     label: "Financiamentos, empréstimos e crédito",
@@ -67,7 +69,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: true,
     transientByDefault: false,
     guidance: "Compare CET, juros, prazo, carência, garantias, amortização, custo total, impacto no caixa e cenários. Nunca afirme contratação, aprovação bancária ou taxa atual sem fonte/integração real; contratar crédito é ação sensível/crítica.",
-    patterns: [/financiamento/, /empr[eé]stimo/, /linha de cr[eé]dito/, /\bcet\b/, /juros/, /car[eê]ncia/, /amortiza/, /capital de giro/],
+    patterns: [/financiamento/, /emprestimo/, /linha de credito/, /\bcet\b/, /juros/, /carencia/, /amortiza/, /capital de giro/],
   },
   legal_regulatory: {
     label: "Jurídico e legislação",
@@ -76,7 +78,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: true,
     transientByDefault: false,
     guidance: "Pode ler contratos, comparar cláusulas, prazos, multas, reajustes, garantias, obrigações e consultar legislação/regulação vigente. Não apresente análise como parecer jurídico formal quando houver interpretação controvertida ou alto impacto.",
-    patterns: [/jur[ií]dic/, /legisla/, /lei\b/, /contrato/, /cl[aá]usula/, /multa/, /rescis[aã]o/, /foro\b/, /regulat/, /procura[cç][aã]o/],
+    patterns: [/juridic/, /legisla/, /\blei\b/, /contrato/, /clausula/, /multa/, /rescisao/, /\bforo\b/, /regulat/, /procuracao/],
   },
   market_data: {
     label: "Mercados, câmbio e cotações",
@@ -85,7 +87,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: false,
     transientByDefault: true,
     guidance: "Para dólar, moedas, ações, índices, cripto, commodities, juros ou Forex, use fonte atual quando disponível e informe horário/fonte. Nunca invente cotação atual. Educação e análise não equivalem a recomendação financeira personalizada garantida.",
-    patterns: [/d[oó]lar/, /c[aâ]mbio/, /forex/, /bitcoin|btc|ethereum|cripto/, /ibovespa|bovespa/, /a[cç][aã]o|a[cç][oõ]es/, /commodity|commodities/, /mercado financeiro/],
+    patterns: [/dolar/, /cambio/, /forex/, /bitcoin|btc|ethereum|cripto/, /ibovespa|bovespa/, /acao|acoes/, /commodity|commodities/, /mercado financeiro/],
   },
   documents_office: {
     label: "Documentos, planilhas e escritório",
@@ -94,7 +96,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: false,
     transientByDefault: true,
     guidance: "Pode estruturar informações de PDF, Word, imagens, fotos, tabelas e documentos; gerar/resumir/comparar documentos, planilhas, apresentações e conversões quando a ferramenta correspondente estiver disponível. Não diga que criou/converteu um arquivo se nenhum artefato real foi produzido.",
-    patterns: [/pdf/, /word/, /excel/, /planilha/, /documento/, /arquivo/, /foto/, /imagem/, /ppt|powerpoint|apresenta[cç][aã]o/, /converter|converta/],
+    patterns: [/pdf/, /word/, /excel/, /planilha/, /documento/, /arquivo/, /foto/, /imagem/, /ppt|powerpoint|apresentacao/, /converter|converta/],
   },
   creation: {
     label: "Criação de conteúdo e materiais",
@@ -103,7 +105,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: false,
     transientByDefault: true,
     guidance: "Pode criar textos, copy, roteiros, campanhas, imagens, vídeos, apresentações, relatórios, sites/LPs e materiais comerciais usando as capacidades realmente conectadas. Diferencie rascunho de publicação real.",
-    patterns: [/crie|criar|gere|gerar/, /copy/, /roteiro/, /imagem/, /v[ií]deo/, /landing page|\blp\b/, /site/, /material comercial/, /relat[oó]rio/],
+    patterns: [/crie|criar|gere|gerar/, /copy/, /roteiro/, /imagem/, /video/, /landing page|\blp\b/, /site/, /material comercial/, /relatorio/],
   },
   growth_performance: {
     label: "Estratégia, marketing, vendas e alta performance",
@@ -112,7 +114,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: false,
     transientByDefault: false,
     guidance: "Atue como estrategista de marketing/vendas e coach de alta performance com base em metas, funil, resultados e contexto reais. Evite motivação vazia: transforme diagnóstico em prioridade, rotina, preparação, treinamento e próximo passo mensurável.",
-    patterns: [/estrat[eé]gia/, /marketing|mkt/, /coach|coaching/, /alta performance/, /motiva/, /meta/, /performance/, /treinamento/, /reuni[aã]o com cliente/, /obje[cç][aã]o/],
+    patterns: [/estrategia/, /marketing|mkt/, /coach|coaching/, /alta performance/, /motiva/, /meta/, /performance/, /treinamento/, /reuniao com cliente/, /objecao/],
   },
   recommendations_lifestyle: {
     label: "Recomendações de livros, filmes, sites e referências",
@@ -121,7 +123,7 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
     professionalReview: false,
     transientByDefault: true,
     guidance: "Pode sugerir livros, filmes, séries, sites, cursos, podcasts e referências conforme objetivo e preferência. Quando disponibilidade, catálogo, preço ou novidade forem importantes, consulte fonte atual antes de afirmar.",
-    patterns: [/livro/, /filme/, /s[eé]rie/, /site/, /curso/, /podcast/, /recomenda/, /indica[cç][aã]o/, /refer[eê]ncia/],
+    patterns: [/livro/, /filme/, /serie/, /site/, /curso/, /podcast/, /recomenda/, /indicacao/, /referencia/],
   },
   external_action: {
     label: "Ações em serviços externos",
@@ -143,21 +145,41 @@ const CAPABILITIES: Record<JarvisCapabilityFamily, Omit<JarvisCapabilityResoluti
   },
 };
 
+const TIE_BREAK_PRIORITY: JarvisCapabilityFamily[] = [
+  "tax",
+  "trade",
+  "credit",
+  "legal_regulatory",
+  "market_data",
+  "external_action",
+  "documents_office",
+  "growth_performance",
+  "recommendations_lifestyle",
+  "finance_accounting",
+  "creation",
+  "vendorai_business",
+];
+
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 export function resolveJarvisCapability(text: string): JarvisCapabilityResolution {
   const normalized = normalize(text);
-  for (const [family, config] of Object.entries(CAPABILITIES) as [JarvisCapabilityFamily, typeof CAPABILITIES[JarvisCapabilityFamily]][]) {
-    if (family === "general_knowledge") continue;
-    if (config.patterns.some((pattern) => pattern.test(normalized))) {
-      const { patterns: _patterns, ...resolution } = config;
-      return { family, ...resolution };
+  let bestFamily: JarvisCapabilityFamily = "general_knowledge";
+  let bestScore = 0;
+
+  for (const family of TIE_BREAK_PRIORITY) {
+    const config = CAPABILITIES[family];
+    const score = config.patterns.reduce((total, pattern) => total + (pattern.test(normalized) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestFamily = family;
     }
   }
-  const { patterns: _patterns, ...resolution } = CAPABILITIES.general_knowledge;
-  return { family: "general_knowledge", ...resolution };
+
+  const { patterns: _patterns, ...resolution } = CAPABILITIES[bestFamily];
+  return { family: bestFamily, ...resolution };
 }
 
 export function buildJarvisCapabilityContext(text: string): string {
