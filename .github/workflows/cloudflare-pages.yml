@@ -1,4 +1,5 @@
 name: Cloudflare Pages
+# Production deploy: Pages frontend; Railway backend remains unchanged.
 
 on:
   push:
