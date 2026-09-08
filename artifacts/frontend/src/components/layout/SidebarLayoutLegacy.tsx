@@ -1056,7 +1056,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         {(() => {
           const semRolagemPropria = location === "/conversations" || location === "/deals" || location === "/negocios";
           return (
-            <main className={`vendor-scrollbar flex-1 ${semRolagemPropria ? "overflow-hidden" : "overflow-y-auto"}`}>
+            <main className={`vendor-scrollbar min-h-0 flex-1 touch-pan-y overscroll-y-contain ${semRolagemPropria ? "overflow-hidden" : "overflow-y-auto"}`}>
               <div className={semRolagemPropria ? "h-full" : "vendor-page-canvas"}>{children}</div>
             </main>
           );
