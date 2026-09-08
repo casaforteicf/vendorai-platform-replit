@@ -5,8 +5,11 @@ import {
   agentConfigsTable,
   agentTasksTable,
   agendasTable,
+  agendamentosTable,
   leadsTable,
 } from "@workspace/db";
+import type { AgentTask } from "@workspace/db";
+import { createGoogleEvent } from "../lib/google-calendar.js";
 import { parseJarvisCalendarIntent, calendarIntentMissingFields } from "../services/jarvis-calendar-action-intent.js";
 
 const router: IRouter = Router();
@@ -35,10 +38,259 @@ function writeSse(res: any, content: string, extra: Record<string, unknown> = {}
   res.end();
 }
 
+function isCalendarApprovalText(text: string) {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const approval = /^(aprova|aprove|aprovar|confirmo|confirmar|pode aprovar)(\b|[,.!?])/.test(normalized);
+  return approval && /\b(agenda|agendamento|reuniao|meet|horario)\b/.test(normalized);
+}
+
+function isCalendarRejectionText(text: string) {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const rejection = /^(rejeita|rejeite|rejeitar|recusa|recuse|cancelar|cancela|nao aprova|nao aprove)(\b|[,.!?])/.test(normalized);
+  return rejection && /\b(agenda|agendamento|reuniao|meet|horario)\b/.test(normalized);
+}
+
+async function executeCalendarTask(task: AgentTask, log: any): Promise<AgentTask> {
+  const payload = task.payload && typeof task.payload === "object"
+    ? task.payload as Record<string, unknown>
+    : {};
+
+  const title = typeof payload.titulo === "string" ? payload.titulo.trim() : "";
+  const start = typeof payload.dataHoraInicio === "string" ? new Date(payload.dataHoraInicio) : null;
+  const end = typeof payload.dataHoraFim === "string" ? new Date(payload.dataHoraFim) : null;
+  const agendaId = typeof payload.agendaId === "string" && payload.agendaId ? payload.agendaId : null;
+  const modalidade = typeof payload.modalidade === "string" ? payload.modalidade : "meet";
+  const gerarMeet = payload.gerarMeet === true;
+  const local = typeof payload.local === "string" ? payload.local : null;
+  const observacoes = typeof payload.observacoes === "string" ? payload.observacoes : null;
+
+  try {
+    if (!title || !start || !end || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      throw new Error("Payload de agendamento inválido");
+    }
+    if (start <= new Date()) throw new Error("O horário do agendamento já passou");
+
+    const [lead] = await db
+      .select({ id: leadsTable.id, nome: leadsTable.nome, email: leadsTable.email })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, task.leadId), eq(leadsTable.tenantId, task.tenantId)))
+      .limit(1);
+    if (!lead) throw new Error("Lead não encontrado neste tenant");
+
+    let validAgendaId: string | null = null;
+    if (agendaId) {
+      const [agenda] = await db
+        .select({ id: agendasTable.id })
+        .from(agendasTable)
+        .where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, task.tenantId)))
+        .limit(1);
+      validAgendaId = agenda?.id ?? null;
+    }
+
+    const [agendamento] = await db
+      .insert(agendamentosTable)
+      .values({
+        tenantId: task.tenantId,
+        agendaId: validAgendaId,
+        leadId: task.leadId,
+        tipo: "reuniao",
+        modalidade,
+        titulo: title,
+        dataHoraInicio: start,
+        dataHoraFim: end,
+        local,
+        observacoes,
+        gerarMeet,
+        criadoPor: "agente_ia",
+        status: "agendado",
+      })
+      .returning();
+
+    if (!agendamento) throw new Error("Não foi possível criar o agendamento");
+
+    let googleEventId: string | null = null;
+    let meetLink: string | null = null;
+    if (validAgendaId) {
+      const sync = await createGoogleEvent(
+        validAgendaId,
+        {
+          id: agendamento.id,
+          tenantId: task.tenantId,
+          titulo: agendamento.titulo,
+          dataHoraInicio: agendamento.dataHoraInicio,
+          dataHoraFim: agendamento.dataHoraFim,
+          observacoes: agendamento.observacoes,
+          local: agendamento.local,
+          gerarMeet: agendamento.gerarMeet,
+        },
+        lead.nome,
+        lead.email ?? undefined,
+        gerarMeet,
+      );
+      googleEventId = sync.googleEventId;
+      meetLink = sync.meetLink;
+
+      if (googleEventId || meetLink) {
+        await db
+          .update(agendamentosTable)
+          .set({ googleEventId, meetLink, updatedAt: new Date() })
+          .where(and(eq(agendamentosTable.id, agendamento.id), eq(agendamentosTable.tenantId, task.tenantId)));
+      }
+    }
+
+    const [finished] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "concluido",
+        result: {
+          agendamentoId: agendamento.id,
+          googleEventId,
+          meetLink,
+          title,
+          start: start.toISOString(),
+          end: end.toISOString(),
+        },
+        executedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(agentTasksTable.id, task.id), eq(agentTasksTable.tenantId, task.tenantId)))
+      .returning();
+
+    log?.info?.({ taskId: task.id, agendamentoId: agendamento.id, googleEventId, meetLink }, "jarvis: agendamento externo concluído");
+    return finished;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Erro ao criar agendamento";
+    const [failed] = await db
+      .update(agentTasksTable)
+      .set({ status: "erro", errorMessage, updatedAt: new Date() })
+      .where(and(eq(agentTasksTable.id, task.id), eq(agentTasksTable.tenantId, task.tenantId)))
+      .returning();
+    log?.error?.({ err, taskId: task.id }, "jarvis: agendamento externo falhou");
+    return failed;
+  }
+}
+
+async function approveCalendarTask(tenantId: string, taskId: string, log: any) {
+  const [task] = await db
+    .select()
+    .from(agentTasksTable)
+    .where(and(eq(agentTasksTable.id, taskId), eq(agentTasksTable.tenantId, tenantId)))
+    .limit(1);
+  if (!task || task.actionType !== "criar_agendamento") return null;
+  if (task.status !== "pendente_aprovacao" && task.status !== "aprovado") return task;
+
+  const [executing] = await db
+    .update(agentTasksTable)
+    .set({ status: "executando", executedAt: new Date(), updatedAt: new Date() })
+    .where(and(
+      eq(agentTasksTable.id, task.id),
+      eq(agentTasksTable.tenantId, tenantId),
+      task.status === "aprovado"
+        ? eq(agentTasksTable.status, "aprovado")
+        : eq(agentTasksTable.status, "pendente_aprovacao"),
+    ))
+    .returning();
+  if (!executing) return null;
+  return executeCalendarTask(executing, log);
+}
+
+// Intercepta somente tarefas externas de agenda e deixa os demais tipos seguirem
+// para o executor padrão de agent_tasks.
+router.post("/tenants/:tenantId/agent-tasks/:id/approve", async (req, res, next) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const taskId = String(req.params.id ?? "");
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return next();
+
+  const [task] = await db
+    .select({ actionType: agentTasksTable.actionType, status: agentTasksTable.status })
+    .from(agentTasksTable)
+    .where(and(eq(agentTasksTable.id, taskId), eq(agentTasksTable.tenantId, tenantId)))
+    .limit(1);
+  if (!task || task.actionType !== "criar_agendamento") return next();
+  if (task.status !== "pendente_aprovacao") return res.status(422).json({ error: `Task cannot be approved from status "${task.status}"` });
+
+  const finished = await approveCalendarTask(tenantId, taskId, req.log);
+  if (!finished) return res.status(409).json({ error: "Task state changed before approval could be applied" });
+  return res.json({ ...finished, autonomyLevel: "human_approved" });
+});
+
+router.post("/tenants/:tenantId/agent-tasks/:id/execute", async (req, res, next) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const taskId = String(req.params.id ?? "");
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return next();
+
+  const [task] = await db
+    .select({ actionType: agentTasksTable.actionType, status: agentTasksTable.status })
+    .from(agentTasksTable)
+    .where(and(eq(agentTasksTable.id, taskId), eq(agentTasksTable.tenantId, tenantId)))
+    .limit(1);
+  if (!task || task.actionType !== "criar_agendamento") return next();
+  if (task.status !== "aprovado") return res.status(422).json({ error: `Task cannot be executed from status "${task.status}"` });
+
+  const finished = await approveCalendarTask(tenantId, taskId, req.log);
+  if (!finished) return res.status(409).json({ error: "Task state changed before execution could be applied" });
+  return res.json(finished);
+});
+
 router.post("/support/chat", async (req, res, next) => {
   const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
   const text = lastUserMessage(req.body);
   if (!tenantId || !text) return next();
+
+  if (isCalendarApprovalText(text) || isCalendarRejectionText(text)) {
+    const pending = await db
+      .select({ id: agentTasksTable.id, payload: agentTasksTable.payload, status: agentTasksTable.status })
+      .from(agentTasksTable)
+      .where(and(
+        eq(agentTasksTable.tenantId, tenantId),
+        eq(agentTasksTable.actionType, "criar_agendamento"),
+        eq(agentTasksTable.status, "pendente_aprovacao"),
+      ))
+      .orderBy(desc(agentTasksTable.createdAt))
+      .limit(5);
+
+    if (!pending.length) {
+      writeSse(res, "Não há nenhum agendamento aguardando sua aprovação.");
+      return;
+    }
+    if (pending.length > 1) {
+      const options = pending.map((task, index) => {
+        const payload = task.payload && typeof task.payload === "object" ? task.payload as Record<string, unknown> : {};
+        const title = typeof payload.titulo === "string" ? payload.titulo : "Agendamento";
+        const start = typeof payload.dataHoraInicio === "string" ? new Date(payload.dataHoraInicio) : null;
+        const when = start && Number.isFinite(start.getTime())
+          ? `${start.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} ${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`
+          : "horário não identificado";
+        return `${index + 1}. ${title} — ${when}`;
+      }).join("\n");
+      writeSse(res, `Há mais de um agendamento aguardando aprovação. Use a fila de aprovações para escolher qual deles:\n${options}`);
+      return;
+    }
+
+    if (isCalendarRejectionText(text)) {
+      const [rejected] = await db
+        .update(agentTasksTable)
+        .set({ status: "rejeitado", updatedAt: new Date() })
+        .where(and(eq(agentTasksTable.id, pending[0]!.id), eq(agentTasksTable.tenantId, tenantId), eq(agentTasksTable.status, "pendente_aprovacao")))
+        .returning();
+      writeSse(res, rejected ? "Agendamento rejeitado. Nenhum evento foi criado." : "O estado do agendamento mudou antes da rejeição.", { agentTaskId: pending[0]!.id });
+      return;
+    }
+
+    const finished = await approveCalendarTask(tenantId, pending[0]!.id, req.log);
+    if (!finished) {
+      writeSse(res, "O estado do agendamento mudou antes da aprovação. Confira a fila de aprovações.");
+      return;
+    }
+    if (finished.status === "concluido") {
+      const result = finished.result && typeof finished.result === "object" ? finished.result as Record<string, unknown> : {};
+      const meetLink = typeof result.meetLink === "string" && result.meetLink ? ` Meet: ${result.meetLink}` : "";
+      writeSse(res, `Agendamento aprovado e criado com sucesso.${meetLink}`, { agentTaskId: finished.id, status: finished.status });
+    } else {
+      writeSse(res, `Não consegui concluir o agendamento: ${finished.errorMessage ?? "erro de execução"}.`, { agentTaskId: finished.id, status: finished.status });
+    }
+    return;
+  }
 
   let intent;
   try {
@@ -67,7 +319,7 @@ router.post("/support/chat", async (req, res, next) => {
   }
 
   const leadQuery = intent.leadQuery!.trim();
-  const like = `%${leadQuery.replace(/[%_]/g, "")} %`.replace(" %", "%");
+  const like = `%${leadQuery.replace(/[%_]/g, "")}%`;
   const leads = await db
     .select({ id: leadsTable.id, nome: leadsTable.nome, email: leadsTable.email, telefone: leadsTable.telefone })
     .from(leadsTable)
