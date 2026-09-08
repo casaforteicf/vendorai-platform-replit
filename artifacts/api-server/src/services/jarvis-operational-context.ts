@@ -7,7 +7,7 @@ import { loadJarvisScenarioIntelligence } from "./jarvis-scenario-intelligence.j
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
-const MAX_OUTCOMES = 6;
+const MAX_OUTCOMES = 10;
 const MAX_UPCOMING_APPOINTMENTS = 8;
 
 function compact(value: string | null | undefined, max = 420) {
@@ -84,10 +84,20 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     db
       .select({
         id: jarvisCasesTable.id,
+        signalKey: jarvisCasesTable.signalKey,
         title: jarvisCasesTable.title,
+        detail: jarvisCasesTable.detail,
         category: jarvisCasesTable.category,
         severity: jarvisCasesTable.severity,
+        metric: jarvisCasesTable.metric,
+        confidence: jarvisCasesTable.confidence,
+        impact: jarvisCasesTable.impact,
+        source: jarvisCasesTable.source,
+        evidence: jarvisCasesTable.evidence,
+        recommendedAction: jarvisCasesTable.recommendedAction,
         resultSummary: jarvisCasesTable.resultSummary,
+        firstDetectedAt: jarvisCasesTable.firstDetectedAt,
+        lastDetectedAt: jarvisCasesTable.lastDetectedAt,
         resolvedAt: jarvisCasesTable.resolvedAt,
         updatedAt: jarvisCasesTable.updatedAt,
       })
@@ -131,6 +141,10 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const activeUpcomingAppointments = upcomingAppointments
     .filter((item) => item.status === "agendado" || item.status === "confirmado")
     .slice(0, MAX_UPCOMING_APPOINTMENTS);
+  const outcomesWithResult = outcomes.filter((item) => Boolean(item.resultSummary?.trim()));
+  const outcomeCoveragePercent = outcomes.length
+    ? Math.round((outcomesWithResult.length / outcomes.length) * 100)
+    : 0;
   const hasWatchlistContext = watchlistIntelligence.watchlist.length > 0 || watchlistIntelligence.blindSpots.length > 0;
   const hasPriorityContext = priorityIntelligence.items.length > 0;
   const hasAgendaContext = activeUpcomingAppointments.length > 0;
@@ -310,13 +324,31 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   }
 
   if (outcomes.length) {
-    lines.push("", `### Memória recente de decisões e resultados (${outcomes.length})`);
+    lines.push("", `### Biblioteca de Decisões — casos encerrados (${outcomes.length})`);
+    lines.push(`Cobertura de resultado registrado nesta amostra: ${outcomesWithResult.length}/${outcomes.length} (${outcomeCoveragePercent}%).`);
     for (const item of outcomes) {
-      lines.push(
-        `- [${item.id}] ${compact(item.title, 180)} | categoria=${item.category} | gravidade=${item.severity} | resolvido=${item.resolvedAt?.toISOString() ?? item.updatedAt.toISOString()}`,
-      );
-      if (item.resultSummary) lines.push(`  Resultado registrado: ${compact(item.resultSummary, 360)}`);
+      const metadata = [
+        `categoria=${item.category}`,
+        `gravidade=${item.severity}`,
+        item.confidence == null ? null : `confiança_original=${item.confidence}%`,
+        item.impact == null ? null : `impacto_original=${item.impact}`,
+        item.metric ? `métrica_original=${compact(item.metric, 120)}` : null,
+        `fonte=${item.source}`,
+        `primeira_detecção=${item.firstDetectedAt.toISOString()}`,
+        `última_detecção=${item.lastDetectedAt.toISOString()}`,
+        `resolvido=${item.resolvedAt?.toISOString() ?? item.updatedAt.toISOString()}`,
+      ].filter(Boolean).join(" | ");
+      lines.push(`- [${item.id}] ${compact(item.title, 180)} — ${metadata}`);
+      if (item.detail) lines.push(`  Sinal/evidência contextual: ${compact(item.detail, 300)}`);
+      if (item.recommendedAction) lines.push(`  Decisão/recomendação registrada: ${compact(item.recommendedAction, 300)}`);
+      if (item.resultSummary) {
+        lines.push(`  Resultado observado registrado: ${compact(item.resultSummary, 420)}`);
+        lines.push("  Aprendizado permitido: usar este resultado como histórico do tenant, sem assumir causalidade entre recomendação e resultado quando ela não estiver explicitamente documentada.");
+      } else {
+        lines.push("  Resultado observado: não registrado; este caso não deve ser usado para afirmar o que funcionou ou falhou.");
+      }
     }
+    lines.push("A Biblioteca de Decisões é tenant-scoped e deriva dos próprios Casos Vendor encerrados. Ela não cria uma memória paralela e não compartilha aprendizado entre tenants. Casos sem resultado documentado contam como lacuna de aprendizado, não como sucesso ou fracasso.");
   }
 
   if (approvals.length) {
@@ -343,8 +375,9 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "- 'Qual é melhor?': não dê vencedor genérico. Defina o critério pedido (preço, margem, prazo, estoque, condição, sinais etc.) e só conclua quando houver dados equivalentes para os candidatos.",
     "- 'O que estamos monitorando?': use a Watchlist automática e diferencie item configurado, item monitorado sem sinal recente e item com sinal ativo.",
     "- 'O que eu não estou vendo?': use primeiro os Pontos cegos verificáveis. Não transforme falta de evidência em evidência de ausência nem invente concorrente, risco ou evento.",
-    "- 'Por que tomamos essa decisão?': combine evidências, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
-    "- 'O que funcionou?': use somente resultados registrados; não atribua causalidade sem evidência.",
+    "- 'Por que tomamos essa decisão?': use a Biblioteca de Decisões e combine sinal/evidência, recomendação original e resultado registrado; se algum elo não estiver disponível, diga exatamente o que falta.",
+    "- 'O que funcionou?': use somente casos da Biblioteca com resultado observado registrado. Não atribua causalidade à recomendação sem documentação explícita.",
+    "- 'O que aprendemos?': sintetize padrões apenas a partir de resultados registrados deste tenant. Se a amostra for pequena, incompleta ou heterogênea, sinalize a limitação em vez de generalizar.",
     "- 'Tem algo para aprovar?': use somente a lista de aprovações pendentes acima.",
   );
 
