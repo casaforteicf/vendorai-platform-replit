@@ -161,6 +161,32 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, cenários, resultados anteriores, monitoramento, aprendizado acumulado e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
 
+  if (priorityIntelligence.proactivity.interruptNow.length) {
+    lines.push("", `### JARVIS — interromper agora (${priorityIntelligence.proactivity.interruptNow.length})`);
+    lines.push("Estes são os únicos sinais desta leitura elegíveis para interromper o usuário agora. Ao responder uma pergunta ampla sobre o negócio, status, prioridades ou 'tem algo importante?', apresente estes itens antes do restante e limite-se a eles antes de oferecer detalhes adicionais.");
+    for (const item of priorityIntelligence.proactivity.interruptNow) {
+      const explicit = item.explicitFinancialImpact
+        ? ` | financeiro_explícito=R$ ${item.explicitFinancialImpact.amount.toFixed(2)}`
+        : "";
+      const historical = item.historicalFinancialEstimate
+        ? ` | estimativa_histórica_mediana=R$ ${item.historicalFinancialEstimate.medianAmount.toFixed(2)} | amostra_histórica=${item.historicalFinancialEstimate.sampleSize} | confiança_histórica=${item.historicalFinancialEstimate.confidence}%`
+        : "";
+      lines.push(`- [${item.id}] prioridade=${item.priorityScore}/100 | ${compact(item.title, 180)} | gravidade=${item.severity} | confiança=${item.confidence ?? "desconhecida"} | impacto=${item.impact ?? "desconhecido"}${explicit}${historical}`);
+      lines.push(`  Motivo para interromper: ${item.proactivity.reason}`);
+      if (item.recommendedAction) lines.push(`  Próxima ação recomendada: ${compact(item.recommendedAction, 260)}`);
+    }
+    lines.push("Interromper significa chamar atenção, não executar. Estimativa histórica deve ser identificada como precedente do tenant, nunca como valor atual garantido.");
+  }
+
+  if (priorityIntelligence.proactivity.briefing.length) {
+    lines.push("", `### JARVIS — próximo briefing (${priorityIntelligence.proactivity.briefing.length})`);
+    for (const item of priorityIntelligence.proactivity.briefing) {
+      lines.push(`- [${item.id}] prioridade=${item.priorityScore}/100 | ${compact(item.title, 180)} | mudança=${item.changeType} | gravidade=${item.severity} | confiança=${item.confidence ?? "desconhecida"}`);
+      if (item.recommendedAction) lines.push(`  Ação recomendada: ${compact(item.recommendedAction, 260)}`);
+    }
+    lines.push(`Sinais silenciosos nesta leitura=${priorityIntelligence.proactivity.silentCount}. Não puxe esses itens espontaneamente para a conversa; use-os apenas se o usuário perguntar especificamente, se subirem de nível ou se forem necessários para explicar um sinal mais importante.`);
+  }
+
   if (recentChanges.length) {
     lines.push("", `### O que mudou nas últimas 24h (${recentChanges.length})`);
     for (const item of recentChanges) {
@@ -185,13 +211,16 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
       const financial = item.explicitFinancialImpact
         ? ` | impacto_financeiro_explícito=R$ ${item.explicitFinancialImpact.amount.toFixed(2)}`
         : " | impacto_financeiro_explícito=desconhecido";
+      const historical = item.historicalFinancialEstimate
+        ? ` | estimativa_financeira_histórica=R$ ${item.historicalFinancialEstimate.medianAmount.toFixed(2)} | amostra=${item.historicalFinancialEstimate.sampleSize} | confiança_histórica=${item.historicalFinancialEstimate.confidence}%`
+        : "";
       lines.push(
-        `- [${item.id}] prioridade=${item.priorityScore}/100 | mudança=${item.changeType} | ${compact(item.title, 180)} | gravidade=${item.severity} | impacto=${item.impact ?? "desconhecido"} | confiança=${item.confidence ?? "desconhecida"}${financial}`,
+        `- [${item.id}] prioridade=${item.priorityScore}/100 | atenção=${item.proactivity.level} | mudança=${item.changeType} | ${compact(item.title, 180)} | gravidade=${item.severity} | impacto=${item.impact ?? "desconhecido"} | confiança=${item.confidence ?? "desconhecida"}${financial}${historical}`,
       );
       if (item.metric) lines.push(`  Métrica informada: ${compact(item.metric, 180)}`);
       if (item.recommendedAction) lines.push(`  Ação recomendada: ${compact(item.recommendedAction, 260)}`);
     }
-    lines.push("Prioridade é um ranking determinístico de gravidade, impacto, confiança, recência e existência de valor financeiro explícito. Valor financeiro só pode ser citado quando vier explicitamente da métrica persistida; caso contrário, trate como desconhecido.");
+    lines.push("Prioridade é um ranking determinístico de gravidade, impacto, confiança, recência e valor financeiro. Impacto financeiro explícito é fato persistido; estimativa financeira histórica é apenas precedente do próprio tenant com amostra suficiente. Nunca apresente estimativa histórica como valor atual confirmado.");
   }
 
   if (activeUpcomingAppointments.length) {
@@ -378,9 +407,10 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   lines.push(
     "",
     "### Como interpretar",
+    "- Antes de qualquer resumo amplo do negócio, status ou prioridades: use primeiro 'JARVIS — interromper agora'. Se houver itens, destaque no máximo 3. Depois use 'próximo briefing'. Não puxe sinais silenciosos espontaneamente.",
     "- 'O que mudou?': use primeiro o bloco determinístico das últimas 24h; diferencie novo, atualizado, resolvido e descartado.",
-    "- 'O que é prioridade?': use primeiro Prioridades do JARVIS. Explique score, mudança, impacto, confiança e a ação recomendada; não invente valor financeiro ausente.",
-    "- 'Qual o impacto financeiro?': cite apenas `impacto_financeiro_explícito` quando houver valor BRL persistido na métrica. Se estiver desconhecido, diga que ainda falta quantificação financeira em vez de estimar.",
+    "- 'O que é prioridade?': use primeiro JARVIS — interromper agora, depois próximo briefing e por fim Prioridades do JARVIS. Explique score, mudança, impacto, confiança e ação recomendada.",
+    "- 'Qual o impacto financeiro?': impacto_financeiro_explícito é fato persistido. `estimativa_financeira_histórica` é precedente do tenant, deve ser apresentada como estimativa com amostra/confiança e nunca como valor atual garantido.",
     "- 'O que tenho na agenda?': use a Agenda de Inteligência futura e diferencie agendado de confirmado. Para preparação, cruze lead/deal e Casos Vendor quando houver evidência.",
     "- 'O que precisa de preparação?': priorize compromissos mais próximos que tenham vínculo com lead/deal e contexto relevante disponível; se o contexto não existir, diga que falta informação em vez de inventar briefing.",
     "- 'Crie cenários' ou 'o que pode acontecer?': use Cenários e Previsões. Diferencie sempre dado observado, premissa e resultado do teste. Base usa pipeline ponderado persistido; otimista/adverso só incorporam impactos financeiros explícitos dos Casos Vendor.",
