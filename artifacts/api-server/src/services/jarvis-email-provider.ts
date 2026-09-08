@@ -26,7 +26,7 @@ export async function sendJarvisEmail(input: {
   if (!apiKey) throw new Error("RESEND_API_KEY não configurada no backend");
 
   const resend = new Resend(apiKey);
-  const displayName = input.tenantName?.trim() || "VendorAI";
+  const displayName = input.tenantName?.trim() || "Atendimento";
   const safeBody = escapeHtml(input.body).replace(/\n/g, "<br>");
   const { data, error } = await resend.emails.send({
     from: sender(displayName),
