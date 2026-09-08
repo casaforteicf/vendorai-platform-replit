@@ -1,0 +1,128 @@
+/* VendorAI Video Studio — camada visual comum para todos os fluxos de vídeo. */
+
+body.vendorai-video-studio {
+  background: hsl(var(--background));
+}
+
+body.vendorai-video-studio [class*="bg-gradient-to-br"][class*="from-[#"] {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+body.vendorai-video-studio [class*="max-w-4xl"],
+body.vendorai-video-studio [class*="max-w-5xl"],
+body.vendorai-video-studio [class*="max-w-6xl"] {
+  width: min(100%, 72rem);
+}
+
+body.vendorai-video-studio section,
+body.vendorai-video-studio [data-video-card] {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 28px rgb(15 23 42 / 0.05) !important;
+}
+
+body.vendorai-video-studio section section {
+  box-shadow: none !important;
+}
+
+body.vendorai-video-studio h1,
+body.vendorai-video-studio h2,
+body.vendorai-video-studio h3,
+body.vendorai-video-studio [class*="text-white"] {
+  color: hsl(var(--foreground)) !important;
+}
+
+body.vendorai-video-studio [class*="text-gray-300"],
+body.vendorai-video-studio [class*="text-gray-400"],
+body.vendorai-video-studio [class*="text-gray-500"],
+body.vendorai-video-studio [class*="text-gray-600"] {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+body.vendorai-video-studio input,
+body.vendorai-video-studio textarea,
+body.vendorai-video-studio select,
+body.vendorai-video-studio [role="combobox"] {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+  border-radius: 0.9rem !important;
+  box-shadow: none !important;
+}
+
+body.vendorai-video-studio input:focus,
+body.vendorai-video-studio textarea:focus,
+body.vendorai-video-studio select:focus,
+body.vendorai-video-studio [role="combobox"]:focus-visible {
+  border-color: hsl(var(--ring)) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.12) !important;
+}
+
+body.vendorai-video-studio textarea {
+  line-height: 1.55;
+}
+
+body.vendorai-video-studio [class*="border-white/10"],
+body.vendorai-video-studio [class*="border-white/20"] {
+  border-color: hsl(var(--border)) !important;
+}
+
+body.vendorai-video-studio [class*="bg-white/[0.035]"],
+body.vendorai-video-studio [class*="bg-white/5"],
+body.vendorai-video-studio [class*="bg-white/10"] {
+  background: hsl(var(--card)) !important;
+}
+
+body.vendorai-video-studio [class*="rounded-2xl"] {
+  border-radius: 1.15rem;
+}
+
+body.vendorai-video-studio button {
+  min-height: 2.75rem;
+  border-radius: 0.85rem;
+}
+
+@media (max-width: 900px) {
+  body.vendorai-video-studio [class*="max-w-4xl"],
+  body.vendorai-video-studio [class*="max-w-5xl"],
+  body.vendorai-video-studio [class*="max-w-6xl"] {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  body.vendorai-video-studio section,
+  body.vendorai-video-studio [data-video-card] {
+    padding: 1rem !important;
+    border-radius: 1rem !important;
+  }
+
+  body.vendorai-video-studio h1 {
+    font-size: 1.65rem !important;
+    line-height: 1.15 !important;
+  }
+
+  body.vendorai-video-studio input,
+  body.vendorai-video-studio textarea,
+  body.vendorai-video-studio select,
+  body.vendorai-video-studio [role="combobox"] {
+    font-size: 1rem !important;
+  }
+
+  body.vendorai-video-studio button[aria-label="Carregar Dev IA"],
+  body.vendorai-video-studio button[aria-label="Tentar Dev IA novamente"],
+  body.vendorai-video-studio button[aria-label="Abrir Dev IA"] {
+    width: 3rem !important;
+    min-width: 3rem !important;
+    max-width: 3rem !important;
+    height: 3rem !important;
+    min-height: 3rem !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    border-radius: 9999px !important;
+  }
+}
