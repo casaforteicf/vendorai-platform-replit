@@ -22,6 +22,20 @@ export const ruleAcaoEnum = pgEnum("rule_acao", [
 
 type Condicao = { campo: string; operador: string; valor: unknown };
 
+export const jarvisPlaybookMetadataSchema = z.object({
+  approved: z.boolean(),
+  approvedAt: z.string().datetime().optional(),
+  approvedBy: z.string().min(1).optional(),
+  autonomyLevel: z.enum(["manual", "assistido", "autonomo"]).optional(),
+  expectedOutcome: z.string().min(1).max(1000).optional(),
+  stopConditions: z.array(z.string().min(1)).max(20).optional(),
+});
+
+export type JarvisPlaybookMetadata = z.infer<typeof jarvisPlaybookMetadataSchema>;
+export type RuleActionPayload = Record<string, unknown> & {
+  jarvisPlaybook?: JarvisPlaybookMetadata;
+};
+
 export const rulesTable = pgTable("rules", {
   id: text("id")
     .primaryKey()
@@ -34,7 +48,7 @@ export const rulesTable = pgTable("rules", {
   trigger: ruleTriggerEnum("trigger").notNull(),
   condicoes: jsonb("condicoes").$type<Condicao[]>().default([]),
   acao: ruleAcaoEnum("acao").notNull(),
-  acaoPayload: jsonb("acao_payload").$type<Record<string, unknown>>().default({}),
+  acaoPayload: jsonb("acao_payload").$type<RuleActionPayload>().default({}),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
