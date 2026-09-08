@@ -11,10 +11,6 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
-// tipo: recompra | cross_sell | reativacao | upgrade | aniversario | sequencia_produto
-// condicoes ex: { diasSemCompra: 30, servicoId: 'uuid' }
-// condicoes (sequencia_produto): { produtoOrigemId, produtoSugeridoId, diasApos }
-// acao ex: { mensagem: 'texto', canal: 'whatsapp' }
 export const scoutRegrasTable = pgTable("scout_regras", {
   id: text("id")
     .primaryKey()
@@ -31,7 +27,32 @@ export const scoutRegrasTable = pgTable("scout_regras", {
   createdAt:     timestamp("created_at").notNull().defaultNow(),
 });
 
-export const SCOUT_REGRA_TIPOS = ["recompra", "cross_sell", "reativacao", "upgrade", "aniversario", "sequencia_produto", "follow_up", "renovacao", "manutencao", "renovacao_seguro", "risco_nao_renovacao", "whitespace_seguro", "reativacao_sazonal", "orcamento_parado", "grade_incompleta", "receita_vencendo", "produto_vencendo", "limite_credito_disponivel", "sinal_praca_ai"] as const;
+export const SCOUT_REGRA_TIPOS = [
+  "recompra",
+  "cross_sell",
+  "reativacao",
+  "upgrade",
+  "aniversario",
+  "sequencia_produto",
+  "follow_up",
+  "renovacao",
+  "manutencao",
+  "renovacao_seguro",
+  "risco_nao_renovacao",
+  "whitespace_seguro",
+  "reativacao_sazonal",
+  "orcamento_parado",
+  "grade_incompleta",
+  "receita_vencendo",
+  "produto_vencendo",
+  "limite_credito_disponivel",
+  "sinal_praca_ai",
+  // Revenue Scout v2 — hipóteses geradas automaticamente pelo motor de carteira.
+  "potencial_carteira",
+  "sinal_expansao",
+  "risco_competitivo",
+  "indicacao",
+] as const;
 
 export const insertScoutRegraSchema = createInsertSchema(scoutRegrasTable, {
   tipo: z.enum(SCOUT_REGRA_TIPOS),
