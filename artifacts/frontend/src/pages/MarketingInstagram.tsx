@@ -48,18 +48,23 @@ export default function MarketingInstagram() {
     .filter((d) => d.thumbnailUrl);
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-3xl">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <Instagram className="h-5 w-5 text-muted-foreground" />
+    <div className="mx-auto w-full max-w-3xl space-y-4 px-3 pb-28 pt-4 sm:px-4 md:p-6 md:pb-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h1 className="flex items-center gap-2 text-xl font-semibold leading-tight sm:text-lg">
+            <Instagram className="h-5 w-5 shrink-0 text-muted-foreground" />
             Instagram
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
             Veja como a grade real está e teste um rascunho como próximo post antes de publicar.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setLocation("/content")} className="gap-1.5 shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setLocation("/content")}
+          className="w-full justify-center gap-1.5 sm:w-auto sm:shrink-0"
+        >
           <Sparkles className="h-3.5 w-3.5" />
           Gerar conteúdo
         </Button>
@@ -71,7 +76,7 @@ export default function MarketingInstagram() {
 
       <HighlightCoverGenerator tenantId={tenantId} />
 
-      <p className="text-xs text-muted-foreground">
+      <p className="pr-14 text-xs leading-relaxed text-muted-foreground sm:pr-0">
         Conta não conectada ou token expirado? Ajuste em Configurações → Integrações.
       </p>
     </div>

@@ -1,27 +1,30 @@
 @media (max-width: 639px) {
   button[aria-label="Abrir Dev IA"] {
     right: 0.75rem !important;
-    bottom: 6.9rem !important;
+    bottom: 5.75rem !important;
     width: 3rem !important;
     height: 3rem !important;
     min-width: 3rem !important;
+    max-width: 3rem !important;
     padding: 0 !important;
     gap: 0 !important;
     justify-content: center !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
     font-size: 0 !important;
     line-height: 0 !important;
   }
 
   button[aria-label="Abrir Dev IA"] svg {
-    width: 1.2rem !important;
-    height: 1.2rem !important;
+    width: 1.15rem !important;
+    height: 1.15rem !important;
     flex: 0 0 auto;
   }
 
   button[aria-label="Abrir Dev IA"] > span {
     position: absolute;
-    top: 0.45rem;
-    right: 0.45rem;
+    top: 0.38rem;
+    right: 0.38rem;
     width: 0.45rem !important;
     height: 0.45rem !important;
   }
