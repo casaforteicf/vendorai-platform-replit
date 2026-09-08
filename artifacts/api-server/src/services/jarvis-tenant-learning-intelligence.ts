@@ -1,8 +1,9 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, jarvisCasesTable } from "@workspace/db";
+import { loadJarvisRelationshipIntelligence } from "./jarvis-relationship-intelligence.js";
 
 const MAX_CASES = 80;
-const MAX_INSIGHTS = 8;
+const MAX_INSIGHTS = 10;
 
 type Feedback = {
   relevance?: "relevant" | "irrelevant";
@@ -15,7 +16,7 @@ type Evidence = Record<string, unknown> & {
 
 export type JarvisTenantLearningInsight = {
   key: string;
-  kind: "recurrence" | "relevance" | "outcome" | "coverage";
+  kind: "recurrence" | "relevance" | "outcome" | "coverage" | "relationship";
   title: string;
   detail: string;
   confidence: number;
@@ -32,6 +33,8 @@ export type JarvisTenantLearningIntelligence = {
   feedbackCount: number;
   relevantFeedback: number;
   irrelevantFeedback: number;
+  relationshipNodes: number;
+  relationshipEdges: number;
   insights: JarvisTenantLearningInsight[];
 };
 
@@ -46,26 +49,43 @@ function compact(value: string | null | undefined, max = 220) {
   return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
 }
 
+function caseIdsFromRelationships(
+  edges: Awaited<ReturnType<typeof loadJarvisRelationshipIntelligence>>["edges"],
+  nodeId: string,
+) {
+  const ids = new Set<string>();
+  for (const edge of edges) {
+    if (edge.relation !== "case_mentions") continue;
+    if (edge.from !== nodeId && edge.to !== nodeId) continue;
+    const candidate = edge.from.startsWith("case:") ? edge.from : edge.to;
+    if (candidate.startsWith("case:")) ids.add(candidate.slice("case:".length));
+  }
+  return [...ids].slice(0, 6);
+}
+
 export async function loadJarvisTenantLearningIntelligence(
   tenantId: string,
 ): Promise<JarvisTenantLearningIntelligence> {
-  const rows = await db
-    .select({
-      id: jarvisCasesTable.id,
-      signalKey: jarvisCasesTable.signalKey,
-      category: jarvisCasesTable.category,
-      title: jarvisCasesTable.title,
-      status: jarvisCasesTable.status,
-      evidence: jarvisCasesTable.evidence,
-      recommendedAction: jarvisCasesTable.recommendedAction,
-      resultSummary: jarvisCasesTable.resultSummary,
-      resolvedAt: jarvisCasesTable.resolvedAt,
-      updatedAt: jarvisCasesTable.updatedAt,
-    })
-    .from(jarvisCasesTable)
-    .where(eq(jarvisCasesTable.tenantId, tenantId))
-    .orderBy(desc(jarvisCasesTable.updatedAt))
-    .limit(MAX_CASES);
+  const [rows, relationships] = await Promise.all([
+    db
+      .select({
+        id: jarvisCasesTable.id,
+        signalKey: jarvisCasesTable.signalKey,
+        category: jarvisCasesTable.category,
+        title: jarvisCasesTable.title,
+        status: jarvisCasesTable.status,
+        evidence: jarvisCasesTable.evidence,
+        recommendedAction: jarvisCasesTable.recommendedAction,
+        resultSummary: jarvisCasesTable.resultSummary,
+        resolvedAt: jarvisCasesTable.resolvedAt,
+        updatedAt: jarvisCasesTable.updatedAt,
+      })
+      .from(jarvisCasesTable)
+      .where(eq(jarvisCasesTable.tenantId, tenantId))
+      .orderBy(desc(jarvisCasesTable.updatedAt))
+      .limit(MAX_CASES),
+    loadJarvisRelationshipIntelligence(tenantId),
+  ]);
 
   const resolved = rows.filter((row) => row.status === "resolved");
   const withOutcome = resolved.filter((row) => Boolean(row.resultSummary?.trim()));
@@ -155,17 +175,50 @@ export async function loadJarvisTenantLearningIntelligence(
     });
   }
 
+  for (const hub of relationships.hubs.filter((item) => item.connections >= 2).slice(0, 5)) {
+    const relatedCaseIds = caseIdsFromRelationships(relationships.edges, hub.id);
+    const evidenceTypes = new Set(
+      relationships.edges
+        .filter((edge) => edge.from === hub.id || edge.to === hub.id)
+        .map((edge) => edge.evidence),
+    );
+    const evidenceSummary = [...evidenceTypes].join(", ");
+    insights.push({
+      key: `relationship:${hub.id}`,
+      kind: "relationship",
+      title: `${hub.label} é um ponto de conexão do negócio`,
+      detail: `${hub.label} (${hub.kind}) possui ${hub.connections} conexões no mapa estrutural deste tenant. Evidências usadas: ${evidenceSummary || "não informada"}. ${relatedCaseIds.length ? `Casos relacionados por menção observada: ${relatedCaseIds.join(", ")}.` : "Não há Caso Vendor ligado por menção nesta amostra."} Use concentração de relações como contexto, não como prova de importância financeira ou causalidade.`,
+      confidence: evidenceTypes.has("persisted_fk") ? 90 : evidenceTypes.has("persisted_field") ? 80 : 60,
+      sampleSize: hub.connections,
+      caseIds: relatedCaseIds,
+    });
+  }
+
+  if (relationships.summary.nodes > 0 && relationships.summary.edges > 0) {
+    insights.push({
+      key: "relationship:coverage",
+      kind: "relationship",
+      title: "Mapa estrutural do tenant disponível",
+      detail: `O JARVIS possui ${relationships.summary.nodes} entidades e ${relationships.summary.edges} relações observadas nesta amostra: ${relationships.summary.people} pessoas, ${relationships.summary.companies} empresas, ${relationships.summary.deals} negócios, ${relationships.summary.suppliers} fornecedores e ${relationships.summary.cases} casos. Relações por texto são indícios; relações por FK/campo persistido são evidência estrutural mais forte.`,
+      confidence: 95,
+      sampleSize: relationships.summary.edges,
+      caseIds: [],
+    });
+  }
+
   insights.sort((a, b) => b.confidence - a.confidence || b.sampleSize - a.sampleSize);
 
   return {
     tenantId,
-    sampleSize: rows.length,
+    sampleSize: Math.max(rows.length, relationships.summary.nodes),
     resolvedCases: resolved.length,
     casesWithOutcome: withOutcome.length,
     outcomeCoveragePercent,
     feedbackCount: feedbackRows.length,
     relevantFeedback,
     irrelevantFeedback,
+    relationshipNodes: relationships.summary.nodes,
+    relationshipEdges: relationships.summary.edges,
     insights: insights.slice(0, MAX_INSIGHTS),
   };
 }
