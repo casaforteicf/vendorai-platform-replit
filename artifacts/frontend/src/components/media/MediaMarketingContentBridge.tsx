@@ -7,6 +7,7 @@ const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const STORAGE_KEY = "vendorai_marketing_media_assets_v1";
 const INLINE_HOST_ATTR = "data-vendorai-content-media-inline";
+const TRANSIENT_GENERATION_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
@@ -53,6 +54,10 @@ function mergeUnique(current: unknown, selected: MediaPickerAsset[]): string[] {
   const existing = Array.isArray(current) ? current.filter((value): value is string => typeof value === "string" && value.length > 0) : [];
   const urls = selected.map((asset) => mediaAssetUrl(asset.storageUrl));
   return Array.from(new Set([...existing, ...urls])).slice(0, 10);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function MediaMarketingContentBridge() {
@@ -127,6 +132,23 @@ export function MediaMarketingContentBridge() {
   useEffect(() => {
     const previousFetch = window.fetch.bind(window);
 
+    const runGenerationRequest = async (input: RequestInfo | URL, init: RequestInit, body: Record<string, unknown>) => {
+      let lastResponse: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+        headers.set("x-vendorai-generation-attempt", String(attempt + 1));
+        const response = await previousFetch(input, { ...init, headers, body: JSON.stringify(body) });
+        lastResponse = response;
+        if (response.ok || !TRANSIENT_GENERATION_STATUSES.has(response.status) || attempt === 2) return response;
+        const retryAfter = Number(response.headers.get("retry-after") ?? "0");
+        const delay = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 5000)
+          : 500 * (attempt + 1);
+        await wait(delay);
+      }
+      return lastResponse!;
+    };
+
     const mediaAwareFetch: typeof window.fetch = async (input, init = {}) => {
       try {
         const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -135,16 +157,18 @@ export function MediaMarketingContentBridge() {
         const selected = assetsRef.current;
         const isGenerate = /^\/api\/tenants\/[^/]+\/content\/generate\/?$/.test(url.pathname);
 
-        if (selected.length > 0 && method === "POST" && isGenerate && typeof init.body === "string") {
+        if (method === "POST" && isGenerate && typeof init.body === "string") {
           const body = JSON.parse(init.body) as Record<string, unknown>;
-          if (modeRef.current === "style_reference") {
-            body["imageUrls"] = mergeUnique(body["imageUrls"], selected);
-          } else {
-            body["postMaterialUrls"] = mergeUnique(body["postMaterialUrls"], selected);
+          if (selected.length > 0) {
+            if (modeRef.current === "style_reference") {
+              body["imageUrls"] = mergeUnique(body["imageUrls"], selected);
+            } else {
+              body["postMaterialUrls"] = mergeUnique(body["postMaterialUrls"], selected);
+            }
           }
 
-          const response = await previousFetch(input, { ...init, body: JSON.stringify(body) });
-          if (response.ok) window.setTimeout(() => setAssets([]), 0);
+          const response = await runGenerationRequest(input, init, body);
+          if (response.ok && selected.length > 0) window.setTimeout(() => setAssets([]), 0);
           return response;
         }
       } catch {
