@@ -32,37 +32,42 @@ export function HighlightCoverGenerator({ tenantId }: { tenantId: string }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Bookmark className="h-4 w-4 text-muted-foreground" />
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Bookmark className="h-4 w-4 shrink-0 text-muted-foreground" />
           Capa de Destaque
         </CardTitle>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           O Instagram não tem como criar Destaque por API — isso gera a imagem da capa na cor da sua marca; o upload final é manual, na hora de criar o Destaque no app.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex gap-2 max-w-sm">
-          <div className="flex-1">
+        <div className="grid w-full grid-cols-1 gap-2 sm:max-w-sm sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="min-w-0">
             <Label className="sr-only">Nome do destaque</Label>
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Ex.: Produtos, Depoimentos, Como funciona"
               maxLength={30}
+              className="w-full"
             />
           </div>
-          <Button onClick={() => mutation.mutate(label)} disabled={!label.trim() || mutation.isPending}>
+          <Button
+            onClick={() => mutation.mutate(label)}
+            disabled={!label.trim() || mutation.isPending}
+            className="w-full sm:w-auto"
+          >
             {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gerar"}
           </Button>
         </div>
 
         {coverUrl && (
-          <div className="flex items-center gap-3">
-            <div className="h-24 w-24 rounded-full overflow-hidden border">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="h-24 w-24 overflow-hidden rounded-full border">
               <img src={coverUrl} alt={label} className="h-full w-full object-cover" />
             </div>
-            <a href={coverUrl} download={`destaque-${label.toLowerCase()}.jpg`}>
-              <Button variant="outline" size="sm" className="gap-1.5">
+            <a href={coverUrl} download={`destaque-${label.toLowerCase()}.jpg`} className="w-full sm:w-auto">
+              <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto">
                 <Download className="h-3.5 w-3.5" />
                 Baixar
               </Button>
