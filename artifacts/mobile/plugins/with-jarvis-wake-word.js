@@ -101,6 +101,7 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.appvendorai.vendorai.MainActivity
 import com.appvendorai.vendorai.R
+import java.io.File
 
 class JarvisWakeWordService : Service() {
   private var manager: PorcupineManager? = null
@@ -136,18 +137,34 @@ class JarvisWakeWordService : Service() {
     startDetector()
   }
 
+  private fun accessKey(): String {
+    val appInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+    return appInfo.metaData?.getString("com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY").orEmpty()
+  }
+
+  private fun assetExists(assetPath: String): Boolean = try {
+    assets.open(assetPath).close()
+    true
+  } catch (_: Exception) {
+    false
+  }
+
   private fun isWakeWordConfigured(): Boolean {
     if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
-    val appInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
-    val accessKey = appInfo.metaData?.getString("com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY").orEmpty()
-    if (accessKey.isBlank()) return false
-    return try {
-      assets.open("jarvis/jarvis_android.ppn").close()
-      assets.open("jarvis/porcupine_params_pt.pv").close()
-      true
-    } catch (_: Exception) {
-      false
+    if (accessKey().isBlank()) return false
+    return assetExists("jarvis/jarvis_android.ppn") && assetExists("jarvis/porcupine_params_pt.pv")
+  }
+
+  private fun materializeAsset(assetPath: String, fileName: String): String {
+    val dir = File(filesDir, "jarvis")
+    if (!dir.exists()) dir.mkdirs()
+    val target = File(dir, fileName)
+    if (!target.exists() || target.length() == 0L) {
+      assets.open(assetPath).use { input ->
+        target.outputStream().use { output -> input.copyTo(output) }
+      }
     }
+    return target.absolutePath
   }
 
   private fun startDetector() {
@@ -156,14 +173,13 @@ class JarvisWakeWordService : Service() {
       return
     }
 
-    val appInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
-    val accessKey = appInfo.metaData?.getString("com.appvendorai.vendorai.JARVIS_PICOVOICE_ACCESS_KEY").orEmpty()
-
     try {
+      val keywordPath = materializeAsset("jarvis/jarvis_android.ppn", "jarvis_android.ppn")
+      val modelPath = materializeAsset("jarvis/porcupine_params_pt.pv", "porcupine_params_pt.pv")
       manager = PorcupineManager.Builder()
-        .setAccessKey(accessKey)
-        .setKeywordPath("jarvis/jarvis_android.ppn")
-        .setModelPath("jarvis/porcupine_params_pt.pv")
+        .setAccessKey(accessKey())
+        .setKeywordPath(keywordPath)
+        .setModelPath(modelPath)
         .build(this) {
           try { manager?.stop() } catch (_: Exception) {}
           mainHandler.removeCallbacks(resumeDetector)
