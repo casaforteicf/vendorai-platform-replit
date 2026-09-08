@@ -2,6 +2,7 @@ import * as React from "react";
 import AppLegacy from "./AppLegacy";
 import AppRuntimeShell from "@/pages/app-runtime/AppRuntimeShell";
 import "./dev-agent-mobile.css";
+import "./video-studio-modern.css";
 
 const DevAgentOverlay = React.lazy(() => import("@/components/admin/DevAgentOverlay"));
 
@@ -226,6 +227,21 @@ export default function App() {
   const [devFailed, setDevFailed] = React.useState(false);
   const [devLoading, setDevLoading] = React.useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(isCachedSuperAdmin);
+
+  React.useEffect(() => {
+    const syncVideoStudioScope = () => {
+      const active = window.location.pathname.startsWith("/content-studio/video");
+      document.body.classList.toggle("vendorai-video-studio", active);
+    };
+    syncVideoStudioScope();
+    const timer = window.setInterval(syncVideoStudioScope, 250);
+    window.addEventListener("popstate", syncVideoStudioScope);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("popstate", syncVideoStudioScope);
+      document.body.classList.remove("vendorai-video-studio");
+    };
+  }, []);
 
   React.useEffect(() => {
     const syncRole = () => setIsSuperAdmin(isCachedSuperAdmin());
