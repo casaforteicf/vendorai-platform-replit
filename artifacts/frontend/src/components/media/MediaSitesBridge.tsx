@@ -128,9 +128,9 @@ export function MediaSitesBridge() {
           body:has(.vendor-sites-media-bridge) .mx-auto.max-w-7xl.space-y-6.p-4 { padding: 16px !important; gap: 16px !important; }
           body:has(.vendor-sites-media-bridge) .mx-auto.max-w-7xl.space-y-6.p-4 > div:first-child { gap: 12px !important; }
           body:has(.vendor-sites-media-bridge) .mx-auto.max-w-7xl.space-y-6.p-4 h1 { font-size: 1.72rem !important; line-height: 1.12 !important; letter-spacing: -.025em; }
-          body:has(.vendor-sites-media-bridge) [role="tablist"] { display:flex !important; width:100% !important; overflow-x:auto !important; justify-content:flex-start !important; scrollbar-width:none; padding:4px !important; }
+          body:has(.vendor-sites-media-bridge) [role="tablist"] { display:flex !important; width:100% !important; overflow-x:auto !important; justify-content:flex-start !important; scrollbar-width:none; padding:4px !important; scroll-padding-inline:12px; }
           body:has(.vendor-sites-media-bridge) [role="tablist"]::-webkit-scrollbar { display:none; }
-          body:has(.vendor-sites-media-bridge) [role="tab"] { flex:0 0 auto !important; white-space:nowrap !important; min-height:40px; }
+          body:has(.vendor-sites-media-bridge) [role="tab"] { flex:0 0 auto !important; white-space:nowrap !important; min-height:40px; scroll-margin-inline:12px; }
           body:has(.vendor-sites-media-bridge) .grid.gap-4.sm\\:grid-cols-2.xl\\:grid-cols-4 { display:flex !important; gap:8px !important; overflow-x:auto !important; scrollbar-width:none; }
           body:has(.vendor-sites-media-bridge) .grid.gap-4.sm\\:grid-cols-2.xl\\:grid-cols-4::-webkit-scrollbar { display:none; }
           body:has(.vendor-sites-media-bridge) .grid.gap-4.sm\\:grid-cols-2.xl\\:grid-cols-4 > * { flex:0 0 154px !important; min-width:154px !important; }
@@ -141,6 +141,13 @@ export function MediaSitesBridge() {
           body:has(.vendor-sites-media-bridge) .grid.gap-3.sm\\:grid-cols-2.xl\\:grid-cols-4 > div { padding:12px !important; min-height:0 !important; }
           body:has(.vendor-sites-media-bridge) [data-radix-collection-item] { font-size:13px; }
           body:has(.vendor-sites-media-bridge) [class*="rounded-xl"][class*="border"] { box-shadow:none; }
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge,
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge * { min-width:0 !important; box-sizing:border-box; }
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge input,
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge select,
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge textarea { width:100% !important; max-width:100% !important; }
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge .font-mono { white-space:normal !important; overflow-wrap:anywhere !important; word-break:break-word !important; }
+          body:has(.vendor-sites-media-bridge) .vendor-site-settings-bridge .flex.items-center.gap-3 { flex-wrap:wrap !important; }
           body:has(.vendor-sites-media-bridge) { padding-bottom:84px; }
         }
       `}</style>
@@ -149,11 +156,11 @@ export function MediaSitesBridge() {
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="vendor-sites-media-bridge fixed bottom-5 left-4 z-[80] inline-flex h-12 items-center gap-2 rounded-full border bg-background/95 px-4 text-sm font-semibold shadow-xl backdrop-blur md:left-auto md:right-5"
+          className="vendor-sites-media-bridge fixed bottom-5 left-4 z-[80] inline-flex h-12 items-center gap-2 rounded-full border bg-background/95 px-4 text-sm font-semibold shadow-xl backdrop-blur md:left-auto md:right-5 max-[900px]:w-12 max-[900px]:justify-center max-[900px]:px-0"
           aria-label="Abrir mídias para este site"
         >
           <Library className="h-4 w-4" />
-          Mídias{assets.length ? ` · ${assets.length}` : ""}
+          <span className="max-[900px]:hidden">Mídias{assets.length ? ` · ${assets.length}` : ""}</span>
         </button>
       ) : (
         <div className="vendor-sites-media-bridge fixed bottom-5 right-5 z-[80] w-[min(380px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur max-[900px]:bottom-4 max-[900px]:left-4 max-[900px]:right-4 max-[900px]:w-auto">
