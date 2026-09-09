@@ -3,11 +3,14 @@ import { jarvisPermissionEnabled } from "./jarvisPermissions";
 const VOICE_SETTING_KEY = "jarvis_voice_replies";
 const VOICE_READY_EVENT = "vendorai:jarvis-voice-ready";
 const HANDS_FREE_SESSION_KEY = "jarvis_web_hands_free_session";
+const TOKEN_KEY = "vendorai_token";
+let activeNeuralAudio: HTMLAudioElement | null = null;
+let activeNeuralUrl: string | null = null;
 
 function canSpeakJarvis() {
   return typeof window !== "undefined"
-    && "speechSynthesis" in window
-    && typeof SpeechSynthesisUtterance !== "undefined";
+    && (typeof Audio !== "undefined"
+      || ("speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined"));
 }
 
 function shouldSpeak() {
@@ -133,10 +136,20 @@ function restartJarvisMicAfterSpeech() {
   }, 420);
 }
 
-function speakJarvis(text: string, onComplete?: () => void) {
-  if (!shouldSpeak()) return false;
-  const content = conciseForSpeech(text);
-  if (!content) return false;
+function stopNeuralAudio() {
+  if (activeNeuralAudio) {
+    activeNeuralAudio.pause();
+    activeNeuralAudio.src = "";
+    activeNeuralAudio = null;
+  }
+  if (activeNeuralUrl) {
+    URL.revokeObjectURL(activeNeuralUrl);
+    activeNeuralUrl = null;
+  }
+}
+
+function speakLocalJarvis(content: string, onComplete?: () => void) {
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return false;
 
   const synth = window.speechSynthesis;
   const chunks = splitForSpeech(content);
@@ -166,6 +179,59 @@ function speakJarvis(text: string, onComplete?: () => void) {
 
   synth.cancel();
   setTimeout(speakNext, 80);
+  return true;
+}
+
+async function speakNeuralJarvis(content: string, onComplete?: () => void) {
+  if (typeof Audio === "undefined") return false;
+
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const response = await fetch("/api/jarvis/voice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ text: content }),
+    });
+    if (!response.ok) return false;
+
+    const blob = await response.blob();
+    if (!blob.size) return false;
+
+    stopNeuralAudio();
+    window.speechSynthesis?.cancel();
+    activeNeuralUrl = URL.createObjectURL(blob);
+    const audio = new Audio(activeNeuralUrl);
+    activeNeuralAudio = audio;
+    audio.preload = "auto";
+    audio.onended = () => {
+      stopNeuralAudio();
+      onComplete?.();
+    };
+    audio.onerror = () => {
+      stopNeuralAudio();
+      if (!speakLocalJarvis(content, onComplete)) onComplete?.();
+    };
+    await audio.play();
+    return true;
+  } catch {
+    stopNeuralAudio();
+    return false;
+  }
+}
+
+function speakJarvis(text: string, onComplete?: () => void) {
+  if (!shouldSpeak()) return false;
+  const content = conciseForSpeech(text);
+  if (!content) return false;
+
+  stopNeuralAudio();
+  window.speechSynthesis?.cancel();
+  void speakNeuralJarvis(content, onComplete).then((started) => {
+    if (!started && !speakLocalJarvis(content, onComplete)) onComplete?.();
+  });
   return true;
 }
 
@@ -287,6 +353,7 @@ function installJarvisVoiceAutoSend() {
     const title = button.getAttribute("title") ?? "";
     if (title === "Falar com JARVIS" || title === "Parar de ouvir") {
       activateHandsFreeSession();
+      if (title === "Falar com JARVIS") stopNeuralAudio();
     }
   }, true);
 }

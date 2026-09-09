@@ -10,8 +10,14 @@ import {
 } from "@workspace/db";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { encrypt } from "../lib/crypto.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { z } from "zod/v4";
 
 const router: IRouter = Router();
+
+const jarvisVoiceSchema = z.object({
+  text: z.string().trim().min(1).max(4000),
+});
 
 function secureTokenEquals(received: string | undefined, expected: string): boolean {
   if (!received) return false;
@@ -180,6 +186,39 @@ router.get("/admin/ai-usage", authenticate, requireRole("super_admin"), async (_
     tenantBreakdown: tenantRows,
     featureBreakdown: featureRows,
   });
+});
+
+router.post("/jarvis/voice", authenticate, async (req, res) => {
+  const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : "";
+  const parsed = jarvisVoiceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(422).json({ error: "Texto inválido para síntese de voz." });
+  }
+
+  try {
+    const openai = await getOpenAIForTenant(tenantId);
+    const speech = await openai.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: (process.env["JARVIS_TTS_VOICE"] as any) || "cedar",
+      input: parsed.data.text,
+      response_format: "mp3",
+      speed: 0.96,
+      instructions:
+        "Fale em português brasileiro com naturalidade, voz adulta, calorosa e confiante. " +
+        "Use ritmo conversacional, pausas discretas, articulação clara e entonação humana. " +
+        "Evite soar como locutor, robô ou leitura automática. Mantenha um estilo sofisticado, calmo e objetivo, como um assistente executivo de alto nível.",
+    });
+
+    const audio = Buffer.from(await speech.arrayBuffer());
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Length", String(audio.length));
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Jarvis-Voice", process.env["JARVIS_TTS_VOICE"] || "cedar");
+    return res.status(200).send(audio);
+  } catch (err) {
+    req.log?.warn({ err }, "jarvis: neural voice generation failed");
+    return res.status(502).json({ error: "Não foi possível gerar a voz neural do JARVIS." });
+  }
 });
 
 router.post("/webhooks/asaas/credits", async (req, res) => {
