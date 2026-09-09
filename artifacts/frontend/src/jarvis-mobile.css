@@ -1,0 +1,83 @@
+/* JARVIS mobile: prioriza conversa, teclado e controles do próprio agente. */
+@media (max-width: 640px) {
+  div[aria-label="JARVIS"] {
+    top: max(4px, env(safe-area-inset-top)) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: calc(100dvh - max(4px, env(safe-area-inset-top))) !important;
+    max-height: none !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    box-shadow: 0 -8px 32px rgb(0 0 0 / 0.18) !important;
+  }
+
+  /* Cabeçalho mais compacto e sempre visível. */
+  div[aria-label="JARVIS"] > div:first-child {
+    min-height: 54px;
+    padding: 9px 12px !important;
+  }
+
+  /* Fila ocupa pouco espaço quando fechada. */
+  div[aria-label="JARVIS"] > div:nth-child(2) > button {
+    min-height: 42px;
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+  }
+
+  /* Conversa ganha a maior parte da tela. */
+  div[aria-label="JARVIS"] .flex-1.overflow-y-auto {
+    overscroll-behavior: contain;
+    scroll-padding-bottom: 96px;
+    padding: 12px 10px !important;
+  }
+
+  div[aria-label="JARVIS"] .max-w-\[85\%\] {
+    max-width: 92% !important;
+  }
+
+  /* Composer fixo dentro do painel e protegido do teclado/safe area. */
+  div[aria-label="JARVIS"] > div:last-child {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: hsl(var(--background));
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom)) !important;
+    box-shadow: 0 -6px 18px rgb(0 0 0 / 0.06);
+  }
+
+  div[aria-label="JARVIS"] textarea {
+    font-size: 16px !important;
+    line-height: 1.35 !important;
+    min-height: 42px !important;
+    max-height: 96px !important;
+  }
+
+  /* Replay de voz passa a pertencer visualmente ao JARVIS, não à página de fundo. */
+  .jarvis-voice-replay-control {
+    top: calc(max(4px, env(safe-area-inset-top)) + 7px) !important;
+    right: 78px !important;
+    bottom: auto !important;
+    z-index: 60 !important;
+  }
+
+  .jarvis-voice-replay-control button {
+    width: 36px !important;
+    height: 36px !important;
+    border-color: rgb(255 255 255 / 0.28) !important;
+    background: rgb(255 255 255 / 0.12) !important;
+    color: white !important;
+    box-shadow: none !important;
+  }
+
+  /* Quando o JARVIS está aberto, controles globais da página não devem competir com ele. */
+  body:has(div[aria-label="JARVIS"]) .mobile-floating-control,
+  body:has(div[aria-label="JARVIS"]) [data-floating-control="true"] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
