@@ -8,71 +8,59 @@ import {
   propostasTable, leadsTable, varejoPedidoCompraTable, varejoFornecedorTable,
   erpContasBancariasTable, erpExtratosBancariosTable, estoqueLotesTable,
   compraCotacoesTable, compraCotacaoPropostasTable, erpAuditoriaTable,
-  tenantNavModulesTable,
+  tenantNavModulesTable, dealsTable,
 } from "@workspace/db";
 import { createCharge, createOrGetCustomer, getTenantAsaasApiKey } from "../lib/asaas.js";
 import { emitirDocumentoFiscal, isNuvemFiscalConfigured } from "../lib/nuvem-fiscal.js";
 import { extractLancamentoData } from "../lib/document-extraction.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { evaluateCommission, resolveDealIdFromFinancialOrigin } from "../services/commission-engine.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
-const uploadLancamento = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-});
+const uploadLancamento = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 function canAccess(req: Express.Request, tenantId: string) {
   return (req as any).user?.platformRole === "super_admin" || (req as any).user?.tenantId === tenantId;
 }
 
-// Gestão ERP é um add-on comercial de R$ 299/mês. O acesso é fail-closed:
-// tenants sem override explícito financeiro=true não conseguem consumir
-// nenhuma API do ERP. Super Admin mantém bypass para suporte e ativação.
 router.use("/tenants/:tenantId/erp", async (req, res, next) => {
   const tenantId = String(req.params.tenantId);
   const user = (req as any).user;
-
-  if (!canAccess(req, tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  if (user?.platformRole === "super_admin") {
-    next();
-    return;
-  }
-
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (user?.platformRole === "super_admin") { next(); return; }
   try {
-    const [entitlement] = await db
-      .select({ isEnabled: tenantNavModulesTable.isEnabled })
-      .from(tenantNavModulesTable)
-      .where(and(
-        eq(tenantNavModulesTable.tenantId, tenantId),
-        eq(tenantNavModulesTable.moduleKey, "financeiro"),
-      ))
-      .limit(1);
-
-    if (!entitlement?.isEnabled) {
-      res.status(403).json({
-        error: "ERP_ADDON_REQUIRED",
-        message: "A Gestão ERP é um add-on contratado separadamente por R$ 299/mês.",
-      });
-      return;
-    }
-
+    const [entitlement] = await db.select({ isEnabled: tenantNavModulesTable.isEnabled }).from(tenantNavModulesTable).where(and(eq(tenantNavModulesTable.tenantId, tenantId), eq(tenantNavModulesTable.moduleKey, "financeiro"))).limit(1);
+    if (!entitlement?.isEnabled) { res.status(403).json({ error: "ERP_ADDON_REQUIRED", message: "A Gestão ERP é um add-on contratado separadamente por R$ 299/mês." }); return; }
     next();
   } catch (error) {
     req.log.error({ error, tenantId }, "Falha ao validar entitlement do ERP");
-    res.status(503).json({
-      error: "ERP_ENTITLEMENT_CHECK_FAILED",
-      message: "Não foi possível validar o acesso à Gestão ERP.",
-    });
+    res.status(503).json({ error: "ERP_ENTITLEMENT_CHECK_FAILED", message: "Não foi possível validar o acesso à Gestão ERP." });
   }
 });
 
 async function audit(req: Express.Request, tenantId: string, acao: string, entidade: string, entidadeId?: string, depois?: unknown) {
   await db.insert(erpAuditoriaTable).values({ tenantId, usuarioId:(req as any).user?.id ?? null, modulo:"erp", acao, entidade, entidadeId, depois:depois as any, ip:(req as any).ip }).catch(()=>undefined);
+}
+
+async function emitCommissionForPayment(tenantId: string, title: typeof erpTitulosTable.$inferSelect, payment: typeof erpPagamentosTable.$inferSelect, trigger: "payment_received" | "payment_reconciled", correlationId: string, extra?: Record<string, unknown>) {
+  if (title.tipo !== "receber") return;
+  const dealId = await resolveDealIdFromFinancialOrigin(tenantId, title.origemTipo, title.origemId);
+  if (!dealId) return;
+  const [deal] = await db.select({ assignedTo: dealsTable.assignedTo }).from(dealsTable).where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId))).limit(1);
+  if (!deal?.assignedTo) return;
+  await evaluateCommission({
+    tenantId,
+    trigger,
+    dealId,
+    sellerUserId: deal.assignedTo,
+    sourceType: trigger === "payment_received" ? "erp_payment" : "erp_reconciliation",
+    sourceId: payment.id,
+    baseAmountCents: Math.max(0, Math.round(Number(payment.valor) * 100)),
+    receiptPercent: 100,
+    correlationId,
+    metadata: { tituloId: title.id, pagamentoId: payment.id, origemTipo: title.origemTipo, origemId: title.origemId, ...extra },
+  });
 }
 
 router.get("/tenants/:tenantId/erp/configuracao", async (req, res) => {
@@ -98,36 +86,18 @@ router.post("/tenants/:tenantId/erp/titulos", async (req, res) => {
   res.status(201).json(row);
 });
 
-// D-004: novo lançamento por foto/upload -- IA identifica o tipo de
-// documento (nota fiscal, recibo, boleto) e extrai os dados pra revisão.
-// Nunca lança direto: devolve os campos pro usuário aprovar ou editar
-// antes de confirmar (POST /titulos, já existente, faz o lançamento
-// de verdade depois que a pessoa confirmar os dados).
-router.post(
-  "/tenants/:tenantId/erp/extrair-lancamento",
-  uploadLancamento.single("file"),
-  async (req, res) => {
-    const tenantId = String(req.params.tenantId);
-    if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied" });
-    if (!req.file) return void res.status(400).json({ error: "Nenhum arquivo enviado" });
-
-    try {
-      const [result, documentoUrl] = await Promise.all([
-        extractLancamentoData([
-          { buffer: req.file.buffer, mimeType: req.file.mimetype, originalName: req.file.originalname },
-        ], tenantId),
-        objectStorageService.savePrivateBuffer(req.file.buffer, req.file.mimetype, req.file.originalname).catch((err) => {
-          req.log.warn({ err }, "extrair-lancamento: falha ao salvar arquivo no storage, seguindo sem ele");
-          return null;
-        }),
-      ]);
-      res.json({ ...result, documentoUrl, originalName: req.file.originalname });
-    } catch (err) {
-      req.log.error({ err }, "Falha ao extrair dados do lançamento");
-      res.status(500).json({ error: "Erro ao processar o arquivo" });
-    }
-  }
-);
+router.post("/tenants/:tenantId/erp/extrair-lancamento", uploadLancamento.single("file"), async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied" });
+  if (!req.file) return void res.status(400).json({ error: "Nenhum arquivo enviado" });
+  try {
+    const [result, documentoUrl] = await Promise.all([
+      extractLancamentoData([{ buffer: req.file.buffer, mimeType: req.file.mimetype, originalName: req.file.originalname }], tenantId),
+      objectStorageService.savePrivateBuffer(req.file.buffer, req.file.mimetype, req.file.originalname).catch((err) => { req.log.warn({ err }, "extrair-lancamento: falha ao salvar arquivo no storage, seguindo sem ele"); return null; }),
+    ]);
+    res.json({ ...result, documentoUrl, originalName: req.file.originalname });
+  } catch (err) { req.log.error({ err }, "Falha ao extrair dados do lançamento"); res.status(500).json({ error: "Erro ao processar o arquivo" }); }
+});
 
 router.post("/tenants/:tenantId/erp/titulos/:id/cobranca", async (req,res)=>{
   const tenantId=String(req.params.tenantId); if(!canAccess(req,tenantId)) return void res.status(403).json({error:"Access denied"});
@@ -156,11 +126,14 @@ router.post("/tenants/:tenantId/erp/titulos/:id/baixar", async (req, res) => {
   const totalPaid = Number(existing.valorPago) + paidNow;
   const totalDue = Number(existing.valorOriginal) + Number(existing.juros) + Number(existing.multa) - Number(existing.desconto);
   const result = await db.transaction(async (tx) => {
-    await tx.insert(erpPagamentosTable).values({ ...parsed.data, tenantId, tituloId: existing.id });
+    const [payment] = await tx.insert(erpPagamentosTable).values({ ...parsed.data, tenantId, tituloId: existing.id }).returning();
     const [title] = await tx.update(erpTitulosTable).set({ valorPago: String(totalPaid), status: totalPaid >= totalDue ? "pago" : existing.status, pagoEm: totalPaid >= totalDue ? (parsed.data.pagoEm ?? new Date()) : existing.pagoEm, contaBancaria: parsed.data.contaBancaria ?? existing.contaBancaria, updatedAt: new Date() }).where(eq(erpTitulosTable.id, existing.id)).returning();
-    return title;
+    return { title, payment };
   });
-  res.json(result);
+  if (result.title && result.payment) {
+    await emitCommissionForPayment(tenantId, result.title, result.payment, "payment_received", `erp:payment:${result.payment.id}`).catch((error) => req.log.error({ error, tenantId, paymentId: result.payment?.id }, "Falha ao processar comissão do recebimento"));
+  }
+  res.json(result.title);
 });
 
 router.get("/tenants/:tenantId/erp/fluxo-caixa",async(req,res)=>{
@@ -177,7 +150,18 @@ router.get("/tenants/:tenantId/erp/fluxo-caixa",async(req,res)=>{
 router.get("/tenants/:tenantId/erp/contas-bancarias",async(req,res)=>{const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return void res.status(403).json({error:"Access denied"});res.json(await db.select().from(erpContasBancariasTable).where(eq(erpContasBancariasTable.tenantId,tenantId)));});
 router.post("/tenants/:tenantId/erp/contas-bancarias",async(req,res)=>{const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return void res.status(403).json({error:"Access denied"});const parsed=z.object({nome:z.string().min(2),banco:z.string().optional(),agencia:z.string().optional(),conta:z.string().optional(),saldoInicial:z.union([z.string(),z.number()]).transform(String).optional()}).safeParse(req.body);if(!parsed.success)return void res.status(422).json({error:"Conta inválida"});const [row]=await db.insert(erpContasBancariasTable).values({...parsed.data,tenantId}).returning();await audit(req,tenantId,"criar","conta_bancaria",row?.id,row);res.status(201).json(row);});
 router.get("/tenants/:tenantId/erp/extratos",async(req,res)=>{const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return void res.status(403).json({error:"Access denied"});res.json(await db.select().from(erpExtratosBancariosTable).where(eq(erpExtratosBancariosTable.tenantId,tenantId)).orderBy(desc(erpExtratosBancariosTable.data)));});
-router.post("/tenants/:tenantId/erp/extratos/:id/conciliar",async(req,res)=>{const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return void res.status(403).json({error:"Access denied"});const parsed=z.object({pagamentoId:z.string()}).safeParse(req.body);if(!parsed.success)return void res.status(422).json({error:"Pagamento obrigatório"});const [row]=await db.update(erpExtratosBancariosTable).set({status:"conciliado",pagamentoId:parsed.data.pagamentoId}).where(and(eq(erpExtratosBancariosTable.id,String(req.params.id)),eq(erpExtratosBancariosTable.tenantId,tenantId))).returning();await audit(req,tenantId,"conciliar","extrato",row?.id,row);res.json(row);});
+router.post("/tenants/:tenantId/erp/extratos/:id/conciliar",async(req,res)=>{
+  const tenantId=String(req.params.tenantId); if(!canAccess(req,tenantId)) return void res.status(403).json({error:"Access denied"});
+  const parsed=z.object({pagamentoId:z.string()}).safeParse(req.body); if(!parsed.success) return void res.status(422).json({error:"Pagamento obrigatório"});
+  const [row]=await db.update(erpExtratosBancariosTable).set({status:"conciliado",pagamentoId:parsed.data.pagamentoId}).where(and(eq(erpExtratosBancariosTable.id,String(req.params.id)),eq(erpExtratosBancariosTable.tenantId,tenantId))).returning();
+  if (!row) return void res.status(404).json({ error: "Extrato não encontrado" });
+  const [payment]=await db.select().from(erpPagamentosTable).where(and(eq(erpPagamentosTable.id,parsed.data.pagamentoId),eq(erpPagamentosTable.tenantId,tenantId))).limit(1);
+  if (payment) {
+    const [title]=await db.select().from(erpTitulosTable).where(and(eq(erpTitulosTable.id,payment.tituloId),eq(erpTitulosTable.tenantId,tenantId))).limit(1);
+    if (title) await emitCommissionForPayment(tenantId,title,payment,"payment_reconciled",`erp:reconciliation:${row.id}:${payment.id}`,{extratoId:row.id}).catch((error)=>req.log.error({error,tenantId,extratoId:row.id},"Falha ao processar comissão da conciliação"));
+  }
+  await audit(req,tenantId,"conciliar","extrato",row.id,row); res.json(row);
+});
 
 router.get("/tenants/:tenantId/erp/lotes",async(req,res)=>{const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return void res.status(403).json({error:"Access denied"});res.json(await db.select().from(estoqueLotesTable).where(eq(estoqueLotesTable.tenantId,tenantId)).orderBy(estoqueLotesTable.validade));});
 router.post("/tenants/:tenantId/erp/lotes",async(req,res)=>{const tenantId=String(req.params.tenantId);if(!canAccess(req,tenantId))return void res.status(403).json({error:"Access denied"});const parsed=z.object({inventoryItemId:z.string(),lote:z.string().min(1),validade:z.string().optional(),localizacao:z.string().optional(),quantidade:z.union([z.string(),z.number()]).transform(String),custoUnitario:z.union([z.string(),z.number()]).transform(String).optional()}).safeParse(req.body);if(!parsed.success)return void res.status(422).json({error:"Lote inválido"});const [row]=await db.insert(estoqueLotesTable).values({...parsed.data,tenantId}).returning();await audit(req,tenantId,"criar","lote",row?.id,row);res.status(201).json(row);});
