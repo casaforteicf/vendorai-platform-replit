@@ -1,4 +1,4 @@
-import { speakJarvis } from "./jarvisVoiceResponseBridge";
+import { speakJarvis, VOICE_SETTING_KEY } from "./jarvisVoiceResponseBridge";
 
 type AuthMe = {
   id?: string;
@@ -7,7 +7,6 @@ type AuthMe = {
 
 type AgentTask = {
   id: string;
-  leadId?: string | null;
   actionType?: string;
   status?: string;
   payload?: Record<string, unknown> | null;
@@ -118,7 +117,11 @@ function restartHandsFreeMic() {
 
 function announce(content: string) {
   window.dispatchEvent(new CustomEvent("vendorai:jarvis-voice-ready", {
-    detail: { content, supported: "speechSynthesis" in window, autoEnabled: true },
+    detail: {
+      content,
+      supported: "speechSynthesis" in window,
+      autoEnabled: localStorage.getItem(VOICE_SETTING_KEY) !== "off",
+    },
   }));
   speakJarvis(content, restartHandsFreeMic);
 }
@@ -150,17 +153,13 @@ async function loadLatestDiscountTask(
 async function loadDeal(
   previousFetch: typeof window.fetch,
   token: string,
-  tenantId: string,
-  leadId: string,
   dealId: string,
 ) {
-  const response = await previousFetch(
-    `/api/tenants/${encodeURIComponent(tenantId)}/deals?leadId=${encodeURIComponent(leadId)}`,
-    { headers: authHeaders(token) },
-  );
+  const response = await previousFetch(`/api/deals/${encodeURIComponent(dealId)}`, {
+    headers: authHeaders(token),
+  });
   if (!response.ok) return null;
-  const deals = await response.json() as Deal[];
-  return (Array.isArray(deals) ? deals : []).find((deal) => deal.id === dealId) ?? null;
+  return await response.json() as Deal;
 }
 
 async function undoLatestDiscount(previousFetch: typeof window.fetch) {
@@ -177,17 +176,17 @@ async function undoLatestDiscount(previousFetch: typeof window.fetch) {
   const dealId = typeof payload.dealId === "string" ? payload.dealId : "";
   const originalValue = toNumber(payload.originalValue);
   const discountedValue = toNumber(payload.discountedValue);
-  if (!dealId || !task.leadId || originalValue === null || discountedValue === null) {
+  if (!dealId || originalValue === null || discountedValue === null) {
     return "Encontrei o desconto, mas ele não possui os dados mínimos necessários para uma reversão segura.";
   }
 
-  const firstRead = await loadDeal(previousFetch, token, identity.tenantId, task.leadId, dealId);
-  if (!firstRead) return "Não encontrei o negócio vinculado ao último desconto.";
+  const firstRead = await loadDeal(previousFetch, token, dealId);
+  if (!firstRead) return "Não encontrei o negócio vinculado ao último desconto ou você não possui acesso a ele.";
   if (!sameMoney(toNumber(firstRead.valor), discountedValue)) {
     return "Não desfiz o desconto porque o valor do negócio já foi alterado depois da aplicação. Isso evita sobrescrever uma mudança posterior.";
   }
 
-  const secondRead = await loadDeal(previousFetch, token, identity.tenantId, task.leadId, dealId);
+  const secondRead = await loadDeal(previousFetch, token, dealId);
   if (!secondRead) return "Não consegui confirmar o estado atual do negócio antes da reversão.";
   if (
     !sameMoney(toNumber(secondRead.valor), discountedValue)
@@ -227,11 +226,15 @@ async function undoLatestDiscount(previousFetch: typeof window.fetch) {
 
   const discountPercent = toNumber(payload.discountPercent);
   const label = discountPercent !== null ? ` de ${discountPercent}%` : "";
+  const formattedOriginal = originalValue.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   if (!audit.ok) {
-    return `Desconto${label} desfeito e valor restaurado para R$ ${originalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. A reversão ocorreu, mas o registro de auditoria da tarefa não foi atualizado; recomendo revisar o histórico.`;
+    return `Desconto${label} desfeito e valor restaurado para R$ ${formattedOriginal}. A reversão ocorreu, mas o registro de auditoria da tarefa não foi atualizado; recomendo revisar o histórico.`;
   }
 
-  return `Desfeito. O último desconto${label} foi revertido e o valor voltou para R$ ${originalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. A reversão ficou registrada na tarefa do JARVIS.`;
+  return `Desfeito. O último desconto${label} foi revertido e o valor voltou para R$ ${formattedOriginal}. A reversão ficou registrada na tarefa do JARVIS.`;
 }
 
 if (typeof window !== "undefined") {
