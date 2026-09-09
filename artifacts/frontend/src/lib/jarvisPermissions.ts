@@ -21,7 +21,7 @@ export const DEFAULT_JARVIS_PERMISSIONS: JarvisPermissions = {
   microphone: false,
   wakeWord: false,
   voiceReplies: true,
-  handsFree: false,
+  handsFree: true,
   notifications: false,
   screenContext: true,
   attachments: true,
