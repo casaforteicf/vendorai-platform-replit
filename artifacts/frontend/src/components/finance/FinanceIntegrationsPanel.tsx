@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FINANCE_INTEGRATION_CATALOG } from "@/lib/financeIntegrationCatalog";
+import FinanceContractsPanel from "@/components/finance/FinanceContractsPanel";
 
 type IntegrationStatus = "connected" | "partial" | "error" | "expired" | "disabled" | "not_configured";
 type SyncDirection = "in" | "out" | "bidirectional";
@@ -244,6 +245,8 @@ export default function FinanceIntegrationsPanel({ tenantId }: { tenantId: strin
   const summary = data?.summary;
 
   return <div className="space-y-4">
+    <FinanceContractsPanel tenantId={tenantId} />
+
     <Card>
       <CardContent className="p-4 md:p-5 space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
