@@ -12,6 +12,7 @@ import { runVendorAiSubscriptionPaymentSync } from "./jobs/vendorAiSubscriptionP
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { runMarketingBudgetAutopilot } from "./jobs/marketingBudgetAutopilot.js";
+import { runFinanceIntegrationHealthCycle } from "./jobs/financeIntegrationHealthCycle.js";
 import { runCampaignAbWinnerCycle } from "./services/campaignAbWinnerRuntime.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
@@ -100,6 +101,19 @@ async function start() {
     };
     void syncMarketingLifecycle();
     setInterval(() => { void syncMarketingLifecycle(); }, 10 * 60 * 1000).unref();
+
+    // Saúde das integrações financeiras: primeira rodada alguns minutos após
+    // o startup (sem atrasar a API) e depois a cada 6h. O ciclo possui trava
+    // contra sobreposição e persiste status/percentuais/logs por tenant.
+    const syncFinanceIntegrationHealth = async () => {
+      try {
+        await runFinanceIntegrationHealthCycle(logger);
+      } catch (syncErr) {
+        logger.error({ err: syncErr }, "finance-integration-health-cycle: unhandled error");
+      }
+    };
+    setTimeout(() => { void syncFinanceIntegrationHealth(); }, 3 * 60 * 1000).unref();
+    setInterval(() => { void syncFinanceIntegrationHealth(); }, 6 * 60 * 60 * 1000).unref();
 
     // Marketing IA nível 3/4: roda em ciclo conservador de 6h. O próprio job
     // exige política server-side, evidência suficiente, teto humano e cooldown.
