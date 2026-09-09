@@ -36,6 +36,7 @@ import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
 import "./lib/jarvisArtifactFetchBridge";
+import "./lib/jarvisVoiceResponseBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
