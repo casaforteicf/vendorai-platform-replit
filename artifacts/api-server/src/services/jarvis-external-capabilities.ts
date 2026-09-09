@@ -4,7 +4,7 @@ import { db, agendasTable } from "@workspace/db";
 export type JarvisCapabilityMode = "backend_execute" | "device_open" | "unavailable";
 
 export type JarvisExternalCapability = {
-  key: "calendar" | "email" | "spotify";
+  key: "calendar" | "email" | "spotify" | "phone" | "whatsapp_open" | "maps" | "vendorai_navigation";
   label: string;
   mode: JarvisCapabilityMode;
   available: boolean;
@@ -58,6 +58,46 @@ export async function loadJarvisExternalCapabilities(tenantId: string): Promise<
       provider: "Spotify app/web",
       executionClaim: "Posso abrir uma busca no Spotify no dispositivo que está usando o JARVIS.",
       limitation: "Sem Spotify Connect/OAuth, abrir o Spotify não confirma que a faixa começou a tocar.",
+    },
+    {
+      key: "phone",
+      label: "Ligação telefônica",
+      mode: "device_open",
+      available: true,
+      approvalRequired: false,
+      provider: "Discador do dispositivo",
+      executionClaim: "Posso abrir o discador com o telefone de um contato do próprio tenant.",
+      limitation: "Abrir o discador não confirma que a ligação foi realizada ou atendida.",
+    },
+    {
+      key: "whatsapp_open",
+      label: "Abrir conversa no WhatsApp",
+      mode: "device_open",
+      available: true,
+      approvalRequired: false,
+      provider: "WhatsApp app/web",
+      executionClaim: "Posso abrir a conversa de um contato do tenant no WhatsApp.",
+      limitation: "Esta capacidade apenas abre a conversa; envio de mensagem continua sujeito ao fluxo de ação/aprovação do VendorAI.",
+    },
+    {
+      key: "maps",
+      label: "Mapa e rota",
+      mode: "device_open",
+      available: true,
+      approvalRequired: false,
+      provider: "Mapas do dispositivo / Google Maps",
+      executionClaim: "Posso abrir uma rota para o endereço cadastrado de um contato do tenant.",
+      limitation: "A rota depende do endereço cadastrado e do aplicativo de mapas disponível no dispositivo.",
+    },
+    {
+      key: "vendorai_navigation",
+      label: "Navegação no VendorAI",
+      mode: "device_open",
+      available: true,
+      approvalRequired: false,
+      provider: "VendorAI app/web",
+      executionClaim: "Posso abrir áreas conhecidas do VendorAI por comando natural.",
+      limitation: "A navegação respeita autenticação, tenant e permissões já aplicadas pela plataforma.",
     },
   ];
 }
