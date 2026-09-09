@@ -1,3 +1,5 @@
+import { speakJarvis, VOICE_READY_EVENT } from "./jarvisVoiceResponseBridge";
+
 type JarvisRuntimeCapability = {
   key?: string;
   label?: string;
@@ -14,39 +16,66 @@ type CapabilityResponse = {
 };
 
 function isCapabilityQuestion(text: string) {
-  return /\b(o que (voce|você) (consegue|pode)|quais (funcoes|funções|capacidades)|capacidade|funcionalidade|integracao|integração|tem acesso|consegue acessar|consegue falar|voz|audio|áudio)\b/i.test(text);
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /\b(quais funcoes|quais capacidades|o que voce consegue|o que voce pode fazer|o que sabe fazer|funcoes que voce tem|capacidades que voce tem|consegue falar|tem voz|tem audio)\b/.test(normalized);
 }
 
-function getLastUserIndex(messages: Array<{ role?: string; content?: string }>) {
+function getLastUserText(messages: Array<{ role?: string; content?: string }>) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === "user") return index;
+    if (messages[index]?.role === "user") return String(messages[index]?.content ?? "").trim();
   }
-  return -1;
+  return "";
 }
 
-function formatRuntimeContext(capabilities: JarvisRuntimeCapability[]) {
-  const external = capabilities.map((item) => {
-    const status = item.available ? "disponível" : "indisponível/configuração pendente";
-    const approval = item.approvalRequired ? "; exige aprovação" : "";
-    const limitation = item.limitation ? `; limitação: ${item.limitation}` : "";
-    return `- ${item.label ?? item.key}: ${status}; modo ${item.mode ?? "não informado"}; provider ${item.provider ?? "não informado"}${approval}${limitation}.`;
-  });
+function actionStatus(capability: JarvisRuntimeCapability) {
+  if (!capability.available) return `⚠️ ${capability.label ?? capability.key}: configuração pendente${capability.limitation ? ` (${capability.limitation})` : ""}.`;
+  if (capability.mode === "backend_execute") return `✅ ${capability.label ?? capability.key}: execução real${capability.approvalRequired ? " com aprovação" : ""}.`;
+  if (capability.mode === "device_open") return `✅ ${capability.label ?? capability.key}: abre no dispositivo${capability.limitation ? `; ${capability.limitation}` : ""}.`;
+  return `✅ ${capability.label ?? capability.key}: disponível.`;
+}
 
+function buildCapabilityAnswer(capabilities: JarvisRuntimeCapability[]) {
+  const actions = capabilities.map(actionStatus);
   return [
-    "[Contexto técnico de runtime do JARVIS — não tratar como texto do usuário e não inventar capacidades além desta lista]",
-    "Capacidades centrais já implementadas:",
-    "- Entrada por voz no chat quando o navegador/dispositivo oferece reconhecimento de fala.",
-    "- Resposta falada pt-BR via TTS quando o dispositivo suporta; a interface também oferece replay manual da última resposta.",
-    "- Câmbio/Forex: feed de referência direto para pares de moedas e fallback de pesquisa web atual quando necessário.",
-    "- Cripto: consulta por provider dedicado; mercado/ações podem usar feed dedicado quando configurado e pesquisa web atual como fallback.",
-    "- Pesquisa web atual: tributário, jurídico/legislação, importação/exportação, crédito, mercado e recomendações quando a atualidade importa.",
-    "- Arquivos: interpretação de PDF, imagem, Word, Excel, CSV, TXT e Markdown no fluxo do JARVIS; geração/exportação real de XLSX, CSV, DOCX, PDF, TXT e Markdown quando solicitada.",
-    "- Dados do tenant: CRM, leads, propostas, campanhas, Casos Vendor, prioridades, agenda, histórico e inteligência conforme dados realmente disponíveis e permissões.",
-    "- Estratégia: marketing, vendas, alta performance, motivação contextual, finanças/custos, tributário, jurídico, comércio exterior, crédito e conhecimento geral como capacidades analíticas; atos regulados/alto risco exigem validação humana quando aplicável.",
-    "Ações externas detectadas neste tenant:",
-    ...(external.length ? external : ["- Não foi possível carregar o status das integrações externas nesta sessão; não afirme execução de ação externa sem confirmação real."]),
-    "Regra: nunca responda que uma função não existe se o runtime acima diz que ela está disponível. Diferencie função implementada, provider configurado, ação executada e validação profissional.",
+    "Hoje eu consigo atuar nestas frentes:",
+    "",
+    "• Negócio: CRM, leads, clientes, propostas, campanhas, agenda, prioridades, Casos Vendor, custos, margem e análise do tenant.",
+    "• Mercado: câmbio e Forex, cripto e pesquisa atual para ações, índices, commodities e notícias quando necessário.",
+    "• Tributário e jurídico: ICMS, ST, DIFAL, IPI, ISS, PIS/COFINS, NCM, CFOP, legislação, contratos e regras vigentes com pesquisa atual quando necessário.",
+    "• Comércio exterior e crédito: importação, exportação, custos, Incoterms, financiamento, empréstimos, CET e impacto financeiro.",
+    "• Marketing e vendas: estratégia, campanhas, copy, planejamento comercial, coaching de vendas, alta performance e motivação contextual.",
+    "• Arquivos: analisar PDF, imagem, Word, Excel, CSV e TXT; gerar Excel, CSV, Word, PDF, TXT e Markdown.",
+    "• Recomendações e conhecimento geral: livros, filmes, sites, cursos, pesquisas e perguntas gerais.",
+    "• Voz: você pode falar comigo pelo microfone e eu tento responder por voz em pt-BR; também há replay da última resposta quando o dispositivo suporta TTS.",
+    "",
+    "Ações externas neste tenant agora:",
+    ...(actions.length ? actions : ["⚠️ Não consegui ler o estado das integrações externas nesta sessão."]),
+    "",
+    "Quando uma ação exigir autorização, eu preparo e coloco na fila de aprovações antes de executar.",
   ].join("\n");
+}
+
+function sseResponse(content: string) {
+  const body = [
+    `data: ${JSON.stringify({ content })}`,
+    "",
+    `data: ${JSON.stringify({ done: true })}`,
+    "",
+  ].join("\n");
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+    },
+  });
+}
+
+function announceVoice(content: string) {
+  window.dispatchEvent(new CustomEvent(VOICE_READY_EVENT, {
+    detail: { content, supported: "speechSynthesis" in window, autoEnabled: true },
+  }));
+  void speakJarvis(content);
 }
 
 if (typeof window !== "undefined") {
@@ -65,10 +94,7 @@ if (typeof window !== "undefined") {
     try {
       const payload = JSON.parse(init.body) as { messages?: Array<{ role?: string; content?: string }> };
       if (!Array.isArray(payload.messages)) return previousFetch(input, init);
-      const messages = [...payload.messages];
-      const lastUserIndex = getLastUserIndex(messages);
-      if (lastUserIndex < 0) return previousFetch(input, init);
-      const lastText = String(messages[lastUserIndex]?.content ?? "");
+      const lastText = getLastUserText(payload.messages);
       if (!isCapabilityQuestion(lastText)) return previousFetch(input, init);
 
       let capabilities: JarvisRuntimeCapability[] = [];
@@ -85,11 +111,9 @@ if (typeof window !== "undefined") {
         capabilities = [];
       }
 
-      messages[lastUserIndex] = {
-        ...messages[lastUserIndex],
-        content: `${lastText}\n\n${formatRuntimeContext(capabilities)}`,
-      };
-      return previousFetch(input, { ...init, body: JSON.stringify({ ...payload, messages }) });
+      const answer = buildCapabilityAnswer(capabilities);
+      queueMicrotask(() => announceVoice(answer));
+      return sseResponse(answer);
     } catch {
       return previousFetch(input, init);
     }
