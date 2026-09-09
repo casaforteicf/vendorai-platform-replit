@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractContactDeviceIntent, extractSpotifyQuery, extractVendorAiRoute } from "./jarvis_device_actions.js";
+import {
+  extractContactDeviceIntent,
+  extractContextNavigationIntent,
+  extractSpotifyQuery,
+  extractVendorAiRoute,
+} from "./jarvis_device_actions.js";
 
 describe("JARVIS device actions", () => {
   it("extrai música pedida explicitamente no Spotify", () => {
@@ -32,6 +37,22 @@ describe("JARVIS device actions", () => {
   it("reconhece pedido de rota para contato", () => {
     expect(extractContactDeviceIntent("trace a rota para Pedro"))
       .toEqual({ kind: "route", contactQuery: "Pedro" });
+  });
+
+  it("reconhece entidades específicas antes da navegação genérica", () => {
+    expect(extractContextNavigationIntent("Jarvis, abra o cliente João"))
+      .toEqual({ kind: "lead", query: "João" });
+    expect(extractContextNavigationIntent("mostre a proposta Casa Forte"))
+      .toEqual({ kind: "proposal", query: "Casa Forte" });
+    expect(extractContextNavigationIntent("abra a campanha Setembro"))
+      .toEqual({ kind: "campaign", query: "Setembro" });
+    expect(extractContextNavigationIntent("abra o Caso Vendor margem baixa"))
+      .toEqual({ kind: "case", query: "margem baixa" });
+  });
+
+  it("reconhece filtro textual de leads", () => {
+    expect(extractContextNavigationIntent("filtre os leads de Chapecó"))
+      .toEqual({ kind: "lead_filter", query: "Chapecó" });
   });
 
   it("mapeia navegação para rotas reais conhecidas do VendorAI", () => {
