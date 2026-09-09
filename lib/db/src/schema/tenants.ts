@@ -45,6 +45,9 @@ export const tenantsTable = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    // Identidade pública, curta, imutável e única do tenant (ex.: VAI-000031).
+    // O banco gera o valor via tenant_public_code_seq; o UUID continua sendo a PK interna.
+    tenantCode: varchar("tenant_code", { length: 16 }).notNull().unique(),
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
     status: tenantStatusEnum("status").notNull().default("active"),
@@ -99,7 +102,30 @@ export const tenantsTable = pgTable(
     tipoFechamentoDefault: text("tipo_fechamento_default").$type<
       "pedido" | "contrato" | "pedido_e_contrato"
     >(),
+    // Valor efetivamente negociado/cobrado do tenant (campo legado preservado).
     mensalidadeValor: numeric("mensalidade_valor", { precision: 10, scale: 2 }),
+    mensalidadeTabelaValor: numeric("mensalidade_tabela_valor", { precision: 10, scale: 2 }),
+    taxaImplantacaoValor: numeric("taxa_implantacao_valor", { precision: 10, scale: 2 }),
+    descontoPercentual: numeric("desconto_percentual", { precision: 5, scale: 2 }),
+    formaPagamento: varchar("forma_pagamento", { length: 32 }).$type<
+      "pix" | "boleto" | "cartao" | "transferencia" | "outro"
+    >(),
+    statusPagamento: varchar("status_pagamento", { length: 24 }).$type<
+      "pago" | "pendente" | "atrasado" | "isento"
+    >(),
+    diaVencimento: integer("dia_vencimento"),
+    ultimoPagamentoEm: timestamp("ultimo_pagamento_em"),
+    proximoPagamentoEm: timestamp("proximo_pagamento_em"),
+    contratoInicioEm: timestamp("contrato_inicio_em"),
+    contratoFimEm: timestamp("contrato_fim_em"),
+    renovacaoAutomatica: boolean("renovacao_automatica").notNull().default(false),
+    origemCliente: varchar("origem_cliente", { length: 80 }),
+    responsavelComercial: varchar("responsavel_comercial", { length: 160 }),
+    observacoesComerciais: text("observacoes_comerciais"),
+    motivoDesconto: text("motivo_desconto"),
+    cancelamentoSolicitadoEm: timestamp("cancelamento_solicitado_em"),
+    canceladoEm: timestamp("cancelado_em"),
+    motivoCancelamento: text("motivo_cancelamento"),
     tokenCredits: integer("token_credits").notNull().default(0),
     partnerId: text("partner_id").references(() => partnersTable.id, {
       onDelete: "set null",
@@ -113,8 +139,12 @@ export const tenantsTable = pgTable(
     }),
     billingCycle: text("billing_cycle").$type<"monthly" | "annual">(),
     planStartedAt: timestamp("plan_started_at"),
+    // Demo permanece um tenant normal: mesma identidade, dados e histórico.
+    // Ao converter para pagante, isDemo muda para false e tenantCode não muda.
     isDemo: boolean("is_demo").notNull().default(false),
+    demoStartedAt: timestamp("demo_started_at"),
     demoExpiresAt: timestamp("demo_expires_at"),
+    demoConvertedAt: timestamp("demo_converted_at"),
     demoSeeded: boolean("demo_seeded").notNull().default(false),
     openaiApiKeyEncrypted: text("openai_api_key_encrypted"),
     openaiKeyConfiguredAt: timestamp("openai_key_configured_at"),
@@ -272,6 +302,14 @@ export const tenantsTable = pgTable(
       "tenants_default_currency_check",
       sql`${table.defaultCurrency} IN ('BRL', 'USD', 'PYG', 'ARS', 'UYU', 'CLP')`,
     ),
+    check(
+      "tenants_dia_vencimento_check",
+      sql`${table.diaVencimento} IS NULL OR (${table.diaVencimento} >= 1 AND ${table.diaVencimento} <= 31)`,
+    ),
+    check(
+      "tenants_desconto_percentual_check",
+      sql`${table.descontoPercentual} IS NULL OR (${table.descontoPercentual} >= 0 AND ${table.descontoPercentual} <= 100)`,
+    ),
   ],
 );
 
@@ -300,6 +338,7 @@ const supportedCurrenciesSchema = z.array(tenantCurrencySchema).min(1);
 export const insertTenantSchema = createInsertSchema(tenantsTable)
   .omit({
     id: true,
+    tenantCode: true,
     tokensUsedCurrentMonth: true,
     messagesSentToday: true,
     createdAt: true,
@@ -322,6 +361,7 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
 export const updateTenantSchema = createSelectSchema(tenantsTable)
   .omit({
     id: true,
+    tenantCode: true,
     createdAt: true,
     updatedAt: true,
   })
