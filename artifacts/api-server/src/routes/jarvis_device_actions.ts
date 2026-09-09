@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, ilike, or } from "drizzle-orm";
-import { db, leadsTable } from "@workspace/db";
+import { campaignsTable, db, jarvisCasesTable, leadsTable, propostasTable } from "@workspace/db";
 import { loadJarvisExternalCapabilities } from "../services/jarvis-external-capabilities.js";
 
 const router: IRouter = Router();
@@ -17,6 +17,13 @@ type ContactDeviceIntent = {
   kind: "call" | "whatsapp" | "route";
   contactQuery: string;
 };
+
+type ContextNavigationIntent =
+  | { kind: "lead"; query: string }
+  | { kind: "proposal"; query: string }
+  | { kind: "campaign"; query: string }
+  | { kind: "case"; query: string }
+  | { kind: "lead_filter"; query: string };
 
 const VENDORAI_ROUTES: Array<{ keywords: RegExp; path: string; label: string }> = [
   { keywords: /\b(dashboard|painel)\b/, path: "/dashboard", label: "Dashboard" },
@@ -44,6 +51,18 @@ function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+function stripJarvis(text: string) {
+  return text.replace(/^\s*jarvis[, ]*/i, "").trim();
+}
+
+function cleanQuery(value: string) {
+  return value
+    .replace(/[,.!?]+$/g, "")
+    .replace(/\s+(por favor|agora)$/i, "")
+    .trim()
+    .slice(0, 200);
+}
+
 function extractSpotifyQuery(text: string): string | null {
   const normalized = normalize(text);
   const wantsMusic = /\b(toca|toque|tocar|coloca|coloque|ouvir|abra|abrir)\b/.test(normalized)
@@ -62,37 +81,63 @@ function extractSpotifyQuery(text: string): string | null {
   return cleaned.slice(0, 300);
 }
 
-function cleanContactQuery(value: string) {
-  return value
-    .replace(/[,.!?]+$/g, "")
-    .replace(/\s+(por favor|agora)$/i, "")
-    .trim()
-    .slice(0, 200);
+function extractContextNavigationIntent(text: string): ContextNavigationIntent | null {
+  const value = stripJarvis(text);
+  const normalized = normalize(value);
+
+  const filterMatch = normalized.match(/^(filtre|filtrar|mostre|mostrar)\s+(os\s+)?leads\s+(de|da|do|em)\s+(.+)$/i);
+  if (filterMatch?.[4]) {
+    const query = cleanQuery(value.split(/\s+(?:de|da|do|em)\s+/i).slice(1).join(" "));
+    return query ? { kind: "lead_filter", query } : null;
+  }
+
+  const patterns: Array<{ kind: ContextNavigationIntent["kind"]; regex: RegExp }> = [
+    { kind: "lead", regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(o\s+|a\s+)?(cliente|lead|contato)\s+(.+)$/i },
+    { kind: "proposal", regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(a\s+)?proposta\s+(.+)$/i },
+    { kind: "campaign", regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(a\s+)?campanha\s+(.+)$/i },
+    { kind: "case", regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(o\s+)?(caso\s+vendor|caso)\s+(.+)$/i },
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern.regex);
+    if (!match) continue;
+    const raw = pattern.kind === "lead"
+      ? value.replace(/^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(o\s+|a\s+)?(cliente|lead|contato)\s+/i, "")
+      : pattern.kind === "proposal"
+        ? value.replace(/^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(a\s+)?proposta\s+/i, "")
+        : pattern.kind === "campaign"
+          ? value.replace(/^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(a\s+)?campanha\s+/i, "")
+          : value.replace(/^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(o\s+)?(caso\s+vendor|caso)\s+/i, "");
+    const query = cleanQuery(raw);
+    if (query) return { kind: pattern.kind as "lead" | "proposal" | "campaign" | "case", query };
+  }
+
+  return null;
 }
 
 function extractContactDeviceIntent(text: string): ContactDeviceIntent | null {
-  const withoutJarvis = text.replace(/^\s*jarvis[, ]*/i, "").trim();
+  const withoutJarvis = stripJarvis(text);
   const normalized = normalize(withoutJarvis);
 
   if (/^(ligue|liga|ligar|telefone|telefonar)\s+(para\s+|pro\s+|pra\s+)?/i.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis.replace(/^(ligue|liga|ligar|telefone|telefonar)\s+(para\s+|pro\s+|pra\s+)?/i, ""));
+    const query = cleanQuery(withoutJarvis.replace(/^(ligue|liga|ligar|telefone|telefonar)\s+(para\s+|pro\s+|pra\s+)?/i, ""));
     return query ? { kind: "call", contactQuery: query } : null;
   }
 
   if (/^(abra|abrir|mostre|mostrar)\s+(o\s+)?whatsapp\s+(do|da|de)\s+/i.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis.replace(/^(abra|abrir|mostre|mostrar)\s+(o\s+)?whatsapp\s+(do|da|de)\s+/i, ""));
+    const query = cleanQuery(withoutJarvis.replace(/^(abra|abrir|mostre|mostrar)\s+(o\s+)?whatsapp\s+(do|da|de)\s+/i, ""));
     return query ? { kind: "whatsapp", contactQuery: query } : null;
   }
 
   if (/^(abra|abrir|mostre|mostrar)\s+(a\s+)?conversa\s+(com\s+)?/i.test(normalized) && /\bwhatsapp\b/.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis
+    const query = cleanQuery(withoutJarvis
       .replace(/^(abra|abrir|mostre|mostrar)\s+(a\s+)?conversa\s+(com\s+)?/i, "")
       .replace(/\s+(no|pelo)\s+whatsapp\s*$/i, ""));
     return query ? { kind: "whatsapp", contactQuery: query } : null;
   }
 
   if (/^(abra|abrir|mostre|mostrar|trace|tracar)\s+(a\s+)?(rota|mapa|caminho)\s+(para|ate)\s+/i.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis.replace(/^(abra|abrir|mostre|mostrar|trace|traçar)\s+(a\s+)?(rota|mapa|caminho)\s+(para|até|ate)\s+/i, ""));
+    const query = cleanQuery(withoutJarvis.replace(/^(abra|abrir|mostre|mostrar|trace|traçar)\s+(a\s+)?(rota|mapa|caminho)\s+(para|até|ate)\s+/i, ""));
     return query ? { kind: "route", contactQuery: query } : null;
   }
 
@@ -100,7 +145,7 @@ function extractContactDeviceIntent(text: string): ContactDeviceIntent | null {
 }
 
 function extractVendorAiRoute(text: string): { path: string; label: string } | null {
-  const normalized = normalize(text.replace(/^\s*jarvis[, ]*/i, ""));
+  const normalized = normalize(stripJarvis(text));
   if (!/\b(abre|abra|abrir|va|ir|mostre|mostrar|acesse|acessar|leve)\b/.test(normalized)) return null;
   return VENDORAI_ROUTES.find((entry) => entry.keywords.test(normalized)) ?? null;
 }
@@ -126,6 +171,16 @@ function normalizePhone(phone: string) {
   };
 }
 
+function vendorAction(path: string, label: string, nativePath?: string): DeviceAction {
+  return {
+    type: "open_external_url",
+    provider: "vendorai",
+    ...(nativePath ? { uri: `vendorai://${nativePath.replace(/^\//, "")}` } : {}),
+    fallbackUrl: `https://app.appvendorai.com${path}`,
+    label,
+  };
+}
+
 async function resolveTenantContact(tenantId: string, query: string) {
   const safe = query.replace(/[%_]/g, "").trim();
   const like = `%${safe}%`;
@@ -147,6 +202,83 @@ async function resolveTenantContact(tenantId: string, query: string) {
       ),
     ))
     .limit(5);
+}
+
+async function resolveContextNavigation(tenantId: string, intent: ContextNavigationIntent) {
+  const safe = intent.query.replace(/[%_]/g, "").trim();
+  const like = `%${safe}%`;
+
+  if (intent.kind === "lead_filter") {
+    return {
+      label: `Leads filtrados por ${safe}`,
+      action: vendorAction(`/leads?search=${encodeURIComponent(safe)}`, `Leads: ${safe}`, `/leads?search=${encodeURIComponent(safe)}`),
+    };
+  }
+
+  if (intent.kind === "lead") {
+    const rows = await db.select({ id: leadsTable.id, nome: leadsTable.nome, email: leadsTable.email })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), or(ilike(leadsTable.nome, like), ilike(leadsTable.email, like))))
+      .limit(5);
+    return resolveRows(rows, safe, (row) => row.nome, (row) => vendorAction(`/leads/${row.id}`, row.nome, `/leads/${row.id}`));
+  }
+
+  if (intent.kind === "proposal") {
+    const rows = await db.select({ id: propostasTable.id, titulo: propostasTable.titulo, leadNome: leadsTable.nome })
+      .from(propostasTable)
+      .leftJoin(leadsTable, and(eq(propostasTable.leadId, leadsTable.id), eq(leadsTable.tenantId, tenantId)))
+      .where(and(
+        eq(propostasTable.tenantId, tenantId),
+        or(ilike(propostasTable.titulo, like), ilike(leadsTable.nome, like)),
+      ))
+      .limit(5);
+    return resolveRows(
+      rows,
+      safe,
+      (row) => row.titulo || row.leadNome || "Proposta",
+      (row) => vendorAction(`/propostas/${row.id}`, row.titulo || "Proposta"),
+    );
+  }
+
+  if (intent.kind === "campaign") {
+    const rows = await db.select({ id: campaignsTable.id, nome: campaignsTable.nome })
+      .from(campaignsTable)
+      .where(and(eq(campaignsTable.tenantId, tenantId), ilike(campaignsTable.nome, like)))
+      .limit(5);
+    return resolveRows(
+      rows,
+      safe,
+      (row) => row.nome,
+      (row) => vendorAction(`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(row.id)}`, row.nome),
+    );
+  }
+
+  const rows = await db.select({ id: jarvisCasesTable.id, title: jarvisCasesTable.title })
+    .from(jarvisCasesTable)
+    .where(and(eq(jarvisCasesTable.tenantId, tenantId), or(eq(jarvisCasesTable.id, safe), ilike(jarvisCasesTable.title, like))))
+    .limit(5);
+  return resolveRows(
+    rows,
+    safe,
+    (row) => row.title,
+    (row) => vendorAction(`/dashboard?jarvisCase=${encodeURIComponent(row.id)}`, row.title),
+  );
+}
+
+function resolveRows<T>(
+  rows: T[],
+  query: string,
+  labelOf: (row: T) => string,
+  actionOf: (row: T) => DeviceAction,
+) {
+  if (!rows.length) return { error: `Não encontrei “${query}” neste tenant.` };
+  if (rows.length > 1) {
+    return {
+      error: `Encontrei mais de um resultado para “${query}”. Qual deles?\n${rows.map((row, index) => `${index + 1}. ${labelOf(row)}`).join("\n")}`,
+    };
+  }
+  const row = rows[0]!;
+  return { label: labelOf(row), action: actionOf(row) };
 }
 
 function contactAction(kind: ContactDeviceIntent["kind"], contact: { nome: string; telefone: string | null; endereco: string | null }): DeviceAction | null {
@@ -218,6 +350,21 @@ router.post("/support/chat", async (req, res, next) => {
     return;
   }
 
+  const contextualIntent = extractContextNavigationIntent(text);
+  if (contextualIntent) {
+    const resolved = await resolveContextNavigation(tenantId, contextualIntent);
+    if ("error" in resolved) {
+      writeSse(res, resolved.error);
+      return;
+    }
+    writeSse(res, `Vou abrir ${resolved.label} no VendorAI.`, {
+      clientAction: resolved.action,
+      executionMode: "device_open",
+      entityResolved: true,
+    });
+    return;
+  }
+
   const vendorRoute = extractVendorAiRoute(text);
   if (vendorRoute) {
     const path = vendorRoute.path.replace(/^\//, "");
@@ -268,5 +415,10 @@ router.post("/support/chat", async (req, res, next) => {
   });
 });
 
-export { extractSpotifyQuery, extractContactDeviceIntent, extractVendorAiRoute };
+export {
+  extractSpotifyQuery,
+  extractContactDeviceIntent,
+  extractContextNavigationIntent,
+  extractVendorAiRoute,
+};
 export default router;
