@@ -89,6 +89,29 @@ async function speakSupportResponse(response: Response) {
   }
 }
 
+function addVoiceRuntimeContext(init?: RequestInit): RequestInit | undefined {
+  if (typeof init?.body !== "string") return init;
+  try {
+    const payload = JSON.parse(init.body) as {
+      messages?: Array<{ role?: string; content?: string }>;
+    };
+    const messages = Array.isArray(payload.messages) ? [...payload.messages] : null;
+    if (!messages?.length) return init;
+    const lastUserIndex = [...messages].map((message) => message.role).lastIndexOf("user");
+    if (lastUserIndex < 0) return init;
+    const lastContent = String(messages[lastUserIndex]?.content ?? "");
+    if (!/\b(voz|audio|áudio|microfone|falar|fala|falado|ouvir|responder por voz)\b/i.test(lastContent)) return init;
+
+    messages[lastUserIndex] = {
+      ...messages[lastUserIndex],
+      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS já oferece entrada por microfone e tentativa de resposta falada em pt-BR via síntese de voz do navegador/dispositivo. Não diga que existe somente interação por texto. Se a fala não sair, trate como falha/limitação de TTS do dispositivo ou navegador, não como ausência da função no produto. Wake word com app fechado é uma capacidade separada.]`,
+    };
+    return { ...init, body: JSON.stringify({ ...payload, messages }) };
+  } catch {
+    return init;
+  }
+}
+
 if (typeof window !== "undefined") {
   const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
   const resumeSpeech = () => {
@@ -105,15 +128,17 @@ if (typeof window !== "undefined") {
 
   const previousFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const response = await previousFetch(input, init);
     const url = typeof input === "string"
       ? input
       : input instanceof URL
         ? input.toString()
         : input.url;
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const isJarvisChat = method === "POST" && /(?:^|\/)api\/support\/chat(?:\?|$)/.test(url);
+    const effectiveInit = isJarvisChat ? addVoiceRuntimeContext(init) : init;
+    const response = await previousFetch(input, effectiveInit);
 
-    if (method === "POST" && /(?:^|\/)api\/support\/chat(?:\?|$)/.test(url) && response.ok) {
+    if (isJarvisChat && response.ok) {
       void speakSupportResponse(response.clone());
     }
 
