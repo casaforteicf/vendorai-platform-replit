@@ -749,7 +749,7 @@ export function SupportChatWidget() {
                     <button
                       type="button"
                       className="ml-1 text-muted-foreground hover:text-foreground"
-                      onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index)}
+                      onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                       aria-label={`Remover ${attachment.name}`}
                     >
                       <X className="h-3 w-3" />
