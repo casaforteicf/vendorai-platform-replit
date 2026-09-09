@@ -4,8 +4,10 @@ import { db, agentConfigsTable, agentTasksTable, leadsTable } from "@workspace/d
 import type { AgentTask } from "@workspace/db";
 import { parseJarvisEmailIntent, emailIntentMissingFields } from "../services/jarvis-email-action-intent.js";
 import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
+import jarvisDeviceActionsRouter from "./jarvis_device_actions.js";
 
 const router: IRouter = Router();
+router.use(jarvisDeviceActionsRouter);
 
 function lastUserMessage(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
