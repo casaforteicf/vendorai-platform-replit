@@ -50,9 +50,9 @@ describe("JARVIS device actions", () => {
       .toEqual({ kind: "case", query: "margem baixa" });
   });
 
-  it("reconhece filtro textual de leads", () => {
+  it("não anuncia filtro contextual enquanto a tela de Leads não consumir o parâmetro", () => {
     expect(extractContextNavigationIntent("filtre os leads de Chapecó"))
-      .toEqual({ kind: "lead_filter", query: "Chapecó" });
+      .toBeNull();
   });
 
   it("mapeia navegação para rotas reais conhecidas do VendorAI", () => {
