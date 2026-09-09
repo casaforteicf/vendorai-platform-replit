@@ -229,21 +229,26 @@ function render() {
   const panel = getPanel();
   if (!panel) return;
   const work = ensureWorkPanel(panel);
+  const wasExpanded = work.querySelector<HTMLButtonElement>(".jarvis-work-summary")?.getAttribute("aria-expanded") === "true";
   const stepIndex = STATUS_ORDER.indexOf(state.status);
   const activeThrough = state.status === "aguardando_aprovacao" ? 1 : stepIndex;
   const progress = STATUS_ORDER.map((_, index) => `<span class="${activeThrough >= index ? "active" : ""}"></span>`).join("");
-  work.innerHTML = `
-    <button type="button" class="jarvis-work-summary" aria-expanded="false">
+  const nextHtml = `
+    <button type="button" class="jarvis-work-summary" aria-expanded="${wasExpanded ? "true" : "false"}">
       <span class="jarvis-work-main"><span class="jarvis-work-kicker">Modo Trabalho</span><span class="jarvis-work-task" title="${escapeHtml(state.task)}">${escapeHtml(state.task)}</span></span>
       <span class="jarvis-work-status"><span class="jarvis-work-dot ${statusDotClass(state.status)}"></span>${STATUS_LABELS[state.status]}</span>
     </button>
     <div class="jarvis-work-progress" aria-label="Analisando, Executando, Validando, Concluído">${progress}</div>
-    <div class="jarvis-work-details" hidden>
+    <div class="jarvis-work-details" ${wasExpanded ? "" : "hidden"}>
       <div class="jarvis-work-columns">
         <div class="jarvis-work-box"><div class="jarvis-work-section-title">Atividade</div>${renderItems(state.activity, "Nenhuma atividade registrada")}</div>
         <div class="jarvis-work-box"><div class="jarvis-work-section-title">Pendências</div>${renderItems(state.pending, "Nenhuma pendência")}</div>
       </div>
     </div>`;
+
+  if (work.innerHTML === nextHtml) return;
+  work.innerHTML = nextHtml;
+
   const summary = work.querySelector<HTMLButtonElement>(".jarvis-work-summary");
   const details = work.querySelector<HTMLElement>(".jarvis-work-details");
   summary?.addEventListener("click", () => {
@@ -257,6 +262,7 @@ function render() {
 function scheduleCompletion(assistantText: string) {
   if (completionTimer) window.clearTimeout(completionTimer);
   completionTimer = window.setTimeout(() => {
+    completionTimer = null;
     const signals = extractSignals(assistantText);
     setState({
       status: state.status === "aguardando_aprovacao" ? "aguardando_aprovacao" : "concluido",
@@ -271,13 +277,16 @@ function inspectChat() {
   if (!panel) return;
   render();
   const { users, assistants } = getChatTexts(panel);
-  const userText = users.at(-1)?.trim() ?? "";
-  const assistantText = assistants.at(-1)?.trim() ?? "";
+  const userText = users.length ? users[users.length - 1].trim() : "";
+  const assistantText = assistants.length ? assistants[assistants.length - 1].trim() : "";
 
   if (userText && userText !== lastUserText) {
     lastUserText = userText;
     lastAssistantText = "";
-    if (completionTimer) window.clearTimeout(completionTimer);
+    if (completionTimer) {
+      window.clearTimeout(completionTimer);
+      completionTimer = null;
+    }
     setState({ task: compactTask(userText), status: "analisando", activity: ["Comando recebido"], pending: [] });
     return;
   }
