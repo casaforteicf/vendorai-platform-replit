@@ -47,7 +47,10 @@ export const tenantsTable = pgTable(
       .$defaultFn(() => crypto.randomUUID()),
     // Identidade pública, curta, imutável e única do tenant (ex.: VAI-000031).
     // O banco gera o valor via tenant_public_code_seq; o UUID continua sendo a PK interna.
-    tenantCode: varchar("tenant_code", { length: 16 }).notNull().unique(),
+    tenantCode: varchar("tenant_code", { length: 16 })
+      .notNull()
+      .unique()
+      .default(sql`'VAI-' || lpad(nextval('tenant_public_code_seq')::text, 6, '0')`),
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
     status: tenantStatusEnum("status").notNull().default("active"),
