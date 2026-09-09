@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { db, partnersTable, usersTable, tenantsTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { createSubaccount, isAsaasConfigured } from "../lib/asaas.js";
+import { vendorPool } from "../lib/vendorDb.js";
 
 const router: IRouter = Router();
 
@@ -59,6 +60,15 @@ const updatePartnerSchema = z.object({
   cupomAtivo: z.boolean().optional(),
   cupomValidoAte: z.coerce.date().nullable().optional(),
   cupomAplicacao: couponApplicationSchema.optional(),
+});
+
+const referralClickSchema = z.object({
+  sessionId: z.string().min(8).max(120),
+  source: z.string().max(80).optional().nullable(),
+  landingPath: z.string().max(1500).optional().nullable(),
+  utmSource: z.string().max(200).optional().nullable(),
+  utmMedium: z.string().max(200).optional().nullable(),
+  utmCampaign: z.string().max(200).optional().nullable(),
 });
 
 const linkTenantSchema = z.object({ partnerId: z.string().nullable() });
@@ -116,6 +126,57 @@ router.get("/partners/coupons/:code/validate", async (req, res) => {
   });
 });
 
+// Public click collection for referral links. One click is counted per partner/session,
+// avoiding inflated numbers from page reloads. No IP or personal data is stored.
+router.post("/partners/referrals/:code/click", async (req, res) => {
+  const code = normalizeCoupon(String(req.params["code"] ?? ""));
+  const parsed = referralClickSchema.safeParse(req.body);
+  if (!code || code.length < 3 || !parsed.success) {
+    res.status(422).json({ tracked: false });
+    return;
+  }
+
+  const [partner] = await db
+    .select({
+      id: partnersTable.id,
+      status: partnersTable.status,
+      cupomAtivo: partnersTable.cupomAtivo,
+      cupomValidoAte: partnersTable.cupomValidoAte,
+    })
+    .from(partnersTable)
+    .where(eq(partnersTable.cupomCodigo, code))
+    .limit(1);
+
+  if (!partner || partner.status !== "ativo" || !partner.cupomAtivo) {
+    res.status(404).json({ tracked: false });
+    return;
+  }
+  if (partner.cupomValidoAte && partner.cupomValidoAte.getTime() < Date.now()) {
+    res.status(410).json({ tracked: false });
+    return;
+  }
+
+  const data = parsed.data;
+  await vendorPool.query(
+    `INSERT INTO partner_referral_events
+      (partner_id,coupon_code,event_type,session_id,source,landing_path,utm_source,utm_medium,utm_campaign)
+     VALUES ($1,$2,'click',$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (partner_id,session_id,event_type) DO NOTHING`,
+    [
+      partner.id,
+      code,
+      data.sessionId,
+      data.source ?? null,
+      data.landingPath ?? null,
+      data.utmSource ?? null,
+      data.utmMedium ?? null,
+      data.utmCampaign ?? null,
+    ],
+  );
+
+  res.status(202).json({ tracked: true });
+});
+
 router.get("/admin/partners-commercial", requireRole("super_admin"), async (_req, res) => {
   const partners = await db
     .select({
@@ -142,6 +203,64 @@ router.get("/admin/partners-commercial", requireRole("super_admin"), async (_req
     .orderBy(desc(partnersTable.createdAt));
 
   res.json(partners);
+});
+
+// Funnel: click -> lead -> sale -> commission. The public UI never receives these values;
+// this endpoint is restricted to super_admin.
+router.get("/admin/partners-commercial/analytics", requireRole("super_admin"), async (_req, res) => {
+  const result = await vendorPool.query(`
+    WITH click_stats AS (
+      SELECT partner_id, count(*)::int AS clicks
+      FROM partner_referral_events
+      WHERE event_type='click'
+      GROUP BY partner_id
+    ), lead_stats AS (
+      SELECT indicado_por AS partner_id, count(*)::int AS leads
+      FROM leads
+      WHERE indicado_por IS NOT NULL AND excluido_em IS NULL
+      GROUP BY indicado_por
+    ), order_stats AS (
+      SELECT partner_id,
+             count(*) FILTER (WHERE status <> 'cancelado')::int AS orders,
+             count(*) FILTER (WHERE status IN (
+               'pago','em_separacao','pronto_coleta','coleta_agendada','coletado','em_rota','entregue','devolucao_solicitada','devolvido'
+             ))::int AS sales
+      FROM praca_pedidos
+      WHERE partner_id IS NOT NULL
+      GROUP BY partner_id
+    ), commission_stats AS (
+      SELECT partner_id,
+             count(*)::int AS commissions,
+             coalesce(sum(valor),0)::numeric AS commission_amount,
+             coalesce(sum(valor) FILTER (WHERE status='pago'),0)::numeric AS paid_commission_amount
+      FROM partner_commissions
+      GROUP BY partner_id
+    )
+    SELECT p.id AS "partnerId",
+           coalesce(c.clicks,0)::int AS clicks,
+           coalesce(l.leads,0)::int AS leads,
+           coalesce(o.orders,0)::int AS orders,
+           coalesce(o.sales,0)::int AS sales,
+           coalesce(cs.commissions,0)::int AS commissions,
+           coalesce(cs.commission_amount,0)::text AS "commissionAmount",
+           coalesce(cs.paid_commission_amount,0)::text AS "paidCommissionAmount",
+           CASE WHEN coalesce(c.clicks,0)>0
+             THEN round((coalesce(l.leads,0)::numeric / c.clicks::numeric) * 100, 2)
+             ELSE 0 END::text AS "leadConversionPercent",
+           CASE WHEN coalesce(c.clicks,0)>0
+             THEN round((coalesce(o.sales,0)::numeric / c.clicks::numeric) * 100, 2)
+             ELSE 0 END::text AS "saleConversionPercent",
+           CASE WHEN coalesce(l.leads,0)>0
+             THEN round((coalesce(o.sales,0)::numeric / l.leads::numeric) * 100, 2)
+             ELSE 0 END::text AS "leadToSalePercent"
+      FROM partners p
+      LEFT JOIN click_stats c ON c.partner_id=p.id
+      LEFT JOIN lead_stats l ON l.partner_id=p.id
+      LEFT JOIN order_stats o ON o.partner_id=p.id
+      LEFT JOIN commission_stats cs ON cs.partner_id=p.id
+     ORDER BY p.created_at DESC
+  `);
+  res.json(result.rows);
 });
 
 router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
