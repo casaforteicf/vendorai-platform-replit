@@ -26,7 +26,6 @@ ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS cancelado_em timestamp,
   ADD COLUMN IF NOT EXISTS motivo_cancelamento text;
 
--- Gera um número amigável para todos os tenants já existentes.
 UPDATE tenants
 SET tenant_code = 'VAI-' || lpad(nextval('tenant_public_code_seq')::text, 6, '0')
 WHERE tenant_code IS NULL;

@@ -1,22 +1,16 @@
 -- Hardening complementar para identidade pública e ciclo Demo -> Cliente.
--- Seguro para reexecução após 20260908_tenant_admin_identity_commercial.sql.
+-- Seguro para reexecução após 20260910_tenant_admin_identity_commercial.sql.
 
--- Tenants demo antigos podem não ter data de início registrada. Usa a data de criação
--- como referência histórica sem alterar a validade já configurada.
 UPDATE tenants
 SET demo_started_at = COALESCE(demo_started_at, created_at)
 WHERE is_demo = true
   AND demo_started_at IS NULL;
 
--- Todo Demo administrável deve ter validade. Para registros antigos sem validade,
--- aplica 5 dias a partir do início/criação, mantendo datas já existentes intactas.
 UPDATE tenants
 SET demo_expires_at = COALESCE(demo_expires_at, COALESCE(demo_started_at, created_at) + INTERVAL '5 days')
 WHERE is_demo = true
   AND demo_expires_at IS NULL;
 
--- Sincroniza a sequence com o maior VAI já existente. Isso evita colisão caso o banco
--- já possua códigos atribuídos manualmente ou por uma execução parcial anterior.
 SELECT setval(
   'tenant_public_code_seq',
   GREATEST(
@@ -30,7 +24,6 @@ SELECT setval(
   true
 );
 
--- A identidade pública é imutável depois de criada, mesmo fora da API.
 CREATE OR REPLACE FUNCTION prevent_tenant_code_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -49,7 +42,6 @@ BEFORE UPDATE OF tenant_code ON tenants
 FOR EACH ROW
 EXECUTE FUNCTION prevent_tenant_code_change();
 
--- Coerência mínima do período de Demo.
 DO $$
 BEGIN
   IF NOT EXISTS (
