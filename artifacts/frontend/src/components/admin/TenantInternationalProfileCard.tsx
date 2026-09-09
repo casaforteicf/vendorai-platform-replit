@@ -266,6 +266,7 @@ export function TenantInternationalProfileCard({
     () => JSON.stringify(commercialForm) !== JSON.stringify(commercialToForm(tenant)),
     [commercialForm, tenant],
   );
+  const demoExpiryMissing = commercialForm.isDemo && !commercialForm.demoExpiresAt;
 
   function applyCountry(countryCode: CountryCode) {
     const preset = COUNTRY_PROFILES[countryCode];
@@ -347,6 +348,10 @@ export function TenantInternationalProfileCard({
   async function saveCommercial() {
     const dueDay = commercialForm.diaVencimento ? Number(commercialForm.diaVencimento) : null;
     const discount = commercialForm.descontoPercentual ? Number(commercialForm.descontoPercentual.replace(",", ".")) : null;
+    if (demoExpiryMissing) {
+      toast({ title: "Informe até quando o Demo será válido", variant: "destructive" });
+      return;
+    }
     if (dueDay != null && (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31)) {
       toast({ title: "Dia de vencimento deve estar entre 1 e 31", variant: "destructive" });
       return;
@@ -588,13 +593,17 @@ export function TenantInternationalProfileCard({
             </div>
             {commercialForm.isDemo && (
               <div className="max-w-xs space-y-1.5">
-                <label htmlFor="demo-expiration" className="text-xs font-medium">Demo válido até</label>
+                <label htmlFor="demo-expiration" className="text-xs font-medium">Demo válido até *</label>
                 <Input
                   id="demo-expiration"
                   type="date"
                   value={commercialForm.demoExpiresAt}
+                  aria-invalid={demoExpiryMissing}
                   onChange={(event) => setCommercialForm((current) => ({ ...current, demoExpiresAt: event.target.value }))}
                 />
+                {demoExpiryMissing && (
+                  <p className="text-xs text-red-600">A data de validade é obrigatória para tenants Demo.</p>
+                )}
               </div>
             )}
           </div>
@@ -703,7 +712,7 @@ export function TenantInternationalProfileCard({
                 Descartar
               </Button>
             )}
-            <Button type="button" onClick={() => void saveCommercial()} disabled={savingCommercial || !commercialDirty}>
+            <Button type="button" onClick={() => void saveCommercial()} disabled={savingCommercial || !commercialDirty || demoExpiryMissing}>
               {savingCommercial && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar dados comerciais
             </Button>
