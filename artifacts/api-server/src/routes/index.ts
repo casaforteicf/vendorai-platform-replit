@@ -160,7 +160,7 @@ import changelogRouter from "./changelog";
 import pacotesRouter from "./pacotes";
 import mlStatusRouter from "./ml_status";
 import internalScoutSignalRouter from "./internal_scout_signal";
-import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstos";
+import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
 import contentAutopilotRouter from "./content_autopilot";
 import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
@@ -375,7 +375,7 @@ router.use(erpRouter);
 router.use(changelogRouter);
 router.use(pacotesRouter);
 router.use(mlStatusRouter);
-router.use(leadOportunidadesPrevistosRouter);
+router.use(leadOportunidadesPrevistasRouter);
 router.use(contentAutopilotRouter);
 router.use(siteBlogAdminRouter);
 
