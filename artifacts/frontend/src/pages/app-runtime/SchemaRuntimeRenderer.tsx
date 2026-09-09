@@ -29,6 +29,7 @@ export type RuntimeActionClient = {
   appId: string;
   token: string;
   onSuccess?: () => void;
+  simulate?: boolean;
 };
 
 type RuntimePage = {
@@ -55,7 +56,7 @@ const COPY = {
   pt: {
     empty: "Nenhum conteúdo foi publicado para este perfil.",
     navigation: "Navegação",
-    actionPreview: "Prévia: a ação não será executada.",
+    actionPreview: "Prévia interativa: validação concluída sem executar efeitos reais.",
     actionSending: "Enviando...",
     actionInvalid: "Revise os campos e tente novamente.",
     actionForbidden: "Seu perfil não tem permissão para executar esta ação.",
@@ -64,7 +65,7 @@ const COPY = {
   es: {
     empty: "No hay contenido publicado para este perfil.",
     navigation: "Navegación",
-    actionPreview: "Vista previa: la acción no se ejecutará.",
+    actionPreview: "Vista previa interactiva: validación completada sin ejecutar efectos reales.",
     actionSending: "Enviando...",
     actionInvalid: "Revisa los campos e inténtalo de nuevo.",
     actionForbidden: "Tu perfil no tiene permiso para ejecutar esta acción.",
@@ -152,6 +153,14 @@ function ActionFormBlock({ block, lang, actionClient }: { block: RuntimeBlock; l
     setMessage(null);
     setSuccess(false);
     try {
+      if (actionClient.simulate) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        setSuccess(true);
+        setMessage(stringValue(props.successMessage) ?? copy.actionPreview);
+        actionClient.onSuccess?.();
+        return;
+      }
+
       const response = await fetch(
         `/api/app-runtime/apps/${encodeURIComponent(actionClient.appId)}/actions/${encodeURIComponent(actionKey)}`,
         {
@@ -246,7 +255,7 @@ function ActionFormBlock({ block, lang, actionClient }: { block: RuntimeBlock; l
           {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {busy ? copy.actionSending : stringValue(props.submitLabel) ?? "Enviar"}
         </button>
-        {!actionClient && <p className="text-xs text-slate-400">{copy.actionPreview}</p>}
+        {actionClient?.simulate && <p className="text-xs text-slate-400">{copy.actionPreview}</p>}
       </form>
     </section>
   );
