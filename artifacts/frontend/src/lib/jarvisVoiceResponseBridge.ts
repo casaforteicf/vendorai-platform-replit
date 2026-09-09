@@ -4,13 +4,15 @@ const VOICE_SETTING_KEY = "jarvis_voice_replies";
 const VOICE_READY_EVENT = "vendorai:jarvis-voice-ready";
 const HANDS_FREE_SESSION_KEY = "jarvis_web_hands_free_session";
 const TOKEN_KEY = "vendorai_token";
+const DUPLICATE_WINDOW_MS = 10_000;
 let activeNeuralAudio: HTMLAudioElement | null = null;
 let activeNeuralUrl: string | null = null;
+let activeSpeechGeneration = 0;
+let lastSpeechFingerprint = "";
+let lastSpeechStartedAt = 0;
 
 function canSpeakJarvis() {
-  return typeof window !== "undefined"
-    && (typeof Audio !== "undefined"
-      || ("speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined"));
+  return typeof window !== "undefined" && typeof Audio !== "undefined";
 }
 
 function shouldSpeak() {
@@ -32,57 +34,31 @@ function cleanForSpeech(text: string) {
 
 function conciseForSpeech(text: string) {
   const cleaned = cleanForSpeech(text);
-  if (cleaned.length <= 520) return cleaned;
+  if (cleaned.length <= 620) return cleaned;
 
   const sentences = cleaned
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const summary = sentences.slice(0, 3).join(" ");
-  const compact = (summary || cleaned.slice(0, 480)).slice(0, 500).trim();
+  const summary = sentences.slice(0, 4).join(" ");
+  const compact = (summary || cleaned.slice(0, 580)).slice(0, 600).trim();
   return `${compact} Se quiser, eu detalho.`;
 }
 
-function naturalVoiceScore(voice: SpeechSynthesisVoice) {
-  const lang = voice.lang.toLowerCase();
-  const name = voice.name.toLowerCase();
-  let score = 0;
-
-  if (lang === "pt-br") score += 100;
-  else if (lang.startsWith("pt")) score += 50;
-  else return -1000;
-
-  if (/natural|neural|enhanced|premium|online/.test(name)) score += 40;
-  if (/google|microsoft|samsung|apple/.test(name)) score += 18;
-  if (/brasil|brazil|portuguese.*brazil/.test(name)) score += 15;
-  if (voice.localService) score += 4;
-  if (/espeak|compact|legacy|robot/.test(name)) score -= 35;
-
-  return score;
+function prepareNeuralSpeech(text: string) {
+  return text
+    .replace(/\bJARVIS\b/g, "Jarvis")
+    .replace(/(\d+(?:[.,]\d+)?)\s*%/g, "$1 por cento")
+    .replace(/(\d+)\s*\/\s*(\d+)/g, "$1 de $2")
+    .replace(/\s*[:;]\s*/g, ", ")
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/([,.!?])(?=\S)/g, "$1 ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function choosePtBrVoice() {
-  const voices = window.speechSynthesis.getVoices();
-  return voices
-    .map((voice) => ({ voice, score: naturalVoiceScore(voice) }))
-    .filter((item) => item.score > -1000)
-    .sort((a, b) => b.score - a.score)[0]?.voice ?? null;
-}
-
-function splitForSpeech(text: string, maxChars = 320): string[] {
-  const parts: string[] = [];
-  let remaining = text.trim();
-  while (remaining.length > maxChars) {
-    const windowText = remaining.slice(0, maxChars + 1);
-    const sentenceBreak = Math.max(windowText.lastIndexOf(". "), windowText.lastIndexOf("! "), windowText.lastIndexOf("? "));
-    const commaBreak = Math.max(windowText.lastIndexOf(", "), windowText.lastIndexOf("; "), windowText.lastIndexOf(": "));
-    const spaceBreak = windowText.lastIndexOf(" ");
-    const cut = sentenceBreak > 100 ? sentenceBreak + 1 : commaBreak > 100 ? commaBreak + 1 : spaceBreak > 100 ? spaceBreak : maxChars;
-    parts.push(remaining.slice(0, cut).trim());
-    remaining = remaining.slice(cut).trim();
-  }
-  if (remaining) parts.push(remaining);
-  return parts;
+function speechFingerprint(text: string) {
+  return text.toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
 }
 
 function getJarvisPanel() {
@@ -137,6 +113,7 @@ function restartJarvisMicAfterSpeech() {
 }
 
 function stopNeuralAudio() {
+  activeSpeechGeneration += 1;
   if (activeNeuralAudio) {
     activeNeuralAudio.pause();
     activeNeuralAudio.src = "";
@@ -146,43 +123,10 @@ function stopNeuralAudio() {
     URL.revokeObjectURL(activeNeuralUrl);
     activeNeuralUrl = null;
   }
+  window.speechSynthesis?.cancel();
 }
 
-function speakLocalJarvis(content: string, onComplete?: () => void) {
-  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return false;
-
-  const synth = window.speechSynthesis;
-  const chunks = splitForSpeech(content);
-  let index = 0;
-
-  const speakNext = () => {
-    if (index >= chunks.length) {
-      onComplete?.();
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(chunks[index++]);
-    const voice = choosePtBrVoice();
-    utterance.lang = voice?.lang || "pt-BR";
-    utterance.rate = 0.94;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-    if (voice) utterance.voice = voice;
-    utterance.onend = speakNext;
-    utterance.onerror = () => {
-      if (index < chunks.length) setTimeout(speakNext, 140);
-      else onComplete?.();
-    };
-    synth.resume();
-    synth.speak(utterance);
-  };
-
-  synth.cancel();
-  setTimeout(speakNext, 80);
-  return true;
-}
-
-async function speakNeuralJarvis(content: string, onComplete?: () => void) {
+async function speakNeuralJarvis(content: string, generation: number, onComplete?: () => void) {
   if (typeof Audio === "undefined") return false;
 
   try {
@@ -193,31 +137,41 @@ async function speakNeuralJarvis(content: string, onComplete?: () => void) {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ text: content }),
+      body: JSON.stringify({ text: prepareNeuralSpeech(content) }),
     });
-    if (!response.ok) return false;
+    if (!response.ok || generation !== activeSpeechGeneration) return false;
 
     const blob = await response.blob();
-    if (!blob.size) return false;
+    if (!blob.size || generation !== activeSpeechGeneration) return false;
 
-    stopNeuralAudio();
-    window.speechSynthesis?.cancel();
+    if (activeNeuralAudio) {
+      activeNeuralAudio.pause();
+      activeNeuralAudio.src = "";
+      activeNeuralAudio = null;
+    }
+    if (activeNeuralUrl) URL.revokeObjectURL(activeNeuralUrl);
+
     activeNeuralUrl = URL.createObjectURL(blob);
     const audio = new Audio(activeNeuralUrl);
     activeNeuralAudio = audio;
     audio.preload = "auto";
     audio.onended = () => {
-      stopNeuralAudio();
+      if (generation !== activeSpeechGeneration) return;
+      if (activeNeuralUrl) URL.revokeObjectURL(activeNeuralUrl);
+      activeNeuralUrl = null;
+      activeNeuralAudio = null;
       onComplete?.();
     };
     audio.onerror = () => {
-      stopNeuralAudio();
-      if (!speakLocalJarvis(content, onComplete)) onComplete?.();
+      if (generation !== activeSpeechGeneration) return;
+      if (activeNeuralUrl) URL.revokeObjectURL(activeNeuralUrl);
+      activeNeuralUrl = null;
+      activeNeuralAudio = null;
+      onComplete?.();
     };
     await audio.play();
     return true;
   } catch {
-    stopNeuralAudio();
     return false;
   }
 }
@@ -227,10 +181,19 @@ function speakJarvis(text: string, onComplete?: () => void) {
   const content = conciseForSpeech(text);
   if (!content) return false;
 
+  const fingerprint = speechFingerprint(content);
+  const now = Date.now();
+  if (fingerprint === lastSpeechFingerprint && now - lastSpeechStartedAt < DUPLICATE_WINDOW_MS) {
+    return true;
+  }
+
+  lastSpeechFingerprint = fingerprint;
+  lastSpeechStartedAt = now;
   stopNeuralAudio();
-  window.speechSynthesis?.cancel();
-  void speakNeuralJarvis(content, onComplete).then((started) => {
-    if (!started && !speakLocalJarvis(content, onComplete)) onComplete?.();
+  const generation = activeSpeechGeneration;
+
+  void speakNeuralJarvis(content, generation, onComplete).then((started) => {
+    if (!started && generation === activeSpeechGeneration) onComplete?.();
   });
   return true;
 }
@@ -359,18 +322,7 @@ function installJarvisVoiceAutoSend() {
 }
 
 if (typeof window !== "undefined") {
-  const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
-  const resumeSpeech = () => {
-    try {
-      synth?.resume();
-      synth?.getVoices();
-    } catch {
-      // Alguns WebViews Android só inicializam TTS após interação do usuário.
-    }
-  };
-  window.addEventListener("pointerdown", resumeSpeech, { passive: true });
-  window.addEventListener("touchstart", resumeSpeech, { passive: true });
-  window.addEventListener("keydown", resumeSpeech, { passive: true });
+  window.speechSynthesis?.cancel();
 
   const previousFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
