@@ -151,23 +151,32 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
         <DialogTitle className="flex items-center gap-2"><BrainCircuit className="h-5 w-5 text-primary" />Arquiteto IA · App Builder</DialogTitle>
         <DialogDescription>Arquitetura em duas passagens, contexto real dos registries, validação determinística e aplicação somente como nova versão em rascunho.</DialogDescription>
       </DialogHeader>
+
       <div className="flex flex-wrap gap-2"><Badge variant="outline">{targetLabel}</Badge><Badge variant="outline">Template: {template?.name ?? "não selecionado"}</Badge><Badge variant="secondary"><ShieldCheck className="mr-1 h-3 w-3" />Nunca publica sozinho</Badge></div>
+
       <div className="grid gap-3 rounded-xl border bg-muted/20 p-3 md:grid-cols-[180px_180px_1fr]">
         <div><p className="mb-1 text-xs font-medium text-muted-foreground">Modo</p><Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="generate">Projetar</SelectItem><SelectItem value="revise">Revisar e melhorar</SelectItem><SelectItem value="analyze">Auditar</SelectItem></SelectContent></Select></div>
         <div><p className="mb-1 text-xs font-medium text-muted-foreground">Profundidade</p><Select value={depth} onValueChange={(value) => setDepth(value as typeof depth)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="deep">Profunda · 2 passagens</SelectItem><SelectItem value="fast">Rápida · 1 passagem</SelectItem></SelectContent></Select></div>
         <div className="rounded-lg border bg-background p-3 text-xs leading-5 text-muted-foreground"><Sparkles className="mr-1 inline h-3.5 w-3.5 text-primary" />No modo profundo uma segunda passagem independente critica a primeira e corrige UX, segurança, dados, integrações e compatibilidade antes de devolver o resultado.</div>
       </div>
+
       <div className="space-y-2"><p className="text-sm font-semibold">O que vamos construir ou melhorar?</p><Textarea rows={5} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={STARTER} /><div className="flex justify-end"><Button onClick={() => void runArchitect()} disabled={busy || !prompt.trim()}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}{busy ? "Arquitetando..." : result ? "Refinar com IA" : "Arquitetar com IA"}</Button></div></div>
+
       {result && <div className="space-y-4">
         <div className={`rounded-xl border p-4 ${result.validation.ok ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/50"}`}><div className="flex items-start gap-3">{result.validation.ok ? <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" /> : <TriangleAlert className="mt-0.5 h-5 w-5 text-amber-600" />}<div><p className="font-semibold">{result.validation.ok ? "Arquitetura validada" : "Arquitetura com pendências"}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{result.proposal.summary}</p></div></div></div>
+
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{qualityRows.map(([label, value]) => <div key={label} className="rounded-xl border p-3 text-center"><p className="text-[11px] text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{Math.round(value)}</p></div>)}</div>
+
         <div className="grid gap-3 lg:grid-cols-2">
           <section className="rounded-xl border p-4"><p className="text-sm font-semibold">Arquitetura proposta</p><div className="mt-3 space-y-2">{result.proposal.architecture.pages.map((page) => <div key={page.id} className="rounded-lg bg-muted/40 p-2"><p className="text-sm font-medium">{page.title}</p><p className="font-mono text-[10px] text-muted-foreground">{page.id}</p>{page.purpose && <p className="mt-1 text-xs text-muted-foreground">{page.purpose}</p>}</div>)}</div>{result.proposal.architecture.pages.length === 0 && <p className="mt-3 text-xs text-muted-foreground">Nenhuma página proposta.</p>}</section>
           <section className="rounded-xl border p-4"><p className="text-sm font-semibold">Papéis e dados</p><div className="mt-3 flex flex-wrap gap-1.5">{result.proposal.architecture.roles.map((role) => <Badge key={role.key} variant="outline">{role.name}</Badge>)}</div><div className="mt-3 space-y-1">{result.proposal.architecture.dataModel.map((entity) => <p key={entity.entity} className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{entity.entity}</span>{entity.purpose ? ` · ${entity.purpose}` : ""}</p>)}</div></section>
         </div>
+
         {(result.proposal.gaps.length > 0 || result.proposal.warnings.length > 0) && <section className="rounded-xl border border-amber-200 bg-amber-50/40 p-4"><p className="text-sm font-semibold">Gaps e alertas</p><div className="mt-2 space-y-1.5">{result.proposal.gaps.map((gap, index) => <p key={`${gap.type}-${index}`} className="text-xs leading-5"><Badge variant="outline" className="mr-2 text-[9px]">{gap.severity}</Badge>{gap.description}</p>)}{result.proposal.warnings.map((warning, index) => <p key={`warning-${index}`} className="text-xs leading-5 text-amber-800">• {warning}</p>)}</div></section>}
+
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground"><span>{result.usage.passes} passagem(ns) · {result.usage.inputTokens + result.usage.outputTokens} tokens · custo estimado US$ {result.usage.costUsd.toFixed(4)}</span><Badge variant={result.validation.ok ? "default" : "secondary"}>{result.validation.ok ? "Pronta para versionar" : `${result.validation.findings.length} pendência(s)`}</Badge></div>
       </div>}
+
       <DialogFooter className="gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button><Button onClick={() => void applyAsVersion()} disabled={!template || !result?.validation.ok || applying}>{applying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Aplicar como nova versão</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
