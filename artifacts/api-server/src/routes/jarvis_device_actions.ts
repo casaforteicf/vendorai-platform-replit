@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, ilike, or } from "drizzle-orm";
-import { db, leadsTable } from "@workspace/db";
+import { campaignsTable, db, jarvisCasesTable, leadsTable, propostasTable } from "@workspace/db";
 import { loadJarvisExternalCapabilities } from "../services/jarvis-external-capabilities.js";
 
 const router: IRouter = Router();
@@ -17,6 +17,12 @@ type ContactDeviceIntent = {
   kind: "call" | "whatsapp" | "route";
   contactQuery: string;
 };
+
+type ContextNavigationIntent =
+  | { kind: "lead"; query: string }
+  | { kind: "proposal"; query: string }
+  | { kind: "campaign"; query: string }
+  | { kind: "case"; query: string };
 
 const VENDORAI_ROUTES: Array<{ keywords: RegExp; path: string; label: string }> = [
   { keywords: /\b(dashboard|painel)\b/, path: "/dashboard", label: "Dashboard" },
@@ -44,12 +50,19 @@ function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+function stripJarvis(text: string) {
+  return text.replace(/^\s*jarvis[, ]*/i, "").trim();
+}
+
+function cleanQuery(value: string) {
+  return value.replace(/[,.!?]+$/g, "").replace(/\s+(por favor|agora)$/i, "").trim().slice(0, 200);
+}
+
 function extractSpotifyQuery(text: string): string | null {
   const normalized = normalize(text);
   const wantsMusic = /\b(toca|toque|tocar|coloca|coloque|ouvir|abra|abrir)\b/.test(normalized)
     && /\b(musica|som|faixa|album|artista|spotify)\b/.test(normalized);
   if (!wantsMusic) return null;
-
   const cleaned = text
     .replace(/^\s*(jarvis[, ]*)?/i, "")
     .replace(/^\s*(toca|toque|tocar|coloca|coloque|ouvir|abra|abrir)\s+/i, "")
@@ -57,50 +70,49 @@ function extractSpotifyQuery(text: string): string | null {
     .replace(/\s+(no|na|pelo|pela)\s+spotify\s*$/i, "")
     .replace(/^\s*(no|na|pelo|pela)\s+spotify\s+/i, "")
     .trim();
-
-  if (!cleaned || cleaned.length < 2) return null;
-  return cleaned.slice(0, 300);
+  return cleaned.length >= 2 ? cleaned.slice(0, 300) : null;
 }
 
-function cleanContactQuery(value: string) {
-  return value
-    .replace(/[,.!?]+$/g, "")
-    .replace(/\s+(por favor|agora)$/i, "")
-    .trim()
-    .slice(0, 200);
+function extractContextNavigationIntent(text: string): ContextNavigationIntent | null {
+  const value = stripJarvis(text);
+  const patterns = [
+    { kind: "lead" as const, regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(o\s+|a\s+)?(cliente|lead|contato)\s+/i },
+    { kind: "proposal" as const, regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(a\s+)?proposta\s+/i },
+    { kind: "campaign" as const, regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(a\s+)?campanha\s+/i },
+    { kind: "case" as const, regex: /^(abra|abrir|mostre|mostrar|acesse|acessar)\s+(o\s+)?(caso\s+vendor|caso)\s+/i },
+  ];
+  for (const pattern of patterns) {
+    if (!pattern.regex.test(value)) continue;
+    const query = cleanQuery(value.replace(pattern.regex, ""));
+    return query ? { kind: pattern.kind, query } : null;
+  }
+  return null;
 }
 
 function extractContactDeviceIntent(text: string): ContactDeviceIntent | null {
-  const withoutJarvis = text.replace(/^\s*jarvis[, ]*/i, "").trim();
-  const normalized = normalize(withoutJarvis);
-
+  const value = stripJarvis(text);
+  const normalized = normalize(value);
   if (/^(ligue|liga|ligar|telefone|telefonar)\s+(para\s+|pro\s+|pra\s+)?/i.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis.replace(/^(ligue|liga|ligar|telefone|telefonar)\s+(para\s+|pro\s+|pra\s+)?/i, ""));
+    const query = cleanQuery(value.replace(/^(ligue|liga|ligar|telefone|telefonar)\s+(para\s+|pro\s+|pra\s+)?/i, ""));
     return query ? { kind: "call", contactQuery: query } : null;
   }
-
   if (/^(abra|abrir|mostre|mostrar)\s+(o\s+)?whatsapp\s+(do|da|de)\s+/i.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis.replace(/^(abra|abrir|mostre|mostrar)\s+(o\s+)?whatsapp\s+(do|da|de)\s+/i, ""));
+    const query = cleanQuery(value.replace(/^(abra|abrir|mostre|mostrar)\s+(o\s+)?whatsapp\s+(do|da|de)\s+/i, ""));
     return query ? { kind: "whatsapp", contactQuery: query } : null;
   }
-
   if (/^(abra|abrir|mostre|mostrar)\s+(a\s+)?conversa\s+(com\s+)?/i.test(normalized) && /\bwhatsapp\b/.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis
-      .replace(/^(abra|abrir|mostre|mostrar)\s+(a\s+)?conversa\s+(com\s+)?/i, "")
-      .replace(/\s+(no|pelo)\s+whatsapp\s*$/i, ""));
+    const query = cleanQuery(value.replace(/^(abra|abrir|mostre|mostrar)\s+(a\s+)?conversa\s+(com\s+)?/i, "").replace(/\s+(no|pelo)\s+whatsapp\s*$/i, ""));
     return query ? { kind: "whatsapp", contactQuery: query } : null;
   }
-
   if (/^(abra|abrir|mostre|mostrar|trace|tracar)\s+(a\s+)?(rota|mapa|caminho)\s+(para|ate)\s+/i.test(normalized)) {
-    const query = cleanContactQuery(withoutJarvis.replace(/^(abra|abrir|mostre|mostrar|trace|traçar)\s+(a\s+)?(rota|mapa|caminho)\s+(para|até|ate)\s+/i, ""));
+    const query = cleanQuery(value.replace(/^(abra|abrir|mostre|mostrar|trace|traçar)\s+(a\s+)?(rota|mapa|caminho)\s+(para|até|ate)\s+/i, ""));
     return query ? { kind: "route", contactQuery: query } : null;
   }
-
   return null;
 }
 
 function extractVendorAiRoute(text: string): { path: string; label: string } | null {
-  const normalized = normalize(text.replace(/^\s*jarvis[, ]*/i, ""));
+  const normalized = normalize(stripJarvis(text));
   if (!/\b(abre|abra|abrir|va|ir|mostre|mostrar|acesse|acessar|leve)\b/.test(normalized)) return null;
   return VENDORAI_ROUTES.find((entry) => entry.keywords.test(normalized)) ?? null;
 }
@@ -116,80 +128,91 @@ function writeSse(res: any, content: string, extra: Record<string, unknown> = {}
   res.end();
 }
 
+function vendorAction(path: string, label: string, nativePath?: string): DeviceAction {
+  return {
+    type: "open_external_url",
+    provider: "vendorai",
+    ...(nativePath ? { uri: `vendorai://${nativePath.replace(/^\//, "")}` } : {}),
+    fallbackUrl: `https://app.appvendorai.com${path}`,
+    label,
+  };
+}
+
 function normalizePhone(phone: string) {
   const raw = phone.trim();
   const digits = raw.replace(/\D/g, "");
   if (!digits) return null;
-  return {
-    digits,
-    dial: raw.startsWith("+") ? `+${digits}` : digits,
-  };
+  return { digits, dial: raw.startsWith("+") ? `+${digits}` : digits };
 }
 
 async function resolveTenantContact(tenantId: string, query: string) {
   const safe = query.replace(/[%_]/g, "").trim();
   const like = `%${safe}%`;
-  return db
-    .select({
-      id: leadsTable.id,
-      nome: leadsTable.nome,
-      telefone: leadsTable.telefone,
-      email: leadsTable.email,
-      endereco: leadsTable.endereco,
-    })
+  return db.select({ id: leadsTable.id, nome: leadsTable.nome, telefone: leadsTable.telefone, email: leadsTable.email, endereco: leadsTable.endereco })
     .from(leadsTable)
-    .where(and(
-      eq(leadsTable.tenantId, tenantId),
-      or(
-        ilike(leadsTable.nome, like),
-        ilike(leadsTable.email, like),
-        ilike(leadsTable.telefone, like),
-      ),
-    ))
+    .where(and(eq(leadsTable.tenantId, tenantId), or(ilike(leadsTable.nome, like), ilike(leadsTable.email, like), ilike(leadsTable.telefone, like))))
     .limit(5);
+}
+
+function resolveRows<T>(rows: T[], query: string, labelOf: (row: T) => string, actionOf: (row: T) => DeviceAction) {
+  if (!rows.length) return { error: `Não encontrei “${query}” neste tenant.` };
+  if (rows.length > 1) return { error: `Encontrei mais de um resultado para “${query}”. Qual deles?\n${rows.map((row, index) => `${index + 1}. ${labelOf(row)}`).join("\n")}` };
+  const row = rows[0]!;
+  return { label: labelOf(row), action: actionOf(row) };
+}
+
+async function resolveContextNavigation(tenantId: string, intent: ContextNavigationIntent) {
+  const safe = intent.query.replace(/[%_]/g, "").trim();
+  const like = `%${safe}%`;
+  if (intent.kind === "lead") {
+    const rows = await db.select({ id: leadsTable.id, nome: leadsTable.nome, email: leadsTable.email })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), or(ilike(leadsTable.nome, like), ilike(leadsTable.email, like))))
+      .limit(5);
+    return resolveRows(rows, safe, (row) => row.nome, (row) => vendorAction(`/leads/${row.id}`, row.nome, `/leads/${row.id}`));
+  }
+  if (intent.kind === "proposal") {
+    const rows = await db.select({ id: propostasTable.id, titulo: propostasTable.titulo, leadNome: leadsTable.nome })
+      .from(propostasTable)
+      .leftJoin(leadsTable, and(eq(propostasTable.leadId, leadsTable.id), eq(leadsTable.tenantId, tenantId)))
+      .where(and(eq(propostasTable.tenantId, tenantId), or(ilike(propostasTable.titulo, like), ilike(leadsTable.nome, like))))
+      .limit(5);
+    return resolveRows(rows, safe, (row) => row.titulo || row.leadNome || "Proposta", (row) => vendorAction(`/propostas/${row.id}`, row.titulo || "Proposta"));
+  }
+  if (intent.kind === "campaign") {
+    const rows = await db.select({ id: campaignsTable.id, nome: campaignsTable.nome })
+      .from(campaignsTable)
+      .where(and(eq(campaignsTable.tenantId, tenantId), ilike(campaignsTable.nome, like)))
+      .limit(5);
+    return resolveRows(rows, safe, (row) => row.nome, (row) => vendorAction(`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(row.id)}`, row.nome));
+  }
+  const rows = await db.select({ id: jarvisCasesTable.id, title: jarvisCasesTable.title })
+    .from(jarvisCasesTable)
+    .where(and(eq(jarvisCasesTable.tenantId, tenantId), or(eq(jarvisCasesTable.id, safe), ilike(jarvisCasesTable.title, like))))
+    .limit(5);
+  return resolveRows(rows, safe, (row) => row.title, (row) => vendorAction(`/app/prospector?tab=busca&jarvisCase=${encodeURIComponent(row.id)}`, row.title));
 }
 
 function contactAction(kind: ContactDeviceIntent["kind"], contact: { nome: string; telefone: string | null; endereco: string | null }): DeviceAction | null {
   if (kind === "call") {
     const phone = contact.telefone ? normalizePhone(contact.telefone) : null;
     if (!phone) return null;
-    return {
-      type: "open_external_url",
-      provider: "telefone",
-      uri: `tel:${phone.dial}`,
-      fallbackUrl: `tel:${phone.dial}`,
-      label: contact.nome,
-    };
+    return { type: "open_external_url", provider: "telefone", uri: `tel:${phone.dial}`, fallbackUrl: `tel:${phone.dial}`, label: contact.nome };
   }
-
   if (kind === "whatsapp") {
     const phone = contact.telefone ? normalizePhone(contact.telefone) : null;
     if (!phone) return null;
-    return {
-      type: "open_external_url",
-      provider: "whatsapp",
-      uri: `whatsapp://send?phone=${phone.digits}`,
-      fallbackUrl: `https://wa.me/${phone.digits}`,
-      label: contact.nome,
-    };
+    return { type: "open_external_url", provider: "whatsapp", uri: `whatsapp://send?phone=${phone.digits}`, fallbackUrl: `https://wa.me/${phone.digits}`, label: contact.nome };
   }
-
   if (!contact.endereco?.trim()) return null;
   const destination = encodeURIComponent(contact.endereco.trim());
-  return {
-    type: "open_external_url",
-    provider: "maps",
-    uri: `geo:0,0?q=${destination}`,
-    fallbackUrl: `https://www.google.com/maps/dir/?api=1&destination=${destination}`,
-    label: contact.nome,
-  };
+  return { type: "open_external_url", provider: "maps", uri: `geo:0,0?q=${destination}`, fallbackUrl: `https://www.google.com/maps/dir/?api=1&destination=${destination}`, label: contact.nome };
 }
 
 router.get("/jarvis/capabilities", async (req, res) => {
   const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
   if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
-  const capabilities = await loadJarvisExternalCapabilities(tenantId);
-  return res.json({ generatedAt: new Date().toISOString(), capabilities });
+  return res.json({ generatedAt: new Date().toISOString(), capabilities: await loadJarvisExternalCapabilities(tenantId) });
 });
 
 router.post("/support/chat", async (req, res, next) => {
@@ -200,21 +223,22 @@ router.post("/support/chat", async (req, res, next) => {
   const spotifyQuery = extractSpotifyQuery(text);
   if (spotifyQuery) {
     const encoded = encodeURIComponent(spotifyQuery);
-    writeSse(
-      res,
-      `Vou abrir “${spotifyQuery}” no Spotify deste dispositivo. Sem Spotify Connect conectado ao VendorAI, eu consigo abrir a busca, mas não vou afirmar que a música começou a tocar até ter confirmação real de reprodução.`,
-      {
-        clientAction: {
-          type: "open_external_url",
-          provider: "spotify",
-          uri: `spotify:search:${encoded}`,
-          fallbackUrl: `https://open.spotify.com/search/${encoded}`,
-          label: spotifyQuery,
-        },
-        executionMode: "device_open",
-        playbackConfirmed: false,
-      },
-    );
+    writeSse(res, `Vou abrir “${spotifyQuery}” no Spotify deste dispositivo. Sem Spotify Connect conectado ao VendorAI, eu consigo abrir a busca, mas não vou afirmar que a música começou a tocar até ter confirmação real de reprodução.`, {
+      clientAction: { type: "open_external_url", provider: "spotify", uri: `spotify:search:${encoded}`, fallbackUrl: `https://open.spotify.com/search/${encoded}`, label: spotifyQuery },
+      executionMode: "device_open",
+      playbackConfirmed: false,
+    });
+    return;
+  }
+
+  const contextualIntent = extractContextNavigationIntent(text);
+  if (contextualIntent) {
+    const resolved = await resolveContextNavigation(tenantId, contextualIntent);
+    if ("error" in resolved) {
+      writeSse(res, resolved.error);
+      return;
+    }
+    writeSse(res, `Vou abrir ${resolved.label} no VendorAI.`, { clientAction: resolved.action, executionMode: "device_open", entityResolved: true });
     return;
   }
 
@@ -222,13 +246,7 @@ router.post("/support/chat", async (req, res, next) => {
   if (vendorRoute) {
     const path = vendorRoute.path.replace(/^\//, "");
     writeSse(res, `Vou abrir ${vendorRoute.label} no VendorAI.`, {
-      clientAction: {
-        type: "open_external_url",
-        provider: "vendorai",
-        uri: `vendorai://${path}`,
-        fallbackUrl: `https://app.appvendorai.com${vendorRoute.path}`,
-        label: vendorRoute.label,
-      },
+      clientAction: { type: "open_external_url", provider: "vendorai", uri: `vendorai://${path}`, fallbackUrl: `https://app.appvendorai.com${vendorRoute.path}`, label: vendorRoute.label },
       executionMode: "device_open",
     });
     return;
@@ -236,37 +254,24 @@ router.post("/support/chat", async (req, res, next) => {
 
   const contactIntent = extractContactDeviceIntent(text);
   if (!contactIntent) return next();
-
   const contacts = await resolveTenantContact(tenantId, contactIntent.contactQuery);
   if (!contacts.length) {
     writeSse(res, `Não encontrei “${contactIntent.contactQuery}” entre os contatos deste tenant.`);
     return;
   }
   if (contacts.length > 1) {
-    const options = contacts.map((contact, index) => `${index + 1}. ${contact.nome}${contact.email ? ` — ${contact.email}` : ""}`).join("\n");
-    writeSse(res, `Encontrei mais de um contato compatível com “${contactIntent.contactQuery}”. Qual deles?\n${options}`);
+    writeSse(res, `Encontrei mais de um contato compatível com “${contactIntent.contactQuery}”. Qual deles?\n${contacts.map((contact, index) => `${index + 1}. ${contact.nome}${contact.email ? ` — ${contact.email}` : ""}`).join("\n")}`);
     return;
   }
-
   const contact = contacts[0]!;
   const action = contactAction(contactIntent.kind, contact);
   if (!action) {
-    const missing = contactIntent.kind === "route" ? "endereço" : "telefone";
-    writeSse(res, `${contact.nome} não possui ${missing} cadastrado neste tenant.`);
+    writeSse(res, `${contact.nome} não possui ${contactIntent.kind === "route" ? "endereço" : "telefone"} cadastrado neste tenant.`);
     return;
   }
-
-  const verb = contactIntent.kind === "call"
-    ? `abrir o discador para ${contact.nome}`
-    : contactIntent.kind === "whatsapp"
-      ? `abrir a conversa de ${contact.nome} no WhatsApp`
-      : `abrir a rota para o endereço cadastrado de ${contact.nome}`;
-  writeSse(res, `Vou ${verb}. Essa ação apenas abre o aplicativo correspondente; não vou afirmar que a ligação, mensagem ou deslocamento aconteceu sem confirmação posterior.`, {
-    clientAction: action,
-    executionMode: "device_open",
-    actionConfirmed: false,
-  });
+  const verb = contactIntent.kind === "call" ? `abrir o discador para ${contact.nome}` : contactIntent.kind === "whatsapp" ? `abrir a conversa de ${contact.nome} no WhatsApp` : `abrir a rota para o endereço cadastrado de ${contact.nome}`;
+  writeSse(res, `Vou ${verb}. Essa ação apenas abre o aplicativo correspondente; não vou afirmar que a ligação, mensagem ou deslocamento aconteceu sem confirmação posterior.`, { clientAction: action, executionMode: "device_open", actionConfirmed: false });
 });
 
-export { extractSpotifyQuery, extractContactDeviceIntent, extractVendorAiRoute };
+export { extractSpotifyQuery, extractContactDeviceIntent, extractContextNavigationIntent, extractVendorAiRoute };
 export default router;
