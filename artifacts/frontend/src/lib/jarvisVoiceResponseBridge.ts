@@ -1,7 +1,14 @@
 const VOICE_SETTING_KEY = "jarvis_voice_replies";
+const VOICE_READY_EVENT = "vendorai:jarvis-voice-ready";
+
+function canSpeakJarvis() {
+  return typeof window !== "undefined"
+    && "speechSynthesis" in window
+    && typeof SpeechSynthesisUtterance !== "undefined";
+}
 
 function shouldSpeak() {
-  if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return false;
+  if (!canSpeakJarvis()) return false;
   return localStorage.getItem(VOICE_SETTING_KEY) !== "off";
 }
 
@@ -40,9 +47,9 @@ function splitForSpeech(text: string, maxChars = 360): string[] {
 }
 
 function speakJarvis(text: string) {
-  if (!shouldSpeak()) return;
+  if (!shouldSpeak()) return false;
   const content = cleanForSpeech(text);
-  if (!content) return;
+  if (!content) return false;
 
   const synth = window.speechSynthesis;
   const chunks = splitForSpeech(content);
@@ -67,6 +74,18 @@ function speakJarvis(text: string) {
 
   synth.cancel();
   setTimeout(speakNext, 60);
+  return true;
+}
+
+function announceVoiceReady(content: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(VOICE_READY_EVENT, {
+    detail: {
+      content,
+      supported: canSpeakJarvis(),
+      autoEnabled: localStorage.getItem(VOICE_SETTING_KEY) !== "off",
+    },
+  }));
 }
 
 async function speakSupportResponse(response: Response) {
@@ -83,7 +102,10 @@ async function speakSupportResponse(response: Response) {
         // Linhas SSE incompletas ou não-JSON não devem afetar o chat.
       }
     }
-    if (content.trim()) speakJarvis(content);
+    if (content.trim()) {
+      announceVoiceReady(content);
+      speakJarvis(content);
+    }
   } catch {
     // Voz é uma melhoria de experiência e nunca pode bloquear a resposta textual.
   }
@@ -104,7 +126,7 @@ function addVoiceRuntimeContext(init?: RequestInit): RequestInit | undefined {
 
     messages[lastUserIndex] = {
       ...messages[lastUserIndex],
-      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS já oferece entrada por microfone e tentativa de resposta falada em pt-BR via síntese de voz do navegador/dispositivo. Não diga que existe somente interação por texto. Se a fala não sair, trate como falha/limitação de TTS do dispositivo ou navegador, não como ausência da função no produto. Wake word com app fechado é uma capacidade separada.]`,
+      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS já oferece entrada por microfone e tentativa de resposta falada em pt-BR via síntese de voz do navegador/dispositivo. Não diga que existe somente interação por texto. Se a fala automática não sair, a interface oferece replay manual da última resposta quando o dispositivo suporta TTS. Trate ausência de som como falha/limitação de TTS do dispositivo ou navegador, não como ausência da função no produto. Wake word com app fechado é uma capacidade separada.]`,
     };
     return { ...init, body: JSON.stringify({ ...payload, messages }) };
   } catch {
@@ -146,4 +168,4 @@ if (typeof window !== "undefined") {
   };
 }
 
-export { speakJarvis, VOICE_SETTING_KEY };
+export { canSpeakJarvis, speakJarvis, VOICE_READY_EVENT, VOICE_SETTING_KEY };
