@@ -1,3 +1,5 @@
+import { speakJarvis, VOICE_READY_EVENT } from "./jarvisVoiceResponseBridge";
+
 type JarvisRuntimeCapability = {
   key?: string;
   label?: string;
@@ -64,6 +66,17 @@ function humanCapabilitySummary(capabilities: JarvisRuntimeCapability[]) {
   return lines.join("\n");
 }
 
+function announceCapabilityResponse(content: string) {
+  window.dispatchEvent(new CustomEvent(VOICE_READY_EVENT, {
+    detail: {
+      content,
+      supported: "speechSynthesis" in window,
+      autoEnabled: localStorage.getItem("jarvis_voice_replies") !== "off",
+    },
+  }));
+  speakJarvis(content);
+}
+
 function sseResponse(content: string) {
   const body = [
     `data: ${JSON.stringify({ content })}`,
@@ -109,7 +122,9 @@ if (typeof window !== "undefined") {
       capabilities = [];
     }
 
-    return sseResponse(humanCapabilitySummary(capabilities));
+    const content = humanCapabilitySummary(capabilities);
+    queueMicrotask(() => announceCapabilityResponse(content));
+    return sseResponse(content);
   };
 }
 
