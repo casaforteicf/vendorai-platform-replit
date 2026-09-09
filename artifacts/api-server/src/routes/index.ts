@@ -157,6 +157,7 @@ import contentTrackingRouter from "./content_tracking";
 import tenantNavModulesRouter from "./tenantNavModules";
 import vendasPracaRouter from "./vendas_praca";
 import erpRouter from "./erp";
+import financeIntegrationsRouter from "./finance_integrations";
 import changelogRouter from "./changelog";
 import pacotesRouter from "./pacotes";
 import mlStatusRouter from "./ml_status";
@@ -373,6 +374,7 @@ router.use(rulesRouter);
 // Inventory Hub
 router.use(inventoryRouter);
 router.use(erpRouter);
+router.use(financeIntegrationsRouter);
 router.use(changelogRouter);
 router.use(pacotesRouter);
 router.use(mlStatusRouter);
