@@ -1,4 +1,5 @@
 const MOBILE_MAX_WIDTH = 768;
+let enhanceScheduled = false;
 
 function isMobileViewport() {
   return window.innerWidth <= MOBILE_MAX_WIDTH || window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
@@ -121,7 +122,7 @@ function setupVoiceAutoSend(panel: HTMLElement) {
         return;
       }
       if (Date.now() - startedAt > 15000) clearInterval(timer);
-    }, 140);
+    }, 180);
   });
 }
 
@@ -136,12 +137,26 @@ function enhance() {
   setupVoiceAutoSend(panel);
 }
 
+function scheduleEnhance() {
+  if (enhanceScheduled) return;
+  enhanceScheduled = true;
+  window.requestAnimationFrame(() => {
+    enhanceScheduled = false;
+    enhance();
+  });
+}
+
 if (typeof window !== "undefined") {
-  const observer = new MutationObserver(enhance);
-  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["title", "disabled"] });
-  window.addEventListener("resize", enhance, { passive: true });
-  window.visualViewport?.addEventListener("resize", enhance, { passive: true });
-  queueMicrotask(enhance);
+  const observer = new MutationObserver(scheduleEnhance);
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["title", "disabled"],
+  });
+  window.addEventListener("resize", scheduleEnhance, { passive: true });
+  window.visualViewport?.addEventListener("resize", scheduleEnhance, { passive: true });
+  queueMicrotask(scheduleEnhance);
 }
 
 export {};
