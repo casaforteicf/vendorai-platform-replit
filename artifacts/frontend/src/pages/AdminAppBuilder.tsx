@@ -21,11 +21,15 @@ import {
   DatabaseZap,
   ExternalLink,
   FormInput,
+  History,
   Layers3,
   Loader2,
   MonitorSmartphone,
+  PencilRuler,
   Plus,
   RefreshCw,
+  Rocket,
+  ShieldCheck,
   UserRoundCog,
   Users,
   Workflow,
@@ -37,6 +41,7 @@ type AppInstance = {
   name: string;
   slug: string;
   status: string;
+  templateId?: string;
   settings: Record<string, unknown>;
 };
 
@@ -126,7 +131,7 @@ export default function AdminAppBuilder() {
       if (appsResponse.ok) {
         const rows = await appsResponse.json() as AppInstance[];
         setApps(rows);
-        setSelectedAppId((current) => current && rows.some((app) => app.id === current) ? current : rows.find((app) => app.tenantId)?.id ?? "");
+        setSelectedAppId((current) => current && rows.some((app) => app.id === current) ? current : rows[0]?.id ?? "");
       }
       if (templatesResponse.ok) {
         const rows = await templatesResponse.json() as AppTemplate[];
@@ -147,6 +152,7 @@ export default function AdminAppBuilder() {
 
   const selectedApp = useMemo(() => apps.find((app) => app.id === selectedAppId) ?? null, [apps, selectedAppId]);
   const selectedTemplate = useMemo(() => templates.find((template) => template.id === selectedTemplateId) ?? null, [selectedTemplateId, templates]);
+  const selectedPortfolioApp = useMemo(() => portfolio.find((app) => app.id === selectedAppId) ?? null, [portfolio, selectedAppId]);
   const standaloneCount = portfolio.filter((app) => !app.tenantId).length;
   const publishedCount = portfolio.filter((app) => app.status === "published").length;
 
@@ -209,6 +215,8 @@ export default function AdminAppBuilder() {
       if (!response.ok) throw new Error(payload?.error ?? "Não foi possível criar o app");
       setCreateOpen(false);
       await loadControls();
+      setSelectedAppId(payload?.id ?? "");
+      setSelectedTemplateId(newApp.templateId);
       toast({
         title: standalone ? "App criado antes do tenant" : "App criado para o tenant",
         description: standalone ? "Você pode construir e versionar agora. A publicação fica bloqueada até vincular um tenant real." : "O app foi criado como rascunho e já pode ser configurado.",
@@ -242,10 +250,29 @@ export default function AdminAppBuilder() {
     }
   }
 
+  function selectForBuild(app: PortfolioApp) {
+    setSelectedAppId(app.id);
+    setSelectedTemplateId(app.templateId);
+    document.getElementById("app-builder-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function openRuntime() {
     if (!selectedApp?.tenantId) return;
     window.open(`/apps/${encodeURIComponent(selectedApp.id)}`, "_blank", "noopener,noreferrer");
   }
+
+  function goAdvanced() {
+    document.getElementById("app-builder-advanced")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const buildSteps = [
+    { title: "1. Estrutura visual", description: "Páginas, blocos, navegação, visibilidade e composição.", icon: PencilRuler, action: () => setRuntimeEditorOpen(true), disabled: !selectedTemplate },
+    { title: "2. Dados dinâmicos", description: "Fontes, bindings, listas, detalhes e atualização de dados.", icon: DatabaseZap, action: () => setDataSourceEditorOpen(true), disabled: !selectedTemplate },
+    { title: "3. Formulários e Actions", description: "Entradas, validações, ações, workflows e respostas.", icon: FormInput, action: () => setTemplateActionsOpen(true), disabled: !selectedTemplate },
+    { title: "4. Preview responsivo", description: "Valide desktop, tablet e celular antes de publicar.", icon: MonitorSmartphone, action: () => setRuntimePreviewOpen(true), disabled: !selectedTemplate },
+    { title: "5. Usuários e segurança", description: "Papéis, permissões e políticas do app operacional.", icon: ShieldCheck, action: () => setUsersOpen(true), disabled: !selectedApp?.tenantId },
+    { title: "6. Versões e publicação", description: "Snapshots, histórico, publicação e rollback controlado.", icon: Rocket, action: goAdvanced, disabled: !selectedTemplate },
+  ];
 
   return (
     <>
@@ -253,7 +280,7 @@ export default function AdminAppBuilder() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2"><AppWindow className="h-5 w-5 text-primary" /><h1 className="text-2xl font-bold">App Builder</h1><Badge variant="outline">SuperAdmin</Badge></div>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Construa apps para clientes atuais, prospects que ainda não são tenants ou projetos internos. O projeto pode nascer antes do tenant e ser convertido depois sem perder versões.</p>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Construa apps completos para tenants, prospects ou projetos internos. O mesmo projeto evolui do rascunho ao runtime publicado, preservando versões e histórico.</p>
           </div>
           <div className="flex gap-2"><Button onClick={startCreate}><Plus className="mr-2 h-4 w-4" />Novo app</Button><Button variant="outline" onClick={() => void loadControls()} disabled={loadingControls}><RefreshCw className={`mr-2 h-4 w-4 ${loadingControls ? "animate-spin" : ""}`} />Atualizar</Button></div>
         </div>
@@ -266,30 +293,19 @@ export default function AdminAppBuilder() {
         </div>
 
         {portfolio.length > 0 && (
-          <Card><CardContent className="p-4"><div className="mb-3 flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Portfólio de apps</h2></div><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{portfolio.slice(0, 9).map((app) => <div key={app.id} className="rounded-xl border p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{app.name}</p><p className="truncate text-xs text-muted-foreground">/{app.slug}</p></div><Badge variant="outline">{statusPt(app.status)}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{app.tenantId ? <><Users className="mr-1 inline h-3.5 w-3.5" />{app.tenantName ?? app.tenantCode ?? "Tenant"}</> : <><UserRoundCog className="mr-1 inline h-3.5 w-3.5" />{app.ownerCompany || app.ownerName || "Projeto pré-tenant"}</>}</p>{!app.tenantId && <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => { setLinkingApp(app); setLinkTenantId(tenants[0]?.id ?? ""); }}>Vincular a tenant</Button>}</div>)}</div></CardContent></Card>
+          <Card><CardContent className="p-4"><div className="mb-3 flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Portfólio de apps</h2></div><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{portfolio.map((app) => <div key={app.id} className={`rounded-xl border p-3 ${selectedAppId === app.id ? "ring-2 ring-primary/30" : ""}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{app.name}</p><p className="truncate text-xs text-muted-foreground">/{app.slug}</p></div><Badge variant="outline">{statusPt(app.status)}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{app.tenantId ? <><Users className="mr-1 inline h-3.5 w-3.5" />{app.tenantName ?? app.tenantCode ?? "Tenant"}</> : <><UserRoundCog className="mr-1 inline h-3.5 w-3.5" />{app.ownerCompany || app.ownerName || "Projeto pré-tenant"}</>}</p><div className="mt-3 grid grid-cols-2 gap-2"><Button size="sm" onClick={() => selectForBuild(app)}><PencilRuler className="mr-1.5 h-3.5 w-3.5" />Construir</Button>{app.tenantId ? <Button size="sm" variant="outline" onClick={() => { setSelectedAppId(app.id); window.open(`/apps/${encodeURIComponent(app.id)}`, "_blank", "noopener,noreferrer"); }}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Abrir</Button> : <Button size="sm" variant="outline" onClick={() => { setLinkingApp(app); setLinkTenantId(tenants[0]?.id ?? ""); }}>Vincular</Button>}</div></div>)}</div></CardContent></Card>
         )}
 
-        <div className="grid gap-2 lg:grid-cols-2">
-          <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
-            <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground"><UserRoundCog className="h-4 w-4 text-primary" /><span>Usuários, papéis, permissões e Actions do app operacional</span></div>
-            <Select value={selectedAppId} onValueChange={setSelectedAppId} disabled={loadingControls || apps.filter((app) => app.tenantId).length === 0}><SelectTrigger className="h-9 w-full sm:w-[250px]"><SelectValue placeholder="Selecione o app" /></SelectTrigger><SelectContent>{apps.filter((app) => app.tenantId).map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {statusPt(app.status)}</SelectItem>)}</SelectContent></Select>
-            <Button size="sm" variant="outline" onClick={openRuntime} disabled={!selectedApp?.tenantId || loadingControls}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
-            <Button size="sm" variant="outline" onClick={() => setAppActionsOpen(true)} disabled={!selectedApp?.tenantId || loadingControls}><Workflow className="mr-2 h-4 w-4" />Actions</Button>
-            <Button size="sm" onClick={() => setUsersOpen(true)} disabled={!selectedApp?.tenantId || loadingControls}><UserRoundCog className="mr-2 h-4 w-4" />Usuários</Button>
-          </div>
+        <Card id="app-builder-workspace" className="scroll-mt-24"><CardContent className="p-4 sm:p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex items-center gap-2"><PencilRuler className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Construtor completo</h2></div><p className="mt-1 text-sm text-muted-foreground">Selecione o app e o template e avance pelas etapas de construção sem precisar procurar funções espalhadas.</p></div><div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]"><Select value={selectedAppId} onValueChange={(id) => { setSelectedAppId(id); const app = portfolio.find((item) => item.id === id); if (app) setSelectedTemplateId(app.templateId); }} disabled={loadingControls || apps.length === 0}><SelectTrigger><SelectValue placeholder="Selecione o app" /></SelectTrigger><SelectContent>{apps.map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {app.tenantId ? "Tenant" : "Pré-tenant"}</SelectItem>)}</SelectContent></Select><Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}><SelectTrigger><SelectValue placeholder="Selecione o template" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {statusPt(template.status)}</SelectItem>)}</SelectContent></Select></div></div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
-            <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground"><Layers3 className="h-4 w-4 text-primary" /><span>Construtor: layout, páginas, dados e formulários</span></div>
-            <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}><SelectTrigger className="h-9 w-full sm:w-[250px]"><SelectValue placeholder="Selecione o template" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {statusPt(template.status)}</SelectItem>)}</SelectContent></Select>
-            <Button size="sm" variant="outline" onClick={() => setRuntimePreviewOpen(true)} disabled={!selectedTemplate || loadingControls}><MonitorSmartphone className="mr-2 h-4 w-4" />Preview</Button>
-            <Button size="sm" variant="outline" onClick={() => setDataSourceEditorOpen(true)} disabled={!selectedTemplate || loadingControls}><DatabaseZap className="mr-2 h-4 w-4" />Dados</Button>
-            <Button size="sm" variant="outline" onClick={() => setTemplateActionsOpen(true)} disabled={!selectedTemplate || loadingControls}><FormInput className="mr-2 h-4 w-4" />Forms</Button>
-            <Button size="sm" variant="outline" onClick={() => setRuntimeEditorOpen(true)} disabled={!selectedTemplate || loadingControls}><Layers3 className="mr-2 h-4 w-4" />Editor</Button>
-          </div>
-        </div>
+          <div className="mt-4 rounded-xl border bg-muted/20 p-3"><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">App: {selectedPortfolioApp?.name ?? selectedApp?.name ?? "não selecionado"}</Badge><Badge variant="outline">Template: {selectedTemplate?.name ?? "não selecionado"}</Badge><Badge variant={selectedApp?.tenantId ? "default" : "secondary"}>{selectedApp?.tenantId ? "Tenant vinculado" : "Pré-tenant"}</Badge>{selectedPortfolioApp?.status && <Badge variant="outline">{statusPt(selectedPortfolioApp.status)}</Badge>}</div>{!selectedApp?.tenantId && selectedApp && <p className="mt-2 text-xs text-amber-700">Você pode construir e versionar normalmente. Usuários externos e publicação operacional ficam bloqueados até vincular um tenant.</p>}</div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{buildSteps.map((step) => <button key={step.title} type="button" disabled={step.disabled} onClick={step.action} className="group rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.02] disabled:cursor-not-allowed disabled:opacity-45"><div className="flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><step.icon className="h-4 w-4" /></div><div><p className="text-sm font-semibold">{step.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</p></div></div></button>)}</div>
+
+          <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={() => setRuntimePreviewOpen(true)} disabled={!selectedTemplate}><MonitorSmartphone className="mr-2 h-4 w-4" />Preview</Button><Button variant="outline" onClick={() => setAppActionsOpen(true)} disabled={!selectedApp?.tenantId}><Workflow className="mr-2 h-4 w-4" />Políticas de Actions</Button><Button variant="outline" onClick={openRuntime} disabled={!selectedApp?.tenantId}><ExternalLink className="mr-2 h-4 w-4" />Abrir runtime</Button><Button variant="outline" onClick={goAdvanced}><History className="mr-2 h-4 w-4" />Versões e engenharia</Button></div></CardContent></Card>
       </div>
 
-      <AdminAppBuilderLegacy />
+      <div id="app-builder-advanced" className="scroll-mt-24"><AdminAppBuilderLegacy /></div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto"><DialogHeader><DialogTitle>Novo app</DialogTitle><DialogDescription>Escolha se o app já pertence a um tenant ou se será construído antes da contratação.</DialogDescription></DialogHeader><div className="space-y-4"><div className="grid grid-cols-3 gap-2"><Button type="button" variant={newApp.targetType === "tenant" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "tenant" }))}>Tenant</Button><Button type="button" variant={newApp.targetType === "prospect" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "prospect" }))}>Prospect</Button><Button type="button" variant={newApp.targetType === "internal" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "internal" }))}>Interno</Button></div>{newApp.targetType === "tenant" ? <div className="space-y-2"><Label>Tenant</Label><Select value={newApp.tenantId} onValueChange={(tenantId) => setNewApp((current) => ({ ...current, tenantId }))}><SelectTrigger><SelectValue placeholder="Selecione o tenant" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div> : <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>{newApp.targetType === "prospect" ? "Responsável / prospect" : "Responsável interno"}</Label><Input value={newApp.ownerName} onChange={(e) => setNewApp((current) => ({ ...current, ownerName: e.target.value }))} placeholder="Nome" /></div><div className="space-y-2"><Label>Empresa / projeto</Label><Input value={newApp.ownerCompany} onChange={(e) => setNewApp((current) => ({ ...current, ownerCompany: e.target.value }))} placeholder="Empresa ou nome do projeto" /></div><div className="space-y-2 sm:col-span-2"><Label>E-mail de referência</Label><Input type="email" value={newApp.ownerEmail} onChange={(e) => setNewApp((current) => ({ ...current, ownerEmail: e.target.value }))} placeholder="contato@empresa.com" /></div></div>}<div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Template</Label><Select value={newApp.templateId} onValueChange={(value) => void chooseTemplate(value)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Versão publicada</Label><Select value={newApp.templateVersionId} onValueChange={(templateVersionId) => setNewApp((current) => ({ ...current, templateVersionId }))} disabled={!newApp.templateId || versionsLoading || publishedVersions.length === 0}><SelectTrigger><SelectValue placeholder={versionsLoading ? "Carregando..." : "Selecione"} /></SelectTrigger><SelectContent>{publishedVersions.map((version) => <SelectItem key={version.id} value={version.id}>Versão {version.version}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Nome do app</Label><Input value={newApp.name} onChange={(e) => setNewApp((current) => ({ ...current, name: e.target.value }))} placeholder="Portal do Cliente" /></div><div className="space-y-2"><Label>Slug</Label><Input value={newApp.slug} onChange={(e) => setNewApp((current) => ({ ...current, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-") }))} placeholder="portal-cliente" /></div></div>{newApp.targetType !== "tenant" && <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">O app poderá ser construído, editado e versionado agora. A publicação e os usuários externos serão liberados quando você vincular um tenant real.</div>}</div><DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button><Button onClick={() => void createApp()} disabled={saving || !newApp.templateVersionId || !newApp.name.trim() || !newApp.slug.trim() || (newApp.targetType === "tenant" ? !newApp.tenantId : !newApp.ownerName.trim())}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar app</Button></DialogFooter></DialogContent></Dialog>
 
