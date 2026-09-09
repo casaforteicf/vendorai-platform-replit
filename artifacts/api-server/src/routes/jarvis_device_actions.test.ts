@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSpotifyQuery } from "./jarvis_device_actions.js";
+import { extractContactDeviceIntent, extractSpotifyQuery, extractVendorAiRoute } from "./jarvis_device_actions.js";
 
 describe("JARVIS device actions", () => {
   it("extrai música pedida explicitamente no Spotify", () => {
@@ -14,6 +14,35 @@ describe("JARVIS device actions", () => {
 
   it("não transforma conversa genérica sobre Spotify em execução", () => {
     expect(extractSpotifyQuery("qual a diferença entre Spotify e YouTube Music?"))
+      .toBeNull();
+  });
+
+  it("reconhece pedido explícito para ligar para contato", () => {
+    expect(extractContactDeviceIntent("Jarvis, ligue para João"))
+      .toEqual({ kind: "call", contactQuery: "João" });
+  });
+
+  it("reconhece abertura de conversa no WhatsApp sem confundir com envio", () => {
+    expect(extractContactDeviceIntent("abra o whatsapp da Maria"))
+      .toEqual({ kind: "whatsapp", contactQuery: "Maria" });
+    expect(extractContactDeviceIntent("envie um whatsapp para Maria dizendo oi"))
+      .toBeNull();
+  });
+
+  it("reconhece pedido de rota para contato", () => {
+    expect(extractContactDeviceIntent("trace a rota para Pedro"))
+      .toEqual({ kind: "route", contactQuery: "Pedro" });
+  });
+
+  it("mapeia navegação para rotas reais conhecidas do VendorAI", () => {
+    expect(extractVendorAiRoute("Jarvis, abra a agenda"))
+      .toEqual({ path: "/agenda", label: "Agenda" });
+    expect(extractVendorAiRoute("vá para o prospector"))
+      .toEqual({ path: "/app/prospector", label: "Prospector" });
+  });
+
+  it("não navega quando a frase só comenta uma área", () => {
+    expect(extractVendorAiRoute("a agenda está cheia hoje"))
       .toBeNull();
   });
 });
