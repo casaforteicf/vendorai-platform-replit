@@ -40,14 +40,33 @@ function conciseForSpeech(text: string) {
   return `${compact} Se quiser, eu detalho.`;
 }
 
-function choosePtBrVoice() {
-  const voices = window.speechSynthesis.getVoices();
-  return voices.find((voice) => voice.lang.toLowerCase() === "pt-br")
-    ?? voices.find((voice) => voice.lang.toLowerCase().startsWith("pt"))
-    ?? null;
+function naturalVoiceScore(voice: SpeechSynthesisVoice) {
+  const lang = voice.lang.toLowerCase();
+  const name = voice.name.toLowerCase();
+  let score = 0;
+
+  if (lang === "pt-br") score += 100;
+  else if (lang.startsWith("pt")) score += 50;
+  else return -1000;
+
+  if (/natural|neural|enhanced|premium|online/.test(name)) score += 40;
+  if (/google|microsoft|samsung|apple/.test(name)) score += 18;
+  if (/brasil|brazil|portuguese.*brazil/.test(name)) score += 15;
+  if (voice.localService) score += 4;
+  if (/espeak|compact|legacy|robot/.test(name)) score -= 35;
+
+  return score;
 }
 
-function splitForSpeech(text: string, maxChars = 360): string[] {
+function choosePtBrVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  return voices
+    .map((voice) => ({ voice, score: naturalVoiceScore(voice) }))
+    .filter((item) => item.score > -1000)
+    .sort((a, b) => b.score - a.score)[0]?.voice ?? null;
+}
+
+function splitForSpeech(text: string, maxChars = 320): string[] {
   const parts: string[] = [];
   let remaining = text.trim();
   while (remaining.length > maxChars) {
@@ -55,7 +74,7 @@ function splitForSpeech(text: string, maxChars = 360): string[] {
     const sentenceBreak = Math.max(windowText.lastIndexOf(". "), windowText.lastIndexOf("! "), windowText.lastIndexOf("? "));
     const commaBreak = Math.max(windowText.lastIndexOf(", "), windowText.lastIndexOf("; "), windowText.lastIndexOf(": "));
     const spaceBreak = windowText.lastIndexOf(" ");
-    const cut = sentenceBreak > 120 ? sentenceBreak + 1 : commaBreak > 120 ? commaBreak + 1 : spaceBreak > 120 ? spaceBreak : maxChars;
+    const cut = sentenceBreak > 100 ? sentenceBreak + 1 : commaBreak > 100 ? commaBreak + 1 : spaceBreak > 100 ? spaceBreak : maxChars;
     parts.push(remaining.slice(0, cut).trim());
     remaining = remaining.slice(cut).trim();
   }
@@ -121,7 +140,6 @@ function speakJarvis(text: string, onComplete?: () => void) {
 
   const synth = window.speechSynthesis;
   const chunks = splitForSpeech(content);
-  const voice = choosePtBrVoice();
   let index = 0;
 
   const speakNext = () => {
@@ -129,15 +147,17 @@ function speakJarvis(text: string, onComplete?: () => void) {
       onComplete?.();
       return;
     }
+
     const utterance = new SpeechSynthesisUtterance(chunks[index++]);
-    utterance.lang = "pt-BR";
-    utterance.rate = 1;
-    utterance.pitch = 0.92;
+    const voice = choosePtBrVoice();
+    utterance.lang = voice?.lang || "pt-BR";
+    utterance.rate = 0.94;
+    utterance.pitch = 1;
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
     utterance.onend = speakNext;
     utterance.onerror = () => {
-      if (index < chunks.length) setTimeout(speakNext, 120);
+      if (index < chunks.length) setTimeout(speakNext, 140);
       else onComplete?.();
     };
     synth.resume();
@@ -145,7 +165,7 @@ function speakJarvis(text: string, onComplete?: () => void) {
   };
 
   synth.cancel();
-  setTimeout(speakNext, 60);
+  setTimeout(speakNext, 80);
   return true;
 }
 
