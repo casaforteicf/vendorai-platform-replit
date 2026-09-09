@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -6,16 +6,11 @@ export const partnersTable = pgTable("partners", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-
-  // ── Campos legados (mantidos para backward compat com rotas existentes) ──
   name: text("name"),
   phone: text("phone"),
   userId: text("user_id"),
   asaasAccountId: text("asaas_account_id"),
   asaasWalletId: text("asaas_wallet_id"),
-
-  // ── Campos da especificação Etapa 1 ──
-  // tenant_id sem .references() para evitar circular dep com tenants.ts
   tenantId: text("tenant_id"),
   nomeFantasia: text("nome_fantasia").notNull().default(""),
   cnpj: text("cnpj"),
@@ -27,8 +22,14 @@ export const partnersTable = pgTable("partners", {
   status: text("status").notNull().default("ativo"),
   nivel: integer("nivel").notNull().default(1),
   dataCadastro: timestamp("data_cadastro").notNull().defaultNow(),
-
-  // ── Auditoria ──
+  tipoParceiro: text("tipo_parceiro").notNull().default("revendedor"),
+  comissaoPercentual: numeric("comissao_percentual", { precision: 5, scale: 2 }),
+  comissaoRecorrentePercentual: numeric("comissao_recorrente_percentual", { precision: 5, scale: 2 }),
+  cupomCodigo: text("cupom_codigo").unique(),
+  descontoCupomPercentual: numeric("desconto_cupom_percentual", { precision: 5, scale: 2 }),
+  cupomAtivo: boolean("cupom_ativo").notNull().default(false),
+  cupomValidoAte: timestamp("cupom_valido_ate"),
+  cupomAplicacao: text("cupom_aplicacao").notNull().default("geral"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
