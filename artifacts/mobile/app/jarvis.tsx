@@ -9,6 +9,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,14 @@ import { useColors } from "@/hooks/useColors";
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? "https://appvendorai.com").replace(/\/$/, "");
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "error";
+
+type ClientAction = {
+  type: "open_external_url";
+  provider?: string;
+  uri?: string;
+  fallbackUrl: string;
+  label?: string;
+};
 
 type ProactiveItem = {
   id: string;
@@ -149,6 +158,22 @@ export default function JarvisScreen() {
     });
   }, [startListening]);
 
+  const openClientAction = useCallback(async (action: ClientAction) => {
+    try {
+      if (action.uri) {
+        const canOpenNative = await Linking.canOpenURL(action.uri).catch(() => false);
+        if (canOpenNative) {
+          await Linking.openURL(action.uri);
+          return;
+        }
+      }
+      await Linking.openURL(action.fallbackUrl);
+    } catch {
+      setVoiceState("error");
+      setAnswer((current) => `${current}\n\nNão consegui abrir ${action.provider ?? "o serviço externo"} neste dispositivo.`);
+    }
+  }, []);
+
   const sendToJarvis = useCallback(async (text: string) => {
     const command = text.trim();
     if (!command || !token || sendingRef.current) return;
@@ -181,6 +206,7 @@ export default function JarvisScreen() {
       const decoder = new TextDecoder();
       let buffer = "";
       let fullAnswer = "";
+      let pendingClientAction: ClientAction | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -191,10 +217,18 @@ export default function JarvisScreen() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           try {
-            const payload = JSON.parse(line.slice(6)) as { content?: string; error?: string };
+            const payload = JSON.parse(line.slice(6)) as {
+              content?: string;
+              done?: boolean;
+              error?: string;
+              clientAction?: ClientAction;
+            };
             if (payload.content) {
               fullAnswer += payload.content;
               setAnswer(fullAnswer);
+            }
+            if (payload.done && payload.clientAction?.type === "open_external_url") {
+              pendingClientAction = payload.clientAction;
             }
             if (payload.error) throw new Error(payload.error);
           } catch {
@@ -205,7 +239,12 @@ export default function JarvisScreen() {
 
       const spoken = fullAnswer.trim() || "Concluí a análise, mas não recebi uma resposta em texto.";
       setAnswer(spoken);
-      speak(spoken, true);
+      if (pendingClientAction) {
+        speak(spoken, false);
+        setTimeout(() => void openClientAction(pendingClientAction!), 650);
+      } else {
+        speak(spoken, true);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não consegui falar com o JARVIS.";
       setVoiceState("error");
@@ -214,7 +253,7 @@ export default function JarvisScreen() {
     } finally {
       sendingRef.current = false;
     }
-  }, [conversationId, openedByWakeWord, speak, token]);
+  }, [conversationId, openedByWakeWord, openClientAction, speak, token]);
 
   useSpeechRecognitionEvent("result", (event) => {
     const text = event.results[0]?.transcript?.trim() ?? "";
