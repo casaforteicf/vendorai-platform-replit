@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
+import AppBuilderAiArchitectDialog from "@/components/app-builder/AppBuilderAiArchitectDialog";
 import TemplateRuntimeEditorDialog from "@/components/app-builder/TemplateRuntimeEditorDialog";
 import TemplateRuntimePreviewDialog from "@/components/app-builder/TemplateRuntimePreviewDialog";
 import TemplateDataSourceEditorDialog from "@/components/app-builder/TemplateDataSourceEditorDialog";
@@ -22,7 +23,6 @@ import {
   ExternalLink,
   FormInput,
   History,
-  Layers3,
   Loader2,
   MonitorSmartphone,
   PencilRuler,
@@ -30,6 +30,7 @@ import {
   RefreshCw,
   Rocket,
   ShieldCheck,
+  Sparkles,
   UserRoundCog,
   Users,
   Workflow,
@@ -103,6 +104,7 @@ export default function AdminAppBuilder() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [usersOpen, setUsersOpen] = useState(false);
   const [appActionsOpen, setAppActionsOpen] = useState(false);
+  const [aiArchitectOpen, setAiArchitectOpen] = useState(false);
   const [runtimeEditorOpen, setRuntimeEditorOpen] = useState(false);
   const [runtimePreviewOpen, setRuntimePreviewOpen] = useState(false);
   const [dataSourceEditorOpen, setDataSourceEditorOpen] = useState(false);
@@ -282,7 +284,7 @@ export default function AdminAppBuilder() {
             <div className="flex items-center gap-2"><AppWindow className="h-5 w-5 text-primary" /><h1 className="text-2xl font-bold">App Builder</h1><Badge variant="outline">SuperAdmin</Badge></div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Construa apps completos para tenants, prospects ou projetos internos. O mesmo projeto evolui do rascunho ao runtime publicado, preservando versões e histórico.</p>
           </div>
-          <div className="flex gap-2"><Button onClick={startCreate}><Plus className="mr-2 h-4 w-4" />Novo app</Button><Button variant="outline" onClick={() => void loadControls()} disabled={loadingControls}><RefreshCw className={`mr-2 h-4 w-4 ${loadingControls ? "animate-spin" : ""}`} />Atualizar</Button></div>
+          <div className="flex flex-wrap gap-2"><Button onClick={() => setAiArchitectOpen(true)} disabled={!selectedTemplate}><Sparkles className="mr-2 h-4 w-4" />Arquiteto IA</Button><Button variant="outline" onClick={startCreate}><Plus className="mr-2 h-4 w-4" />Novo app</Button><Button variant="outline" onClick={() => void loadControls()} disabled={loadingControls}><RefreshCw className={`mr-2 h-4 w-4 ${loadingControls ? "animate-spin" : ""}`} />Atualizar</Button></div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -300,6 +302,8 @@ export default function AdminAppBuilder() {
 
           <div className="mt-4 rounded-xl border bg-muted/20 p-3"><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">App: {selectedPortfolioApp?.name ?? selectedApp?.name ?? "não selecionado"}</Badge><Badge variant="outline">Template: {selectedTemplate?.name ?? "não selecionado"}</Badge><Badge variant={selectedApp?.tenantId ? "default" : "secondary"}>{selectedApp?.tenantId ? "Tenant vinculado" : "Pré-tenant"}</Badge>{selectedPortfolioApp?.status && <Badge variant="outline">{statusPt(selectedPortfolioApp.status)}</Badge>}</div>{!selectedApp?.tenantId && selectedApp && <p className="mt-2 text-xs text-amber-700">Você pode construir e versionar normalmente. Usuários externos e publicação operacional ficam bloqueados até vincular um tenant.</p>}</div>
 
+          <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.03] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Arquiteto IA avançado</p><Badge variant="secondary">2 passagens</Badge></div><p className="mt-1 text-xs leading-5 text-muted-foreground">Projeta o app inteiro, cruza registries reais, revisa UX/segurança/dados/integrações, aponta gaps e só cria uma nova versão depois da sua aprovação.</p></div><Button onClick={() => setAiArchitectOpen(true)} disabled={!selectedTemplate}><Sparkles className="mr-2 h-4 w-4" />Construir com IA</Button></div></div>
+
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{buildSteps.map((step) => <button key={step.title} type="button" disabled={step.disabled} onClick={step.action} className="group rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.02] disabled:cursor-not-allowed disabled:opacity-45"><div className="flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><step.icon className="h-4 w-4" /></div><div><p className="text-sm font-semibold">{step.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</p></div></div></button>)}</div>
 
           <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={() => setRuntimePreviewOpen(true)} disabled={!selectedTemplate}><MonitorSmartphone className="mr-2 h-4 w-4" />Preview</Button><Button variant="outline" onClick={() => setAppActionsOpen(true)} disabled={!selectedApp?.tenantId}><Workflow className="mr-2 h-4 w-4" />Políticas de Actions</Button><Button variant="outline" onClick={openRuntime} disabled={!selectedApp?.tenantId}><ExternalLink className="mr-2 h-4 w-4" />Abrir runtime</Button><Button variant="outline" onClick={goAdvanced}><History className="mr-2 h-4 w-4" />Versões e engenharia</Button></div></CardContent></Card>
@@ -311,6 +315,7 @@ export default function AdminAppBuilder() {
 
       <Dialog open={Boolean(linkingApp)} onOpenChange={(open) => { if (!open) setLinkingApp(null); }}><DialogContent><DialogHeader><DialogTitle>Vincular app a um tenant</DialogTitle><DialogDescription>Converte o projeto pré-tenant em app operacional sem perder o histórico.</DialogDescription></DialogHeader><div className="space-y-3"><div className="rounded-lg border p-3"><p className="text-sm font-medium">{linkingApp?.name}</p><p className="text-xs text-muted-foreground">Origem: {linkingApp?.ownerCompany || linkingApp?.ownerName || "pré-tenant"}</p></div><div className="space-y-2"><Label>Tenant de destino</Label><Select value={linkTenantId} onValueChange={setLinkTenantId}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setLinkingApp(null)}>Cancelar</Button><Button onClick={() => void linkTenant()} disabled={!linkTenantId || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Vincular e preservar histórico</Button></DialogFooter></DialogContent></Dialog>
 
+      <AppBuilderAiArchitectDialog open={aiArchitectOpen} onOpenChange={setAiArchitectOpen} token={token} template={selectedTemplate} app={selectedPortfolioApp ?? selectedApp} onVersionCreated={loadControls} />
       <AppUsersDialog app={selectedApp} open={usersOpen} token={token} onOpenChange={setUsersOpen} onAppChanged={loadControls} />
       <AppActionPolicyDialog app={selectedApp} token={token} open={appActionsOpen} onOpenChange={setAppActionsOpen} onAppChanged={loadControls} />
       <TemplateRuntimeEditorDialog template={selectedTemplate} token={token} open={runtimeEditorOpen} onOpenChange={setRuntimeEditorOpen} />
