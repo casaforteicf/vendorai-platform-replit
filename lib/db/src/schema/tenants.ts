@@ -337,6 +337,9 @@ const countryCodeSchema = z.enum(supportedCountryCodes);
 const tenantLocaleSchema = z.enum(supportedTenantLocales);
 const tenantCurrencySchema = z.enum(supportedTenantCurrencies);
 const supportedCurrenciesSchema = z.array(tenantCurrencySchema).min(1);
+const nullableTimestampInput = z.coerce.date().nullable().optional();
+const paymentMethodInput = z.enum(["pix", "boleto", "cartao", "transferencia", "outro"]).nullable().optional();
+const paymentStatusInput = z.enum(["pago", "pendente", "atrasado", "isento"]).nullable().optional();
 
 export const insertTenantSchema = createInsertSchema(tenantsTable)
   .omit({
@@ -379,6 +382,17 @@ export const updateTenantSchema = createSelectSchema(tenantsTable)
     defaultLocale: tenantLocaleSchema,
     defaultCurrency: tenantCurrencySchema,
     supportedCurrencies: supportedCurrenciesSchema,
+    formaPagamento: paymentMethodInput,
+    statusPagamento: paymentStatusInput,
+    demoStartedAt: nullableTimestampInput,
+    demoExpiresAt: nullableTimestampInput,
+    demoConvertedAt: nullableTimestampInput,
+    ultimoPagamentoEm: nullableTimestampInput,
+    proximoPagamentoEm: nullableTimestampInput,
+    contratoInicioEm: nullableTimestampInput,
+    contratoFimEm: nullableTimestampInput,
+    cancelamentoSolicitadoEm: nullableTimestampInput,
+    canceladoEm: nullableTimestampInput,
   })
   .partial();
 
