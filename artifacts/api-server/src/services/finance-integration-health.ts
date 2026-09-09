@@ -6,6 +6,7 @@ import {
   financeIntegrationSyncLogsTable,
   googleAdsConnectionsTable,
   instagramConnectionsTable,
+  metaAdsConnectionsTable,
   tenantsTable,
   whatsappConnectionsTable,
   type FinanceIntegrationStatus,
@@ -100,8 +101,20 @@ async function checkInstagram(tenantId: string): Promise<RawCheck> {
   const url = `https://graph.facebook.com/${version}/me?fields=id,name&access_token=${encodeURIComponent(row.pageAccessToken)}`;
   const { response, latencyMs } = await timedFetch(url);
   if (!response) return { configured: true, auth: 30, sync: 20, webhook: 60, consistency: 70, latencyMs, errorCode: "NETWORK_ERROR", message: "Instagram conectado, porém o Graph API não respondeu." };
-  if (response.ok) return { configured: true, auth: 100, sync: 95, webhook: 85, consistency: 95, latencyMs, message: "Instagram/Meta autenticado e respondendo." };
-  return { configured: true, auth: response.status === 401 || response.status === 400 ? 0 : 30, sync: 20, webhook: 40, consistency: 60, latencyMs, errorCode: `HTTP_${response.status}`, message: `Instagram/Meta respondeu HTTP ${response.status}.` };
+  if (response.ok) return { configured: true, auth: 100, sync: 95, webhook: 85, consistency: 95, latencyMs, message: "Instagram autenticado e respondendo." };
+  return { configured: true, auth: response.status === 401 || response.status === 400 ? 0 : 30, sync: 20, webhook: 40, consistency: 60, latencyMs, errorCode: `HTTP_${response.status}`, message: `Instagram respondeu HTTP ${response.status}.` };
+}
+
+async function checkMetaAds(tenantId: string): Promise<RawCheck> {
+  const [row] = await db.select().from(metaAdsConnectionsTable).where(eq(metaAdsConnectionsTable.tenantId, tenantId)).orderBy(desc(metaAdsConnectionsTable.updatedAt)).limit(1);
+  if (!row || row.disconnectedAt || row.status === "disconnected" || !row.accessToken) return { configured: false, auth: 0, message: "Meta Ads não conectado." };
+  if (row.tokenExpiresAt && row.tokenExpiresAt.getTime() <= Date.now()) return { configured: true, auth: 0, expired: true, sync: 0, webhook: 100, consistency: 50, errorCode: "TOKEN_EXPIRED", message: "Token do Meta Ads expirado." };
+  if (row.status !== "active" || !row.adAccountId) return { configured: true, auth: 70, sync: 35, webhook: 100, consistency: 65, message: "Meta Ads autenticado, aguardando seleção/configuração completa da conta." };
+  const version = process.env.META_GRAPH_VERSION?.trim() || "v23.0";
+  const { response, latencyMs } = await timedFetch(`https://graph.facebook.com/${version}/${encodeURIComponent(row.adAccountId)}?fields=id,name,account_status,currency`, { headers: { Authorization: `Bearer ${row.accessToken}` } });
+  if (!response) return { configured: true, auth: 30, sync: 20, webhook: 100, consistency: 70, latencyMs, errorCode: "NETWORK_ERROR", message: "Meta Ads conectado, mas o Marketing API não respondeu." };
+  if (response.ok) return { configured: true, auth: 100, sync: 95, webhook: 100, consistency: 95, latencyMs, message: "Meta Ads autenticado e respondendo." };
+  return { configured: true, auth: response.status === 400 || response.status === 401 || response.status === 403 ? 0 : 30, sync: 20, webhook: 100, consistency: 60, latencyMs, errorCode: `HTTP_${response.status}`, message: `Meta Ads respondeu HTTP ${response.status}.` };
 }
 
 async function checkWhatsapp(tenantId: string): Promise<RawCheck> {
@@ -169,7 +182,8 @@ function checkPlatformProvider(providerKey: string): RawCheck | null {
 async function runRawCheck(tenantId: string, providerKey: string): Promise<RawCheck> {
   if (providerKey === "asaas") return checkAsaas(tenantId);
   if (providerKey === "zapsign") return checkZapSign(tenantId);
-  if (providerKey === "instagram" || providerKey === "meta") return checkInstagram(tenantId);
+  if (providerKey === "instagram") return checkInstagram(tenantId);
+  if (providerKey === "meta") return checkMetaAds(tenantId);
   if (providerKey === "whatsapp") return checkWhatsapp(tenantId);
   if (providerKey === "google-ads") return checkGoogleAds(tenantId);
   if (providerKey === "nuvem-fiscal") return checkNuvemFiscal();
@@ -258,11 +272,7 @@ export async function runFinanceIntegrationHealthCheck(tenantId: string, provide
 export async function runAllFinanceIntegrationHealthChecks(tenantId: string) {
   const providers = await db.select({ providerKey: financeIntegrationRegistryTable.providerKey }).from(financeIntegrationRegistryTable).where(eq(financeIntegrationRegistryTable.isActive, true));
   const supported = new Set(["asaas", "zapsign", "instagram", "meta", "whatsapp", "google-ads", "nuvem-fiscal", "inventory", "praca-ai", "public-api", "openai", "cloudflare", "railway", "supabase", "n8n"]);
-  const results: FinanceHealthResult[] = [];
-  for (const provider of providers) {
-    if (!supported.has(provider.providerKey)) continue;
-    const result = await runFinanceIntegrationHealthCheck(tenantId, provider.providerKey);
-    if (result) results.push(result);
-  }
-  return results;
+  const selected = providers.filter((provider) => supported.has(provider.providerKey));
+  const settled = await Promise.allSettled(selected.map((provider) => runFinanceIntegrationHealthCheck(tenantId, provider.providerKey)));
+  return settled.flatMap((item) => item.status === "fulfilled" && item.value ? [item.value] : []);
 }
