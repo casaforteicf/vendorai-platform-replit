@@ -8,6 +8,10 @@ import {
   financeIntegrationRegistryTable,
   financeIntegrationSyncLogsTable,
 } from "@workspace/db";
+import {
+  runAllFinanceIntegrationHealthChecks,
+  runFinanceIntegrationHealthCheck,
+} from "../services/finance-integration-health.js";
 
 const router: IRouter = Router();
 
@@ -86,6 +90,54 @@ router.get("/tenants/:tenantId/finance-integrations", async (req, res) => {
       configuredPercent: Number(((configuredCount / total) * 100).toFixed(1)),
     },
   });
+});
+
+router.post("/tenants/:tenantId/finance-integrations/health-check", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied to this tenant" });
+
+  const parsed = z.object({ providerKey: z.string().min(1).optional() }).safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Invalid health-check request", issues: parsed.error.issues });
+
+  try {
+    if (parsed.data.providerKey) {
+      const result = await runFinanceIntegrationHealthCheck(tenantId, parsed.data.providerKey);
+      if (!result) return void res.status(404).json({ error: "Integration provider not found" });
+      return void res.json({ checked: 1, results: [result] });
+    }
+
+    const results = await runAllFinanceIntegrationHealthChecks(tenantId);
+    const configured = results.filter((item) => item.configured);
+    const healthy = configured.filter((item) => item.status === "connected");
+    const errors = configured.filter((item) => item.status === "error" || item.status === "expired");
+    return void res.json({
+      checked: results.length,
+      results,
+      summary: {
+        healthyPercent: configured.length ? Number(((healthy.length / configured.length) * 100).toFixed(1)) : 0,
+        errorPercent: configured.length ? Number(((errors.length / configured.length) * 100).toFixed(1)) : 0,
+        averageHealthPercent: configured.length
+          ? Number((configured.reduce((sum, item) => sum + item.overallHealthPercent, 0) / configured.length).toFixed(1))
+          : 0,
+      },
+    });
+  } catch (error) {
+    req.log.error({ error, tenantId }, "Finance integration health check failed");
+    return void res.status(500).json({ error: "Não foi possível concluir o health check das integrações." });
+  }
+});
+
+router.post("/tenants/:tenantId/finance-integrations/:providerKey/health-check", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied to this tenant" });
+  try {
+    const result = await runFinanceIntegrationHealthCheck(tenantId, String(req.params.providerKey));
+    if (!result) return void res.status(404).json({ error: "Integration provider not found" });
+    return void res.json(result);
+  } catch (error) {
+    req.log.error({ error, tenantId, providerKey: req.params.providerKey }, "Finance provider health check failed");
+    return void res.status(500).json({ error: "Não foi possível validar esta integração." });
+  }
 });
 
 router.get("/tenants/:tenantId/finance-integrations/source-authority", async (req, res) => {
