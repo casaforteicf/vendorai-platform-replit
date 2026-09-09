@@ -34,9 +34,14 @@ function templateCounts(template: {
     : [];
 
   return {
-    prompts: Object.values(prompts).filter((value) => typeof value === "string" && value.trim()).length,
-    funil: funil.filter((value) => typeof value === "string" && value.trim()).length,
-    categorias: categorias.filter((value) => typeof value === "string" && value.trim()).length,
+    prompts: Object.values(prompts).filter(
+      (value) => typeof value === "string" && value.trim()
+    ).length,
+    funil: funil.filter((value) => typeof value === "string" && value.trim())
+      .length,
+    categorias: categorias.filter(
+      (value) => typeof value === "string" && value.trim()
+    ).length,
   };
 }
 
@@ -58,6 +63,30 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+function cleanStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
+function readCustomizedAgents(value: unknown): Record<string, { enabled: boolean; prompt: string }> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+  const result: Record<string, { enabled: boolean; prompt: string }> = {};
+  for (const agentKey of AGENT_TYPES) {
+    const raw = (value as Record<string, unknown>)[agentKey];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const enabled = (raw as Record<string, unknown>).enabled !== false;
+    const promptRaw = (raw as Record<string, unknown>).prompt;
+    const prompt = typeof promptRaw === "string" ? promptRaw.trim() : "";
+    if (enabled && prompt) result[agentKey] = { enabled: true, prompt };
+  }
+  return result;
+}
+
 publicSegmentTemplatesRouter.get("/segment-templates", async (_req, res) => {
   const templates = await db
     .select()
@@ -65,8 +94,6 @@ publicSegmentTemplatesRouter.get("/segment-templates", async (_req, res) => {
     .where(eq(segmentTemplatesTable.ativo, true))
     .orderBy(segmentTemplatesTable.nome);
 
-  // Marketplace público só exibe itens realmente instaláveis.
-  // Itens incompletos continuam disponíveis no Admin para conclusão.
   res.json(templates.filter(isTemplateReady));
 });
 
@@ -93,7 +120,6 @@ async function hasNameConflict(nome: string, ignoreId?: string) {
   );
 }
 
-// Lista administrativa inclui ativos e arquivados.
 router.get("/admin/segment-templates", async (req, res) => {
   if (!isSuperAdmin(req)) {
     res.status(403).json({ error: "Super Admin required" });
@@ -106,8 +132,6 @@ router.get("/admin/segment-templates", async (req, res) => {
   res.json(templates);
 });
 
-// Cria um novo template oficial de segmento. O ID é a identidade imutável;
-// o nome pode evoluir depois, com sincronização dos vínculos existentes.
 router.post("/admin/segment-templates", async (req, res) => {
   if (!isSuperAdmin(req)) {
     res.status(403).json({ error: "Super Admin required" });
@@ -298,10 +322,37 @@ router.post(
       return;
     }
 
-    const promptsSugeridos = (template.promptsSugeridos ?? {}) as Record<
+    const customization =
+      req.body?.customization && typeof req.body.customization === "object"
+        ? req.body.customization
+        : {};
+
+    const customizedAgents = readCustomizedAgents(customization.agents);
+    const templatePrompts = (template.promptsSugeridos ?? {}) as Record<
       string,
       string
     >;
+    const promptsSugeridos: Record<string, string> = customizedAgents
+      ? Object.fromEntries(
+          Object.entries(customizedAgents).map(([key, value]) => [key, value.prompt])
+        )
+      : templatePrompts;
+
+    const customizedFunil = cleanStringArray(customization.funilPadrao);
+    const funilPadrao =
+      customizedFunil !== undefined
+        ? customizedFunil
+        : ((template.funilPadrao ?? []) as string[]);
+
+    const customizedCategories = cleanStringArray(customization.categoriasProduto);
+    const suggestedCategories = (
+      customizedCategories !== undefined
+        ? customizedCategories
+        : ((template.categoriasProdutoSugeridas ?? []) as string[])
+    )
+      .map((name) => name.trim())
+      .filter(Boolean);
+
     const promptsApplied: string[] = [];
     const promptsPreserved: string[] = [];
     const [existingConfig] = await db
@@ -336,7 +387,7 @@ router.post(
           .where(eq(agentConfigsTable.id, existingConfig.id));
         agentConfigUpdated = true;
       }
-    } else {
+    } else if (Object.keys(promptsSugeridos).length > 0) {
       const agents: AgentsMap = {};
       for (const agentKey of AGENT_TYPES) {
         const suggestedPrompt = promptsSugeridos[agentKey];
@@ -345,16 +396,17 @@ router.post(
           promptsApplied.push(agentKey);
         }
       }
-      await db.insert(agentConfigsTable).values({
-        tenantId,
-        agents,
-        setupCompletedAt: new Date(),
-        autonomyEnabledAt: new Date(),
-      });
-      agentConfigUpdated = promptsApplied.length > 0;
+      if (promptsApplied.length > 0) {
+        await db.insert(agentConfigsTable).values({
+          tenantId,
+          agents,
+          setupCompletedAt: new Date(),
+          autonomyEnabledAt: new Date(),
+        });
+        agentConfigUpdated = true;
+      }
     }
 
-    const funilPadrao = (template.funilPadrao ?? []) as string[];
     const funilNome = `Funil — ${template.nome}`;
     let funilCreated = false;
     let funilSkipped = false;
@@ -381,12 +433,6 @@ router.post(
         funilSkipped = true;
       }
     }
-
-    const suggestedCategories = (
-      (template.categoriasProdutoSugeridas ?? []) as string[]
-    )
-      .map((name) => name.trim())
-      .filter(Boolean);
 
     const existingCategories = await db
       .select({ nome: categoriasProdutoTable.nome })
@@ -418,8 +464,6 @@ router.post(
       categoriesCreated.push(categoryName);
     }
 
-    // Templates comuns configuram o negócio sem trocar o segmento.
-    // Apenas módulos verticais alteram explicitamente tenant/profile vertical.
     const isVerticalModule = VERTICAL_MODULE_NAMES.has(template.nome);
     let businessProfileUpdated = false;
     let tenantVerticalUpdated = false;
@@ -454,6 +498,11 @@ router.post(
       categoriesSkipped,
       businessProfileUpdated,
       tenantVerticalUpdated,
+      customizationApplied: {
+        agents: customizedAgents !== undefined,
+        funil: customizedFunil !== undefined,
+        categorias: customizedCategories !== undefined,
+      },
     });
   }
 );
