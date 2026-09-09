@@ -10,9 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import FinanceIntegrationsPanel from "@/components/finance/FinanceIntegrationsPanel";
 import ComissoesVendedor from "@/pages/ComissoesVendedor";
 import Estoque from "@/pages/Estoque";
-import { FINANCE_INTEGRATION_CATALOG, FINANCE_INTEGRATION_CATEGORIES } from "@/lib/financeIntegrationCatalog";
 import { Activity, Banknote, Barcode, Boxes, Camera, FileCheck2, FileText, Landmark, Loader2, Network, PackageCheck, Plus, Receipt, RefreshCw, Scale, ShieldCheck, ShoppingCart, TrendingUp, WalletCards } from "lucide-react";
 
 type Title = { id:string; tipo:"receber"|"pagar"; categoria:string; descricao:string; pessoa?:string|null; valorOriginal:string; juros:string; multa:string; desconto:string; valorPago:string; vencimento:string; status:"pendente"|"pago"|"vencido"|"cancelado" };
@@ -20,6 +20,7 @@ type Summary = { receitas:number; custos:number; despesas:number; impostos:numbe
 type Fiscal = { id:string; tipo:"nfe"|"nfse"|"boleto"; status:string; destinatario:string; documentoDestinatario?:string|null; valor:string; numero?:string|null; createdAt:string };
 type Config = { asaas:boolean; nuvemFiscal:boolean; ambienteFiscal:string };
 type Extrato = { id:string; status?:string|null; pagamentoId?:string|null };
+type IntegrationSummaryResponse = { summary?: { coveragePercent?: number; healthyPercent?: number; errorPercent?: number; configuredPercent?: number } };
 
 const pct = (n:number) => Number.isFinite(n) ? `${n.toFixed(1)}%` : "—";
 const share = (part:number,total:number) => total > 0 ? (part/total)*100 : 0;
@@ -41,6 +42,7 @@ export default function GestaoErp() {
   const { data: fiscal = [] } = useQuery<Fiscal[]>({ queryKey:["erp",tenantId,"fiscal"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/documentos-fiscais`,{headers}); if(!r.ok) throw new Error("Falha ao carregar documentos"); return r.json(); } });
   const { data: config } = useQuery<Config>({ queryKey:["erp",tenantId,"config"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/configuracao`,{headers}); if(!r.ok) throw new Error("Falha ao carregar integrações"); return r.json(); } });
   const { data: extratos = [] } = useQuery<Extrato[]>({ queryKey:["erp",tenantId,"extratos"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/extratos`,{headers}); if(!r.ok) return []; return r.json(); } });
+  const { data: integrationRegistry } = useQuery<IntegrationSummaryResponse>({ queryKey:["finance-integrations",tenantId], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/finance-integrations`,{headers}); if(!r.ok) return { summary:{ coveragePercent:0 } }; return r.json(); }, refetchInterval:5*60*1000 });
 
   const refresh = () => qc.invalidateQueries({ queryKey:["erp",tenantId] });
   const sync = useMutation({ mutationFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/sincronizar`,{method:"POST",headers}); const d=await r.json(); if(!r.ok) throw new Error(d.error||"Falha ao sincronizar"); return d; }, onSuccess:()=>{ toast({title:"Operação sincronizada"}); refresh(); }, onError:(e:any)=>toast({title:e.message||"Erro ao sincronizar",variant:"destructive"}) });
@@ -64,8 +66,7 @@ export default function GestaoErp() {
     return { margin, cost, expense, tax, onTime, defaultRate, reconciliation };
   }, [summary,titles,extratos]);
 
-  const connectedIds = useMemo(() => new Set([...(config?.asaas ? ["asaas"] : []), ...(config?.nuvemFiscal ? ["nuvem-fiscal"] : []), "inventory", "praca-ai", "public-api"]), [config]);
-  const integrationCoverage = share(connectedIds.size, FINANCE_INTEGRATION_CATALOG.length);
+  const integrationCoverage = Number(integrationRegistry?.summary?.coveragePercent ?? 0);
 
   return <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5 overflow-x-hidden">
     <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -98,10 +99,7 @@ export default function GestaoErp() {
 
       <TabsContent value="fiscal" className="mt-4"><Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-base">Documentos fiscais e boletos</CardTitle><p className="text-xs text-muted-foreground mt-1">Emissão fiscal preservada no ERP Hub.</p></div><Button onClick={()=>setFiscalOpen(true)}><Plus className="h-4 w-4 mr-2"/>Novo documento</Button></CardHeader><CardContent><div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{fiscal.map(d=><div key={d.id} className="rounded-lg border p-4"><div className="flex justify-between"><Badge variant="outline">{d.tipo.toUpperCase()}</Badge><Badge>{d.status}</Badge></div><p className="font-medium mt-3">{d.destinatario}</p><p className="text-sm text-muted-foreground mt-2">{d.numero||"Aguardando emissão"}</p></div>)}{!fiscal.length&&<p className="text-sm text-muted-foreground col-span-full text-center py-8">Nenhum documento fiscal cadastrado.</p>}</div></CardContent></Card></TabsContent>
 
-      <TabsContent value="integracoes" className="mt-4 space-y-4">
-        <Card><CardContent className="p-4 md:p-5 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm text-muted-foreground">Cobertura do mapa de integrações</p><p className="text-3xl font-bold">{pct(integrationCoverage)}</p></div><div className="text-sm text-muted-foreground">Cada conector é classificado por categoria, autenticação, capacidades e direção de sincronização.</div></CardContent></Card>
-        {FINANCE_INTEGRATION_CATEGORIES.map(category=><Card key={category}><CardHeader className="pb-2"><CardTitle className="text-sm">{category}</CardTitle></CardHeader><CardContent><div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{FINANCE_INTEGRATION_CATALOG.filter(i=>i.category===category).map(i=>{const connected=connectedIds.has(i.id);return <div key={i.id} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><p className="font-medium">{i.name}</p><Badge variant={connected?"default":"secondary"}>{connected?"Conectado":"Não configurado"}</Badge></div><p className="text-xs text-muted-foreground mt-2">{i.capabilities.join(" · ")}</p><div className="flex gap-2 mt-3 text-[11px] text-muted-foreground"><span>{i.auth}</span><span>•</span><span>{i.direction}</span></div></div>})}</div></CardContent></Card>)}
-      </TabsContent>
+      <TabsContent value="integracoes" className="mt-4"><FinanceIntegrationsPanel tenantId={tenantId} /></TabsContent>
 
       <TabsContent value="comissoes" className="mt-4"><ComissoesVendedor embedded /></TabsContent>
       <TabsContent value="estoque" className="mt-4 -mx-4 md:-mx-6"><Estoque /></TabsContent>
