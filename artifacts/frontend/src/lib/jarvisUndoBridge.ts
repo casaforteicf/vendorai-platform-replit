@@ -22,6 +22,8 @@ type Deal = {
 };
 
 const HANDS_FREE_SESSION_KEY = "jarvis_web_hands_free_session";
+const PENDING_UNDO_KEY = "jarvis_pending_discount_undo";
+const PENDING_UNDO_TTL_MS = 2 * 60 * 1000;
 
 function normalize(value: string) {
   return value
@@ -38,6 +40,17 @@ function wantsUndoLastDiscount(text: string) {
   const target = /\bdesconto\b/.test(value);
   const latest = /\b(ultimo|anterior|mais recente)\b/.test(value);
   return undo && target && latest;
+}
+
+function confirmsPendingUndo(text: string) {
+  const value = normalize(text);
+  return /^(sim|confirmo|confirmar|pode desfazer|pode reverter|desfaca|desfaz|reverta|reverter)(\b|$)/.test(value)
+    || /\b(confirmo|confirmar)\b.*\b(desconto|desfazer|reverter)\b/.test(value);
+}
+
+function cancelsPendingUndo(text: string) {
+  const value = normalize(text);
+  return /^(nao|cancelar|cancela|deixa|deixa pra la|nao desfazer|nao reverta)(\b|$)/.test(value);
 }
 
 function getLastUserText(body: string) {
@@ -92,6 +105,36 @@ function sortLatest(tasks: AgentTask[]) {
     const tb = new Date(b.executedAt ?? b.updatedAt ?? 0).getTime();
     return tb - ta;
   });
+}
+
+function setPendingUndo() {
+  try {
+    sessionStorage.setItem(PENDING_UNDO_KEY, String(Date.now()));
+  } catch {
+    // Se a sessão não aceitar storage, a confirmação simplesmente não fica pendente.
+  }
+}
+
+function clearPendingUndo() {
+  try {
+    sessionStorage.removeItem(PENDING_UNDO_KEY);
+  } catch {
+    // noop
+  }
+}
+
+function hasPendingUndo() {
+  try {
+    const createdAt = Number(sessionStorage.getItem(PENDING_UNDO_KEY) ?? 0);
+    if (!Number.isFinite(createdAt) || createdAt <= 0) return false;
+    if (Date.now() - createdAt > PENDING_UNDO_TTL_MS) {
+      sessionStorage.removeItem(PENDING_UNDO_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function restartHandsFreeMic() {
@@ -218,7 +261,7 @@ async function undoLatestDiscount(previousFetch: typeof window.fetch) {
           undoneBy: identity.userId,
           restoredValue: originalValue,
           previousValue: discountedValue,
-          reason: "user_requested_via_jarvis",
+          reason: "user_confirmed_via_jarvis",
         },
       },
     }),
@@ -250,14 +293,31 @@ if (typeof window !== "undefined") {
     if (!isJarvisChat || typeof init?.body !== "string") return previousFetch(input, init);
 
     const lastText = getLastUserText(init.body);
+
+    if (hasPendingUndo()) {
+      if (cancelsPendingUndo(lastText)) {
+        clearPendingUndo();
+        const content = "Certo. O desconto não foi alterado.";
+        queueMicrotask(() => announce(content));
+        return sseResponse(content);
+      }
+      if (confirmsPendingUndo(lastText)) {
+        clearPendingUndo();
+        let content: string;
+        try {
+          content = await undoLatestDiscount(previousFetch);
+        } catch {
+          content = "Não consegui concluir o desfazer com segurança. Nenhuma nova tentativa automática foi feita.";
+        }
+        queueMicrotask(() => announce(content));
+        return sseResponse(content);
+      }
+    }
+
     if (!wantsUndoLastDiscount(lastText)) return previousFetch(input, init);
 
-    let content: string;
-    try {
-      content = await undoLatestDiscount(previousFetch);
-    } catch {
-      content = "Não consegui concluir o desfazer com segurança. Nenhuma nova tentativa automática foi feita.";
-    }
+    setPendingUndo();
+    const content = "Essa reversão altera o valor financeiro do negócio. Confirma desfazer o último desconto? Diga ‘confirmo’ para executar ou ‘cancelar’ para manter como está.";
     queueMicrotask(() => announce(content));
     return sseResponse(content);
   };
