@@ -42,6 +42,13 @@ type TenantAdmin = Tenant & {
   vertical?: string | null;
 };
 
+type SegmentTemplateOption = {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  ativo?: boolean;
+};
+
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700 border-emerald-200",
   suspended: "bg-orange-100 text-orange-700 border-orange-200",
@@ -63,27 +70,6 @@ const COUNTRY_OPTIONS = {
 } as const;
 
 type CountryCode = keyof typeof COUNTRY_OPTIONS;
-
-const SEGMENT_OPTIONS = [
-  { value: "__none__", label: "CRM Geral" },
-  { value: "Construção & Reforma", label: "Construção & Reforma" },
-  { value: "Arquitetura & Design", label: "Arquitetura & Design" },
-  { value: "Varejo de Roupas & Acessórios", label: "Varejo de Roupas & Acessórios" },
-  { value: "Supermercado", label: "Supermercado" },
-  { value: "Salão de Beleza", label: "Salão de Beleza" },
-  { value: "Clínica", label: "Clínica" },
-  { value: "Restaurante", label: "Restaurante" },
-  { value: "Imóveis", label: "Imóveis" },
-  { value: "Veículos", label: "Veículos" },
-  { value: "Autopeças", label: "Autopeças" },
-  { value: "Fretes & Logística", label: "Fretes & Logística" },
-  { value: "Viagens & Hotelaria", label: "Viagens & Hotelaria" },
-  { value: "Farmácia", label: "Farmácia" },
-  { value: "Piscinas & Spas", label: "Piscinas & Spas" },
-  { value: "Seguros Corporativos", label: "Seguros Corporativos" },
-  { value: "Distribuidoras", label: "Distribuidoras" },
-  { value: "Agropecuária", label: "Agropecuária" },
-];
 
 function normalizeConfirmation(value: string): string {
   return value.normalize("NFC").replace(/\s+/gu, " ").trim();
@@ -128,6 +114,16 @@ export default function AdminTenants() {
   const { data: rawTenants = [], isLoading } = useListTenants();
   const tenants = rawTenants as TenantAdmin[];
 
+  const { data: segmentTemplates = [], isLoading: segmentsLoading } = useQuery<SegmentTemplateOption[]>({
+    queryKey: ["segment-templates", "tenant-admin"],
+    queryFn: async () => {
+      const response = await fetch("/api/segment-templates");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível carregar os segmentos");
+      return data as SegmentTemplateOption[];
+    },
+  });
+
   const { data: availablePlans = [], isLoading: plansLoading } = useQuery<AvailablePlan[]>({
     queryKey: ["admin-plans", "active"],
     queryFn: async () => {
@@ -154,6 +150,7 @@ export default function AdminTenants() {
     planId: "",
     billingCycle: "monthly" as "monthly" | "annual",
     internalNotes: "",
+    segmentTemplateId: "",
   });
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -182,23 +179,63 @@ export default function AdminTenants() {
   } | null>(null);
 
   const selectedCountry = COUNTRY_OPTIONS[form.countryCode];
-  const activeCount = tenants.filter((t) => t.status === "active").length;
-  const suspendedCount = tenants.filter((t) => t.status === "suspended").length;
-  const demoCount = tenants.filter((t) => t.isDemo).length;
-  const neverAccessedCount = tenants.filter((t) => !t.firstLoginAt).length;
+  const activeCount = tenants.filter((tenant) => tenant.status === "active").length;
+  const suspendedCount = tenants.filter((tenant) => tenant.status === "suspended").length;
+  const demoCount = tenants.filter((tenant) => tenant.isDemo).length;
+  const neverAccessedCount = tenants.filter((tenant) => !tenant.firstLoginAt).length;
 
   const IMPORT_TEMPLATE =
     "empresa,responsavel,email,telefone,pais,documento_fiscal\n" +
     "Materiais Chapecó Ltda,João Silva,joao@materiaischapeco.com.br,5549999998888,BR,12.345.678/0001-99\n" +
     "Comercial Asunción,Ana Gómez,ana@comercial.com.py,595981234567,PY,80012345-6\n";
 
-  const filtered = tenants.filter((t) => {
-    const matchStatus = filterStatus === "all" || t.status === filterStatus || (filterStatus === "manual" && t.provisioningMethod === "manual");
-    const matchKind = filterKind === "all" || (filterKind === "demo" && !!t.isDemo) || (filterKind === "client" && !t.isDemo);
-    const q = search.trim().toLowerCase();
-    const matchSearch = !q || t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q) || (t.tenantCode ?? "").toLowerCase().includes(q);
+  const filtered = tenants.filter((tenant) => {
+    const matchStatus = filterStatus === "all" || tenant.status === filterStatus || (filterStatus === "manual" && tenant.provisioningMethod === "manual");
+    const matchKind = filterKind === "all" || (filterKind === "demo" && !!tenant.isDemo) || (filterKind === "client" && !tenant.isDemo);
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || tenant.name.toLowerCase().includes(query) || tenant.slug.toLowerCase().includes(query) || (tenant.tenantCode ?? "").toLowerCase().includes(query);
     return matchStatus && matchKind && matchSearch;
   });
+
+  function segmentIdForTenant(tenant: TenantAdmin) {
+    return segmentTemplates.find((segment) => segment.nome === tenant.vertical)?.id ?? "__unassigned__";
+  }
+
+  async function applySegmentTemplate(tenantId: string, segmentTemplateId: string, showToast = true) {
+    if (!segmentTemplateId || segmentTemplateId === "__unassigned__") return;
+    const segment = segmentTemplates.find((item) => item.id === segmentTemplateId);
+    const response = await fetch(`/api/tenants/${tenantId}/segment-templates/${segmentTemplateId}/apply`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json().catch(() => ({})) as {
+      error?: string;
+      agentConfigUpdated?: boolean;
+      funilCreated?: boolean;
+      businessProfileUpdated?: boolean;
+      promptsApplied?: string[];
+    };
+    if (!response.ok) throw new Error(data.error ?? "Não foi possível aplicar o segmento");
+
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: getListTenantsQueryKey() }),
+      qc.invalidateQueries({ queryKey: ["admin-tenant-detail", tenantId] }),
+      qc.invalidateQueries({ queryKey: ["admin-tenant-agents-overview", tenantId] }),
+      qc.invalidateQueries({ queryKey: ["tenant-nav-modules", tenantId] }),
+    ]);
+
+    if (showToast) {
+      const applied = [
+        data.businessProfileUpdated ? "perfil" : null,
+        data.agentConfigUpdated ? "agentes" : null,
+        data.funilCreated ? "funil" : null,
+      ].filter(Boolean).join(", ");
+      toast({
+        title: `${segment?.nome ?? "Segmento"} aplicado ao tenant`,
+        description: applied ? `Configurações conectadas: ${applied}.` : "O segmento foi atualizado sem sobrescrever configurações personalizadas.",
+      });
+    }
+  }
 
   async function handleImport() {
     setImporting(true);
@@ -238,23 +275,39 @@ export default function AdminTenants() {
       planId: "",
       billingCycle: "monthly",
       internalNotes: "",
+      segmentTemplateId: "",
     });
   }
 
   async function handleProvision(sendEmail: boolean) {
     setSaving(true);
     try {
+      const { segmentTemplateId, ...provisionPayload } = form;
       const res = await fetch("/api/superadmin/tenants/provision", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...form, sendWelcomeEmailFlag: sendEmail }),
+        body: JSON.stringify({ ...provisionPayload, sendWelcomeEmailFlag: sendEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
         toast({ title: data.error ?? "Erro ao criar tenant", variant: "destructive" });
         return;
       }
-      setResult(data as ProvisionResult);
+
+      const provisionResult = data as ProvisionResult;
+      if (segmentTemplateId) {
+        try {
+          await applySegmentTemplate(provisionResult.tenant.id, segmentTemplateId, false);
+        } catch (error) {
+          toast({
+            title: "Tenant criado, mas o segmento não foi aplicado",
+            description: error instanceof Error ? error.message : "Abra a Gestão 360º e aplique o segmento novamente.",
+            variant: "destructive",
+          });
+        }
+      }
+
+      setResult(provisionResult);
       setFormOpen(false);
       resetForm();
       void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
@@ -284,22 +337,16 @@ export default function AdminTenants() {
     }
   }
 
-  async function handleUpdateSegment(tenantId: string, vertical: string) {
+  async function handleUpdateSegment(tenantId: string, segmentTemplateId: string) {
+    if (segmentTemplateId === "__unassigned__") return;
     setUpdatingSegment(tenantId);
     try {
-      const body = vertical === "__none__" ? { vertical: null } : { vertical };
-      const res = await fetch(`/api/tenants/${tenantId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
+      await applySegmentTemplate(tenantId, segmentTemplateId);
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : "Erro ao atualizar segmento",
+        variant: "destructive",
       });
-      if (!res.ok) {
-        const data = await res.json();
-        toast({ title: data.error ?? "Erro ao atualizar segmento", variant: "destructive" });
-      } else {
-        await qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
-        toast({ title: "Segmento atualizado. Ajuste módulos e agentes na Gestão 360º do tenant." });
-      }
     } finally {
       setUpdatingSegment(null);
     }
@@ -397,8 +444,8 @@ export default function AdminTenants() {
         <CardContent className="p-3 sm:p-4 flex items-start gap-3">
           <Layers3 className="h-5 w-5 text-violet-700 mt-0.5 shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Segmento agora pertence ao tenant</p>
-            <p className="text-xs text-muted-foreground mt-0.5">O catálogo redundante de “Segmentos do Mercado” foi removido desta tela. Selecione o segmento real de cada tenant e use a Gestão 360º para módulos, agentes, plano e integrações.</p>
+            <p className="text-sm font-semibold">Segmento conectado às funções do tenant</p>
+            <p className="text-xs text-muted-foreground mt-0.5">A seleção agora usa o template operacional oficial do segmento. Ao aplicar, VendorAI sincroniza o segmento do tenant e do perfil do negócio, aplica prompts sugeridos sem sobrescrever personalizações e cria o funil padrão somente quando necessário.</p>
           </div>
         </CardContent>
       </Card>
@@ -458,7 +505,7 @@ export default function AdminTenants() {
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-md bg-muted/40 p-2 min-w-0">
                         <p className="text-[10px] text-muted-foreground">Segmento</p>
-                        <p className="font-medium truncate">{tenant.vertical ?? "CRM Geral"}</p>
+                        <p className="font-medium truncate">{tenant.vertical ?? "Não definido"}</p>
                       </div>
                       <div className="rounded-md bg-muted/40 p-2 min-w-0">
                         <p className="text-[10px] text-muted-foreground">Mensalidade</p>
@@ -515,9 +562,12 @@ export default function AdminTenants() {
                         <TableCell>{tenant.isDemo ? <Badge variant="outline" className="text-violet-700 border-violet-200 bg-violet-50">Demo</Badge> : <Badge variant="outline">Cliente</Badge>}</TableCell>
                         <TableCell><Badge variant="outline" className={`text-xs ${STATUS_COLORS[tenant.status] ?? ""}`}>{STATUS_LABELS[tenant.status] ?? tenant.status}</Badge></TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
-                          <Select value={tenant.vertical ?? "__none__"} onValueChange={(value) => handleUpdateSegment(tenant.id, value)} disabled={updatingSegment === tenant.id}>
-                            <SelectTrigger className="h-8 text-xs w-48 border-dashed"><SelectValue placeholder="CRM Geral" /></SelectTrigger>
-                            <SelectContent>{SEGMENT_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value} className="text-xs">{option.label}</SelectItem>)}</SelectContent>
+                          <Select value={segmentIdForTenant(tenant)} onValueChange={(value) => handleUpdateSegment(tenant.id, value)} disabled={updatingSegment === tenant.id || segmentsLoading}>
+                            <SelectTrigger className="h-8 text-xs w-52 border-dashed"><SelectValue placeholder="Selecionar segmento" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__unassigned__" disabled>Sem segmento definido</SelectItem>
+                              {segmentTemplates.map((segment) => <SelectItem key={segment.id} value={segment.id} className="text-xs">{segment.nome}</SelectItem>)}
+                            </SelectContent>
                           </Select>
                         </TableCell>
                         <TableCell>{tenant.firstLoginAt ? <span className="flex items-center gap-1 text-xs text-emerald-600"><UserCheck className="h-3.5 w-3.5" />{shortDate(tenant.firstLoginAt)}</span> : <span className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3.5 w-3.5" />Nunca</span>}</TableCell>
@@ -539,7 +589,7 @@ export default function AdminTenants() {
 
       <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Novo Tenant</DialogTitle><DialogDescription>Cria a empresa e o usuário admin já com o perfil regional correto. Depois, complete segmento, módulos e agentes na Gestão 360º.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Novo Tenant</DialogTitle><DialogDescription>Cria empresa e usuário admin. Se você selecionar um segmento, o mesmo template operacional configura perfil, prompts sugeridos e funil inicial sem criar uma segunda fonte de verdade.</DialogDescription></DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2 space-y-1.5"><Label>Nome da empresa *</Label><Input value={form.companyName} onChange={(event) => setForm((current) => ({ ...current, companyName: event.target.value }))} placeholder="Ex: Confecções Silva" /></div>
@@ -554,6 +604,17 @@ export default function AdminTenants() {
               </div>
               <div className="space-y-1.5"><Label>Telefone</Label><Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Telefone com DDD/código local" /></div>
               <div className="sm:col-span-2 space-y-1.5"><Label>{selectedCountry.taxLabel} (opcional)</Label><Input value={form.taxIdentifier} onChange={(event) => setForm((current) => ({ ...current, taxIdentifier: event.target.value }))} placeholder={selectedCountry.taxPlaceholder} /><p className="text-xs text-muted-foreground">O país define automaticamente idioma, fuso horário, moeda principal e tipo de documento fiscal.</p></div>
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label>Segmento</Label>
+                <Select value={form.segmentTemplateId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, segmentTemplateId: value === "none" ? "" : value }))}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar segmento operacional..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Definir depois</SelectItem>
+                    {segmentTemplates.map((segment) => <SelectItem key={segment.id} value={segment.id}>{segment.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {segmentsLoading ? <p className="text-xs text-muted-foreground">Carregando segmentos oficiais...</p> : <p className="text-xs text-muted-foreground">O template selecionado será aplicado após a criação do tenant.</p>}
+              </div>
               <div className="space-y-1.5">
                 <Label>Plano</Label>
                 <Select value={form.planId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, planId: value === "none" ? "" : value }))}>
