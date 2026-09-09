@@ -4,6 +4,7 @@ const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export type PartnerAttribution = {
   code: string;
   source: string;
+  sessionId: string;
   capturedAt: number;
   landingPath: string;
   utmSource?: string | null;
@@ -15,16 +16,44 @@ function normalizeCode(value: string | null | undefined) {
   return (value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
+function newSessionId() {
+  try {
+    if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  } catch {
+    // Fallback below.
+  }
+  return `ref-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function safeWrite(attribution: PartnerAttribution) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(attribution));
+  } catch {
+    // Storage may be unavailable in privacy-restricted contexts.
+  }
+}
+
 function safeRead(): PartnerAttribution | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PartnerAttribution;
+    const parsed = JSON.parse(raw) as Partial<PartnerAttribution>;
     if (!parsed?.code || !parsed?.capturedAt || Date.now() - parsed.capturedAt > MAX_AGE_MS) {
       localStorage.removeItem(STORAGE_KEY);
       return null;
     }
-    return parsed;
+    const normalized: PartnerAttribution = {
+      code: normalizeCode(parsed.code),
+      source: parsed.source || "ref",
+      sessionId: parsed.sessionId || newSessionId(),
+      capturedAt: parsed.capturedAt,
+      landingPath: parsed.landingPath || "/",
+      utmSource: parsed.utmSource ?? null,
+      utmMedium: parsed.utmMedium ?? null,
+      utmCampaign: parsed.utmCampaign ?? null,
+    };
+    if (!parsed.sessionId) safeWrite(normalized);
+    return normalized;
   } catch {
     return null;
   }
@@ -39,6 +68,26 @@ export function clearPartnerAttribution() {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Storage may be unavailable in privacy-restricted contexts.
+  }
+}
+
+async function trackReferralClick(attribution: PartnerAttribution) {
+  try {
+    await fetch(`/api/partners/referrals/${encodeURIComponent(attribution.code)}/click`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        sessionId: attribution.sessionId,
+        source: attribution.source,
+        landingPath: attribution.landingPath,
+        utmSource: attribution.utmSource ?? null,
+        utmMedium: attribution.utmMedium ?? null,
+        utmCampaign: attribution.utmCampaign ?? null,
+      }),
+    });
+  } catch {
+    // Attribution must never block navigation or checkout.
   }
 }
 
@@ -60,9 +109,11 @@ export function capturePartnerAttributionFromUrl() {
 
     if (!code) return safeRead();
 
+    const previous = safeRead();
     const attribution: PartnerAttribution = {
       code,
       source,
+      sessionId: previous?.code === code ? previous.sessionId : newSessionId(),
       capturedAt: Date.now(),
       landingPath: `${window.location.pathname}${window.location.search}`,
       utmSource: params.get("utm_source"),
@@ -70,7 +121,8 @@ export function capturePartnerAttributionFromUrl() {
       utmCampaign: params.get("utm_campaign"),
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(attribution));
+    safeWrite(attribution);
+    void trackReferralClick(attribution);
     return attribution;
   } catch {
     return null;
@@ -105,11 +157,17 @@ function installCheckoutFetchBridge() {
       const body = JSON.parse(init.body) as Record<string, unknown>;
       if (body && typeof body === "object" && !Array.isArray(body) && !hasReferral(body)) {
         body.ref = attribution.code;
-        body.attributionSource = attribution.source;
-        body.attributionLandingPath = attribution.landingPath;
-        if (attribution.utmSource) body.utmSource = attribution.utmSource;
-        if (attribution.utmMedium) body.utmMedium = attribution.utmMedium;
-        if (attribution.utmCampaign) body.utmCampaign = attribution.utmCampaign;
+        body.origemAtribuicao = attribution.source;
+        body.attributionMetadata = {
+          ...((body.attributionMetadata && typeof body.attributionMetadata === "object" && !Array.isArray(body.attributionMetadata))
+            ? body.attributionMetadata as Record<string, unknown>
+            : {}),
+          referralSessionId: attribution.sessionId,
+          landingPath: attribution.landingPath,
+          utmSource: attribution.utmSource ?? undefined,
+          utmMedium: attribution.utmMedium ?? undefined,
+          utmCampaign: attribution.utmCampaign ?? undefined,
+        };
         return originalFetch(input, { ...init, body: JSON.stringify(body) });
       }
     } catch {
