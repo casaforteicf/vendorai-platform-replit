@@ -12,6 +12,7 @@ import {
   runAllFinanceIntegrationHealthChecks,
   runFinanceIntegrationHealthCheck,
 } from "../services/finance-integration-health.js";
+import financeContractsRouter from "./finance_contracts.js";
 
 const router: IRouter = Router();
 
@@ -244,5 +245,7 @@ router.get("/tenants/:tenantId/finance-integrations/:providerKey/logs", async (r
 
   res.json(rows);
 });
+
+router.use(financeContractsRouter);
 
 export default router;
