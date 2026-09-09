@@ -117,13 +117,10 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
   const commissionPercent = rule?.capPercent != null ? Math.min(rawCommissionPercent, clampPercent(Number(rule.capPercent))) : rawCommissionPercent;
   const eligiblePercent = rule?.proportionalByReceipt === false ? (receiptPercent > 0 ? 100 : 0) : receiptPercent;
   const commissionCents = Math.round(baseAmountCents * (commissionPercent / 100) * (eligiblePercent / 100));
-  const releaseAllowed = Boolean(rule) && (input.trigger === "payment_reconciled" || (rule?.trigger === input.trigger && rule?.trigger !== "payment_reconciled"));
-  const status = !rule ? "validation" : releaseAllowed ? "released" : "forecast";
+  const status = !rule ? "validation" : "released";
   const reason = !rule
     ? "Nenhuma regra de comissão compatível; revisão necessária."
-    : status === "released"
-      ? `Regra ${rule.name} aplicada pelo gatilho ${input.trigger}.`
-      : `Comissão prevista pela regra ${rule.name}; aguardando gatilho de liberação.`;
+    : `Regra ${rule.name} aplicada pelo gatilho ${input.trigger}.`;
 
   const actorType = input.actorType ?? rule?.actorType ?? "seller";
   const actorId = input.actorId ?? input.sellerUserId ?? null;
