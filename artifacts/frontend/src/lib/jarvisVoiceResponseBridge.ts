@@ -1,5 +1,6 @@
 const VOICE_SETTING_KEY = "jarvis_voice_replies";
 const VOICE_READY_EVENT = "vendorai:jarvis-voice-ready";
+const HANDS_FREE_SESSION_KEY = "jarvis_web_hands_free_session";
 
 function canSpeakJarvis() {
   return typeof window !== "undefined"
@@ -46,7 +47,53 @@ function splitForSpeech(text: string, maxChars = 360): string[] {
   return parts;
 }
 
-function speakJarvis(text: string) {
+function getJarvisPanel() {
+  return document.querySelector<HTMLElement>('div[aria-label="JARVIS"]');
+}
+
+function findJarvisMicButton() {
+  const panel = getJarvisPanel();
+  if (!panel) return null;
+  return Array.from(panel.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => {
+      const title = button.getAttribute("title") ?? "";
+      return title === "Falar com JARVIS" || title === "Parar de ouvir";
+    }) ?? null;
+}
+
+function findJarvisSendButton() {
+  const panel = getJarvisPanel();
+  if (!panel) return null;
+  return Array.from(panel.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.getAttribute("title") === "Enviar") ?? null;
+}
+
+function getJarvisTextarea() {
+  return getJarvisPanel()?.querySelector<HTMLTextAreaElement>("textarea") ?? null;
+}
+
+function isHandsFreeSessionActive() {
+  return sessionStorage.getItem(HANDS_FREE_SESSION_KEY) === "1";
+}
+
+function activateHandsFreeSession() {
+  sessionStorage.setItem(HANDS_FREE_SESSION_KEY, "1");
+}
+
+function restartJarvisMicAfterSpeech() {
+  if (!isHandsFreeSessionActive()) return;
+  window.setTimeout(() => {
+    const mic = findJarvisMicButton();
+    if (!mic || mic.disabled || mic.getAttribute("title") !== "Falar com JARVIS") return;
+    try {
+      mic.click();
+    } catch {
+      // Alguns navegadores exigem novo gesto do usuário para reabrir o microfone.
+    }
+  }, 420);
+}
+
+function speakJarvis(text: string, onComplete?: () => void) {
   if (!shouldSpeak()) return false;
   const content = cleanForSpeech(text);
   if (!content) return false;
@@ -57,7 +104,10 @@ function speakJarvis(text: string) {
   let index = 0;
 
   const speakNext = () => {
-    if (index >= chunks.length) return;
+    if (index >= chunks.length) {
+      onComplete?.();
+      return;
+    }
     const utterance = new SpeechSynthesisUtterance(chunks[index++]);
     utterance.lang = "pt-BR";
     utterance.rate = 1;
@@ -67,6 +117,7 @@ function speakJarvis(text: string) {
     utterance.onend = speakNext;
     utterance.onerror = () => {
       if (index < chunks.length) setTimeout(speakNext, 120);
+      else onComplete?.();
     };
     synth.resume();
     synth.speak(utterance);
@@ -104,7 +155,7 @@ async function speakSupportResponse(response: Response) {
     }
     if (content.trim()) {
       announceVoiceReady(content);
-      speakJarvis(content);
+      speakJarvis(content, restartJarvisMicAfterSpeech);
     }
   } catch {
     // Voz é uma melhoria de experiência e nunca pode bloquear a resposta textual.
@@ -126,12 +177,66 @@ function addVoiceRuntimeContext(init?: RequestInit): RequestInit | undefined {
 
     messages[lastUserIndex] = {
       ...messages[lastUserIndex],
-      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS já oferece entrada por microfone e tentativa de resposta falada em pt-BR via síntese de voz do navegador/dispositivo. Não diga que existe somente interação por texto. Se a fala automática não sair, a interface oferece replay manual da última resposta quando o dispositivo suporta TTS. Trate ausência de som como falha/limitação de TTS do dispositivo ou navegador, não como ausência da função no produto. Wake word com app fechado é uma capacidade separada.]`,
+      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS já oferece entrada por microfone, envio automático após reconhecimento e tentativa de resposta falada em pt-BR via síntese de voz do navegador/dispositivo. Depois da primeira ativação manual do microfone, a sessão pode tentar continuar em modo mãos livres. Não diga que existe somente interação por texto. Se a fala automática não sair, trate como falha/limitação de TTS do dispositivo ou navegador. Wake word com app fechado é uma capacidade separada.]`,
     };
     return { ...init, body: JSON.stringify({ ...payload, messages }) };
   } catch {
     return init;
   }
+}
+
+function installJarvisVoiceAutoSend() {
+  let wasListening = false;
+  let valueBeforeListening = "";
+  let lastSentValue = "";
+
+  const inspect = () => {
+    const mic = findJarvisMicButton();
+    const textarea = getJarvisTextarea();
+    if (!mic || !textarea) {
+      wasListening = false;
+      return;
+    }
+
+    const listeningNow = mic.getAttribute("title") === "Parar de ouvir";
+    if (listeningNow && !wasListening) {
+      wasListening = true;
+      valueBeforeListening = textarea.value.trim();
+      return;
+    }
+
+    if (!listeningNow && wasListening) {
+      wasListening = false;
+      window.setTimeout(() => {
+        const currentTextarea = getJarvisTextarea();
+        const sendButton = findJarvisSendButton();
+        const current = currentTextarea?.value.trim() ?? "";
+        if (!current || current === valueBeforeListening || current === lastSentValue) return;
+        if (!sendButton || sendButton.disabled) return;
+        lastSentValue = current;
+        sendButton.click();
+      }, 140);
+    }
+  };
+
+  const observer = new MutationObserver(inspect);
+  observer.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["title", "disabled"],
+  });
+  window.setInterval(inspect, 300);
+
+  document.addEventListener("click", (event) => {
+    const target = event.target as Element | null;
+    const button = target?.closest?.("button") as HTMLButtonElement | null;
+    if (!button) return;
+    const title = button.getAttribute("title") ?? "";
+    if (title === "Falar com JARVIS" || title === "Parar de ouvir") {
+      activateHandsFreeSession();
+    }
+  }, true);
 }
 
 if (typeof window !== "undefined") {
@@ -166,6 +271,8 @@ if (typeof window !== "undefined") {
 
     return response;
   };
+
+  installJarvisVoiceAutoSend();
 }
 
 export { canSpeakJarvis, speakJarvis, VOICE_READY_EVENT, VOICE_SETTING_KEY };
