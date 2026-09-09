@@ -3,11 +3,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MonitorSmartphone } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Monitor, MonitorSmartphone, Smartphone, Tablet } from "lucide-react";
 import SchemaRuntimeRenderer, { type RuntimePayload } from "@/pages/app-runtime/SchemaRuntimeRenderer";
 import { useToast } from "@/hooks/use-toast";
 
 type JsonObject = Record<string, unknown>;
+type Device = "desktop" | "tablet" | "mobile";
 type TemplateLike = { id: string; name: string };
 type TemplateVersion = {
   id: string;
@@ -112,6 +114,7 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
   const [versionId, setVersionId] = useState("");
   const [roleKey, setRoleKey] = useState("customer");
   const [permissionText, setPermissionText] = useState("");
+  const [device, setDevice] = useState<Device>("desktop");
 
   const loadVersions = useCallback(async () => {
     if (!open || !template || !token) return;
@@ -139,6 +142,7 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
     if (!open) return;
     setRoleKey("customer");
     setPermissionText("");
+    setDevice("desktop");
     void loadVersions();
   }, [loadVersions, open]);
 
@@ -148,10 +152,11 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
     () => template && selectedVersion ? previewPayload(template, selectedVersion, roleKey.trim() || "customer", permissions) : null,
     [permissions, roleKey, selectedVersion, template],
   );
+  const previewWidth = device === "mobile" ? "390px" : device === "tablet" ? "768px" : "100%";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-[96vw] xl:max-w-7xl">
+      <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-[98vw] xl:max-w-[1500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MonitorSmartphone className="h-5 w-5 text-primary" />
@@ -159,7 +164,7 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-3 rounded-xl border bg-muted/20 p-3 md:grid-cols-3">
+        <div className="grid gap-3 rounded-xl border bg-muted/20 p-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">Template Version</span>
             <Select value={versionId} onValueChange={setVersionId} disabled={loading || versions.length === 0}>
@@ -177,12 +182,21 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
             <span className="text-xs font-medium text-muted-foreground">Simular permissões</span>
             <Input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="orders.read, support.create" />
           </label>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Dispositivo</span>
+            <div className="flex rounded-lg border bg-card p-1">
+              <Button type="button" size="icon" variant={device === "desktop" ? "secondary" : "ghost"} className="h-9 w-9" onClick={() => setDevice("desktop")} aria-label="Desktop"><Monitor className="h-4 w-4" /></Button>
+              <Button type="button" size="icon" variant={device === "tablet" ? "secondary" : "ghost"} className="h-9 w-9" onClick={() => setDevice("tablet")} aria-label="Tablet"><Tablet className="h-4 w-4" /></Button>
+              <Button type="button" size="icon" variant={device === "mobile" ? "secondary" : "ghost"} className="h-9 w-9" onClick={() => setDevice("mobile")} aria-label="Mobile"><Smartphone className="h-4 w-4" /></Button>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">Sem salvar</Badge>
-          <Badge variant="outline">Sem publicar</Badge>
-          <span>A visibilidade é recalculada localmente para o perfil simulado e a renderização usa o mesmo componente do app final. Actions aparecem desabilitadas nesta prévia.</span>
+          <Badge variant="outline">Mesmo renderer do app final</Badge>
+          <Badge variant="outline">Navegação funcional</Badge>
+          <Badge variant="outline">Actions simuladas</Badge>
+          <span>Formulários validam campos e exibem o resultado esperado, mas não executam efeitos reais nem gravam dados durante a prévia.</span>
         </div>
 
         {loading ? (
@@ -190,8 +204,10 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
         ) : !payload ? (
           <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">Nenhuma Template Version disponível para prévia.</div>
         ) : (
-          <div className="rounded-2xl border bg-slate-50 p-3 sm:p-5">
-            <SchemaRuntimeRenderer payload={payload} lang="pt" />
+          <div className="overflow-x-auto rounded-2xl border bg-slate-100 p-3 sm:p-5">
+            <div className="mx-auto min-h-[560px] rounded-2xl border bg-slate-50 p-3 shadow-sm transition-all sm:p-5" style={{ width: previewWidth, maxWidth: "100%" }}>
+              <SchemaRuntimeRenderer payload={payload} lang="pt" actionClient={{ appId: payload.app.id, token: "preview", simulate: true }} />
+            </div>
           </div>
         )}
       </DialogContent>
