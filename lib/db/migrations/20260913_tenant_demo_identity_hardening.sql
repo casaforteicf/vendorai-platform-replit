@@ -1,5 +1,5 @@
 -- Hardening complementar para identidade pública e ciclo Demo -> Cliente.
--- Seguro para reexecução após 20260910_tenant_admin_identity_commercial.sql.
+-- Seguro para reexecução após 20260912_tenant_admin_identity_commercial.sql.
 
 UPDATE tenants
 SET demo_started_at = COALESCE(demo_started_at, created_at)
