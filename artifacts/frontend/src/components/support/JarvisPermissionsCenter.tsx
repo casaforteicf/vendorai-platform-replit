@@ -19,7 +19,7 @@ import {
   getMicrophonePermissionState,
   getNotificationPermissionState,
   JARVIS_PERMISSIONS_EVENT,
-  JarvisPermissions,
+  type JarvisPermissions,
   loadJarvisPermissions,
   RECOMMENDED_JARVIS_PERMISSIONS,
   requestMicrophonePermission,
@@ -61,18 +61,14 @@ function permissionLabel(state: DevicePermissionState) {
   return "Status não identificado";
 }
 
-function ToggleRow({
-  definition,
-  enabled,
-  onChange,
-}: {
+function ToggleRow({ definition, enabled, onChange }: {
   definition: ToggleDefinition;
   enabled: boolean;
   onChange: (next: boolean) => void;
 }) {
   const Icon = definition.icon;
   return (
-    <label className="flex items-start gap-3 rounded-xl border border-border/70 bg-background p-3 cursor-pointer">
+    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-background p-3">
       <span className="mt-0.5 rounded-lg bg-muted p-2 text-muted-foreground"><Icon className="h-4 w-4" /></span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-foreground">{definition.title}</span>
@@ -125,12 +121,7 @@ export function JarvisPermissionsCenter() {
     try {
       const state = await requestMicrophonePermission();
       setMicrophoneState(state);
-      persist({
-        ...permissions,
-        microphone: state === "granted",
-        handsFree: state === "granted" ? permissions.handsFree : false,
-        wakeWord: state === "granted" ? permissions.wakeWord : false,
-      });
+      persist({ ...permissions, microphone: state === "granted" });
     } finally {
       setRequestingMic(false);
     }
@@ -148,24 +139,19 @@ export function JarvisPermissionsCenter() {
     }
   };
 
-  const applyRecommended = async () => {
-    const next = { ...RECOMMENDED_JARVIS_PERMISSIONS };
-    // Não dispara permissões do dispositivo silenciosamente. A preferência fica pronta,
-    // mas o SO/navegador só será solicitado pelos botões explícitos abaixo.
-    next.microphone = microphoneState === "granted";
-    next.notifications = notificationState === "granted";
-    if (microphoneState !== "granted") {
-      next.handsFree = false;
-      next.wakeWord = false;
-    }
-    persist(next);
+  const applyRecommended = () => {
+    persist({
+      ...RECOMMENDED_JARVIS_PERMISSIONS,
+      microphone: microphoneState === "granted",
+      notifications: notificationState === "granted",
+    });
   };
 
   const reset = () => persist({ ...DEFAULT_JARVIS_PERMISSIONS });
 
   return (
     <section className="mx-auto mb-5 w-full max-w-7xl px-4 sm:px-6" aria-label="Centro de Permissões do JARVIS">
-      <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="rounded-xl bg-primary/10 p-2.5 text-primary"><ShieldCheck className="h-5 w-5" /></span>
@@ -177,7 +163,7 @@ export function JarvisPermissionsCenter() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void applyRecommended()} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
+            <button type="button" onClick={applyRecommended} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
               Configuração recomendada
             </button>
             <button type="button" onClick={reset} className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold">
@@ -199,7 +185,7 @@ export function JarvisPermissionsCenter() {
                 <div className="min-w-0 flex-1">
                   <strong className="text-sm">Microfone</strong>
                   <div className="mt-0.5 text-xs text-muted-foreground">{permissionLabel(microphoneState)}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">Necessário para conversa por voz. A solicitação só acontece quando você toca no botão abaixo.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Necessário para conversa por voz. A solicitação só acontece quando você toca no botão ao lado.</p>
                 </div>
                 <button
                   type="button"
