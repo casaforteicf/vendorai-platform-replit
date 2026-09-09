@@ -47,6 +47,7 @@ import "./lib/jarvisProactiveVoiceBridge";
 import "./lib/jarvisCapabilityRuntimeBridge";
 import "./lib/jarvisResponseHealthBridge";
 import "./lib/jarvisMobileExperienceBridge";
+import "./lib/jarvisLauncherVoiceBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
