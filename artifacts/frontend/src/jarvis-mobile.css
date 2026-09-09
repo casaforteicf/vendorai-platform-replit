@@ -1,4 +1,48 @@
-/* JARVIS mobile: prioriza conversa, teclado e controles do próprio agente. */
+/* JARVIS: conversa mais ampla, composer estável e experiência consistente entre web e mobile. */
+
+@media (min-width: 641px) {
+  div[aria-label="JARVIS"] {
+    width: min(460px, calc(100vw - 32px)) !important;
+    height: clamp(520px, 72vh, 760px) !important;
+    border-radius: 20px !important;
+  }
+
+  div[aria-label="JARVIS"] > div:first-child {
+    min-height: 58px;
+    padding: 11px 14px !important;
+  }
+
+  div[aria-label="JARVIS"] .flex-1.overflow-y-auto {
+    padding: 14px !important;
+    scroll-padding-bottom: 104px;
+    overscroll-behavior: contain;
+  }
+
+  div[aria-label="JARVIS"] .max-w-\[85\%\] {
+    max-width: 90% !important;
+  }
+
+  div[aria-label="JARVIS"] > div:last-child {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: hsl(var(--background));
+    padding: 10px 12px 12px !important;
+    box-shadow: 0 -6px 18px rgb(0 0 0 / 0.05);
+  }
+
+  div[aria-label="JARVIS"] textarea {
+    min-height: 44px !important;
+    max-height: 132px !important;
+    line-height: 1.4 !important;
+  }
+
+  div[aria-label="JARVIS"] > div:last-child button {
+    width: 42px !important;
+    height: 42px !important;
+  }
+}
+
 @media (max-width: 640px) {
   div[aria-label="JARVIS"] {
     top: max(4px, env(safe-area-inset-top)) !important;
@@ -16,31 +60,27 @@
     box-shadow: 0 -8px 32px rgb(0 0 0 / 0.18) !important;
   }
 
-  /* Cabeçalho mais compacto e sempre visível. */
   div[aria-label="JARVIS"] > div:first-child {
     min-height: 54px;
     padding: 9px 12px !important;
   }
 
-  /* Fila ocupa pouco espaço quando fechada. */
   div[aria-label="JARVIS"] > div:nth-child(2) > button {
     min-height: 42px;
     padding-top: 7px !important;
     padding-bottom: 7px !important;
   }
 
-  /* Conversa ganha a maior parte da tela. */
   div[aria-label="JARVIS"] .flex-1.overflow-y-auto {
     overscroll-behavior: contain;
-    scroll-padding-bottom: 96px;
+    scroll-padding-bottom: 104px;
     padding: 12px 10px !important;
   }
 
   div[aria-label="JARVIS"] .max-w-\[85\%\] {
-    max-width: 92% !important;
+    max-width: 94% !important;
   }
 
-  /* Composer fixo dentro do painel e protegido do teclado/safe area. */
   div[aria-label="JARVIS"] > div:last-child {
     position: sticky;
     bottom: 0;
@@ -53,11 +93,15 @@
   div[aria-label="JARVIS"] textarea {
     font-size: 16px !important;
     line-height: 1.35 !important;
-    min-height: 42px !important;
-    max-height: 96px !important;
+    min-height: 44px !important;
+    max-height: 108px !important;
   }
 
-  /* Replay de voz passa a pertencer visualmente ao JARVIS, não à página de fundo. */
+  div[aria-label="JARVIS"] > div:last-child button {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
   .jarvis-voice-replay-control {
     top: calc(max(4px, env(safe-area-inset-top)) + 7px) !important;
     right: 78px !important;
@@ -74,7 +118,6 @@
     box-shadow: none !important;
   }
 
-  /* Quando o JARVIS está aberto, controles globais da página não devem competir com ele. */
   body:has(div[aria-label="JARVIS"]) .mobile-floating-control,
   body:has(div[aria-label="JARVIS"]) [data-floating-control="true"] {
     visibility: hidden !important;
