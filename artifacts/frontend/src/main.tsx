@@ -41,6 +41,7 @@ import "./lib/jarvisArtifactFetchBridge";
 import "./lib/jarvisVoiceResponseBridge";
 import "./lib/jarvisCapabilityRuntimeBridge";
 import "./lib/jarvisResponseHealthBridge";
+import "./lib/jarvisMobileExperienceBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
