@@ -103,8 +103,6 @@ export function detectFiatCurrencies(text: string): string[] {
   }
   for (const code of text.match(/\b[A-Z]{3}\b/g) ?? []) found.push(code.toUpperCase());
 
-  // Pedidos genéricos como "e câmbio?" ou "como está Forex?" precisam
-  // consultar um par real em vez de cair para uma resposta genérica sem dados.
   if (!found.length && /\b(cambio|forex|moedas?)\b/.test(normalized)) {
     found.push("USD", "BRL");
   }
@@ -200,10 +198,10 @@ async function loadStockContext(text: string): Promise<{ context: string | null;
     return {
       configured: false,
       context: [
-        "### Provider de ações identificado, mas não configurado",
+        "### Feed dedicado de ações não configurado",
         `- Ativos detectados: ${symbols.join(", ")}.`,
-        "- Provider previsto: Twelve Data.",
-        "- Falta configurar TWELVE_DATA_API_KEY no backend. Não invente preço atual desses ativos.",
+        "- Provider dedicado previsto: Twelve Data.",
+        "- O JARVIS deve tentar pesquisa web atual como fallback e deixar claro quando o dado não vier de um feed dedicado.",
       ].join("\n"),
     };
   }
@@ -242,7 +240,7 @@ async function executeMarketProvider(text: string): Promise<JarvisProviderExecut
         family: "market_data",
         provider: null,
         retrievedAt,
-        context: "## Providers reais\nNenhum ativo/par específico foi identificado para consulta automática. Não invente cotação atual; peça apenas o ativo/par indispensável se ele realmente não estiver claro.",
+        context: "## Providers reais\nNenhum ativo/par específico foi identificado para o feed automático. O JARVIS deve tentar pesquisa atual antes de afirmar que não possui dados de mercado.",
       };
     }
 
@@ -264,7 +262,7 @@ async function executeMarketProvider(text: string): Promise<JarvisProviderExecut
       family: "market_data",
       provider: "market-registry",
       retrievedAt,
-      context: `## Providers reais\nA consulta externa de mercado falhou (${error instanceof Error ? error.message : "erro desconhecido"}). Informe a indisponibilidade; não invente cotação atual.`,
+      context: `## Provider dedicado de mercado\nA consulta direta falhou (${error instanceof Error ? error.message : "erro desconhecido"}). Tente pesquisa web atual antes de declarar indisponibilidade total.`,
     };
   }
 }
@@ -288,6 +286,25 @@ async function executeWebResearchProvider(
   };
 }
 
+function combineMarketEvidence(
+  direct: JarvisProviderExecution,
+  fallback: JarvisProviderExecution,
+): JarvisProviderExecution {
+  if (fallback.status !== "executed") return direct;
+  return {
+    status: "executed",
+    family: "market_data",
+    provider: direct.provider ? `${direct.provider}+openai-web-search` : "openai-web-search",
+    retrievedAt: fallback.retrievedAt,
+    context: [
+      direct.context,
+      "## Fallback de mercado",
+      "Quando o feed dedicado não cobre o pedido ou está sem configuração, o JARVIS usa pesquisa web atual como segunda fonte. Diferencie feed dedicado, taxa de referência, fechamento, dado atrasado e informação recuperada da web.",
+      fallback.context,
+    ].filter(Boolean).join("\n"),
+  };
+}
+
 export async function executeJarvisProvider(text: string, tenantId?: string): Promise<JarvisProviderExecution> {
   const capability = resolveJarvisCapability(text);
   const hasMarketAsset =
@@ -295,7 +312,14 @@ export async function executeJarvisProvider(text: string, tenantId?: string): Pr
     detectCryptoAssets(text).length > 0 ||
     detectStockSymbols(text).length > 0;
 
-  if (capability.family === "market_data" || hasMarketAsset) return executeMarketProvider(text);
+  if (capability.family === "market_data" || hasMarketAsset) {
+    const direct = await executeMarketProvider(text);
+    if (direct.status === "executed") return direct;
+
+    const fallback = await executeWebResearchProvider(text, "market_data", tenantId);
+    return combineMarketEvidence(direct, fallback);
+  }
+
   if (shouldUseJarvisWebResearch(capability.family)) {
     return executeWebResearchProvider(text, capability.family, tenantId);
   }

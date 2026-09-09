@@ -13,6 +13,7 @@ const WEB_FAMILIES = new Set<JarvisCapabilityFamily>([
   "trade",
   "credit",
   "legal_regulatory",
+  "market_data",
   "recommendations_lifestyle",
 ]);
 
@@ -32,6 +33,9 @@ function researchInstruction(family: JarvisCapabilityFamily): string {
   }
   if (family === "credit") {
     return "Priorize Banco Central, BNDES, bancos e instituições oficiais para condições atuais. Diferencie taxa nominal, CET, prazo e condições; não prometa aprovação de crédito.";
+  }
+  if (family === "market_data") {
+    return "Pesquise dados atuais de mercado em fontes financeiras confiáveis e identificáveis. Para câmbio, priorize bancos centrais ou provedores reconhecidos; para ações, índices, commodities, cripto e Forex, informe ativo/par, valor ou referência encontrada, horário/data da fonte e se o dado é preço em tempo real, atrasado, fechamento ou referência. Nunca transforme notícia antiga em cotação atual e não faça recomendação garantida de investimento.";
   }
   return "Pesquise fontes atuais e confiáveis. Para livros, filmes, sites, cursos e referências, considere atualidade, disponibilidade e reputação quando isso for relevante.";
 }
