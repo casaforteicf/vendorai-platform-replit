@@ -46,6 +46,13 @@ async function requestAndStartVoice() {
   startMicWhenPanelIsReady();
 }
 
+function beginPermissionRequest() {
+  if (permissionRequest) return;
+  permissionRequest = requestAndStartVoice().finally(() => {
+    permissionRequest = null;
+  });
+}
+
 function installJarvisLauncherVoiceBridge() {
   document.addEventListener("pointerdown", (event) => {
     const target = event.target as Element | null;
@@ -56,21 +63,21 @@ function installJarvisLauncherVoiceBridge() {
     if (document.querySelector(JARVIS_PANEL_SELECTOR)) return;
 
     // O pedido começa no gesto real do usuário para que Android/Chrome possam exibir a permissão.
-    permissionRequest = requestAndStartVoice().finally(() => {
-      permissionRequest = null;
-    });
+    beginPermissionRequest();
   }, true);
 
-  // Fallback para navegadores que não disparam pointerdown como esperado.
+  // Fallback para WebViews/navegadores que não entregam pointerdown de forma confiável.
   document.addEventListener("click", (event) => {
     const target = event.target as Element | null;
     const launcher = target?.closest?.(JARVIS_LAUNCHER_SELECTOR) as HTMLButtonElement | null;
     if (!launcher || launcher.disabled || permissionRequest) return;
-    if (!document.querySelector(JARVIS_PANEL_SELECTOR)) return;
 
     if (jarvisPermissionEnabled("microphone")) {
       startMicWhenPanelIsReady();
+      return;
     }
+
+    beginPermissionRequest();
   }, true);
 }
 
