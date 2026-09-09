@@ -11,6 +11,8 @@ type JarvisScreenContext = {
   capturedAt: string;
 };
 
+const SENSITIVE_PARAM_RE = /(token|auth|secret|password|passwd|code|key|credential|session)/i;
+
 function visible(element: Element) {
   if (!(element instanceof HTMLElement)) return false;
   const style = window.getComputedStyle(element);
@@ -25,6 +27,21 @@ function compactText(value: string | null | undefined, max = 120) {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!text) return "";
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function sanitizeParams(raw: string, prefix: "?" | "#") {
+  const source = raw.startsWith(prefix) ? raw.slice(1) : raw;
+  if (!source) return "";
+  try {
+    const params = new URLSearchParams(source);
+    for (const key of Array.from(params.keys())) {
+      if (SENSITIVE_PARAM_RE.test(key)) params.set(key, "[redacted]");
+    }
+    const value = params.toString();
+    return value ? `${prefix}${value}` : "";
+  } catch {
+    return "";
+  }
 }
 
 function uniqueVisibleTexts(selector: string, limit: number, maxChars = 120) {
@@ -63,8 +80,8 @@ function captureScreenContext(): JarvisScreenContext {
 
   return {
     route: window.location.pathname,
-    search: window.location.search,
-    hash: window.location.hash,
+    search: sanitizeParams(window.location.search, "?"),
+    hash: sanitizeParams(window.location.hash, "#"),
     title: document.title,
     breadcrumbs: uniqueVisibleTexts(
       '[aria-label*="breadcrumb" i] a, [aria-label*="breadcrumb" i] span, nav ol li',
