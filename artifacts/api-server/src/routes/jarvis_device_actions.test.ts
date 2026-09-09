@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractContactDeviceIntent,
   extractContextNavigationIntent,
+  extractLeadFilterQuery,
   extractSpotifyQuery,
   extractVendorAiRoute,
 } from "./jarvis_device_actions.js";
@@ -50,9 +51,13 @@ describe("JARVIS device actions", () => {
       .toEqual({ kind: "case", query: "margem baixa" });
   });
 
-  it("não anuncia filtro contextual enquanto a tela de Leads não consumir o parâmetro", () => {
-    expect(extractContextNavigationIntent("filtre os leads de Chapecó"))
-      .toBeNull();
+  it("extrai filtro textual de leads para consulta server-side", () => {
+    expect(extractLeadFilterQuery("filtre os leads de Chapecó")).toBe("Chapecó");
+    expect(extractLeadFilterQuery("Jarvis, mostre os leads com esquadrias")).toBe("esquadrias");
+  });
+
+  it("não confunde abertura de um lead específico com filtro", () => {
+    expect(extractLeadFilterQuery("abra o cliente João")).toBeNull();
   });
 
   it("mapeia navegação para rotas reais conhecidas do VendorAI", () => {

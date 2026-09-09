@@ -58,6 +58,12 @@ function cleanQuery(value: string) {
   return value.replace(/[,.!?]+$/g, "").replace(/\s+(por favor|agora)$/i, "").trim().slice(0, 200);
 }
 
+function extractLeadFilterQuery(text: string): string | null {
+  const value = stripJarvis(text);
+  const match = value.match(/^(filtre|filtrar|liste|listar|mostre|mostrar)\s+(os\s+)?leads\s+(de|da|do|em|com)\s+(.+)$/i);
+  return match?.[4] ? cleanQuery(match[4]) : null;
+}
+
 function extractSpotifyQuery(text: string): string | null {
   const normalized = normalize(text);
   const wantsMusic = /\b(toca|toque|tocar|coloca|coloque|ouvir|abra|abrir)\b/.test(normalized)
@@ -154,6 +160,32 @@ async function resolveTenantContact(tenantId: string, query: string) {
     .limit(5);
 }
 
+async function filterTenantLeads(tenantId: string, query: string) {
+  const safe = query.replace(/[%_]/g, "").trim();
+  const like = `%${safe}%`;
+  return db.select({
+    id: leadsTable.id,
+    nome: leadsTable.nome,
+    empresa: leadsTable.empresa,
+    telefone: leadsTable.telefone,
+    email: leadsTable.email,
+    endereco: leadsTable.endereco,
+    status: leadsTable.status,
+  })
+    .from(leadsTable)
+    .where(and(
+      eq(leadsTable.tenantId, tenantId),
+      or(
+        ilike(leadsTable.nome, like),
+        ilike(leadsTable.empresa, like),
+        ilike(leadsTable.telefone, like),
+        ilike(leadsTable.email, like),
+        ilike(leadsTable.endereco, like),
+      ),
+    ))
+    .limit(20);
+}
+
 function resolveRows<T>(rows: T[], query: string, labelOf: (row: T) => string, actionOf: (row: T) => DeviceAction) {
   if (!rows.length) return { error: `Não encontrei “${query}” neste tenant.` };
   if (rows.length > 1) return { error: `Encontrei mais de um resultado para “${query}”. Qual deles?\n${rows.map((row, index) => `${index + 1}. ${labelOf(row)}`).join("\n")}` };
@@ -231,6 +263,27 @@ router.post("/support/chat", async (req, res, next) => {
     return;
   }
 
+  const leadFilter = extractLeadFilterQuery(text);
+  if (leadFilter) {
+    const rows = await filterTenantLeads(tenantId, leadFilter);
+    if (!rows.length) {
+      writeSse(res, `Não encontrei leads compatíveis com “${leadFilter}” neste tenant.`);
+      return;
+    }
+    const visible = rows.slice(0, 10);
+    const lines = visible.map((lead, index) => {
+      const details = [lead.empresa, lead.endereco, lead.status].filter(Boolean).join(" · ");
+      return `${index + 1}. ${lead.nome}${details ? ` — ${details}` : ""}`;
+    });
+    const remainder = rows.length > visible.length ? `\n… e mais ${rows.length - visible.length} resultado(s) nesta consulta.` : "";
+    writeSse(res, `Encontrei ${rows.length} lead(s) para “${leadFilter}”:\n${lines.join("\n")}${remainder}\n\nA consulta foi feita somente nos dados deste tenant.`, {
+      filteredLeadIds: rows.map((lead) => lead.id),
+      filterQuery: leadFilter,
+      filterApplied: "server_side",
+    });
+    return;
+  }
+
   const contextualIntent = extractContextNavigationIntent(text);
   if (contextualIntent) {
     const resolved = await resolveContextNavigation(tenantId, contextualIntent);
@@ -273,5 +326,5 @@ router.post("/support/chat", async (req, res, next) => {
   writeSse(res, `Vou ${verb}. Essa ação apenas abre o aplicativo correspondente; não vou afirmar que a ligação, mensagem ou deslocamento aconteceu sem confirmação posterior.`, { clientAction: action, executionMode: "device_open", actionConfirmed: false });
 });
 
-export { extractSpotifyQuery, extractContactDeviceIntent, extractContextNavigationIntent, extractVendorAiRoute };
+export { extractSpotifyQuery, extractContactDeviceIntent, extractContextNavigationIntent, extractLeadFilterQuery, extractVendorAiRoute };
 export default router;
