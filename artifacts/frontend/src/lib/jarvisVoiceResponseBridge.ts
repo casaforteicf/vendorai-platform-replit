@@ -24,6 +24,19 @@ function cleanForSpeech(text: string) {
     .slice(0, 2600);
 }
 
+function conciseForSpeech(text: string) {
+  const cleaned = cleanForSpeech(text);
+  if (cleaned.length <= 520) return cleaned;
+
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const summary = sentences.slice(0, 3).join(" ");
+  const compact = (summary || cleaned.slice(0, 480)).slice(0, 500).trim();
+  return `${compact} Se quiser, eu detalho.`;
+}
+
 function choosePtBrVoice() {
   const voices = window.speechSynthesis.getVoices();
   return voices.find((voice) => voice.lang.toLowerCase() === "pt-br")
@@ -95,7 +108,7 @@ function restartJarvisMicAfterSpeech() {
 
 function speakJarvis(text: string, onComplete?: () => void) {
   if (!shouldSpeak()) return false;
-  const content = cleanForSpeech(text);
+  const content = conciseForSpeech(text);
   if (!content) return false;
 
   const synth = window.speechSynthesis;
