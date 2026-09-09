@@ -160,6 +160,7 @@ function showAlert(item: ProactiveItem) {
 
 async function pollProactivity() {
   if (polling || document.visibilityState !== "visible") return;
+  if (Date.now() < mutedUntil()) return;
   const token = localStorage.getItem("vendorai_token");
   if (!token) return;
 
