@@ -20,6 +20,11 @@ O agente precisa entregar valor real antes de pedir os dados do lead. A jornada 
 - `safeguards`: limites profissionais, regulatórios e de privacidade.
 - `missingCapabilities`: capacidades ainda não disponíveis.
 
+## Relação com App Product, App Admin e VendorAI SaaS
+O agente pertence ao App Product quando faz parte da experiência que foi vendida ao cliente. Sua configuração operacional básica pode ser administrada no App Admin. CRM avançado, automações, campanhas, inteligência, atribuição, scoring avançado e orquestração entre canais podem ser ampliados pelo VendorAI SaaS.
+
+A ausência da assinatura SaaS não pode retirar do App Product a função essencial que justificou sua venda. O SaaS amplia gestão e inteligência; ele não transforma um app incompleto em produto funcional.
+
 ## Regra contra alucinação operacional
 Uma fonte ou integração só pode ser marcada como `registry` se estiver disponível nos registries do App Builder. Caso contrário deve aparecer como `gap` e também como gap da proposta.
 
@@ -30,4 +35,4 @@ O agente pode informar, consultar fontes permitidas, organizar documentos, fazer
 Um app jurídico pode sugerir consulta/explicação de andamento processual ou legislação pública. Se a consulta judicial oficial não estiver integrada, a IA deve marcar a integração como gap, nunca simular que realizou a consulta.
 
 ## Gate de versionamento
-A interface do Arquiteto IA bloqueia a aplicação da versão quando não houver, no mínimo: nome do agente, promessa de valor, serviço pré-lead e handoff. A publicação continua seguindo o fluxo normal de revisão humana e versionamento do App Builder.
+A interface do Arquiteto IA bloqueia a aplicação da versão quando não houver, no mínimo: nome do agente, promessa de valor, serviço pré-lead e handoff. A mesma interface também exige a separação mínima entre App Product, App Admin e VendorAI SaaS antes de permitir versionamento. A publicação continua seguindo o fluxo normal de revisão humana do App Builder.
