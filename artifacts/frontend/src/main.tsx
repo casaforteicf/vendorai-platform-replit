@@ -40,6 +40,7 @@ import "./components/admin/devAgentVisualContextBridge";
 import "./lib/jarvisArtifactFetchBridge";
 import "./lib/jarvisVoiceResponseBridge";
 import "./lib/jarvisPageContextBridge";
+import "./lib/jarvisAutonomyContextBridge";
 import "./lib/jarvisProactiveVoiceBridge";
 import "./lib/jarvisWorkModeBridge";
 import "./lib/jarvisCapabilityRuntimeBridge";
