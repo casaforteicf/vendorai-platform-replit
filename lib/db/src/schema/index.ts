@@ -214,6 +214,7 @@ export * from "./insurance_revenue_scout";
 export * from "./tenant_nav_modules";
 export * from "./erp_financeiro";
 export * from "./erp_operacional";
+export * from "./finance_integration_registry";
 export * from "./vendor_stories";
 export * from "./variedades_dia";
 export * from "./vehicle_lookup";
