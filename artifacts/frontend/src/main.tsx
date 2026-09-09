@@ -33,12 +33,14 @@ import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPl
 import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { JarvisVoiceReplayControl } from "./components/support/JarvisVoiceReplayControl";
+import { JarvisResponseHealthNotice } from "./components/support/JarvisResponseHealthNotice";
 import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
 import "./lib/jarvisArtifactFetchBridge";
 import "./lib/jarvisVoiceResponseBridge";
 import "./lib/jarvisCapabilityRuntimeBridge";
+import "./lib/jarvisResponseHealthBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
@@ -50,6 +52,7 @@ import "./video-route-theme.css";
 import "./budget-dialog-policy.css";
 import "./leads-table-fix.css";
 import "./mobile-floating-controls.css";
+import "./jarvis-mobile.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 
@@ -82,6 +85,7 @@ createRoot(document.getElementById("root")!).render(
           <VideoRouteThemeSync />
           <App />
           <JarvisVoiceReplayControl />
+          <JarvisResponseHealthNotice />
           <BudgetImportAutofill />
           <MediaMenuInjector />
           <MediaAdsBridge />
