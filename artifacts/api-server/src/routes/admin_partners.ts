@@ -69,6 +69,53 @@ function normalizeCoupon(value: string | null | undefined) {
   return normalized || null;
 }
 
+// Public validation endpoint used by lead forms, landing pages and checkout.
+// It intentionally never returns partner commission information.
+router.get("/partners/coupons/:code/validate", async (req, res) => {
+  const code = normalizeCoupon(String(req.params["code"] ?? ""));
+  if (!code || code.length < 3) {
+    res.status(422).json({ valid: false, error: "Cupom inválido" });
+    return;
+  }
+
+  const [partner] = await db
+    .select({
+      id: partnersTable.id,
+      name: partnersTable.name,
+      nomeFantasia: partnersTable.nomeFantasia,
+      status: partnersTable.status,
+      tipoParceiro: partnersTable.tipoParceiro,
+      cupomCodigo: partnersTable.cupomCodigo,
+      descontoCupomPercentual: partnersTable.descontoCupomPercentual,
+      cupomAtivo: partnersTable.cupomAtivo,
+      cupomValidoAte: partnersTable.cupomValidoAte,
+      cupomAplicacao: partnersTable.cupomAplicacao,
+    })
+    .from(partnersTable)
+    .where(eq(partnersTable.cupomCodigo, code))
+    .limit(1);
+
+  if (!partner || !partner.cupomAtivo || partner.status !== "ativo") {
+    res.status(404).json({ valid: false, error: "Cupom não encontrado ou inativo" });
+    return;
+  }
+
+  if (partner.cupomValidoAte && partner.cupomValidoAte.getTime() < Date.now()) {
+    res.status(410).json({ valid: false, error: "Cupom expirado" });
+    return;
+  }
+
+  res.json({
+    valid: true,
+    code: partner.cupomCodigo,
+    partnerId: partner.id,
+    partnerName: partner.nomeFantasia || partner.name,
+    partnerType: partner.tipoParceiro,
+    discountPercent: Number(partner.descontoCupomPercentual ?? 0),
+    application: partner.cupomAplicacao,
+  });
+});
+
 router.get("/admin/partners-commercial", requireRole("super_admin"), async (_req, res) => {
   const partners = await db
     .select({

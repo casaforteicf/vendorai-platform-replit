@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { AlertTriangle, ChevronDown, ChevronUp, Plus, UserRound } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus, Ticket, UserRound, XCircle } from "lucide-react";
 import {
   Lead,
   getListDealsQueryKey,
@@ -54,6 +54,7 @@ const newLeadSchema = z.object({
   documento: z.string().optional().or(z.literal("")),
   tipoPessoa: z.enum(["fisica", "juridica"]).default("fisica"),
   mercadoSegmento: z.string().optional().or(z.literal("")),
+  cupomCodigo: z.string().optional().or(z.literal("")),
   createInitialDeal: z.boolean().default(true),
   dealTitle: z.string().optional().or(z.literal("")),
   dealValue: z.string().optional().or(z.literal("")),
@@ -85,6 +86,16 @@ type AssignmentUser = {
   leadAssignmentSegments?: string[] | null;
 };
 
+type CouponValidation = {
+  valid: true;
+  code: string;
+  partnerId: string;
+  partnerName: string | null;
+  partnerType: string;
+  discountPercent: number;
+  application: string;
+};
+
 const DEFAULT_VALUES: NewLeadValues = {
   nome: "",
   telefone: "",
@@ -99,6 +110,7 @@ const DEFAULT_VALUES: NewLeadValues = {
   documento: "",
   tipoPessoa: "fisica",
   mercadoSegmento: "",
+  cupomCodigo: "",
   createInitialDeal: true,
   dealTitle: "",
   dealValue: "",
@@ -111,6 +123,10 @@ function digits(value?: string | null) {
 
 function normalizedText(value?: string | null) {
   return (value ?? "").trim().toLocaleLowerCase("pt-BR");
+}
+
+function normalizeCoupon(value?: string | null) {
+  return (value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
 function normalizeTerritory(value?: string | null) {
@@ -178,6 +194,9 @@ export function NewLeadDialog({
   const [open, setOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [serverDuplicate, setServerDuplicate] = useState<{ lead: Lead; matchBy: string } | null>(null);
+  const [couponValidation, setCouponValidation] = useState<CouponValidation | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const createLead = useCreateLead();
@@ -193,6 +212,7 @@ export function NewLeadDialog({
   const watchedDocument = form.watch("documento");
   const watchedName = form.watch("nome");
   const watchedCompany = form.watch("empresa");
+  const watchedCoupon = form.watch("cupomCodigo");
   const createInitialDeal = form.watch("createInitialDeal");
   const tipoPessoa = form.watch("tipoPessoa");
 
@@ -255,11 +275,55 @@ export function NewLeadDialog({
     return pool[stableIndex(seed, pool.length)]?.id;
   }
 
+  function resetCoupon() {
+    setCouponValidation(null);
+    setCouponError(null);
+    setCouponLoading(false);
+  }
+
   function closeAndReset() {
     setOpen(false);
     setShowMore(false);
     setServerDuplicate(null);
+    resetCoupon();
     form.reset(DEFAULT_VALUES);
+  }
+
+  async function validateCoupon(codeValue?: string): Promise<CouponValidation | null> {
+    const code = normalizeCoupon(codeValue ?? form.getValues("cupomCodigo"));
+    if (!code) {
+      resetCoupon();
+      return null;
+    }
+    if (code.length < 3) {
+      setCouponValidation(null);
+      setCouponError("Digite ao menos 3 caracteres.");
+      return null;
+    }
+
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      const response = await fetch(`/api/partners/coupons/${encodeURIComponent(code)}/validate`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.valid !== true) {
+        setCouponValidation(null);
+        setCouponError(data?.error ?? "Cupom inválido ou indisponível.");
+        return null;
+      }
+      const validated = data as CouponValidation;
+      setCouponValidation(validated);
+      form.setValue("cupomCodigo", validated.code, { shouldDirty: true });
+      return validated;
+    } catch {
+      setCouponValidation(null);
+      setCouponError("Não foi possível validar o cupom agora.");
+      return null;
+    } finally {
+      setCouponLoading(false);
+    }
   }
 
   async function findAutoCreatedDeal(leadId: string) {
@@ -357,6 +421,20 @@ export function NewLeadDialog({
 
     setServerDuplicate(null);
     try {
+      const couponCode = normalizeCoupon(values.cupomCodigo);
+      let coupon = couponValidation;
+      if (couponCode) {
+        if (!coupon || coupon.code !== couponCode) coupon = await validateCoupon(couponCode);
+        if (!coupon) {
+          toast({
+            title: "Revise o cupom",
+            description: "O código de indicação precisa estar válido antes de salvar o lead.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       const resolvedAssignee = resolveAutomaticAssignee(values);
       const submissionValues: NewLeadValues = {
         ...values,
@@ -371,7 +449,8 @@ export function NewLeadDialog({
           email: submissionValues.email || null,
           empresa: submissionValues.empresa || null,
           objetivo: submissionValues.objetivo || null,
-          source: submissionValues.source,
+          source: coupon ? "indicacao" : submissionValues.source,
+          indicadoPor: coupon?.partnerId,
           assignedTo: submissionValues.assignedTo === "__auto__" ? undefined : submissionValues.assignedTo,
           instagramHandle: submissionValues.instagramHandle || null,
           profissao: submissionValues.profissao || null,
@@ -379,6 +458,16 @@ export function NewLeadDialog({
           documento: submissionValues.documento || null,
           tipoPessoa: submissionValues.tipoPessoa,
           mercadoSegmento: submissionValues.mercadoSegmento || null,
+          metadata: coupon
+            ? {
+                cupomCodigo: coupon.code,
+                descontoCupomPercentual: coupon.discountPercent,
+                cupomAplicacao: coupon.application,
+                parceiroIndicador: coupon.partnerName,
+                tipoParceiro: coupon.partnerType,
+                atribuicao: "cupom_parceiro",
+              }
+            : undefined,
         },
       });
 
@@ -392,9 +481,11 @@ export function NewLeadDialog({
 
       toast({
         title: submissionValues.createInitialDeal ? "Lead e negócio criados" : "Contato salvo",
-        description: submissionValues.createInitialDeal
-          ? "O contato foi cadastrado uma única vez e o negócio inicial ficou vinculado a ele."
-          : "O contato foi salvo sem abrir um negócio agora.",
+        description: coupon
+          ? `Cupom ${coupon.code} vinculado ao lead com ${coupon.discountPercent}% de desconto.`
+          : submissionValues.createInitialDeal
+            ? "O contato foi cadastrado uma única vez e o negócio inicial ficou vinculado a ele."
+            : "O contato foi salvo sem abrir um negócio agora.",
       });
 
       closeAndReset();
@@ -421,6 +512,7 @@ export function NewLeadDialog({
         if (!next) {
           setShowMore(false);
           setServerDuplicate(null);
+          resetCoupon();
           form.reset(DEFAULT_VALUES);
         }
       }}
@@ -523,6 +615,59 @@ export function NewLeadDialog({
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="cupomCodigo"
+                render={({ field }) => (
+                  <FormItem className="rounded-lg border bg-muted/20 p-3">
+                    <div className="flex items-center gap-2">
+                      <Ticket className="h-4 w-4 text-muted-foreground" />
+                      <FormLabel className="m-0">Cupom / código de indicação</FormLabel>
+                      <span className="text-[11px] text-muted-foreground">opcional</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <FormControl>
+                        <Input
+                          placeholder="Ex.: MARCOS10"
+                          value={field.value}
+                          onChange={(event) => {
+                            field.onChange(event.target.value.toUpperCase());
+                            if (couponValidation || couponError) resetCoupon();
+                          }}
+                          autoComplete="off"
+                        />
+                      </FormControl>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={couponLoading || normalizeCoupon(watchedCoupon).length < 3}
+                        onClick={() => void validateCoupon()}
+                      >
+                        {couponLoading ? "Validando..." : "Validar"}
+                      </Button>
+                    </div>
+                    {couponValidation && couponValidation.code === normalizeCoupon(watchedCoupon) && (
+                      <div className="flex items-start gap-2 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>
+                          Cupom válido{couponValidation.partnerName ? ` · ${couponValidation.partnerName}` : ""}.
+                          {couponValidation.discountPercent > 0 ? ` ${couponValidation.discountPercent}% de desconto aplicado.` : " Indicação vinculada."}
+                        </span>
+                      </div>
+                    )}
+                    {couponError && (
+                      <div className="flex items-start gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+                        <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{couponError}</span>
+                      </div>
+                    )}
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      O código vincula automaticamente o lead ao parceiro, influenciador ou afiliado. A comissão do parceiro nunca é exibida ao lead.
+                    </p>
+                  </FormItem>
+                )}
+              />
 
               {isAdmin && (
                 <FormField
@@ -728,7 +873,7 @@ export function NewLeadDialog({
 
             <div className="flex gap-2 border-t pt-4">
               <Button type="button" variant="outline" className="flex-1" onClick={closeAndReset}>Cancelar</Button>
-              <Button type="submit" className="flex-1" disabled={createLead.isPending || !!duplicateCandidate} data-testid="button-submit-lead">
+              <Button type="submit" className="flex-1" disabled={createLead.isPending || couponLoading || !!duplicateCandidate} data-testid="button-submit-lead">
                 {createLead.isPending
                   ? "Salvando..."
                   : createInitialDeal
