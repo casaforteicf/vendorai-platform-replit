@@ -77,6 +77,7 @@ router.delete("/oportunidades-previstas/:id", async (req, res) => {
 // Revenue Scout -> Agentes: execução aprovada usa o dispatcher central já existente.
 // A rota fica neste router protegido para evitar criar outro módulo HTTP paralelo.
 router.post("/tenants/:tenantId/scout/oportunidades/:id/executar-com-agente", async (req, res) => {
+  // tenant-audit: reviewed tenant da rota é validado imediatamente contra o tenant autenticado; super_admin é a única exceção cross-tenant.
   const tenantId = req.params.tenantId as string;
   if (!isSuperAdmin(req) && tid(req) !== tenantId) return res.status(403).json({ error: "Forbidden" });
 
