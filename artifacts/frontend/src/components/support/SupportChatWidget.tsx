@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff, ShieldCheck, Check, Ban, Play, Paperclip } from "lucide-react";
+import { Sparkles, X, Send, Loader2, CheckCircle2, ChevronDown, Mic, MicOff, ShieldCheck, Check, Ban, Play, Paperclip, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,6 +54,14 @@ interface JarvisProactivityResponse {
     briefing: JarvisProactiveItem[];
     silentCount: number;
   };
+}
+
+interface JarvisClientAction {
+  type: "open_external_url";
+  provider?: string;
+  uri?: string;
+  fallbackUrl: string;
+  label?: string;
 }
 
 interface BrowserSpeechRecognitionEvent extends Event {
@@ -168,6 +176,7 @@ export function SupportChatWidget() {
   const [approvalQueue, setApprovalQueue] = useState<AgentTaskApproval[]>([]);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
+  const [externalActionFallback, setExternalActionFallback] = useState<JarvisClientAction | null>(null);
   const conversationIdRef = useRef<string>(crypto.randomUUID());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -238,7 +247,7 @@ export function SupportChatWidget() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [messages, streaming, externalActionFallback]);
 
   useEffect(() => {
     return () => {
@@ -400,6 +409,7 @@ export function SupportChatWidget() {
     setInput("");
     setStreaming(true);
     setBugReport(null);
+    setExternalActionFallback(null);
 
     const token = localStorage.getItem("vendorai_token");
     abortRef.current = new AbortController();
@@ -454,6 +464,7 @@ export function SupportChatWidget() {
               protocolo?: string | null;
               status?: "aberto" | "em_analise" | "resolvido";
               resolvidoPor?: "agente" | "humano" | null;
+              clientAction?: JarvisClientAction;
               error?: string;
             };
 
@@ -476,6 +487,12 @@ export function SupportChatWidget() {
                 status: payload.status ?? "aberto",
                 resolvidoPor: payload.resolvidoPor ?? null,
               });
+            }
+
+            if (payload.done && payload.clientAction?.type === "open_external_url") {
+              const action = payload.clientAction;
+              const opened = window.open(action.fallbackUrl, "_blank", "noopener,noreferrer");
+              if (!opened) setExternalActionFallback(action);
             }
 
             if (payload.error) {
@@ -534,6 +551,7 @@ export function SupportChatWidget() {
     setMessages([]);
     setAttachments([]);
     setBugReport(null);
+    setExternalActionFallback(null);
     conversationIdRef.current = crypto.randomUUID();
     setInput("");
     setStreaming(false);
@@ -680,6 +698,25 @@ export function SupportChatWidget() {
               </div>
             ))}
 
+            {externalActionFallback && (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] rounded-2xl rounded-bl-sm border bg-background px-3 py-2 text-sm">
+                  <div className="font-medium">Ação externa pronta</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    O navegador bloqueou a abertura automática. Nada foi marcado como executado.
+                  </div>
+                  <Button
+                    size="sm"
+                    className="mt-2 h-8 text-xs"
+                    onClick={() => window.open(externalActionFallback.fallbackUrl, "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    Abrir {externalActionFallback.provider ?? "serviço"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {bugReport && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] bg-green-50 border border-green-200 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">
@@ -712,7 +749,7 @@ export function SupportChatWidget() {
                     <button
                       type="button"
                       className="ml-1 text-muted-foreground hover:text-foreground"
-                      onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index)}
                       aria-label={`Remover ${attachment.name}`}
                     >
                       <X className="h-3 w-3" />
