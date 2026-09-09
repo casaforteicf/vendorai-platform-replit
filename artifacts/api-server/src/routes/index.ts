@@ -254,6 +254,50 @@ router.use(appRuntimeRouter);
 // Trilha de Configurações precisa observar mutações do tenant e dos hubs abaixo.
 router.use(configurationBusinessProfileAudit);
 
+// Leitura da coleção inteira de tenants é exclusiva do Super Admin. Para a
+// leitura do próprio tenant, escondemos campos estritamente internos de
+// negociação/gestão da plataforma sem interferir em cobrança/licença do cliente.
+const tenantInternalResponseFields = [
+  "mensalidadeTabelaValor",
+  "taxaImplantacaoValor",
+  "descontoPercentual",
+  "motivoDesconto",
+  "observacoesComerciais",
+  "origemCliente",
+  "responsavelComercial",
+  "internalNotes",
+  "createdByAdminId",
+  "cancelamentoSolicitadoEm",
+  "canceladoEm",
+  "motivoCancelamento",
+  "demoConvertedAt",
+] as const;
+
+router.use("/tenants", (req, res, next) => {
+  const isSuperAdmin = req.user?.platformRole === "super_admin";
+  const isCollectionRead = req.method === "GET" && (req.path === "/" || req.path === "");
+
+  if (isCollectionRead && !isSuperAdmin) {
+    res.status(403).json({ error: "Só o Super Admin pode listar todos os tenants" });
+    return;
+  }
+
+  const isSingleTenantRead = req.method === "GET" && /^\/[A-Za-z0-9-]+$/.test(req.path);
+  if (!isSuperAdmin && isSingleTenantRead) {
+    const originalJson = res.json.bind(res);
+    res.json = ((body: unknown) => {
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        const sanitized = { ...(body as Record<string, unknown>) };
+        for (const field of tenantInternalResponseFields) delete sanitized[field];
+        return originalJson(sanitized);
+      }
+      return originalJson(body);
+    }) as typeof res.json;
+  }
+
+  next();
+});
+
 // Tenants — super_admin only for write, tenant scope for reads
 router.use(tenantsRouter);
 
