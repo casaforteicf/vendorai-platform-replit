@@ -1,0 +1,68 @@
+/* Mobile sidebar: keep navigation usable on short screens and prevent footer overlap. */
+@media (max-width: 767px) {
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) {
+    width: min(92vw, 360px) !important;
+    max-width: 360px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(1) {
+    min-height: 64px;
+    padding: 12px 14px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(2) {
+    padding: 8px 10px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(3) {
+    min-height: 0 !important;
+    padding: 8px 10px 14px !important;
+    gap: 2px !important;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(3)::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(3) a,
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(3) button {
+    min-height: 40px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(4) {
+    flex: 0 0 auto;
+    padding: 9px 10px calc(9px + env(safe-area-inset-bottom)) !important;
+    background: hsl(var(--sidebar) / 0.99);
+    box-shadow: 0 -1px 0 hsl(var(--sidebar-border));
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(4) > div:first-child {
+    margin-bottom: 6px !important;
+    padding-inline: 4px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(4) > div:nth-child(2) {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(4) > div:nth-child(2) > * {
+    min-width: 0;
+    min-height: 38px !important;
+  }
+
+  .fixed.inset-0.z-50.md\:hidden > div:nth-child(2) > div:nth-child(4) > button {
+    min-height: 40px !important;
+  }
+
+  /* While the drawer is open, floating assistant controls must not cover navigation. */
+  body:has(.fixed.inset-0.z-50.md\:hidden) button[aria-label="Abrir Dev IA"],
+  body:has(.fixed.inset-0.z-50.md\:hidden) button[aria-label="Carregar Dev IA"],
+  body:has(.fixed.inset-0.z-50.md\:hidden) button[aria-label="Tentar Dev IA novamente"] {
+    display: none !important;
+  }
+}
