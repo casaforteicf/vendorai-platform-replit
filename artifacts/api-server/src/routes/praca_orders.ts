@@ -47,6 +47,12 @@ function integerMoney(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
+function normalizeCoupon(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  return normalized.length >= 3 && normalized.length <= 40 ? normalized : null;
+}
+
 router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -84,24 +90,80 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
     (sum, item) => sum + Math.round(item.quantidade * item.valorUnitarioCentavos), 0,
   );
   const frete = Number(req.body?.freteCentavos ?? 0);
-  const desconto = Number(req.body?.descontoCentavos ?? 0);
+  let desconto = Number(req.body?.descontoCentavos ?? 0);
   if (!integerMoney(frete) || !integerMoney(desconto) || desconto > subtotal + frete) {
     return res.status(422).json({ error: "Frete ou desconto inválido." });
   }
-  const total = subtotal + frete - desconto;
+  let total = subtotal + frete - desconto;
+
+  const couponCode = normalizeCoupon(
+    req.body?.cupomCodigo ?? req.body?.couponCode ?? req.body?.referralCode ?? req.body?.ref,
+  );
+  const attributionSource = typeof req.body?.origemAtribuicao === "string"
+    ? req.body.origemAtribuicao.trim().slice(0, 80) || null
+    : typeof req.body?.canal === "string"
+      ? req.body.canal.trim().slice(0, 80) || null
+      : "praca_ai";
+  const attributionMetadata = req.body?.attributionMetadata && typeof req.body.attributionMetadata === "object" && !Array.isArray(req.body.attributionMetadata)
+    ? req.body.attributionMetadata
+    : {};
 
   const client = await vendorPool.connect();
   try {
     await client.query("BEGIN");
 
     const existing = await client.query(
-      `SELECT id, status, total_centavos AS "totalCentavos"
+      `SELECT id, status, total_centavos AS "totalCentavos",
+              partner_id AS "partnerId", cupom_codigo AS "cupomCodigo",
+              desconto_cupom_percentual AS "descontoCupomPercentual"
          FROM praca_pedidos WHERE tenant_id=$1 AND idempotency_key=$2`,
       [tenantId, idempotencyKey],
     );
     if (existing.rowCount) {
       await client.query("COMMIT");
       return res.status(200).json({ ...existing.rows[0], idempotentReplay: true });
+    }
+
+    let attribution: {
+      partnerId: string;
+      code: string;
+      discountPercent: number;
+      partnerType: string | null;
+    } | null = null;
+
+    if (couponCode) {
+      const partnerQ = await client.query(
+        `SELECT id, tipo_parceiro, cupom_codigo, desconto_cupom_percentual,
+                cupom_ativo, cupom_valido_ate, cupom_aplicacao, status
+           FROM partners
+          WHERE cupom_codigo=$1
+          LIMIT 1`,
+        [couponCode],
+      );
+      const partner = partnerQ.rows[0];
+      if (!partner || !partner.cupom_ativo || partner.status !== "ativo") {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "Cupom não encontrado ou inativo." });
+      }
+      if (partner.cupom_valido_ate && new Date(partner.cupom_valido_ate).getTime() < Date.now()) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "Cupom expirado." });
+      }
+      if (!["geral", "produto", "marketplace"].includes(String(partner.cupom_aplicacao || "geral"))) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "Este cupom não é válido para compras no Marketplace." });
+      }
+
+      const discountPercent = Math.max(0, Math.min(100, Number(partner.desconto_cupom_percentual ?? 0)));
+      const couponDiscount = Math.round(subtotal * (discountPercent / 100));
+      desconto = Math.min(subtotal + frete, desconto + couponDiscount);
+      total = subtotal + frete - desconto;
+      attribution = {
+        partnerId: String(partner.id),
+        code: String(partner.cupom_codigo),
+        discountPercent,
+        partnerType: partner.tipo_parceiro ? String(partner.tipo_parceiro) : null,
+      };
     }
 
     const productIds = [...new Set(normalized.map((item) => item.produtoId))];
@@ -120,9 +182,13 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
       `INSERT INTO praca_pedidos
         (tenant_id,id_externo,idempotency_key,canal,status,moeda,
          subtotal_centavos,frete_centavos,desconto_centavos,total_centavos,
-         cliente_id,cliente_nome,cliente_documento,cliente_email,cliente_whatsapp,endereco_entrega,observacoes)
-       VALUES ($1,$2,$3,$4,'recebido',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
-       RETURNING id,status,total_centavos AS "totalCentavos",created_at AS "createdAt"`,
+         cliente_id,cliente_nome,cliente_documento,cliente_email,cliente_whatsapp,endereco_entrega,observacoes,
+         partner_id,cupom_codigo,desconto_cupom_percentual,origem_atribuicao,attribution_metadata)
+       VALUES ($1,$2,$3,$4,'recebido',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19,$20,$21::jsonb)
+       RETURNING id,status,total_centavos AS "totalCentavos",created_at AS "createdAt",
+                 partner_id AS "partnerId",cupom_codigo AS "cupomCodigo",
+                 desconto_cupom_percentual AS "descontoCupomPercentual",
+                 origem_atribuicao AS "origemAtribuicao"`,
       [
         tenantId,
         typeof req.body?.idExterno === "string" ? req.body.idExterno.trim() || null : null,
@@ -137,6 +203,11 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
         typeof req.body?.clienteWhatsapp === "string" ? req.body.clienteWhatsapp.trim() || null : null,
         JSON.stringify(endereco),
         typeof req.body?.observacoes === "string" ? req.body.observacoes.trim() || null : null,
+        attribution?.partnerId ?? null,
+        attribution?.code ?? null,
+        attribution ? String(attribution.discountPercent) : null,
+        attribution ? attributionSource : null,
+        JSON.stringify({ ...attributionMetadata, partnerType: attribution?.partnerType ?? undefined }),
       ],
     );
     const pedido = inserted.rows[0];
@@ -159,11 +230,25 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
       `INSERT INTO praca_pedido_eventos
         (tenant_id,pedido_id,tipo,status_novo,ator_tipo,ator_id,metadata)
        VALUES ($1,$2,'pedido_recebido','recebido',$3,$4,$5::jsonb)`,
-      [tenantId,pedido.id,who.type,who.id,JSON.stringify({ canal: req.body?.canal ?? "praca_ai" })],
+      [tenantId,pedido.id,who.type,who.id,JSON.stringify({
+        canal: req.body?.canal ?? "praca_ai",
+        attribution: attribution ? {
+          partnerId: attribution.partnerId,
+          couponCode: attribution.code,
+          discountPercent: attribution.discountPercent,
+          source: attributionSource,
+        } : null,
+      })],
     );
 
     await client.query("COMMIT");
-    return res.status(201).json({ ...pedido, subtotalCentavos: subtotal, freteCentavos: frete, descontoCentavos: desconto });
+    return res.status(201).json({
+      ...pedido,
+      subtotalCentavos: subtotal,
+      freteCentavos: frete,
+      descontoCentavos: desconto,
+      couponApplied: Boolean(attribution),
+    });
   } catch (error: any) {
     await client.query("ROLLBACK");
     if (error?.code === "23505") {
@@ -188,7 +273,9 @@ router.get("/tenants/:tenantId/praca-orders", async (req, res) => {
     `SELECT id,id_externo AS "idExterno",canal,status,moeda,
             subtotal_centavos AS "subtotalCentavos",frete_centavos AS "freteCentavos",
             desconto_centavos AS "descontoCentavos",total_centavos AS "totalCentavos",
-            cliente_nome AS "clienteNome",created_at AS "createdAt",updated_at AS "updatedAt"
+            cliente_nome AS "clienteNome",partner_id AS "partnerId",cupom_codigo AS "cupomCodigo",
+            desconto_cupom_percentual AS "descontoCupomPercentual",origem_atribuicao AS "origemAtribuicao",
+            created_at AS "createdAt",updated_at AS "updatedAt"
        FROM praca_pedidos WHERE tenant_id=$1${statusFilter}
       ORDER BY created_at DESC LIMIT 500`,
     values,
@@ -228,7 +315,8 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/status", async (req, res) 
   try {
     await client.query("BEGIN");
     const current = await client.query(
-      `SELECT status FROM praca_pedidos WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+      `SELECT status,total_centavos,partner_id
+         FROM praca_pedidos WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
       [tenantId, orderId],
     );
     if (!current.rowCount) {
@@ -245,6 +333,28 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/status", async (req, res) 
         WHERE tenant_id=$2 AND id=$3 RETURNING id,status,updated_at AS "updatedAt"`,
       [next, tenantId, orderId],
     );
+
+    if (next === "pago" && current.rows[0].partner_id) {
+      const partnerQ = await client.query(
+        `SELECT comissao_percentual FROM partners WHERE id=$1 AND status='ativo' LIMIT 1`,
+        [current.rows[0].partner_id],
+      );
+      const commissionPercent = Math.max(0, Math.min(100, Number(partnerQ.rows[0]?.comissao_percentual ?? 0)));
+      if (commissionPercent > 0) {
+        const base = Number(current.rows[0].total_centavos) / 100;
+        const value = Math.round(base * (commissionPercent / 100) * 100) / 100;
+        await client.query(
+          `INSERT INTO partner_commissions
+            (id,partner_id,tenant_id,tipo,valor_base,percentual,valor,data_referencia,status,source_type,source_id)
+           VALUES (gen_random_uuid()::text,$1,$2,'marketplace',$3,$4,$5,current_date,'pendente','praca_order',$6)
+           ON CONFLICT (partner_id,source_type,source_id)
+             WHERE source_type IS NOT NULL AND source_id IS NOT NULL
+           DO NOTHING`,
+          [current.rows[0].partner_id, tenantId, String(base), String(commissionPercent), String(value), orderId],
+        );
+      }
+    }
+
     const who = actor(req);
     await client.query(
       `INSERT INTO praca_pedido_eventos
