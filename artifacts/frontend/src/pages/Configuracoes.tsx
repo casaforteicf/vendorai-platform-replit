@@ -6,6 +6,7 @@ import { ConfigurationGovernancePanel } from "@/components/ConfigurationGovernan
 import { ConfigurationImpactSimulator } from "@/components/ConfigurationImpactSimulator";
 import { ConfigurationPostChangeValidation } from "@/components/ConfigurationPostChangeValidation";
 import { ConfigurationSectionGuard } from "@/components/ConfigurationSectionGuard";
+import { JarvisPermissionsCenter } from "@/components/support/JarvisPermissionsCenter";
 
 export default function Configuracoes() {
   const legacySiteDeepLink = new URLSearchParams(window.location.search).get("tab") === "site";
@@ -13,6 +14,7 @@ export default function Configuracoes() {
   return (
     <>
       {!legacySiteDeepLink && <ConfigurationSectionGuard />}
+      {!legacySiteDeepLink && <JarvisPermissionsCenter />}
       {!legacySiteDeepLink && <ConfigurationAccessPanel />}
       {!legacySiteDeepLink && <ConfigurationGovernancePanel />}
       {!legacySiteDeepLink && <ConfigurationImpactSimulator />}

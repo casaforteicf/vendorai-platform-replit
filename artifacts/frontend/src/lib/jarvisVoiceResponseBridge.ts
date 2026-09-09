@@ -1,3 +1,5 @@
+import { jarvisPermissionEnabled } from "./jarvisPermissions";
+
 const VOICE_SETTING_KEY = "jarvis_voice_replies";
 const VOICE_READY_EVENT = "vendorai:jarvis-voice-ready";
 const HANDS_FREE_SESSION_KEY = "jarvis_web_hands_free_session";
@@ -10,6 +12,7 @@ function canSpeakJarvis() {
 
 function shouldSpeak() {
   if (!canSpeakJarvis()) return false;
+  if (!jarvisPermissionEnabled("voiceReplies")) return false;
   return localStorage.getItem(VOICE_SETTING_KEY) !== "off";
 }
 
@@ -86,10 +89,15 @@ function getJarvisTextarea() {
 }
 
 function isHandsFreeSessionActive() {
-  return sessionStorage.getItem(HANDS_FREE_SESSION_KEY) === "1";
+  return jarvisPermissionEnabled("handsFree")
+    && sessionStorage.getItem(HANDS_FREE_SESSION_KEY) === "1";
 }
 
 function activateHandsFreeSession() {
+  if (!jarvisPermissionEnabled("handsFree")) {
+    sessionStorage.removeItem(HANDS_FREE_SESSION_KEY);
+    return;
+  }
   sessionStorage.setItem(HANDS_FREE_SESSION_KEY, "1");
 }
 
@@ -147,7 +155,7 @@ function announceVoiceReady(content: string) {
     detail: {
       content,
       supported: canSpeakJarvis(),
-      autoEnabled: localStorage.getItem(VOICE_SETTING_KEY) !== "off",
+      autoEnabled: shouldSpeak(),
     },
   }));
 }
@@ -188,9 +196,12 @@ function addVoiceRuntimeContext(init?: RequestInit): RequestInit | undefined {
     const lastContent = String(messages[lastUserIndex]?.content ?? "");
     if (!/\b(voz|audio|áudio|microfone|falar|fala|falado|ouvir|responder por voz)\b/i.test(lastContent)) return init;
 
+    const handsFree = jarvisPermissionEnabled("handsFree");
+    const voiceReplies = jarvisPermissionEnabled("voiceReplies");
+    const wakeWord = jarvisPermissionEnabled("wakeWord");
     messages[lastUserIndex] = {
       ...messages[lastUserIndex],
-      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS já oferece entrada por microfone, envio automático após reconhecimento e tentativa de resposta falada em pt-BR via síntese de voz do navegador/dispositivo. Depois da primeira ativação manual do microfone, a sessão pode tentar continuar em modo mãos livres. Não diga que existe somente interação por texto. Se a fala automática não sair, trate como falha/limitação de TTS do dispositivo ou navegador. Wake word com app fechado é uma capacidade separada.]`,
+      content: `${lastContent}\n\n[Contexto técnico da interface, não mostrar como citação do usuário: este chat JARVIS oferece entrada por microfone e envio automático após reconhecimento. Respostas por voz=${voiceReplies ? "permitidas" : "desativadas"}; mãos livres=${handsFree ? "permitido" : "desativado"}; wake word=${wakeWord ? "preferência ativada" : "desativada"}. No navegador, microfone e wake word dependem de permissão/gesto e página ativa; app fechado é capacidade nativa separada.]`,
     };
     return { ...init, body: JSON.stringify({ ...payload, messages }) };
   } catch {
@@ -202,8 +213,10 @@ function installJarvisVoiceAutoSend() {
   let wasListening = false;
   let valueBeforeListening = "";
   let lastSentValue = "";
+  let inspectScheduled = false;
 
   const inspect = () => {
+    inspectScheduled = false;
     const mic = findJarvisMicButton();
     const textarea = getJarvisTextarea();
     if (!mic || !textarea) {
@@ -232,14 +245,20 @@ function installJarvisVoiceAutoSend() {
     }
   };
 
-  const observer = new MutationObserver(inspect);
+  const scheduleInspect = () => {
+    if (inspectScheduled) return;
+    inspectScheduled = true;
+    window.requestAnimationFrame(inspect);
+  };
+
+  const observer = new MutationObserver(scheduleInspect);
   observer.observe(document.documentElement, {
     subtree: true,
     childList: true,
     attributes: true,
     attributeFilter: ["title", "disabled"],
   });
-  window.setInterval(inspect, 300);
+  window.setInterval(scheduleInspect, 400);
 
   document.addEventListener("click", (event) => {
     const target = event.target as Element | null;

@@ -1,4 +1,5 @@
 import { speakJarvis, VOICE_SETTING_KEY } from "./jarvisVoiceResponseBridge";
+import { jarvisPermissionEnabled } from "./jarvisPermissions";
 
 type AuthMe = {
   id?: string;
@@ -139,6 +140,7 @@ function hasPendingUndo() {
 
 function restartHandsFreeMic() {
   try {
+    if (!jarvisPermissionEnabled("handsFree")) return;
     if (sessionStorage.getItem(HANDS_FREE_SESSION_KEY) !== "1") return;
   } catch {
     return;
@@ -163,7 +165,7 @@ function announce(content: string) {
     detail: {
       content,
       supported: "speechSynthesis" in window,
-      autoEnabled: localStorage.getItem(VOICE_SETTING_KEY) !== "off",
+      autoEnabled: jarvisPermissionEnabled("voiceReplies") && localStorage.getItem(VOICE_SETTING_KEY) !== "off",
     },
   }));
   speakJarvis(content, restartHandsFreeMic);
@@ -293,6 +295,13 @@ if (typeof window !== "undefined") {
     if (!isJarvisChat || typeof init?.body !== "string") return previousFetch(input, init);
 
     const lastText = getLastUserText(init.body);
+    const undoIntent = wantsUndoLastDiscount(lastText) || hasPendingUndo();
+    if (undoIntent && !jarvisPermissionEnabled("undoReversibleActions")) {
+      clearPendingUndo();
+      const content = "O recurso de desfazer ações reversíveis está desativado no Centro de Permissões do JARVIS.";
+      queueMicrotask(() => announce(content));
+      return sseResponse(content);
+    }
 
     if (hasPendingUndo()) {
       if (cancelsPendingUndo(lastText)) {

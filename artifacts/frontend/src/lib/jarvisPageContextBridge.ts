@@ -1,3 +1,5 @@
+import { jarvisPermissionEnabled } from "./jarvisPermissions";
+
 type JarvisScreenContext = {
   route: string;
   search: string;
@@ -107,6 +109,22 @@ function enrichJarvisRequest(init?: RequestInit): RequestInit | undefined {
       context?: Record<string, unknown>;
       [key: string]: unknown;
     };
+    if (!jarvisPermissionEnabled("screenContext")) {
+      return {
+        ...init,
+        body: JSON.stringify({
+          ...payload,
+          context: {
+            ...(payload.context ?? {}),
+            route: window.location.pathname,
+            title: document.title,
+            source: "web_ui_minimal",
+            screenContextPermission: "disabled",
+          },
+        }),
+      };
+    }
+
     const screenContext = captureScreenContext();
     return {
       ...init,
