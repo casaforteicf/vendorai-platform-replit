@@ -84,12 +84,20 @@ for (const filePath of walk(root)) {
       relativeFile === "routes/onboarding_implementation.ts" &&
       /router\.get\("\/superadmin\/tenants\/:tenantId\/implementation",\s*requireRole\("super_admin"\)/.test(previousLine) &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line);
+    // Jarvis e-mail/calendar task routes read the route tenant only to compare it
+    // immediately against the authenticated tenant before any tenant-scoped query.
+    // Super Admin is the only intentional cross-tenant exception.
+    const guardedJarvisAgentTaskTenant =
+      (relativeFile === "routes/jarvis_email_actions.ts" || relativeFile === "routes/jarvis_external_actions.ts") &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\s*\?\?\s*["']{2}\)/.test(line) &&
+      /if\s*\(req\.user\?\.platformRole\s*!==\s*["']super_admin["']\s*&&\s*req\.user\?\.tenantId\s*!==\s*tenantId\)\s*return\s+next\(\)/.test(guardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
       previousLine.includes("tenant-audit: reviewed") ||
       guardedMarketingTenant ||
-      guardedImplementationSuperAdminTenant
+      guardedImplementationSuperAdminTenant ||
+      guardedJarvisAgentTaskTenant
     ) {
       return;
     }
