@@ -59,6 +59,8 @@ function wirePanel(panel: HTMLElement) {
     textarea.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
       const send = findSendButton(panel);
       if (send && !send.disabled) send.click();
     }, true);
