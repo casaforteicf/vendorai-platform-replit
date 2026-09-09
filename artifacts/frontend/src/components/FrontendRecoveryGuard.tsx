@@ -4,14 +4,24 @@ const RECOVERY_KEY_PREFIX = "vendorai_frontend_recovered_bundle";
 const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
 const RECOVERY_WINDOW_MS = 30_000;
 const STUCK_SPINNER_MS = 12_000;
+const VERSION_CHECK_MS = 60_000;
 const CHUNK_ERROR_PATTERN =
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
 
-function currentBundleRecoveryKey() {
+function currentEntryAsset() {
   const entryScript = Array.from(document.scripts).find((script) =>
     script.type === "module" && /\/assets\/index-[^/]+\.js(?:$|\?)/.test(script.src),
   );
-  return `${RECOVERY_KEY_PREFIX}:${entryScript?.src || "bootstrap"}`;
+  if (!entryScript?.src) return "";
+  try {
+    return new URL(entryScript.src, window.location.origin).pathname;
+  } catch {
+    return entryScript.src;
+  }
+}
+
+function currentBundleRecoveryKey() {
+  return `${RECOVERY_KEY_PREFIX}:${currentEntryAsset() || "bootstrap"}`;
 }
 
 async function clearObsoleteFrontendState() {
@@ -65,9 +75,6 @@ async function recoverFrontendOnce(reason: string) {
   const recoveryKey = currentBundleRecoveryKey();
   if (!canAutoRecoverCurrentBundle()) return false;
 
-  // Uma recuperação automática por bundle e, adicionalmente, uma janela curta
-  // compartilhada com o guard pré-bootstrap e o ErrorBoundary. Isso impede que
-  // três camadas de proteção transformem um erro persistente num reload loop.
   const now = Date.now();
   try {
     sessionStorage.setItem(recoveryKey, "1");
@@ -81,6 +88,34 @@ async function recoverFrontendOnce(reason: string) {
   return true;
 }
 
+async function latestEntryAsset() {
+  try {
+    const url = new URL("/index.html", window.location.origin);
+    url.searchParams.set("__vendorai_version_check", String(Date.now()));
+    const response = await fetch(url.toString(), {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { Accept: "text/html" },
+    });
+    if (!response.ok) return "";
+    const html = await response.text();
+    const match = html.match(/<script[^>]+type=["']module["'][^>]+src=["']([^"']*\/assets\/index-[^"']+\.js[^"']*)["']/i)
+      ?? html.match(/<script[^>]+src=["']([^"']*\/assets\/index-[^"']+\.js[^"']*)["'][^>]+type=["']module["']/i);
+    if (!match?.[1]) return "";
+    return new URL(match[1], window.location.origin).pathname;
+  } catch {
+    return "";
+  }
+}
+
+async function recoverIfDeploymentChanged() {
+  const current = currentEntryAsset();
+  if (!current) return;
+  const latest = await latestEntryAsset();
+  if (!latest || latest === current) return;
+  await recoverFrontendOnce("nova versão publicada");
+}
+
 function isFullScreenRouteSpinnerVisible() {
   const spinner = document.querySelector(
     ".min-h-screen.w-full.flex.items-center.justify-center.bg-background > .animate-spin",
@@ -91,9 +126,6 @@ function isFullScreenRouteSpinnerVisible() {
 }
 
 function warmCriticalRoutes() {
-  // Warm the areas that already exposed stale lazy chunks in production.
-  // If the current entry bundle references an asset from an older deploy,
-  // this also surfaces the failure immediately so recovery can refresh it.
   void Promise.allSettled([
     import("@/pages/ContentAutopilot"),
     import("@/pages/video/VideoHome"),
@@ -106,9 +138,9 @@ export function FrontendRecoveryGuard() {
   const spinnerSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Retire any worker/cache left by versions prior to the CRM disabling PWA.
     void clearObsoleteFrontendState();
     warmCriticalRoutes();
+    void recoverIfDeploymentChanged();
 
     const markStalledIfNotRecovered = (reason: string) => {
       void recoverFrontendOnce(reason).then((recovered) => {
@@ -147,10 +179,20 @@ export function FrontendRecoveryGuard() {
       markStalledIfNotRecovered("import dinâmico");
     };
 
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") void recoverIfDeploymentChanged();
+    };
+
     window.addEventListener("vite:preloadError", onPreloadError);
     window.addEventListener("error", onWindowError);
     window.addEventListener("error", onResourceError, true);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
+    window.addEventListener("focus", onVisibilityOrFocus);
+    document.addEventListener("visibilitychange", onVisibilityOrFocus);
+
+    const versionInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void recoverIfDeploymentChanged();
+    }, VERSION_CHECK_MS);
 
     const interval = window.setInterval(() => {
       if (!isFullScreenRouteSpinnerVisible()) {
@@ -173,6 +215,9 @@ export function FrontendRecoveryGuard() {
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("error", onResourceError, true);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      window.removeEventListener("focus", onVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", onVisibilityOrFocus);
+      window.clearInterval(versionInterval);
       window.clearInterval(interval);
     };
   }, []);
