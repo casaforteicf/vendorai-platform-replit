@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
 import AppBuilderAiArchitectDialog from "@/components/app-builder/AppBuilderAiArchitectDialog";
 import TemplateRuntimeEditorDialog from "@/components/app-builder/TemplateRuntimeEditorDialog";
@@ -46,9 +47,10 @@ type AppInstance = {
   settings: Record<string, unknown>;
 };
 
-type AppTemplate = { id: string; name: string; slug: string; status: string };
+type AppTemplate = { id: string; name: string; slug: string; status: string; verticalId?: string };
 type AppTemplateVersion = { id: string; templateId: string; version: number; status: string };
 type TenantTarget = { id: string; name: string; status?: string | null };
+type Vertical = { id: string; key: string; name: string };
 type PortfolioApp = {
   id: string;
   tenantId: string | null;
@@ -67,6 +69,7 @@ type PortfolioApp = {
 
 type NewAppForm = {
   targetType: "tenant" | "prospect" | "internal";
+  startMode: "ai" | "blank" | "template";
   tenantId: string;
   ownerName: string;
   ownerEmail: string;
@@ -75,10 +78,12 @@ type NewAppForm = {
   templateVersionId: string;
   name: string;
   slug: string;
+  objective: string;
 };
 
 const EMPTY_FORM: NewAppForm = {
   targetType: "tenant",
+  startMode: "ai",
   tenantId: "",
   ownerName: "",
   ownerEmail: "",
@@ -87,6 +92,23 @@ const EMPTY_FORM: NewAppForm = {
   templateVersionId: "",
   name: "",
   slug: "",
+  objective: "",
+};
+
+const STARTER_DEFINITION = {
+  runtime: {
+    version: 1,
+    defaultPageId: "home",
+    pages: [
+      {
+        id: "home",
+        title: "Início",
+        blocks: [
+          { id: "hero-home", type: "hero", props: { title: "Novo app", subtitle: "Estrutura inicial pronta para personalização." } },
+        ],
+      },
+    ],
+  },
 };
 
 function statusPt(status: string) {
@@ -120,6 +142,20 @@ export default function AdminAppBuilder() {
   const [linkTenantId, setLinkTenantId] = useState("");
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
+
+  const api = useCallback(async (url: string, init?: RequestInit) => {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error ?? `Erro ${response.status}`);
+    return payload;
+  }, [headers]);
 
   const loadControls = useCallback(async () => {
     if (!token) return;
@@ -165,14 +201,63 @@ export default function AdminAppBuilder() {
     if (!templateId || !token) return;
     setVersionsLoading(true);
     try {
-      const response = await fetch(`/api/admin/app-builder/templates/${templateId}/versions`, { headers });
-      const rows = response.ok ? await response.json() as AppTemplateVersion[] : [];
+      const rows = await api(`/api/admin/app-builder/templates/${templateId}/versions`) as AppTemplateVersion[];
       const published = rows.filter((row) => row.status === "published");
       setPublishedVersions(published);
       if (published[0]) setNewApp((current) => ({ ...current, templateId, templateVersionId: published[0].id }));
     } finally {
       setVersionsLoading(false);
     }
+  }
+
+  async function ensureStarterTemplate() {
+    let verticals = await api("/api/admin/app-builder/verticals") as Vertical[];
+    let vertical = verticals.find((item) => item.key === "app-builder-base") ?? null;
+    if (!vertical) {
+      try {
+        vertical = await api("/api/admin/app-builder/verticals", {
+          method: "POST",
+          body: JSON.stringify({ key: "app-builder-base", name: "Base App Builder", status: "active", metadata: { system: true } }),
+        }) as Vertical;
+      } catch {
+        verticals = await api("/api/admin/app-builder/verticals") as Vertical[];
+        vertical = verticals.find((item) => item.key === "app-builder-base") ?? null;
+      }
+    }
+    if (!vertical) throw new Error("Não foi possível preparar a base do App Builder");
+
+    let baseTemplates = await api(`/api/admin/app-builder/templates?verticalId=${encodeURIComponent(vertical.id)}`) as AppTemplate[];
+    let template = baseTemplates.find((item) => item.slug === "base-vazia") ?? null;
+    if (!template) {
+      try {
+        template = await api("/api/admin/app-builder/templates", {
+          method: "POST",
+          body: JSON.stringify({
+            verticalId: vertical.id,
+            name: "Base vazia",
+            slug: "base-vazia",
+            description: "Template técnico inicial para apps criados do zero ou com IA.",
+            status: "active",
+            settings: { system: true, starter: true },
+          }),
+        }) as AppTemplate;
+      } catch {
+        baseTemplates = await api(`/api/admin/app-builder/templates?verticalId=${encodeURIComponent(vertical.id)}`) as AppTemplate[];
+        template = baseTemplates.find((item) => item.slug === "base-vazia") ?? null;
+      }
+    }
+    if (!template) throw new Error("Não foi possível preparar o template inicial");
+
+    let versions = await api(`/api/admin/app-builder/templates/${template.id}/versions`) as AppTemplateVersion[];
+    let version = versions.find((item) => item.status === "published") ?? null;
+    if (!version) {
+      const draft = await api(`/api/admin/app-builder/templates/${template.id}/versions`, {
+        method: "POST",
+        body: JSON.stringify({ definition: STARTER_DEFINITION, changeLog: "Versão base automática do App Builder" }),
+      }) as AppTemplateVersion;
+      version = await api(`/api/admin/app-builder/templates/${template.id}/versions/${draft.id}/publish`, { method: "POST" }) as AppTemplateVersion;
+    }
+    return { templateId: template.id, templateVersionId: version.id };
   }
 
   function startCreate() {
@@ -182,11 +267,16 @@ export default function AdminAppBuilder() {
   }
 
   async function createApp() {
-    if (!token || !newApp.templateId || !newApp.templateVersionId || !newApp.name.trim() || !newApp.slug.trim()) return;
+    if (!token || !newApp.name.trim() || !newApp.slug.trim()) return;
     if (newApp.targetType === "tenant" && !newApp.tenantId) return;
     if (newApp.targetType !== "tenant" && !newApp.ownerName.trim()) return;
+    if (newApp.startMode === "template" && (!newApp.templateId || !newApp.templateVersionId)) return;
+
     setSaving(true);
     try {
+      const source = newApp.startMode === "template"
+        ? { templateId: newApp.templateId, templateVersionId: newApp.templateVersionId }
+        : await ensureStarterTemplate();
       const standalone = newApp.targetType !== "tenant";
       const endpoint = standalone ? "/api/admin/app-builder/standalone-apps" : "/api/admin/app-builder/apps";
       const body = standalone
@@ -195,35 +285,32 @@ export default function AdminAppBuilder() {
             ownerName: newApp.ownerName.trim(),
             ownerEmail: newApp.ownerEmail.trim() || null,
             ownerCompany: newApp.ownerCompany.trim() || null,
-            templateId: newApp.templateId,
-            templateVersionId: newApp.templateVersionId,
+            ...source,
             name: newApp.name.trim(),
             slug: newApp.slug.trim(),
           }
         : {
             tenantId: newApp.tenantId,
-            templateId: newApp.templateId,
-            templateVersionId: newApp.templateVersionId,
+            ...source,
             name: newApp.name.trim(),
             slug: newApp.slug.trim(),
             status: "draft",
             theme: {}, navigation: [], settings: {}, whiteLabel: {},
           };
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error ?? "Não foi possível criar o app");
+      const payload = await api(endpoint, { method: "POST", body: JSON.stringify(body) }) as { id?: string };
       setCreateOpen(false);
       await loadControls();
-      setSelectedAppId(payload?.id ?? "");
-      setSelectedTemplateId(newApp.templateId);
+      setSelectedAppId(payload.id ?? "");
+      setSelectedTemplateId(source.templateId);
       toast({
-        title: standalone ? "App criado antes do tenant" : "App criado para o tenant",
-        description: standalone ? "Você pode construir e versionar agora. A publicação fica bloqueada até vincular um tenant real." : "O app foi criado como rascunho e já pode ser configurado.",
+        title: standalone ? "App criado antes do tenant" : "App criado com sucesso",
+        description: newApp.startMode === "ai"
+          ? "A base foi criada. Agora o Arquiteto IA pode desenhar o produto, o App Admin e a conexão com o SaaS."
+          : newApp.startMode === "blank"
+            ? "A estrutura inicial foi criada e já pode ser editada."
+            : "O app foi criado a partir do template selecionado.",
       });
+      if (newApp.startMode === "ai") window.setTimeout(() => setAiArchitectOpen(true), 100);
     } catch (error) {
       toast({ title: "Erro ao criar app", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -235,17 +322,11 @@ export default function AdminAppBuilder() {
     if (!token || !linkingApp || !linkTenantId) return;
     setSaving(true);
     try {
-      const response = await fetch(`/api/admin/app-builder/apps/${linkingApp.id}/link-tenant`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId: linkTenantId }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error ?? "Não foi possível vincular o tenant");
+      await api(`/api/admin/app-builder/apps/${linkingApp.id}/link-tenant`, { method: "POST", body: JSON.stringify({ tenantId: linkTenantId }) });
       setLinkingApp(null);
       setLinkTenantId("");
       await loadControls();
-      toast({ title: "App convertido para tenant", description: "Todo o histórico e snapshots foram preservados. Agora ele pode ser publicado." });
+      toast({ title: "App convertido para tenant", description: "Todo o histórico foi preservado. Agora ele pode ser publicado." });
     } catch (error) {
       toast({ title: "Erro ao vincular tenant", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -278,6 +359,12 @@ export default function AdminAppBuilder() {
     { title: "6. Publicação e histórico", description: "Versões, publicação, rollback e engenharia avançada.", icon: Rocket, action: goAdvanced, disabled: !selectedTemplate },
   ];
 
+  const canCreate = Boolean(
+    !saving && newApp.name.trim() && newApp.slug.trim() &&
+    (newApp.targetType === "tenant" ? newApp.tenantId : newApp.ownerName.trim()) &&
+    (newApp.startMode !== "template" || newApp.templateVersionId),
+  );
+
   return (
     <>
       <div className="mx-auto max-w-7xl space-y-4 pb-4">
@@ -301,7 +388,7 @@ export default function AdminAppBuilder() {
         )}
 
         <Card id="app-builder-workspace" className="scroll-mt-24"><CardContent className="p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex items-center gap-2"><PencilRuler className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Construção do app</h2></div><p className="mt-1 text-sm text-muted-foreground">Um único fluxo para produto, administração, experiência, dados, segurança e publicação.</p></div><div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]"><Select value={selectedAppId} onValueChange={(id) => { setSelectedAppId(id); const app = portfolio.find((item) => item.id === id); if (app) setSelectedTemplateId(app.templateId); }} disabled={loadingControls || apps.length === 0}><SelectTrigger><SelectValue placeholder="Selecione o app" /></SelectTrigger><SelectContent>{apps.map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {app.tenantId ? "Tenant" : "Pré-tenant"}</SelectItem>)}</SelectContent></Select><Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}><SelectTrigger><SelectValue placeholder="Selecione o template" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {statusPt(template.status)}</SelectItem>)}</SelectContent></Select></div></div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex items-center gap-2"><PencilRuler className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Construção do app</h2></div><p className="mt-1 text-sm text-muted-foreground">Um único fluxo para produto, administração, experiência, dados, segurança e publicação.</p></div><div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:min-w-[520px]"><Select value={selectedAppId} onValueChange={(id) => { setSelectedAppId(id); const app = portfolio.find((item) => item.id === id); if (app) setSelectedTemplateId(app.templateId); }} disabled={loadingControls || apps.length === 0}><SelectTrigger><SelectValue placeholder="Selecione o app" /></SelectTrigger><SelectContent>{apps.map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {app.tenantId ? "Tenant" : "Pré-tenant"}</SelectItem>)}</SelectContent></Select><Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}><SelectTrigger><SelectValue placeholder="Selecione o template" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {statusPt(template.status)}</SelectItem>)}</SelectContent></Select></div></div>
 
           <div className="mt-4 rounded-xl border bg-muted/20 p-3"><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">App: {selectedPortfolioApp?.name ?? selectedApp?.name ?? "não selecionado"}</Badge><Badge variant="outline">Template: {selectedTemplate?.name ?? "não selecionado"}</Badge><Badge variant={selectedApp?.tenantId ? "default" : "secondary"}>{selectedApp?.tenantId ? "Tenant vinculado" : "Pré-tenant"}</Badge>{selectedPortfolioApp?.status && <Badge variant="outline">{statusPt(selectedPortfolioApp.status)}</Badge>}</div>{!selectedApp?.tenantId && selectedApp && <p className="mt-2 text-xs text-amber-700">Você pode construir e versionar normalmente. Usuários externos e publicação operacional ficam bloqueados até vincular um tenant.</p>}</div>
 
@@ -321,7 +408,27 @@ export default function AdminAppBuilder() {
 
       {advancedOpen && <div id="app-builder-advanced" className="scroll-mt-24"><AdminAppBuilderLegacy /></div>}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto"><DialogHeader><DialogTitle>Novo app</DialogTitle><DialogDescription>Escolha se o app já pertence a um tenant ou se será construído antes da contratação.</DialogDescription></DialogHeader><div className="space-y-4"><div className="grid grid-cols-3 gap-2"><Button type="button" variant={newApp.targetType === "tenant" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "tenant" }))}>Tenant</Button><Button type="button" variant={newApp.targetType === "prospect" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "prospect" }))}>Prospect</Button><Button type="button" variant={newApp.targetType === "internal" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "internal" }))}>Interno</Button></div>{newApp.targetType === "tenant" ? <div className="space-y-2"><Label>Tenant</Label><Select value={newApp.tenantId} onValueChange={(tenantId) => setNewApp((current) => ({ ...current, tenantId }))}><SelectTrigger><SelectValue placeholder="Selecione o tenant" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div> : <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>{newApp.targetType === "prospect" ? "Responsável / prospect" : "Responsável interno"}</Label><Input value={newApp.ownerName} onChange={(e) => setNewApp((current) => ({ ...current, ownerName: e.target.value }))} placeholder="Nome" /></div><div className="space-y-2"><Label>Empresa / projeto</Label><Input value={newApp.ownerCompany} onChange={(e) => setNewApp((current) => ({ ...current, ownerCompany: e.target.value }))} placeholder="Empresa ou nome do projeto" /></div><div className="space-y-2 sm:col-span-2"><Label>E-mail de referência</Label><Input type="email" value={newApp.ownerEmail} onChange={(e) => setNewApp((current) => ({ ...current, ownerEmail: e.target.value }))} placeholder="contato@empresa.com" /></div></div>}<div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Template</Label><Select value={newApp.templateId} onValueChange={(value) => void chooseTemplate(value)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Versão publicada</Label><Select value={newApp.templateVersionId} onValueChange={(templateVersionId) => setNewApp((current) => ({ ...current, templateVersionId }))} disabled={!newApp.templateId || versionsLoading || publishedVersions.length === 0}><SelectTrigger><SelectValue placeholder={versionsLoading ? "Carregando..." : "Selecione"} /></SelectTrigger><SelectContent>{publishedVersions.map((version) => <SelectItem key={version.id} value={version.id}>Versão {version.version}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Nome do app</Label><Input value={newApp.name} onChange={(e) => setNewApp((current) => ({ ...current, name: e.target.value }))} placeholder="Portal do Cliente" /></div><div className="space-y-2"><Label>Slug</Label><Input value={newApp.slug} onChange={(e) => setNewApp((current) => ({ ...current, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-") }))} placeholder="portal-cliente" /></div></div>{newApp.targetType !== "tenant" && <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">O app poderá ser construído, editado e versionado agora. A publicação e os usuários externos serão liberados quando você vincular um tenant real.</div>}</div><DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button><Button onClick={() => void createApp()} disabled={saving || !newApp.templateVersionId || !newApp.name.trim() || !newApp.slug.trim() || (newApp.targetType === "tenant" ? !newApp.tenantId : !newApp.ownerName.trim())}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar app</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[92vh] overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+          <DialogHeader className="min-w-0"><DialogTitle>Novo app</DialogTitle><DialogDescription>Defina para quem é o app e escolha como deseja começar.</DialogDescription></DialogHeader>
+          <div className="min-w-0 space-y-4">
+            <div className="space-y-2"><Label>Para quem?</Label><div className="grid grid-cols-3 gap-2"><Button type="button" size="sm" variant={newApp.targetType === "tenant" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "tenant" }))}>Tenant</Button><Button type="button" size="sm" variant={newApp.targetType === "prospect" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "prospect" }))}>Prospect</Button><Button type="button" size="sm" variant={newApp.targetType === "internal" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, targetType: "internal" }))}>Interno</Button></div></div>
+
+            {newApp.targetType === "tenant" ? <div className="space-y-2"><Label>Tenant</Label><Select value={newApp.tenantId} onValueChange={(tenantId) => setNewApp((current) => ({ ...current, tenantId }))}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione o tenant" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div> : <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="min-w-0 space-y-2"><Label>{newApp.targetType === "prospect" ? "Responsável / prospect" : "Responsável interno"}</Label><Input className="w-full" value={newApp.ownerName} onChange={(e) => setNewApp((current) => ({ ...current, ownerName: e.target.value }))} placeholder="Nome" /></div><div className="min-w-0 space-y-2"><Label>Empresa / projeto</Label><Input className="w-full" value={newApp.ownerCompany} onChange={(e) => setNewApp((current) => ({ ...current, ownerCompany: e.target.value }))} placeholder="Empresa ou projeto" /></div><div className="min-w-0 space-y-2 sm:col-span-2"><Label>E-mail de referência</Label><Input className="w-full" type="email" value={newApp.ownerEmail} onChange={(e) => setNewApp((current) => ({ ...current, ownerEmail: e.target.value }))} placeholder="contato@empresa.com" /></div></div>}
+
+            <div className="space-y-2"><Label>Como quer começar?</Label><div className="grid gap-2 sm:grid-cols-3"><Button type="button" variant={newApp.startMode === "ai" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "ai" }))}><Sparkles className="mr-2 h-4 w-4" />Com IA</Button><Button type="button" variant={newApp.startMode === "blank" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "blank" }))}>Do zero</Button><Button type="button" variant={newApp.startMode === "template" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "template" }))}>Template</Button></div><p className="text-xs text-muted-foreground">IA e Do zero não dependem de um template pré-existente: o sistema prepara automaticamente uma base versionável.</p></div>
+
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="min-w-0 space-y-2"><Label>Nome do app</Label><Input className="w-full" value={newApp.name} onChange={(e) => setNewApp((current) => ({ ...current, name: e.target.value }))} placeholder="Portal do Cliente" /></div><div className="min-w-0 space-y-2"><Label>Slug</Label><Input className="w-full" value={newApp.slug} onChange={(e) => setNewApp((current) => ({ ...current, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-") }))} placeholder="portal-cliente" /></div></div>
+
+            {newApp.startMode === "ai" && <div className="space-y-2"><Label>Objetivo inicial <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea className="w-full resize-none" rows={3} value={newApp.objective} onChange={(e) => setNewApp((current) => ({ ...current, objective: e.target.value }))} placeholder="Ex.: app para clientes consultarem pedidos, receberem ofertas e falarem com um agente especializado." /><p className="text-xs text-muted-foreground">Após criar, o Arquiteto IA será aberto para completar a arquitetura.</p></div>}
+
+            {newApp.startMode === "template" && <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="min-w-0 space-y-2"><Label>Template</Label><Select value={newApp.templateId} onValueChange={(value) => void chooseTemplate(value)}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}</SelectContent></Select>{templates.length === 0 && <p className="text-xs text-amber-700">Nenhum template cadastrado. Use “Com IA” ou “Do zero”.</p>}</div><div className="min-w-0 space-y-2"><Label>Versão publicada</Label><Select value={newApp.templateVersionId} onValueChange={(templateVersionId) => setNewApp((current) => ({ ...current, templateVersionId }))} disabled={!newApp.templateId || versionsLoading || publishedVersions.length === 0}><SelectTrigger className="w-full"><SelectValue placeholder={versionsLoading ? "Carregando..." : "Selecione"} /></SelectTrigger><SelectContent>{publishedVersions.map((version) => <SelectItem key={version.id} value={version.id}>Versão {version.version}</SelectItem>)}</SelectContent></Select>{newApp.templateId && !versionsLoading && publishedVersions.length === 0 && <p className="text-xs text-amber-700">Este template ainda não possui versão publicada.</p>}</div></div>}
+
+            {newApp.targetType !== "tenant" && <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">O app poderá ser construído, editado e versionado agora. Publicação operacional e usuários externos serão liberados quando você vincular um tenant real.</div>}
+          </div>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row"><Button className="w-full sm:w-auto" variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button><Button className="w-full sm:w-auto" onClick={() => void createApp()} disabled={!canCreate}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{newApp.startMode === "ai" ? "Criar e abrir IA" : "Criar app"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(linkingApp)} onOpenChange={(open) => { if (!open) setLinkingApp(null); }}><DialogContent><DialogHeader><DialogTitle>Vincular app a um tenant</DialogTitle><DialogDescription>Converte o projeto pré-tenant em app operacional sem perder o histórico.</DialogDescription></DialogHeader><div className="space-y-3"><div className="rounded-lg border p-3"><p className="text-sm font-medium">{linkingApp?.name}</p><p className="text-xs text-muted-foreground">Origem: {linkingApp?.ownerCompany || linkingApp?.ownerName || "pré-tenant"}</p></div><div className="space-y-2"><Label>Tenant de destino</Label><Select value={linkTenantId} onValueChange={setLinkTenantId}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setLinkingApp(null)}>Cancelar</Button><Button onClick={() => void linkTenant()} disabled={!linkTenantId || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Vincular e preservar histórico</Button></DialogFooter></DialogContent></Dialog>
 
