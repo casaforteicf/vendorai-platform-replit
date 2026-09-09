@@ -1,4 +1,5 @@
 import { speakJarvis, VOICE_SETTING_KEY } from "./jarvisVoiceResponseBridge";
+import { jarvisPermissionEnabled } from "./jarvisPermissions";
 
 type ProactiveItem = {
   id: string;
@@ -78,6 +79,7 @@ function muteForOneHour() {
 }
 
 function canSpeakProactively() {
+  if (!jarvisPermissionEnabled("proactiveAlerts") || !jarvisPermissionEnabled("proactiveVoice")) return false;
   if (!armedByUserGesture) return false;
   if (document.visibilityState !== "visible") return false;
   if (localStorage.getItem(VOICE_SETTING_KEY) === "off") return false;
@@ -116,6 +118,7 @@ function dismissAlert() {
 }
 
 function showAlert(item: ProactiveItem) {
+  if (!jarvisPermissionEnabled("proactiveAlerts")) return;
   ensureStyle();
   dismissAlert();
 
@@ -159,6 +162,10 @@ function showAlert(item: ProactiveItem) {
 }
 
 async function pollProactivity() {
+  if (!jarvisPermissionEnabled("proactiveAlerts")) {
+    dismissAlert();
+    return;
+  }
   if (polling || document.visibilityState !== "visible") return;
   if (Date.now() < mutedUntil()) return;
   const token = localStorage.getItem("vendorai_token");
