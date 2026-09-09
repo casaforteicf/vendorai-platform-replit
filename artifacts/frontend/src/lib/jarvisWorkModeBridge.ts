@@ -8,6 +8,39 @@ type AgentTaskLike = {
   createdAt?: string;
 };
 
+type ExecutionBriefStep = {
+  label?: string;
+  status?: string;
+  kind?: string;
+  blockingReason?: string | null;
+};
+
+type ExecutionBriefItem = {
+  caseTitle?: string;
+  plan?: {
+    status?: string;
+    steps?: ExecutionBriefStep[];
+  };
+};
+
+type ExecutionBrief = {
+  summary?: {
+    plans?: number;
+    active?: number;
+    completed?: number;
+    failed?: number;
+    pendingApproval?: number;
+    approvedAwaitingManualExecution?: number;
+    executing?: number;
+    readyToDelegate?: number;
+    readyInternal?: number;
+    measuring?: number;
+    blocked?: number;
+    failedSteps?: number;
+  };
+  active?: ExecutionBriefItem[];
+};
+
 type WorkState = {
   task: string;
   status: WorkStatus;
@@ -18,6 +51,8 @@ type WorkState = {
 
 const STORAGE_KEY = "jarvis_work_mode_state_v2";
 const PANEL_ATTR = "data-jarvis-work-mode";
+const EXECUTION_POLL_MS = 10_000;
+const REAL_STATE_HOLD_MS = 15_000;
 const STATUS_LABELS: Record<WorkStatus, string> = {
   idle: "Pronto",
   analisando: "Analisando",
@@ -39,6 +74,8 @@ let state: WorkState = {
 let lastUserText = "";
 let lastAssistantText = "";
 let completionTimer: number | null = null;
+let executionPollBusy = false;
+let realStateUntil = 0;
 
 function loadState() {
   try {
@@ -69,6 +106,10 @@ function setState(patch: Partial<WorkState>) {
   state = { ...state, ...patch, updatedAt: Date.now() };
   persistState();
   render();
+}
+
+function markRealState() {
+  realStateUntil = Date.now() + REAL_STATE_HOLD_MS;
 }
 
 function addActivity(message: string) {
@@ -165,6 +206,7 @@ function updateFromAgentTasks(tasks: AgentTaskLike[]) {
     return;
   }
 
+  markRealState();
   const action = cleanLabel(active.actionType ?? "ação do JARVIS");
   const status = mapTaskStatus(active);
   const activity = [...state.activity];
@@ -179,6 +221,95 @@ function updateFromAgentTasks(tasks: AgentTaskLike[]) {
     pending,
     activity: Array.from(new Set(activity)).slice(0, 4),
   });
+}
+
+function topExecutionTask(brief: ExecutionBrief) {
+  const top = brief.active?.[0];
+  if (!top) return null;
+  const steps = top.plan?.steps ?? [];
+  const current = steps.find((step) => step.status === "RUNNING")
+    ?? steps.find((step) => step.status === "READY")
+    ?? steps.find((step) => step.status === "WAITING");
+  const parts = [top.caseTitle, current?.label].filter((value): value is string => Boolean(value));
+  return parts.length ? compactTask(parts.join(" — ")) : null;
+}
+
+function updateFromExecutionBrief(brief: ExecutionBrief) {
+  const summary = brief.summary ?? {};
+  const active = Number(summary.active ?? 0);
+  const completed = Number(summary.completed ?? 0);
+  const failed = Number(summary.failed ?? 0);
+  const pendingApproval = Number(summary.pendingApproval ?? 0);
+  const approvedManual = Number(summary.approvedAwaitingManualExecution ?? 0);
+  const executing = Number(summary.executing ?? 0);
+  const readyToDelegate = Number(summary.readyToDelegate ?? 0);
+  const readyInternal = Number(summary.readyInternal ?? 0);
+  const measuring = Number(summary.measuring ?? 0);
+  const blocked = Number(summary.blocked ?? 0);
+  const failedSteps = Number(summary.failedSteps ?? 0);
+
+  const hasRealSignal = active > 0
+    || pendingApproval > 0
+    || approvedManual > 0
+    || executing > 0
+    || readyToDelegate > 0
+    || readyInternal > 0
+    || measuring > 0
+    || blocked > 0
+    || failedSteps > 0
+    || failed > 0;
+
+  if (!hasRealSignal) {
+    if (completed > 0 && state.status !== "idle" && state.status !== "analisando") {
+      markRealState();
+      setState({ status: "concluido", activity: [`${completed} plano(s) concluído(s)`], pending: [] });
+    }
+    return;
+  }
+
+  markRealState();
+  const pending: string[] = [];
+  if (pendingApproval) pending.push(`${pendingApproval} etapa(s) aguardando aprovação humana`);
+  if (approvedManual) pending.push(`${approvedManual} etapa(s) aprovadas aguardando execução explícita`);
+  if (blocked) pending.push(`${blocked} etapa(s) bloqueadas`);
+  if (readyToDelegate) pending.push(`${readyToDelegate} etapa(s) prontas para delegação`);
+
+  const activity: string[] = [];
+  if (executing) activity.push(`${executing} etapa(s) em execução`);
+  if (measuring) activity.push(`${measuring} etapa(s) medindo resultado`);
+  if (readyInternal) activity.push(`${readyInternal} etapa(s) internas prontas`);
+  if (failedSteps) activity.push(`${failedSteps} etapa(s) com falha`);
+
+  let status: WorkStatus = "executando";
+  if (failedSteps > 0 || failed > 0) status = "erro";
+  else if (pendingApproval > 0 || approvedManual > 0) status = "aguardando_aprovacao";
+  else if (measuring > 0 && executing === 0) status = "validando";
+  else if (executing > 0 || active > 0 || readyToDelegate > 0 || readyInternal > 0) status = "executando";
+
+  setState({
+    task: topExecutionTask(brief) ?? state.task,
+    status,
+    activity: activity.length ? activity.slice(0, 4) : state.activity,
+    pending: pending.slice(0, 3),
+  });
+}
+
+async function pollExecutionBrief() {
+  if (executionPollBusy || document.visibilityState !== "visible" || !getPanel()) return;
+  const token = localStorage.getItem("vendorai_token");
+  if (!token) return;
+  executionPollBusy = true;
+  try {
+    const response = await fetch("/api/jarvis/execution-brief", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+    updateFromExecutionBrief(await response.json() as ExecutionBrief);
+  } catch {
+    // Estado real é complementar; a conversa continua funcionando mesmo se o brief falhar.
+  } finally {
+    executionPollBusy = false;
+  }
 }
 
 function ensureStyle() {
@@ -263,6 +394,7 @@ function scheduleCompletion(assistantText: string) {
   if (completionTimer) window.clearTimeout(completionTimer);
   completionTimer = window.setTimeout(() => {
     completionTimer = null;
+    if (Date.now() < realStateUntil) return;
     const signals = extractSignals(assistantText);
     setState({
       status: state.status === "aguardando_aprovacao" ? "aguardando_aprovacao" : "concluido",
@@ -283,22 +415,27 @@ function inspectChat() {
   if (userText && userText !== lastUserText) {
     lastUserText = userText;
     lastAssistantText = "";
+    realStateUntil = 0;
     if (completionTimer) {
       window.clearTimeout(completionTimer);
       completionTimer = null;
     }
     setState({ task: compactTask(userText), status: "analisando", activity: ["Comando recebido"], pending: [] });
+    window.setTimeout(() => void pollExecutionBrief(), 250);
     return;
   }
   if (!userText) return;
   if (!assistantText && lastUserText === userText) {
-    if (state.status === "analisando") setState({ status: "executando", activity: ["JARVIS iniciou a execução", ...state.activity].slice(0, 4) });
+    if (state.status === "analisando" && Date.now() >= realStateUntil) {
+      setState({ status: "executando", activity: ["JARVIS iniciou a execução", ...state.activity].slice(0, 4) });
+    }
     return;
   }
   if (assistantText && assistantText !== lastAssistantText) {
     lastAssistantText = assistantText;
-    if (state.status !== "aguardando_aprovacao") setState({ status: "validando" });
+    if (Date.now() >= realStateUntil && state.status !== "aguardando_aprovacao") setState({ status: "validando" });
     scheduleCompletion(assistantText);
+    window.setTimeout(() => void pollExecutionBrief(), 150);
   }
 }
 
@@ -329,7 +466,14 @@ if (typeof window !== "undefined") {
   const observer = new MutationObserver(inspectChat);
   observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true });
   window.setInterval(inspectChat, 500);
-  window.addEventListener("vendorai:open-support", () => window.setTimeout(inspectChat, 80));
+  window.setInterval(() => void pollExecutionBrief(), EXECUTION_POLL_MS);
+  window.addEventListener("vendorai:open-support", () => {
+    window.setTimeout(inspectChat, 80);
+    window.setTimeout(() => void pollExecutionBrief(), 180);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void pollExecutionBrief();
+  });
   window.addEventListener("beforeunload", persistState);
   window.setTimeout(inspectChat, 150);
 }
