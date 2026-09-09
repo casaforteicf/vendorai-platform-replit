@@ -79,6 +79,15 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
     ...parsed.data,
   };
 
+  if (insertData.isDemo === true && !insertData.demoExpiresAt) {
+    res.status(422).json({ error: "Tenant Demo precisa ter uma data de expiração" });
+    return;
+  }
+
+  if (insertData.isDemo === true && !insertData.demoStartedAt) {
+    insertData.demoStartedAt = new Date();
+  }
+
   try {
     if (insertData.planId) {
       const resolvedPlanId = await resolveActivePlanId(insertData.planId);
@@ -340,27 +349,95 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
     return;
   }
 
-  const ADMIN_ONLY_FIELDS = ["analysisStalenessHours", "analysisMessageThreshold", "maxAnalysesPerHour"] as const;
-  const hasAdminOnlyField = ADMIN_ONLY_FIELDS.some((f) => f in parsed.data && parsed.data[f] !== undefined);
-  if (hasAdminOnlyField && req.user?.platformRole === "member") {
-    res.status(403).json({ error: "Only admins can update analysis thresholds" });
+  // Dados de plataforma, cobrança, negociação, contrato e ciclo Demo são
+  // administrados exclusivamente pelo Super Admin. O tenant_admin continua
+  // podendo editar os dados operacionais do próprio tenant, mas nunca suas
+  // próprias condições comerciais ou sua classificação Demo/Cliente.
+  const PLATFORM_ADMIN_ONLY_FIELDS = [
+    "analysisStalenessHours",
+    "analysisMessageThreshold",
+    "maxAnalysesPerHour",
+    "planId",
+    "billingCycle",
+    "planStartedAt",
+    "isDemo",
+    "demoStartedAt",
+    "demoExpiresAt",
+    "demoConvertedAt",
+    "mensalidadeValor",
+    "mensalidadeTabelaValor",
+    "taxaImplantacaoValor",
+    "descontoPercentual",
+    "formaPagamento",
+    "statusPagamento",
+    "diaVencimento",
+    "ultimoPagamentoEm",
+    "proximoPagamentoEm",
+    "contratoInicioEm",
+    "contratoFimEm",
+    "renovacaoAutomatica",
+    "origemCliente",
+    "responsavelComercial",
+    "observacoesComerciais",
+    "motivoDesconto",
+    "cancelamentoSolicitadoEm",
+    "canceladoEm",
+    "motivoCancelamento",
+    "comissaoPracaAiPercentual",
+    "vendeNoPracaAi",
+  ] as const;
+  const hasPlatformAdminOnlyField = PLATFORM_ADMIN_ONLY_FIELDS.some(
+    (field) => field in parsed.data && parsed.data[field] !== undefined,
+  );
+  if (hasPlatformAdminOnlyField && req.user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Só o Super Admin pode alterar dados comerciais, financeiros, contratuais ou de Demo do tenant" });
     return;
   }
 
-  // Liberação do tenant no Praça.ai e comissão são decisões de plataforma.
-  // O lojista gerencia os itens publicados somente depois que o SuperAdmin
-  // libera o tenant; ele não pode habilitar o próprio acesso via API.
-  const PRACA_AI_PLATFORM_FIELDS = ["comissaoPracaAiPercentual", "vendeNoPracaAi"] as const;
-  const hasPracaAiPlatformField = PRACA_AI_PLATFORM_FIELDS.some(
-    (field) => field in parsed.data && parsed.data[field] !== undefined,
-  );
-  if (hasPracaAiPlatformField && req.user?.platformRole !== "super_admin") {
-    res.status(403).json({ error: "Só o admin da plataforma pode alterar a liberação ou comissão do Praça.ai" });
-    return;
+  const tenantId = String(req.params.id);
+  let demoLifecycleOverrides: Partial<typeof tenantsTable.$inferInsert> = {};
+
+  if (parsed.data.isDemo !== undefined) {
+    const [currentTenant] = await db
+      .select({
+        id: tenantsTable.id,
+        isDemo: tenantsTable.isDemo,
+        demoStartedAt: tenantsTable.demoStartedAt,
+        demoExpiresAt: tenantsTable.demoExpiresAt,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1);
+
+    if (!currentTenant) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    if (parsed.data.isDemo === true) {
+      const effectiveExpiry = parsed.data.demoExpiresAt ?? currentTenant.demoExpiresAt;
+      if (!effectiveExpiry) {
+        res.status(422).json({ error: "Tenant Demo precisa ter uma data de expiração" });
+        return;
+      }
+      demoLifecycleOverrides = {
+        demoStartedAt: currentTenant.isDemo
+          ? (parsed.data.demoStartedAt ?? currentTenant.demoStartedAt ?? new Date())
+          : (parsed.data.demoStartedAt ?? new Date()),
+        demoExpiresAt: effectiveExpiry,
+        demoConvertedAt: null,
+      };
+    } else if (currentTenant.isDemo) {
+      demoLifecycleOverrides = {
+        demoExpiresAt: null,
+        demoConvertedAt: parsed.data.demoConvertedAt ?? new Date(),
+      };
+    }
   }
 
   const updateData = {
     ...parsed.data,
+    ...demoLifecycleOverrides,
     updatedAt: new Date(),
   };
 
@@ -368,7 +445,7 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
     const [tenant] = await db
       .update(tenantsTable)
       .set(updateData)
-      .where(eq(tenantsTable.id, String(req.params.id)))
+      .where(eq(tenantsTable.id, tenantId))
       .returning();
 
     if (!tenant) {
@@ -573,7 +650,8 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
 
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
-  const demoExpiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+  const demoStartedAt = new Date();
+  const demoExpiresAt = new Date(demoStartedAt.getTime() + 5 * 24 * 60 * 60 * 1000);
 
   const [tenant] = await db
     .insert(tenantsTable)
@@ -582,6 +660,7 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
       slug,
       status: "active",
       isDemo: true,
+      demoStartedAt,
       demoExpiresAt,
       planId: null,
     })
