@@ -44,7 +44,6 @@ import "./lib/jarvisBargeInBridge";
 import "./lib/jarvisPageContextBridge";
 import "./lib/jarvisAutonomyContextBridge";
 import "./lib/jarvisProactiveVoiceBridge";
-import "./lib/jarvisWorkModeBridge";
 import "./lib/jarvisCapabilityRuntimeBridge";
 import "./lib/jarvisResponseHealthBridge";
 import "./lib/jarvisMobileExperienceBridge";
