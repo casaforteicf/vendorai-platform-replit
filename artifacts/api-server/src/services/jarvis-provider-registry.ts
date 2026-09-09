@@ -102,6 +102,13 @@ export function detectFiatCurrencies(text: string): string[] {
     if (new RegExp(`(^|\\b)${escaped}(\\b|$)`, "i").test(normalized)) found.push(code);
   }
   for (const code of text.match(/\b[A-Z]{3}\b/g) ?? []) found.push(code.toUpperCase());
+
+  // Pedidos genéricos como "e câmbio?" ou "como está Forex?" precisam
+  // consultar um par real em vez de cair para uma resposta genérica sem dados.
+  if (!found.length && /\b(cambio|forex|moedas?)\b/.test(normalized)) {
+    found.push("USD", "BRL");
+  }
+
   return unique(found);
 }
 
@@ -159,6 +166,7 @@ async function loadFiatContext(text: string): Promise<string | null> {
     `- Taxa de referência: 1 ${from} = ${rate} ${to}.`,
     `- Conversão solicitada/referência: ${amount} ${from} = ${converted} ${to}.`,
     sourceTime ? `- Atualização informada pelo provider: ${sourceTime}.` : null,
+    "- Se o pedido foi genérico sobre câmbio/Forex, use USD/BRL como referência inicial e deixe claro que outros pares podem ser consultados sob demanda.",
     "- Observação: é taxa de referência; pode diferir do bid/ask, spread, IOF e tarifa praticados por banco/corretora.",
   ].filter(Boolean).join("\n");
 }
