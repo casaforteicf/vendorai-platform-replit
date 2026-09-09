@@ -63,6 +63,8 @@ const QUICK_COMMANDS = [
   "Qual é a próxima melhor ação?",
 ];
 
+const MAX_SILENT_RETRIES = 2;
+
 function formatBrl(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -136,6 +138,7 @@ export default function JarvisScreen() {
   const sendingRef = useRef(false);
   const proactiveHandledRef = useRef(false);
   const handsFreeRef = useRef(true);
+  const silentRetryRef = useRef(0);
   const openedByWakeWord = params.wake === "1";
   const conversationId = useMemo(
     () => `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -188,12 +191,14 @@ export default function JarvisScreen() {
       onDone: () => {
         setVoiceState("idle");
         if (continueListening && handsFreeRef.current) {
+          silentRetryRef.current = 0;
           setTimeout(() => void startListening(), 300);
         }
       },
       onError: () => {
         setVoiceState("idle");
         if (continueListening && handsFreeRef.current) {
+          silentRetryRef.current = 0;
           setTimeout(() => void startListening(), 300);
         }
       },
@@ -306,7 +311,10 @@ export default function JarvisScreen() {
 
   useSpeechRecognitionEvent("result", (event) => {
     const text = event.results[0]?.transcript?.trim() ?? "";
-    if (text) setTranscript(text);
+    if (text) {
+      silentRetryRef.current = 0;
+      setTranscript(text);
+    }
     if (event.isFinal && text) {
       ExpoSpeechRecognitionModule.stop();
       void sendToJarvis(text);
@@ -316,11 +324,13 @@ export default function JarvisScreen() {
   useSpeechRecognitionEvent("error", (event) => {
     if (event.error === "no-speech" || event.error === "speech-timeout") {
       setVoiceState("idle");
-      if (handsFreeRef.current) {
-        setAnswer("Continuo aqui. Pode falar quando quiser.");
+      if (handsFreeRef.current && silentRetryRef.current < MAX_SILENT_RETRIES) {
+        silentRetryRef.current += 1;
+        setAnswer("Ainda estou ouvindo. Pode falar quando quiser.");
         setTimeout(() => void startListening(), 700);
       } else {
-        setAnswer("Não ouvi um comando. Toque no microfone para tentar novamente.");
+        silentRetryRef.current = 0;
+        setAnswer("Não ouvi nada. Pausei a escuta para poupar bateria. Toque no microfone quando quiser continuar.");
       }
       return;
     }
@@ -339,6 +349,7 @@ export default function JarvisScreen() {
       setAnswer("Permissão de microfone não concedida.");
       return;
     }
+    silentRetryRef.current = 0;
     setEnabled(true);
     setHandsFree(true);
     setAnswer("Voz habilitada. Pode falar normalmente comigo.");
@@ -349,9 +360,11 @@ export default function JarvisScreen() {
     setHandsFree((current) => {
       const next = !current;
       if (!next) {
+        silentRetryRef.current = 0;
         ExpoSpeechRecognitionModule.abort();
         setVoiceState("idle");
       } else if (enabled && voiceState === "idle") {
+        silentRetryRef.current = 0;
         setTimeout(() => void startListening(), 250);
       }
       return next;
@@ -359,6 +372,7 @@ export default function JarvisScreen() {
   }, [enabled, startListening, voiceState]);
 
   const handleOrbPress = useCallback(() => {
+    silentRetryRef.current = 0;
     if (voiceState === "speaking") {
       Speech.stop();
       setVoiceState("idle");
