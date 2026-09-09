@@ -1,6 +1,6 @@
 import { useListLeads } from "@workspace/api-client-react";
-import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -25,8 +25,15 @@ export default function LeadsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [search, setSearch] = useState("");
+  const params = useLocalSearchParams<{ search?: string | string[] }>();
+  const initialSearch = Array.isArray(params.search) ? params.search[0] ?? "" : params.search ?? "";
+  const [search, setSearch] = useState(initialSearch);
   const [filter, setFilter] = useState<FilterType>("all");
+
+  useEffect(() => {
+    const next = Array.isArray(params.search) ? params.search[0] ?? "" : params.search ?? "";
+    setSearch(next);
+  }, [params.search]);
 
   const { data: leads, isLoading, refetch } = useListLeads({
     query: { queryKey: ["leads"], enabled: !!user?.tenantId },
@@ -40,8 +47,11 @@ export default function LeadsScreen() {
       list = list.filter(
         (l: any) =>
           l.name?.toLowerCase().includes(q) ||
+          l.nome?.toLowerCase().includes(q) ||
           l.email?.toLowerCase().includes(q) ||
-          l.empresa?.toLowerCase().includes(q)
+          l.empresa?.toLowerCase().includes(q) ||
+          l.telefone?.toLowerCase().includes(q) ||
+          l.endereco?.toLowerCase().includes(q)
       );
     }
     return list.sort((a: any, b: any) => (b.churnRisk ?? 0) - (a.churnRisk ?? 0));
@@ -63,7 +73,7 @@ export default function LeadsScreen() {
             style={[styles.searchInput, { color: colors.foreground }]}
             value={search}
             onChangeText={setSearch}
-            placeholder="Buscar leads..."
+            placeholder="Buscar por nome, empresa, telefone, e-mail ou endereço..."
             placeholderTextColor={colors.mutedForeground}
           />
           {search ? (
