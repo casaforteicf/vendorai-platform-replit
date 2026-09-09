@@ -24,16 +24,6 @@ function getLastUserIndex(messages: Array<{ role?: string; content?: string }>) 
   return -1;
 }
 
-async function loadRuntimeCapabilities() {
-  const token = localStorage.getItem("vendorai_token");
-  const response = await fetch("/api/jarvis/capabilities", {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!response.ok) return [];
-  const payload = await response.json() as CapabilityResponse;
-  return Array.isArray(payload.capabilities) ? payload.capabilities : [];
-}
-
 function formatRuntimeContext(capabilities: JarvisRuntimeCapability[]) {
   const external = capabilities.map((item) => {
     const status = item.available ? "disponível" : "indisponível/configuração pendente";
