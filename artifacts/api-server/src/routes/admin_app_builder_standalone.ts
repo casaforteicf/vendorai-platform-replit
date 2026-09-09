@@ -27,6 +27,31 @@ const standaloneCreateSchema = z.object({
 
 const linkTenantSchema = z.object({ tenantId: z.string().min(1) });
 
+router.get("/admin/app-builder/portfolio", async (_req, res) => {
+  const result = await db.execute(sql`
+    SELECT a.id,
+           a.tenant_id AS "tenantId",
+           a.template_id AS "templateId",
+           a.template_version_id AS "templateVersionId",
+           a.name,
+           a.slug,
+           a.status,
+           a.owner_type AS "ownerType",
+           a.owner_name AS "ownerName",
+           a.owner_email AS "ownerEmail",
+           a.owner_company AS "ownerCompany",
+           a.linked_tenant_at AS "linkedTenantAt",
+           a.created_at AS "createdAt",
+           a.updated_at AS "updatedAt",
+           t.name AS "tenantName",
+           t.tenant_code AS "tenantCode"
+      FROM app_instances a
+      LEFT JOIN tenants t ON t.id = a.tenant_id
+     ORDER BY a.updated_at DESC
+  `);
+  res.json(result.rows);
+});
+
 router.get("/admin/app-builder/app-targets", async (_req, res) => {
   const tenants = await db
     .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
