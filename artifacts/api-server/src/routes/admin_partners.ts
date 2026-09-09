@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import bcrypt from "bcryptjs";
 import { db, partnersTable, usersTable, tenantsTable } from "@workspace/db";
@@ -60,6 +60,34 @@ function normalizeCoupon(value: string | null | undefined) {
   const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
   return normalized || null;
 }
+
+router.get("/admin/partners-commercial", requireRole("super_admin"), async (_req, res) => {
+  const partners = await db
+    .select({
+      id: partnersTable.id,
+      name: partnersTable.name,
+      nomeFantasia: partnersTable.nomeFantasia,
+      email: partnersTable.email,
+      cnpj: partnersTable.cnpj,
+      phone: partnersTable.phone,
+      telefone: partnersTable.telefone,
+      status: partnersTable.status,
+      tipoParceiro: partnersTable.tipoParceiro,
+      comissaoPercentual: partnersTable.comissaoPercentual,
+      comissaoRecorrentePercentual: partnersTable.comissaoRecorrentePercentual,
+      cupomCodigo: partnersTable.cupomCodigo,
+      descontoCupomPercentual: partnersTable.descontoCupomPercentual,
+      cupomAtivo: partnersTable.cupomAtivo,
+      cupomValidoAte: partnersTable.cupomValidoAte,
+      cupomAplicacao: partnersTable.cupomAplicacao,
+      asaasWalletId: partnersTable.asaasWalletId,
+      createdAt: partnersTable.createdAt,
+    })
+    .from(partnersTable)
+    .orderBy(desc(partnersTable.createdAt));
+
+  res.json(partners);
+});
 
 router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
   const parsed = createPartnerSchema.safeParse(req.body);
