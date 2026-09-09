@@ -171,12 +171,14 @@ export default function AdminVerticals() {
 
   function previewSegment(segment: SegmentTemplate) {
     const meta = metaFor(segment);
-    if (!meta.route) {
-      toast({ title: "Preview ainda não definido", description: "Este novo segmento já pode ser usado como template operacional. Defina um módulo/layout específico quando necessário." });
-      return;
-    }
-    setTenantOverride({ id: `__vertical_preview__:${segment.id}`, name: "Preview de layout", vertical: segment.nome, preview: true });
-    setLocation(meta.route);
+    setTenantOverride({
+      id: `__vertical_preview__:${segment.id}`,
+      name: `Preview — ${displayName(segment)}`,
+      vertical: segment.nome,
+      preview: true,
+    });
+    setDetailId(null);
+    setLocation(meta.route ?? "/dashboard");
   }
 
   function accessTenant(segment: SegmentTemplate, tenant: TenantAdmin) {
