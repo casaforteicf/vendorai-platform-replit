@@ -1,715 +1,357 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  useListTenants,
-  getListTenantsQueryKey,
-  useListSegmentTemplates,
-  useApplySegmentTemplate,
-  getGetAgentConfigByTenantQueryKey,
-  type Tenant,
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useListTenants, getListTenantsQueryKey, type Tenant } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { VerticalTemplateEditor } from "@/components/admin/VerticalTemplateEditor";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import {
-  HardHat, Shirt, ShoppingCart, Building2, Search, LogOut,
-  ExternalLink, AlertCircle, Bot, GitBranch, Tag, Sparkles,
-  CheckCircle2, Loader2, Users, ChevronRight, Info, Layers,
-  Shield, DraftingCompass, Scissors, Stethoscope, Eye,
+  Building2, Search, Plus, Settings2, Users, Eye, ExternalLink, Loader2,
+  HardHat, Shirt, ShoppingCart, Shield, DraftingCompass, Scissors,
+  Stethoscope, Layers, Bot, GitBranch, Tag, Archive, CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { VerticalTemplateEditor } from "@/components/admin/VerticalTemplateEditor";
 
-interface VerticalMeta {
-  label: string;
-  icon: React.ElementType;
-  color: string;
-  bgGradient: string;
-  href: string;
-  features: string[];
-}
-
-const VERTICAL_META: Record<string, VerticalMeta> = {
-  "Construção & Reforma": {
-    label: "Construção Civil",
-    icon: HardHat,
-    color: "text-amber-700 bg-amber-50 border-amber-200",
-    bgGradient: "from-amber-50 to-orange-50",
-    href: "/obras",
-    features: [
-      "Gestão de obras com etapas e medições",
-      "Orçamentos e composições de insumos",
-      "Controle financeiro por obra (DRE)",
-      "Upload e análise IA de NF/XML",
-      "Portal do cliente para acompanhamento",
-      "Lançamentos integrados com Asaas",
-    ],
-  },
-  "Varejo de Roupas & Acessórios": {
-    label: "Varejo de Moda",
-    icon: Shirt,
-    color: "text-pink-700 bg-pink-50 border-pink-200",
-    bgGradient: "from-pink-50 to-purple-50",
-    href: "/varejo/produtos",
-    features: [
-      "Catálogo de produtos com variações (cor/tamanho)",
-      "Gestão de coleções e fornecedores",
-      "Controle de compras e estoque",
-      "Programa de fidelidade por pontos",
-      "Combos e looks sugeridos",
-      "Vitrine integrada com WhatsApp",
-    ],
-  },
-  "Supermercado": {
-    label: "Supermercado",
-    icon: ShoppingCart,
-    color: "text-emerald-700 bg-emerald-50 border-emerald-200",
-    bgGradient: "from-emerald-50 to-teal-50",
-    href: "/supermercado",
-    features: [
-      "Dashboard de pedidos e faturamento",
-      "Catálogo com categorias e preços",
-      "Gestão de pedidos e status de entrega",
-      "Campanhas de promoção por segmento",
-      "Configurações de área de cobertura",
-    ],
-  },
-  "Seguros Corporativos": {
-    label: "Seguros Corporativos",
-    icon: Shield,
-    color: "text-blue-700 bg-blue-50 border-blue-200",
-    bgGradient: "from-blue-50 to-cyan-50",
-    href: "/scout/seguros/renovacoes",
-    features: [
-      "Pipeline de renovações 90/60/30/10",
-      "Matriz conta × produto",
-      "Whitespace e cross-sell",
-      "Gestão de apólices e sinistros",
-      "Revenue Scout com aprovação humana",
-    ],
-  },
-  "Clínica": {
-    label: "Clínica",
-    icon: Stethoscope,
-    color: "text-sky-700 bg-sky-50 border-sky-200",
-    bgGradient: "from-sky-50 to-indigo-50",
-    href: "/clinic",
-    features: ["Dashboard clínico", "Agenda", "Prontuários", "Gestão de médicos"],
-  },
-  "Salão de Beleza": {
-    label: "Salão de Beleza",
-    icon: Scissors,
-    color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200",
-    bgGradient: "from-fuchsia-50 to-pink-50",
-    href: "/beauty",
-    features: ["Dashboard do salão", "Agenda", "Serviços", "Profissionais"],
-  },
-  "Arquitetura & Design": {
-    label: "Arch — Arquitetura & Design",
-    icon: DraftingCompass,
-    color: "text-violet-700 bg-violet-50 border-violet-200",
-    bgGradient: "from-violet-50 to-purple-50",
-    href: "/arch",
-    features: ["Dashboard de projetos", "Render Studio", "Catálogo", "Marketplace"],
-  },
-  "Distribuidora de Materiais de Construção": {
-    label: "Distribuidora de Materiais de Construção",
-    icon: Building2,
-    color: "text-orange-700 bg-orange-50 border-orange-200",
-    bgGradient: "from-orange-50 to-amber-50",
-    href: "/scout",
-    features: [
-      "Revenue Scout por obra, etapa e categoria",
-      "Reposição e giro de estoque",
-      "Cross-sell de materiais complementares",
-      "Reativação de construtoras e profissionais",
-      "Cotações e oportunidades comerciais",
-      "Entregas e acompanhamento de pedidos",
-    ],
-  },
-  "Distribuidora de Alimentos": {
-    label: "Distribuidora de Alimentos",
-    icon: ShoppingCart,
-    color: "text-lime-700 bg-lime-50 border-lime-200",
-    bgGradient: "from-lime-50 to-emerald-50",
-    href: "/scout",
-    features: [
-      "Revenue Scout por frequência e mix de compra",
-      "Reposição, giro, validade e ruptura",
-      "Cross-sell por categoria e perfil de cliente",
-      "Reativação de clientes inativos",
-      "Campanhas e oportunidades sazonais",
-      "Entregas e acompanhamento de pedidos",
-    ],
-  },
-  "Distribuidora de Máquinas e Insumos": {
-    label: "Distribuidora de Máquinas e Insumos",
-    icon: Layers,
-    color: "text-cyan-700 bg-cyan-50 border-cyan-200",
-    bgGradient: "from-cyan-50 to-slate-50",
-    href: "/scout",
-    features: [
-      "Revenue Scout por parque instalado e ciclo de uso",
-      "Reposição de insumos e consumíveis",
-      "Manutenção e substituição de máquinas",
-      "Cross-sell técnico e expansão de capacidade",
-      "Reativação de contas e contratos",
-      "Entregas e oportunidades por aplicação",
-    ],
-  },
+type SegmentTemplate = {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  promptsSugeridos?: Record<string, string> | null;
+  funilPadrao?: string[] | null;
+  categoriasProdutoSugeridas?: string[] | null;
+  ativo: boolean;
+  createdAt?: string | null;
 };
 
-const ACTIVE_VERTICALS = Object.keys(VERTICAL_META);
+type TenantAdmin = Tenant & { tenantCode?: string | null; vertical?: string | null };
 
-interface VerticalDetailSheetProps {
-  vertical: string | null;
-  onClose: () => void;
-  tenants: Tenant[];
+type SegmentMeta = {
+  label?: string;
+  icon: React.ElementType;
+  color: string;
+  route?: string;
+};
+
+const SEGMENT_META: Record<string, SegmentMeta> = {
+  "Construção & Reforma": { label: "Construção Civil", icon: HardHat, color: "text-amber-700 bg-amber-50 border-amber-200", route: "/obras" },
+  "Varejo de Roupas & Acessórios": { label: "Varejo de Moda", icon: Shirt, color: "text-pink-700 bg-pink-50 border-pink-200", route: "/varejo/produtos" },
+  "Supermercado": { icon: ShoppingCart, color: "text-emerald-700 bg-emerald-50 border-emerald-200", route: "/supermercado" },
+  "Seguros Corporativos": { icon: Shield, color: "text-blue-700 bg-blue-50 border-blue-200", route: "/scout/seguros/renovacoes" },
+  "Clínica": { icon: Stethoscope, color: "text-sky-700 bg-sky-50 border-sky-200", route: "/clinic" },
+  "Salão de Beleza": { icon: Scissors, color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200", route: "/beauty" },
+  "Arquitetura & Design": { label: "Arch — Arquitetura & Design", icon: DraftingCompass, color: "text-violet-700 bg-violet-50 border-violet-200", route: "/arch" },
+  "Distribuidora de Materiais de Construção": { icon: Building2, color: "text-orange-700 bg-orange-50 border-orange-200", route: "/scout" },
+  "Distribuidora de Alimentos": { icon: ShoppingCart, color: "text-lime-700 bg-lime-50 border-lime-200", route: "/scout" },
+  "Distribuidora de Máquinas e Insumos": { icon: Layers, color: "text-cyan-700 bg-cyan-50 border-cyan-200", route: "/scout" },
+};
+
+function metaFor(segment: SegmentTemplate): SegmentMeta {
+  return SEGMENT_META[segment.nome] ?? {
+    icon: Building2,
+    color: "text-slate-700 bg-slate-50 border-slate-200",
+  };
 }
 
-function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheetProps) {
-  const { setTenantOverride, tenantOverride } = useAuth();
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const qc = useQueryClient();
-  const [targetTenantId, setTargetTenantId] = useState<string>("");
-  const [activating, setActivating] = useState(false);
+function displayName(segment: SegmentTemplate) {
+  return metaFor(segment).label ?? segment.nome;
+}
 
-  const { data: templates = [], refetch: refetchTemplates } = useListSegmentTemplates();
-  const applyMutation = useApplySegmentTemplate();
-
-  if (!vertical) return null;
-
-  const meta = VERTICAL_META[vertical];
-  if (!meta) return null;
-
-  const VertIcon = meta.icon;
-  const template = templates.find((t) => t.nome === vertical);
-
-  const tenantsWithVertical = tenants.filter((t) => (t as any).vertical === vertical);
-  const tenantsWithout = tenants.filter(
-    (t) => (t as any).vertical !== vertical && t.status === "active"
-  );
-
-  const promptCount = template
-    ? Object.values(template.promptsSugeridos ?? {}).filter(Boolean).length
-    : 0;
-
-  async function handleActivate() {
-    if (!targetTenantId || !template) return;
-    const tName = tenants.find((t) => t.id === targetTenantId)?.name ?? targetTenantId;
-    setActivating(true);
-    applyMutation.mutate(
-      { tenantId: targetTenantId, id: template.id },
-      {
-        onSuccess: () => {
-          setActivating(false);
-          toast({
-            title: `Segmento ativado para ${tName}`,
-            description: `O módulo "${vertical}" foi ativado com sucesso.`,
-          });
-          qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
-          qc.invalidateQueries({ queryKey: getGetAgentConfigByTenantQueryKey(targetTenantId) });
-          setTargetTenantId("");
-        },
-        onError: () => {
-          setActivating(false);
-          toast({
-            title: "Erro ao ativar segmento",
-            description: "Tente novamente.",
-            variant: "destructive",
-          });
-        },
-      }
-    );
-  }
-
-  function handleAccess(tenantId: string, tenantName: string) {
-    setTenantOverride({ id: tenantId, name: tenantName, vertical: vertical! });
-    setLocation(meta.href);
-    onClose();
-  }
-
-  // Verticais que têm um programa de marca (white-label) associado — o
-  // preview usa a cor/logo do programa em vez do padrão Vendor.ai. Só tem
-  // "arqdor" hoje; quando o logo for enviado pela tela normal de
-  // Configurações, atualiza o logoUrl aqui também.
-  const BRAND_PROGRAM_BY_VERTICAL: Record<string, { corPrimaria?: string; logoUrl?: string }> = {
-    "Arquitetura & Design": { corPrimaria: "#F4171F" },
-  };
-
-  function handlePreview() {
-    const brand = BRAND_PROGRAM_BY_VERTICAL[vertical!];
-    setTenantOverride({
-      id: `__vertical_preview__:${vertical}`,
-      name: "Preview de layout",
-      vertical: vertical!,
-      preview: true,
-      ...(brand ?? {}),
-    });
-    setLocation(meta.href);
-    onClose();
-  }
-
-  return (
-    <Sheet open={!!vertical} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-xl overflow-y-auto flex flex-col gap-0 p-0">
-        {/* ── Header ─────────────────────────────────────────── */}
-        <div className={cn("p-6 bg-gradient-to-br", meta.bgGradient)}>
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-3 text-xl">
-              <div className={cn("p-2 rounded-lg border", meta.color)}>
-                <VertIcon className="h-5 w-5" />
-              </div>
-              {meta.label}
-            </SheetTitle>
-            <SheetDescription className="text-sm mt-1">
-              {template?.descricao ?? `Módulo do segmento ${meta.label}`}
-            </SheetDescription>
-          </SheetHeader>
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-3 mt-5">
-            {[
-              { icon: Bot, label: "Agentes IA", value: promptCount },
-              { icon: GitBranch, label: "Etapas funil", value: template?.funilPadrao?.length ?? "—" },
-              { icon: Tag, label: "Categorias", value: template?.categoriasProdutoSugeridas?.length ?? "—" },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex flex-col items-center gap-1 rounded-xl bg-white/70 border border-white/80 p-3 text-center backdrop-blur-sm">
-                <Icon className="h-4 w-4 text-primary" />
-                <span className="text-lg font-bold text-foreground">{value}</span>
-                <span className="text-[10px] text-muted-foreground leading-tight">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Eye className="h-4 w-4 text-primary" />
-                Preview sem tenant
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Abra o layout deste segmento como Super Admin, sem cadastrar empresa, tenant ou e-mail.
-                Dados reais de clientes não são carregados.
-              </p>
-            </div>
-            <Button className="w-full gap-2" onClick={handlePreview}>
-              <Eye className="h-4 w-4" />
-              Visualizar layout
-            </Button>
-          </section>
-
-          {template && (
-            <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2">
-              <div>
-                <h3 className="text-sm font-semibold">Configuração operacional</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Edite o funil, categorias e orientações dos agentes deste segmento sem alterar o layout nem os tenants existentes.
-                </p>
-              </div>
-              <VerticalTemplateEditor
-                template={template}
-                onSaved={() => refetchTemplates()}
-              />
-            </section>
-          )}
-
-          {/* ── Funcionalidades do módulo ──────────────────────── */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              Funcionalidades incluídas
-            </h3>
-            <ul className="space-y-1.5">
-              {meta.features.map((f) => (
-                <li key={f} className="flex items-start gap-2 text-sm">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {/* ── Funil padrão ──────────────────────────────────── */}
-          {template?.funilPadrao && template.funilPadrao.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <GitBranch className="h-4 w-4 text-primary" />
-                Funil de vendas padrão
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {template.funilPadrao.map((etapa, i) => (
-                  <Badge key={etapa} variant="secondary" className="text-xs gap-1">
-                    <span className="text-muted-foreground">{i + 1}.</span> {etapa}
-                  </Badge>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Agentes de IA ─────────────────────────────────── */}
-          {template && promptCount > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Bot className="h-4 w-4 text-primary" />
-                Agentes de IA configurados
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.keys(template.promptsSugeridos ?? {})
-                  .filter((k) => !!(template.promptsSugeridos as Record<string, string>)[k])
-                  .map((k) => (
-                    <Badge key={k} variant="outline" className="text-xs capitalize">
-                      <Sparkles className="h-3 w-3 mr-1 text-primary" />
-                      {k.replace(/([A-Z])/g, " $1").trim()}
-                    </Badge>
-                  ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Categorias de produto ─────────────────────────── */}
-          {template?.categoriasProdutoSugeridas && template.categoriasProdutoSugeridas.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Tag className="h-4 w-4 text-primary" />
-                Categorias sugeridas
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {template.categoriasProdutoSugeridas.map((c) => (
-                  <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Tenants com esta vertical ─────────────────────── */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              Tenants com este módulo
-              <Badge variant="secondary" className="text-xs">{tenantsWithVertical.length}</Badge>
-            </h3>
-            {tenantsWithVertical.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhum cliente ativo neste segmento ainda.</p>
-            ) : (
-              <div className="space-y-2">
-                {tenantsWithVertical.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">{t.status}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 gap-1 shrink-0"
-                      onClick={() => handleAccess(t.id, t.name)}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      Acessar
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* ── Ativar para novo tenant ───────────────────────── */}
-          {template && (
-            <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Ativar módulo para um tenant
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Selecione um tenant ativo que ainda não possui este módulo e aplique a configuração completa (agentes, funil e segmento).
-              </p>
-              <Select value={targetTenantId} onValueChange={setTargetTenantId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecionar tenant..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {tenantsWithout.length === 0 ? (
-                    <SelectItem value="__none__" disabled>
-                      Todos os clientes ativos já têm este segmento
-                    </SelectItem>
-                  ) : (
-                    tenantsWithout.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              <Button
-                className="w-full gap-2"
-                disabled={!targetTenantId || activating || tenantsWithout.length === 0}
-                onClick={handleActivate}
-              >
-                {activating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Ativando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    Ativar módulo
-                  </>
-                )}
-              </Button>
-            </section>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
+function lines(value: string) {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
 
 export default function AdminVerticals() {
-  const { setTenantOverride, tenantOverride, clearTenantOverride } = useAuth();
+  const { token, setTenantOverride } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
-  const [filterVertical, setFilterVertical] = useState<string | "all">("all");
-  const [detailVertical, setDetailVertical] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "with" | "without" | "archived">("all");
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignTenantId, setAssignTenantId] = useState("");
+  const [newSegment, setNewSegment] = useState({ nome: "", descricao: "", funil: "", categorias: "", ativo: true });
 
-  const { data: tenants = [], isLoading } = useListTenants({
-    query: { queryKey: getListTenantsQueryKey() },
+  const { data: tenantsRaw = [], isLoading: tenantsLoading } = useListTenants();
+  const tenants = tenantsRaw as TenantAdmin[];
+
+  const { data: segments = [], isLoading: segmentsLoading, refetch: refetchSegments } = useQuery<SegmentTemplate[]>({
+    queryKey: ["admin-segment-templates"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/segment-templates", { headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível carregar segmentos");
+      return data as SegmentTemplate[];
+    },
+    enabled: Boolean(token),
   });
 
-  const tenantsWithVertical = tenants.filter(
-    (t) => t.vertical && ACTIVE_VERTICALS.includes(t.vertical)
-  );
+  const detail = segments.find((segment) => segment.id === detailId) ?? null;
+  const linkedTenants = detail ? tenants.filter((tenant) => tenant.vertical === detail.nome) : [];
+  const availableTenants = detail ? tenants.filter((tenant) => tenant.status === "active" && tenant.vertical !== detail.nome) : [];
 
-  const filtered = tenantsWithVertical.filter((t) => {
-    const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase());
-    const matchV = filterVertical === "all" || t.vertical === filterVertical;
-    return matchSearch && matchV;
-  });
+  const filteredSegments = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase("pt-BR");
+    return segments.filter((segment) => {
+      const count = tenants.filter((tenant) => tenant.vertical === segment.nome).length;
+      const matchesSearch = !q || segment.nome.toLocaleLowerCase("pt-BR").includes(q) || (segment.descricao ?? "").toLocaleLowerCase("pt-BR").includes(q);
+      const matchesFilter = filter === "all"
+        ? segment.ativo
+        : filter === "with"
+          ? segment.ativo && count > 0
+          : filter === "without"
+            ? segment.ativo && count === 0
+            : !segment.ativo;
+      return matchesSearch && matchesFilter;
+    });
+  }, [segments, tenants, search, filter]);
 
-  const grouped = ACTIVE_VERTICALS.reduce<Record<string, typeof filtered>>((acc, v) => {
-    acc[v] = filtered.filter((t) => t.vertical === v);
-    return acc;
-  }, {});
-
-  function handleAccess(tenantId: string, tenantName: string, vertical: string) {
-    const meta = VERTICAL_META[vertical];
-    if (!meta) return;
-    setTenantOverride({ id: tenantId, name: tenantName, vertical });
-    setLocation(meta.href);
+  async function createSegment() {
+    if (!newSegment.nome.trim()) {
+      toast({ title: "Informe o nome do segmento", variant: "destructive" });
+      return;
+    }
+    setCreating(true);
+    try {
+      const response = await fetch("/api/admin/segment-templates", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: newSegment.nome.trim(),
+          descricao: newSegment.descricao.trim() || null,
+          funilPadrao: lines(newSegment.funil),
+          categoriasProdutoSugeridas: lines(newSegment.categorias),
+          promptsSugeridos: {},
+          ativo: newSegment.ativo,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível criar o segmento");
+      await refetchSegments();
+      setCreateOpen(false);
+      setNewSegment({ nome: "", descricao: "", funil: "", categorias: "", ativo: true });
+      toast({ title: "Segmento criado", description: "Agora configure módulos, agentes, funil e categorias antes de atribuí-lo aos tenants." });
+    } catch (error) {
+      toast({ title: "Erro ao criar segmento", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
   }
 
+  async function assignSegment() {
+    if (!detail || !assignTenantId) return;
+    setAssigning(true);
+    try {
+      const response = await fetch(`/api/tenants/${assignTenantId}/segment-templates/${detail.id}/apply`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível aplicar o segmento");
+      await qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+      setAssignTenantId("");
+      toast({ title: "Segmento aplicado", description: "Tenant, perfil, funil e prompts sugeridos foram sincronizados." });
+    } catch (error) {
+      toast({ title: "Erro ao aplicar segmento", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setAssigning(false);
+    }
+  }
+
+  function previewSegment(segment: SegmentTemplate) {
+    const meta = metaFor(segment);
+    if (!meta.route) {
+      toast({ title: "Preview ainda não definido", description: "Este novo segmento já pode ser usado como template operacional. Defina um módulo/layout específico quando necessário." });
+      return;
+    }
+    setTenantOverride({ id: `__vertical_preview__:${segment.id}`, name: "Preview de layout", vertical: segment.nome, preview: true });
+    setLocation(meta.route);
+  }
+
+  function accessTenant(segment: SegmentTemplate, tenant: TenantAdmin) {
+    const meta = metaFor(segment);
+    setTenantOverride({ id: tenant.id, name: tenant.name, vertical: segment.nome });
+    setLocation(meta.route ?? "/");
+  }
+
+  const loading = tenantsLoading || segmentsLoading;
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-10">
-      {/* ── Header ────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-primary" />
-            Segmentos e visualizações
+    <div className="max-w-5xl mx-auto p-3 sm:p-6 space-y-5 pb-24 overflow-x-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
+            Gestão de Segmentos
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Visualize layouts, edite a configuração operacional dos segmentos e acesse módulos vinculados a clientes reais.
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+            Crie e configure templates oficiais. O tenant herda segmento, funil e orientações dos agentes sem criar regras paralelas.
           </p>
         </div>
-        {tenantOverride && (
-          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-sm">
-            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-            <span className="text-amber-800">
-              Visualizando <strong>{tenantOverride.name}</strong>
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-amber-700 hover:text-amber-900 hover:bg-amber-100 ml-1"
-              onClick={clearTenantOverride}
-            >
-              <LogOut className="h-3.5 w-3.5 mr-1" />
-              Sair
-            </Button>
-          </div>
-        )}
+        <Button onClick={() => setCreateOpen(true)} className="gap-2 w-full sm:w-auto">
+          <Plus className="h-4 w-4" /> Novo Segmento
+        </Button>
       </div>
 
-      {/* ── Vitrine dos módulos verticais ─────────────────────── */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {ACTIVE_VERTICALS.map((vertical) => {
-          const meta = VERTICAL_META[vertical]!;
-          const VertIcon = meta.icon;
-          const count = tenants.filter((t) => (t as any).vertical === vertical).length;
-          return (
-            <button
-              key={vertical}
-              onClick={() => setDetailVertical(vertical)}
-              className={cn(
-                "rounded-xl border text-left p-4 flex flex-col gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 group",
-                `bg-gradient-to-br ${meta.bgGradient}`
-              )}
-            >
-              <div className={cn("w-fit p-2 rounded-lg border", meta.color)}>
-                <VertIcon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm">{meta.label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{count} tenant{count !== 1 ? "s" : ""} ativos</p>
-              </div>
-              <div className="flex items-center gap-1 text-xs text-primary font-medium mt-auto group-hover:gap-2 transition-all">
-                <Info className="h-3.5 w-3.5" />
-                Ver detalhes
-                <ChevronRight className="h-3.5 w-3.5" />
-              </div>
-            </button>
-          );
-        })}
-      </section>
-
-      {/* ── Filtros ───────────────────────────────────────────── */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar tenant..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {["all", ...ACTIVE_VERTICALS].map((v) => {
-            const meta = v !== "all" ? VERTICAL_META[v] : null;
-            const Icon = meta?.icon;
-            return (
-              <Button
-                key={v}
-                size="sm"
-                variant={filterVertical === v ? "default" : "outline"}
-                onClick={() => setFilterVertical(v)}
-                className="gap-1.5"
-              >
-                {Icon && <Icon className="h-3.5 w-3.5" />}
-                {v === "all" ? "Todos" : meta?.label}
+      <Card>
+        <CardContent className="p-3 sm:p-4 space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar segmento..." className="pl-9" />
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {[
+              ["all", "Ativos"],
+              ["with", "Com clientes"],
+              ["without", "Sem clientes"],
+              ["archived", "Arquivados"],
+            ].map(([value, label]) => (
+              <Button key={value} size="sm" variant={filter === value ? "default" : "outline"} onClick={() => setFilter(value as typeof filter)} className="shrink-0">
+                {label}
               </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {loading ? (
+        <div className="flex justify-center py-14"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+      ) : filteredSegments.length === 0 ? (
+        <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">Nenhum segmento encontrado.</CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {filteredSegments.map((segment) => {
+            const meta = metaFor(segment);
+            const Icon = meta.icon;
+            const linked = tenants.filter((tenant) => tenant.vertical === segment.nome);
+            const promptCount = Object.values(segment.promptsSugeridos ?? {}).filter(Boolean).length;
+            const healthOk = (segment.funilPadrao?.length ?? 0) > 0 && promptCount > 0;
+            return (
+              <Card key={segment.id} className={cn(!segment.ativo && "opacity-70")}>
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex items-start gap-3">
+                    <div className={cn("p-2 rounded-lg border shrink-0", meta.color)}><Icon className="h-5 w-5" /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm sm:text-base break-words">{displayName(segment)}</p>
+                        <Badge variant="outline" className={segment.ativo ? "text-emerald-700 border-emerald-200" : "text-slate-600"}>{segment.ativo ? "Ativo" : "Arquivado"}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{segment.descricao || "Sem descrição cadastrada."}</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {linked.length} tenant{linked.length === 1 ? "" : "s"}</span>
+                        <span className="flex items-center gap-1"><GitBranch className="h-3.5 w-3.5" /> {segment.funilPadrao?.length ?? 0} etapas</span>
+                        <span className="flex items-center gap-1"><Bot className="h-3.5 w-3.5" /> {promptCount} agentes</span>
+                        <span className={cn("flex items-center gap-1", healthOk ? "text-emerald-600" : "text-amber-600")}>
+                          {healthOk ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                          {healthOk ? "Configuração completa" : "Revisar configuração"}
+                        </span>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setDetailId(segment.id)} className="gap-1.5 shrink-0">
+                      <Settings2 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Configurar</span>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
-      </div>
-
-      {isLoading && (
-        <div className="text-center py-16 text-muted-foreground text-sm animate-pulse">
-          Carregando tenants...
-        </div>
       )}
 
-      {!isLoading && tenantsWithVertical.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground text-sm">
-          Nenhum cliente com segmento ativo cadastrado.
-        </div>
-      )}
-
-      {/* ── Lista por vertical ────────────────────────────────── */}
-      {!isLoading && ACTIVE_VERTICALS.map((vertical) => {
-        const items = grouped[vertical] ?? [];
-        if (filterVertical !== "all" && filterVertical !== vertical) return null;
-        if (items.length === 0 && search) return null;
-
-        const meta = VERTICAL_META[vertical]!;
-        const VertIcon = meta.icon;
-
-        return (
-          <section key={vertical}>
-            <div className="flex items-center gap-2 mb-3">
-              <div className={cn("flex items-center gap-2 px-3 py-1.5 rounded-md border w-fit", meta.color)}>
-                <VertIcon className="h-4 w-4" />
-                <span className="text-sm font-semibold">{meta.label}</span>
-                <Badge variant="secondary" className="ml-1 text-xs">{items.length}</Badge>
-              </div>
-              <button
-                onClick={() => setDetailVertical(vertical)}
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                <Info className="h-3 w-3" /> Ver detalhes do módulo
-              </button>
+      <Sheet open={Boolean(detail)} onOpenChange={(open) => { if (!open) { setDetailId(null); setAssignTenantId(""); } }}>
+        {detail && (
+          <SheetContent className="w-full sm:max-w-xl overflow-y-auto p-0">
+            <div className="p-5 sm:p-6 border-b">
+              <SheetHeader>
+                <div className="flex items-center gap-3 pr-8">
+                  {(() => { const meta = metaFor(detail); const Icon = meta.icon; return <div className={cn("p-2 rounded-lg border", meta.color)}><Icon className="h-5 w-5" /></div>; })()}
+                  <div className="min-w-0">
+                    <SheetTitle className="text-lg break-words">{displayName(detail)}</SheetTitle>
+                    <SheetDescription>{detail.ativo ? "Segmento ativo" : "Segmento arquivado"}</SheetDescription>
+                  </div>
+                </div>
+              </SheetHeader>
             </div>
 
-            {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground px-1">Nenhum tenant encontrado.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {items.map((tenant) => {
-                  const isActive = tenantOverride?.id === tenant.id;
-                  return (
-                    <div
-                      key={tenant.id}
-                      className={cn(
-                        "rounded-lg border bg-card p-4 flex flex-col gap-3 transition-shadow hover:shadow-sm",
-                        isActive && "ring-2 ring-primary border-primary/40"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{tenant.name}</p>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{tenant.id}</p>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-xs shrink-0",
-                            tenant.status === "active"
-                              ? "text-emerald-700 border-emerald-200 bg-emerald-50"
-                              : "text-muted-foreground"
-                          )}
-                        >
-                          {tenant.status}
-                        </Badge>
-                      </div>
+            <div className="p-5 sm:p-6 space-y-5">
+              <section className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border p-3 text-center"><Users className="h-4 w-4 mx-auto text-muted-foreground" /><p className="text-lg font-bold mt-1">{linkedTenants.length}</p><p className="text-[10px] text-muted-foreground">Tenants</p></div>
+                <div className="rounded-lg border p-3 text-center"><Bot className="h-4 w-4 mx-auto text-muted-foreground" /><p className="text-lg font-bold mt-1">{Object.values(detail.promptsSugeridos ?? {}).filter(Boolean).length}</p><p className="text-[10px] text-muted-foreground">Agentes</p></div>
+                <div className="rounded-lg border p-3 text-center"><GitBranch className="h-4 w-4 mx-auto text-muted-foreground" /><p className="text-lg font-bold mt-1">{detail.funilPadrao?.length ?? 0}</p><p className="text-[10px] text-muted-foreground">Etapas</p></div>
+              </section>
 
-                      <Button
-                        size="sm"
-                        className={cn("w-full gap-2", isActive && "bg-primary/90")}
-                        onClick={() => handleAccess(tenant.id, tenant.name, vertical)}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        {isActive ? "Visualizando" : "Acessar módulo"}
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        );
-      })}
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Resumo</h3>
+                <p className="text-sm text-muted-foreground">{detail.descricao || "Sem descrição cadastrada."}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                  <VerticalTemplateEditor template={detail} onSaved={async () => { await refetchSegments(); }} />
+                  <Button variant="outline" className="gap-2" onClick={() => previewSegment(detail)}><Eye className="h-4 w-4" /> Visualizar layout</Button>
+                </div>
+              </section>
 
-      {/* ── Detail Sheet ──────────────────────────────────────── */}
-      <VerticalDetailSheet
-        vertical={detailVertical}
-        onClose={() => setDetailVertical(null)}
-        tenants={tenants}
-      />
+              {(detail.funilPadrao?.length ?? 0) > 0 && (
+                <section className="space-y-2"><h3 className="text-sm font-semibold flex items-center gap-2"><GitBranch className="h-4 w-4" /> Funil padrão</h3><div className="flex flex-wrap gap-1.5">{detail.funilPadrao!.map((etapa, index) => <Badge key={`${etapa}-${index}`} variant="secondary">{index + 1}. {etapa}</Badge>)}</div></section>
+              )}
+
+              {(detail.categoriasProdutoSugeridas?.length ?? 0) > 0 && (
+                <section className="space-y-2"><h3 className="text-sm font-semibold flex items-center gap-2"><Tag className="h-4 w-4" /> Categorias</h3><div className="flex flex-wrap gap-1.5">{detail.categoriasProdutoSugeridas!.map((categoria) => <Badge key={categoria} variant="outline">{categoria}</Badge>)}</div></section>
+              )}
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><Users className="h-4 w-4" /> Tenants vinculados</h3>
+                {linkedTenants.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum tenant usando este segmento.</p> : linkedTenants.map((tenant) => (
+                  <div key={tenant.id} className="flex items-center justify-between gap-2 rounded-lg border p-3">
+                    <div className="min-w-0"><p className="text-sm font-medium truncate">{tenant.name}</p><p className="text-xs text-muted-foreground"><span className="font-mono">{tenant.tenantCode ?? "VAI —"}</span> · {tenant.status === "active" ? "Ativo" : tenant.status === "suspended" ? "Suspenso" : "Cancelado"}</p></div>
+                    <Button size="sm" variant="ghost" className="gap-1.5 shrink-0" onClick={() => accessTenant(detail, tenant)}><ExternalLink className="h-3.5 w-3.5" /> Acessar</Button>
+                  </div>
+                ))}
+              </section>
+
+              {detail.ativo && (
+                <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                  <h3 className="text-sm font-semibold">Aplicar a um tenant</h3>
+                  <p className="text-xs text-muted-foreground">Aplica o template oficial sem sobrescrever prompts personalizados já existentes.</p>
+                  <select value={assignTenantId} onChange={(e) => setAssignTenantId(e.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Selecionar tenant...</option>
+                    {availableTenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name} · {tenant.tenantCode ?? "sem código"}</option>)}
+                  </select>
+                  <Button className="w-full" disabled={!assignTenantId || assigning} onClick={() => void assignSegment()}>{assigning && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Aplicar segmento</Button>
+                </section>
+              )}
+            </div>
+          </SheetContent>
+        )}
+      </Sheet>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novo Segmento</DialogTitle>
+            <DialogDescription>Crie um template operacional único. Depois você poderá adicionar prompts dos agentes e atribuí-lo aos tenants.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2"><Label>Nome *</Label><Input value={newSegment.nome} onChange={(e) => setNewSegment((current) => ({ ...current, nome: e.target.value }))} placeholder="Ex.: Distribuidora de Ferragens" /></div>
+            <div className="space-y-2"><Label>Descrição</Label><Textarea rows={3} value={newSegment.descricao} onChange={(e) => setNewSegment((current) => ({ ...current, descricao: e.target.value }))} placeholder="Para quem é este segmento e qual problema resolve?" /></div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Funil padrão</Label><p className="text-xs text-muted-foreground">Uma etapa por linha.</p><Textarea rows={7} value={newSegment.funil} onChange={(e) => setNewSegment((current) => ({ ...current, funil: e.target.value }))} placeholder={"Novo lead\nQualificação\nProposta\nGanho"} /></div>
+              <div className="space-y-2"><Label>Categorias sugeridas</Label><p className="text-xs text-muted-foreground">Uma categoria por linha.</p><Textarea rows={7} value={newSegment.categorias} onChange={(e) => setNewSegment((current) => ({ ...current, categorias: e.target.value }))} placeholder={"Categoria A\nCategoria B"} /></div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-sm font-medium">Criar como ativo</p><p className="text-xs text-muted-foreground">Desative para salvar como rascunho/arquivado.</p></div><Switch checked={newSegment.ativo} onCheckedChange={(checked) => setNewSegment((current) => ({ ...current, ativo: checked }))} /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancelar</Button><Button onClick={() => void createSegment()} disabled={creating || !newSegment.nome.trim()}>{creating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Criar segmento</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
