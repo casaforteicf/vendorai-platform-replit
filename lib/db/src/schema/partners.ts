@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -27,6 +27,23 @@ export const partnersTable = pgTable("partners", {
   status: text("status").notNull().default("ativo"),
   nivel: integer("nivel").notNull().default(1),
   dataCadastro: timestamp("data_cadastro").notNull().defaultNow(),
+
+  // ── Parceiros, afiliados e influenciadores ───────────────────────────────
+  // Um único cadastro central suporta revendedor, representante, influenciador,
+  // afiliado, indicador, agência, consultor, integrador e outros tipos.
+  tipoParceiro: text("tipo_parceiro").notNull().default("revendedor"),
+
+  // Regras comerciais são armazenadas como percentuais; valores absolutos ficam
+  // restritos à liquidação financeira/split, evitando duplicidade de regra.
+  comissaoPercentual: numeric("comissao_percentual", { precision: 5, scale: 2 }),
+  comissaoRecorrentePercentual: numeric("comissao_recorrente_percentual", { precision: 5, scale: 2 }),
+
+  // Cupom principal do parceiro. O código é opcional e único quando informado.
+  cupomCodigo: text("cupom_codigo").unique(),
+  descontoCupomPercentual: numeric("desconto_cupom_percentual", { precision: 5, scale: 2 }),
+  cupomAtivo: boolean("cupom_ativo").notNull().default(false),
+  cupomValidoAte: timestamp("cupom_valido_ate"),
+  cupomAplicacao: text("cupom_aplicacao").notNull().default("geral"),
 
   // ── Auditoria ──
   createdAt: timestamp("created_at").notNull().defaultNow(),
