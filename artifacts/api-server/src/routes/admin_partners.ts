@@ -8,26 +8,58 @@ import { createSubaccount, isAsaasConfigured } from "../lib/asaas.js";
 
 const router: IRouter = Router();
 
+const partnerTypeSchema = z.enum([
+  "revendedor",
+  "representante",
+  "influenciador",
+  "afiliado",
+  "indicador",
+  "agencia",
+  "consultor",
+  "integrador",
+  "outro",
+]);
+
+const percentageSchema = z.number().min(0).max(100).optional();
+
 const createPartnerSchema = z.object({
   name: z.string().min(1),
   email: z.email(),
   password: z.string().min(8),
-  cnpj: z.string().min(14, "CNPJ must have at least 14 characters"),
-  phone: z.string().min(10, "Phone must have at least 10 characters"),
+  cnpj: z.string().min(11, "CPF/CNPJ deve ter ao menos 11 caracteres").optional(),
+  phone: z.string().min(10, "Telefone deve ter ao menos 10 caracteres").optional(),
+  tipoParceiro: partnerTypeSchema.optional().default("revendedor"),
+  comissaoPercentual: percentageSchema,
+  comissaoRecorrentePercentual: percentageSchema,
+  cupomCodigo: z.string().min(3).max(40).optional(),
+  descontoCupomPercentual: percentageSchema,
+  cupomAtivo: z.boolean().optional().default(false),
+  cupomValidoAte: z.coerce.date().nullable().optional(),
+  cupomAplicacao: z.enum(["geral", "implantacao", "mensalidade", "produto", "servico", "marketplace"]).optional().default("geral"),
 });
 
 const updatePartnerSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.email().optional(),
-  cnpj: z.string().min(14).optional(),
+  cnpj: z.string().min(11).optional(),
   phone: z.string().min(10).optional(),
+  tipoParceiro: partnerTypeSchema.optional(),
+  comissaoPercentual: percentageSchema,
+  comissaoRecorrentePercentual: percentageSchema,
+  cupomCodigo: z.string().min(3).max(40).nullable().optional(),
+  descontoCupomPercentual: percentageSchema,
+  cupomAtivo: z.boolean().optional(),
+  cupomValidoAte: z.coerce.date().nullable().optional(),
+  cupomAplicacao: z.enum(["geral", "implantacao", "mensalidade", "produto", "servico", "marketplace"]).optional(),
 });
 
-const linkTenantSchema = z.object({
-  partnerId: z.string().nullable(),
-});
+const linkTenantSchema = z.object({ partnerId: z.string().nullable() });
 
-// GET /admin/partners moved to routes/partners.ts (uses new schema fields)
+function normalizeCoupon(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  return normalized || null;
+}
 
 router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
   const parsed = createPartnerSchema.safeParse(req.body);
@@ -36,8 +68,7 @@ router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
     return;
   }
 
-  const { name, email, password, cnpj, phone } = parsed.data;
-
+  const data = parsed.data;
   const superAdminUser = await db
     .select({ tenantId: usersTable.tenantId })
     .from(usersTable)
@@ -49,15 +80,15 @@ router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
   }
 
   const tenantId = superAdminUser[0].tenantId;
-  const hashed = await bcrypt.hash(password, 12);
+  const hashed = await bcrypt.hash(data.password, 12);
 
   try {
     const [user] = await db
       .insert(usersTable)
       .values({
         tenantId,
-        name,
-        email,
+        name: data.name,
+        email: data.email,
         password: hashed,
         role: "member",
         platformRole: "partner",
@@ -69,44 +100,55 @@ router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
         platformRole: usersTable.platformRole,
       });
 
+    const normalizedCoupon = normalizeCoupon(data.cupomCodigo);
     const [partner] = await db
       .insert(partnersTable)
-      .values({ name, email, cnpj, phone, userId: user.id })
+      .values({
+        name: data.name,
+        nomeFantasia: data.name,
+        email: data.email,
+        cnpj: data.cnpj,
+        phone: data.phone,
+        telefone: data.phone,
+        userId: user.id,
+        tipoParceiro: data.tipoParceiro,
+        comissaoPercentual: data.comissaoPercentual == null ? null : String(data.comissaoPercentual),
+        comissaoRecorrentePercentual: data.comissaoRecorrentePercentual == null ? null : String(data.comissaoRecorrentePercentual),
+        cupomCodigo: normalizedCoupon,
+        descontoCupomPercentual: data.descontoCupomPercentual == null ? null : String(data.descontoCupomPercentual),
+        cupomAtivo: Boolean(data.cupomAtivo && normalizedCoupon),
+        cupomValidoAte: data.cupomValidoAte ?? null,
+        cupomAplicacao: data.cupomAplicacao,
+      })
       .returning();
 
-    // ── Criar subconta Asaas para o parceiro ────────────────────────────────
-    if (await isAsaasConfigured()) {
+    if (data.cnpj && data.phone && (await isAsaasConfigured())) {
       try {
         const subaccount = await createSubaccount({
-          name,
-          email,
-          cpfCnpj: cnpj.replace(/\D/g, ""),
-          mobilePhone: phone.replace(/\D/g, ""),
+          name: data.name,
+          email: data.email,
+          cpfCnpj: data.cnpj.replace(/\D/g, ""),
+          mobilePhone: data.phone.replace(/\D/g, ""),
           companyType: "LIMITED",
         });
 
         const [updated] = await db
           .update(partnersTable)
-          .set({
-            asaasAccountId: subaccount.id,
-            asaasWalletId: subaccount.walletId,
-          })
+          .set({ asaasAccountId: subaccount.id, asaasWalletId: subaccount.walletId })
           .where(eq(partnersTable.id, partner.id))
           .returning();
 
         res.status(201).json({ partner: updated, user, asaasSubconta: true });
         return;
       } catch (err) {
-        req.log.warn({ err, partnerId: partner.id }, "Asaas subaccount creation failed — partner created without walletId");
+        req.log.warn({ err, partnerId: partner.id }, "Asaas subaccount creation failed");
       }
-    } else {
-      req.log.warn({ partnerId: partner.id }, "ASAAS_API_KEY not configured — skipping subaccount creation");
     }
 
     res.status(201).json({ partner, user, asaasSubconta: false });
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "Email or CNPJ already exists" });
+      res.status(409).json({ error: "Email, CPF/CNPJ ou cupom já cadastrado" });
       return;
     }
     throw err;
@@ -115,17 +157,32 @@ router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
 
 router.patch("/admin/partners/:id", requireRole("super_admin"), async (req, res) => {
   const partnerId = String(req.params["id"]);
-
   const parsed = updatePartnerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
 
+  const data = parsed.data;
+  const patch = {
+    ...(data.name !== undefined ? { name: data.name, nomeFantasia: data.name } : {}),
+    ...(data.email !== undefined ? { email: data.email } : {}),
+    ...(data.cnpj !== undefined ? { cnpj: data.cnpj } : {}),
+    ...(data.phone !== undefined ? { phone: data.phone, telefone: data.phone } : {}),
+    ...(data.tipoParceiro !== undefined ? { tipoParceiro: data.tipoParceiro } : {}),
+    ...(data.comissaoPercentual !== undefined ? { comissaoPercentual: String(data.comissaoPercentual) } : {}),
+    ...(data.comissaoRecorrentePercentual !== undefined ? { comissaoRecorrentePercentual: String(data.comissaoRecorrentePercentual) } : {}),
+    ...(data.cupomCodigo !== undefined ? { cupomCodigo: normalizeCoupon(data.cupomCodigo) } : {}),
+    ...(data.descontoCupomPercentual !== undefined ? { descontoCupomPercentual: String(data.descontoCupomPercentual) } : {}),
+    ...(data.cupomAtivo !== undefined ? { cupomAtivo: data.cupomAtivo } : {}),
+    ...(data.cupomValidoAte !== undefined ? { cupomValidoAte: data.cupomValidoAte } : {}),
+    ...(data.cupomAplicacao !== undefined ? { cupomAplicacao: data.cupomAplicacao } : {}),
+  };
+
   try {
     const [partner] = await db
       .update(partnersTable)
-      .set(parsed.data)
+      .set(patch)
       .where(eq(partnersTable.id, partnerId))
       .returning();
 
@@ -137,7 +194,7 @@ router.patch("/admin/partners/:id", requireRole("super_admin"), async (req, res)
     res.json(partner);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "Email or CNPJ already exists" });
+      res.status(409).json({ error: "Email, CPF/CNPJ ou cupom já cadastrado" });
       return;
     }
     throw err;
