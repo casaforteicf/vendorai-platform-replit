@@ -276,10 +276,13 @@ router.post("/support/chat", async (req, res, next) => {
       return `${index + 1}. ${lead.nome}${details ? ` — ${details}` : ""}`;
     });
     const remainder = rows.length > visible.length ? `\n… e mais ${rows.length - visible.length} resultado(s) nesta consulta.` : "";
-    writeSse(res, `Encontrei ${rows.length} lead(s) para “${leadFilter}”:\n${lines.join("\n")}${remainder}\n\nA consulta foi feita somente nos dados deste tenant.`, {
+    const encodedFilter = encodeURIComponent(leadFilter);
+    writeSse(res, `Encontrei ${rows.length} lead(s) para “${leadFilter}”:\n${lines.join("\n")}${remainder}\n\nVou abrir a tela de Leads com o mesmo filtro aplicado. A consulta foi feita somente nos dados deste tenant.`, {
       filteredLeadIds: rows.map((lead) => lead.id),
       filterQuery: leadFilter,
-      filterApplied: "server_side",
+      filterApplied: "server_and_client",
+      clientAction: vendorAction(`/leads?search=${encodedFilter}`, `Leads: ${leadFilter}`, `/leads?search=${encodedFilter}`),
+      executionMode: "device_open",
     });
     return;
   }

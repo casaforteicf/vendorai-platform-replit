@@ -264,10 +264,11 @@ export default function Leads() {
   const [duplicateDialog, setDuplicateDialog] = useState<{ open: boolean; lead: Lead | null; matchBy: string }>({ open: false, lead: null, matchBy: "" });
   const urlParams = new URLSearchParams(window.location.search);
   const urlFiltro = urlParams.get("filtro");
+  const urlSearch = urlParams.get("search")?.trim() ?? "";
   const isChurnUrl = urlFiltro === "churn";
   const isQuenteUrl = urlFiltro === "quente";
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(urlSearch);
   const [statusFilter, setStatusFilter] = useState<string>(isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all");
   const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
   const [maturityFilter, setMaturityFilter] = useState<string>("all");
@@ -521,10 +522,14 @@ export default function Leads() {
 
   const filteredLeads = (leads ?? [])
     .filter((lead) => {
+      const q = search.toLowerCase();
       const matchesSearch =
-        lead.nome.toLowerCase().includes(search.toLowerCase()) ||
-        lead.email?.toLowerCase().includes(search.toLowerCase()) ||
-        lead.empresa?.toLowerCase().includes(search.toLowerCase());
+        !q ||
+        lead.nome.toLowerCase().includes(q) ||
+        lead.email?.toLowerCase().includes(q) ||
+        lead.empresa?.toLowerCase().includes(q) ||
+        lead.telefone?.toLowerCase().includes(q) ||
+        lead.endereco?.toLowerCase().includes(q);
       const ci = ciMap.get(lead.id);
       const matchesStatus =
         statusFilter === "all"
@@ -777,7 +782,7 @@ export default function Leads() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               data-testid="input-search-leads"
-              placeholder="Buscar por nome, email ou empresa..."
+              placeholder="Buscar por nome, empresa, telefone, e-mail ou endereço..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
