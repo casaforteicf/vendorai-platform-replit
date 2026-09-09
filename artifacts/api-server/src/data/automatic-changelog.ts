@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1013",
+    "titulo": "gestão 360º de tenants, demos e identidade única",
+    "descricao": "cria identidade pública, única e imutável por tenant (`VAI-000001`, `VAI-000002`...); o UUID continua como chave interna faz backfill dos tenants já existentes e garante unicidade para os próximos mantém Demo como o mesmo tenant, com início/expiração e conversão para cliente sem trocar a identidade adiciona cadastro comercial/financeiro editável no detalhe do tenant",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-09T11:07:42.000Z",
+    "pullRequest": 1013
+  },
+  {
     "id": "pr-543",
     "titulo": "Conectar oferta manual à estratégia do Gerador de Conteúdo",
     "descricao": "a oferta digitada manualmente passa a alimentar o estado estratégico imediatamente, sem depender do clique em `+`; o Resumo da peça passa a refletir a oferta enquanto ela é digitada, usando o fluxo existente de `productNames`; a mesma oferta já segue no contexto enviado ao gerador de IA pelo fluxo atual do Content Studio; o botão `+` passa a servir para fixar a oferta atual e permitir cadastrar outra;",
