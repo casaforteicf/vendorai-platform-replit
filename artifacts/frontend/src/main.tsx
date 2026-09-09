@@ -32,6 +32,7 @@ import { CampaignAbWinnerApprovalBridge } from "./components/marketing/CampaignA
 import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPlanProductionRuntimeBridge";
 import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
+import { JarvisVoiceReplayControl } from "./components/support/JarvisVoiceReplayControl";
 import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
@@ -79,6 +80,7 @@ createRoot(document.getElementById("root")!).render(
           <FrontendRecoveryGuard />
           <VideoRouteThemeSync />
           <App />
+          <JarvisVoiceReplayControl />
           <BudgetImportAutofill />
           <MediaMenuInjector />
           <MediaAdsBridge />
