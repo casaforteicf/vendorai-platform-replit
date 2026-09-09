@@ -117,9 +117,13 @@ function writeSse(res: any, content: string, extra: Record<string, unknown> = {}
 }
 
 function normalizePhone(phone: string) {
-  const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
+  const raw = phone.trim();
+  const digits = raw.replace(/\D/g, "");
   if (!digits) return null;
-  return digits.startsWith("55") ? digits : `55${digits}`;
+  return {
+    digits,
+    dial: raw.startsWith("+") ? `+${digits}` : digits,
+  };
 }
 
 async function resolveTenantContact(tenantId: string, query: string) {
@@ -152,8 +156,8 @@ function contactAction(kind: ContactDeviceIntent["kind"], contact: { nome: strin
     return {
       type: "open_external_url",
       provider: "telefone",
-      uri: `tel:+${phone}`,
-      fallbackUrl: `tel:+${phone}`,
+      uri: `tel:${phone.dial}`,
+      fallbackUrl: `tel:${phone.dial}`,
       label: contact.nome,
     };
   }
@@ -164,8 +168,8 @@ function contactAction(kind: ContactDeviceIntent["kind"], contact: { nome: strin
     return {
       type: "open_external_url",
       provider: "whatsapp",
-      uri: `whatsapp://send?phone=${phone}`,
-      fallbackUrl: `https://wa.me/${phone}`,
+      uri: `whatsapp://send?phone=${phone.digits}`,
+      fallbackUrl: `https://wa.me/${phone.digits}`,
       label: contact.nome,
     };
   }
