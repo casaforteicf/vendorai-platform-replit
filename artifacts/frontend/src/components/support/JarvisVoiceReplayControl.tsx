@@ -29,7 +29,7 @@ export function JarvisVoiceReplayControl() {
   if (!lastResponse) return null;
 
   return (
-    <div className="fixed bottom-4 right-20 z-[51]">
+    <div className="jarvis-voice-replay-control fixed bottom-4 right-20 z-[51]">
       <Button
         type="button"
         size="icon"
