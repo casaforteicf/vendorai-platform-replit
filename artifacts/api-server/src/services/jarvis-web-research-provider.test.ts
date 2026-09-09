@@ -9,9 +9,9 @@ describe("Jarvis web research routing", () => {
     expect(shouldUseJarvisWebResearch("credit")).toBe(true);
   });
 
-  it("usa web para recomendações e preserva mercado em provider especializado", () => {
+  it("usa web para recomendações e como fallback de mercado", () => {
     expect(shouldUseJarvisWebResearch("recommendations_lifestyle")).toBe(true);
-    expect(shouldUseJarvisWebResearch("market_data")).toBe(false);
+    expect(shouldUseJarvisWebResearch("market_data")).toBe(true);
     expect(shouldUseJarvisWebResearch("vendorai_business")).toBe(false);
   });
 });
