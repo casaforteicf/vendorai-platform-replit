@@ -12,6 +12,9 @@ import { evaluateCommission } from "../services/commission-engine.js";
 
 const router: IRouter = Router();
 
+type CommissionRuleInsert = typeof commissionRulesTable.$inferInsert;
+type CommissionRuleUpdate = Partial<typeof commissionRulesTable.$inferInsert>;
+
 function canAccess(req: Express.Request, tenantId: string) {
   return (req as any).user?.platformRole === "super_admin" || (req as any).user?.tenantId === tenantId;
 }
@@ -33,7 +36,7 @@ router.post("/tenants/:tenantId/commission-engine/rules", async (req, res) => {
   if (!canAccess(req, tenantId) || !isAdmin(req)) return void res.status(403).json({ error: "FORBIDDEN" });
   const parsed = insertCommissionRuleSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) return void res.status(422).json({ error: "INVALID_RULE", issues: parsed.error.issues });
-  const [row] = await db.insert(commissionRulesTable).values(parsed.data).returning();
+  const [row] = await db.insert(commissionRulesTable).values(parsed.data as CommissionRuleInsert).returning();
   res.status(201).json(row);
 });
 
@@ -42,7 +45,8 @@ router.patch("/tenants/:tenantId/commission-engine/rules/:id", async (req, res) 
   if (!canAccess(req, tenantId) || !isAdmin(req)) return void res.status(403).json({ error: "FORBIDDEN" });
   const parsed = updateCommissionRuleSchema.safeParse(req.body);
   if (!parsed.success) return void res.status(422).json({ error: "INVALID_RULE", issues: parsed.error.issues });
-  const [row] = await db.update(commissionRulesTable).set({ ...parsed.data, updatedAt: new Date() }).where(and(eq(commissionRulesTable.id, String(req.params.id)), eq(commissionRulesTable.tenantId, tenantId))).returning();
+  const updates: CommissionRuleUpdate = { ...(parsed.data as CommissionRuleUpdate), updatedAt: new Date() };
+  const [row] = await db.update(commissionRulesTable).set(updates).where(and(eq(commissionRulesTable.id, String(req.params.id)), eq(commissionRulesTable.tenantId, tenantId))).returning();
   if (!row) return void res.status(404).json({ error: "NOT_FOUND" });
   res.json(row);
 });

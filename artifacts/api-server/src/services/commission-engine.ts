@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import {
   commissionEventsTable,
   commissionRulesTable,
@@ -64,6 +64,38 @@ export async function resolveDealIdFromFinancialOrigin(tenantId: string, origemT
   return null;
 }
 
+async function syncLegacySellerCommission(tenantId: string, dealId: string, sellerUserId: string, reason: string) {
+  const [aggregate] = await db
+    .select({
+      commissionCents: sql<number>`COALESCE(SUM(${commissionEventsTable.commissionCents}), 0)`,
+      weightedBaseCents: sql<number>`COALESCE(SUM(${commissionEventsTable.baseAmountCents}), 0)`,
+    })
+    .from(commissionEventsTable)
+    .where(and(
+      eq(commissionEventsTable.tenantId, tenantId),
+      eq(commissionEventsTable.dealId, dealId),
+      eq(commissionEventsTable.sellerUserId, sellerUserId),
+      ne(commissionEventsTable.status, "reversed"),
+      sql`${commissionEventsTable.status} IN ('released', 'paid')`,
+    ));
+
+  const totalCommissionCents = Number(aggregate?.commissionCents ?? 0);
+  const totalBaseCents = Number(aggregate?.weightedBaseCents ?? 0);
+  const effectivePercent = totalBaseCents > 0 ? (totalCommissionCents / totalBaseCents) * 100 : 0;
+
+  await db.update(sellerCommissionsTable).set({
+    status: totalCommissionCents > 0 ? "aprovado" : "pendente",
+    percentual: String(effectivePercent),
+    valorComissaoCents: totalCommissionCents,
+    observacoes: reason,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(sellerCommissionsTable.tenantId, tenantId),
+    eq(sellerCommissionsTable.dealId, dealId),
+    eq(sellerCommissionsTable.sellerUserId, sellerUserId),
+  ));
+}
+
 export async function evaluateCommission(input: CommissionEvaluationInput) {
   const [existing] = await db
     .select()
@@ -85,13 +117,10 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
   const commissionPercent = rule?.capPercent != null ? Math.min(rawCommissionPercent, clampPercent(Number(rule.capPercent))) : rawCommissionPercent;
   const eligiblePercent = rule?.proportionalByReceipt === false ? (receiptPercent > 0 ? 100 : 0) : receiptPercent;
   const commissionCents = Math.round(baseAmountCents * (commissionPercent / 100) * (eligiblePercent / 100));
-  const releaseAllowed = Boolean(rule) && (input.trigger === "payment_reconciled" || (rule?.trigger === input.trigger && rule?.trigger !== "payment_reconciled"));
-  const status = !rule ? "validation" : releaseAllowed ? "released" : "forecast";
+  const status = !rule ? "validation" : "released";
   const reason = !rule
     ? "Nenhuma regra de comissão compatível; revisão necessária."
-    : status === "released"
-      ? `Regra ${rule.name} aplicada pelo gatilho ${input.trigger}.`
-      : `Comissão prevista pela regra ${rule.name}; aguardando gatilho de liberação.`;
+    : `Regra ${rule.name} aplicada pelo gatilho ${input.trigger}.`;
 
   const actorType = input.actorType ?? rule?.actorType ?? "seller";
   const actorId = input.actorId ?? input.sellerUserId ?? null;
@@ -119,17 +148,7 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
   }).returning();
 
   if (event?.dealId && event.sellerUserId && status === "released") {
-    await db.update(sellerCommissionsTable).set({
-      status: "aprovado",
-      percentual: String(commissionPercent),
-      valorComissaoCents: commissionCents,
-      observacoes: reason,
-      updatedAt: new Date(),
-    }).where(and(
-      eq(sellerCommissionsTable.tenantId, input.tenantId),
-      eq(sellerCommissionsTable.dealId, event.dealId),
-      eq(sellerCommissionsTable.sellerUserId, event.sellerUserId),
-    ));
+    await syncLegacySellerCommission(input.tenantId, event.dealId, event.sellerUserId, reason);
   }
 
   return { event, rule, idempotent: false };
