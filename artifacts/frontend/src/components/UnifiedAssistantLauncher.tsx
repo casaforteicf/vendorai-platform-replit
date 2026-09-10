@@ -34,6 +34,10 @@ function findMarketingLauncher() {
   }) ?? null;
 }
 
+function jarvisPanelIsOpen() {
+  return Boolean(document.querySelector<HTMLElement>('div[aria-label="JARVIS"]'));
+}
+
 function hideLauncher(button: HTMLButtonElement | null) {
   if (!button) return;
   if (button.dataset[HIDDEN_MARKER] === "true") return;
@@ -50,6 +54,7 @@ function restoreLaunchers() {
 
 export function UnifiedAssistantLauncher() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [availability, setAvailability] = useState<LauncherAvailability>({
     jarvis: false,
     marketing: false,
@@ -61,10 +66,14 @@ export function UnifiedAssistantLauncher() {
       const jarvis = findJarvisLauncher();
       const marketing = findMarketingLauncher();
       const dev = findDevLauncher();
+      const nextPanelOpen = jarvisPanelIsOpen();
 
       hideLauncher(jarvis);
       hideLauncher(marketing);
       hideLauncher(dev);
+
+      setPanelOpen((current) => current === nextPanelOpen ? current : nextPanelOpen);
+      if (nextPanelOpen) setMenuOpen(false);
 
       const next = {
         jarvis: Boolean(jarvis),
@@ -100,7 +109,7 @@ export function UnifiedAssistantLauncher() {
     button?.click();
   };
 
-  if (!availability.jarvis && !availability.marketing && !availability.dev) return null;
+  if (panelOpen || (!availability.jarvis && !availability.marketing && !availability.dev)) return null;
 
   return (
     <div
