@@ -27,11 +27,19 @@ export type CommerceOfferSnapshot = {
   vertical: string | null;
   billingCycle: "monthly" | "annual";
   chargePriceCents: number;
+  baseChargePriceCents?: number;
   originalPriceCents: number;
   renewalPriceCents: number;
+  baseRenewalPriceCents?: number;
   promotionalCycles: number;
   couponsAllowed: boolean;
   partnerRulesAllowed: boolean;
+  discountPercent?: number;
+  discountAmountCents?: number;
+  discountSource?: "coupon" | "partner" | null;
+  discountRecurring?: boolean;
+  partnerId?: string | null;
+  resolvedCouponCode?: string | null;
   resolvedAt: string;
 };
 
