@@ -61,7 +61,7 @@ function plusPromoCycles(from: Date, cycle: "monthly" | "annual", count: number)
 }
 
 function cycleKey(subscriptionId: string, date: Date): string {
-  return `subscription:${subscriptionId}:${date.toISOString().slice(0, 7)}`;
+  return `subscription:${subscriptionId}:${date.toISOString().slice(0, 10)}`;
 }
 
 function subscriptionPlan(value: string): "start" | "starter" | "growth" | "pme_plus" | "enterprise" | null {
@@ -314,9 +314,11 @@ export async function provisionCheckout(checkoutId: string, paymentId: string) {
     await tx.insert(billingEventsTable).values({
       tenantId: tenant.id,
       mes: cycleKey(subscription.id, now),
-      amount: money(session.offerSnapshot.chargePriceCents),
+      tipo: session.offerSnapshot.billingCycle === "annual" ? "annual" : "initial",
+      valor: money(session.offerSnapshot.chargePriceCents),
       status: "paid",
       asaasChargeId: paymentId,
+      asaasCustomerId: session.asaasCustomerId,
       dueDate: now,
       paidAt: now,
     });
