@@ -11,8 +11,13 @@ import {
 } from "@workspace/db";
 import { deleteCharge } from "../lib/asaas.js";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
+import { commerceCheckoutRouter, provisionCheckout } from "./commerce_checkout.js";
 
 const router: IRouter = Router();
+
+// Public self-service acquisition routes. This router is mounted directly in
+// app.ts before the protected API router, so LP checkout works without login.
+router.use(commerceCheckoutRouter);
 
 const asaasSubscriptionWebhookBody = z.object({
   event: z.string(),
@@ -32,17 +37,16 @@ function subscriptionIdFromCycleKey(value: string): string | null {
   return parts.length === 3 && parts[1] ? parts[1] : null;
 }
 
+function checkoutIdFromReference(value: string | null | undefined): string | null {
+  if (!value?.startsWith("checkout:")) return null;
+  const id = value.slice("checkout:".length).trim();
+  return id || null;
+}
+
 function canManageTenant(req: Parameters<IRouter["use"]>[0] extends never ? never : any, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
-/**
- * Annual upgrade is an explicit commercial choice. It never interrupts the
- * R$497/R$990 promotional cycles: tenant.billingCycle becomes annual now, but
- * the billing worker only applies it after the subscription reaches regular.
- * The annual price snapshot is taken only when the first annual charge is
- * actually generated, preserving the catalog price governing that transition.
- */
 router.post("/subscriptions/:id/annual-upgrade", async (req, res) => {
   const subscriptionId = String(req.params.id);
   const [subscription] = await db
@@ -106,12 +110,6 @@ router.post("/subscriptions/:id/annual-upgrade", async (req, res) => {
   });
 });
 
-/**
- * Launch subscriptions are never physically deleted. We first remove unpaid
- * Asaas charges from the active collection flow, then mark local cycles and the
- * subscription cancelled. Paid events remain immutable financial history and
- * the commercial lifecycle emits churn from this logical cancellation.
- */
 router.delete("/subscriptions/:id", async (req, res, next) => {
   const subscriptionId = String(req.params.id);
   const [subscription] = await db
@@ -139,11 +137,7 @@ router.delete("/subscriptions/:id", async (req, res, next) => {
   }
 
   const activeCycles = await db
-    .select({
-      id: billingEventsTable.id,
-      asaasChargeId: billingEventsTable.asaasChargeId,
-      status: billingEventsTable.status,
-    })
+    .select({ id: billingEventsTable.id, asaasChargeId: billingEventsTable.asaasChargeId, status: billingEventsTable.status })
     .from(billingEventsTable)
     .where(and(
       eq(billingEventsTable.tenantId, subscription.tenantId),
@@ -151,9 +145,6 @@ router.delete("/subscriptions/:id", async (req, res, next) => {
       inArray(billingEventsTable.status, ["pending", "overdue"]),
     ));
 
-  // Delete remote unpaid charges first. If Asaas rejects any removal (for
-  // example because it was paid concurrently), keep the subscription active
-  // locally so reconciliation can converge instead of producing split-brain.
   try {
     for (const cycle of activeCycles) {
       if (!cycle.asaasChargeId) continue;
@@ -177,7 +168,6 @@ router.delete("/subscriptions/:id", async (req, res, next) => {
           inArray(billingEventsTable.status, ["pending", "overdue"]),
         ));
     }
-
     await tx
       .update(subscriptionsTable)
       .set({ status: "cancelada", proximaCobranca: null, updatedAt: new Date() })
@@ -187,15 +177,6 @@ router.delete("/subscriptions/:id", async (req, res, next) => {
   res.json({ ok: true, subscriptionId: subscription.id, status: "cancelada" });
 });
 
-/**
- * Handles only the NEW VendorAI commercial subscription lifecycle.
- * Everything else calls next() and remains under the legacy Asaas webhook.
- *
- * This separation is intentional: the legacy handler can suspend old tenant
- * contracts after its grace rule, while launch subscriptions only become
- * `inadimplente` here. Any access suspension for the new lifecycle must be a
- * separate commercial policy, never an accidental reuse of the legacy rule.
- */
 router.post("/webhooks/asaas", async (req, res, next) => {
   const expectedToken = process.env.ASAAS_WEBHOOK_ACCESS_TOKEN;
   if (expectedToken && req.header("asaas-access-token") !== expectedToken) {
@@ -205,14 +186,36 @@ router.post("/webhooks/asaas", async (req, res, next) => {
 
   const parsed = asaasSubscriptionWebhookBody.safeParse(req.body);
   if (!parsed.success) {
-    // Preserve the legacy route's existing validation behavior.
     res.status(422).json({ error: "Invalid payload" });
     return;
   }
 
   const { event, payment } = parsed.data;
-  let billingEvent: typeof billingEventsTable.$inferSelect | undefined;
+  const checkoutId = checkoutIdFromReference(payment.externalReference);
+  if (checkoutId) {
+    if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+      try {
+        const result = await provisionCheckout(checkoutId, payment.id);
+        res.status(200).json({ ok: true, lifecycle: "commerce_checkout", status: "provisioned", ...result });
+      } catch (err) {
+        req.log.error({ err, checkoutId, paymentId: payment.id }, "commerce checkout: provisioning failed after payment");
+        // ACK keeps Asaas from retry-storming. Session remains failed/recoverable
+        // and payment is never lost; ops can reconcile by checkout id.
+        res.status(200).json({ ok: true, lifecycle: "commerce_checkout", status: "provisioning_failed" });
+      }
+      return;
+    }
+    if (event === "PAYMENT_DELETED" || event === "PAYMENT_CANCELLED") {
+      const { commerceCheckoutSessionsTable } = await import("@workspace/db");
+      await db.update(commerceCheckoutSessionsTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(commerceCheckoutSessionsTable.id, checkoutId));
+      res.status(200).json({ ok: true, lifecycle: "commerce_checkout", status: "cancelled" });
+      return;
+    }
+    res.status(200).json({ ok: true, lifecycle: "commerce_checkout", ignored: true });
+    return;
+  }
 
+  let billingEvent: typeof billingEventsTable.$inferSelect | undefined;
   if (payment.externalReference?.startsWith("subscription:")) {
     [billingEvent] = await db
       .select()
@@ -220,8 +223,6 @@ router.post("/webhooks/asaas", async (req, res, next) => {
       .where(eq(billingEventsTable.mes, payment.externalReference))
       .limit(1);
   } else if (!payment.externalReference) {
-    // Recovery for providers/webhook versions that omit externalReference but
-    // retain the payment id already persisted on the billing event.
     [billingEvent] = await db
       .select()
       .from(billingEventsTable)
@@ -238,7 +239,6 @@ router.post("/webhooks/asaas", async (req, res, next) => {
     return;
   }
   const resolvedBillingEvent = billingEvent;
-
   const subscriptionId = subscriptionIdFromCycleKey(cycleKey);
   if (!subscriptionId) {
     req.log.error({ billingEventId: resolvedBillingEvent.id, cycleKey }, "vendorai-subscription-webhook: invalid cycle key");
@@ -247,12 +247,7 @@ router.post("/webhooks/asaas", async (req, res, next) => {
   }
 
   const [subscription] = await db
-    .select({
-      id: subscriptionsTable.id,
-      tenantId: subscriptionsTable.tenantId,
-      sourceDealId: subscriptionsTable.sourceDealId,
-      status: subscriptionsTable.status,
-    })
+    .select({ id: subscriptionsTable.id, tenantId: subscriptionsTable.tenantId, sourceDealId: subscriptionsTable.sourceDealId, status: subscriptionsTable.status })
     .from(subscriptionsTable)
     .where(and(
       eq(subscriptionsTable.id, subscriptionId),
@@ -262,93 +257,47 @@ router.post("/webhooks/asaas", async (req, res, next) => {
     .limit(1);
 
   if (!subscription) {
-    // Fail safe: this is explicitly a subscription:* event, so never fall
-    // through to legacy suspension logic if its subscription cannot be found.
     req.log.error({ billingEventId: resolvedBillingEvent.id, subscriptionId }, "vendorai-subscription-webhook: subscription not found");
     res.status(200).json({ ok: true, ignored: true, reason: "subscription_not_found" });
     return;
   }
 
-  req.log.info({
-    event,
-    paymentId: payment.id,
-    subscriptionId: subscription.id,
-    tenantId: subscription.tenantId,
-  }, "vendorai-subscription-webhook: received");
+  req.log.info({ event, paymentId: payment.id, subscriptionId: subscription.id, tenantId: subscription.tenantId }, "vendorai-subscription-webhook: received");
 
   if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
     await db.transaction(async (tx) => {
-      await tx
-        .update(billingEventsTable)
-        .set({
-          asaasChargeId: payment.id,
-          status: "paid",
-          paidAt: new Date(),
-        })
-        .where(eq(billingEventsTable.id, resolvedBillingEvent.id));
-
+      await tx.update(billingEventsTable).set({ asaasChargeId: payment.id, status: "paid", paidAt: new Date() }).where(eq(billingEventsTable.id, resolvedBillingEvent.id));
       if (subscription.sourceDealId) {
-        await tx
-          .update(dealsTable)
-          .set({ chargeStatus: "paid", updatedAt: new Date() })
-          .where(eq(dealsTable.id, subscription.sourceDealId));
+        await tx.update(dealsTable).set({ chargeStatus: "paid", updatedAt: new Date() }).where(eq(dealsTable.id, subscription.sourceDealId));
       }
     });
-
-    // Product/account activation is deliberately reconciled by
-    // runVendorAiSubscriptionPaymentSync(), the single canonical lifecycle
-    // path that also preserves the exact trial tenant and advances billing.
     res.status(200).json({ ok: true, lifecycle: "subscription", status: "paid" });
     return;
   }
 
   if (event === "PAYMENT_OVERDUE") {
-    // Never downgrade a payment that was already confirmed if provider events
-    // arrive out of order.
     if (resolvedBillingEvent.status !== "paid") {
       await db.transaction(async (tx) => {
-        await tx
-          .update(billingEventsTable)
-          .set({ status: "overdue" })
-          .where(eq(billingEventsTable.id, resolvedBillingEvent.id));
-
-        await tx
-          .update(subscriptionsTable)
-          .set({ status: "inadimplente", updatedAt: new Date() })
-          .where(eq(subscriptionsTable.id, subscription.id));
-
+        await tx.update(billingEventsTable).set({ status: "overdue" }).where(eq(billingEventsTable.id, resolvedBillingEvent.id));
+        await tx.update(subscriptionsTable).set({ status: "inadimplente", updatedAt: new Date() }).where(eq(subscriptionsTable.id, subscription.id));
         if (subscription.sourceDealId) {
-          await tx
-            .update(dealsTable)
-            .set({ chargeStatus: "overdue", updatedAt: new Date() })
-            .where(eq(dealsTable.id, subscription.sourceDealId));
+          await tx.update(dealsTable).set({ chargeStatus: "overdue", updatedAt: new Date() }).where(eq(dealsTable.id, subscription.sourceDealId));
         }
       });
     }
-
-    req.log.warn({
-      subscriptionId: subscription.id,
-      tenantId: subscription.tenantId,
-      paymentId: payment.id,
-    }, "vendorai-subscription-webhook: overdue marked without automatic tenant suspension");
-
+    req.log.warn({ subscriptionId: subscription.id, tenantId: subscription.tenantId, paymentId: payment.id }, "vendorai-subscription-webhook: overdue marked without automatic tenant suspension");
     res.status(200).json({ ok: true, lifecycle: "subscription", status: "overdue" });
     return;
   }
 
   if (event === "PAYMENT_DELETED" || event === "PAYMENT_CANCELLED") {
     if (resolvedBillingEvent.status !== "paid") {
-      await db
-        .update(billingEventsTable)
-        .set({ status: "cancelled" })
-        .where(eq(billingEventsTable.id, resolvedBillingEvent.id));
+      await db.update(billingEventsTable).set({ status: "cancelled" }).where(eq(billingEventsTable.id, resolvedBillingEvent.id));
     }
     res.status(200).json({ ok: true, lifecycle: "subscription", status: "cancelled" });
     return;
   }
 
-  // Subscription event recognized, but no state transition is required for
-  // this Asaas event type. ACK here so it cannot fall into legacy behavior.
   res.status(200).json({ ok: true, lifecycle: "subscription", ignored: true });
 });
 
