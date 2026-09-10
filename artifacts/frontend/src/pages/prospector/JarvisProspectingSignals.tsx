@@ -17,6 +17,9 @@ type JarvisCase = {
   detail: string;
   confidence?: number | null;
   recommendedAction?: string | null;
+  status?: string | null;
+  firstDetectedAt?: string | null;
+  lastDetectedAt?: string | null;
   updatedAt: string;
   evidence?: {
     signalType?: unknown;
@@ -28,10 +31,28 @@ type JarvisCase = {
   } | null;
 };
 
+type ProspectorConfig = {
+  setor?: string | null;
+  cidade?: string | null;
+  ritmoDiario?: number | null;
+  ativo?: boolean | null;
+  horarioCron?: string | null;
+  cnaeAlvo?: string[] | null;
+};
+
+type ProspectorConfigResponse = {
+  config: ProspectorConfig | null;
+};
+
 type Props = {
   onNavigate: (target: ProspectorNavigationTarget) => void;
   compact?: boolean;
 };
+
+const GENERIC_TERMS = new Set([
+  "sistema", "sistemas", "plataforma", "plataformas", "solucao", "solucoes",
+  "tecnologia", "tecnologias", "digital", "digitais", "comercial", "empresa", "empresas",
+]);
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token") ?? "";
@@ -46,6 +67,14 @@ function textArray(value: unknown) {
 
 function textValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalized(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function meaningfulTerms(value: unknown) {
+  return textArray(value).filter((term) => !GENERIC_TERMS.has(normalized(term)));
 }
 
 function typeOfSignal(value: unknown): ExternalSignalType {
@@ -67,10 +96,41 @@ function isExternalCase(item: JarvisCase) {
   return source.startsWith("news") || source.includes("noticia") || source.includes("mercado_externo");
 }
 
+function isFresh(item: JarvisCase, hours = 48) {
+  const raw = item.lastDetectedAt ?? item.updatedAt;
+  const timestamp = new Date(raw).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  return Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function isProspectingSignal(item: JarvisCase) {
+  if (item.status && item.status !== "open") return false;
+  if (item.severity !== "opportunity") return false;
+
+  const source = String(item.source ?? "").toLowerCase();
+  const category = normalized(item.category ?? "");
+
+  if (source === "strategic_observer") {
+    return (category === "territorio" || category === "prospeccao") && (item.confidence ?? 0) >= 75;
+  }
+
+  if (!isExternalCase(item) || !isFresh(item)) return false;
+  if ((item.confidence ?? 0) < 75) return false;
+
+  const competitors = textArray(item.evidence?.matchedCompetitors);
+  const suppliers = textArray(item.evidence?.matchedSuppliers);
+  const regions = textArray(item.evidence?.matchedRegions);
+  const terms = meaningfulTerms(item.evidence?.matchedTerms);
+  const signalType = typeOfSignal(item.evidence?.signalType);
+
+  if (competitors.length || suppliers.length) return true;
+  if (signalType === "regional" && regions.length > 0 && terms.length >= 1) return true;
+  if (signalType === "sectoral" && terms.length >= 3) return true;
+  return false;
+}
+
 function priorityLabel(item: JarvisCase) {
-  if (item.severity === "risk") return "Alerta";
-  if (item.severity === "opportunity" && (item.confidence ?? 0) >= 80) return "Agir agora";
-  if (item.severity === "opportunity") return "Oportunidade";
+  if ((item.confidence ?? 0) >= 85) return "Agir agora";
   return "Acompanhar";
 }
 
@@ -78,7 +138,7 @@ function buildContext(item: JarvisCase) {
   const competitors = textArray(item.evidence?.matchedCompetitors);
   const suppliers = textArray(item.evidence?.matchedSuppliers);
   const regions = textArray(item.evidence?.matchedRegions);
-  const terms = textArray(item.evidence?.matchedTerms);
+  const terms = meaningfulTerms(item.evidence?.matchedTerms);
   const rationale = textValue(item.evidence?.rationale);
 
   return {
@@ -96,15 +156,13 @@ function friendlyReason(item: JarvisCase) {
   const context = buildContext(item);
   if (context.competitors.length) return `Movimento de concorrente conhecido: ${context.competitors.slice(0, 2).join(", ")}.`;
   if (context.suppliers.length) return `Movimento de fornecedor relacionado ao seu negócio: ${context.suppliers.slice(0, 2).join(", ")}.`;
-  if (context.regions.length) return `Sinal detectado em região acompanhada pelo seu negócio: ${context.regions.slice(0, 2).join(", ")}.`;
-
-  const signalType = typeOfSignal(item.evidence?.signalType);
-  if (signalType === "sectoral") return "Tema relacionado ao seu segmento, produtos ou perfil de cliente.";
-  return "Sinal de mercado relacionado ao contexto comercial da empresa.";
+  if (context.regions.length) return `Sinal detectado em região realmente acompanhada: ${context.regions.slice(0, 2).join(", ")}.`;
+  if (normalized(item.category) === "territorio") return "O JARVIS encontrou potencial territorial nos dados comerciais atuais da empresa.";
+  return "Oportunidade validada pelo contexto comercial da empresa.";
 }
 
 export default function JarvisProspectingSignals({ onNavigate, compact = false }: Props) {
-  const query = useQuery({
+  const signalsQuery = useQuery({
     queryKey: ["jarvis-prospector-signals"],
     queryFn: async () => {
       const response = await fetch("/api/jarvis/cases", { headers: authHeaders(), cache: "no-store" });
@@ -115,49 +173,55 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
     refetchInterval: 60_000,
   });
 
-  const externalCases = useMemo(
-    () => Array.isArray(query.data) ? query.data.filter(isExternalCase) : [],
-    [query.data],
+  const configQuery = useQuery({
+    queryKey: ["jarvis-prospector-config"],
+    queryFn: async () => {
+      const response = await fetch("/api/prospector/config", { headers: authHeaders(), cache: "no-store" });
+      if (!response.ok) throw new Error("Falha ao carregar configuração do Prospector");
+      return response.json() as Promise<ProspectorConfigResponse>;
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  const config = configQuery.data?.config ?? null;
+  const active = config?.ativo === true;
+
+  const prospectingCases = useMemo(
+    () => Array.isArray(signalsQuery.data) ? signalsQuery.data.filter(isProspectingSignal) : [],
+    [signalsQuery.data],
   );
 
   const items = useMemo(() => {
-    return [...externalCases]
+    return [...prospectingCases]
       .sort((a, b) => {
-        const severityWeight = (value: JarvisCase["severity"]) => value === "opportunity" ? 3 : value === "risk" ? 2 : 1;
-        const severityDelta = severityWeight(b.severity) - severityWeight(a.severity);
-        if (severityDelta !== 0) return severityDelta;
         const confidenceDelta = (b.confidence ?? 0) - (a.confidence ?? 0);
         if (confidenceDelta !== 0) return confidenceDelta;
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        return new Date(b.lastDetectedAt ?? b.updatedAt).getTime() - new Date(a.lastDetectedAt ?? a.updatedAt).getTime();
       })
       .slice(0, compact ? 1 : 3);
-  }, [compact, externalCases]);
+  }, [compact, prospectingCases]);
 
-  const summary = useMemo(() => {
-    return externalCases.reduce(
-      (acc, item) => {
-        if (item.severity === "risk") acc.alerts += 1;
-        else if (item.severity === "opportunity" && (item.confidence ?? 0) >= 80) acc.now += 1;
-        else acc.follow += 1;
-        return acc;
-      },
-      { now: 0, follow: 0, alerts: 0 },
-    );
-  }, [externalCases]);
+  const summary = useMemo(() => ({
+    now: prospectingCases.filter((item) => (item.confidence ?? 0) >= 85).length,
+    follow: prospectingCases.filter((item) => (item.confidence ?? 0) < 85).length,
+  }), [prospectingCases]);
 
   function prospect(item: JarvisCase) {
     const context = buildContext(item);
     const url = new URL(window.location.href);
     url.searchParams.set("jarvisCase", item.id);
     if (context.primaryRegion) url.searchParams.set("jarvisRegion", context.primaryRegion);
+    else if (config?.cidade) url.searchParams.set("jarvisRegion", config.cidade);
     else url.searchParams.delete("jarvisRegion");
     if (context.primaryTerm) url.searchParams.set("jarvisTerm", context.primaryTerm);
+    else if (config?.setor) url.searchParams.set("jarvisTerm", config.setor);
     else url.searchParams.delete("jarvisTerm");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     onNavigate({ mode: "empresas", tab: "busca" });
   }
 
-  if (query.isLoading || items.length === 0) return null;
+  if (signalsQuery.isLoading && configQuery.isLoading) return null;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -165,11 +229,14 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
         <CardHeader className="space-y-3 pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Radar className="h-4 w-4 text-primary" /> JARVIS — O que merece sua atenção
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                <Radar className="h-4 w-4 text-primary" /> JARVIS — Prospecção
+                <Badge variant={active ? "secondary" : "outline"}>{active ? "Ativa" : "Pausada"}</Badge>
               </CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Sinais priorizados pelo seu segmento, região, produtos e perfil de cliente.
+                {active
+                  ? "O Prospector está buscando e qualificando empresas automaticamente. Notícias genéricas não viram oportunidade."
+                  : "A prospecção automática está pausada. Você ainda pode pesquisar empresas manualmente."}
               </p>
             </div>
 
@@ -177,14 +244,39 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
               <div className="flex flex-wrap gap-1.5 text-[11px]">
                 {summary.now > 0 && <Badge variant="secondary">Agir agora {summary.now}</Badge>}
                 {summary.follow > 0 && <Badge variant="outline">Acompanhar {summary.follow}</Badge>}
-                {summary.alerts > 0 && <Badge variant="destructive">Alertas {summary.alerts}</Badge>}
               </div>
             )}
           </div>
+
+          {!compact && config && (
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border bg-background px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Alvo atual</p>
+                <p className="mt-0.5 text-xs font-semibold">{config.setor || "Não definido"}</p>
+              </div>
+              <div className="rounded-lg border bg-background px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Região</p>
+                <p className="mt-0.5 text-xs font-semibold">{config.cidade || "Não definida"}</p>
+              </div>
+              <div className="rounded-lg border bg-background px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Ritmo</p>
+                <p className="mt-0.5 text-xs font-semibold">{config.ritmoDiario ?? 0} empresas/dia</p>
+              </div>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="space-y-2.5">
-          {items.map((item) => {
+          {items.length === 0 ? (
+            <div className="rounded-xl border border-dashed bg-background p-4">
+              <p className="text-sm font-medium">{active ? "JARVIS está procurando novas oportunidades" : "Nenhuma prospecção automática em execução"}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {active
+                  ? "Só aparecerão aqui empresas ou sinais comerciais que passarem pelos critérios de segmento, região e compatibilidade. Isso evita repetir notícias antigas ou falsos positivos."
+                  : "Ative a configuração do Prospector para o JARVIS buscar novos leads automaticamente."}
+              </p>
+            </div>
+          ) : items.map((item) => {
             const context = buildContext(item);
             const signalType = typeOfSignal(item.evidence?.signalType);
             const primaryEntity = context.competitors[0] ?? context.suppliers[0] ?? null;
@@ -194,8 +286,8 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant={item.severity === "risk" ? "destructive" : "secondary"}>{priorityLabel(item)}</Badge>
-                      <Badge variant="outline">{typeLabel(signalType)}</Badge>
+                      <Badge variant="secondary">{priorityLabel(item)}</Badge>
+                      {isExternalCase(item) && <Badge variant="outline">{typeLabel(signalType)}</Badge>}
                       {item.confidence != null && (
                         <span className="text-[11px] font-medium text-muted-foreground">Compatibilidade {item.confidence}%</span>
                       )}
@@ -223,7 +315,7 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
                       <div className="rounded-lg bg-muted/35 px-3 py-2">
                         <p className="text-[11px] font-semibold text-foreground">JARVIS recomenda</p>
                         <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-muted-foreground">
-                          {item.recommendedAction || "Validar o sinal e decidir se vale transformar em ação comercial."}
+                          {item.recommendedAction || "Abrir no Prospector, validar a empresa e enriquecer os contatos antes de enviar ao CRM."}
                         </p>
                       </div>
                     </div>
@@ -231,8 +323,7 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-col lg:items-stretch">
                     <Button size="sm" onClick={() => prospect(item)}>
-                      <Building2 className="mr-1.5 h-3.5 w-3.5" />
-                      {item.severity === "risk" ? "Ver sinal" : "Ver oportunidade"}
+                      <Building2 className="mr-1.5 h-3.5 w-3.5" /> Ver oportunidade
                       <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                     </Button>
                     <Button
@@ -240,7 +331,7 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
                       variant="ghost"
                       className="text-muted-foreground"
                       onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support", {
-                        detail: { question: `JARVIS, analise o sinal ${item.id}, explique por que ele importa e recomende a próxima ação comercial.` },
+                        detail: { question: `JARVIS, analise a oportunidade ${item.id}, valide se é um bom prospect e recomende a próxima ação comercial.` },
                       }))}
                     >
                       <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Perguntar ao JARVIS
@@ -253,7 +344,7 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
 
           <div className="flex items-start gap-2 px-1 pt-1 text-[11px] leading-4 text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>O JARVIS recomenda; você decide o que vira lead. O Prospector valida e enriquece os dados antes de enviar ao CRM.</span>
+            <span>JARVIS encontra e prioriza. O Prospector valida e enriquece. O CRM recebe somente o que realmente virar oportunidade comercial.</span>
           </div>
         </CardContent>
       </Card>
