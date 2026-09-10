@@ -8,6 +8,7 @@ import { loadJarvisOperationalContext } from "../services/jarvis-operational-con
 import { buildJarvisCapabilityContext, JARVIS_UNIVERSAL_PROFILE } from "../services/jarvis-capability-profile.js";
 import { executeJarvisProvider } from "../services/jarvis-provider-registry.js";
 import { interpretJarvisUpload } from "../services/jarvis-document-provider.js";
+import { loadJarvisRequestContext } from "../services/jarvis-request-context.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -126,6 +127,7 @@ function buildJarvisSystemPrompt(
   context?: { route?: string; title?: string },
   operationalContext = "",
   capabilityContext = "",
+  requestContext = "",
 ) {
   const route = context?.route?.trim();
   const title = context?.title?.trim();
@@ -140,7 +142,7 @@ function buildJarvisSystemPrompt(
       : null,
   ].filter(Boolean).join("\n");
 
-  return [SUPPORT_SYSTEM_PROMPT, JARVIS_UNIVERSAL_PROFILE, capabilityContext, contextLines, operationalContext]
+  return [SUPPORT_SYSTEM_PROMPT, JARVIS_UNIVERSAL_PROFILE, requestContext, capabilityContext, contextLines, operationalContext]
     .filter(Boolean)
     .join("\n");
 }
@@ -312,11 +314,19 @@ router.post("/support/chat", async (req, res) => {
 
   const tenantId = req.user?.tenantId ?? null;
   let operationalContext = "";
+  let requestContext = "";
   if (tenantId) {
     try {
-      operationalContext = await loadJarvisOperationalContext(tenantId);
+      [operationalContext, requestContext] = await Promise.all([
+        loadJarvisOperationalContext(tenantId),
+        loadJarvisRequestContext({
+          tenantId,
+          userId: req.user?.sub ?? null,
+          route: parsed.data.context?.route ?? null,
+        }),
+      ]);
     } catch (err) {
-      req.log?.warn({ err, tenantId }, "jarvis: falha ao carregar contexto operacional (não bloqueia chat)");
+      req.log?.warn({ err, tenantId }, "jarvis: falha ao carregar contexto interno (não bloqueia chat)");
     }
   }
 
@@ -349,7 +359,7 @@ router.post("/support/chat", async (req, res) => {
     providerContext,
     attachmentContext,
   ].filter(Boolean).join("\n");
-  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext, capabilityContext);
+  const jarvisSystemPrompt = buildJarvisSystemPrompt(parsed.data.context, operationalContext, capabilityContext, requestContext);
   setSseHeaders(res);
   let fullResponse = "";
 
