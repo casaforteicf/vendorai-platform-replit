@@ -7,6 +7,7 @@ import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
 import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketingManager";
 import ColdProspectingCampaignPlanner from "@/components/marketing/ColdProspectingCampaignPlanner";
+import ColdProspectingPilotValidation from "@/components/marketing/ColdProspectingPilotValidation";
 
 // Visão geral das campanhas dentro do hub canônico de Marketing.
 // As URLs antigas continuam disponíveis por compatibilidade, mas todos os
@@ -37,6 +38,7 @@ export default function CampanhasHub() {
           <ArrowLeft className="h-4 w-4" /> Voltar para Campanhas
         </Button>
         <ColdProspectingCampaignPlanner />
+        <ColdProspectingPilotValidation />
       </div>
     );
   }
