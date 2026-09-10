@@ -23,6 +23,7 @@ import { MediaPlanFailedRetryBridge } from "./components/marketing/MediaPlanFail
 import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
 import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaPlanPreparationActionsBridge";
 import { MediaPlanLifecycleSummary } from "./components/marketing/MediaPlanLifecycleSummary";
+import { CheckoutConversionFunnel } from "./components/marketing/CheckoutConversionFunnel";
 import { MediaPlanPerformanceCommandCenter } from "./components/marketing/MediaPlanPerformanceCommandCenter";
 import { MediaPlanBudgetExecutionBridge } from "./components/marketing/MediaPlanBudgetExecutionBridge";
 import { MarketingAutonomyControl } from "./components/marketing/MarketingAutonomyControl";
@@ -116,6 +117,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaPlanPublicationModeControl />
           <MediaPlanPreparationActionsBridge />
           <MediaPlanLifecycleSummary />
+          <CheckoutConversionFunnel />
           <MediaPlanPerformanceCommandCenter />
           <MediaPlanBudgetExecutionBridge />
           <MarketingAutonomyControl />
