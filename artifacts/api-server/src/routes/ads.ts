@@ -866,8 +866,17 @@ router.get("/tenants/:tenantId/ads/shopping-feed/url", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ configured: true });
+});
+
+router.post("/tenants/:tenantId/ads/shopping-feed/copy-url", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
   const token = gerarFeedToken(tenantId);
   const base = process.env.API_PUBLIC_BASE_URL ?? "https://vendorai-platform-replit-production.up.railway.app";
+  res.setHeader("Cache-Control", "no-store");
   return res.json({ feedUrl: `${base}/api/public/ads/shopping-feed/${tenantId}.xml?token=${token}` });
 });
 
