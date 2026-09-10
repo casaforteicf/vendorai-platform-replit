@@ -13,6 +13,7 @@ import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { runMarketingBudgetAutopilot } from "./jobs/marketingBudgetAutopilot.js";
 import { runFinanceIntegrationHealthCycle } from "./jobs/financeIntegrationHealthCycle.js";
+import { getCheckoutFunnelMetrics, runCheckoutAbandonmentRecovery } from "./jobs/checkoutAbandonmentRecovery.js";
 import { runCampaignAbWinnerCycle } from "./services/campaignAbWinnerRuntime.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
@@ -50,6 +51,19 @@ app.get(
   requireRole("super_admin"),
   (_req, res) => {
     res.json({ success: true, mainGovernance: getMainGovernanceSnapshot() });
+  },
+);
+
+app.get(
+  "/api/admin/commerce/checkout-funnel",
+  authenticate,
+  requireRole("super_admin"),
+  async (_req, res, next) => {
+    try {
+      res.json({ groups: await getCheckoutFunnelMetrics() });
+    } catch (err) {
+      next(err);
+    }
   },
 );
 
@@ -101,6 +115,19 @@ async function start() {
     };
     void syncMarketingLifecycle();
     setInterval(() => { void syncMarketingLifecycle(); }, 10 * 60 * 1000).unref();
+
+    // Checkout abandonado: após 15 min, recupera pelo WhatsApp da LP em até
+    // três tentativas, sempre respeitando o horário comercial do tenant dono
+    // da página. Pagamento/provisionamento interrompem a elegibilidade.
+    const syncCheckoutRecovery = async () => {
+      try {
+        await runCheckoutAbandonmentRecovery(logger);
+      } catch (syncErr) {
+        logger.error({ err: syncErr }, "checkout-recovery: unhandled sync error");
+      }
+    };
+    setTimeout(() => { void syncCheckoutRecovery(); }, 60 * 1000).unref();
+    setInterval(() => { void syncCheckoutRecovery(); }, 10 * 60 * 1000).unref();
 
     // Saúde das integrações financeiras: primeira rodada alguns minutos após
     // o startup (sem atrasar a API) e depois a cada 6h. O ciclo possui trava
