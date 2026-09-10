@@ -29,6 +29,24 @@ export interface SiteGeneratorDesignQa {
   recommendations: string[];
 }
 
+export interface SiteCommerceOffer {
+  enabled: boolean;
+  offerCode?: string;
+  planSlug: string;
+  vertical?: string;
+  headline?: string;
+  promotionalPriceCents?: number;
+  regularPriceOverrideCents?: number;
+  originalPriceCents?: number;
+  promotionalCycles?: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  couponsAllowed?: boolean;
+  partnerRulesAllowed?: boolean;
+  billingCycle?: "monthly" | "annual";
+  renewalMode?: "catalog" | "fixed";
+}
+
 export interface SiteGeneratorConfig {
   type: "landing" | "ecommerce" | "institutional" | "product";
   name: string;
@@ -52,6 +70,7 @@ export interface SiteGeneratorConfig {
   productNames?: string[];
   campaignId?: string;
   campaignName?: string;
+  commerceOffer?: SiteCommerceOffer;
   marketingContext?: Record<string, unknown>;
   creativeRuntimeContext?: string;
   designQa?: SiteGeneratorDesignQa;
