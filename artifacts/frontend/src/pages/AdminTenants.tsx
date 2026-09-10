@@ -658,7 +658,7 @@ export default function AdminTenants() {
                 </Select>
                 {plansLoading ? <p className="text-xs text-muted-foreground">Carregando planos ativos...</p> : null}
               </div>
-              <div className="space-y-1.5"><Label>Ciclo</Label><Select value={form.billingCycle} onValueChange={(value) => setForm((current) => ({ ...current, billingCycle: value as "monthly" | "annual" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="annual">Anual</SelectItem></Select></div>
+              <div className="space-y-1.5"><Label>Ciclo</Label><Select value={form.billingCycle} onValueChange={(value) => setForm((current) => ({ ...current, billingCycle: value as "monthly" | "annual" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="annual">Anual</SelectItem></SelectContent></Select></div>
               <div className="sm:col-span-2 space-y-1.5"><Label>Observações internas</Label><Textarea value={form.internalNotes} onChange={(event) => setForm((current) => ({ ...current, internalNotes: event.target.value }))} rows={2} placeholder="Notas visíveis apenas para o super admin..." /></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
