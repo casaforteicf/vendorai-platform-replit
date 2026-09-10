@@ -313,6 +313,17 @@ router.post(
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
 
+    res.setHeader("Deprecation", "true");
+    res.setHeader("Link", '</api/onboarding>; rel="successor-version"');
+    res.setHeader(
+      "Warning",
+      '299 VendorAI "Endpoint legado; use o fluxo /onboarding/step/*"',
+    );
+    req.log.warn(
+      { tenantId, userId: req.user?.sub, route: req.originalUrl },
+      "Legacy onboarding completion endpoint used",
+    );
+
     const parsed = onboardingCompleteSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json({ error: parsed.error.message });
