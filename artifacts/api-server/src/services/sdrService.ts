@@ -17,6 +17,7 @@ import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { dispatchAgentBackground } from "./agent-dispatch.js";
 import { ensureColdProspectLandingPage } from "./coldProspectLandingPage.js";
 import type { ColdEvidence } from "../lib/coldProspectQuality.js";
+import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 
 export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
 
@@ -46,6 +47,49 @@ type ColdProspectDossier = {
   lpSlug?: string;
   lpGeneratedAt?: string;
 };
+
+function metadataSuppressesColdOutreach(metadata: Record<string, unknown>): boolean {
+  const booleanFlags = ["optOut", "opt_out", "doNotContact", "nao_contatar", "não_contatar", "unsubscribed", "blacklisted"];
+  if (booleanFlags.some((key) => metadata[key] === true)) return true;
+
+  const status = String(metadata["contact_status"] ?? metadata["outreach_status"] ?? "").trim().toLowerCase();
+  return ["opt_out", "opt-out", "nao_contatar", "não_contatar", "unsubscribed", "blocked", "blacklisted"].includes(status);
+}
+
+async function assertColdOutreachAllowed(leadId: string, tenantId: string, log: Logger): Promise<void> {
+  if (!(await tenantIsWithinBusinessHours(tenantId))) {
+    log.info({ leadId, tenantId }, "sdrService: cold outreach postponed outside business hours");
+    throw new Error("COLD_OUTREACH_OUTSIDE_BUSINESS_HOURS");
+  }
+
+  const [lead] = await db
+    .select({
+      agenteDesativado: leadsTable.agenteDesativado,
+      excluidoEm: leadsTable.excluidoEm,
+      naoLeadTipo: leadsTable.naoLeadTipo,
+      iaAtiva: leadsTable.iaAtiva,
+      metadata: leadsTable.metadata,
+    })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!lead) throw new Error("COLD_OUTREACH_LEAD_NOT_FOUND");
+
+  const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+  const suppressed = Boolean(
+    lead.agenteDesativado ||
+    lead.excluidoEm ||
+    lead.naoLeadTipo ||
+    lead.iaAtiva === false ||
+    metadataSuppressesColdOutreach(metadata)
+  );
+
+  if (suppressed) {
+    log.info({ leadId, tenantId }, "sdrService: cold outreach blocked by suppression rule");
+    throw new Error("COLD_OUTREACH_SUPPRESSED");
+  }
+}
 
 // ── Scenario detection ────────────────────────────────────────────────────────
 
@@ -85,7 +129,7 @@ export async function detectSdrCenario(
   return null;
 }
 
-// ── Variable resolution ───────────────────────────────────────────────────────
+// ── Variable resolution ────────────────────────────────────────────────────────
 
 function nextBusinessDays(from: Date, count: number): Date[] {
   const days: Date[] = [];
@@ -167,8 +211,6 @@ export async function resolveTemplateVars(
   const diaSugestao2 = nextDays[1] ? formatDia(nextDays[1]) : "outro dia";
   const horaSugestao1 = "10h";
 
-  // Só usa reclamação pública quando ela de fato existe. Em prospecção fria,
-  // nunca transformamos ausência de evidência em um problema afirmado.
   let principalReclamacao = "oportunidade de atendimento identificada em sinais públicos";
   const reviews = (meta.reviews ?? meta.avaliações ?? []) as Array<{ text?: string; comment?: string }>;
   if (reviews.length > 0) {
@@ -198,7 +240,7 @@ export async function resolveTemplateVars(
     empresa_nome:     empresaNome,
     nome_lead:        lead.nome ?? "",
     empresa_lead:     lead.empresa ?? lead.nome ?? "",
-    lp_url:            dossier?.lpUrl ?? "",
+    lp_url:           dossier?.lpUrl ?? "",
   };
 
   let result = template;
@@ -324,6 +366,13 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
+  if (cenario === "frio_teste") {
+    // Throwing is intentional: leadEnrichment catches the block and cannot
+    // fall through to its generic SDR fallback. The lead remains queued for a
+    // later run rather than being contacted outside policy.
+    await assertColdOutreachAllowed(leadId, tenantId, log);
+  }
+
   const [existingActivity] = await db
     .select({ id: activitiesTable.id })
     .from(activitiesTable)
@@ -340,10 +389,6 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
-  // Cold outreach requires a published personalized LP before ANY first
-  // WhatsApp message. Throwing here is intentional: the enrichment caller
-  // catches the error and therefore cannot fall through to a generic cold
-  // dispatch without the LP.
   let lpUrl: string | null = null;
   if (cenario === "frio_teste") {
     lpUrl = await ensureColdLandingBeforeApproach(leadId, tenantId, log);

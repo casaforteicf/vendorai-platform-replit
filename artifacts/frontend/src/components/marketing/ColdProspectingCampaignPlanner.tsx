@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, CheckCircle2, FileSearch, Globe2, Loader2, MapPin, MessageCircle, Radar, Rocket, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { Bot, CheckCircle2, FileSearch, Globe2, Loader2, MapPin, MessageCircle, Radar, Rocket, ShieldCheck, SlidersHorizontal, Sparkles, Target } from "lucide-react";
 
 type ConfigResponse = {
   config: {
@@ -21,6 +21,26 @@ type ConfigResponse = {
 
 const DEFAULT_NICHES = ["clínicas odontológicas implantes", "odontologia estética"];
 const DEFAULT_LOCATIONS = ["Florianópolis, SC", "Joinville, SC", "Blumenau, SC", "Chapecó, SC"];
+
+const AUTOMATIC_RULES = [
+  "Deduplicação, enriquecimento e dossiê com fontes/confiança",
+  "Fit Score + Pain Score + Intent Score",
+  "Contato válido + segmento + mínimo de 2 evidências",
+  "LP personalizada obrigatória antes do SDR frio",
+  "Tracking da LP e handoff para Closer quando houver intenção alta",
+  "Bloqueio de não-lead, exclusão, agente desativado e opt-out",
+  "Sem afirmações internas não comprovadas ou estimativas apresentadas como fato",
+];
+
+const EDITABLE_STRATEGY = [
+  "Nicho/subnicho e ICP",
+  "Região e cidades",
+  "Ritmo máximo por dia",
+  "Oferta, argumento e criativos",
+  "Canais e mídia paga",
+  "Cadência e thresholds avançados",
+  "Orçamento, período e autonomia da IA",
+];
 
 function authHeaders() {
   return {
@@ -52,7 +72,7 @@ export default function ColdProspectingCampaignPlanner() {
 
   const [nichesText, setNichesText] = useState(DEFAULT_NICHES.join("; "));
   const [locationsText, setLocationsText] = useState(DEFAULT_LOCATIONS.join("; "));
-  const [dailyPace, setDailyPace] = useState(20);
+  const [dailyPace, setDailyPace] = useState(5);
   const [loading, setLoading] = useState(true);
   const [savingMode, setSavingMode] = useState<"plan" | "activate" | null>(null);
   const [currentlyActive, setCurrentlyActive] = useState(false);
@@ -117,7 +137,7 @@ export default function ColdProspectingCampaignPlanner() {
       toast({
         title: activate ? "Prospecção inteligente ativada" : "Planejamento salvo",
         description: activate
-          ? `Busca automática ativa: ${niches.length} nicho(s), ${locations.length} localidade(s), até ${dailyPace} prospects/dia.`
+          ? `Piloto ativo: ${niches.length} nicho(s), ${locations.length} localidade(s), até ${dailyPace} prospects/dia.`
           : "A busca permanece pausada até você aprovar e iniciar.",
       });
     } catch (error) {
@@ -139,6 +159,7 @@ export default function ColdProspectingCampaignPlanner() {
             <h2 className="text-xl font-semibold">Prospecção Inteligente</h2>
             <Badge className={currentlyActive ? "bg-emerald-600" : ""}>{currentlyActive ? "Busca ativa" : "Planejamento"}</Badge>
             <Badge variant="outline">Piloto: Odontologia</Badge>
+            <Badge variant="secondary">Validação inicial: 5/dia</Badge>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">O VendorAI encontra empresas frias, valida sinais públicos, monta o dossiê, cria uma LP individual e só então libera a primeira abordagem.</p>
         </div>
@@ -164,6 +185,7 @@ export default function ColdProspectingCampaignPlanner() {
           <div className="space-y-2 lg:col-span-2">
             <div className="flex items-center justify-between gap-2"><Label>Ritmo máximo: {dailyPace} prospects/dia</Label><Badge variant="secondary">{combinations} combinações</Badge></div>
             <input className="w-full accent-primary" type="range" min={5} max={100} step={5} value={dailyPace} onChange={(event) => setDailyPace(Number(event.target.value))} />
+            <p className="text-xs text-muted-foreground">Recomendação do piloto: 5/dia. Depois da validação, aumente para 20, 50 ou mais conforme qualidade e conversão.</p>
           </div>
         </CardContent>
       </Card>
@@ -173,6 +195,27 @@ export default function ColdProspectingCampaignPlanner() {
         <Card><CardContent className="pt-5 space-y-2"><FileSearch className="h-5 w-5 text-primary" /><p className="font-semibold text-sm">3. Dossiê</p><p className="text-xs text-muted-foreground">Empresa, contato comercial, segmento, presença digital, reviews, agendamento, anúncios, unidades, fontes e confiança.</p></CardContent></Card>
         <Card><CardContent className="pt-5 space-y-2"><ShieldCheck className="h-5 w-5 text-primary" /><p className="font-semibold text-sm">4. Gate de qualidade</p><p className="text-xs text-muted-foreground">Exige segmento, contato utilizável, score mínimo e pelo menos 2 evidências verificáveis. Sem isso, não aborda.</p></CardContent></Card>
         <Card><CardContent className="pt-5 space-y-2"><Globe2 className="h-5 w-5 text-primary" /><p className="font-semibold text-sm">5. LP individual</p><p className="text-xs text-muted-foreground">Cria diagnóstico externo por empresa, com evidências, Fit/Pain, módulos relevantes e CTA de demonstração.</p></CardContent></Card>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Card className="border-emerald-200/80">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4 text-emerald-600" />Programado pelo sistema</CardTitle>
+            <CardDescription>Regras de segurança e inteligência aplicadas automaticamente em todas as campanhas frias.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {AUTOMATIC_RULES.map((rule) => <div key={rule} className="flex items-start gap-2 text-sm"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{rule}</span></div>)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><SlidersHorizontal className="h-4 w-4 text-primary" />Estratégia editável</CardTitle>
+            <CardDescription>O usuário decide o negócio e a campanha; a plataforma executa o processo técnico.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {EDITABLE_STRATEGY.map((rule) => <div key={rule} className="flex items-start gap-2 text-sm"><Target className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{rule}</span></div>)}
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="border-primary/25 bg-primary/[0.03]">
@@ -193,7 +236,7 @@ export default function ColdProspectingCampaignPlanner() {
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button variant="outline" disabled={savingMode !== null} onClick={() => save(false)}>{savingMode === "plan" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Salvar sem ativar</Button>
-        <Button disabled={savingMode !== null || combinations === 0 || combinations > 60} onClick={() => save(true)}>{savingMode === "activate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}Aprovar e iniciar busca automática</Button>
+        <Button disabled={savingMode !== null || combinations === 0 || combinations > 60} onClick={() => save(true)}>{savingMode === "activate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}Aprovar e iniciar piloto</Button>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground"><Bot className="h-3.5 w-3.5" />A automação respeita o ritmo diário e pode ser pausada a qualquer momento no Prospector.</div>
