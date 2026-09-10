@@ -80,6 +80,7 @@ export * from "./restaurante_cardapio";
 export * from "./restaurante_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
+export * from "./commerce_checkout_sessions";
 export * from "./site_generation_jobs";
 export * from "./media_plans";
 export * from "./content_calendar_items";
@@ -218,13 +219,3 @@ export * from "./erp_operacional";
 export * from "./finance_integration_registry";
 export * from "./vendor_stories";
 export * from "./variedades_dia";
-export * from "./vehicle_lookup";
-export * from "./vehicle_ad_reservations";
-export * from "./content_autopilot";
-export * from "./site_blog_posts";
-
-export * from "./access_licenses";
-
-export * from "./ad_campaign_events";
-
-export * from "./item_ad_reservations";
