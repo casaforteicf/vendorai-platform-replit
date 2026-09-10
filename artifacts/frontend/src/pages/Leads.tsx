@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActiveLeadProcesses, type ActiveWorkCard } from "@/components/ActiveLeadProcesses";
 import { NewLeadDialog } from "@/components/NewLeadDialog";
+import { LeadQuickEditButton } from "@/components/LeadQuickEditButton";
 import {
   Search,
   ChevronRight,
@@ -133,14 +134,10 @@ function getFirstChurnReason(reasons: unknown[] | null | undefined): string | nu
   return null;
 }
 
-function BriefingBadge({
-  briefing,
-}: {
-  briefing: { needThermometer?: string | null } | undefined;
-}) {
+function BriefingBadge({ briefing }: { briefing: { needThermometer?: string | null } | undefined }) {
   if (!briefing?.needThermometer) return null;
-
   const t = briefing.needThermometer;
+
   if (t === "hot") {
     return (
       <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 border border-red-100">
@@ -164,32 +161,18 @@ function BriefingBadge({
 
 function churnBadge(risk: number | null | undefined, reasons?: unknown[] | null) {
   if (risk === null || risk === undefined) return null;
-
   const firstReason = getFirstChurnReason(reasons);
   let badge: React.ReactNode;
 
   if (risk > 70) {
-    badge = (
-      <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 font-mono text-xs">
-        {risk}%
-      </Badge>
-    );
+    badge = <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 font-mono text-xs">{risk}%</Badge>;
   } else if (risk >= 30) {
-    badge = (
-      <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 font-mono text-xs">
-        {risk}%
-      </Badge>
-    );
+    badge = <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 font-mono text-xs">{risk}%</Badge>;
   } else {
-    badge = (
-      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-mono text-xs">
-        {risk}%
-      </Badge>
-    );
+    badge = <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-mono text-xs">{risk}%</Badge>;
   }
 
   if (!firstReason) return badge;
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>{badge}</TooltipTrigger>
@@ -210,7 +193,6 @@ function getLeadSegment(lead: Lead): string {
     anyLead?.metadata?.setor,
     anyLead?.metadata?.nicho,
   ];
-
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
@@ -218,9 +200,7 @@ function getLeadSegment(lead: Lead): string {
 }
 
 function SegmentBadge({ segment }: { segment: string }) {
-  if (!segment) {
-    return <span className="text-muted-foreground">—</span>;
-  }
+  if (!segment) return <span className="text-muted-foreground">—</span>;
   return (
     <Badge
       variant="secondary"
@@ -250,15 +230,10 @@ function EditableSegmentBadge({ lead }: { lead: Lead }) {
   function saveSegment() {
     const nextSegment = draft.trim();
     const currentDadosPj = (lead as any).dadosPj;
-    const data: Record<string, unknown> = {
-      mercadoSegmento: nextSegment || null,
-    };
+    const data: Record<string, unknown> = { mercadoSegmento: nextSegment || null };
 
     if (currentDadosPj && typeof currentDadosPj === "object") {
-      data.dadosPj = {
-        ...currentDadosPj,
-        segmento: nextSegment || null,
-      };
+      data.dadosPj = { ...currentDadosPj, segmento: nextSegment || null };
     }
 
     updateSegment.mutate(
@@ -273,9 +248,7 @@ function EditableSegmentBadge({ lead }: { lead: Lead }) {
             description: nextSegment ? `${lead.nome} · ${nextSegment}` : `${lead.nome} ficou sem segmento definido.`,
           });
         },
-        onError: () => {
-          toast({ title: "Não foi possível atualizar o segmento", variant: "destructive" });
-        },
+        onError: () => toast({ title: "Não foi possível atualizar o segmento", variant: "destructive" }),
       },
     );
   }
@@ -300,13 +273,8 @@ function EditableSegmentBadge({ lead }: { lead: Lead }) {
           if (nextOpen) setDraft(segment);
         }}
       >
-        <DialogContent
-          className="max-w-sm"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <DialogHeader>
-            <DialogTitle>Segmento do lead</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-sm" onClick={(event) => event.stopPropagation()}>
+          <DialogHeader><DialogTitle>Segmento do lead</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Segmento</label>
@@ -321,14 +289,10 @@ function EditableSegmentBadge({ lead }: { lead: Lead }) {
                   if (event.key === "Escape") setOpen(false);
                 }}
               />
-              <p className="text-xs text-muted-foreground">
-                Use a atividade principal do cliente. Essa informação alimenta filtros e regras comerciais.
-              </p>
+              <p className="text-xs text-muted-foreground">Use a atividade principal do cliente. Essa informação alimenta filtros e regras comerciais.</p>
             </div>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancelar
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button type="button" onClick={saveSegment} disabled={updateSegment.isPending}>
                 {updateSegment.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Salvar
@@ -397,11 +361,7 @@ function parseCsvRows(text: string): ParsedLeadRow[] {
 
   const extraColumns = lines[0]!
     .split(",")
-    .map((header, index) => ({
-      name: header.trim(),
-      key: rawHeader[index] ?? "",
-      index,
-    }))
+    .map((header, index) => ({ name: header.trim(), key: rawHeader[index] ?? "", index }))
     .filter((column) => column.name && !KNOWN_LEAD_COLUMNS.has(column.key));
 
   return lines
@@ -447,9 +407,7 @@ export default function Leads() {
   const [statusFilter, setStatusFilter] = useState<string>(
     isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all",
   );
-  const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(
-    isChurnUrl ? "desc" : null,
-  );
+  const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
   const [maturityFilter, setMaturityFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"ativos" | "excluidos">("ativos");
 
@@ -470,10 +428,7 @@ export default function Leads() {
   const [assignSelectedUser, setAssignSelectedUser] = useState<string>("");
   const updateLead = useUpdateLead();
 
-  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; lead: Lead | null }>({
-    open: false,
-    lead: null,
-  });
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
   const [deleteMotivo, setDeleteMotivo] = useState("");
 
   const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, undefined, {
@@ -495,10 +450,7 @@ export default function Leads() {
   );
 
   const { data: ciList } = useListCustomerIntelligence(tenantId, {
-    query: {
-      enabled: !!tenantId,
-      queryKey: getListCustomerIntelligenceQueryKey(tenantId),
-    },
+    query: { enabled: !!tenantId, queryKey: getListCustomerIntelligenceQueryKey(tenantId) },
   });
 
   const { data: overview } = useQuery<LeadsOverviewContext>({
@@ -530,10 +482,7 @@ export default function Leads() {
   });
 
   const { data: briefings = [] } = useListTenantBriefings(tenantId, {
-    query: {
-      enabled: !!tenantId,
-      queryKey: getListTenantBriefingsQueryKey(tenantId),
-    },
+    query: { enabled: !!tenantId, queryKey: getListTenantBriefingsQueryKey(tenantId) },
   });
 
   const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
@@ -548,9 +497,7 @@ export default function Leads() {
   const userMap = new Map(Object.entries(overview?.userLabelsById ?? {}));
   const ciMap = new Map(ciList?.map((ci) => [ci.leadId, ci]) ?? []);
   const briefingMap = new Map(briefings.map((briefing) => [briefing.leadId, briefing]));
-  const leadValorMap = new Map<string, string>(
-    Object.entries(overview?.proposalTotalsByLeadId ?? {}),
-  );
+  const leadValorMap = new Map<string, string>(Object.entries(overview?.proposalTotalsByLeadId ?? {}));
 
   const segmentOptions = Array.from(
     new Map(
@@ -565,10 +512,7 @@ export default function Leads() {
     mutationFn: async ({ lead, motivo }: { lead: Lead; motivo: string }) => {
       const response = await fetch(`/api/leads/${lead.id}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ motivo }),
       });
       if (!response.ok) {
@@ -580,29 +524,18 @@ export default function Leads() {
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
-      toast({
-        title: "Lead excluído",
-        description: `${lead.nome} foi movido pra aba Excluídos.`,
-      });
+      toast({ title: "Lead excluído", description: `${lead.nome} foi movido pra aba Excluídos.` });
       setDeleteDialog({ open: false, lead: null });
       setDeleteMotivo("");
     },
-    onError: (error: Error) =>
-      toast({
-        title: "Não foi possível excluir",
-        description: error.message,
-        variant: "destructive",
-      }),
+    onError: (error: Error) => toast({ title: "Não foi possível excluir", description: error.message, variant: "destructive" }),
   });
 
   const restoreLead = useMutation({
     mutationFn: async (lead: Lead) => {
       const response = await fetch(`/api/leads/${lead.id}`, {
         method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ excluidoEm: null, motivoExclusao: null }),
       });
       if (!response.ok) {
@@ -613,17 +546,10 @@ export default function Leads() {
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
-      queryClient.invalidateQueries({
-        queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }),
-      });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
       toast({ title: "Lead restaurado", description: `${lead.nome} voltou pra lista ativa.` });
     },
-    onError: (error: Error) =>
-      toast({
-        title: "Não foi possível restaurar",
-        description: error.message,
-        variant: "destructive",
-      }),
+    onError: (error: Error) => toast({ title: "Não foi possível restaurar", description: error.message, variant: "destructive" }),
   });
 
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
@@ -775,14 +701,10 @@ export default function Leads() {
             }}
           >
             <DialogTrigger asChild>
-              <Button variant="outline">
-                <Upload className="h-4 w-4 mr-2" /> Importar CSV
-              </Button>
+              <Button variant="outline"><Upload className="h-4 w-4 mr-2" /> Importar CSV</Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Importar Leads via CSV</DialogTitle>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Importar Leads via CSV</DialogTitle></DialogHeader>
 
               {!importResult ? (
                 <div className="space-y-4">
@@ -816,13 +738,7 @@ export default function Leads() {
                     <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
                     <p className="text-sm font-medium">Clique para selecionar o arquivo CSV</p>
                     <p className="text-xs text-muted-foreground mt-1">ou arraste e solte aqui</p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
+                    <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFileChange} />
                   </div>
 
                   {parsedRows.length > 0 && (
@@ -859,9 +775,7 @@ export default function Leads() {
                           </tbody>
                         </table>
                       </div>
-                      {parsedRows.length > 5 && (
-                        <p className="text-xs text-muted-foreground text-center">… e mais {parsedRows.length - 5} lead(s)</p>
-                      )}
+                      {parsedRows.length > 5 && <p className="text-xs text-muted-foreground text-center">… e mais {parsedRows.length - 5} lead(s)</p>}
                       <Button className="w-full gap-2" onClick={handleImport} disabled={importing}>
                         {importing ? (
                           <><Upload className="h-4 w-4 animate-bounce" /> Importando…</>
@@ -878,16 +792,12 @@ export default function Leads() {
                     <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
                     <div>
                       <p className="font-semibold text-emerald-800">{importResult.imported} lead(s) importado(s)</p>
-                      {importResult.errors.length > 0 && (
-                        <p className="text-xs text-emerald-700">{importResult.errors.length} linha(s) com erro ignorada(s)</p>
-                      )}
+                      {importResult.errors.length > 0 && <p className="text-xs text-emerald-700">{importResult.errors.length} linha(s) com erro ignorada(s)</p>}
                     </div>
                   </div>
                   {importResult.errors.length > 0 && (
                     <div className="space-y-1">
-                      <p className="text-sm font-medium flex items-center gap-1.5 text-red-600">
-                        <XCircle className="h-4 w-4" /> Erros:
-                      </p>
+                      <p className="text-sm font-medium flex items-center gap-1.5 text-red-600"><XCircle className="h-4 w-4" /> Erros:</p>
                       {importResult.errors.map((error) => (
                         <p key={error.row} className="text-xs text-muted-foreground">Linha {error.row}: {error.message}</p>
                       ))}
@@ -915,13 +825,7 @@ export default function Leads() {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant={viewMode === "ativos" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setViewMode("ativos")}
-        >
-          Ativos
-        </Button>
+        <Button variant={viewMode === "ativos" ? "default" : "outline"} size="sm" onClick={() => setViewMode("ativos")}>Ativos</Button>
         <Button
           variant={viewMode === "excluidos" ? "default" : "outline"}
           size="sm"
@@ -929,9 +833,7 @@ export default function Leads() {
           className="gap-1.5"
         >
           <Trash2 className="h-3.5 w-3.5" /> Excluídos
-          {excludedLeads && excludedLeads.length > 0 && (
-            <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>
-          )}
+          {excludedLeads && excludedLeads.length > 0 && <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>}
         </Button>
       </div>
 
@@ -951,18 +853,14 @@ export default function Leads() {
                       <SegmentBadge segment={getLeadSegment(lead)} />
                     </div>
                     {lead.telefone && <p className="text-xs text-muted-foreground">{lead.telefone}</p>}
-                    <p className="text-sm text-muted-foreground mt-1">
-                      <span className="font-medium text-foreground">Motivo:</span> {lead.motivoExclusao || "Não informado"}
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-1"><span className="font-medium text-foreground">Motivo:</span> {lead.motivoExclusao || "Não informado"}</p>
                     {lead.excluidoEm && (
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Excluído em {new Date(lead.excluidoEm).toLocaleDateString("pt-BR")} às {new Date(lead.excluidoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                       </p>
                     )}
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => restoreLead.mutate(lead)} disabled={restoreLead.isPending} className="shrink-0">
-                    Restaurar
-                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => restoreLead.mutate(lead)} disabled={restoreLead.isPending} className="shrink-0">Restaurar</Button>
                 </div>
               ))
             )}
@@ -983,22 +881,16 @@ export default function Leads() {
             </div>
 
             <Select value={segmentFilter} onValueChange={setSegmentFilter}>
-              <SelectTrigger className="w-full sm:w-56" data-testid="select-segment-filter">
-                <SelectValue placeholder="Filtrar por segmento" />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-56" data-testid="select-segment-filter"><SelectValue placeholder="Filtrar por segmento" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os segmentos</SelectItem>
                 <SelectItem value={NO_SEGMENT}>Sem segmento</SelectItem>
-                {segmentOptions.map((segment) => (
-                  <SelectItem key={segment} value={segment}>{segment}</SelectItem>
-                ))}
+                {segmentOptions.map((segment) => <SelectItem key={segment} value={segment}>{segment}</SelectItem>)}
               </SelectContent>
             </Select>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48" data-testid="select-status-filter">
-                <SelectValue placeholder="Filtrar por status" />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-48" data-testid="select-status-filter"><SelectValue placeholder="Filtrar por status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os status</SelectItem>
                 <SelectItem value="high_risk" data-testid="filter-high-risk">Alto risco (&gt;70)</SelectItem>
@@ -1010,9 +902,7 @@ export default function Leads() {
             </Select>
 
             <Select value={maturityFilter} onValueChange={setMaturityFilter}>
-              <SelectTrigger className="w-full sm:w-52" data-testid="select-maturity-filter">
-                <SelectValue placeholder="Maturidade IA" />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-52" data-testid="select-maturity-filter"><SelectValue placeholder="Maturidade IA" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toda maturidade</SelectItem>
                 <SelectItem value="1">✋ Manual, sem sistema</SelectItem>
@@ -1043,7 +933,7 @@ export default function Leads() {
                   return (
                     <div
                       key={lead.id}
-                      className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 active:bg-muted/80 transition-colors min-h-[72px] ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
+                      className={`flex items-center gap-2 p-4 cursor-pointer hover:bg-muted/50 active:bg-muted/80 transition-colors min-h-[72px] ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
                       onClick={() => setLocation(`/leads/${lead.id}`)}
                       data-testid={`row-lead-${lead.id}`}
                     >
@@ -1055,9 +945,7 @@ export default function Leads() {
                         {lead.empresa && <p className="text-xs text-muted-foreground truncate">{lead.empresa}</p>}
                         <div><EditableSegmentBadge lead={lead} /></div>
                         <div className="flex items-center gap-1.5">
-                          {lead.assignedTo && userMap.get(lead.assignedTo) && (
-                            <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>
-                          )}
+                          {lead.assignedTo && userMap.get(lead.assignedTo) && <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>}
                           {isAdmin && (
                             <button
                               title="Atribuir responsável"
@@ -1084,12 +972,12 @@ export default function Leads() {
                             onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
                           />
                           {leadValorMap.get(lead.id) && (
-                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">
-                              {formatCurrency(leadValorMap.get(lead.id))}
-                            </Badge>
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">{formatCurrency(leadValorMap.get(lead.id))}</Badge>
                           )}
                         </div>
                       </div>
+
+                      <LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact />
                       {isAdmin && (
                         <button
                           type="button"
@@ -1122,13 +1010,9 @@ export default function Leads() {
                       <TableHead>Segmento</TableHead>
                       <TableHead>Telefone</TableHead>
                       <TableHead>Status do contato</TableHead>
-                      <TableHead title="Um contato pode ter vários negócios simultâneos, e cada negócio pode ter vários processos operacionais.">
-                        Negócios / processos ativos
-                      </TableHead>
+                      <TableHead title="Um contato pode ter vários negócios simultâneos, e cada negócio pode ter vários processos operacionais.">Negócios / processos ativos</TableHead>
                       <TableHead>Responsável</TableHead>
-                      <TableHead className="text-right" title="Maior valor de orçamento registrado para este contato.">
-                        Maior orçamento
-                      </TableHead>
+                      <TableHead className="text-right" title="Maior valor de orçamento registrado para este contato.">Maior orçamento</TableHead>
                       <TableHead>
                         <button
                           data-testid="sort-churn-risk"
@@ -1145,7 +1029,7 @@ export default function Leads() {
                           )}
                         </button>
                       </TableHead>
-                      <TableHead className="w-8" />
+                      <TableHead className="w-24 text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1153,9 +1037,7 @@ export default function Leads() {
                       Array.from({ length: 5 }).map((_, rowIndex) => (
                         <TableRow key={rowIndex}>
                           {Array.from({ length: 10 }).map((__, columnIndex) => (
-                            <TableCell key={columnIndex}>
-                              <div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" />
-                            </TableCell>
+                            <TableCell key={columnIndex}><div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" /></TableCell>
                           ))}
                         </TableRow>
                       ))
@@ -1183,9 +1065,7 @@ export default function Leads() {
                               </span>
                             </TableCell>
                             <TableCell className="text-muted-foreground">{lead.empresa || "—"}</TableCell>
-                            <TableCell className="min-w-[150px] max-w-[240px]">
-                              <EditableSegmentBadge lead={lead} />
-                            </TableCell>
+                            <TableCell className="min-w-[150px] max-w-[240px]"><EditableSegmentBadge lead={lead} /></TableCell>
                             <TableCell className="text-muted-foreground font-mono text-sm">{lead.telefone || "—"}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className={STATUS_STYLES[lead.status] ?? ""}>
@@ -1217,9 +1097,7 @@ export default function Leads() {
                                 )}
                               </span>
                             </TableCell>
-                            <TableCell className="text-right font-mono text-sm text-emerald-700">
-                              {formatCurrency(leadValorMap.get(lead.id)) || "—"}
-                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm text-emerald-700">{formatCurrency(leadValorMap.get(lead.id)) || "—"}</TableCell>
                             <TableCell>
                               <span className="flex items-center gap-1">
                                 <BriefingBadge briefing={briefingMap.get(lead.id)} />
@@ -1228,6 +1106,7 @@ export default function Leads() {
                             </TableCell>
                             <TableCell>
                               <span className="flex items-center justify-end gap-1">
+                                <LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact />
                                 {isAdmin && (
                                   <button
                                     type="button"
@@ -1265,31 +1144,19 @@ export default function Leads() {
         }}
       >
         <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserRound className="h-4 w-4" /> Atribuir responsável
-            </DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Atribuir responsável</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
             <Select value={assignSelectedUser} onValueChange={setAssignSelectedUser}>
               <SelectTrigger><SelectValue placeholder="Selecionar vendedor..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Sem responsável</SelectItem>
                 {tenantUsers.map((tenantUser) => (
-                  <SelectItem key={tenantUser.id} value={tenantUser.id}>
-                    {tenantUser.name || tenantUser.email || tenantUser.id}
-                  </SelectItem>
+                  <SelectItem key={tenantUser.id} value={tenantUser.id}>{tenantUser.name || tenantUser.email || tenantUser.id}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setAssignDialog({ open: false, leadId: "", currentAssignedTo: null })}
-              >
-                Cancelar
-              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAssignDialog({ open: false, leadId: "", currentAssignedTo: null })}>Cancelar</Button>
               <Button
                 size="sm"
                 disabled={updateLead.isPending}
@@ -1315,16 +1182,9 @@ export default function Leads() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={deleteDialog.open}
-        onOpenChange={(open) => !open && setDeleteDialog({ open: false, lead: null })}
-      >
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => !open && setDeleteDialog({ open: false, lead: null })}>
         <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-4 w-4" /> Excluir lead
-            </DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-destructive"><Trash2 className="h-4 w-4" /> Excluir lead</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
             <p className="text-sm text-muted-foreground">
               {deleteDialog.lead?.nome} vai pra aba "Excluídos" — não é apagado de verdade, pode ser restaurado a qualquer momento.
@@ -1337,16 +1197,12 @@ export default function Leads() {
                 value={deleteMotivo}
                 onChange={(event) => setDeleteMotivo(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && deleteDialog.lead) {
-                    deleteLead.mutate({ lead: deleteDialog.lead, motivo: deleteMotivo });
-                  }
+                  if (event.key === "Enter" && deleteDialog.lead) deleteLead.mutate({ lead: deleteDialog.lead, motivo: deleteMotivo });
                 }}
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={() => setDeleteDialog({ open: false, lead: null })}>
-                Cancelar
-              </Button>
+              <Button variant="outline" size="sm" onClick={() => setDeleteDialog({ open: false, lead: null })}>Cancelar</Button>
               <Button
                 variant="destructive"
                 size="sm"
