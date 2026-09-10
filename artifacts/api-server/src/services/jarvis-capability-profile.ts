@@ -1,5 +1,6 @@
 import { buildJarvisExecutiveReasoningContext } from "./jarvis-executive-reasoning.js";
 import { buildJarvisDecisionContext } from "./jarvis-decision-engine.js";
+import { buildJarvisActionOrchestrationContext } from "./jarvis-action-orchestrator.js";
 
 export type JarvisCapabilityFamily =
   | "vendorai_business"
@@ -187,6 +188,7 @@ export function resolveJarvisCapability(text: string): JarvisCapabilityResolutio
 
 export function buildJarvisCapabilityContext(text: string): string {
   const capability = resolveJarvisCapability(text);
+  const orchestrationContext = buildJarvisActionOrchestrationContext(text);
   const executiveReasoning = buildJarvisExecutiveReasoningContext(text);
   const decisionContext = buildJarvisDecisionContext(text);
   return [
@@ -198,6 +200,7 @@ export function buildJarvisCapabilityContext(text: string): string {
     `- Memória: ${capability.transientByDefault ? "trate como conversa transitória por padrão; não converta em aprendizado empresarial sem vínculo real com o tenant" : "pode usar contexto empresarial/operacional do tenant, sempre isolado"}.`,
     `- Conduta: ${capability.guidance}`,
     "- Nunca afirme que consultou fonte externa, criou arquivo, tocou música, enviou mensagem, publicou, contratou ou executou uma ação se a ferramenta/integração correspondente não tiver realmente sido usada e confirmado sucesso.",
+    orchestrationContext,
     executiveReasoning,
     decisionContext,
   ].join("\n");
