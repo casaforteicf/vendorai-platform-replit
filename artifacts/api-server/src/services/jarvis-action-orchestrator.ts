@@ -41,7 +41,7 @@ function preferredAgentFor(text: string): JarvisExecutorAgent | null {
   if (/\b(cobranc\w*|cobrar|inadimpl\w*|boleto vencido|pagamento atrasado)\b/.test(text)) return "cobranca";
   if (/\b(financeir\w*|fluxo de caixa|contas a pagar|contas a receber|concilia\w*|despesa|receita)\b/.test(text)) return "financeiro";
   if (/\b(agenda\w*|agendar|reuniao|consulta|horario|marcar)\b/.test(text)) return "scheduler";
-  if (/\b(reativ\w*|recuperar cliente|cliente inativo|lead inativo)\b/.test(text)) return "reactivation";
+  if (/\b(reativ\w*|recuperar (?:cliente|clientes|lead|leads)|clientes? inativos?|leads? inativos?)\b/.test(text)) return "reactivation";
   if (/\b(follow.?up|acompanhar lead|retorno comercial|retomar contato)\b/.test(text)) return "followup";
   if (/\b(fechar|fechamento|closer|negociacao|negociar|proposta|desconto)\b/.test(text)) return "closer";
   if (/\b(prospect\w*|prospecc\w*|sdr|qualificar lead|qualificacao|lead novo|novos leads)\b/.test(text)) return "sdr";
