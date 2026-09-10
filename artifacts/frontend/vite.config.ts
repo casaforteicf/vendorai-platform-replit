@@ -12,6 +12,9 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 const basePath = process.env.BASE_PATH || "/";
+const buildId = (process.env.VENDOR_BUILD_ID || process.env.GITHUB_SHA || "local")
+  .replace(/[^a-zA-Z0-9_-]/g, "")
+  .slice(0, 12) || "local";
 
 export default defineConfig({
   base: basePath,
@@ -46,20 +49,12 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "vendor-react":  ["react", "react-dom"],
-          "vendor-query":  ["@tanstack/react-query"],
-          "vendor-charts": ["recharts"],
-          "vendor-ui":     [
-            "@radix-ui/react-dialog",
-            "@radix-ui/react-dropdown-menu",
-            "@radix-ui/react-select",
-            "@radix-ui/react-tabs",
-            "@radix-ui/react-tooltip",
-            "@radix-ui/react-popover",
-            "@radix-ui/react-accordion",
-          ],
-        },
+        // Todo deploy recebe URLs novas, inclusive para chunks cujo conteúdo não
+        // mudou. Isso impede que um 404/HTML antigo armazenado como immutable no
+        // cache HTTP continue contaminando versões seguintes do aplicativo.
+        entryFileNames: `assets/[name]-${buildId}-[hash].js`,
+        chunkFileNames: `assets/[name]-${buildId}-[hash].js`,
+        assetFileNames: `assets/[name]-${buildId}-[hash][extname]`,
       },
     },
   },
