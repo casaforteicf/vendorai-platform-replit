@@ -23,6 +23,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Aplicar identidade visual do site no app
+        shell: bash
+        run: |
+          cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/images/icon.png
+          test -s artifacts/mobile/assets/images/icon.png
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
