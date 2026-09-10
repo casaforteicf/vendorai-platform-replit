@@ -594,27 +594,45 @@ export function NewLeadDialog({
                 />
                 <FormField
                   control={form.control}
-                  name="source"
+                  name="mercadoSegmento"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Origem do lead</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          <SelectItem value="manual">Cadastro manual</SelectItem>
-                          <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                          <SelectItem value="instagram">Instagram</SelectItem>
-                          <SelectItem value="site">Site / formulário</SelectItem>
-                          <SelectItem value="anuncio">Anúncio</SelectItem>
-                          <SelectItem value="indicacao">Indicação</SelectItem>
-                          <SelectItem value="prospeccao">Prospecção</SelectItem>
-                          <SelectItem value="outro">Outro</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Segmento</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-mercado-segmento"
+                          placeholder="Ex.: Clínica odontológica, construção, varejo"
+                          {...field}
+                        />
+                      </FormControl>
+                      <p className="text-[11px] text-muted-foreground">Atividade principal do cliente; usada nos filtros e na distribuição comercial.</p>
                     </FormItem>
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="source"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Origem do lead</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="manual">Cadastro manual</SelectItem>
+                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                        <SelectItem value="instagram">Instagram</SelectItem>
+                        <SelectItem value="site">Site / formulário</SelectItem>
+                        <SelectItem value="anuncio">Anúncio</SelectItem>
+                        <SelectItem value="indicacao">Indicação</SelectItem>
+                        <SelectItem value="prospeccao">Prospecção</SelectItem>
+                        <SelectItem value="outro">Outro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}
@@ -759,16 +777,6 @@ export function NewLeadDialog({
                       <FormLabel>Cidade / UF</FormLabel>
                       <FormControl><Input placeholder="Ex.: Chapecó / SC" {...field} /></FormControl>
                       <p className="text-[11px] text-muted-foreground">Quando a distribuição estiver automática, este dado também ajuda a escolher o responsável territorial.</p>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="mercadoSegmento"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Segmento</FormLabel>
-                      <FormControl><Input placeholder="Ex.: Construção, varejo, indústria" {...field} /></FormControl>
                     </FormItem>
                   )}
                 />
