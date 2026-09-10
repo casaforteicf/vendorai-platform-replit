@@ -4,6 +4,7 @@ import { plansTable } from "./plans";
 import { tenantsTable } from "./tenants";
 
 export type CommerceCheckoutStatus = "created" | "payment_pending" | "paid" | "provisioning" | "provisioned" | "failed" | "cancelled";
+export type CommerceRecoveryStatus = "idle" | "scheduled" | "contacted" | "recovered" | "exhausted" | "skipped";
 
 export type CommerceAttributionSnapshot = {
   utmSource?: string | null;
@@ -56,6 +57,13 @@ export const commerceCheckoutSessionsTable = pgTable("commerce_checkout_sessions
   errorCode: text("error_code"),
   paidAt: timestamp("paid_at"),
   provisionedAt: timestamp("provisioned_at"),
+  recoveryStatus: text("recovery_status").$type<CommerceRecoveryStatus>().notNull().default("idle"),
+  recoveryAttempts: integer("recovery_attempts").notNull().default(0),
+  recoveryNextAt: timestamp("recovery_next_at"),
+  recoveryLastAt: timestamp("recovery_last_at"),
+  recoveryChannel: text("recovery_channel"),
+  recoveryLastError: text("recovery_last_error"),
+  recoveredAt: timestamp("recovered_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
@@ -63,4 +71,5 @@ export const commerceCheckoutSessionsTable = pgTable("commerce_checkout_sessions
   index("commerce_checkout_site_idx").on(t.siteId, t.createdAt),
   index("commerce_checkout_email_idx").on(t.email, t.createdAt),
   index("commerce_checkout_status_idx").on(t.status, t.createdAt),
+  index("commerce_checkout_recovery_idx").on(t.recoveryStatus, t.recoveryNextAt),
 ]);
