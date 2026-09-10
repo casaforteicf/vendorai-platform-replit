@@ -1,3 +1,5 @@
+import { ownsJarvisOrchestrationRoute } from "./jarvis-action-orchestrator.js";
+
 export type JarvisMissionNaturalIntent =
   | { type: "create_mission"; objective: string }
   | { type: "list_missions" }
@@ -22,6 +24,8 @@ export function normalizeJarvisMissionText(value: string) {
 }
 
 export function resolveJarvisMissionNaturalIntent(text: string): JarvisMissionNaturalIntent {
+  if (!ownsJarvisOrchestrationRoute("missions", text)) return null;
+
   const raw = clean(text);
   const normalized = normalizeJarvisMissionText(raw);
   if (!raw) return null;
@@ -65,8 +69,8 @@ export function resolveJarvisMissionNaturalIntent(text: string): JarvisMissionNa
   ];
   for (const pattern of decisionPatterns) {
     const match = raw.match(pattern);
-    const decision = clean(match?.[1] ?? "");
-    if (decision.length >= 3) return { type: "record_decision", decision };
+    const decisionText = clean(match?.[1] ?? "");
+    if (decisionText.length >= 3) return { type: "record_decision", decision: decisionText };
   }
 
   // Não intercepta conversa comum que apenas menciona missão/decisão.
