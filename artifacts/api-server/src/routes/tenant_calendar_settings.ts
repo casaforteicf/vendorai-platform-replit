@@ -26,6 +26,15 @@ function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates
   };
 }
 
+async function getLeadProfessions(tenantId: string) {
+  const professionRows = await db
+    .selectDistinct({ profissao: leadsTable.profissao })
+    .from(leadsTable)
+    .where(eq(leadsTable.tenantId, tenantId));
+
+  return professionRows.map((row) => row.profissao);
+}
+
 router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   if (req.user?.tenantId !== tenantId && req.user?.platformRole !== "super_admin") {
@@ -38,8 +47,21 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
     .where(eq(tenantCalendarSettingsTable.tenantId, tenantId))
     .limit(1);
 
+  const leadProfessions = await getLeadProfessions(tenantId);
+
+  // New tenants may reach the calendar before having saved any setting. Return
+  // a virtual configuration so relevant professional dates can already be
+  // suggested from lead cards. The first PATCH will create the real row.
   if (!settings) {
-    return res.status(404).json({ error: "Not found" });
+    return res.json({
+      id: "",
+      tenantId,
+      commercialDates: [],
+      professionalDates: buildRelevantProfessionalDates([], leadProfessions),
+      enableSpouseGiftFlow: false,
+      createdAt: null,
+      updatedAt: null,
+    });
   }
 
   const canonicalStoredDates = canonicalizeProfessionalDates(settings.professionalDates);
@@ -60,14 +82,9 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
   // Discover which catalog dates matter to this tenant from the profession
   // actually stored on lead cards. This keeps the current UI compact while
   // removing the need to type profession aliases manually.
-  const professionRows = await db
-    .selectDistinct({ profissao: leadsTable.profissao })
-    .from(leadsTable)
-    .where(eq(leadsTable.tenantId, tenantId));
-
   const professionalDates = buildRelevantProfessionalDates(
     canonicalStoredDates,
-    professionRows.map((row) => row.profissao),
+    leadProfessions,
   );
 
   return res.json({ ...persistedSettings, professionalDates });
