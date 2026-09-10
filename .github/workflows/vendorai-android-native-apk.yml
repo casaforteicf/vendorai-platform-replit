@@ -1,0 +1,79 @@
+name: Build VendorAI Android Native APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/vendorai-android-native-apk.yml
+      - artifacts/mobile/**
+
+permissions:
+  contents: read
+
+jobs:
+  build-native-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Aplicar identidade visual oficial
+        shell: bash
+        run: |
+          cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/images/icon.png
+          test -s artifacts/mobile/assets/images/icon.png
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.1 --activate
+
+      - name: Instalar dependências
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Gerar projeto Android nativo
+        working-directory: artifacts/mobile
+        env:
+          EXPO_NO_DOTENV: '1'
+          PICOVOICE_ACCESS_KEY: ''
+        run: pnpm exec expo prebuild --platform android --clean --non-interactive
+
+      - name: Compilar APK Android
+        working-directory: artifacts/mobile/android
+        env:
+          CI: 'true'
+          ORG_GRADLE_PROJECT_org.gradle.jvmargs: -Xmx4096m -Dfile.encoding=UTF-8
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Preparar APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk dist/vendorai.apk
+          test -s dist/vendorai.apk
+          ls -lh dist/vendorai.apk
+
+      - name: Publicar APK como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendorai-android-apk
+          path: dist/vendorai.apk
+          if-no-files-found: error
+          retention-days: 14
