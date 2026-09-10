@@ -5,7 +5,7 @@ import { collectActiveRssSources } from "./vie-rss-collector.js";
 import { classifyRecentVieNewsForTenant } from "./vie-news-relevance.js";
 import { collectLocalNewsForActiveTenants } from "./vie-local-news.js";
 
-const VIE_CYCLE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const VIE_CYCLE_INTERVAL_MS = 60 * 60 * 1000;
 
 let cycleTimer: NodeJS.Timeout | null = null;
 let cycleRunning = false;
