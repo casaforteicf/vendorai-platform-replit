@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, webBehaviorEventsTable } from "@workspace/db";
+import { db, generatedSitesTable, leadsTable, webBehaviorEventsTable } from "@workspace/db";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { logger } from "../lib/logger.js";
 
@@ -25,6 +26,34 @@ const payloadSchema = z.object({
   fbclid: optionalText,
 });
 
+const INTENT_BOOST: Record<"page_view" | "cta_click" | "form_submit" | "product_view", number> = {
+  page_view: 8,
+  product_view: 12,
+  cta_click: 28,
+  form_submit: 40,
+};
+
+function prospectLeadIdFromConfig(config: unknown): string | null {
+  if (!config || typeof config !== "object") return null;
+  const marketingContext = (config as Record<string, unknown>)["marketingContext"];
+  if (!marketingContext || typeof marketingContext !== "object") return null;
+  const leadId = (marketingContext as Record<string, unknown>)["leadId"];
+  return typeof leadId === "string" && leadId.trim() ? leadId.trim() : null;
+}
+
+async function resolveColdProspectLeadId(tenantId: string, siteIdentifier?: string): Promise<string | null> {
+  if (!siteIdentifier) return null;
+  const [site] = await db
+    .select({ config: generatedSitesTable.config })
+    .from(generatedSitesTable)
+    .where(and(
+      eq(generatedSitesTable.tenantId, tenantId),
+      eq(generatedSitesTable.siteSlug, siteIdentifier),
+    ))
+    .limit(1);
+  return prospectLeadIdFromConfig(site?.config);
+}
+
 router.post("/generated-site/touchpoint", async (req, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
@@ -40,11 +69,10 @@ router.post("/generated-site/touchpoint", async (req, res) => {
 
   const data = parsed.data;
   try {
-    const adCampaignId = await resolveAdCampaignFromUtm(
-      tenantId,
-      data.utmCampaign ?? undefined,
-      logger,
-    );
+    const [adCampaignId, coldProspectLeadId] = await Promise.all([
+      resolveAdCampaignFromUtm(tenantId, data.utmCampaign ?? undefined, logger),
+      resolveColdProspectLeadId(tenantId, data.siteIdentifier),
+    ]);
 
     await db.insert(webBehaviorEventsTable).values({
       anonymousSessionId: data.anonymousSessionId,
@@ -57,6 +85,7 @@ router.post("/generated-site/touchpoint", async (req, res) => {
       landingPageSlug: data.siteIdentifier ?? null,
       metadata: {
         generatedSite: true,
+        coldProspectLeadId,
         channel: data.channel ?? null,
         targetHost: data.targetHost ?? null,
         utmSource: data.utmSource ?? null,
@@ -68,6 +97,24 @@ router.post("/generated-site/touchpoint", async (req, res) => {
         fbclid: data.fbclid ?? null,
       },
     });
+
+    // A personalized prospect LP carries its leadId only in generated_sites.config.
+    // Turning anonymous page behavior into intent happens only for that exact tenant + slug,
+    // preventing cross-tenant attribution and keeping ordinary public sites unchanged.
+    if (coldProspectLeadId) {
+      const boost = INTENT_BOOST[data.eventType];
+      await db
+        .update(leadsTable)
+        .set({
+          intentScore: sql<number>`LEAST(100, COALESCE(${leadsTable.intentScore}, 0) + ${boost})`,
+          lastIntentUpdate: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(leadsTable.id, coldProspectLeadId),
+          eq(leadsTable.tenantId, tenantId),
+        ));
+    }
 
     res.status(202).json({ accepted: true });
   } catch (err) {
