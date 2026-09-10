@@ -1,7 +1,8 @@
 import { PartnerCommercialManager } from "@/components/PartnerCommercialManager";
+import { PartnerOpportunityRadar } from "@/components/PartnerOpportunityRadar";
 import { PartnerPerformanceDashboard } from "@/components/PartnerPerformanceDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BadgePercent, BarChart3, Network } from "lucide-react";
+import { BadgePercent, BarChart3, Network, Radar } from "lucide-react";
 import AdminPartnersLegacy from "./AdminPartnersLegacy";
 
 export default function AdminPartners() {
@@ -26,6 +27,10 @@ export default function AdminPartners() {
               <BarChart3 className="h-4 w-4" />
               Performance
             </TabsTrigger>
+            <TabsTrigger value="inteligencia" className="gap-1.5">
+              <Radar className="h-4 w-4" />
+              Inteligência
+            </TabsTrigger>
             <TabsTrigger value="operacao" className="gap-1.5">
               <Network className="h-4 w-4" />
               Operação & rede
@@ -39,6 +44,10 @@ export default function AdminPartners() {
 
         <TabsContent value="performance" className="pt-4">
           <PartnerPerformanceDashboard />
+        </TabsContent>
+
+        <TabsContent value="inteligencia" className="pt-4">
+          <PartnerOpportunityRadar />
         </TabsContent>
 
         <TabsContent value="operacao" className="pt-4">
