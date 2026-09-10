@@ -1380,18 +1380,4 @@ router.get("/onboarding/integracoes/google-url", authenticate, async (req, res) 
   return res.json({ url });
 });
 
-// ── GET /onboarding/plans ──────────────────────────────────────────────────────
-router.get("/onboarding/plans", authenticate, async (req, res) => {
-  const plans = await db
-    .select({
-      id: plansTable.id,
-      name: plansTable.name,
-      monthlyPriceCents: plansTable.monthlyPriceCents,
-      monthlyPriceAnnualCents: plansTable.monthlyPriceAnnualCents,
-    })
-    .from(plansTable)
-    .orderBy(plansTable.monthlyPriceCents);
-  return res.json(plans);
-});
-
 export default router;
