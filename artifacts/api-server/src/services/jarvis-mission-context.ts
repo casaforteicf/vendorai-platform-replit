@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, jarvisDecisionsTable, jarvisMissionsTable } from "@workspace/db";
+import { loadJarvisMissionHealth } from "./jarvis-mission-health.js";
 
 function compact(value: string | null | undefined, max = 360) {
   if (!value) return "";
@@ -8,7 +9,7 @@ function compact(value: string | null | undefined, max = 360) {
 }
 
 export async function loadJarvisMissionContext(tenantId: string): Promise<string> {
-  const [missions, decisions] = await Promise.all([
+  const [missions, decisions, health] = await Promise.all([
     db.select({
       id: jarvisMissionsTable.id,
       title: jarvisMissionsTable.title,
@@ -46,6 +47,7 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
       .where(eq(jarvisDecisionsTable.tenantId, tenantId))
       .orderBy(desc(jarvisDecisionsTable.createdAt))
       .limit(20),
+    loadJarvisMissionHealth(tenantId),
   ]);
 
   if (!missions.length && !decisions.length) return "";
@@ -55,6 +57,18 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
     "## Missões e decisões persistentes do JARVIS",
     "Este bloco é tenant-scoped e representa objetivos e decisões explicitamente registrados. Use-o para manter continuidade entre conversas. Não altere missão, decisão ou resultado sem uma rota de escrita realmente executada.",
   ];
+
+  if (health.summary.activeMissions) {
+    lines.push("", "### Saúde automática das Missões");
+    lines.push(`ativas=${health.summary.activeMissions} | em_risco=${health.summary.atRisk} | atenção=${health.summary.attention} | dados_insuficientes=${health.summary.insufficientData} | revisões_de_decisão_vencidas=${health.summary.overdueDecisionReviews}`);
+    for (const item of health.missions.slice(0, 12)) {
+      const progress = item.progressPercent == null ? "não_mensurável" : `${item.progressPercent}%`;
+      const prazo = item.daysRemaining == null ? "sem_prazo" : `${item.daysRemaining}_dias`;
+      lines.push(`- [${item.id}] saúde=${item.health} | progresso=${progress} | prazo=${prazo} | ${compact(item.title, 180)}`);
+      if (item.reasons.length) lines.push(`  Motivos: ${item.reasons.join("; ")}`);
+    }
+    lines.push("A saúde é determinística, baseada somente em baseline/meta/estado atual, prazo, última revisão e decisões com revisão vencida. Trate 'dados insuficientes' como lacuna de medição, não como baixo desempenho.");
+  }
 
   if (missions.length) {
     lines.push("", `### Missões ativas (${missions.length})`);
@@ -89,10 +103,20 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
     lines.push("Use decisões com resultado observado como precedente, não como prova universal. Compare resultado esperado versus observado quando ambos existirem e destaque lacunas de medição quando o resultado ainda estiver pendente.");
   }
 
+  if (health.overdueDecisions.length) {
+    lines.push("", `### Revisões de decisão vencidas (${health.overdueDecisions.length})`);
+    for (const item of health.overdueDecisions.slice(0, 10)) {
+      lines.push(`- [${item.id}] ${compact(item.title, 180)} | revisar=${item.reviewAt?.toISOString() ?? "sem_data"}${item.missionId ? ` | missão=${item.missionId}` : ""}`);
+      if (item.expectedOutcome) lines.push(`  Resultado esperado: ${compact(item.expectedOutcome, 280)}`);
+    }
+    lines.push("Em briefings executivos, destaque revisões vencidas que impeçam aprender com decisões anteriores. Não invente o resultado; peça ou busque evidência operacional disponível.");
+  }
+
   lines.push(
     "",
     "### Regras de continuidade",
     "- 'Qual é nossa missão?', 'onde queremos chegar?' ou equivalente: priorize Missões ativas.",
+    "- 'Como estamos nas missões?': use primeiro Saúde automática das Missões e explique somente motivos persistidos/determinísticos.",
     "- 'Por que decidimos isso?': procure primeiro a Biblioteca de decisões explícitas e só depois Casos Vendor encerrados.",
     "- 'Funcionou?': compare resultado esperado, métrica e resultado observado; se ainda não foi medido, diga que a decisão permanece pendente de revisão.",
     "- Ao recomendar nova ação, considere as missões ativas e decisões anteriores para evitar contradizer estratégia registrada sem explicar por que a evidência mudou.",
