@@ -4,6 +4,7 @@ import { ArrowRight, Building2, Info, MapPin, Radar, Sparkles } from "lucide-rea
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ProspectorNavigationTarget } from "./ProspectorOverview";
 
 type ExternalSignalType = "competitor" | "supplier" | "regional" | "sectoral" | "market";
@@ -162,8 +163,11 @@ function friendlyReason(item: JarvisCase) {
 }
 
 export default function JarvisProspectingSignals({ onNavigate, compact = false }: Props) {
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+
   const signalsQuery = useQuery({
-    queryKey: ["jarvis-prospector-signals"],
+    queryKey: ["jarvis-prospector-signals", tenantId],
     queryFn: async () => {
       const response = await fetch("/api/jarvis/cases", { headers: authHeaders(), cache: "no-store" });
       if (!response.ok) throw new Error("Falha ao carregar sinais do JARVIS");
@@ -171,10 +175,11 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
     },
     staleTime: 30_000,
     refetchInterval: 60_000,
+    enabled: !!tenantId,
   });
 
   const configQuery = useQuery({
-    queryKey: ["jarvis-prospector-config"],
+    queryKey: ["jarvis-prospector-config", tenantId],
     queryFn: async () => {
       const response = await fetch("/api/prospector/config", { headers: authHeaders(), cache: "no-store" });
       if (!response.ok) throw new Error("Falha ao carregar configuração do Prospector");
@@ -182,6 +187,7 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
     },
     staleTime: 30_000,
     refetchInterval: 60_000,
+    enabled: !!tenantId,
   });
 
   const config = configQuery.data?.config ?? null;
