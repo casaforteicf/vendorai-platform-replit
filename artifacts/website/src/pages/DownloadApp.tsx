@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Download, Smartphone, Apple, MonitorSmartphone, QrCode } from "lucide-react";
 
-const ANDROID_APK_URL = import.meta.env.VITE_ANDROID_APK_URL || "https://expo.dev/accounts/marcosreisdorfers-team/projects/appvendorai/builds/942fee26-33dc-46a2-b171-dd9417137430";
+const ANDROID_APK_URL = import.meta.env.VITE_ANDROID_APK_URL || "/downloads/vendorai.apk";
 const IOS_APP_URL = import.meta.env.VITE_IOS_APP_URL || "";
 
 function detectPlatform() {
@@ -23,7 +23,7 @@ export default function DownloadApp() {
     <section className="bg-[#070b14] px-4 py-20 text-white">
       <div className="mx-auto max-w-5xl">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/15 text-orange-400">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#D9673E]/15 text-[#D9673E]">
             <Smartphone className="h-7 w-7" />
           </div>
           <h1 className="text-4xl font-bold tracking-tight md:text-5xl">Instale o Vendor.ai no seu celular</h1>
@@ -34,16 +34,14 @@ export default function DownloadApp() {
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-green-500/10 text-green-400">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#D9673E]/10 text-[#D9673E]">
               <Download className="h-5 w-5" />
             </div>
             <h2 className="text-xl font-semibold">Android</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Abra o instalador oficial do Vendor.ai e conclua a instalação no aparelho.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Baixe o instalador oficial do Vendor.ai e conclua a instalação no aparelho.</p>
             <a
               href={ANDROID_APK_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl bg-orange-500 px-4 font-semibold text-white transition hover:bg-orange-400"
+              className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#D9673E] px-4 font-semibold text-white transition hover:brightness-110"
             >
               Baixar e instalar
             </a>
@@ -83,7 +81,7 @@ export default function DownloadApp() {
 
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-slate-400">
           <div className="flex items-start gap-3">
-            <MonitorSmartphone className="mt-0.5 h-5 w-5 shrink-0 text-orange-400" />
+            <MonitorSmartphone className="mt-0.5 h-5 w-5 shrink-0 text-[#D9673E]" />
             <p>
               Dispositivo detectado: <strong className="text-slate-200">{platform === "android" ? "Android" : platform === "ios" ? "iPhone/iPad" : "Desktop"}</strong>. O site mantém as opções visíveis para que o usuário escolha manualmente quando necessário.
             </p>
