@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MousePointerClick, ShoppingBag, TrendingUp, UserPlus, WalletCards } from "lucide-react";
+import { CalendarDays, MapPin, MousePointerClick, ShoppingBag, TrendingUp, UserPlus, WalletCards } from "lucide-react";
 
 type Partner = {
   id: string;
@@ -31,6 +31,22 @@ type Analytics = {
   leadConversionPercent: string;
   saleConversionPercent: string;
   leadToSalePercent: string;
+};
+
+type HistoryResponse = {
+  rows: Analytics[];
+  filters: {
+    from: string | null;
+    to: string | null;
+    campaign: string | null;
+    city: string | null;
+    region: string | null;
+  };
+  dimensions: {
+    campaigns: string[];
+    cities: string[];
+    regions: string[];
+  };
 };
 
 const TYPES = [
@@ -62,12 +78,15 @@ function pct(value?: string | number | null) {
   return `${Number(value ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
-function money(value?: string | number | null) {
-  return Number(value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 function nameOf(partner: Partner) {
   return partner.nomeFantasia || partner.name || partner.email;
+}
+
+function paidPercent(metric?: Analytics) {
+  const total = Number(metric?.commissionAmount ?? 0);
+  const paid = Number(metric?.paidCommissionAmount ?? 0);
+  if (total <= 0) return 0;
+  return Math.min(100, Math.max(0, (paid / total) * 100));
 }
 
 function commissionStatus(metric?: Analytics) {
@@ -91,6 +110,14 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string | n
   );
 }
 
+function toIsoStart(date: string) {
+  return date ? new Date(`${date}T00:00:00`).toISOString() : "";
+}
+
+function toIsoEnd(date: string) {
+  return date ? new Date(`${date}T23:59:59.999`).toISOString() : "";
+}
+
 export function PartnerPerformanceDashboard() {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
@@ -98,19 +125,36 @@ export function PartnerPerformanceDashboard() {
   const [coupon, setCoupon] = useState("all");
   const [commission, setCommission] = useState("all");
   const [sort, setSort] = useState("sales");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [campaign, setCampaign] = useState("all");
+  const [city, setCity] = useState("all");
+  const [region, setRegion] = useState("all");
+
+  const historyPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", toIsoStart(from));
+    if (to) params.set("to", toIsoEnd(to));
+    if (campaign !== "all") params.set("campaign", campaign);
+    if (city !== "all") params.set("city", city);
+    if (region !== "all") params.set("region", region);
+    const query = params.toString();
+    return `/api/admin/partners-commercial/history${query ? `?${query}` : ""}`;
+  }, [from, to, campaign, city, region]);
 
   const partnersQuery = useQuery<Partner[]>({
     queryKey: ["admin-partners-commercial"],
     queryFn: () => getJson("/api/admin/partners-commercial"),
   });
-  const analyticsQuery = useQuery<Analytics[]>({
-    queryKey: ["admin-partners-commercial-analytics"],
-    queryFn: () => getJson("/api/admin/partners-commercial/analytics"),
+  const historyQuery = useQuery<HistoryResponse>({
+    queryKey: ["admin-partners-commercial-history", from, to, campaign, city, region],
+    queryFn: () => getJson(historyPath),
     retry: false,
   });
 
   const partners = partnersQuery.data ?? [];
-  const analytics = analyticsQuery.data ?? [];
+  const analytics = historyQuery.data?.rows ?? [];
+  const dimensions = historyQuery.data?.dimensions ?? { campaigns: [], cities: [], regions: [] };
   const analyticsByPartner = useMemo(() => new Map(analytics.map((row) => [row.partnerId, row])), [analytics]);
 
   const rows = useMemo(() => {
@@ -135,7 +179,7 @@ export function PartnerPerformanceDashboard() {
         if (sort === "clicks") return Number(b.metric?.clicks ?? 0) - Number(a.metric?.clicks ?? 0);
         if (sort === "leads") return Number(b.metric?.leads ?? 0) - Number(a.metric?.leads ?? 0);
         if (sort === "conversion") return Number(b.metric?.saleConversionPercent ?? 0) - Number(a.metric?.saleConversionPercent ?? 0);
-        if (sort === "commission") return Number(b.metric?.commissionAmount ?? 0) - Number(a.metric?.commissionAmount ?? 0);
+        if (sort === "commission") return paidPercent(b.metric) - paidPercent(a.metric);
         return Number(b.metric?.sales ?? 0) - Number(a.metric?.sales ?? 0);
       });
   }, [partners, analyticsByPartner, search, type, status, coupon, commission, sort]);
@@ -152,9 +196,7 @@ export function PartnerPerformanceDashboard() {
       leads,
       sales,
       conversion: clicks ? (sales / clicks) * 100 : 0,
-      commissionAmount,
-      paidCommissionAmount,
-      pendingCommissionAmount: Math.max(0, commissionAmount - paidCommissionAmount),
+      commissionPaidPercent: commissionAmount ? (paidCommissionAmount / commissionAmount) * 100 : 0,
     };
   }, [rows]);
 
@@ -169,13 +211,21 @@ export function PartnerPerformanceDashboard() {
         <Metric label="Leads" value={totals.leads} icon={UserPlus} />
         <Metric label="Vendas" value={totals.sales} icon={ShoppingBag} />
         <Metric label="Conversão" value={pct(totals.conversion)} icon={TrendingUp} />
-        <Metric label="Comissão pendente" value={money(totals.pendingCommissionAmount)} icon={WalletCards} />
+        <Metric label="Comissões pagas" value={pct(totals.commissionPaidPercent)} icon={WalletCards} />
       </div>
 
       <div className="rounded-xl border bg-card p-4">
         <div className="mb-4">
           <h3 className="font-semibold">Performance por parceiro</h3>
-          <p className="text-sm text-muted-foreground">Filtre a rede e veja rapidamente quem gera tráfego, leads, vendas e comissão.</p>
+          <p className="text-sm text-muted-foreground">Os filtros históricos recalculam cliques, leads, vendas, conversão e comissão sobre os eventos reais.</p>
+        </div>
+
+        <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="pl-9" aria-label="Data inicial" /></div>
+          <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="pl-9" aria-label="Data final" /></div>
+          <Select value={campaign} onValueChange={setCampaign}><SelectTrigger><SelectValue placeholder="Campanha" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as campanhas</SelectItem>{dimensions.campaigns.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+          <Select value={city} onValueChange={setCity}><SelectTrigger><MapPin className="mr-2 h-4 w-4" /><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as cidades</SelectItem>{dimensions.cities.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+          <Select value={region} onValueChange={setRegion}><SelectTrigger><SelectValue placeholder="Região" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as regiões</SelectItem>{dimensions.regions.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -188,16 +238,16 @@ export function PartnerPerformanceDashboard() {
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>{rows.length} parceiro(s) no resultado</span>
-          <Select value={sort} onValueChange={setSort}><SelectTrigger className="h-8 w-[210px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sales">Ordenar por vendas</SelectItem><SelectItem value="clicks">Ordenar por cliques</SelectItem><SelectItem value="leads">Ordenar por leads</SelectItem><SelectItem value="conversion">Ordenar por conversão</SelectItem><SelectItem value="commission">Ordenar por comissão</SelectItem></SelectContent></Select>
+          <Select value={sort} onValueChange={setSort}><SelectTrigger className="h-8 w-[220px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sales">Ordenar por vendas</SelectItem><SelectItem value="clicks">Ordenar por cliques</SelectItem><SelectItem value="leads">Ordenar por leads</SelectItem><SelectItem value="conversion">Ordenar por conversão</SelectItem><SelectItem value="commission">Ordenar por % paga</SelectItem></SelectContent></Select>
         </div>
       </div>
 
-      {analyticsQuery.isError ? (
-        <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">As métricas ainda não puderam ser carregadas; os filtros cadastrais continuam funcionando.</div>
+      {historyQuery.isError ? (
+        <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">As métricas históricas ainda não puderam ser carregadas. Verifique se a migration de histórico foi aplicada.</div>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-card">
           <Table>
-            <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Parceiro</TableHead><TableHead>Tipo</TableHead><TableHead>Cupom</TableHead><TableHead>Cliques</TableHead><TableHead>Leads</TableHead><TableHead>Vendas</TableHead><TableHead>Conversão</TableHead><TableHead>Comissão</TableHead><TableHead>Pago</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Parceiro</TableHead><TableHead>Tipo</TableHead><TableHead>Cupom</TableHead><TableHead>Cliques</TableHead><TableHead>Leads</TableHead><TableHead>Vendas</TableHead><TableHead>Conversão</TableHead><TableHead>Comissão</TableHead><TableHead>% paga</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
             <TableBody>
               {rows.map(({ partner, metric }, index) => {
                 const commissionState = commissionStatus(metric);
@@ -211,8 +261,8 @@ export function PartnerPerformanceDashboard() {
                     <TableCell>{metric?.leads ?? 0}</TableCell>
                     <TableCell>{metric?.sales ?? 0}</TableCell>
                     <TableCell>{pct(metric?.saleConversionPercent)}</TableCell>
-                    <TableCell>{money(metric?.commissionAmount)}</TableCell>
-                    <TableCell>{money(metric?.paidCommissionAmount)}</TableCell>
+                    <TableCell>{pct(partner.comissaoPercentual)}</TableCell>
+                    <TableCell>{pct(paidPercent(metric))}</TableCell>
                     <TableCell><Badge variant={commissionState === "paga" ? "default" : "secondary"} className="capitalize">{commissionState.replace("_", " ")}</Badge></TableCell>
                   </TableRow>
                 );
