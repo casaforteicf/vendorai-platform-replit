@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import { collectActiveRssSources } from "./vie-rss-collector.js";
 import { classifyRecentVieNewsForTenant } from "./vie-news-relevance.js";
-import { ensureLocalNewsSourcesForActiveTenants } from "./vie-local-news.js";
+import { collectLocalNewsForActiveTenants } from "./vie-local-news.js";
 
 const VIE_CYCLE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
@@ -58,11 +58,11 @@ export async function runVieIntelligenceCycle(log: Logger): Promise<VieIntellige
     log.info("vie-cycle: iniciando coleta e classificação");
 
     try {
-      const local = await ensureLocalNewsSourcesForActiveTenants();
-      summary.localities = local.localities;
-      log.info(local, "vie-cycle: fontes locais sincronizadas");
+      const local = await collectLocalNewsForActiveTenants();
+      summary.localities = local.localizedTenants;
+      log.info(local, "vie-cycle: notícias locais coletadas por tenant");
     } catch (error) {
-      log.warn({ error }, "vie-cycle: não foi possível sincronizar fontes locais");
+      log.warn({ error }, "vie-cycle: coleta de notícias locais falhou");
     }
 
     const sourceResults = await collectActiveRssSources();
