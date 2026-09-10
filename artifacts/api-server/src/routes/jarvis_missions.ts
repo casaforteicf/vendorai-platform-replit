@@ -49,7 +49,7 @@ function tenantIdOf(req: any): string | null {
 }
 
 function userIdOf(req: any): string | null {
-  return typeof req.user?.id === "string" ? req.user.id : null;
+  return typeof req.user?.sub === "string" ? req.user.sub : null;
 }
 
 router.get("/jarvis/missions", async (req, res) => {
@@ -82,11 +82,11 @@ router.patch("/jarvis/missions/:id", async (req, res) => {
   const parsed = updateMissionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const patch: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  const patch: Record<string, unknown> = { ...parsed.data, updatedAt: new Date(), lastReviewedAt: new Date() };
   if (parsed.data.status === "completed") patch.completedAt = new Date();
   if (parsed.data.status && parsed.data.status !== "completed") patch.completedAt = null;
 
-  const [mission] = await db.update(jarvisMissionsTable).set(patch)
+  const [mission] = await db.update(jarvisMissionsTable).set(patch as any)
     .where(and(eq(jarvisMissionsTable.id, String(req.params.id)), eq(jarvisMissionsTable.tenantId, tenantId)))
     .returning();
   if (!mission) return res.status(404).json({ error: "Missão não encontrada" });
