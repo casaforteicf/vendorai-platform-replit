@@ -80,6 +80,7 @@ export * from "./restaurante_cardapio";
 export * from "./restaurante_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
+export * from "./commerce_checkout_sessions";
 export * from "./site_generation_jobs";
 export * from "./media_plans";
 export * from "./content_calendar_items";
