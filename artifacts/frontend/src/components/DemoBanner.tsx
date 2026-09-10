@@ -72,6 +72,12 @@ export function DemoBanner() {
     if (!effectiveTenantId) return;
     if (showProgress) setCheckingPayment(true);
     try {
+      if (showProgress) {
+        await fetch(`/api/tenants/${effectiveTenantId}/subscription/verify-payment`, {
+          method: "POST",
+          headers: authHeaders(),
+        }).catch(() => null);
+      }
       const response = await fetch(`/api/tenants/${effectiveTenantId}/subscription/renewal-state`, { headers: authHeaders() });
       if (!response.ok) return;
       const data = await response.json() as RenewalState;
@@ -132,7 +138,7 @@ export function DemoBanner() {
             ) : (
               <Button size="lg" disabled><CreditCard className="h-4 w-4 mr-2" />Gerando cobrança...</Button>
             )}
-            <Button size="lg" variant="outline" onClick={() => loadRenewalState(true)} disabled={checkingPayment}><RefreshCw className={`h-4 w-4 mr-2 ${checkingPayment ? "animate-spin" : ""}`} />{checkingPayment ? "Verificando..." : "Já paguei — verificar agora"}</Button>
+            <Button size="lg" variant="outline" onClick={() => loadRenewalState(true)} disabled={checkingPayment}><RefreshCw className={`h-4 w-4 mr-2 ${checkingPayment ? "animate-spin" : ""}`} />{checkingPayment ? "Consultando Asaas..." : "Já paguei — verificar agora"}</Button>
           </div>
 
           <div className="flex items-start gap-2 text-xs text-muted-foreground mt-5"><ShieldCheck className="h-4 w-4 shrink-0" /><span>O VendorAI não armazena os dados do cartão nesta tela. A cobrança e a confirmação financeira ficam no Asaas.</span></div>
