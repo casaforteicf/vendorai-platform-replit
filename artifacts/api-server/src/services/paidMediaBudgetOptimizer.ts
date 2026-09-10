@@ -1,5 +1,11 @@
 import { and, eq } from 'drizzle-orm';
-import { adCampaignsTable, db, mediaPlansTable } from '@workspace/db';
+import {
+  adCampaignsTable,
+  commerceCheckoutSessionsTable,
+  db,
+  generatedSitesTable,
+  mediaPlansTable,
+} from '@workspace/db';
 import { getAdsOverview } from './adCampaignIntelligence';
 
 export type BudgetOptimizationAction = 'increase' | 'decrease' | 'hold';
@@ -13,6 +19,9 @@ export type PaidCampaignBudgetEvidence = {
   sales: number;
   revenue: number;
   roas: number | null;
+  checkoutStarted?: number;
+  paidActivations?: number;
+  paidConversionPercent?: number;
 };
 
 export type PaidCampaignBudgetDecision = PaidCampaignBudgetEvidence & {
@@ -53,6 +62,12 @@ type AdsOverviewRow = {
 type MediaPlanLink = { mediaPlanId?: string };
 type MediaPlanDraftMeta = { allocatedTotalBudget?: number };
 
+type CheckoutEvidence = {
+  started: number;
+  paidActivations: number;
+  conversionPercent: number;
+};
+
 function floorCurrency(value: number): number {
   return Math.max(0, Math.floor((value + Number.EPSILON) * 100) / 100);
 }
@@ -66,26 +81,52 @@ function clampFraction(value: number | undefined): number {
   return Math.min(1, Math.max(0, Number(value)));
 }
 
+function checkoutStarted(row: PaidCampaignBudgetEvidence): number {
+  return Math.max(0, Number(row.checkoutStarted ?? 0));
+}
+
+function paidActivations(row: PaidCampaignBudgetEvidence): number {
+  return Math.max(0, Number(row.paidActivations ?? 0));
+}
+
 function isWinner(row: PaidCampaignBudgetEvidence): boolean {
+  const started = checkoutStarted(row);
+  const activated = paidActivations(row);
+  if (started > 0) return activated >= 2;
   return row.sales >= 2 && typeof row.roas === 'number' && row.roas >= 3;
 }
 
 function isDonorCandidate(row: PaidCampaignBudgetEvidence): boolean {
   if (row.spend <= 0) return false;
+  const started = checkoutStarted(row);
+  if (started >= 3) return paidActivations(row) === 0;
   if (row.leads === 0) return true;
   return row.leads >= 5 && row.sales === 0;
 }
 
 function evidenceWeight(row: PaidCampaignBudgetEvidence): number {
   if (!isWinner(row)) return 0;
+  const activated = paidActivations(row);
+  if (activated > 0) {
+    const conversion = Math.max(1, Number(row.paidConversionPercent ?? 0) / 10);
+    const efficiency = typeof row.roas === 'number' && row.roas > 0 ? Math.max(1, row.roas) : 1;
+    return activated * conversion * efficiency;
+  }
   return Math.max(0, row.sales) * Math.max(0, Number(row.roas ?? 0));
 }
 
 function decisionReason(row: PaidCampaignBudgetEvidence, delta: number): string {
+  const started = checkoutStarted(row);
+  const activated = paidActivations(row);
+  const conversion = Number(row.paidConversionPercent ?? 0);
   if (delta > 0) {
+    if (activated > 0) {
+      return `${activated} ativação(ões) paga(s) de ${started} checkout(s) (${conversion.toFixed(1)}%) sustentam aumento somente com saldo já aprovado no plano.`;
+    }
     return `${row.sales} venda(s) e ROAS ${Number(row.roas ?? 0).toFixed(2)}x sustentam aumento somente com saldo já aprovado no plano.`;
   }
   if (delta < 0) {
+    if (started >= 3 && activated === 0) return `${started} checkout(s) iniciado(s) e nenhuma ativação paga; reduz somente verba ainda não consumida.`;
     if (row.leads === 0) return `R$ ${row.spend.toFixed(2)} gastos sem lead atribuído; reduz somente verba ainda não consumida.`;
     return `${row.leads} lead(s) e nenhuma venda; reduz somente verba ainda não consumida até nova evidência.`;
   }
@@ -200,8 +241,38 @@ function readMediaPlanLink(campaign: typeof adCampaignsTable.$inferSelect): { li
   return { link: marketingContext, draft: mediaPlanDraft };
 }
 
+async function loadCheckoutEvidenceByUtm(tenantId: string): Promise<Map<string, CheckoutEvidence>> {
+  const rows = await db
+    .select({
+      attribution: commerceCheckoutSessionsTable.attribution,
+      status: commerceCheckoutSessionsTable.status,
+    })
+    .from(commerceCheckoutSessionsTable)
+    .innerJoin(generatedSitesTable, eq(generatedSitesTable.id, commerceCheckoutSessionsTable.siteId))
+    .where(eq(generatedSitesTable.tenantId, tenantId))
+    .limit(5000);
+
+  const counts = new Map<string, { started: number; paidActivations: number }>();
+  for (const row of rows) {
+    const utm = row.attribution.utmCampaign?.trim();
+    if (!utm) continue;
+    const current = counts.get(utm) ?? { started: 0, paidActivations: 0 };
+    current.started += 1;
+    if (row.status === 'provisioned') current.paidActivations += 1;
+    counts.set(utm, current);
+  }
+
+  return new Map(Array.from(counts.entries()).map(([utm, value]) => [utm, {
+    ...value,
+    conversionPercent: value.started ? (value.paidActivations / value.started) * 100 : 0,
+  }]));
+}
+
 /**
  * Resolve o plano usando dados reais já consolidados pelo Ads Intelligence.
+ * Checkouts atribuídos pelo utm_campaign do próprio ad_campaign são usados como
+ * evidência de venda até pagamento/provisionamento; quando ainda não há esse
+ * sinal, o comportamento anterior de vendas + ROAS permanece como fallback.
  * Não persiste mudanças e não chama APIs de Meta/Google.
  */
 export async function buildTenantPaidMediaBudgetRedistributionPlan(
@@ -220,9 +291,10 @@ export async function buildTenantPaidMediaBudgetRedistributionPlan(
     throw new Error('Plano de Mídia sem orçamento total rígido válido.');
   }
 
-  const [campaigns, overview] = await Promise.all([
+  const [campaigns, overview, checkoutByUtm] = await Promise.all([
     db.select().from(adCampaignsTable).where(eq(adCampaignsTable.tenantId, tenantId)),
     getAdsOverview(tenantId),
+    loadCheckoutEvidenceByUtm(tenantId),
   ]);
   const overviewById = new Map(extractOverviewRows(overview)
     .filter((row) => row.campaignId)
@@ -237,6 +309,7 @@ export async function buildTenantPaidMediaBudgetRedistributionPlan(
       const row = overviewById.get(campaign.id);
       const { draft } = readMediaPlanLink(campaign);
       const control = campaign.segmentacao?.campaignControl;
+      const checkout = campaign.utmCode ? checkoutByUtm.get(campaign.utmCode) : undefined;
       return {
         campaignId: campaign.id,
         status: campaign.status,
@@ -246,6 +319,9 @@ export async function buildTenantPaidMediaBudgetRedistributionPlan(
         sales: Number(row?.sales ?? 0),
         revenue: Number(row?.revenue ?? 0),
         roas: typeof row?.roas === 'number' ? row.roas : null,
+        checkoutStarted: checkout?.started ?? 0,
+        paidActivations: checkout?.paidActivations ?? 0,
+        paidConversionPercent: checkout?.conversionPercent ?? 0,
       };
     });
 
