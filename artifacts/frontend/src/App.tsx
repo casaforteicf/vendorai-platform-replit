@@ -227,6 +227,8 @@ export default function App() {
   const [devFailed, setDevFailed] = React.useState(false);
   const [devLoading, setDevLoading] = React.useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(isCachedSuperAdmin);
+  const [currentPath, setCurrentPath] = React.useState(() => typeof window !== "undefined" ? window.location.pathname : "");
+  const showDevLauncher = isSuperAdmin && currentPath.startsWith("/admin/");
 
   React.useEffect(() => {
     const syncVideoStudioScope = () => {
@@ -252,6 +254,21 @@ export default function App() {
       window.removeEventListener("focus", syncRole);
     };
   }, []);
+
+  React.useEffect(() => {
+    const syncPath = () => setCurrentPath(window.location.pathname);
+    syncPath();
+    const timer = window.setInterval(syncPath, 250);
+    window.addEventListener("popstate", syncPath);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("popstate", syncPath);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!showDevLauncher && devRequested) setDevRequested(false);
+  }, [showDevLauncher, devRequested]);
 
   React.useEffect(() => {
     if (!devRequested || devFailed) return;
@@ -286,7 +303,7 @@ export default function App() {
     <>
       <AppLegacy />
 
-      {isSuperAdmin && !devRequested && (
+      {showDevLauncher && !devRequested && (
         <button
           type="button"
           onClick={() => void openDevAgent()}
@@ -298,7 +315,7 @@ export default function App() {
         </button>
       )}
 
-      {isSuperAdmin && devFailed && (
+      {showDevLauncher && devFailed && (
         <button
           type="button"
           onClick={() => void openDevAgent()}
@@ -310,7 +327,7 @@ export default function App() {
         </button>
       )}
 
-      {isSuperAdmin && devRequested && !devFailed && (
+      {showDevLauncher && devRequested && !devFailed && (
         <DevAgentIsolationBoundary
           onError={() => {
             setDevFailed(true);

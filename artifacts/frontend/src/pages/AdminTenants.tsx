@@ -28,6 +28,7 @@ import {
   Settings2,
   FlaskConical,
   Layers3,
+  TriangleAlert,
 } from "lucide-react";
 
 type TenantAdmin = Tenant & {
@@ -111,7 +112,19 @@ export default function AdminTenants() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const { data: rawTenants = [], isLoading } = useListTenants();
+  const {
+    data: rawTenants = [],
+    isLoading,
+    isFetching,
+    isError: tenantsLoadFailed,
+    error: tenantsLoadError,
+    refetch: refetchTenants,
+  } = useListTenants({
+    query: {
+      enabled: Boolean(token),
+      queryKey: getListTenantsQueryKey(),
+    },
+  });
   const tenants = rawTenants as TenantAdmin[];
 
   const { data: segmentTemplates = [], isLoading: segmentsLoading } = useQuery<SegmentTemplateOption[]>({
@@ -404,6 +417,10 @@ export default function AdminTenants() {
     setTimeout(() => setCopiedWa(false), 2000);
   }
 
+  const loadErrorMessage = tenantsLoadError instanceof Error
+    ? tenantsLoadError.message
+    : "Não foi possível carregar os tenants agora.";
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto overflow-x-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -414,8 +431,9 @@ export default function AdminTenants() {
           <p className="text-sm text-muted-foreground mt-0.5">Uma única gestão por cliente: identidade, segmento, plano, módulos, agentes, integrações e acesso.</p>
         </div>
         <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
-          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2 min-w-0 px-3">
-            <Upload className="h-4 w-4 shrink-0" /><span className="truncate">Importar CSV</span>
+          <Button variant="outline" onClick={() => void refetchTenants()} disabled={isFetching} className="gap-2 min-w-0 px-3">
+            {isFetching ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <RefreshCw className="h-4 w-4 shrink-0" />}
+            <span className="truncate">Atualizar</span>
           </Button>
           <Button onClick={() => setFormOpen(true)} className="gap-2 min-w-0 px-3">
             <Plus className="h-4 w-4 shrink-0" /><span className="truncate">Novo Tenant</span>
@@ -477,8 +495,25 @@ export default function AdminTenants() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : tenantsLoadFailed ? (
+            <div className="mx-3 mb-4 rounded-lg border border-red-200 bg-red-50 p-4 sm:mx-6">
+              <div className="flex items-start gap-3">
+                <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-red-800">Falha ao carregar os tenants</p>
+                  <p className="mt-1 break-words text-xs text-red-700">{loadErrorMessage}</p>
+                  <Button size="sm" variant="outline" className="mt-3 gap-2 border-red-200" onClick={() => void refetchTenants()} disabled={isFetching}>
+                    {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Tentar novamente
+                  </Button>
+                </div>
+              </div>
+            </div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8 text-sm">Nenhum tenant encontrado</p>
+            <div className="px-4 py-10 text-center">
+              <p className="text-sm font-medium text-foreground">{tenants.length === 0 ? "Nenhum tenant cadastrado" : "Nenhum tenant corresponde aos filtros"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{tenants.length === 0 ? "A consulta foi concluída com sucesso e não retornou registros." : "Limpe ou altere os filtros para voltar a visualizar a base."}</p>
+            </div>
           ) : (
             <>
               <div className="divide-y sm:hidden">
@@ -623,7 +658,7 @@ export default function AdminTenants() {
                 </Select>
                 {plansLoading ? <p className="text-xs text-muted-foreground">Carregando planos ativos...</p> : null}
               </div>
-              <div className="space-y-1.5"><Label>Ciclo</Label><Select value={form.billingCycle} onValueChange={(value) => setForm((current) => ({ ...current, billingCycle: value as "monthly" | "annual" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="annual">Anual</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1.5"><Label>Ciclo</Label><Select value={form.billingCycle} onValueChange={(value) => setForm((current) => ({ ...current, billingCycle: value as "monthly" | "annual" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="annual">Anual</SelectItem></Select></div>
               <div className="sm:col-span-2 space-y-1.5"><Label>Observações internas</Label><Textarea value={form.internalNotes} onChange={(event) => setForm((current) => ({ ...current, internalNotes: event.target.value }))} rows={2} placeholder="Notas visíveis apenas para o super admin..." /></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
