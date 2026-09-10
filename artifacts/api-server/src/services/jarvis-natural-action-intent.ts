@@ -1,3 +1,5 @@
+import { ownsJarvisOrchestrationRoute } from "./jarvis-action-orchestrator.js";
+
 export type JarvisNaturalAction = "approve" | "reject" | "execute";
 
 export interface JarvisActionCandidate {
@@ -61,6 +63,10 @@ export function resolveJarvisNaturalAction(
   text: string,
   candidates: JarvisActionCandidate[],
 ): JarvisNaturalActionResolution {
+  if (!ownsJarvisOrchestrationRoute("natural_actions", text)) {
+    return { action: null, targetId: null, ambiguous: false, matchedBy: null };
+  }
+
   const action = detectAction(text);
   if (!action) {
     return { action: null, targetId: null, ambiguous: false, matchedBy: null };
