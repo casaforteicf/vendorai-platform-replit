@@ -70,6 +70,7 @@ router.get("/tenants/:tenantId/subscription", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/subscription/renewal-state", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked by canReadTenant before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!canReadTenant(req, tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
