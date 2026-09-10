@@ -11,7 +11,7 @@ function canAccess(req: any, tenantId: string) {
 
 const KPI_DICTIONARY = [
   { key: "new_leads", label: "Leads novos", source: "leads.created_at", formula: "Leads válidos criados no período", availability: "native" },
-  { key: "active_opportunities", label: "Oportunidades ativas", source: "deals.etapa", formula: "Deals fora de ganho/perdido", availability: "native" },
+  { key: "active_opportunities", label: "Oportunidades ativas", source: "deals.etapa", formula: "Deals da pipeline comercial, excluindo aquecimento, parceiros, execução e etapas encerradas", availability: "native" },
   { key: "confirmed_sales", label: "Vendas confirmadas", source: "deals.etapa + data_fechamento/won_at", formula: "Deals ganhos cuja data real de fechamento está no período", availability: "native" },
   { key: "sold_revenue", label: "Receita vendida", source: "deals.valor", formula: "Soma do valor dos deals ganhos no período", availability: "native" },
   { key: "average_ticket", label: "Ticket médio", source: "deals.valor", formula: "Receita vendida / vendas confirmadas", availability: "native" },
@@ -66,7 +66,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
       SELECT count(*)::int AS actual
       FROM deals d
       WHERE d.tenant_id = ${tenantId}
-        AND d.etapa NOT IN ('ganho', 'perdido')
+        AND d.etapa NOT IN ('em_aquecimento', 'parceiro', 'em_execucao', 'ganho', 'entregue', 'perdido')
         AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
     `);
     return Number((result.rows[0] as any)?.actual ?? 0);
@@ -159,7 +159,8 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
             AND l.excluido_em IS NULL
             AND l.created_at >= ${periodStart} AND l.created_at <= ${periodEnd}) AS new_leads,
         (SELECT count(*)::int FROM deals d
-          WHERE d.tenant_id = ${tenantId} AND d.etapa NOT IN ('ganho','perdido')) AS active_opportunities,
+          WHERE d.tenant_id = ${tenantId}
+            AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')) AS active_opportunities,
         (SELECT count(*)::int FROM won w
           WHERE w.closed_at >= ${periodStart} AND w.closed_at <= ${periodEnd}) AS confirmed_sales,
         (SELECT COALESCE(sum(w.valor), 0)::numeric FROM won w
