@@ -516,4 +516,38 @@ router.post("/tenants/:tenantId/customer-feedback", async (req, res) => {
   return res.status(201).json(result.rows[0]);
 });
 
+router.get("/tenants/:tenantId/process-stage-policies", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const result = await db.execute(sql`
+    SELECT * FROM process_stage_policies
+    WHERE tenant_id = ${tenantId} AND active = true
+    ORDER BY pipeline, position, stage_key
+  `);
+  return res.json(result.rows);
+});
+
+router.patch("/tenants/:tenantId/process-stage-policies/:id", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = z.object({
+    slaMinutes: z.number().int().positive().nullable().optional(),
+    criticality: z.enum(["low", "normal", "high", "critical"]).optional(),
+    visibleOnDashboard: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const p = parsed.data;
+  const result = await db.execute(sql`
+    UPDATE process_stage_policies
+    SET sla_minutes = COALESCE(${p.slaMinutes === undefined ? null : p.slaMinutes}, sla_minutes),
+        criticality = COALESCE(${p.criticality ?? null}, criticality),
+        visible_on_dashboard = COALESCE(${p.visibleOnDashboard === undefined ? null : p.visibleOnDashboard}, visible_on_dashboard),
+        updated_at = now()
+    WHERE id = ${String(req.params.id)} AND tenant_id = ${tenantId}
+    RETURNING *
+  `);
+  if (!result.rows[0]) return res.status(404).json({ error: "Política não encontrada" });
+  return res.json(result.rows[0]);
+});
+
 export default router;
