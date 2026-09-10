@@ -40,6 +40,10 @@ type ProspectorConfig = {
   cnaeAlvo?: string[] | null;
 };
 
+type ProspectorConfigResponse = {
+  config: ProspectorConfig | null;
+};
+
 type Props = {
   onNavigate: (target: ProspectorNavigationTarget) => void;
   compact?: boolean;
@@ -106,8 +110,6 @@ function isProspectingSignal(item: JarvisCase) {
   const source = String(item.source ?? "").toLowerCase();
   const category = normalized(item.category ?? "");
 
-  // O observador interno só entra na prospecção quando apontar crescimento
-  // territorial ou oportunidade comercial suficientemente forte.
   if (source === "strategic_observer") {
     return (category === "territorio" || category === "prospeccao") && (item.confidence ?? 0) >= 75;
   }
@@ -176,13 +178,13 @@ export default function JarvisProspectingSignals({ onNavigate, compact = false }
     queryFn: async () => {
       const response = await fetch("/api/prospector/config", { headers: authHeaders(), cache: "no-store" });
       if (!response.ok) throw new Error("Falha ao carregar configuração do Prospector");
-      return response.json() as Promise<ProspectorConfig | null>;
+      return response.json() as Promise<ProspectorConfigResponse>;
     },
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
 
-  const config = configQuery.data ?? null;
+  const config = configQuery.data?.config ?? null;
   const active = config?.ativo === true;
 
   const prospectingCases = useMemo(
