@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { ConfigurationHistoryPanel } from "@/components/ConfigurationHistoryPanel";
 import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel";
@@ -9,7 +10,16 @@ import { ConfigurationSectionGuard } from "@/components/ConfigurationSectionGuar
 import { JarvisPermissionsCenter } from "@/components/support/JarvisPermissionsCenter";
 
 export default function Configuracoes() {
-  const legacySiteDeepLink = new URLSearchParams(window.location.search).get("tab") === "site";
+  const params = new URLSearchParams(window.location.search);
+  const legacySiteDeepLink = params.get("tab") === "site";
+
+  useLayoutEffect(() => {
+    if (params.get("installation") === "1") return;
+    const next = new URL(window.location.href);
+    next.searchParams.set("installation", "1");
+    window.history.replaceState(window.history.state, "", `${next.pathname}${next.search}${next.hash}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, []);
 
   return (
     <>
