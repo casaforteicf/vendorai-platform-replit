@@ -55,8 +55,21 @@ describe("professional calendar catalog", () => {
     expect(merged).toContainEqual(custom);
   });
 
-  it("uses the corrected Brazilian journalist date", () => {
-    const date = DEFAULT_PROFESSIONAL_DATES.find((item) => item.name === "Dia do Jornalista");
-    expect(date).toMatchObject({ month: 4, day: 7 });
+  it("uses corrected current dates for known Brazilian professional observances", () => {
+    expect(DEFAULT_PROFESSIONAL_DATES.find((item) => item.name === "Dia do Jornalista"))
+      .toMatchObject({ month: 4, day: 7 });
+    expect(DEFAULT_PROFESSIONAL_DATES.find((item) => item.name === "Dia do Meteorologista"))
+      .toMatchObject({ month: 10, day: 14 });
+    expect(DEFAULT_PROFESSIONAL_DATES.find((item) => item.name === "Dia do Pintor"))
+      .toMatchObject({ month: 10, day: 18 });
+    expect(DEFAULT_PROFESSIONAL_DATES.find((item) => item.name === "Dia do Radialista"))
+      .toMatchObject({ month: 11, day: 7 });
+    expect(DEFAULT_PROFESSIONAL_DATES.find((item) => item.name === "Dia do Arquiteto e Urbanista"))
+      .toMatchObject({ month: 12, day: 15 });
+  });
+
+  it("does not contain duplicate canonical labels", () => {
+    const labels = DEFAULT_PROFESSIONAL_DATES.map((item) => item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
