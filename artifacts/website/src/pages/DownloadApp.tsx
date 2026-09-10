@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Download, Smartphone, Apple, MonitorSmartphone, QrCode } from "lucide-react";
 
-const ANDROID_APK_URL = import.meta.env.VITE_ANDROID_APK_URL || "/downloads/vendorai.apk";
+const ANDROID_APK_URL = import.meta.env.VITE_ANDROID_APK_URL || "https://expo.dev/accounts/marcosreisdorfers-team/projects/appvendorai/builds/942fee26-33dc-46a2-b171-dd9417137430";
 const IOS_APP_URL = import.meta.env.VITE_IOS_APP_URL || "";
 
 function detectPlatform() {
@@ -38,13 +38,14 @@ export default function DownloadApp() {
               <Download className="h-5 w-5" />
             </div>
             <h2 className="text-xl font-semibold">Android</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Baixe o APK diretamente e instale no aparelho.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Abra o instalador oficial do Vendor.ai e conclua a instalação no aparelho.</p>
             <a
               href={ANDROID_APK_URL}
-              download
+              target="_blank"
+              rel="noreferrer"
               className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl bg-orange-500 px-4 font-semibold text-white transition hover:bg-orange-400"
             >
-              Baixar APK
+              Baixar e instalar
             </a>
           </div>
 
