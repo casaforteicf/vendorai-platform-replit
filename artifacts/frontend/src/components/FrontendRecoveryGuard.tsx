@@ -6,7 +6,7 @@ const RECOVERY_WINDOW_MS = 30_000;
 const STUCK_SPINNER_MS = 12_000;
 const VERSION_CHECK_MS = 60_000;
 const CHUNK_ERROR_PATTERN =
-  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html|Cannot read properties of undefined \(reading ["']default["']\)/i;
 
 function currentEntryAsset() {
   const entryScript = Array.from(document.scripts).find((script) =>
@@ -157,7 +157,7 @@ export function FrontendRecoveryGuard() {
       const message = event.error instanceof Error ? event.error.message : event.message;
       if (!CHUNK_ERROR_PATTERN.test(message ?? "")) return;
       event.preventDefault();
-      markStalledIfNotRecovered("chunk ou MIME desatualizado");
+      markStalledIfNotRecovered("chunk, lazy module ou MIME desatualizado");
     };
 
     const onResourceError = (event: Event) => {
@@ -176,7 +176,7 @@ export function FrontendRecoveryGuard() {
       const message = event.reason instanceof Error ? event.reason.message : String(event.reason ?? "");
       if (!CHUNK_ERROR_PATTERN.test(message)) return;
       event.preventDefault();
-      markStalledIfNotRecovered("import dinâmico");
+      markStalledIfNotRecovered("import dinâmico ou lazy module");
     };
 
     const onVisibilityOrFocus = () => {
