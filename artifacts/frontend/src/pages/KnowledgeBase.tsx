@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { BookOpen, Bot, Loader2, Plus, Upload, FileText, Trash2, Pencil, Search } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, Loader2, Plus, Upload, FileText, Trash2, Pencil, Search } from "lucide-react";
 
 function authHeaders() {
   const t = localStorage.getItem("vendorai_token");
@@ -90,6 +90,17 @@ export default function KnowledgeBase() {
     },
     enabled: !!tenantId,
   });
+
+  const entryKey = (entry: KnowledgeEntry) =>
+    `${entry.categoria.trim().toLowerCase()}::${entry.titulo.trim().toLowerCase()}`;
+  const keyCounts = entries.reduce((counts, entry) => {
+    const key = entryKey(entry);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const duplicateKeys = new Set(
+    Array.from(keyCounts.entries()).filter(([, count]) => count > 1).map(([key]) => key),
+  );
 
   const filtered = entries.filter((e) => {
     if (!search.trim()) return true;
@@ -299,9 +310,17 @@ export default function KnowledgeBase() {
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap mb-2">
                     <Badge variant="outline" className="text-xs">{entry.categoria}</Badge>
+                    {duplicateKeys.has(entryKey(entry)) && (
+                      <Badge variant="destructive" className="text-xs gap-1" title="Há outro conteúdo com o mesmo título e categoria">
+                        <AlertTriangle className="h-3 w-3" /> Possível duplicado
+                      </Badge>
+                    )}
                     {entry.tags.map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-3">{entry.conteudo}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Criado em {new Date(entry.createdAt).toLocaleDateString("pt-BR")}
+                  </p>
 
                   <div className="mt-3 pt-3 border-t flex items-end justify-between gap-3">
                     <div className="min-w-0 flex-1">
