@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   agentConfigsTable,
@@ -96,8 +96,15 @@ async function readImplementationFacts(tenantId: string) {
     getActiveCatalogCount(tenantId),
     db.select({ id: whatsappConnectionsTable.id }).from(whatsappConnectionsTable)
       .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active"))).limit(1),
-    db.select({ id: instagramConnectionsTable.id }).from(instagramConnectionsTable)
-      .where(eq(instagramConnectionsTable.tenantId, tenantId)).limit(1),
+    db.select({
+      id: instagramConnectionsTable.id,
+      pageAccessToken: instagramConnectionsTable.pageAccessToken,
+      tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
+    }).from(instagramConnectionsTable)
+      .where(and(
+        eq(instagramConnectionsTable.tenantId, tenantId),
+        isNull(instagramConnectionsTable.disconnectedAt),
+      )).limit(1),
     db.select({ id: agendasTable.id, googleCalendarId: agendasTable.googleCalendarId }).from(agendasTable)
       .where(eq(agendasTable.tenantId, tenantId)).limit(1),
   ]);
@@ -109,7 +116,9 @@ async function readImplementationFacts(tenantId: string) {
     profileConfigured: !!profile,
     activeUsers: Number(activeUsers?.value ?? 0),
     whatsappConnected: !!whatsapp || config?.evolutionConnected === true || !!(config?.metaPhoneNumberId && config?.metaAccessToken),
-    instagramConnected: !!instagram,
+    instagramConnected:
+      !!instagram?.pageAccessToken &&
+      (!instagram.tokenExpiresAt || instagram.tokenExpiresAt.getTime() > Date.now()),
     calendarConnected: !!calendar?.googleCalendarId,
     leadCount: Number(leads?.value ?? 0),
     catalogCount,
