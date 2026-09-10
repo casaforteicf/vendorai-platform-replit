@@ -24,6 +24,7 @@ const CODE_EXPIRES_MINUTES = 10;
 const CODE_EXPIRES_MS = CODE_EXPIRES_MINUTES * 60_000;
 const REQUEST_COOLDOWN_MS = 60_000;
 const MAX_ATTEMPTS = 5;
+const ROLE_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
 const requestSchema = z.object({ email: z.string().trim().email().max(320) });
 const verifySchema = z.object({
@@ -36,6 +37,9 @@ type RuntimeAuthContext = {
   appId: string;
   tenantId: string;
   appName: string;
+  allowSelfRegistration: boolean;
+  registrationRoleKey: string;
+  registrationPermissions: string[];
 };
 type AppUserRequest = Request & { appUser?: AppUserJwtPayload };
 
@@ -86,11 +90,23 @@ async function runtimeAuthContext(appInstanceId: string): Promise<RuntimeAuthCon
   if (!snapshot || !authEnabled(snapshot.definition)) return null;
 
   const definition = asObject(snapshot.definition);
+  const settings = asObject(definition.settings);
+  const runtimeAccess = asObject(settings.runtimeAccess);
+  const auth = asObject(runtimeAccess.auth);
   const publishedName = typeof definition.name === "string" ? definition.name.trim() : "";
+  const configuredRoleKey = typeof auth.defaultRoleKey === "string" ? auth.defaultRoleKey.trim() : "";
+  const registrationRoleKey = ROLE_KEY_PATTERN.test(configuredRoleKey) ? configuredRoleKey : "customer";
+  const registrationPermissions = Array.from(
+    new Set(stringArray(auth.defaultPermissions).map((item) => item.trim()).filter(Boolean)),
+  ).slice(0, 50);
+
   return {
     appId: app.id,
     tenantId: app.tenantId,
     appName: publishedName || app.name || "Aplicativo",
+    allowSelfRegistration: auth.selfRegistration === true || auth.registration === "open",
+    registrationRoleKey,
+    registrationPermissions,
   };
 }
 
@@ -124,6 +140,70 @@ async function findEligibleUser(context: RuntimeAuthContext, normalizedEmail: st
   return row;
 }
 
+async function ensureEligibleUser(context: RuntimeAuthContext, normalizedEmail: string) {
+  const existing = await findEligibleUser(context, normalizedEmail);
+  if (existing || !context.allowSelfRegistration) return existing;
+
+  await db.transaction(async (tx) => {
+    let [user] = await tx
+      .select({ id: appUsersTable.id, status: appUsersTable.status })
+      .from(appUsersTable)
+      .where(and(eq(appUsersTable.tenantId, context.tenantId), eq(appUsersTable.email, normalizedEmail)))
+      .limit(1);
+
+    if (!user) {
+      const suggestedName = normalizedEmail.split("@")[0]?.trim().slice(0, 160) || "Usuário";
+      [user] = await tx
+        .insert(appUsersTable)
+        .values({
+          tenantId: context.tenantId,
+          displayName: suggestedName,
+          email: normalizedEmail,
+          status: "invited",
+        })
+        .onConflictDoNothing()
+        .returning({ id: appUsersTable.id, status: appUsersTable.status });
+
+      if (!user) {
+        [user] = await tx
+          .select({ id: appUsersTable.id, status: appUsersTable.status })
+          .from(appUsersTable)
+          .where(and(eq(appUsersTable.tenantId, context.tenantId), eq(appUsersTable.email, normalizedEmail)))
+          .limit(1);
+      }
+    }
+
+    if (!user || user.status === "blocked" || user.status === "archived") return;
+
+    const [membership] = await tx
+      .select({ id: appUserMembershipsTable.id, status: appUserMembershipsTable.status })
+      .from(appUserMembershipsTable)
+      .where(
+        and(
+          eq(appUserMembershipsTable.appInstanceId, context.appId),
+          eq(appUserMembershipsTable.appUserId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (membership) return;
+
+    await tx
+      .insert(appUserMembershipsTable)
+      .values({
+        tenantId: context.tenantId,
+        appInstanceId: context.appId,
+        appUserId: user.id,
+        roleKey: context.registrationRoleKey,
+        status: "invited",
+        permissions: context.registrationPermissions,
+      })
+      .onConflictDoNothing();
+  });
+
+  return findEligibleUser(context, normalizedEmail);
+}
+
 router.post("/app-runtime/apps/:appId/auth/request-code", async (req, res) => {
   const parsed = requestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: "INVALID_REQUEST" });
@@ -134,7 +214,7 @@ router.post("/app-runtime/apps/:appId/auth/request-code", async (req, res) => {
   if (!context) return res.status(202).json(accepted);
 
   const email = parsed.data.email.toLowerCase();
-  const appUser = await findEligibleUser(context, email);
+  const appUser = await ensureEligibleUser(context, email);
   if (!appUser?.email) return res.status(202).json(accepted);
 
   const [recent] = await db
