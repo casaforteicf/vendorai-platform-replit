@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isJarvisSupportIncident } from "./jarvis_presence.js";
+import { isJarvisSupportIncident, isSimpleJarvisGreeting } from "./jarvis_presence.js";
 
 describe("JARVIS Presence Layer", () => {
   it("mantém conversa comum fora do suporte", () => {
@@ -19,5 +19,13 @@ describe("JARVIS Presence Layer", () => {
   it("não transforma preocupação pessoal ou de negócio em chamado", () => {
     expect(isJarvisSupportIncident("Tenho um problema com a margem dos produtos")).toBe(false);
     expect(isJarvisSupportIncident("Estou preocupado com um cliente importante")).toBe(false);
+  });
+
+  it("reconhece cumprimentos simples para resposta instantânea", () => {
+    expect(isSimpleJarvisGreeting("Bom dia, Jarvis")).toBe(true);
+    expect(isSimpleJarvisGreeting("Boa noite Jade")).toBe(true);
+    expect(isSimpleJarvisGreeting("Oi!")).toBe(true);
+    expect(isSimpleJarvisGreeting("Como estão as vendas hoje?")).toBe(false);
+    expect(isSimpleJarvisGreeting("Bom dia, como estão as vendas?")).toBe(false);
   });
 });
