@@ -1,0 +1,58 @@
+name: Build VendorAI iOS + TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/vendorai-ios-testflight.yml
+      - artifacts/mobile/**
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.1 --activate
+
+      - name: Validar EXPO_TOKEN
+        run: test -n "$EXPO_TOKEN" || (echo "Secret EXPO_TOKEN ausente" && exit 1)
+
+      - name: Instalar dependências
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Instalar EAS CLI
+        run: npm install --global eas-cli
+
+      - name: Aplicar identidade visual do site
+        run: |
+          cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/images/icon.png
+
+      - name: Inicializar projeto EAS
+        working-directory: artifacts/mobile
+        run: eas init --force --non-interactive
+
+      - name: Gerar build iOS de produção
+        working-directory: artifacts/mobile
+        run: eas build --platform ios --profile production --non-interactive --wait
+
+      - name: Enviar para TestFlight
+        working-directory: artifacts/mobile
+        run: eas submit --platform ios --profile production --latest --non-interactive
