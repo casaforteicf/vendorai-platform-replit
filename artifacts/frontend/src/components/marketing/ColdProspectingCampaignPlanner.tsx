@@ -20,7 +20,18 @@ type ConfigResponse = {
 };
 
 const DEFAULT_NICHES = ["clínicas odontológicas implantes", "odontologia estética"];
-const DEFAULT_LOCATIONS = ["Florianópolis, SC", "Joinville, SC", "Blumenau, SC", "Chapecó, SC"];
+const DEFAULT_LOCATIONS = [
+  "São Paulo, SP",
+  "Rio de Janeiro, RJ",
+  "Belo Horizonte, MG",
+  "Curitiba, PR",
+  "Porto Alegre, RS",
+  "Brasília, DF",
+  "Salvador, BA",
+  "Recife, PE",
+  "Fortaleza, CE",
+  "Goiânia, GO",
+];
 
 const AUTOMATIC_RULES = [
   "Deduplicação, enriquecimento e dossiê com fontes/confiança",
@@ -137,7 +148,7 @@ export default function ColdProspectingCampaignPlanner() {
       toast({
         title: activate ? "Prospecção inteligente ativada" : "Planejamento salvo",
         description: activate
-          ? `Piloto ativo: ${niches.length} nicho(s), ${locations.length} localidade(s), até ${dailyPace} prospects/dia.`
+          ? `Piloto Brasil ativo: ${niches.length} nicho(s), ${locations.length} mercados, até ${dailyPace} prospects/dia.`
           : "A busca permanece pausada até você aprovar e iniciar.",
       });
     } catch (error) {
@@ -158,10 +169,10 @@ export default function ColdProspectingCampaignPlanner() {
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold">Prospecção Inteligente</h2>
             <Badge className={currentlyActive ? "bg-emerald-600" : ""}>{currentlyActive ? "Busca ativa" : "Planejamento"}</Badge>
-            <Badge variant="outline">Piloto: Odontologia</Badge>
+            <Badge variant="outline">Piloto: Odontologia Brasil</Badge>
             <Badge variant="secondary">Validação inicial: 5/dia</Badge>
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">O VendorAI encontra empresas frias, valida sinais públicos, monta o dossiê, cria uma LP individual e só então libera a primeira abordagem.</p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">O VendorAI encontra empresas frias em diferentes mercados do Brasil, valida sinais públicos, monta o dossiê, cria uma LP individual e só então libera a primeira abordagem.</p>
         </div>
         <Button variant="outline" onClick={() => setLocation("/prospector?tab=fila")}>Abrir fila do Prospector</Button>
       </div>
@@ -169,7 +180,7 @@ export default function ColdProspectingCampaignPlanner() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><Target className="h-4 w-4 text-primary" />1. Público e nicho</CardTitle>
-          <CardDescription>Campanha inicial preparada para clínicas odontológicas com maior potencial comercial.</CardDescription>
+          <CardDescription>Piloto nacional preparado para comparar mercados antes de escalar o volume.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2">
@@ -178,14 +189,14 @@ export default function ColdProspectingCampaignPlanner() {
             <p className="text-xs text-muted-foreground">Separe por ponto e vírgula. Para o piloto: implantodontia + estética.</p>
           </div>
           <div className="space-y-2">
-            <Label>Localidades</Label>
-            <Input value={locationsText} onChange={(event) => setLocationsText(event.target.value)} placeholder="Ex: Florianópolis, SC; Joinville, SC" />
-            <p className="text-xs text-muted-foreground">Começamos concentrados para comparar cidades antes de escalar.</p>
+            <Label>Mercados / cidades</Label>
+            <Input value={locationsText} onChange={(event) => setLocationsText(event.target.value)} placeholder="Ex: São Paulo, SP; Curitiba, PR; Recife, PE" />
+            <p className="text-xs text-muted-foreground">O piloto Brasil distribui a busca entre mercados diferentes para descobrir onde há melhor qualidade e resposta antes de aumentar o volume.</p>
           </div>
           <div className="space-y-2 lg:col-span-2">
             <div className="flex items-center justify-between gap-2"><Label>Ritmo máximo: {dailyPace} prospects/dia</Label><Badge variant="secondary">{combinations} combinações</Badge></div>
             <input className="w-full accent-primary" type="range" min={5} max={100} step={5} value={dailyPace} onChange={(event) => setDailyPace(Number(event.target.value))} />
-            <p className="text-xs text-muted-foreground">Recomendação do piloto: 5/dia. Depois da validação, aumente para 20, 50 ou mais conforme qualidade e conversão.</p>
+            <p className="text-xs text-muted-foreground">Recomendação do piloto nacional: 5/dia. Depois da validação, aumente para 20, 50 ou mais conforme qualidade e conversão.</p>
           </div>
         </CardContent>
       </Card>
@@ -236,10 +247,10 @@ export default function ColdProspectingCampaignPlanner() {
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button variant="outline" disabled={savingMode !== null} onClick={() => save(false)}>{savingMode === "plan" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Salvar sem ativar</Button>
-        <Button disabled={savingMode !== null || combinations === 0 || combinations > 60} onClick={() => save(true)}>{savingMode === "activate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}Aprovar e iniciar piloto</Button>
+        <Button disabled={savingMode !== null || combinations === 0 || combinations > 60} onClick={() => save(true)}>{savingMode === "activate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}Aprovar e iniciar piloto Brasil</Button>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-muted-foreground"><Bot className="h-3.5 w-3.5" />A automação respeita o ritmo diário e pode ser pausada a qualquer momento no Prospector.</div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground"><Bot className="h-3.5 w-3.5" />A automação respeita o ritmo diário, compara resultados por mercado e pode ser pausada a qualquer momento no Prospector.</div>
       <div className="hidden"><MapPin /><MessageCircle /></div>
     </div>
   );
