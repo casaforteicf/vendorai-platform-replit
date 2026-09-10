@@ -14,6 +14,7 @@ import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConv
 import { runMarketingBudgetAutopilot } from "./jobs/marketingBudgetAutopilot.js";
 import { runFinanceIntegrationHealthCycle } from "./jobs/financeIntegrationHealthCycle.js";
 import { getCheckoutFunnelMetrics, runCheckoutAbandonmentRecovery } from "./jobs/checkoutAbandonmentRecovery.js";
+import { getAcquisitionInvestmentIntelligence } from "./services/acquisitionInvestmentIntelligence.js";
 import { runCampaignAbWinnerCycle } from "./services/campaignAbWinnerRuntime.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
@@ -61,6 +62,19 @@ app.get(
   async (_req, res, next) => {
     try {
       res.json({ groups: await getCheckoutFunnelMetrics() });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+app.get(
+  "/api/admin/commerce/investment-intelligence",
+  authenticate,
+  requireRole("super_admin"),
+  async (_req, res, next) => {
+    try {
+      res.json(await getAcquisitionInvestmentIntelligence());
     } catch (err) {
       next(err);
     }
