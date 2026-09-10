@@ -1,4 +1,4 @@
-import { DurableObject, scheduler } from "cloudflare:workers";
+import { DurableObject } from "cloudflare:workers";
 
 interface Env {
   API_BACKEND: DurableObjectNamespace<ApiBackend>;
@@ -9,6 +9,10 @@ function stringEnv(env: Env): Record<string, string> {
   return Object.fromEntries(
     Object.entries(env).filter(([, value]) => typeof value === "string"),
   ) as Record<string, string>;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class ApiBackend extends DurableObject<Env> {
@@ -44,7 +48,7 @@ export class ApiBackend extends DurableObject<Env> {
       } catch (error) {
         lastError = error;
       }
-      await scheduler.wait(250);
+      await wait(250);
     }
     throw lastError ?? new Error("Cloudflare API container did not become ready");
   }
