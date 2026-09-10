@@ -543,20 +543,39 @@ router.post(
       });
     }
 
+    let kbArtigosGerados = 0;
     if (kbArticles.length > 0) {
-      await db.insert(knowledgeBaseTable).values(kbArticles);
+      const existingArticles = await db
+        .select({ titulo: knowledgeBaseTable.titulo, categoria: knowledgeBaseTable.categoria })
+        .from(knowledgeBaseTable)
+        .where(eq(knowledgeBaseTable.tenantId, tenantId));
+
+      const articleKey = (titulo: string, categoria: string) =>
+        `${categoria.trim().toLowerCase()}::${titulo.trim().toLowerCase()}`;
+      const existingKeys = new Set(
+        existingArticles.map((article) => articleKey(article.titulo, article.categoria)),
+      );
+      const newArticles = kbArticles.filter(
+        (article) => !existingKeys.has(articleKey(article.titulo, article.categoria)),
+      );
+
+      if (newArticles.length > 0) {
+        await db.insert(knowledgeBaseTable).values(newArticles);
+        kbArtigosGerados = newArticles.length;
+      }
     }
 
     req.log.info(
-      { tenantId, kbArtigosGerados: kbArticles.length },
-      "Onboarding: knowledge base populated"
+      { tenantId, kbArtigosGerados, kbArtigosIgnorados: kbArticles.length - kbArtigosGerados },
+      "Onboarding: knowledge base populated without duplicates"
     );
 
     res.json({
       setupCompletedAt: tenant.setupCompletedAt!.toISOString(),
       promptsApplied,
       funilCriado,
-      kbArtigosGerados: kbArticles.length,
+      kbArtigosGerados,
+      kbArtigosIgnorados: kbArticles.length - kbArtigosGerados,
     });
   }
 );
