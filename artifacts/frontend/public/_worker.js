@@ -109,6 +109,21 @@ async function normalizeScoutOpportunityResponse(response) {
 async function serveSpaAsset(request, env) {
   const url = new URL(request.url);
   let response = await env.ASSETS.fetch(request);
+  const isAssetRequest = url.pathname.startsWith("/assets/");
+
+  // Never transform a missing hashed asset into HTML and never cache that miss.
+  // Caching a 404 HTML response as immutable can strand browsers on a broken
+  // bundle after a deploy, producing the strict MIME error seen in production.
+  if (isAssetRequest && response.status === 404) {
+    return new Response("Asset not found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
 
   const acceptsHtml = request.method === "GET" && (request.headers.get("accept") || "").includes("text/html");
   if (response.status === 404 && acceptsHtml) {
@@ -118,8 +133,12 @@ async function serveSpaAsset(request, env) {
   const result = new Response(response.body, response);
   const contentType = result.headers.get("content-type") || "";
 
-  if (url.pathname.startsWith("/assets/")) {
-    result.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  if (isAssetRequest) {
+    if (result.ok) {
+      result.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      result.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+    }
     result.headers.set("X-Content-Type-Options", "nosniff");
   } else if (contentType.includes("text/html") || url.pathname === "/" || !url.pathname.includes(".")) {
     result.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
