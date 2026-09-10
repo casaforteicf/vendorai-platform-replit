@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, generatedSitesTable, leadsTable, webBehaviorEventsTable } from "@workspace/db";
+import { agentTasksTable, db, generatedSitesTable, leadsTable, webBehaviorEventsTable } from "@workspace/db";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { logger } from "../lib/logger.js";
 
@@ -32,6 +32,7 @@ const INTENT_BOOST: Record<"page_view" | "cta_click" | "form_submit" | "product_
   cta_click: 28,
   form_submit: 40,
 };
+const CLOSER_INTENT_THRESHOLD = 60;
 
 function prospectLeadIdFromConfig(config: unknown): string | null {
   if (!config || typeof config !== "object") return null;
@@ -52,6 +53,47 @@ async function resolveColdProspectLeadId(tenantId: string, siteIdentifier?: stri
     ))
     .limit(1);
   return prospectLeadIdFromConfig(site?.config);
+}
+
+async function queueCloserIfHot(tenantId: string, leadId: string, intentScore: number, eventType: string, siteIdentifier?: string) {
+  if (intentScore < CLOSER_INTENT_THRESHOLD) return;
+
+  const [existing] = await db
+    .select({ id: agentTasksTable.id })
+    .from(agentTasksTable)
+    .where(and(
+      eq(agentTasksTable.tenantId, tenantId),
+      eq(agentTasksTable.leadId, leadId),
+      eq(agentTasksTable.agentName, "closer"),
+      inArray(agentTasksTable.status, ["pendente_aprovacao", "aprovado", "executando"]),
+    ))
+    .limit(1);
+
+  if (!existing) {
+    await db.insert(agentTasksTable).values({
+      tenantId,
+      leadId,
+      agentName: "closer",
+      actionType: "lead_quente_lp",
+      status: "pendente_aprovacao",
+      payload: {
+        origin: "cold_prospect_lp",
+        intentScore,
+        threshold: CLOSER_INTENT_THRESHOLD,
+        triggerEvent: eventType,
+        siteIdentifier: siteIdentifier ?? null,
+        instruction: "Prospect demonstrou alta intenção na LP personalizada. Revisar dossiê e conduzir próximo passo comercial sem repetir a prospecção inicial.",
+      },
+    });
+  }
+
+  await db
+    .update(leadsTable)
+    .set({
+      proximaAcao: `Closer: prospect quente na LP (Intent ${Math.round(intentScore)}/100)`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 }
 
 router.post("/generated-site/touchpoint", async (req, res) => {
@@ -98,12 +140,9 @@ router.post("/generated-site/touchpoint", async (req, res) => {
       },
     });
 
-    // A personalized prospect LP carries its leadId only in generated_sites.config.
-    // Turning anonymous page behavior into intent happens only for that exact tenant + slug,
-    // preventing cross-tenant attribution and keeping ordinary public sites unchanged.
     if (coldProspectLeadId) {
       const boost = INTENT_BOOST[data.eventType];
-      await db
+      const [updatedLead] = await db
         .update(leadsTable)
         .set({
           intentScore: sql<number>`LEAST(100, COALESCE(${leadsTable.intentScore}, 0) + ${boost})`,
@@ -113,7 +152,11 @@ router.post("/generated-site/touchpoint", async (req, res) => {
         .where(and(
           eq(leadsTable.id, coldProspectLeadId),
           eq(leadsTable.tenantId, tenantId),
-        ));
+        ))
+        .returning({ intentScore: leadsTable.intentScore });
+
+      const intentScore = Number(updatedLead?.intentScore ?? 0);
+      await queueCloserIfHot(tenantId, coldProspectLeadId, intentScore, data.eventType, data.siteIdentifier);
     }
 
     res.status(202).json({ accepted: true });
@@ -122,7 +165,6 @@ router.post("/generated-site/touchpoint", async (req, res) => {
       { err, tenantId, eventType: data.eventType, channel: data.channel ?? null },
       "generated-site-touchpoint: ingest failed",
     );
-    // Telemetry is best-effort and must never block the visitor's navigation or channel click.
     res.status(202).json({ accepted: false });
   }
 });
