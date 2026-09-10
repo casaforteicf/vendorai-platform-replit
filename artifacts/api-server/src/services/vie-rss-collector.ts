@@ -106,6 +106,10 @@ export function parseRss(xml: string): ParsedRssItem[] {
   return items;
 }
 
+function mergedCategories(sourceCategories: string[] | null, itemCategories: string[]) {
+  return [...new Set([...(sourceCategories ?? []), ...itemCategories].filter(Boolean))].slice(0, 20);
+}
+
 async function collectSource(source: typeof vieSourcesTable.$inferSelect): Promise<VieRssCollectResult> {
   const now = new Date();
   if (!source.endpointUrl) {
@@ -127,6 +131,7 @@ async function collectSource(source: typeof vieSourcesTable.$inferSelect): Promi
     let upserted = 0;
 
     for (const item of parsed) {
+      const categories = mergedCategories(source.categories, item.categories);
       await db
         .insert(vieItemsTable)
         .values({
@@ -138,7 +143,7 @@ async function collectSource(source: typeof vieSourcesTable.$inferSelect): Promi
           excerpt: item.excerpt,
           author: item.author,
           publishedAt: item.publishedAt,
-          categories: item.categories,
+          categories,
           rawMetadata: { sourceCode: source.code, sourceScope: source.scope, sourceDomain: source.domain },
           collectedAt: now,
           updatedAt: now,
@@ -152,7 +157,7 @@ async function collectSource(source: typeof vieSourcesTable.$inferSelect): Promi
             excerpt: item.excerpt,
             author: item.author,
             publishedAt: item.publishedAt,
-            categories: item.categories,
+            categories,
             collectedAt: now,
             updatedAt: now,
           },
