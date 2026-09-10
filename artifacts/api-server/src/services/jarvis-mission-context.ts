@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, jarvisDecisionsTable, jarvisMissionsTable } from "@workspace/db";
+import { loadJarvisMissionHealth } from "./jarvis-mission-health.js";
 
 function compact(value: string | null | undefined, max = 360) {
   if (!value) return "";
@@ -8,7 +9,7 @@ function compact(value: string | null | undefined, max = 360) {
 }
 
 export async function loadJarvisMissionContext(tenantId: string): Promise<string> {
-  const [missions, decisions] = await Promise.all([
+  const [missions, decisions, missionHealth] = await Promise.all([
     db.select({
       id: jarvisMissionsTable.id,
       title: jarvisMissionsTable.title,
@@ -46,6 +47,7 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
       .where(eq(jarvisDecisionsTable.tenantId, tenantId))
       .orderBy(desc(jarvisDecisionsTable.createdAt))
       .limit(20),
+    loadJarvisMissionHealth(tenantId),
   ]);
 
   if (!missions.length && !decisions.length) return "";
@@ -55,6 +57,17 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
     "## Missões e decisões persistentes do JARVIS",
     "Este bloco é tenant-scoped e representa objetivos e decisões explicitamente registrados. Use-o para manter continuidade entre conversas. Não altere missão, decisão ou resultado sem uma rota de escrita realmente executada.",
   ];
+
+  if (missionHealth.items.length) {
+    lines.push("", "### Saúde das Missões — acompanhamento automático");
+    lines.push(`Ativas=${missionHealth.summary.active} | críticas=${missionHealth.summary.critical} | atenção=${missionHealth.summary.attention} | saudáveis=${missionHealth.summary.healthy} | revisões_de_decisão_vencidas=${missionHealth.summary.overdueDecisionReviews}`);
+    for (const item of missionHealth.items.slice(0, 8)) {
+      lines.push(`- [${item.id}] saúde=${item.level} | prioridade=${item.priority}/100 | ${compact(item.title, 180)}`);
+      if (item.reasons.length) lines.push(`  Motivos: ${item.reasons.join("; ")}`);
+      if (item.nextReviewAt) lines.push(`  Próxima revisão de decisão: ${item.nextReviewAt.toISOString()}`);
+    }
+    lines.push("Use saúde=critical antes dos demais itens quando o usuário pedir status geral, prioridades ou andamento das missões. Saúde é uma avaliação determinística de prazo, cobertura de baseline/meta/estado atual, recência de revisão e decisões vencidas; não é previsão estatística de sucesso.");
+  }
 
   if (missions.length) {
     lines.push("", `### Missões ativas (${missions.length})`);
@@ -93,6 +106,7 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
     "",
     "### Regras de continuidade",
     "- 'Qual é nossa missão?', 'onde queremos chegar?' ou equivalente: priorize Missões ativas.",
+    "- 'Como estamos nas missões?' ou 'tem alguma missão atrasada?': use primeiro Saúde das Missões e destaque críticas/atenção antes das saudáveis.",
     "- 'Por que decidimos isso?': procure primeiro a Biblioteca de decisões explícitas e só depois Casos Vendor encerrados.",
     "- 'Funcionou?': compare resultado esperado, métrica e resultado observado; se ainda não foi medido, diga que a decisão permanece pendente de revisão.",
     "- Ao recomendar nova ação, considere as missões ativas e decisões anteriores para evitar contradizer estratégia registrada sem explicar por que a evidência mudou.",
