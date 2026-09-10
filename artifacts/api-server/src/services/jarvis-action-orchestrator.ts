@@ -38,16 +38,16 @@ function normalize(value: string) {
 }
 
 function preferredAgentFor(text: string): JarvisExecutorAgent | null {
-  if (/\b(cobranca|cobrar|inadimplen|boleto vencido|pagamento atrasado)\b/.test(text)) return "cobranca";
-  if (/\b(financeir|fluxo de caixa|contas a pagar|contas a receber|concilia|despesa|receita)\b/.test(text)) return "financeiro";
-  if (/\b(agenda|agendar|agendamento|reuniao|consulta|horario|marcar)\b/.test(text)) return "scheduler";
-  if (/\b(reativa|reativar|recuperar cliente|cliente inativo|lead inativo)\b/.test(text)) return "reactivation";
+  if (/\b(cobranc\w*|cobrar|inadimpl\w*|boleto vencido|pagamento atrasado)\b/.test(text)) return "cobranca";
+  if (/\b(financeir\w*|fluxo de caixa|contas a pagar|contas a receber|concilia\w*|despesa|receita)\b/.test(text)) return "financeiro";
+  if (/\b(agenda\w*|agendar|reuniao|consulta|horario|marcar)\b/.test(text)) return "scheduler";
+  if (/\b(reativ\w*|recuperar cliente|cliente inativo|lead inativo)\b/.test(text)) return "reactivation";
   if (/\b(follow.?up|acompanhar lead|retorno comercial|retomar contato)\b/.test(text)) return "followup";
   if (/\b(fechar|fechamento|closer|negociacao|negociar|proposta|desconto)\b/.test(text)) return "closer";
-  if (/\b(prospect|prospecc|sdr|qualificar lead|qualificacao|lead novo|novos leads)\b/.test(text)) return "sdr";
+  if (/\b(prospect\w*|prospecc\w*|sdr|qualificar lead|qualificacao|lead novo|novos leads)\b/.test(text)) return "sdr";
   if (/\b(onboarding|implantacao|primeiro acesso|configuracao inicial)\b/.test(text)) return "onboarding";
-  if (/\b(pos.?venda|relacionamento|sucesso do cliente|customer success|fideliza)\b/.test(text)) return "relacionamento";
-  if (/\b(atendimento|suporte ao cliente|duvida do cliente|reclamacao)\b/.test(text)) return "service";
+  if (/\b(pos.?venda|relacionamento|sucesso do cliente|customer success|fideliz\w*)\b/.test(text)) return "relacionamento";
+  if (/\b(atendimento|suporte ao cliente|duvida do cliente|reclam\w*)\b/.test(text)) return "service";
   if (/\b(recepcao|recepcionar|triagem inicial)\b/.test(text)) return "reception";
   return null;
 }
@@ -70,7 +70,7 @@ export function resolveJarvisOrchestration(text: string): JarvisOrchestrationDec
   }
 
   if (/\b(executa|execute|executar|rode|rodar|prossiga|prossegue)\b/.test(normalized)
-    && /\b(acao|acoes|tarefa|tarefas|plano|etapa|aprovad|pendencia|envio|mensagem|desconto|fechamento|estoque)\b/.test(normalized)) {
+    && /\b(acao|acoes|tarefa|tarefas|plano|etapa|aprov\w*|pendenc\w*|envio|mensagem|desconto|fechamento|estoque)\b/.test(normalized)) {
     return {
       route: "execution",
       explicitAction: true,
