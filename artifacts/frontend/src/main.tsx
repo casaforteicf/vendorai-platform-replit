@@ -25,6 +25,7 @@ import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaP
 import { MediaPlanLifecycleSummary } from "./components/marketing/MediaPlanLifecycleSummary";
 import { CheckoutConversionFunnel } from "./components/marketing/CheckoutConversionFunnel";
 import { AcquisitionInvestmentIntelligence } from "./components/marketing/AcquisitionInvestmentIntelligence";
+import { AcquisitionMasterOrchestrator } from "./components/marketing/AcquisitionMasterOrchestrator";
 import { MediaPlanPerformanceCommandCenter } from "./components/marketing/MediaPlanPerformanceCommandCenter";
 import { MediaPlanBudgetExecutionBridge } from "./components/marketing/MediaPlanBudgetExecutionBridge";
 import { MarketingAutonomyControl } from "./components/marketing/MarketingAutonomyControl";
@@ -120,6 +121,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaPlanLifecycleSummary />
           <CheckoutConversionFunnel />
           <AcquisitionInvestmentIntelligence />
+          <AcquisitionMasterOrchestrator />
           <MediaPlanPerformanceCommandCenter />
           <MediaPlanBudgetExecutionBridge />
           <MarketingAutonomyControl />
