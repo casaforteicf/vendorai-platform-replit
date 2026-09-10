@@ -219,6 +219,9 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   const requestPaths = [req.path, req.originalUrl, req.url]
     .map((value) => value.split("?", 1)[0] ?? value);
   const isApiRequest = requestPaths.some((value) => value === "/api" || value.startsWith("/api/"));
+  const isHealthRequest = requestPaths.some(
+    (value) => value === "/healthz" || value === "/api/healthz" || value === "/api/v1/healthz",
+  );
   const isAuthApiRequest = requestPaths.some(
     (value) =>
       value === "/api/auth" ||
@@ -227,6 +230,13 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       value.startsWith("/auth/"),
   );
   const hasBearerAuth = req.headers.authorization?.startsWith("Bearer ") === true;
+
+  // Healthchecks are public infrastructure probes and must reach the health
+  // router before any custom-domain/tenant resolution. Otherwise Railway's
+  // internal hostname is mistaken for a tenant domain and returns 404.
+  if (isHealthRequest) {
+    return next();
+  }
 
   // Auth endpoints must never be tenant-domain resolved. Some edge/Worker
   // paths inject x-tenant-subdomain even for app.appvendorai.com; keeping
