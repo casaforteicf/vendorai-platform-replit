@@ -38,7 +38,7 @@ type VieNewsItem = {
   publishedAt: string | null;
   collectedAt: string;
   categories?: string[] | null;
-  sourceName?: string;
+  sourceScope?: string | null;
 };
 
 type VieNewsFeed = {
@@ -57,6 +57,10 @@ const GENERIC_TERMS = new Set([
 
 const NEWS_SECTIONS = [
   "Todos",
+  "Notícias Locais",
+  "Política",
+  "Bolsa de Valores",
+  "Criptomoedas",
   "Economia",
   "Negócios",
   "Governo & Regulação",
@@ -69,6 +73,7 @@ const NEWS_SECTIONS = [
 ] as const;
 
 type NewsSection = (typeof NEWS_SECTIONS)[number];
+type ItemSection = Exclude<NewsSection, "Todos">;
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -169,20 +174,105 @@ function formatUpdated(value: string | null | undefined) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function newsSection(item: VieNewsItem): Exclude<NewsSection, "Todos"> {
-  const categories = Array.isArray(item.categories) ? item.categories : [];
-  const text = normalize(`${categories.join(" ")} ${item.title}`);
-  const has = (...terms: string[]) => terms.some((term) => text.includes(normalize(term)));
+function isValidRegionLabel(value: string) {
+  const text = normalize(value);
+  if (!text || /\d/.test(text)) return false;
+  if (/\b(rua|avenida|av\.?|rodovia|estrada|travessa|alameda|br-)\b/.test(text)) return false;
+  return text.length >= 3;
+}
 
-  if (has("internacional", "geopolitica", "mundo", "exterior")) return "Internacional";
-  if (has("saude", "sus", "medic", "hospital", "clinica")) return "Saúde";
-  if (has("ciencia", "tecnologia", "inovacao", "digital", "inteligencia artificial")) return "Tecnologia";
-  if (has("cidades", "transporte", "transito", "logistica", "infraestrutura", "rodovia", "obra")) return "Infraestrutura";
-  if (has("agropecuaria", "agronegocio", "agro", "meio ambiente", "sustentabilidade", "clima")) return "Agro & Ambiente";
-  if (has("industria", "comercio", "consumidor", "trabalho", "emprego", "empresa", "negocio")) return "Negócios";
-  if (has("economia", "mercado", "macroeconomia", "tributo", "credito", "juros", "inflacao")) return "Economia";
-  if (has("politica", "governo", "legislativo", "administracao publica", "regulatorio", "justica", "lei")) return "Governo & Regulação";
-  return "Geral";
+function itemSections(item: VieNewsItem): ItemSection[] {
+  const categories = Array.isArray(item.categories) ? item.categories : [];
+  const scope = normalize(item.sourceScope ?? "");
+  const text = normalize(`${categories.join(" ")} ${item.title} ${item.excerpt ?? ""}`);
+  const has = (...terms: string[]) => terms.some((term) => text.includes(normalize(term)));
+  const sections = new Set<ItemSection>();
+
+  if (["local", "regional", "state", "estadual", "municipal"].includes(scope) || has("noticia local", "noticias locais")) {
+    sections.add("Notícias Locais");
+  }
+
+  if (has(
+    "bitcoin", "btc", "ethereum", "eth", "criptomoeda", "criptomoedas", "cripto",
+    "blockchain", "stablecoin", "token", "altcoin", "exchange de cripto", "mercado cripto",
+  )) {
+    sections.add("Criptomoedas");
+  }
+
+  if (has(
+    "ibovespa", "bovespa", "b3", "bolsa de valores", "mercado acionario", "acoes",
+    "acao", "pregao", "ipo", "follow-on", "dividendos", "etf", "small caps",
+    "nasdaq", "s&p 500", "dow jones", "wall street",
+  )) {
+    sections.add("Bolsa de Valores");
+  }
+
+  if (has(
+    "politica", "eleicao", "eleicoes", "eleitoral", "congresso", "senado", "senador",
+    "camara dos deputados", "deputado", "presidente", "governador", "prefeito", "partido politico",
+  )) {
+    sections.add("Política");
+  }
+
+  if (has("internacional", "geopolitica", "mundo", "exterior", "comercio exterior")) sections.add("Internacional");
+  if (has("saude", "sus", "medic", "hospital", "clinica")) sections.add("Saúde");
+  if (has("ciencia", "tecnologia", "inovacao", "digital", "inteligencia artificial")) sections.add("Tecnologia");
+  if (has("cidades", "transporte", "transito", "logistica", "infraestrutura", "rodovia", "obra")) sections.add("Infraestrutura");
+  if (has("agropecuaria", "agronegocio", "agro", "meio ambiente", "sustentabilidade", "clima")) sections.add("Agro & Ambiente");
+  if (has("industria", "comercio", "consumidor", "trabalho", "emprego", "empresa", "negocio")) sections.add("Negócios");
+  if (has("economia", "mercado", "macroeconomia", "tributo", "credito", "juros", "inflacao", "cambio", "dolar", "real")) sections.add("Economia");
+  if (has("governo", "legislativo", "administracao publica", "regulatorio", "regulacao", "justica", "lei", "decreto")) sections.add("Governo & Regulação");
+
+  if (sections.size === 0) sections.add("Geral");
+  return [...sections];
+}
+
+function primarySection(item: VieNewsItem): ItemSection {
+  const sections = itemSections(item);
+  const priority: ItemSection[] = [
+    "Notícias Locais",
+    "Política",
+    "Bolsa de Valores",
+    "Criptomoedas",
+    "Economia",
+    "Negócios",
+    "Governo & Regulação",
+    "Saúde",
+    "Tecnologia",
+    "Infraestrutura",
+    "Agro & Ambiente",
+    "Internacional",
+    "Geral",
+  ];
+  return priority.find((section) => sections.includes(section)) ?? "Geral";
+}
+
+function regionalCaseToNewsItem(item: NewsCase): VieNewsItem | null {
+  const regions = evidenceTextArray(item.evidence?.matchedRegions).filter(isValidRegionLabel);
+  if (signalType(item.evidence?.signalType) !== "regional" || regions.length === 0 || !isFresh(item, 48)) return null;
+
+  return {
+    id: `local-${item.id}`,
+    title: item.title,
+    url: item.href ?? "",
+    excerpt: item.detail,
+    publishedAt: item.lastDetectedAt ?? item.updatedAt,
+    collectedAt: item.updatedAt,
+    categories: ["noticias locais", ...regions],
+    sourceScope: "regional",
+  };
+}
+
+function dedupeItems(items: VieNewsItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const normalizedUrl = normalize(item.url || "").replace(/[?#].*$/, "");
+    const normalizedTitle = normalize(item.title).replace(/\s+/g, " ");
+    const key = normalizedUrl || normalizedTitle;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default function JarvisNewsMarket({ token }: { token?: string | null }) {
@@ -204,7 +294,6 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
     let cancelled = false;
     setLoading(true);
     setFeedError(false);
-
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.allSettled([
@@ -212,18 +301,14 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
         if (!response.ok) throw new Error("cases");
         return response.json() as Promise<NewsCase[]>;
       }),
-      fetch("/api/jarvis/vie/news-feed?limit=30", { headers, cache: "no-store" }).then(async (response) => {
+      fetch("/api/jarvis/vie/news-feed?limit=50", { headers, cache: "no-store" }).then(async (response) => {
         if (!response.ok) throw new Error("feed");
         return response.json() as Promise<VieNewsFeed>;
       }),
     ]).then(([casesResult, feedResult]) => {
       if (cancelled) return;
 
-      if (casesResult.status === "fulfilled") {
-        setAllCases(Array.isArray(casesResult.value) ? casesResult.value : []);
-      } else {
-        setAllCases([]);
-      }
+      setAllCases(casesResult.status === "fulfilled" && Array.isArray(casesResult.value) ? casesResult.value : []);
 
       if (feedResult.status === "fulfilled") {
         setNewsFeed(feedResult.value);
@@ -250,11 +335,21 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
     [allCases],
   );
 
+  const allNewsItems = useMemo(() => {
+    const feedItems = newsFeed?.items ?? [];
+    const regionalItems = allCases
+      .map(regionalCaseToNewsItem)
+      .filter((item): item is VieNewsItem => item !== null);
+
+    return dedupeItems([...feedItems, ...regionalItems]).sort(
+      (a, b) => new Date(b.publishedAt ?? b.collectedAt).getTime() - new Date(a.publishedAt ?? a.collectedAt).getTime(),
+    );
+  }, [newsFeed, allCases]);
+
   const filteredFeed = useMemo(() => {
-    const source = newsFeed?.items ?? [];
-    if (newsFilter === "Todos") return source;
-    return source.filter((item) => newsSection(item) === newsFilter);
-  }, [newsFeed, newsFilter]);
+    if (newsFilter === "Todos") return allNewsItems;
+    return allNewsItems.filter((item) => itemSections(item).includes(newsFilter));
+  }, [allNewsItems, newsFilter]);
 
   const visibleFeed = filteredFeed.slice(0, visibleCount);
 
@@ -271,7 +366,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
           </p>
           {newsFeed && (
             <p className="mt-2 text-xs text-muted-foreground">
-              {newsFeed.available} informações nas últimas 24h{newsFeed.generatedAt ? ` · atualizado ${formatUpdated(newsFeed.generatedAt)}` : ""}
+              {allNewsItems.length} informações recentes{newsFeed.generatedAt ? ` · atualizado ${formatUpdated(newsFeed.generatedAt)}` : ""}
             </p>
           )}
         </div>
@@ -279,7 +374,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
           <Button
             variant="outline"
             onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support", {
-              detail: { question: "JARVIS, resuma as informações mais importantes de hoje para o meu negócio e diga o que merece minha atenção." },
+              detail: { question: "JARVIS, resuma as informações mais importantes de hoje, incluindo política, bolsa, criptomoedas e acontecimentos locais relevantes para o meu negócio." },
             }))}
           >
             <Sparkles className="mr-2 h-4 w-4" /> Resumir com JARVIS
@@ -340,7 +435,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h3 className="text-base font-semibold">Radar do dia</h3>
-              <p className="mt-1 text-xs text-muted-foreground">As principais informações das últimas 24 horas, sem misturar notícia com prospecção.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Informações das últimas horas organizadas por assunto, sem misturar notícia com prospecção.</p>
             </div>
             {newsFeed && <span className="text-xs text-muted-foreground">Mostrando {Math.min(visibleCount, filteredFeed.length)} de {filteredFeed.length}</span>}
           </div>
@@ -379,7 +474,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                 {visibleFeed.map((item) => (
                   <article key={item.id} className="rounded-xl border bg-background p-4 transition-shadow hover:shadow-sm">
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Badge variant="outline">{newsSection(item)}</Badge>
+                      <Badge variant="outline">{primarySection(item)}</Badge>
                       <span>{formatTime(item.publishedAt ?? item.collectedAt)}</span>
                     </div>
                     <h4 className="mt-2 text-sm font-semibold leading-5">{item.title}</h4>
@@ -394,9 +489,11 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                       >
                         Analisar com JARVIS
                       </button>
-                      <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                        Abrir notícia <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
+                      {item.url ? (
+                        <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                          Abrir notícia <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
                     </div>
                   </article>
                 ))}
