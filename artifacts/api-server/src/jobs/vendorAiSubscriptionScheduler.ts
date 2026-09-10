@@ -2,14 +2,14 @@ import cron from "node-cron";
 import type { Logger } from "pino";
 import { runVendorAiSubscriptionBilling } from "./vendorAiSubscriptionBilling.js";
 import { runVendorAiSubscriptionPaymentSync } from "./vendorAiSubscriptionPaymentSync.js";
+import { runVendorAiSelfServiceSubscriptionBilling } from "./vendorAiSelfServiceSubscriptionBilling.js";
 
 /**
- * Starts only the VendorAI launch-subscription lifecycle jobs.
+ * Scheduler unificado de assinaturas VendorAI.
  *
- * Billing stays fail-closed behind VENDORAI_SUBSCRIPTION_BILLING_ENABLED inside
- * runVendorAiSubscriptionBilling(). Payment reconciliation is safe to run even
- * while charge creation is disabled because it only reflects persisted Asaas
- * webhook state into the subscription/product lifecycle.
+ * O worker de lançamento mantém a cadência histórica; o worker self-service
+ * cuida das assinaturas originadas por LP/checkout. Ambos permanecem atrás da
+ * mesma feature flag de billing e usam a conta plataforma Asaas.
  */
 export function startVendorAiSubscriptionScheduler(log: Logger): void {
   cron.schedule("*/5 * * * *", () => {
@@ -22,6 +22,9 @@ export function startVendorAiSubscriptionScheduler(log: Logger): void {
     runVendorAiSubscriptionBilling(log).catch((err) => {
       log.error({ err }, "vendorai-subscription-billing: unhandled error");
     });
+    runVendorAiSelfServiceSubscriptionBilling(log).catch((err) => {
+      log.error({ err }, "vendorai-selfservice-billing: unhandled error");
+    });
   });
 
   runVendorAiSubscriptionPaymentSync(log).catch((err) => {
@@ -30,6 +33,9 @@ export function startVendorAiSubscriptionScheduler(log: Logger): void {
   runVendorAiSubscriptionBilling(log).catch((err) => {
     log.error({ err }, "vendorai-subscription-billing: startup reconciliation failed");
   });
+  runVendorAiSelfServiceSubscriptionBilling(log).catch((err) => {
+    log.error({ err }, "vendorai-selfservice-billing: startup reconciliation failed");
+  });
 
-  log.info("vendorai-subscription-scheduler: active (payment sync 5m, billing 15m)");
+  log.info("vendorai-subscription-scheduler: active (payment sync 5m, billing launch+self-service 15m)");
 }
