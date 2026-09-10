@@ -38,6 +38,7 @@ import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
 import "./lib/jarvisArtifactFetchBridge";
+import "./lib/jarvisExecutiveContextBridge";
 import "./lib/jarvisVoiceResponseBridge";
 import "./lib/jarvisVoiceDictationBridge";
 import "./lib/jarvisUndoBridge";
