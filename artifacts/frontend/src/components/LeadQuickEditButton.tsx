@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { Lead, getListTenantLeadsQueryKey, getListTenantUsersQueryKey, useListTenantUsers, useUpdateLead } from "@workspace/api-client-react";
+import { useState, type MouseEvent } from "react";
+import {
+  Lead,
+  getListTenantLeadsQueryKey,
+  getListTenantUsersQueryKey,
+  useListTenantUsers,
+  useUpdateLead,
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +20,7 @@ const EDITABLE_STATUSES = [
   { value: "nao_qualificado", label: "Não qualificado" },
   { value: "convertido", label: "Convertido" },
   { value: "perdido", label: "Perdido" },
+  { value: "quente", label: "Quente" },
 ];
 
 type QuickEditDraft = {
@@ -72,7 +79,7 @@ export function LeadQuickEditButton({
     },
   });
 
-  function openEditor(event: React.MouseEvent<HTMLButtonElement>) {
+  function openEditor(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
     setDraft(leadToDraft(lead));
     setOpen(true);
@@ -92,10 +99,11 @@ export function LeadQuickEditButton({
     }
 
     const nextSegment = draft.segmento.trim();
+    const empresa = draft.empresa.trim();
     const currentDadosPj = (lead as any).dadosPj;
     const data: Record<string, unknown> = {
       nome,
-      empresa: draft.empresa.trim() || null,
+      empresa: empresa || null,
       mercadoSegmento: nextSegment || null,
       telefone: draft.telefone.trim() || null,
       email: email || null,
@@ -107,7 +115,7 @@ export function LeadQuickEditButton({
       data.dadosPj = {
         ...currentDadosPj,
         segmento: nextSegment || null,
-        razaoSocial: draft.empresa.trim() || currentDadosPj.razaoSocial || null,
+        razaoSocial: empresa || null,
       };
     }
 
@@ -201,7 +209,10 @@ export function LeadQuickEditButton({
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Status do contato</label>
-                <Select value={draft.status} onValueChange={(value) => setDraft((current) => ({ ...current, status: value }))}>
+                <Select
+                  value={draft.status}
+                  onValueChange={(value) => setDraft((current) => ({ ...current, status: value }))}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {EDITABLE_STATUSES.map((status) => (
@@ -215,7 +226,10 @@ export function LeadQuickEditButton({
             {isAdmin && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Responsável</label>
-                <Select value={draft.assignedTo || "__none__"} onValueChange={(value) => setDraft((current) => ({ ...current, assignedTo: value }))}>
+                <Select
+                  value={draft.assignedTo || "__none__"}
+                  onValueChange={(value) => setDraft((current) => ({ ...current, assignedTo: value }))}
+                >
                   <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sem responsável</SelectItem>
