@@ -1,5 +1,17 @@
 -- Histórico consolidado de performance de parceiros/afiliados.
 -- Normaliza período, campanha e cidade/região sem criar uma segunda fonte de verdade.
+--
+-- Esta migration roda antes de 2026091002_partner_attribution_checkout.sql pela
+-- ordenação lexicográfica do runner. Portanto garante aqui, de forma idempotente,
+-- as colunas de atribuição do Praça.AI exigidas pela view abaixo. A migration
+-- posterior mantém os mesmos ADD COLUMN IF NOT EXISTS e continua segura.
+
+ALTER TABLE praca_pedidos
+  ADD COLUMN IF NOT EXISTS partner_id text REFERENCES partners(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS cupom_codigo text,
+  ADD COLUMN IF NOT EXISTS desconto_cupom_percentual numeric(5,2),
+  ADD COLUMN IF NOT EXISTS origem_atribuicao text,
+  ADD COLUMN IF NOT EXISTS attribution_metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE OR REPLACE VIEW partner_referral_history AS
 SELECT
