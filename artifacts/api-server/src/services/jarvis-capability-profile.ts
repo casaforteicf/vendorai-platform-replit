@@ -1,3 +1,5 @@
+import { buildJarvisExecutiveReasoningContext } from "./jarvis-executive-reasoning.js";
+
 export type JarvisCapabilityFamily =
   | "vendorai_business"
   | "finance_accounting"
@@ -184,6 +186,7 @@ export function resolveJarvisCapability(text: string): JarvisCapabilityResolutio
 
 export function buildJarvisCapabilityContext(text: string): string {
   const capability = resolveJarvisCapability(text);
+  const executiveReasoning = buildJarvisExecutiveReasoningContext(text);
   return [
     "## Capability Gateway do JARVIS",
     `- Domínio principal detectado: ${capability.label} (${capability.family}).`,
@@ -193,6 +196,7 @@ export function buildJarvisCapabilityContext(text: string): string {
     `- Memória: ${capability.transientByDefault ? "trate como conversa transitória por padrão; não converta em aprendizado empresarial sem vínculo real com o tenant" : "pode usar contexto empresarial/operacional do tenant, sempre isolado"}.`,
     `- Conduta: ${capability.guidance}`,
     "- Nunca afirme que consultou fonte externa, criou arquivo, tocou música, enviou mensagem, publicou, contratou ou executou uma ação se a ferramenta/integração correspondente não tiver realmente sido usada e confirmado sucesso.",
+    executiveReasoning,
   ].join("\n");
 }
 
