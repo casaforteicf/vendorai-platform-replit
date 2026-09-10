@@ -2,7 +2,9 @@ import { and, eq } from "drizzle-orm";
 import {
   acquisitionBudgetOrchestratorTable,
   adCampaignsTable,
+  commerceCheckoutSessionsTable,
   db,
+  generatedSitesTable,
 } from "@workspace/db";
 
 export type MasterBudgetGuardResult = {
@@ -20,7 +22,6 @@ export type MasterBudgetGuardResult = {
 };
 
 type CampaignRow = typeof adCampaignsTable.$inferSelect;
-
 type MediaPlanDraft = { allocatedTotalBudget?: number };
 
 function roundMoney(value: number) {
@@ -43,10 +44,43 @@ function currentPlanIsApproved(input: { lastPlanAt: Date | null; lastApprovedAt:
   return input.lastApprovedAt.getTime() >= input.lastPlanAt.getTime();
 }
 
+async function tenantOwnsAcquisitionEvidence(tenantId: string, vertical: string) {
+  const rows = await db
+    .select({ offerSnapshot: commerceCheckoutSessionsTable.offerSnapshot })
+    .from(commerceCheckoutSessionsTable)
+    .innerJoin(generatedSitesTable, eq(generatedSitesTable.id, commerceCheckoutSessionsTable.siteId))
+    .where(eq(generatedSitesTable.tenantId, tenantId))
+    .limit(5000);
+  return rows.some((row) => row.offerSnapshot.vertical?.trim() === vertical);
+}
+
+function disabledResult(input: {
+  autonomy: MasterBudgetGuardResult["autonomy"];
+  vertical: string;
+  proposedAllocation: number;
+  requestedIncrease: number;
+  reason: string;
+}): MasterBudgetGuardResult {
+  return {
+    enabled: false,
+    approved: false,
+    autonomy: input.autonomy,
+    vertical: input.vertical,
+    targetAmount: null,
+    currentAllocatedAmount: 0,
+    availableHeadroom: null,
+    requestedIncrease: input.requestedIncrease,
+    allowedIncrease: input.requestedIncrease,
+    cappedTargetAllocation: input.proposedAllocation,
+    reason: input.reason,
+  };
+}
+
 /**
- * Aplica o teto mestre aprovado à alteração de uma campanha.
- * O cálculo é global por vertical, portanto um Plano de Mídia nunca consegue
- * consumir mais que a verba concedida à vertical pelo Orquestrador Mestre.
+ * Aplica o teto mestre aprovado à alteração de uma campanha de aquisição.
+ * Só entra em ação no tenant que efetivamente possui checkouts daquela vertical,
+ * evitando que campanhas de clientes do VendorAI sejam limitadas pelo orçamento
+ * global usado para vender o próprio aplicativo.
  */
 export async function enforceMasterAcquisitionBudget(input: {
   tenantId: string;
@@ -65,19 +99,24 @@ export async function enforceMasterAcquisitionBudget(input: {
     .limit(1);
 
   if (!config?.active) {
-    return {
-      enabled: false,
-      approved: false,
+    return disabledResult({
       autonomy: config?.autonomy ?? null,
       vertical: input.vertical,
-      targetAmount: null,
-      currentAllocatedAmount: 0,
-      availableHeadroom: null,
+      proposedAllocation,
       requestedIncrease,
-      allowedIncrease: requestedIncrease,
-      cappedTargetAllocation: proposedAllocation,
       reason: "Orquestrador Mestre inativo; permanece válido apenas o teto do Plano de Mídia.",
-    };
+    });
+  }
+
+  const ownsEvidence = await tenantOwnsAcquisitionEvidence(input.tenantId, input.vertical);
+  if (!ownsEvidence) {
+    return disabledResult({
+      autonomy: config.autonomy,
+      vertical: input.vertical,
+      proposedAllocation,
+      requestedIncrease,
+      reason: "Campanha fora do funil de aquisição do VendorAI; orçamento mestre não se aplica a este tenant.",
+    });
   }
 
   const approved = currentPlanIsApproved(config);
@@ -95,6 +134,7 @@ export async function enforceMasterAcquisitionBudget(input: {
   }
 
   const campaigns = await db.select().from(adCampaignsTable).where(and(
+    eq(adCampaignsTable.tenantId, input.tenantId),
     eq(adCampaignsTable.vertical, input.vertical),
     eq(adCampaignsTable.status, "ativo"),
   )).limit(5000);
