@@ -14,6 +14,7 @@ import {
   isAsaasConfigured,
 } from "../lib/asaas.js";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
+import { addCalendarMonth, addCalendarYear } from "../lib/vendorai-subscription-rules.js";
 
 const MAX_PER_RUN = 100;
 
@@ -49,10 +50,36 @@ function resolveAmount(input: {
   return input.billingCycle === "annual" ? monthly * 12 : monthly;
 }
 
+function nextDue(due: Date, billingCycle: string | null) {
+  const anchorDay = due.getUTCDate();
+  return billingCycle === "annual" ? addCalendarYear(due, anchorDay) : addCalendarMonth(due, anchorDay);
+}
+
+async function reflectRemoteStatus(input: {
+  subscriptionId: string;
+  due: Date;
+  billingCycle: string | null;
+  localStatus: "pending" | "paid" | "overdue";
+  now: Date;
+}) {
+  if (input.localStatus === "paid") {
+    await db.update(subscriptionsTable).set({
+      status: "ativa",
+      proximaCobranca: nextDue(input.due, input.billingCycle),
+      updatedAt: input.now,
+    }).where(eq(subscriptionsTable.id, input.subscriptionId));
+  } else if (input.localStatus === "overdue") {
+    await db.update(subscriptionsTable).set({
+      status: "inadimplente",
+      updatedAt: input.now,
+    }).where(eq(subscriptionsTable.id, input.subscriptionId));
+  }
+}
+
 /**
- * Gera as cobranças recorrentes das assinaturas adquiridas pelo checkout das LPs.
- * O worker legado continua responsável exclusivamente pela campanha de lançamento.
- * Ambos usam a mesma tabela de assinatura, billing_events e a mesma conta plataforma Asaas.
+ * Gera e reconcilia cobranças recorrentes das assinaturas adquiridas pelo checkout das LPs.
+ * O worker legado continua responsável pela campanha de lançamento. Ambos usam a mesma
+ * tabela de assinatura, billing_events e a mesma conta plataforma Asaas.
  */
 export async function runVendorAiSelfServiceSubscriptionBilling(log: Logger): Promise<void> {
   if (process.env["VENDORAI_SUBSCRIPTION_BILLING_ENABLED"] !== "true") return;
@@ -79,7 +106,7 @@ export async function runVendorAiSelfServiceSubscriptionBilling(log: Logger): Pr
     .where(and(
       ne(subscriptionsTable.campaignCode, VENDORAI_LAUNCH_CAMPAIGN),
       eq(subscriptionsTable.billingProvider, "asaas"),
-      inArray(subscriptionsTable.status, ["trial", "ativa"]),
+      inArray(subscriptionsTable.status, ["trial", "ativa", "inadimplente"]),
       isNotNull(subscriptionsTable.proximaCobranca),
       lte(subscriptionsTable.proximaCobranca, now),
     ))
@@ -98,7 +125,12 @@ export async function runVendorAiSelfServiceSubscriptionBilling(log: Logger): Pr
       const amount = resolveAmount({ ...sub, due });
 
       let [event] = await db.select().from(billingEventsTable).where(eq(billingEventsTable.mes, key)).limit(1);
-      if (event?.status === "paid" || event?.status === "cancelled") {
+      if (event?.status === "paid") {
+        await reflectRemoteStatus({ subscriptionId: sub.id, due, billingCycle: sub.billingCycle, localStatus: "paid", now });
+        skipped++;
+        continue;
+      }
+      if (event?.status === "cancelled") {
         skipped++;
         continue;
       }
@@ -125,6 +157,7 @@ export async function runVendorAiSelfServiceSubscriptionBilling(log: Logger): Pr
             ...(status === "paid" ? { paidAt: now } : {}),
           }).where(eq(billingEventsTable.id, event.id));
         }
+        await reflectRemoteStatus({ subscriptionId: sub.id, due, billingCycle: sub.billingCycle, localStatus: status, now });
         recovered++;
         continue;
       }
@@ -183,6 +216,7 @@ export async function runVendorAiSelfServiceSubscriptionBilling(log: Logger): Pr
         ...(status === "paid" ? { paidAt: now } : {}),
       }).where(eq(billingEventsTable.id, event.id));
       await db.update(subscriptionsTable).set({ asaasCustomerId: customerId, updatedAt: now }).where(eq(subscriptionsTable.id, sub.id));
+      await reflectRemoteStatus({ subscriptionId: sub.id, due, billingCycle: sub.billingCycle, localStatus: status, now });
       created++;
     } catch (err) {
       failed++;
