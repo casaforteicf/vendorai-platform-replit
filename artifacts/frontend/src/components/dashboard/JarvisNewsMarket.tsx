@@ -3,6 +3,7 @@ import { AlertTriangle, Building2, ExternalLink, Newspaper, RefreshCw, Sparkles 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { primaryJarvisNewsSection, type JarvisNewsSection } from "@/lib/jarvis-news-classifier";
 
 type ExternalSignalType = "competitor" | "supplier" | "regional" | "sectoral" | "market";
 
@@ -39,6 +40,9 @@ type VieNewsItem = {
   collectedAt: string;
   categories?: string[] | null;
   sourceScope?: string | null;
+  sourceCode?: string | null;
+  sourceName?: string | null;
+  sourceReliability?: number | null;
 };
 
 type VieNewsFeed = {
@@ -55,7 +59,7 @@ const GENERIC_TERMS = new Set([
   "tecnologia", "tecnologias", "digital", "digitais", "comercial", "empresa", "empresas",
 ]);
 
-const NEWS_SECTIONS = [
+const NEWS_SECTIONS: Array<"Todos" | JarvisNewsSection> = [
   "Todos",
   "Notícias Locais",
   "Política",
@@ -70,10 +74,9 @@ const NEWS_SECTIONS = [
   "Agro & Ambiente",
   "Internacional",
   "Geral",
-] as const;
+];
 
-type NewsSection = (typeof NEWS_SECTIONS)[number];
-type ItemSection = Exclude<NewsSection, "Todos">;
+type NewsFilter = (typeof NEWS_SECTIONS)[number];
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -181,72 +184,6 @@ function isValidRegionLabel(value: string) {
   return text.length >= 3;
 }
 
-function itemSections(item: VieNewsItem): ItemSection[] {
-  const categories = Array.isArray(item.categories) ? item.categories : [];
-  const scope = normalize(item.sourceScope ?? "");
-  const text = normalize(`${categories.join(" ")} ${item.title} ${item.excerpt ?? ""}`);
-  const has = (...terms: string[]) => terms.some((term) => text.includes(normalize(term)));
-  const sections = new Set<ItemSection>();
-
-  if (["local", "regional", "state", "estadual", "municipal"].includes(scope) || has("noticia local", "noticias locais")) {
-    sections.add("Notícias Locais");
-  }
-
-  if (has(
-    "bitcoin", "btc", "ethereum", "eth", "criptomoeda", "criptomoedas", "cripto",
-    "blockchain", "stablecoin", "token", "altcoin", "exchange de cripto", "mercado cripto",
-  )) {
-    sections.add("Criptomoedas");
-  }
-
-  if (has(
-    "ibovespa", "bovespa", "b3", "bolsa de valores", "mercado acionario", "acoes",
-    "acao", "pregao", "ipo", "follow-on", "dividendos", "etf", "small caps",
-    "nasdaq", "s&p 500", "dow jones", "wall street",
-  )) {
-    sections.add("Bolsa de Valores");
-  }
-
-  if (has(
-    "politica", "eleicao", "eleicoes", "eleitoral", "congresso", "senado", "senador",
-    "camara dos deputados", "deputado", "presidente", "governador", "prefeito", "partido politico",
-  )) {
-    sections.add("Política");
-  }
-
-  if (has("internacional", "geopolitica", "mundo", "exterior", "comercio exterior")) sections.add("Internacional");
-  if (has("saude", "sus", "medic", "hospital", "clinica")) sections.add("Saúde");
-  if (has("ciencia", "tecnologia", "inovacao", "digital", "inteligencia artificial")) sections.add("Tecnologia");
-  if (has("cidades", "transporte", "transito", "logistica", "infraestrutura", "rodovia", "obra")) sections.add("Infraestrutura");
-  if (has("agropecuaria", "agronegocio", "agro", "meio ambiente", "sustentabilidade", "clima")) sections.add("Agro & Ambiente");
-  if (has("industria", "comercio", "consumidor", "trabalho", "emprego", "empresa", "negocio")) sections.add("Negócios");
-  if (has("economia", "mercado", "macroeconomia", "tributo", "credito", "juros", "inflacao", "cambio", "dolar", "real")) sections.add("Economia");
-  if (has("governo", "legislativo", "administracao publica", "regulatorio", "regulacao", "justica", "lei", "decreto")) sections.add("Governo & Regulação");
-
-  if (sections.size === 0) sections.add("Geral");
-  return [...sections];
-}
-
-function primarySection(item: VieNewsItem): ItemSection {
-  const sections = itemSections(item);
-  const priority: ItemSection[] = [
-    "Notícias Locais",
-    "Política",
-    "Bolsa de Valores",
-    "Criptomoedas",
-    "Economia",
-    "Negócios",
-    "Governo & Regulação",
-    "Saúde",
-    "Tecnologia",
-    "Infraestrutura",
-    "Agro & Ambiente",
-    "Internacional",
-    "Geral",
-  ];
-  return priority.find((section) => sections.includes(section)) ?? "Geral";
-}
-
 function regionalCaseToNewsItem(item: NewsCase): VieNewsItem | null {
   const regions = evidenceTextArray(item.evidence?.matchedRegions).filter(isValidRegionLabel);
   if (signalType(item.evidence?.signalType) !== "regional" || regions.length === 0 || !isFresh(item, 48)) return null;
@@ -258,8 +195,10 @@ function regionalCaseToNewsItem(item: NewsCase): VieNewsItem | null {
     excerpt: item.detail,
     publishedAt: item.lastDetectedAt ?? item.updatedAt,
     collectedAt: item.updatedAt,
-    categories: ["noticias locais", ...regions],
+    categories: ["noticias-locais", ...regions],
     sourceScope: "regional",
+    sourceCode: "jarvis-local",
+    sourceName: "Radar local JARVIS",
   };
 }
 
@@ -275,10 +214,20 @@ function dedupeItems(items: VieNewsItem[]) {
   });
 }
 
+function emptyMessage(filter: NewsFilter) {
+  if (filter === "Notícias Locais") {
+    return "O JARVIS ainda não recebeu notícias locais para este tenant. Se a empresa não tiver cidade e UF configuradas, complete a localização em Configurações para ativar o radar local.";
+  }
+  if (filter === "Bolsa de Valores" || filter === "Criptomoedas") {
+    return "A fonte financeira ainda não entregou notícias recentes para esta categoria. O radar tentará novamente na próxima coleta.";
+  }
+  return "Nenhuma informação recente nesta categoria agora.";
+}
+
 export default function JarvisNewsMarket({ token }: { token?: string | null }) {
   const [allCases, setAllCases] = useState<NewsCase[]>([]);
   const [newsFeed, setNewsFeed] = useState<VieNewsFeed | null>(null);
-  const [newsFilter, setNewsFilter] = useState<NewsSection>("Todos");
+  const [newsFilter, setNewsFilter] = useState<NewsFilter>("Todos");
   const [visibleCount, setVisibleCount] = useState(20);
   const [loading, setLoading] = useState(false);
   const [feedError, setFeedError] = useState(false);
@@ -348,7 +297,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
 
   const filteredFeed = useMemo(() => {
     if (newsFilter === "Todos") return allNewsItems;
-    return allNewsItems.filter((item) => itemSections(item).includes(newsFilter));
+    return allNewsItems.filter((item) => primaryJarvisNewsSection(item) === newsFilter);
   }, [allNewsItems, newsFilter]);
 
   const visibleFeed = filteredFeed.slice(0, visibleCount);
@@ -435,7 +384,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h3 className="text-base font-semibold">Radar do dia</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Informações das últimas horas organizadas por assunto, sem misturar notícia com prospecção.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Informações das últimas horas organizadas por assunto, com uma categoria principal por notícia.</p>
             </div>
             {newsFeed && <span className="text-xs text-muted-foreground">Mostrando {Math.min(visibleCount, filteredFeed.length)} de {filteredFeed.length}</span>}
           </div>
@@ -467,15 +416,18 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
               </Button>
             </div>
           ) : visibleFeed.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhuma informação nesta categoria agora.</div>
+            <div className="mt-5 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              {emptyMessage(newsFilter)}
+            </div>
           ) : (
             <>
               <div className="mt-5 grid gap-3 lg:grid-cols-2">
                 {visibleFeed.map((item) => (
                   <article key={item.id} className="rounded-xl border bg-background p-4 transition-shadow hover:shadow-sm">
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Badge variant="outline">{primarySection(item)}</Badge>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <Badge variant="outline">{primaryJarvisNewsSection(item)}</Badge>
                       <span>{formatTime(item.publishedAt ?? item.collectedAt)}</span>
+                      {item.sourceName && <span className="truncate" title={item.sourceName}>· {item.sourceName}</span>}
                     </div>
                     <h4 className="mt-2 text-sm font-semibold leading-5">{item.title}</h4>
                     {item.excerpt && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.excerpt}</p>}
