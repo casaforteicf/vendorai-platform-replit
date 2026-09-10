@@ -84,32 +84,37 @@ export function resolveJarvisOrchestration(text: string): JarvisOrchestrationDec
     return decision("conversation", false, null, "mensagem vazia");
   }
 
-  if (/\b(aprova|aprovar|aprove|rejeita|rejeitar|rejeite)\b/.test(normalized)) {
+  const approvalCommand = /^(?:jarvis[, ]+)?(aprova|aprovar|aprove|pode aprovar|pode aprovar isso|confirmo|confirmar|rejeita|rejeitar|rejeite|recusa|recuse|recusar|reprova|reprove|nao aprova|nao aprove)(\b|[,.!?])/;
+  if (approvalCommand.test(normalized)) {
     return decision("approval", true, preferredAgent, "comando explícito sobre uma decisão/aprovação");
   }
 
-  if (/\b(executa|execute|executar|rode|rodar|prossiga|prossegue)\b/.test(normalized)
-    && /\b(acao|acoes|tarefa|tarefas|plano|etapa|aprov\w*|pendenc\w*|envio|mensagem|desconto|fechamento|estoque)\b/.test(normalized)) {
+  const executionCommand = /^(?:jarvis[, ]+)?(executa|execute|executar|pode executar|pode rodar|rodar agora)(\b|[,.!?])/;
+  if (executionCommand.test(normalized)) {
     return decision("execution", true, preferredAgent, "comando explícito para executar trabalho operacional já definido");
   }
 
   const missionSubject = /\b(missao|missoes)\b/.test(normalized);
-  const missionCommand = /\b(crie|criar|registre|registrar|pause|pausar|retome|retomar|conclua|concluir|atualize|atualizar|acompanhe|acompanhar)\b/.test(normalized);
-  if (missionSubject && missionCommand) {
-    return decision("mission", true, preferredAgent, "comando explícito para operar o Mission Engine");
+  const missionDeclaration = /^(?:jarvis[, ]+)?(?:nossa|minha) missao (?:e|sera|vai ser)\s+.+$/;
+  const missionCommand = /\b(crie|criar|registre|registrar|defina|definir|pause|pausar|retome|retomar|continue|continuar|reative|reativar|conclua|concluir|finalize|finalizar|encerre|encerrar|atualize|atualizar|acompanhe|acompanhar)\b/.test(normalized);
+  if (missionSubject && (missionCommand || missionDeclaration.test(normalized))) {
+    return decision("mission", true, preferredAgent, "comando ou declaração explícita para operar o Mission Engine");
   }
 
-  if (/\b(registre|registrar|grave|gravar)\b/.test(normalized)
-    && /\b(decisao|decisoes)\b/.test(normalized)) {
-    return decision("decision", true, preferredAgent, "comando explícito para registrar decisão empresarial");
+  const decisionSubject = /\b(decisao|decisoes)\b/.test(normalized);
+  const decisionDeclaration = /^(?:jarvis[, ]+)?(?:nossa|minha) decisao (?:e|foi)\s+.+$/;
+  if ((/\b(registre|registrar|grave|gravar)\b/.test(normalized) && decisionSubject)
+    || decisionDeclaration.test(normalized)) {
+    return decision("decision", true, preferredAgent, "comando ou declaração explícita para registrar decisão empresarial");
   }
 
-  if (missionSubject && /\b(quais|liste|listar|como estao|como esta|status|andamento|progresso|atrasad\w*|bloquead\w*)\b/.test(normalized)) {
+  if (missionSubject && (/\b(quais|liste|listar|mostre|mostrar|como estao|como esta|status|andamento|progresso|atrasad\w*|bloquead\w*)\b/.test(normalized)
+    || /^(?:jarvis[, ]+)?(?:minhas|nossas) missoes\??$/.test(normalized))) {
     return decision("mission", false, preferredAgent, "consulta de estado das Missões; somente leitura");
   }
 
-  if (/\b(decisao|decisoes)\b/.test(normalized)
-    && /\b(quais|liste|listar|como estao|como esta|status|resultado|resultados|revisao|revisar)\b/.test(normalized)) {
+  if (decisionSubject
+    && /\b(quais|liste|listar|mostre|mostrar|como estao|como esta|status|resultado|resultados|revisao|revisar)\b/.test(normalized)) {
     return decision("decision", false, preferredAgent, "consulta de decisões e resultados; somente leitura");
   }
 
