@@ -322,7 +322,7 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   }, [token, isLoading, setLocation]);
 
   useEffect(() => {
-    if (!isTenantAdmin || tenantLoading || !tenant) return;
+    if (!isTenantAdmin || tenantLoading || !tenant || tenant.isDemo) return;
     if (tenant.status !== "suspended" && !hasOverdueInvoice) {
       if (!tenant.onboardingConcluido && !tenant.setupCompletedAt) {
         setLocation("/onboarding");
