@@ -9,7 +9,7 @@
  * Called after lead creation (fire-and-forget). Auto-dispatches SDR when
  * score >= tenant's auto_dispatch_threshold.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { sendSdrFirstApproach } from "../services/sdrService.js";
 import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMemory.js";
 import { logger as rootLogger } from "../lib/logger.js";
 import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
@@ -288,15 +289,17 @@ export async function enrichLead(
 
   log.info({ leadId, tenantId }, "enrichLead: starting");
 
-  // Load lead
+  // Load lead with tenant ownership enforced. Enrichment must never read or
+  // mutate a lead that belongs to another tenant even if an id is reused by a
+  // malformed internal call.
   const [lead] = await db
     .select()
     .from(leadsTable)
-    .where(eq(leadsTable.id, leadId))
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
 
   if (!lead) {
-    log.warn({ leadId }, "enrichLead: lead not found");
+    log.warn({ leadId, tenantId }, "enrichLead: lead not found for tenant");
     return;
   }
 
@@ -360,7 +363,7 @@ export async function enrichLead(
         ...(lead.priorityReason ? { priorityReason: lead.priorityReason } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(leadsTable.id, leadId));
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 
     log.info({ leadId, digital, growth }, "enrichLead: enrichment saved");
 
@@ -436,7 +439,7 @@ export async function enrichLead(
         enrichmentStatus: "scored",
         updatedAt: new Date(),
       })
-      .where(eq(leadsTable.id, leadId));
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 
     log.info({ leadId, score: scoreResult.propensity_score }, "enrichLead: score saved");
 
@@ -471,29 +474,36 @@ export async function enrichLead(
         ? `${COLD_OUTREACH_TRIGGER} Sinal principal detectado: ${sinalPrincipal}. Perda estimada: R$ ${scoreResult.roi_estimate.perda_estimada_mes?.toLocaleString("pt-BR") ?? "?"}/mês.`
         : COLD_OUTREACH_TRIGGER;
 
-      dispatchAgentBackground({
-        tenantId,
-        leadId,
-        mensagem: trigger,
-        log,
-        forcedAgent: "sdr",
-        scenario: {
-          cold_outreach: true,
-          origem: "prospector_predictive",
-          propensity_score: scoreResult.propensity_score,
-          sinal_growth_principal: sinalPrincipal,
-          perda_estimada: scoreResult.roi_estimate.perda_estimada_mes,
-          dor_digital: !digital.indicio_crm ? "sem_crm" : !digital.tem_site ? "sem_site" : null,
-          segmento,
-        },
-      });
+      // Prefer the canonical SDR service for the first approach because it
+      // records the activity marker consumed by the 48h follow-up job. When a
+      // source/template cannot use that flow, keep the existing AI dispatch as
+      // a safe fallback rather than dropping the prospect.
+      const firstApproach = await sendSdrFirstApproach(leadId, null, tenantId, log);
+      if (!firstApproach.sent) {
+        dispatchAgentBackground({
+          tenantId,
+          leadId,
+          mensagem: trigger,
+          log,
+          forcedAgent: "sdr",
+          scenario: {
+            cold_outreach: true,
+            origem: "prospector_predictive",
+            propensity_score: scoreResult.propensity_score,
+            sinal_growth_principal: sinalPrincipal,
+            perda_estimada: scoreResult.roi_estimate.perda_estimada_mes,
+            dor_digital: !digital.indicio_crm ? "sem_crm" : !digital.tem_site ? "sem_site" : null,
+            segmento,
+          },
+        });
+      }
 
       await db.update(leadsTable)
         .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
-        .where(eq(leadsTable.id, leadId));
+        .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
     }
   } catch (err) {
-    log.error({ err, leadId }, "enrichLead: error");
+    log.error({ err, leadId, tenantId }, "enrichLead: error");
     // Don't rethrow — fire-and-forget job
   }
 }

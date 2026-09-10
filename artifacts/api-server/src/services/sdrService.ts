@@ -20,6 +20,14 @@ import { dispatchAgentBackground } from "./agent-dispatch.js";
 
 export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
 
+const COLD_PROSPECT_SOURCES = new Set([
+  "prospector",
+  "prospector_auto",
+  "cnpj",
+  "recem_aberta",
+  "ad_library",
+]);
+
 // ── Scenario detection ────────────────────────────────────────────────────────
 
 export async function detectSdrCenario(
@@ -53,8 +61,10 @@ export async function detectSdrCenario(
   });
   if (visitas.length > 0 && visitaSemDecisao) return "pos_visita";
 
-  // Cenário 1 — cold prospector lead
-  if (lead.source === "prospector" && visitas.length === 0) return "frio_teste";
+  // Cenário 1 — cold prospector lead. Todas as fontes que alimentam o Motor
+  // Preditivo precisam cair no mesmo contrato de primeira abordagem para que o
+  // job de follow-up 48h consiga reconhecer a atividade inicial.
+  if (COLD_PROSPECT_SOURCES.has(lead.source ?? "") && visitas.length === 0) return "frio_teste";
 
   // Cenário 4 — inbound: lead chegou pelo formulário do site institucional ou landing pages
   if (lead.source?.startsWith("site_")) return "inbound_site";
@@ -102,7 +112,7 @@ export async function resolveTemplateVars(
     const [deal] = await db
       .select({ assignedTo: dealsTable.assignedTo })
       .from(dealsTable)
-      .where(eq(dealsTable.id, dealId))
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId)))
       .limit(1);
     responsavelId = deal?.assignedTo ?? null;
   }
