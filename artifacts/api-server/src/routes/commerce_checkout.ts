@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import {
@@ -7,6 +7,7 @@ import {
   commerceCheckoutSessionsTable,
   db,
   generatedSitesTable,
+  partnersTable,
   plansTable,
   subscriptionsTable,
   tenantsTable,
@@ -73,6 +74,81 @@ function safeSlug(value: string): string {
   return `${base}-${crypto.randomUUID().slice(0, 6)}`;
 }
 
+function normalizeCommercialCode(value?: string) {
+  return value?.trim().toUpperCase() || null;
+}
+
+async function resolveCommercialDiscount(input: {
+  couponCode?: string;
+  partnerCode?: string;
+  couponsAllowed: boolean;
+  partnerRulesAllowed: boolean;
+  baseChargePriceCents: number;
+  baseRenewalPriceCents: number;
+}) {
+  const couponCode = normalizeCommercialCode(input.couponCode);
+  const partnerCode = normalizeCommercialCode(input.partnerCode);
+  const lookupCode = couponCode ?? partnerCode;
+  if (!lookupCode) {
+    return {
+      chargePriceCents: input.baseChargePriceCents,
+      renewalPriceCents: input.baseRenewalPriceCents,
+      discountPercent: 0,
+      discountAmountCents: 0,
+      discountSource: null as "coupon" | "partner" | null,
+      discountRecurring: false,
+      partnerId: null as string | null,
+      resolvedCouponCode: null as string | null,
+    };
+  }
+  if (couponCode && !input.couponsAllowed) throw new Error("coupon_not_allowed");
+  if (!couponCode && partnerCode && !input.partnerRulesAllowed) throw new Error("partner_not_allowed");
+
+  const [partner] = await db.select({
+    id: partnersTable.id,
+    status: partnersTable.status,
+    cupomCodigo: partnersTable.cupomCodigo,
+    cupomAtivo: partnersTable.cupomAtivo,
+    cupomValidoAte: partnersTable.cupomValidoAte,
+    descontoCupomPercentual: partnersTable.descontoCupomPercentual,
+    cupomAplicacao: partnersTable.cupomAplicacao,
+  }).from(partnersTable).where(or(
+    eq(partnersTable.cupomCodigo, lookupCode),
+    eq(partnersTable.id, input.partnerCode ?? ""),
+  )).limit(1);
+
+  if (!partner || partner.status !== "ativo") throw new Error("commercial_code_invalid");
+
+  const matchedByCoupon = Boolean(partner.cupomCodigo && partner.cupomCodigo.toUpperCase() === lookupCode);
+  if (couponCode && !matchedByCoupon) throw new Error("coupon_invalid");
+
+  const discountPercent = Number(partner.descontoCupomPercentual ?? 0);
+  const couponValid = partner.cupomAtivo && (!partner.cupomValidoAte || partner.cupomValidoAte.getTime() >= Date.now());
+  const canDiscount = matchedByCoupon && couponValid && discountPercent > 0;
+  if (couponCode && !canDiscount) throw new Error("coupon_expired_or_inactive");
+
+  const boundedPercent = Math.max(0, Math.min(100, canDiscount ? discountPercent : 0));
+  const discountAmountCents = Math.round(input.baseChargePriceCents * boundedPercent / 100);
+  const chargePriceCents = Math.max(0, input.baseChargePriceCents - discountAmountCents);
+  if (chargePriceCents <= 0) throw new Error("discount_invalid_total");
+
+  const discountRecurring = canDiscount && ["recorrente", "assinatura_recorrente"].includes(partner.cupomAplicacao);
+  const renewalPriceCents = discountRecurring
+    ? Math.max(1, input.baseRenewalPriceCents - Math.round(input.baseRenewalPriceCents * boundedPercent / 100))
+    : input.baseRenewalPriceCents;
+
+  return {
+    chargePriceCents,
+    renewalPriceCents,
+    discountPercent: boundedPercent,
+    discountAmountCents,
+    discountSource: canDiscount ? (couponCode ? "coupon" : "partner") as "coupon" | "partner" : null,
+    discountRecurring,
+    partnerId: partner.id,
+    resolvedCouponCode: canDiscount ? partner.cupomCodigo : null,
+  };
+}
+
 async function resolveSiteOffer(siteSlug: string) {
   const [site] = await db
     .select({ id: generatedSitesTable.id, siteSlug: generatedSitesTable.siteSlug, published: generatedSitesTable.published, config: generatedSitesTable.config })
@@ -129,12 +205,25 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
     res.status(409).json({ error: "A oferta desta página não está disponível" });
     return;
   }
-  if (d.couponCode && !resolved.offer.couponsAllowed) {
-    res.status(409).json({ error: "Esta oferta não permite cupom" });
-    return;
-  }
-  if (d.partnerCode && !resolved.offer.partnerRulesAllowed) {
-    res.status(409).json({ error: "Esta oferta não permite regra de parceiro" });
+
+  let commercial;
+  try {
+    commercial = await resolveCommercialDiscount({
+      couponCode: d.couponCode,
+      partnerCode: d.partnerCode,
+      couponsAllowed: resolved.offer.couponsAllowed,
+      partnerRulesAllowed: resolved.offer.partnerRulesAllowed,
+      baseChargePriceCents: resolved.offer.chargePriceCents,
+      baseRenewalPriceCents: resolved.offer.renewalPriceCents,
+    });
+  } catch (err) {
+    const code = err instanceof Error ? err.message : "commercial_code_invalid";
+    const message = code === "coupon_not_allowed" ? "Esta oferta não permite cupom"
+      : code === "partner_not_allowed" ? "Esta oferta não permite regra de parceiro"
+      : code === "coupon_expired_or_inactive" ? "Cupom expirado ou inativo"
+      : code === "discount_invalid_total" ? "O desconto configurado não pode zerar a cobrança"
+      : "Cupom ou parceiro inválido";
+    res.status(409).json({ error: message, code });
     return;
   }
 
@@ -151,12 +240,20 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
     planSlug: resolved.offer.planSlug,
     vertical: resolved.offer.vertical,
     billingCycle: resolved.offer.billingCycle,
-    chargePriceCents: resolved.offer.chargePriceCents,
+    chargePriceCents: commercial.chargePriceCents,
+    baseChargePriceCents: resolved.offer.chargePriceCents,
     originalPriceCents: resolved.offer.originalPriceCents,
-    renewalPriceCents: resolved.offer.renewalPriceCents,
+    renewalPriceCents: commercial.renewalPriceCents,
+    baseRenewalPriceCents: resolved.offer.renewalPriceCents,
     promotionalCycles: resolved.offer.promotionalCycles,
     couponsAllowed: resolved.offer.couponsAllowed,
     partnerRulesAllowed: resolved.offer.partnerRulesAllowed,
+    discountPercent: commercial.discountPercent,
+    discountAmountCents: commercial.discountAmountCents,
+    discountSource: commercial.discountSource,
+    discountRecurring: commercial.discountRecurring,
+    partnerId: commercial.partnerId,
+    resolvedCouponCode: commercial.resolvedCouponCode,
     resolvedAt: new Date().toISOString(),
   } as const;
 
@@ -175,7 +272,7 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
       fbclid: d.fbclid ?? null,
       referrer: d.referrer ?? req.get("referer") ?? null,
       pageUrl: d.pageUrl ?? null,
-      couponCode: d.couponCode ?? null,
+      couponCode: commercial.resolvedCouponCode ?? d.couponCode ?? null,
       partnerCode: d.partnerCode ?? null,
     },
     customerName: d.name,
@@ -194,7 +291,7 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
     const charge = recovered ?? await createCharge({
       customer: customer.id,
       billingType: d.billingType,
-      value: resolved.offer.chargePriceCents / 100,
+      value: snapshot.chargePriceCents / 100,
       dueDate: new Date().toISOString().slice(0, 10),
       description: `VendorAI ${resolved.plan.name}${resolved.offer.vertical ? ` · ${resolved.offer.vertical}` : ""}`,
       externalReference,
@@ -212,7 +309,18 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
       checkoutId: session.id,
       status: "payment_pending",
       paymentUrl: charge.invoiceUrl || charge.bankSlipUrl,
-      price: { chargePriceCents: snapshot.chargePriceCents, originalPriceCents: snapshot.originalPriceCents, renewalPriceCents: snapshot.renewalPriceCents, source: snapshot.source },
+      price: {
+        chargePriceCents: snapshot.chargePriceCents,
+        baseChargePriceCents: snapshot.baseChargePriceCents,
+        originalPriceCents: snapshot.originalPriceCents,
+        renewalPriceCents: snapshot.renewalPriceCents,
+        baseRenewalPriceCents: snapshot.baseRenewalPriceCents,
+        discountPercent: snapshot.discountPercent,
+        discountAmountCents: snapshot.discountAmountCents,
+        discountRecurring: snapshot.discountRecurring,
+        source: snapshot.source,
+      },
+      partner: snapshot.partnerId ? { id: snapshot.partnerId, couponCode: snapshot.resolvedCouponCode } : null,
       plan: { slug: resolved.plan.slug, name: resolved.plan.name },
       vertical: snapshot.vertical,
     });
@@ -266,6 +374,7 @@ export async function provisionCheckout(checkoutId: string, paymentId: string) {
       vertical: session.offerSnapshot.vertical,
       segmento: session.offerSnapshot.vertical,
       planId: session.planId,
+      partnerId: session.offerSnapshot.partnerId ?? null,
       billingCycle: session.offerSnapshot.billingCycle,
       planStartedAt: now,
       provisioningMethod: "self_service",
@@ -307,7 +416,7 @@ export async function provisionCheckout(checkoutId: string, paymentId: string) {
       regularPriceAtTransition: money(renewalMonthlyEquivalentCents),
       acceptedOfferAt: now,
       acceptedTermsAt: now,
-      acceptedTermsVersion: "self-service-checkout-v1-2026-09-10",
+      acceptedTermsVersion: "self-service-checkout-v2-2026-09-10",
       billingProvider: "asaas",
       asaasCustomerId: session.asaasCustomerId,
       dataInicio: now,
