@@ -230,7 +230,10 @@ commerceCheckoutRouter.get("/public/commerce/checkout/:id/status", async (req, r
     paymentUrl: commerceCheckoutSessionsTable.paymentUrl,
     provisionedTenantId: commerceCheckoutSessionsTable.provisionedTenantId,
   }).from(commerceCheckoutSessionsTable).where(eq(commerceCheckoutSessionsTable.id, String(req.params.id))).limit(1);
-  if (!session) return res.status(404).json({ error: "Checkout não encontrado" });
+  if (!session) {
+    res.status(404).json({ error: "Checkout não encontrado" });
+    return;
+  }
   res.json(session);
 });
 
