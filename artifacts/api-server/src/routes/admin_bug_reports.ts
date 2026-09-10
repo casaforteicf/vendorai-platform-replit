@@ -169,6 +169,71 @@ router.get("/jarvis/vie/coverage", async (req, res) => {
   });
 });
 
+// GET /jarvis/vie/news-feed — radar editorial diário, separado dos sinais fortes e da prospecção.
+router.get("/jarvis/vie/news-feed", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+
+  const requestedLimit = Number(req.query.limit ?? 30);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(50, Math.max(20, Math.trunc(requestedLimit)))
+    : 30;
+  const now = new Date();
+  const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({
+      id: vieItemsTable.id,
+      title: vieItemsTable.title,
+      url: vieItemsTable.url,
+      excerpt: vieItemsTable.excerpt,
+      author: vieItemsTable.author,
+      publishedAt: vieItemsTable.publishedAt,
+      collectedAt: vieItemsTable.collectedAt,
+      categories: vieItemsTable.categories,
+      sourceId: vieSourcesTable.id,
+      sourceCode: vieSourcesTable.code,
+      sourceName: vieSourcesTable.name,
+      sourceScope: vieSourcesTable.scope,
+      sourceReliability: vieSourcesTable.reliabilityScore,
+    })
+    .from(vieItemsTable)
+    .innerJoin(vieSourcesTable, eq(vieItemsTable.sourceId, vieSourcesTable.id))
+    .where(and(
+      eq(vieSourcesTable.active, true),
+      eq(vieSourcesTable.domain, "news"),
+      gte(vieItemsTable.publishedAt, since24h),
+    ))
+    .orderBy(desc(vieItemsTable.publishedAt), desc(vieItemsTable.collectedAt))
+    .limit(300);
+
+  const unique = [] as typeof rows;
+  const seen = new Set<string>();
+  for (const item of rows) {
+    const normalizedUrl = item.url.trim().toLowerCase().replace(/[?#].*$/, "");
+    const normalizedTitle = item.title.trim().toLowerCase().replace(/\s+/g, " ");
+    const key = normalizedUrl || normalizedTitle;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+
+  const available = unique.length;
+  const items = unique.slice(0, limit).map((item) => ({
+    ...item,
+    categories: Array.isArray(item.categories) ? item.categories : [],
+  }));
+
+  return res.json({
+    generatedAt: now,
+    windowHours: 24,
+    targetPerDay: 20,
+    available,
+    displayed: items.length,
+    items,
+  });
+});
+
 // POST /jarvis/cases/sync — upsert idempotente dos sinais já calculados pelo VendorAI.
 router.post("/jarvis/cases/sync", async (req, res) => {
   const tenantId = req.user?.tenantId;
