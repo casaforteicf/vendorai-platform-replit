@@ -7,7 +7,8 @@
  *  3  · Propensity Score + ROI via GPT-4o-mini
  *
  * Called after lead creation (fire-and-forget). Auto-dispatches SDR when
- * score >= tenant's auto_dispatch_threshold.
+ * score >= tenant's auto_dispatch_threshold AND the cold prospect quality
+ * gate has enough verified evidence to support a responsible approach.
  */
 import { and, eq } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -24,9 +25,10 @@ import { sendSdrFirstApproach } from "../services/sdrService.js";
 import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMemory.js";
 import { logger as rootLogger } from "../lib/logger.js";
 import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
+import { evaluateColdProspectQuality } from "../lib/coldProspectQuality.js";
 
 const COLD_OUTREACH_TRIGGER =
-  "[PROSPECÇÃO AUTOMÁTICA] Novo lead enriquecido e priorizado. Use o contexto de inteligência (enrichment_data) para gerar uma primeira mensagem altamente personalizada.";
+  "[PROSPECÇÃO AUTOMÁTICA] Novo lead enriquecido e priorizado. Use SOMENTE as evidências verificáveis do coldProspectDossier/enrichment_data para personalizar a primeira mensagem. Não afirme perdas, problemas internos ou fatos que não possam ser comprovados externamente.";
 
 // ── Digital Scanner ────────────────────────────────────────────────────────
 
@@ -195,15 +197,15 @@ Analise os dados do prospect abaixo e retorne um JSON com a seguinte estrutura e
 {
   "propensity_score": <0-100>,
   "score_breakdown": {
-    "dor_operacional": <0-40, baseado em: sem CRM + WhatsApp manual + reclamações>,
-    "momento_expansao": <0-35, baseado em: sinais Growth Radar>,
-    "capacidade_pagamento": <0-25, baseado em: porte, ticket do segmento, múltiplas unidades>
+    "dor_operacional": <0-40, baseado em sinais externos verificáveis de oportunidade>,
+    "momento_expansao": <0-35, baseado em sinais Growth Radar>,
+    "capacidade_pagamento": <0-25, baseado em porte, ticket do segmento e múltiplas unidades>
   },
-  "priority_reason": "<frase curta e impactante em português sobre por que este lead é prioritário>",
+  "priority_reason": "<frase curta em português explicando por que vale priorizar este prospect, sem afirmar fatos internos não verificados>",
   "roi_estimate": {
-    "volume_atendimentos_mes": <número estimado>,
-    "perda_estimada_mes": <R$ estimado que estão perdendo por mês sem CRM>,
-    "ganho_potencial_mes": <R$ de ganho potencial com CRM>,
+    "volume_atendimentos_mes": <estimativa interna para priorização>,
+    "perda_estimada_mes": <estimativa interna, nunca apresentar ao prospect como fato>,
+    "ganho_potencial_mes": <estimativa interna, nunca apresentar ao prospect como fato>,
     "ticket_estimado": "<PME | PME+ | Enterprise>"
   }
 }
@@ -212,11 +214,12 @@ Dados do prospect:
 ${JSON.stringify(ctx, null, 2)}
 
 Regras:
-- sem_crm + baixa presença digital → dor_operacional alta (30-40)
-- reviews_velocity alto + rating subindo → momento_expansao alto (25-35)
-- múltiplas unidades → capacidade_pagamento alta
-- use o benchmark de ticket_medio e volume para calcular roi_estimate
-- se não há benchmark, estime pelo segmento
+- diferencie fatos observados de inferências
+- não invente fatos, contatos, sistemas usados ou problemas internos
+- reviews_velocity alto + rating subindo pode indicar momento de expansão
+- múltiplas unidades pode indicar maior capacidade operacional
+- use benchmark somente para estimativas INTERNAS de priorização
+- nenhuma estimativa financeira pode ser tratada como fato na abordagem externa
 - retorne APENAS o JSON, sem texto adicional`;
 
   try {
@@ -245,7 +248,7 @@ Regras:
     return {
       propensity_score: score,
       score_breakdown: { dor_operacional: 25, momento_expansao: 15, capacidade_pagamento: 10 },
-      priority_reason: "Prospect com sinais de oportunidade detectados automaticamente.",
+      priority_reason: "Prospect com sinais externos de oportunidade detectados automaticamente.",
       roi_estimate: {
         volume_atendimentos_mes: benchmark?.volumeMedioAtendimentos ?? 200,
         perda_estimada_mes: Number(benchmark?.perdaEstimadaPorLeadPerdido ?? 100) * 20,
@@ -401,7 +404,7 @@ export async function enrichLead(
       scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + 10);
       scoreResult.priority_reason = scoreResult.priority_reason
         ? `${scoreResult.priority_reason} • Investindo em anúncios`
-        : "Investindo em anúncios — atendimento é o gargalo";
+        : "Investindo em anúncios — sinal público de atividade de marketing";
     }
 
     // Boost +15 if no Google presence (invisible = maximum pain)
@@ -424,11 +427,74 @@ export async function enrichLead(
         : `Similar a clientes convertidos (+${similarityBonus} pts)`;
     }
 
+    // Load the tenant threshold before persisting the dossier. The cold-prospect
+    // gate uses the same threshold as the dispatch decision so the UI and the
+    // automation cannot disagree about readiness.
+    const [config] = await db
+      .select({ autoDispatchThreshold: prospectorConfigTable.autoDispatchThreshold })
+      .from(prospectorConfigTable)
+      .where(eq(prospectorConfigTable.tenantId, tenantId))
+      .limit(1);
+
+    const threshold = config?.autoDispatchThreshold ?? 80;
+    const quality = evaluateColdProspectQuality({
+      segmento: rawSegmento,
+      telefone: lead.telefone,
+      email: lead.email,
+      instagramHandle: lead.instagramHandle,
+      websiteUrl: lead.websiteUrl,
+      source: lead.source,
+      metadata: leadMetadata,
+      digital,
+      growth,
+      propensityScore: scoreResult.propensity_score,
+      dispatchThreshold: threshold,
+    });
+
+    const dossier = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      status: quality.status,
+      fitScore: quality.fitScore,
+      painScore: quality.painScore,
+      propensityScore: scoreResult.propensity_score,
+      intentScore: Number(lead.intentScore ?? 0),
+      evidenceCount: quality.evidenceCount,
+      requiredEvidence: quality.requiredEvidence,
+      hasValidContact: quality.hasValidContact,
+      segmentIdentified: quality.segmentIdentified,
+      blockingReasons: quality.reasons,
+      evidence: quality.evidence,
+      playbook: quality.playbook,
+      publicDiagnosticPolicy: {
+        factsOnly: true,
+        financialEstimatesAreInternal: true,
+        unverifiableInternalOperations: "do_not_claim",
+        unknownDataLabel: "Não verificável com dados públicos",
+      },
+      lpBrief: {
+        ready: quality.ready,
+        companyName: lead.empresa ?? lead.nome,
+        segment: quality.playbook.segment,
+        niche: quality.playbook.niche,
+        city: leadMetadata["cidade"] ?? lead.endereco ?? null,
+        logoUrl: lead.logoUrl ?? null,
+        websiteUrl: lead.websiteUrl ?? null,
+        evidenceKeys: quality.evidence.map((item) => item.key),
+        modules: quality.playbook.recommendedModules,
+        primaryCta: "Quero ver minha empresa funcionando no VendorAI",
+      },
+    };
+
     await db.update(leadsTable)
       .set({
         propensityScore: scoreResult.propensity_score,
         roiEstimate: scoreResult.roi_estimate,
         priorityReason: scoreResult.priority_reason,
+        metadata: {
+          ...leadMetadata,
+          coldProspectDossier: dossier,
+        },
         enrichmentData: {
           digital,
           growth,
@@ -441,19 +507,25 @@ export async function enrichLead(
       })
       .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 
-    log.info({ leadId, score: scoreResult.propensity_score }, "enrichLead: score saved");
+    log.info(
+      {
+        leadId,
+        score: scoreResult.propensity_score,
+        fitScore: quality.fitScore,
+        painScore: quality.painScore,
+        evidenceCount: quality.evidenceCount,
+        qualityStatus: quality.status,
+      },
+      "enrichLead: score and cold prospect dossier saved",
+    );
 
-    // Phase 3: Auto-dispatch if score >= threshold
-    const [config] = await db
-      .select({ autoDispatchThreshold: prospectorConfigTable.autoDispatchThreshold })
-      .from(prospectorConfigTable)
-      .where(eq(prospectorConfigTable.tenantId, tenantId))
-      .limit(1);
-
-    const threshold = config?.autoDispatchThreshold ?? 80;
-
-    if (scoreResult.propensity_score >= threshold) {
-      log.info({ leadId, score: scoreResult.propensity_score, threshold }, "enrichLead: auto-dispatching SDR");
+    // Phase 4: Auto-dispatch ONLY when score and evidence quality both pass.
+    // A high score alone never authorizes cold outreach.
+    if (quality.ready) {
+      log.info(
+        { leadId, score: scoreResult.propensity_score, threshold, evidenceCount: quality.evidenceCount },
+        "enrichLead: quality gate passed — auto-dispatching SDR",
+      );
 
       // Load vertical profile for context
       const [verticalProfile] = await db
@@ -465,19 +537,28 @@ export async function enrichLead(
       const sinalPrincipal = growth.multiplas_unidades
         ? "expansão com múltiplas unidades"
         : growth.reviews_velocity > 5
-          ? "alta velocidade de avaliações"
-          : digital.tem_ecommerce
-            ? "presença digital em crescimento"
-            : "oportunidade operacional identificada";
+          ? "volume relevante de avaliações públicas"
+          : digital.tem_agendamento_online
+            ? "agendamento digital detectado"
+            : growth.anuncios_ativos
+              ? "atividade de mídia paga detectada"
+              : digital.tem_site
+                ? "presença digital identificada"
+                : "oportunidade comercial externa identificada";
+
+      const evidenceSummary = quality.evidence
+        .slice(0, 3)
+        .map((item) => item.label)
+        .join("; ");
 
       const trigger = verticalProfile
-        ? `${COLD_OUTREACH_TRIGGER} Sinal principal detectado: ${sinalPrincipal}. Perda estimada: R$ ${scoreResult.roi_estimate.perda_estimada_mes?.toLocaleString("pt-BR") ?? "?"}/mês.`
-        : COLD_OUTREACH_TRIGGER;
+        ? `${COLD_OUTREACH_TRIGGER} Sinal principal: ${sinalPrincipal}. Evidências verificadas: ${evidenceSummary}.`
+        : `${COLD_OUTREACH_TRIGGER} Evidências verificadas: ${evidenceSummary}.`;
 
       // Prefer the canonical SDR service for the first approach because it
       // records the activity marker consumed by the 48h follow-up job. When a
-      // source/template cannot use that flow, keep the existing AI dispatch as
-      // a safe fallback rather than dropping the prospect.
+      // template cannot use that flow, keep the existing AI dispatch as a safe
+      // fallback — but only AFTER the evidence gate has passed.
       const firstApproach = await sendSdrFirstApproach(leadId, null, tenantId, log);
       if (!firstApproach.sent) {
         dispatchAgentBackground({
@@ -490,9 +571,11 @@ export async function enrichLead(
             cold_outreach: true,
             origem: "prospector_predictive",
             propensity_score: scoreResult.propensity_score,
+            fit_score: quality.fitScore,
+            pain_score: quality.painScore,
+            evidence_count: quality.evidenceCount,
+            evidence: quality.evidence.slice(0, 5),
             sinal_growth_principal: sinalPrincipal,
-            perda_estimada: scoreResult.roi_estimate.perda_estimada_mes,
-            dor_digital: !digital.indicio_crm ? "sem_crm" : !digital.tem_site ? "sem_site" : null,
             segmento,
           },
         });
@@ -501,6 +584,18 @@ export async function enrichLead(
       await db.update(leadsTable)
         .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
         .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+    } else {
+      log.info(
+        {
+          leadId,
+          qualityStatus: quality.status,
+          blockingReasons: quality.reasons,
+          evidenceCount: quality.evidenceCount,
+          score: scoreResult.propensity_score,
+          threshold,
+        },
+        "enrichLead: cold outreach blocked by quality gate",
+      );
     }
   } catch (err) {
     log.error({ err, leadId, tenantId }, "enrichLead: error");
