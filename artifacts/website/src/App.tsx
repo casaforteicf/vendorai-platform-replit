@@ -13,6 +13,7 @@ import Sobre from "@/pages/Sobre";
 import Contato from "@/pages/Contato";
 import Demo from "@/pages/Demo";
 import CadastroPraca from "@/pages/CadastroPraca";
+import DownloadApp from "@/pages/DownloadApp";
 import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
 import VerticalPage from "@/pages/site/VerticalPage";
@@ -47,7 +48,7 @@ function ScrollToTop() {
 
 function FloatingActions() {
   const [location] = useLocation();
-  const formFocusedPage = location === "/demo" || location === "/contato" || location === "/cadastro-praca";
+  const formFocusedPage = location === "/demo" || location === "/contato" || location === "/cadastro-praca" || location === "/baixar-app";
 
   if (formFocusedPage) return null;
 
@@ -94,6 +95,7 @@ function Router() {
               <Route path="/sobre" component={Sobre} />
               <Route path="/contato" component={Contato} />
               <Route path="/demo" component={Demo} />
+              <Route path="/baixar-app" component={DownloadApp} />
               <Route path="/cadastro-praca" component={CadastroPraca} />
               <Route path="/privacy" component={Privacy} />
               <Route path="/terms" component={Terms} />
