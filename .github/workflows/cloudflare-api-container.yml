@@ -1,6 +1,19 @@
 name: Cloudflare API Container
 
 on:
+  pull_request:
+    paths:
+      - "artifacts/api-server/**"
+      - "lib/db/**"
+      - "lib/api-zod/**"
+      - "lib/vendor-brain/**"
+      - "lib/integrations-anthropic-ai/**"
+      - "cloudflare/api-worker/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".node-version"
+      - ".github/workflows/cloudflare-api-container.yml"
   push:
     branches: [main]
     paths:
@@ -21,12 +34,25 @@ permissions:
   contents: read
 
 concurrency:
-  group: cloudflare-api-production
+  group: cloudflare-api-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  validate:
+    name: Validate VendorAI Cloudflare container
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build API container image
+        run: docker build -f cloudflare/api-worker/Dockerfile -t vendorai-api:validation .
+
   deploy:
-    name: Build and deploy VendorAI API on Cloudflare
+    name: Deploy VendorAI API on Cloudflare
+    if: github.event_name != 'pull_request'
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
