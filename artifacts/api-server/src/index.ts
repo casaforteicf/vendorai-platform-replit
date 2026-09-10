@@ -15,6 +15,7 @@ import { runMarketingBudgetAutopilot } from "./jobs/marketingBudgetAutopilot.js"
 import { runFinanceIntegrationHealthCycle } from "./jobs/financeIntegrationHealthCycle.js";
 import { getCheckoutFunnelMetrics, runCheckoutAbandonmentRecovery } from "./jobs/checkoutAbandonmentRecovery.js";
 import { getAcquisitionInvestmentIntelligence } from "./services/acquisitionInvestmentIntelligence.js";
+import acquisitionOrchestratorRouter from "./routes/acquisition_orchestrator.js";
 import { runCampaignAbWinnerCycle } from "./services/campaignAbWinnerRuntime.js";
 import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { startMediaVideoGenerateRunner } from "./services/media-video-generate.js";
@@ -36,6 +37,8 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+app.use(acquisitionOrchestratorRouter);
 
 app.get(
   "/api/support/dev/server-runtime",
@@ -110,10 +113,6 @@ async function start() {
     startDevAgentSupportHandoff(logger);
     startVieIntelligenceCycle(logger);
 
-    // Lifecycle de aquisição, trial e assinatura: primeiro reconcilia sinais
-    // financeiros já persistidos, depois converge CRM/assinatura e só então
-    // gera novas cobranças vencidas. Isso garante que um pagamento recebido
-    // nunca espere uma nova rodada de cobrança para reativar o cliente.
     const syncMarketingLifecycle = async () => {
       try {
         await runVendorAiSubscriptionPaymentSync(logger);
@@ -130,9 +129,6 @@ async function start() {
     void syncMarketingLifecycle();
     setInterval(() => { void syncMarketingLifecycle(); }, 10 * 60 * 1000).unref();
 
-    // Checkout abandonado: após 15 min, recupera pelo WhatsApp da LP em até
-    // três tentativas, sempre respeitando o horário comercial do tenant dono
-    // da página. Pagamento/provisionamento interrompem a elegibilidade.
     const syncCheckoutRecovery = async () => {
       try {
         await runCheckoutAbandonmentRecovery(logger);
@@ -143,9 +139,6 @@ async function start() {
     setTimeout(() => { void syncCheckoutRecovery(); }, 60 * 1000).unref();
     setInterval(() => { void syncCheckoutRecovery(); }, 10 * 60 * 1000).unref();
 
-    // Saúde das integrações financeiras: primeira rodada alguns minutos após
-    // o startup (sem atrasar a API) e depois a cada 6h. O ciclo possui trava
-    // contra sobreposição e persiste status/percentuais/logs por tenant.
     const syncFinanceIntegrationHealth = async () => {
       try {
         await runFinanceIntegrationHealthCycle(logger);
@@ -156,9 +149,6 @@ async function start() {
     setTimeout(() => { void syncFinanceIntegrationHealth(); }, 3 * 60 * 1000).unref();
     setInterval(() => { void syncFinanceIntegrationHealth(); }, 6 * 60 * 60 * 1000).unref();
 
-    // Marketing IA nível 3/4: roda em ciclo conservador de 6h. O próprio job
-    // exige política server-side, evidência suficiente, teto humano e cooldown.
-    // Executa depois do startup para não bloquear a subida da API.
     const syncMarketingBudgetAutopilot = async () => {
       try {
         await runMarketingBudgetAutopilot(logger);
@@ -169,9 +159,6 @@ async function start() {
     setTimeout(() => { void syncMarketingBudgetAutopilot(); }, 2 * 60 * 1000).unref();
     setInterval(() => { void syncMarketingBudgetAutopilot(); }, 6 * 60 * 60 * 1000).unref();
 
-    // Marketing IA nível 4: avaliação/aplicação de vencedores A/B em ciclo
-    // explícito e centralizado. O job permanece sujeito aos guardrails do teste
-    // e à política server-side de autonomia completa.
     const syncCampaignAbWinner = async () => {
       try {
         await runCampaignAbWinnerCycle(logger);
