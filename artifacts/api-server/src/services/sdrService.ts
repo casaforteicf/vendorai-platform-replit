@@ -2,7 +2,7 @@
  * SDR Service — Cmd 16
  * Detects approach scenario, resolves template variables, sends first WhatsApp approach.
  */
-import { and, eq, isNull, or, desc, asc } from "drizzle-orm";
+import { and, eq, isNull, desc } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -10,13 +10,13 @@ import {
   usersTable,
   dealsTable,
   sdrTemplatesTable,
-  agendasTable,
-  agendamentosTable,
   businessProfilesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { dispatchAgentBackground } from "./agent-dispatch.js";
+import { ensureColdProspectLandingPage } from "./coldProspectLandingPage.js";
+import type { ColdEvidence } from "../lib/coldProspectQuality.js";
 
 export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
 
@@ -27,6 +27,25 @@ const COLD_PROSPECT_SOURCES = new Set([
   "recem_aberta",
   "ad_library",
 ]);
+
+type ColdProspectDossier = {
+  status?: string;
+  fitScore?: number;
+  painScore?: number;
+  evidence?: ColdEvidence[];
+  playbook?: {
+    segment?: string;
+    niche?: string;
+    recommendedModules?: string[];
+  };
+  lpBrief?: {
+    city?: unknown;
+  };
+  lpUrl?: string;
+  lpSiteId?: string | null;
+  lpSlug?: string;
+  lpGeneratedAt?: string;
+};
 
 // ── Scenario detection ────────────────────────────────────────────────────────
 
@@ -41,10 +60,8 @@ export async function detectSdrCenario(
     .limit(1);
   if (!lead) return null;
 
-  // Cenário 3 — direct owner contact
   if ((lead.metadata as Record<string, unknown>)?.contato_tipo === "decisor") return "direto_dono";
 
-  // Cenário 2 — post-visit without decision-maker
   const visitas = await db
     .select({ id: activitiesTable.id, titulo: activitiesTable.titulo, descricao: activitiesTable.descricao })
     .from(activitiesTable)
@@ -56,17 +73,13 @@ export async function detectSdrCenario(
     .limit(5);
 
   const visitaSemDecisao = visitas.some((v) => {
-    const desc = (v.descricao ?? "").toLowerCase();
-    return desc.includes("falou_com_decisor:false") || desc.includes("não falou com o decisor") || desc.includes("nao falou com o decisor");
+    const descricao = (v.descricao ?? "").toLowerCase();
+    return descricao.includes("falou_com_decisor:false") || descricao.includes("não falou com o decisor") || descricao.includes("nao falou com o decisor");
   });
   if (visitas.length > 0 && visitaSemDecisao) return "pos_visita";
 
-  // Cenário 1 — cold prospector lead. Todas as fontes que alimentam o Motor
-  // Preditivo precisam cair no mesmo contrato de primeira abordagem para que o
-  // job de follow-up 48h consiga reconhecer a atividade inicial.
   if (COLD_PROSPECT_SOURCES.has(lead.source ?? "") && visitas.length === 0) return "frio_teste";
 
-  // Cenário 4 — inbound: lead chegou pelo formulário do site institucional ou landing pages
   if (lead.source?.startsWith("site_")) return "inbound_site";
 
   return null;
@@ -89,6 +102,11 @@ function formatDia(d: Date): string {
   return `${names[d.getDay()]} (${d.getDate()}/${d.getMonth() + 1})`;
 }
 
+function dossierFromMetadata(metadata: Record<string, unknown>): ColdProspectDossier | null {
+  const raw = metadata["coldProspectDossier"];
+  return raw && typeof raw === "object" ? raw as ColdProspectDossier : null;
+}
+
 export async function resolveTemplateVars(
   template: string,
   leadId: string,
@@ -104,8 +122,8 @@ export async function resolveTemplateVars(
   if (!lead) return template;
 
   const meta = (lead.metadata ?? {}) as Record<string, unknown>;
+  const dossier = dossierFromMetadata(meta);
 
-  // Deal / responsável
   let vendedorNome = "nossa equipe";
   let responsavelId: string | null = null;
   if (dealId) {
@@ -125,7 +143,6 @@ export async function resolveTemplateVars(
     if (user) vendedorNome = user.name;
   }
 
-  // Business profile (segmento fallback)
   const [bp] = await db
     .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
     .from(businessProfilesTable)
@@ -133,7 +150,6 @@ export async function resolveTemplateVars(
     .limit(1);
   const empresaNome = bp?.nomeFantasia ?? bp?.razaoSocial ?? "Vendor.ai";
 
-  // Gatekeeper from visita activity
   let nomeGatekeeper = "a atendente";
   const [visita] = await db
     .select({ descricao: activitiesTable.descricao })
@@ -146,25 +162,24 @@ export async function resolveTemplateVars(
     if (m) nomeGatekeeper = m[1].trim();
   }
 
-  // Available agenda slots for next 2 business days
   const nextDays = nextBusinessDays(new Date(), 2);
   const diaSugestao1 = formatDia(nextDays[0]);
   const diaSugestao2 = nextDays[1] ? formatDia(nextDays[1]) : "outro dia";
   const horaSugestao1 = "10h";
 
-  // Extract main complaint from reviews
-  let principalReclamacao = "demora no atendimento";
+  // Só usa reclamação pública quando ela de fato existe. Em prospecção fria,
+  // nunca transformamos ausência de evidência em um problema afirmado.
+  let principalReclamacao = "oportunidade de atendimento identificada em sinais públicos";
   const reviews = (meta.reviews ?? meta.avaliações ?? []) as Array<{ text?: string; comment?: string }>;
   if (reviews.length > 0) {
     const reviewText = reviews.map((r) => r.text ?? r.comment ?? "").join(" ");
-    if (/demora|lento|espera|resposta/i.test(reviewText)) principalReclamacao = "demora na resposta";
-    else if (/whatsapp|mensagem/i.test(reviewText)) principalReclamacao = "atendimento no WhatsApp";
-    else if (/preço|caro|valor/i.test(reviewText)) principalReclamacao = "preços";
+    if (/demora|lento|espera|resposta/i.test(reviewText)) principalReclamacao = "demora na resposta mencionada em avaliações públicas";
+    else if (/whatsapp|mensagem/i.test(reviewText)) principalReclamacao = "atendimento por mensagem mencionado em avaliações públicas";
+    else if (/preço|caro|valor/i.test(reviewText)) principalReclamacao = "percepção de preço mencionada em avaliações públicas";
   }
 
-  // Dono name
   const socios = (lead.dadosPj as any)?.socios as Array<{ nome: string }> | undefined;
-  const donoNome = socios?.[0]?.nome ?? (meta.dono_nome as string) ?? "o dono";
+  const donoNome = socios?.[0]?.nome ?? (meta.dono_nome as string) ?? "o responsável";
 
   const vars: Record<string, string> = {
     segmento_produto: (meta.categoria as string) ?? (meta.setor as string) ?? "seu segmento",
@@ -174,7 +189,7 @@ export async function resolveTemplateVars(
     nome_gatekeeper:  nomeGatekeeper,
     principal_reclamacao: principalReclamacao,
     vendedor_nome:    vendedorNome,
-    nome_atendente:   "", // filled when revelation fires after response
+    nome_atendente:   "",
     tempo_espera:     "pouco tempo",
     status_resposta:  "ainda não tive resposta",
     dia_sugestao_1:   diaSugestao1,
@@ -183,6 +198,7 @@ export async function resolveTemplateVars(
     empresa_nome:     empresaNome,
     nome_lead:        lead.nome ?? "",
     empresa_lead:     lead.empresa ?? lead.nome ?? "",
+    lp_url:            dossier?.lpUrl ?? "",
   };
 
   let result = template;
@@ -190,7 +206,6 @@ export async function resolveTemplateVars(
     result = result.replaceAll(`{${key}}`, value);
   }
 
-  // Strip any remaining unfilled {placeholders} with empty string
   result = result.replace(/\{[^}]+\}/g, "");
 
   log.info({ leadId, tenantId }, "sdrService: template variables resolved");
@@ -204,7 +219,6 @@ export async function getTemplateForCenario(
   cenario: string,
   ordem: number = 1,
 ): Promise<string | null> {
-  // Try tenant-specific first, fallback to global (tenant_id IS NULL)
   const [tenantTpl] = await db
     .select({ template: sdrTemplatesTable.template })
     .from(sdrTemplatesTable)
@@ -230,6 +244,72 @@ export async function getTemplateForCenario(
   return globalTpl?.template ?? null;
 }
 
+async function ensureColdLandingBeforeApproach(
+  leadId: string,
+  tenantId: string,
+  log: Logger,
+): Promise<string> {
+  const [lead] = await db
+    .select({
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      endereco: leadsTable.endereco,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      logoUrl: leadsTable.logoUrl,
+      websiteUrl: leadsTable.websiteUrl,
+      metadata: leadsTable.metadata,
+    })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!lead) throw new Error("Cold prospect not found for tenant");
+
+  const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+  const dossier = dossierFromMetadata(metadata);
+  if (!dossier || dossier.status !== "ready_for_outreach") {
+    throw new Error("Cold prospect dossier is not ready for outreach");
+  }
+  if (dossier.lpUrl) return dossier.lpUrl;
+
+  const evidence = Array.isArray(dossier.evidence) ? dossier.evidence : [];
+  if (evidence.length < 2) throw new Error("Cold prospect dossier has insufficient evidence");
+
+  const landing = await ensureColdProspectLandingPage({
+    tenantId,
+    leadId,
+    companyName: lead.empresa ?? lead.nome,
+    city: typeof dossier.lpBrief?.city === "string" ? dossier.lpBrief.city : lead.endereco,
+    niche: dossier.playbook?.niche ?? lead.mercadoSegmento ?? "geral",
+    segment: dossier.playbook?.segment ?? lead.mercadoSegmento ?? "geral",
+    logoUrl: lead.logoUrl,
+    websiteUrl: lead.websiteUrl,
+    evidence,
+    modules: dossier.playbook?.recommendedModules ?? ["crm", "sdr", "follow_up", "marketing", "jarvis"],
+    fitScore: Number(dossier.fitScore ?? 0),
+    painScore: Number(dossier.painScore ?? 0),
+  });
+
+  const updatedDossier: ColdProspectDossier = {
+    ...dossier,
+    lpUrl: landing.publicUrl,
+    lpSiteId: landing.id,
+    lpSlug: landing.siteSlug,
+    lpGeneratedAt: new Date().toISOString(),
+  };
+
+  await db
+    .update(leadsTable)
+    .set({
+      metadata: { ...metadata, coldProspectDossier: updatedDossier },
+      updatedAt: new Date(),
+    })
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+  log.info({ leadId, tenantId, lpUrl: landing.publicUrl }, "sdrService: cold prospect LP ready");
+  return landing.publicUrl;
+}
+
 // ── Main entry — send first SDR approach ─────────────────────────────────────
 
 export async function sendSdrFirstApproach(
@@ -244,7 +324,6 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
-  // Check not already sent
   const [existingActivity] = await db
     .select({ id: activitiesTable.id })
     .from(activitiesTable)
@@ -261,6 +340,15 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
+  // Cold outreach requires a published personalized LP before ANY first
+  // WhatsApp message. Throwing here is intentional: the enrichment caller
+  // catches the error and therefore cannot fall through to a generic cold
+  // dispatch without the LP.
+  let lpUrl: string | null = null;
+  if (cenario === "frio_teste") {
+    lpUrl = await ensureColdLandingBeforeApproach(leadId, tenantId, log);
+  }
+
   const [lead] = await db
     .select({ telefone: leadsTable.telefone, nome: leadsTable.nome })
     .from(leadsTable)
@@ -268,7 +356,7 @@ export async function sendSdrFirstApproach(
     .limit(1);
 
   if (!lead?.telefone) {
-    log.warn({ leadId }, "sdrService: lead has no phone — cannot send SDR approach");
+    log.warn({ leadId }, "sdrService: lead has no phone — cannot send SDR WhatsApp approach");
     return { sent: false, cenario };
   }
 
@@ -278,11 +366,13 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
-  const message = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
+  let message = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
+  if (cenario === "frio_teste" && lpUrl && !message.includes(lpUrl)) {
+    message = `${message.trim()}\n\nPreparamos uma análise pública da empresa: ${lpUrl}`;
+  }
 
   await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
 
-  // Register activity
   await db.insert(activitiesTable).values({
     tenantId,
     leadId,
@@ -292,10 +382,10 @@ export async function sendSdrFirstApproach(
     descricao: message,
     status: "concluida",
     concluidaEm: new Date(),
-    resultadoExecucao: `cenario:${cenario}|template_ordem:1`,
+    resultadoExecucao: `cenario:${cenario}|template_ordem:1${lpUrl ? "|lp_ready:true" : ""}`,
   });
 
-  log.info({ leadId, tenantId, cenario }, "sdrService: first SDR approach sent");
+  log.info({ leadId, tenantId, cenario, lpUrl }, "sdrService: first SDR approach sent");
   return { sent: true, cenario, message };
 }
 
@@ -322,16 +412,6 @@ export async function sendSdrRevelacao(
   let message = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
   if (nomeAtendente) message = message.replace("{nome_atendente}", `, ${nomeAtendente}!`).replace(/\{nome_atendente\}/g, "");
   if (statusResposta) message = message.replace("{status_resposta}", statusResposta);
-
-  // Check not already sent revelation
-  const [existingRev] = await db
-    .select({ id: activitiesTable.id })
-    .from(activitiesTable)
-    .where(and(
-      eq(activitiesTable.leadId, leadId),
-      eq(activitiesTable.tenantId, tenantId),
-    ))
-    .limit(1);
 
   await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
 
@@ -361,9 +441,6 @@ export async function sendSdrFollowup(
   leadTelefone: string,
   log: Logger,
 ): Promise<boolean> {
-  // Dispatch via agent (not hardcoded message) so the SDR uses the full maturidade
-  // research model — including the diagnostic questions injected by buildSdrPrompt
-  // when cold_outreach is true and maturidadeIA is still unknown.
   dispatchAgentBackground({
     tenantId,
     leadId,
