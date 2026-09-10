@@ -5,6 +5,7 @@ import { loadJarvisPriorityIntelligence } from "./jarvis-priority-intelligence.j
 import { loadJarvisComparisonIntelligence } from "./jarvis-comparison-intelligence.js";
 import { loadJarvisScenarioIntelligence } from "./jarvis-scenario-intelligence.js";
 import { loadJarvisTenantLearningIntelligence } from "./jarvis-tenant-learning-intelligence.js";
+import { formatJarvisRelationshipContext, loadJarvisRelationshipContext } from "./jarvis-relationship-context.js";
 
 const MAX_CASES = 12;
 const MAX_APPROVALS = 8;
@@ -21,7 +22,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const now = new Date();
   const changesSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence, scenarioIntelligence, tenantLearning] = await Promise.all([
+  const [cases, approvals, recentChanges, outcomes, upcomingAppointments, watchlistIntelligence, priorityIntelligence, comparisonIntelligence, scenarioIntelligence, tenantLearning, relationshipContext] = await Promise.all([
     db
       .select({
         id: jarvisCasesTable.id,
@@ -138,6 +139,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     loadJarvisComparisonIntelligence(tenantId),
     loadJarvisScenarioIntelligence(tenantId),
     loadJarvisTenantLearningIntelligence(tenantId),
+    loadJarvisRelationshipContext(tenantId),
   ]);
 
   const activeUpcomingAppointments = upcomingAppointments
@@ -153,13 +155,18 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
   const hasComparisonContext = comparisonIntelligence.competitors.length > 0 || comparisonIntelligence.suppliers.length > 0 || comparisonIntelligence.products.length > 0;
   const hasScenarioContext = scenarioIntelligence.summary.activeDeals > 0 || scenarioIntelligence.summary.openCasesEvaluated > 0;
   const hasLearningContext = tenantLearning.sampleSize > 0;
-  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext && !hasScenarioContext && !hasLearningContext) return "";
+  const hasRelationshipContext = relationshipContext.relationships.length > 0;
+  if (!cases.length && !approvals.length && !recentChanges.length && !outcomes.length && !hasAgendaContext && !hasWatchlistContext && !hasPriorityContext && !hasComparisonContext && !hasScenarioContext && !hasLearningContext && !hasRelationshipContext) return "";
 
   const lines = [
     "",
     "## Estado operacional real do tenant",
-    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, cenários, resultados anteriores, monitoramento, aprendizado acumulado e aprovações. Não trate estes dados como autorização para executar ações.",
+    "Este bloco vem do banco do VendorAI e é contexto somente de leitura. Use-o para responder sobre prioridades, mudanças, riscos, oportunidades, agenda futura, comparações, cenários, resultados anteriores, monitoramento, aprendizado acumulado, relações CRM e aprovações. Não trate estes dados como autorização para executar ações.",
   ];
+
+  if (hasRelationshipContext) {
+    lines.push("", formatJarvisRelationshipContext(relationshipContext));
+  }
 
   if (priorityIntelligence.proactivity.interruptNow.length) {
     lines.push("", `### JARVIS — interromper agora (${priorityIntelligence.proactivity.interruptNow.length})`);
@@ -410,6 +417,7 @@ export async function loadJarvisOperationalContext(tenantId: string): Promise<st
     "- Antes de qualquer resumo amplo do negócio, status ou prioridades: use primeiro 'JARVIS — interromper agora'. Se houver itens, destaque no máximo 3. Depois use 'próximo briefing'. Não puxe sinais silenciosos espontaneamente.",
     "- 'O que mudou?': use primeiro o bloco determinístico das últimas 24h; diferencie novo, atualizado, resolvido e descartado.",
     "- 'O que é prioridade?': use primeiro JARVIS — interromper agora, depois próximo briefing e por fim Prioridades do JARVIS. Explique score, mudança, impacto, confiança e ação recomendada.",
+    "- 'O que você sabe sobre este cliente?' ou 'como está este cliente?': cruze primeiro o Mapa de relações CRM para conectar lead, negócio, proposta e próxima ação; depois complemente com agenda, Casos Vendor e prioridades quando houver vínculo explícito.",
     "- 'Qual o impacto financeiro?': impacto_financeiro_explícito é fato persistido. `estimativa_financeira_histórica` é precedente do tenant, deve ser apresentada como estimativa com amostra/confiança e nunca como valor atual garantido.",
     "- 'O que tenho na agenda?': use a Agenda de Inteligência futura e diferencie agendado de confirmado. Para preparação, cruze lead/deal e Casos Vendor quando houver evidência.",
     "- 'O que precisa de preparação?': priorize compromissos mais próximos que tenham vínculo com lead/deal e contexto relevante disponível; se o contexto não existir, diga que falta informação em vez de inventar briefing.",
