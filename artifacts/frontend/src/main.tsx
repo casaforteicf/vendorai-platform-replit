@@ -73,6 +73,10 @@ import { setupApiClient } from "./lib/api";
 
 setupApiClient();
 
+// Identificador útil para diagnóstico e para forçar um novo hash do entrypoint
+// após a correção do cache de assets do Cloudflare Pages.
+document.documentElement.dataset.vendoraiBuild = "asset-recovery-20260910";
+
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 const handoffToken = hashParams.get("vendorai_token");
 const handoffDemoExpiresAt = hashParams.get("demo_expires_at");
