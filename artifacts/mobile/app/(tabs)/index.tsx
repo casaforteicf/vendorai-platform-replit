@@ -1,181 +1,101 @@
-import { Feather } from "@expo/vector-icons";
-import {
-  useGetTenantDashboard,
-  useListLeads,
-} from "@workspace/api-client-react";
-import { router } from "expo-router";
-import React from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useCallback, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, Linking, Platform, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { WebView } from "react-native-webview";
 
-import { ChurnBadge } from "@/components/ChurnBadge";
-import { KPICard } from "@/components/KPICard";
-import { useAuth } from "@/context/AuthContext";
-import { useColors } from "@/hooks/useColors";
+const APP_URL = process.env.EXPO_PUBLIC_WEB_APP_URL || "https://app.appvendorai.com";
 
-export default function DashboardScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const tenantId = user?.tenantId ?? "";
+export default function VendorAIMobileShell() {
+  const webViewRef = useRef<WebView>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  const { data: dashboard, isLoading: loadingDash, refetch: refetchDash } =
-    useGetTenantDashboard(tenantId, { query: { queryKey: ["dashboard", tenantId], enabled: !!tenantId } });
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (canGoBack) {
+          webViewRef.current?.goBack();
+          return true;
+        }
+        return false;
+      });
+      return () => subscription.remove();
+    }, [canGoBack]),
+  );
 
-  const { data: leads, isLoading: loadingLeads, refetch: refetchLeads } =
-    useListLeads({ query: { queryKey: ["leads"], enabled: !!tenantId } });
-
-  const isLoading = loadingDash || loadingLeads;
-  const highRiskLeads = (leads ?? [])
-    .filter((l: any) => (l.churnRisk ?? 0) >= 70)
-    .sort((a: any, b: any) => (b.churnRisk ?? 0) - (a.churnRisk ?? 0))
-    .slice(0, 5);
-
-  const topPadding = Platform.OS === "web" ? 67 : insets.top + 8;
+  if (loadError) {
+    return (
+      <View style={styles.errorWrap}>
+        <Text style={styles.errorTitle}>Não foi possível abrir o VendorAI</Text>
+        <Text style={styles.errorText}>Verifique sua conexão e tente novamente.</Text>
+        <Text style={styles.retry} onPress={() => setLoadError(false)}>Tentar novamente</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.content, { paddingTop: topPadding, paddingBottom: insets.bottom + 100 }]}
-      refreshControl={
-        <RefreshControl
-          refreshing={false}
-          onRefresh={() => { refetchDash(); refetchLeads(); }}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <View style={styles.titleRow}>
-        <View>
-          <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
-            Bom dia, {user?.name?.split(" ")[0] ?? ""}
-          </Text>
-          <Text style={[styles.title, { color: colors.foreground }]}>Dashboard</Text>
+    <WebView
+      ref={webViewRef}
+      source={{ uri: APP_URL }}
+      style={styles.webview}
+      originWhitelist={["*"]}
+      javaScriptEnabled
+      domStorageEnabled
+      sharedCookiesEnabled
+      thirdPartyCookiesEnabled
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+      pullToRefreshEnabled
+      startInLoadingState
+      setSupportMultipleWindows={false}
+      onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
+      onShouldStartLoadWithRequest={(request) => {
+        const url = request.url;
+        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("about:blank")) {
+          return true;
+        }
+        Linking.openURL(url).catch(() => undefined);
+        return false;
+      }}
+      onError={() => setLoadError(true)}
+      renderLoading={() => (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#D9673E" />
+          <Text style={styles.loadingText}>Abrindo VendorAI...</Text>
         </View>
-        <View style={[styles.avatarWrap, { backgroundColor: colors.primary + "22" }]}>
-          <Text style={[styles.avatarText, { color: colors.primary }]}>
-            {user?.name?.charAt(0).toUpperCase() ?? "?"}
-          </Text>
-        </View>
-      </View>
-
-      {isLoading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
-      ) : (
-        <>
-          <View style={styles.kpiGrid}>
-            <View style={styles.kpiRow}>
-              <KPICard
-                label="Total Leads"
-                value={(dashboard as any)?.totalLeads ?? (leads?.length ?? 0)}
-                icon="users"
-                color={colors.primary}
-              />
-              <KPICard
-                label="Alto Risco"
-                value={(dashboard as any)?.leadsAltoRisco ?? highRiskLeads.length}
-                icon="alert-triangle"
-                color="#ef4444"
-              />
-            </View>
-            <View style={styles.kpiRow}>
-              <KPICard
-                label="Pipeline Ativo"
-                value={(dashboard as any)?.dealsAtivos ?? "—"}
-                icon="trending-up"
-                color="#22c55e"
-              />
-              <KPICard
-                label="Agend. Hoje"
-                value={(dashboard as any)?.agendamentosHoje ?? "—"}
-                icon="calendar"
-                color="#f59e0b"
-              />
-            </View>
-          </View>
-
-          {highRiskLeads.length > 0 ? (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Feather name="alert-triangle" size={15} color="#ef4444" />
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                  Leads em Risco
-                </Text>
-              </View>
-              {highRiskLeads.map((lead: any) => (
-                <TouchableOpacity
-                  key={lead.id}
-                  style={[styles.riskRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.push(`/leads/${lead.id}`)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.riskAvatar, { backgroundColor: "#ef444422" }]}>
-                    <Text style={styles.riskInitials}>
-                      {lead.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.riskInfo}>
-                    <Text style={[styles.riskName, { color: colors.foreground }]} numberOfLines={1}>
-                      {lead.name}
-                    </Text>
-                    {lead.empresa ? (
-                      <Text style={[styles.riskSub, { color: colors.mutedForeground }]} numberOfLines={1}>
-                        {lead.empresa}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <ChurnBadge risk={lead.churnRisk ?? 0} size="sm" />
-                  <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : null}
-        </>
       )}
-    </ScrollView>
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { paddingHorizontal: 20, gap: 24 },
-  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  greeting: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  avatarWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  kpiGrid: { gap: 10 },
-  kpiRow: { flexDirection: "row", gap: 10 },
-  section: { gap: 10 },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  riskRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-  },
-  riskAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  webview: { flex: 1, backgroundColor: "#070b14" },
+  loadingWrap: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#070b14",
+    gap: 14,
   },
-  riskInitials: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#ef4444" },
-  riskInfo: { flex: 1 },
-  riskName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  riskSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  loadingText: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
+  errorWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#070b14",
+    padding: 28,
+  },
+  errorTitle: { color: "#ffffff", fontSize: 22, fontWeight: "700", textAlign: "center" },
+  errorText: { color: "#94a3b8", fontSize: 15, textAlign: "center", marginTop: 10 },
+  retry: {
+    color: "#ffffff",
+    backgroundColor: "#D9673E",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 22,
+    overflow: "hidden",
+    fontWeight: "700",
+  },
 });
