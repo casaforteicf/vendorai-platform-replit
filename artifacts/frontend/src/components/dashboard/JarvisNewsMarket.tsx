@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, Building2, ExternalLink, Globe2, Newspaper, Radio, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, AlertTriangle, Building2, ExternalLink, Globe2, Newspaper, Radio, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,11 +28,12 @@ type NewsCase = {
   severity: "opportunity" | "attention" | "risk";
   title: string;
   detail: string;
-  metric?: string | null;
   confidence?: number | null;
   href?: string | null;
-  evidence?: NewsEvidence | null;
+  status?: string | null;
+  lastDetectedAt?: string | null;
   updatedAt: string;
+  evidence?: NewsEvidence | null;
 };
 
 type VieCoverage = {
@@ -65,21 +66,18 @@ type VieCoverage = {
   }>;
 };
 
+const GENERIC_TERMS = new Set([
+  "sistema", "sistemas", "plataforma", "plataformas", "solucao", "solucoes",
+  "tecnologia", "tecnologias", "digital", "digitais", "comercial", "empresa", "empresas",
+]);
+
+function normalize(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
 function isNewsSource(source: string) {
   const value = source.toLowerCase();
   return value.startsWith("news") || value.includes("noticia") || value.includes("mercado_externo");
-}
-
-function severityLabel(severity: NewsCase["severity"]) {
-  if (severity === "risk") return "Risco";
-  if (severity === "opportunity") return "Oportunidade";
-  return "Atenção";
-}
-
-function severityTone(severity: NewsCase["severity"]) {
-  if (severity === "risk") return "border-red-200 bg-red-50 text-red-700";
-  if (severity === "opportunity") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function evidenceText(value: unknown): string | null {
@@ -96,6 +94,10 @@ function evidenceTextArray(value: unknown): string[] {
     : [];
 }
 
+function meaningfulTerms(value: unknown) {
+  return evidenceTextArray(value).filter((term) => !GENERIC_TERMS.has(normalize(term)));
+}
+
 function signalType(value: unknown): ExternalSignalType {
   return value === "competitor" || value === "supplier" || value === "regional" || value === "sectoral" || value === "market"
     ? value
@@ -110,31 +112,16 @@ function signalTypeLabel(value: ExternalSignalType) {
   return "Mercado";
 }
 
-function signalWhy(item: NewsCase): string | null {
-  const competitors = evidenceTextArray(item.evidence?.matchedCompetitors);
-  const suppliers = evidenceTextArray(item.evidence?.matchedSuppliers);
-  const regions = evidenceTextArray(item.evidence?.matchedRegions);
-  const rationale = evidenceText(item.evidence?.rationale);
-
-  if (competitors.length) return `Movimento relacionado a concorrente monitorado: ${competitors.join(", ")}.`;
-  if (suppliers.length) return `Movimento relacionado a fornecedor do tenant: ${suppliers.join(", ")}.`;
-  if (regions.length) return `Sinal ligado ao território do negócio: ${regions.join(", ")}.`;
-  return rationale;
+function severityLabel(severity: NewsCase["severity"]) {
+  if (severity === "risk") return "Risco";
+  if (severity === "opportunity") return "Oportunidade";
+  return "Atenção";
 }
 
-function prospectorHref(item: NewsCase) {
-  const params = new URLSearchParams({ mode: "empresas", tab: "busca", jarvisCase: item.id });
-  const term = evidenceTextArray(item.evidence?.matchedTerms)[0];
-  const region = evidenceTextArray(item.evidence?.matchedRegions)[0];
-  if (term) params.set("jarvisTerm", term);
-  if (region) params.set("jarvisRegion", region);
-  return `/prospector?${params.toString()}`;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("pt-BR");
+function severityTone(severity: NewsCase["severity"]) {
+  if (severity === "risk") return "border-red-200 bg-red-50 text-red-700";
+  if (severity === "opportunity") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function sourceStatusLabel(status: VieCoverage["sources"][number]["status"]) {
@@ -144,14 +131,56 @@ function sourceStatusLabel(status: VieCoverage["sources"][number]["status"]) {
   return "Nunca verificada";
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("pt-BR");
+}
+
+function isFresh(item: NewsCase, hours = 48) {
+  const timestamp = new Date(item.lastDetectedAt ?? item.updatedAt).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  return Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function isStrongMarketSignal(item: NewsCase) {
+  if (item.status && item.status !== "open") return false;
+  if (!isNewsSource(String(item.source ?? ""))) return false;
+  if (!isFresh(item)) return false;
+  if ((item.confidence ?? 0) < 75) return false;
+
+  const competitors = evidenceTextArray(item.evidence?.matchedCompetitors);
+  const suppliers = evidenceTextArray(item.evidence?.matchedSuppliers);
+  const regions = evidenceTextArray(item.evidence?.matchedRegions);
+  const terms = meaningfulTerms(item.evidence?.matchedTerms);
+  const kind = signalType(item.evidence?.signalType);
+
+  if (competitors.length || suppliers.length) return true;
+  if (kind === "regional" && regions.length > 0 && terms.length >= 1) return true;
+  if (kind === "sectoral" && terms.length >= 3) return true;
+  return false;
+}
+
+function signalWhy(item: NewsCase): string | null {
+  const competitors = evidenceTextArray(item.evidence?.matchedCompetitors);
+  const suppliers = evidenceTextArray(item.evidence?.matchedSuppliers);
+  const regions = evidenceTextArray(item.evidence?.matchedRegions);
+  const rationale = evidenceText(item.evidence?.rationale);
+
+  if (competitors.length) return `Movimento relacionado a concorrente monitorado: ${competitors.join(", ")}.`;
+  if (suppliers.length) return `Movimento relacionado a fornecedor monitorado: ${suppliers.join(", ")}.`;
+  if (regions.length) return `Sinal ligado a uma região realmente acompanhada: ${regions.join(", ")}.`;
+  return rationale;
+}
+
 export default function JarvisNewsMarket({ token }: { token?: string | null }) {
-  const [items, setItems] = useState<NewsCase[]>([]);
+  const [allCases, setAllCases] = useState<NewsCase[]>([]);
   const [coverage, setCoverage] = useState<VieCoverage | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!token) {
-      setItems([]);
+      setAllCases([]);
       setCoverage(null);
       return;
     }
@@ -164,7 +193,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }).then(async (response) => {
-        if (!response.ok) throw new Error("Falha ao carregar inteligência de notícias");
+        if (!response.ok) throw new Error("Falha ao carregar inteligência do JARVIS");
         return response.json() as Promise<NewsCase[]>;
       }),
       fetch("/api/jarvis/vie/coverage", {
@@ -177,12 +206,12 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
     ])
       .then(([casesData, coverageData]) => {
         if (cancelled) return;
-        setItems(Array.isArray(casesData) ? casesData.filter((item) => isNewsSource(String(item.source ?? ""))) : []);
+        setAllCases(Array.isArray(casesData) ? casesData : []);
         setCoverage(coverageData);
       })
       .catch(() => {
         if (!cancelled) {
-          setItems([]);
+          setAllCases([]);
           setCoverage(null);
         }
       })
@@ -191,51 +220,37 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
     return () => { cancelled = true; };
   }, [token]);
 
+  const items = useMemo(
+    () => allCases
+      .filter(isStrongMarketSignal)
+      .sort((a, b) => new Date(b.lastDetectedAt ?? b.updatedAt).getTime() - new Date(a.lastDetectedAt ?? a.updatedAt).getTime())
+      .slice(0, 8),
+    [allCases],
+  );
+
   const summary = useMemo(() => {
     const sourceKeys = new Set<string>();
-    const sourceNames = new Set<string>();
-    const reliability: number[] = [];
+    const reliabilities: number[] = [];
     const confidences: number[] = [];
-    const typeCounts: Record<ExternalSignalType, number> = { competitor: 0, supplier: 0, regional: 0, sectoral: 0, market: 0 };
 
     for (const item of items) {
-      const sourceId = evidenceText(item.evidence?.sourceId);
-      const sourceCode = evidenceText(item.evidence?.sourceCode);
-      const sourceName = evidenceText(item.evidence?.sourceName);
-      const sourceKey = sourceId ?? sourceCode ?? sourceName;
-      if (sourceKey) sourceKeys.add(sourceKey);
-      if (sourceName) sourceNames.add(sourceName);
-
-      const sourceReliability = evidenceNumber(item.evidence?.sourceReliability);
-      if (sourceReliability != null) reliability.push(sourceReliability);
-      if (typeof item.confidence === "number" && Number.isFinite(item.confidence)) confidences.push(item.confidence);
-      typeCounts[signalType(item.evidence?.signalType)] += 1;
+      const sourceId = evidenceText(item.evidence?.sourceId) ?? evidenceText(item.evidence?.sourceCode) ?? evidenceText(item.evidence?.sourceName);
+      if (sourceId) sourceKeys.add(sourceId);
+      const reliability = evidenceNumber(item.evidence?.sourceReliability);
+      if (reliability != null) reliabilities.push(reliability);
+      if (item.confidence != null) confidences.push(item.confidence);
     }
-
-    const latestTimestamp = items.reduce((latest, item) => {
-      const timestamp = new Date(item.updatedAt).getTime();
-      return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
-    }, 0);
 
     return {
       opportunities: items.filter((item) => item.severity === "opportunity").length,
       risks: items.filter((item) => item.severity === "risk").length,
-      attention: items.filter((item) => item.severity === "attention").length,
       sources: sourceKeys.size,
-      sourceNames: [...sourceNames].sort(),
-      typeCounts,
-      averageReliability: reliability.length ? Math.round(reliability.reduce((sum, value) => sum + value, 0) / reliability.length) : null,
-      averageConfidence: confidences.length ? Math.round(confidences.reduce((sum, value) => sum + value, 0) / confidences.length) : null,
-      latestAnalysisAt: latestTimestamp ? new Date(latestTimestamp) : null,
+      confidence: confidences.length ? Math.round(confidences.reduce((sum, value) => sum + value, 0) / confidences.length) : null,
+      reliability: reliabilities.length ? Math.round(reliabilities.reduce((sum, value) => sum + value, 0) / reliabilities.length) : null,
     };
   }, [items]);
 
-  const visible = useMemo(
-    () => [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 30),
-    [items],
-  );
-
-  const coverageHealthy = coverage && coverage.summary.activeSources > 0 && coverage.summary.healthySources === coverage.summary.activeSources;
+  const coverageHealthy = !!coverage && coverage.summary.activeSources > 0 && coverage.summary.healthySources === coverage.summary.activeSources;
 
   return (
     <section className="mx-auto w-full max-w-[1600px] space-y-4 px-4 pb-8 sm:px-6 lg:px-8">
@@ -244,36 +259,31 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="gap-1.5"><Newspaper className="h-3.5 w-3.5" /> Notícias & Mercado</Badge>
-                <Badge variant="secondary">Inteligência JARVIS</Badge>
+                <Badge variant="outline" className="gap-1.5"><Newspaper className="h-3.5 w-3.5" /> Inteligência de mercado</Badge>
+                <Badge variant="secondary">JARVIS</Badge>
+                <Badge variant="outline">Não é prospecção</Badge>
               </div>
-              <h2 className="mt-3 text-xl font-bold tracking-tight md:text-2xl">O que mudou fora da empresa e pode afetar o negócio</h2>
+              <h2 className="mt-3 text-xl font-bold tracking-tight md:text-2xl">O que mudou fora da empresa</h2>
               <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                Esta visão mostra somente notícias e sinais externos já classificados como relevantes para o tenant. Manchetes sem impacto provável não entram aqui.
+                Aqui entram apenas sinais externos recentes e fortes. A busca automática de empresas fica separada no Prospector para não confundir notícia com oportunidade comercial.
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: { question: "JARVIS, analise as notícias e movimentos de mercado mais relevantes para meu negócio agora." } }))}
-            >
-              <Sparkles className="mr-2 h-4 w-4" /> Analisar com JARVIS
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: { question: "JARVIS, analise os sinais externos fortes e recentes que podem afetar meu negócio agora." } }))}>
+                <Sparkles className="mr-2 h-4 w-4" /> Analisar com JARVIS
+              </Button>
+              <Button asChild>
+                <a href="/prospector"><Building2 className="mr-2 h-4 w-4" /> Abrir Prospecção JARVIS</a>
+              </Button>
+            </div>
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Sinais fortes agora</p><p className="mt-1 text-xl font-bold">{items.length}</p></div>
             <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Oportunidades</p><p className="mt-1 text-xl font-bold">{summary.opportunities}</p></div>
             <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Riscos</p><p className="mt-1 text-xl font-bold">{summary.risks}</p></div>
-            <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Em atenção</p><p className="mt-1 text-xl font-bold">{summary.attention}</p></div>
-            <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Fontes com sinais</p><p className="mt-1 text-xl font-bold">{summary.sources}</p></div>
+            <div className="rounded-xl border bg-background/80 p-3.5"><p className="text-xs text-muted-foreground">Confiança média</p><p className="mt-1 text-xl font-bold">{summary.confidence != null ? `${summary.confidence}%` : "—"}</p></div>
           </div>
-
-          {items.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(Object.entries(summary.typeCounts) as Array<[ExternalSignalType, number]>).filter(([, count]) => count > 0).map(([type, count]) => (
-                <Badge key={type} variant="outline">{signalTypeLabel(type)} · {count}</Badge>
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -288,7 +298,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                   <Badge variant={coverageHealthy ? "secondary" : "outline"}>{coverageHealthy ? "Operação saudável" : "Requer atenção"}</Badge>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Estado real das fontes ativas do VIE. Coleta automática a cada {coverage.cadenceHours}h; uma fonte é marcada como atrasada após {coverage.staleAfterHours}h sem verificação.
+                  Coleta de inteligência externa a cada {coverage.cadenceHours}h. Esta métrica mede as fontes de mercado, não o Prospector automático.
                 </p>
               </div>
               <div className="text-xs text-muted-foreground">Último sucesso: <span className="font-medium text-foreground">{formatDate(coverage.summary.lastSuccessAt)}</span></div>
@@ -321,51 +331,23 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
         </Card>
       )}
 
-      {!loading && items.length > 0 && (
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  <h3 className="text-sm font-semibold">Cobertura observada do JARVIS</h3>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Métricas calculadas somente a partir dos sinais externos realmente persistidos para este tenant.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {summary.sourceNames.slice(0, 6).map((name) => <Badge key={name} variant="outline">{name}</Badge>)}
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Sinais relevantes</p><p className="mt-1 text-lg font-semibold">{items.length}</p></div>
-              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Confiança média</p><p className="mt-1 text-lg font-semibold">{summary.averageConfidence != null ? `${summary.averageConfidence}%` : "—"}</p></div>
-              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Confiabilidade das fontes</p><p className="mt-1 text-lg font-semibold">{summary.averageReliability != null ? `${summary.averageReliability}%` : "—"}</p></div>
-              <div className="rounded-xl border bg-muted/20 p-3.5"><p className="text-xs text-muted-foreground">Última análise</p><p className="mt-1 text-sm font-semibold">{summary.latestAnalysisAt ? summary.latestAnalysisAt.toLocaleString("pt-BR") : "—"}</p></div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {loading ? (
-        <Card><CardContent className="p-6 text-sm text-muted-foreground">Carregando sinais de notícias e mercado...</CardContent></Card>
-      ) : visible.length === 0 ? (
+        <Card><CardContent className="p-6 text-sm text-muted-foreground">Atualizando inteligência de mercado...</CardContent></Card>
+      ) : items.length === 0 ? (
         <Card>
-          <CardContent className="flex min-h-[320px] flex-col items-center justify-center p-8 text-center">
+          <CardContent className="flex min-h-[220px] flex-col items-center justify-center p-8 text-center">
             <Radio className="h-10 w-10 text-muted-foreground/40" />
-            <h3 className="mt-4 text-base font-semibold">Radar de notícias ainda sem sinais relevantes para este tenant</h3>
+            <h3 className="mt-4 text-base font-semibold">Nenhum sinal externo forte agora</h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              O VIE monitora fontes reais e só cria cards quando encontra relação suficiente com o negócio. A ausência de cards significa que nenhum sinal externo ultrapassou o limiar de relevância disponível para este tenant.
+              Isso é normal. Notícias antigas, genéricas ou com baixa compatibilidade deixam de aparecer. Para buscar clientes, use a Prospecção JARVIS no Prospector.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {visible.map((item) => {
+          {items.map((item) => {
             const sourceName = evidenceText(item.evidence?.sourceName) ?? "Fonte monitorada";
-            const externalType = signalType(item.evidence?.signalType);
+            const kind = signalType(item.evidence?.signalType);
             const why = signalWhy(item);
             return (
               <Card key={item.id} className="transition-shadow hover:shadow-md">
@@ -374,12 +356,11 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className={severityTone(item.severity)}>{severityLabel(item.severity)}</Badge>
-                        <Badge variant="outline">{signalTypeLabel(externalType)}</Badge>
-                        <Badge variant="outline">{item.category}</Badge>
+                        <Badge variant="outline">{signalTypeLabel(kind)}</Badge>
                         {item.confidence != null && <span className="text-[11px] text-muted-foreground">confiança {item.confidence}%</span>}
                       </div>
                       <h3 className="mt-3 text-sm font-semibold leading-5">{item.title}</h3>
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                      <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.detail}</p>
                       {why && (
                         <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2.5 text-xs leading-5">
                           <span className="font-medium text-foreground">Por que importa: </span>
@@ -390,16 +371,8 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                     {item.severity === "risk" ? <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" /> : <Globe2 className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs">
-                    <div className="text-muted-foreground"><span className="font-medium text-foreground">{sourceName}</span> · {new Date(item.updatedAt).toLocaleString("pt-BR")}</div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={prospectorHref(item)}>
-                          <Building2 className="mr-1.5 h-3.5 w-3.5" />
-                          {item.severity === "opportunity" ? "Prospectar oportunidade" : "Explorar no Prospector"}
-                        </a>
-                      </Button>
-                      {item.href && <a href={item.href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir contexto <ExternalLink className="h-3.5 w-3.5" /></a>}
-                    </div>
+                    <div className="text-muted-foreground"><span className="font-medium text-foreground">{sourceName}</span> · {formatDate(item.lastDetectedAt ?? item.updatedAt)}</div>
+                    {item.href && <a href={item.href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir contexto <ExternalLink className="h-3.5 w-3.5" /></a>}
                   </div>
                 </CardContent>
               </Card>
