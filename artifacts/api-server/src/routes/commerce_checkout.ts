@@ -19,6 +19,16 @@ import { resolveLandingOffer } from "../lib/landing-offer.js";
 
 export const commerceCheckoutRouter: IRouter = Router();
 
+const CHECKOUT_TERMS_VERSION = "checkout-legal-v1-2026-09-10";
+const LEGAL_RECEIVER = {
+  legalName: "Windoor Serviços de Gerenciamento de Obras Ltda",
+  cnpj: "59.623.589/0001-27",
+  supportWhatsapp: "+5549988053230",
+  termsUrl: "/api/sites/termos-de-uso",
+  privacyUrl: "/api/sites/politica-de-privacidade",
+  cancellationUrl: "/api/sites/cancelamento-e-reembolso",
+} as const;
+
 const checkoutSchema = z.object({
   siteSlug: z.string().trim().min(1).max(120),
   name: z.string().trim().min(2).max(180),
@@ -41,6 +51,14 @@ const checkoutSchema = z.object({
   referrer: z.string().trim().max(2000).optional(),
   acceptTerms: z.literal(true),
 });
+
+function getClientIp(req: Parameters<IRouter["use"]>[0] extends never ? never : any): string | null {
+  const cf = req.headers["cf-connecting-ip"];
+  if (typeof cf === "string" && cf.trim()) return cf.trim().slice(0, 128);
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) return forwarded.split(",")[0]?.trim().slice(0, 128) || null;
+  return req.ip ? String(req.ip).slice(0, 128) : null;
+}
 
 function money(cents: number): string {
   return (cents / 100).toFixed(2);
@@ -185,6 +203,15 @@ commerceCheckoutRouter.get("/public/commerce/offer/:siteSlug", async (req, res) 
     siteSlug: resolved.site.siteSlug,
     plan: { slug: resolved.plan.slug, name: resolved.plan.name },
     offer: resolved.offer,
+    legal: {
+      termsVersion: CHECKOUT_TERMS_VERSION,
+      receiverLegalName: LEGAL_RECEIVER.legalName,
+      receiverCnpj: LEGAL_RECEIVER.cnpj,
+      supportWhatsapp: LEGAL_RECEIVER.supportWhatsapp,
+      termsUrl: LEGAL_RECEIVER.termsUrl,
+      privacyUrl: LEGAL_RECEIVER.privacyUrl,
+      cancellationUrl: LEGAL_RECEIVER.cancellationUrl,
+    },
   });
 });
 
@@ -233,6 +260,9 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
     return;
   }
 
+  const acceptedAt = new Date();
+  const clientIp = getClientIp(req);
+  const userAgent = String(req.get("user-agent") ?? "").slice(0, 1000) || null;
   const passwordHash = await bcrypt.hash(d.password, 12);
   const snapshot = {
     source: resolved.offer.source,
@@ -254,7 +284,16 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
     discountRecurring: commercial.discountRecurring,
     partnerId: commercial.partnerId,
     resolvedCouponCode: commercial.resolvedCouponCode,
-    resolvedAt: new Date().toISOString(),
+    resolvedAt: acceptedAt.toISOString(),
+  } as const;
+
+  const initialEvidence = {
+    receiverLegalName: LEGAL_RECEIVER.legalName,
+    receiverCnpj: LEGAL_RECEIVER.cnpj,
+    supportWhatsapp: LEGAL_RECEIVER.supportWhatsapp,
+    termsUrl: LEGAL_RECEIVER.termsUrl,
+    privacyUrl: LEGAL_RECEIVER.privacyUrl,
+    cancellationUrl: LEGAL_RECEIVER.cancellationUrl,
   } as const;
 
   const [session] = await db.insert(commerceCheckoutSessionsTable).values({
@@ -282,6 +321,11 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
     cpfCnpj: d.cpfCnpj ?? null,
     passwordHash,
     billingType: d.billingType,
+    termsVersion: CHECKOUT_TERMS_VERSION,
+    termsAcceptedAt: acceptedAt,
+    ipAddress: clientIp,
+    userAgent,
+    evidenceSnapshot: initialEvidence,
   }).returning();
 
   const externalReference = `checkout:${session.id}`;
@@ -302,6 +346,11 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
       asaasCustomerId: customer.id,
       asaasChargeId: charge.id,
       paymentUrl: charge.invoiceUrl || charge.bankSlipUrl,
+      evidenceSnapshot: {
+        ...initialEvidence,
+        checkoutId: session.id,
+        asaasChargeId: charge.id,
+      },
       updatedAt: new Date(),
     }).where(eq(commerceCheckoutSessionsTable.id, session.id));
 
@@ -319,6 +368,13 @@ commerceCheckoutRouter.post("/public/commerce/checkout", async (req, res) => {
         discountAmountCents: snapshot.discountAmountCents,
         discountRecurring: snapshot.discountRecurring,
         source: snapshot.source,
+      },
+      legal: {
+        termsVersion: CHECKOUT_TERMS_VERSION,
+        acceptedAt: acceptedAt.toISOString(),
+        receiverLegalName: LEGAL_RECEIVER.legalName,
+        receiverCnpj: LEGAL_RECEIVER.cnpj,
+        supportWhatsapp: LEGAL_RECEIVER.supportWhatsapp,
       },
       partner: snapshot.partnerId ? { id: snapshot.partnerId, couponCode: snapshot.resolvedCouponCode } : null,
       plan: { slug: resolved.plan.slug, name: resolved.plan.name },
@@ -363,7 +419,18 @@ export async function provisionCheckout(checkoutId: string, paymentId: string) {
   }
 
   const result = await db.transaction(async (tx) => {
-    await tx.update(commerceCheckoutSessionsTable).set({ status: "provisioning", paidAt: now, asaasChargeId: paymentId, updatedAt: now }).where(eq(commerceCheckoutSessionsTable.id, session.id));
+    await tx.update(commerceCheckoutSessionsTable).set({
+      status: "provisioning",
+      paidAt: now,
+      asaasChargeId: paymentId,
+      evidenceSnapshot: {
+        ...(session.evidenceSnapshot ?? {}),
+        checkoutId: session.id,
+        asaasChargeId: paymentId,
+        paymentConfirmedAt: now.toISOString(),
+      },
+      updatedAt: now,
+    }).where(eq(commerceCheckoutSessionsTable.id, session.id));
 
     const [tenant] = await tx.insert(tenantsTable).values({
       name: session.companyName,
@@ -414,9 +481,9 @@ export async function provisionCheckout(checkoutId: string, paymentId: string) {
       promoPhase1Price: session.offerSnapshot.promotionalCycles > 0 ? money(monthlyEquivalentCents) : null,
       promoPhase1EndsAt: plusPromoCycles(now, session.offerSnapshot.billingCycle, session.offerSnapshot.promotionalCycles),
       regularPriceAtTransition: money(renewalMonthlyEquivalentCents),
-      acceptedOfferAt: now,
-      acceptedTermsAt: now,
-      acceptedTermsVersion: "self-service-checkout-v2-2026-09-10",
+      acceptedOfferAt: session.termsAcceptedAt,
+      acceptedTermsAt: session.termsAcceptedAt,
+      acceptedTermsVersion: session.termsVersion,
       billingProvider: "asaas",
       asaasCustomerId: session.asaasCustomerId,
       dataInicio: now,
@@ -435,7 +502,21 @@ export async function provisionCheckout(checkoutId: string, paymentId: string) {
       paidAt: now,
     });
 
-    await tx.update(commerceCheckoutSessionsTable).set({ status: "provisioned", provisionedTenantId: tenant.id, provisionedAt: now, paidAt: now, errorCode: null, updatedAt: now }).where(eq(commerceCheckoutSessionsTable.id, session.id));
+    await tx.update(commerceCheckoutSessionsTable).set({
+      status: "provisioned",
+      provisionedTenantId: tenant.id,
+      provisionedAt: now,
+      paidAt: now,
+      errorCode: null,
+      evidenceSnapshot: {
+        ...(session.evidenceSnapshot ?? {}),
+        checkoutId: session.id,
+        asaasChargeId: paymentId,
+        paymentConfirmedAt: now.toISOString(),
+        tenantProvisionedAt: now.toISOString(),
+      },
+      updatedAt: now,
+    }).where(eq(commerceCheckoutSessionsTable.id, session.id));
     return { tenantId: tenant.id, subscriptionId: subscription.id };
   });
 
