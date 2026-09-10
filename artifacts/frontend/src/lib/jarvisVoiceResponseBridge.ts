@@ -209,23 +209,95 @@ function announceVoiceReady(content: string) {
   }));
 }
 
+function earlySpeechPrefix(content: string) {
+  if (content.length < 72) return "";
+  const capped = content.slice(0, 320);
+  const sentence = capped.match(/^([\s\S]{60,}?[.!?])(?:\s|$)/)?.[1]?.trim();
+  if (sentence) return sentence;
+  if (content.length < 190) return "";
+  const boundary = capped.lastIndexOf(" ", 190);
+  return capped.slice(0, boundary > 120 ? boundary : 190).trim();
+}
+
 async function speakSupportResponse(response: Response) {
   try {
-    const raw = await response.text();
-    let content = "";
-    for (const line of raw.split("\n")) {
-      if (!line.startsWith("data: ")) continue;
+    if (!shouldSpeak() || !response.body) {
+      const raw = await response.text();
+      let content = "";
+      for (const line of raw.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const payload = JSON.parse(line.slice(6)) as { content?: unknown; error?: unknown };
+          if (typeof payload.content === "string") content += payload.content;
+          if (payload.error) return;
+        } catch {
+          // Linhas SSE incompletas ou não-JSON não devem afetar o chat.
+        }
+      }
+      if (content.trim()) {
+        announceVoiceReady(content);
+        speakJarvis(content, restartJarvisMicAfterSpeech);
+      }
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "";
+    let fullContent = "";
+    let spokenPrefix = "";
+    let earlyStarted = false;
+    let streamDoneResolve: (() => void) | null = null;
+    const streamDone = new Promise<void>((resolve) => { streamDoneResolve = resolve; });
+
+    const maybeStartEarlyVoice = () => {
+      if (earlyStarted) return;
+      const prefix = earlySpeechPrefix(fullContent);
+      if (!prefix) return;
+      earlyStarted = true;
+      spokenPrefix = prefix;
+      announceVoiceReady(prefix);
+      const started = speakJarvis(prefix, () => {
+        void streamDone.then(() => {
+          const remaining = fullContent.slice(spokenPrefix.length).trim();
+          if (remaining) {
+            speakJarvis(remaining, restartJarvisMicAfterSpeech);
+          } else {
+            restartJarvisMicAfterSpeech();
+          }
+        });
+      });
+      if (!started) earlyStarted = false;
+    };
+
+    const consumeLine = (line: string) => {
+      if (!line.startsWith("data: ")) return;
       try {
         const payload = JSON.parse(line.slice(6)) as { content?: unknown; error?: unknown };
-        if (typeof payload.content === "string") content += payload.content;
         if (payload.error) return;
+        if (typeof payload.content === "string") {
+          fullContent += payload.content;
+          maybeStartEarlyVoice();
+        }
       } catch {
         // Linhas SSE incompletas ou não-JSON não devem afetar o chat.
       }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      pending += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) consumeLine(line);
+      if (done) break;
     }
-    if (content.trim()) {
-      announceVoiceReady(content);
-      speakJarvis(content, restartJarvisMicAfterSpeech);
+    if (pending) consumeLine(pending);
+    streamDoneResolve?.();
+
+    if (!earlyStarted && fullContent.trim()) {
+      announceVoiceReady(fullContent);
+      speakJarvis(fullContent, restartJarvisMicAfterSpeech);
     }
   } catch {
     // Voz é uma melhoria de experiência e nunca pode bloquear a resposta textual.
