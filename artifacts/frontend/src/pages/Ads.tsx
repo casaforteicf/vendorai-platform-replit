@@ -488,11 +488,25 @@ export default function Ads() {
     enabled: !!tenantId,
   });
 
-  const { data: feedInfo } = useQuery<{ feedUrl: string }>({
-    queryKey: ["ads-shopping-feed-url", tenantId],
+  const { data: feedInfo } = useQuery<{ configured: boolean }>({
+    queryKey: ["ads-shopping-feed-status", tenantId],
     queryFn: () => fetch(`/api/tenants/${tenantId}/ads/shopping-feed/url`, { headers: authHeaders() }).then((r) => r.json()),
     enabled: !!tenantId,
   });
+
+  const copyShoppingFeedUrl = async () => {
+    const response = await fetch(`/api/tenants/${tenantId}/ads/shopping-feed/copy-url`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      toast({ title: "Não foi possível copiar", description: "Tente novamente em instantes.", variant: "destructive" });
+      return;
+    }
+    const { feedUrl } = await response.json() as { feedUrl: string };
+    await navigator.clipboard.writeText(feedUrl);
+    toast({ title: "URL protegida copiada", description: "O token não fica exposto na tela." });
+  };
 
   const { data: itensDisponiveis = [] } = useQuery<ItemBusca[]>({
     queryKey: ["ads-item-search", tenantId, form.itemTipo, itemSearch],
@@ -818,12 +832,12 @@ export default function Ads() {
             <li><strong>Publicar</strong> envia a campanha em modo pausado para análise. Somente <strong>Ativar</strong> inicia o gasto real.</li>
             <li>A mídia é cobrada diretamente pelo Google ou pela Meta usando a forma de pagamento da conta do cliente.</li>
           </ul>
-          {feedInfo?.feedUrl && (
+          {feedInfo?.configured && (
             <div className="flex items-center gap-2 pt-2">
-              <span className="text-xs text-muted-foreground">URL do feed do Shopping:</span>
-              <code className="text-xs bg-background px-2 py-1 rounded border truncate max-w-xs">{feedInfo.feedUrl}</code>
-              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { navigator.clipboard.writeText(feedInfo.feedUrl); toast({ title: "Copiado" }); }}>
+              <span className="text-xs text-muted-foreground">Feed do Google Shopping configurado</span>
+              <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={copyShoppingFeedUrl}>
                 <Copy className="h-3 w-3" />
+                Copiar URL protegida
               </Button>
             </div>
           )}
