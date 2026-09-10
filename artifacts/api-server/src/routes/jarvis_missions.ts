@@ -7,6 +7,7 @@ import {
   normalizeJarvisMissionText,
   resolveJarvisMissionNaturalIntent,
 } from "../services/jarvis-mission-natural-intent.js";
+import jarvisPresenceRouter from "./jarvis_presence.js";
 
 const router: IRouter = Router();
 
@@ -309,5 +310,9 @@ router.patch("/jarvis/decisions/:id/outcome", async (req, res) => {
   if (!decision) return res.status(404).json({ error: "Decisão não encontrada" });
   return res.json({ decision });
 });
+
+// Presence Layer é a última rota normal antes do suporte: ações controladas,
+// aprovações e Missões já tiveram prioridade; apenas incidentes explícitos seguem adiante.
+router.use(jarvisPresenceRouter);
 
 export default router;
