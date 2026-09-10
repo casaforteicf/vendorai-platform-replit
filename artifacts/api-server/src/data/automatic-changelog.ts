@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1165",
+    "titulo": "edição direta e cadastro visível de segmento",
+    "descricao": "permite clicar diretamente na tag de Segmento ou no `—` da lista de Leads para editar salva o valor em `mercadoSegmento` e sincroniza `dadosPj.segmento` quando existir atualiza automaticamente a lista e os filtros após salvar torna o campo Segmento visível no formulário de Novo Lead, logo ao lado de Empresa",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-10T21:18:09.000Z",
+    "pullRequest": 1165
+  },
+  {
     "id": "pr-1122",
     "titulo": "Melhora clareza dos sinais JARVIS no Prospector",
     "descricao": "simplifica o bloco de sinais JARVIS no Prospector e remove linguagem técnica interna troca `confiança` por `compatibilidade` e organiza sinais em `Agir agora`, `Acompanhar` e `Alertas` mostra de forma separada `Por que isso interessa` e `JARVIS recomenda` reduz de 4 para 3 sinais na primeira dobra e melhora a hierarquia dos CTAs",
