@@ -6,6 +6,7 @@ import { loadJarvisOperationalContext } from "../services/jarvis-operational-con
 import { buildJarvisCapabilityContext, JARVIS_UNIVERSAL_PROFILE } from "../services/jarvis-capability-profile.js";
 import { executeJarvisProvider } from "../services/jarvis-provider-registry.js";
 import { loadJarvisRequestContext } from "../services/jarvis-request-context.js";
+import { loadJarvisContinuityContext, saveJarvisContinuity } from "../services/jarvis-continuity-memory.js";
 
 const router: IRouter = Router();
 
@@ -58,10 +59,12 @@ Não invente métrica, causa, impacto financeiro, cliente, compromisso, decisão
 - Nunca afirme execução sem confirmação da integração.
 
 ## Continuidade
-- Considere mensagens anteriores, assunto anterior, tela atual, Missões, decisões, prioridades, radar e estado operacional quando fornecidos no contexto.
+- Considere mensagens anteriores, assunto anterior, tela atual, Missões, decisões, prioridades, radar, estado operacional e o bloco de continuidade persistente quando fornecidos no contexto.
 - Resolva referências como “isso”, “aquele cliente”, “a missão”, “o que falamos” com o contexto disponível antes de pedir repetição.
 - Não repita informação já dada, exceto quando necessário para uma decisão.
 - Quando houver um assunto em andamento, continue dele naturalmente em vez de reiniciar a conversa.
+- A memória de continuidade é apenas um fio de retomada. Dados atuais do negócio, entidades verificadas e providers reais sempre prevalecem quando houver conflito.
+- Nunca revele ou misture memória pertencente a outro usuário ou tenant.
 
 ## Separação de suporte
 Esta rota representa conversa/presença normal. Não gere protocolo, chamado, “atendimento registrado” nem marcador VENDORAI_REPORT. Problemas técnicos explícitos são encaminhados para o fluxo de suporte separado.
@@ -151,6 +154,7 @@ router.post("/support/chat", async (req, res, next) => {
   if (!parsed.success) return next();
 
   const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
+  const userId = typeof req.user?.sub === "string" ? req.user.sub : null;
   const text = lastUserText(parsed.data.messages);
   if (!tenantId || !text) return next();
   if (isJarvisSupportIncident(text)) return next();
@@ -164,7 +168,7 @@ router.post("/support/chat", async (req, res, next) => {
     try {
       requestContext = await loadJarvisRequestContext({
         tenantId,
-        userId: req.user?.sub ?? null,
+        userId,
         route: parsed.data.context?.route ?? null,
       });
     } catch (err) {
@@ -185,14 +189,15 @@ router.post("/support/chat", async (req, res, next) => {
 
   const providerStartedAt = Date.now();
 
-  const [operationalResult, requestResult, providerResult] = await Promise.allSettled([
+  const [operationalResult, requestResult, providerResult, continuityResult] = await Promise.allSettled([
     loadJarvisOperationalContext(tenantId),
     loadJarvisRequestContext({
       tenantId,
-      userId: req.user?.sub ?? null,
+      userId,
       route: parsed.data.context?.route ?? null,
     }),
     executeJarvisProvider(text, tenantId),
+    loadJarvisContinuityContext(tenantId, userId),
   ]);
 
   const providerMs = Date.now() - providerStartedAt;
@@ -201,6 +206,7 @@ router.post("/support/chat", async (req, res, next) => {
   const providerContext = providerResult.status === "fulfilled"
     ? providerResult.value.context
     : "## Providers reais\nA consulta externa falhou nesta solicitação. Não invente informação atual.";
+  const continuityContext = continuityResult.status === "fulfilled" ? continuityResult.value : "";
 
   if (operationalResult.status === "rejected") {
     req.log?.warn({ err: operationalResult.reason, tenantId }, "jarvis presence: contexto operacional indisponível");
@@ -210,6 +216,9 @@ router.post("/support/chat", async (req, res, next) => {
   }
   if (providerResult.status === "rejected") {
     req.log?.warn({ err: providerResult.reason, tenantId }, "jarvis presence: provider externo indisponível");
+  }
+  if (continuityResult.status === "rejected") {
+    req.log?.warn({ err: continuityResult.reason, tenantId, userId }, "jarvis presence: memória de continuidade indisponível");
   }
 
   const capabilityContext = [
@@ -222,6 +231,7 @@ router.post("/support/chat", async (req, res, next) => {
     PRESENCE_SYSTEM_PROMPT,
     JARVIS_UNIVERSAL_PROFILE,
     requestContext,
+    continuityContext,
     capabilityContext,
     interfaceContext(parsed.data.context),
     operationalContext,
@@ -268,6 +278,20 @@ router.post("/support/chat", async (req, res, next) => {
       });
       for await (const chunk of stream) writeDelta(chunk.choices[0]?.delta?.content ?? "");
     }
+
+    // Persistência fora do caminho crítico: o usuário recebe a resposta sem esperar
+    // uma escrita adicional no banco. Cumprimentos, recall puro e contexto pessoal
+    // sensível são filtrados pelo serviço e não substituem o assunto substantivo.
+    void saveJarvisContinuity({
+      tenantId,
+      userId,
+      conversationId: parsed.data.conversationId ?? null,
+      userMessage: text,
+      assistantResponse: fullResponse,
+      route: parsed.data.context?.route ?? null,
+    }).catch((err) => {
+      req.log?.warn({ err, tenantId, userId }, "jarvis presence: falha ao persistir continuidade");
+    });
 
     const totalMs = Date.now() - startedAt;
     const firstTokenMs = firstTokenAt == null ? null : firstTokenAt - startedAt;
