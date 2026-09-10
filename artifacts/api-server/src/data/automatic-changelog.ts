@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1122",
+    "titulo": "Melhora clareza dos sinais JARVIS no Prospector",
+    "descricao": "simplifica o bloco de sinais JARVIS no Prospector e remove linguagem técnica interna troca `confiança` por `compatibilidade` e organiza sinais em `Agir agora`, `Acompanhar` e `Alertas` mostra de forma separada `Por que isso interessa` e `JARVIS recomenda` reduz de 4 para 3 sinais na primeira dobra e melhora a hierarquia dos CTAs",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-10T16:51:53.000Z",
+    "pullRequest": 1122
+  },
+  {
     "id": "pr-1013",
     "titulo": "gestão 360º de tenants, demos e identidade única",
     "descricao": "cria identidade pública, única e imutável por tenant (`VAI-000001`, `VAI-000002`...); o UUID continua como chave interna faz backfill dos tenants já existentes e garante unicidade para os próximos mantém Demo como o mesmo tenant, com início/expiração e conversão para cliente sem trocar a identidade adiciona cadastro comercial/financeiro editável no detalhe do tenant",
