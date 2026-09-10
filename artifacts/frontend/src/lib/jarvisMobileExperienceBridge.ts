@@ -1,8 +1,38 @@
 const MOBILE_MAX_WIDTH = 768;
+const LEGACY_GREETING = "Olá. Sou o JARVIS, seu Agente Mestre no VendorAI. Posso analisar o negócio, orientar o uso do sistema, mostrar prioridades e acompanhar ações que precisam da sua aprovação. Você pode falar, digitar ou anexar documentos e imagens.";
 let enhanceScheduled = false;
 
 function isMobileViewport() {
   return window.innerWidth <= MOBILE_MAX_WIDTH || window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
+}
+
+function harmonizeJarvisPresence(panel: HTMLElement) {
+  const unifiedLauncher = document.querySelector<HTMLElement>("[data-vendorai-unified-assistant]");
+  if (unifiedLauncher) {
+    unifiedLauncher.dataset.jarvisPanelOpen = "1";
+    unifiedLauncher.style.setProperty("display", "none", "important");
+  }
+
+  // Defesa de compatibilidade: versões antigas do widget ainda podem montar a saudação
+  // institucional. Enquanto a Presence Layer é consolidada no componente React,
+  // mostramos uma abertura curta e humana em qualquer viewport.
+  const candidates = panel.querySelectorAll<HTMLElement>("div, p, span");
+  for (const candidate of candidates) {
+    if (candidate.children.length > 0) continue;
+    if ((candidate.textContent ?? "").trim() !== LEGACY_GREETING) continue;
+    candidate.textContent = "Oi. Tô por aqui.";
+    candidate.dataset.jarvisPresenceGreeting = "1";
+    break;
+  }
+}
+
+function restoreUnifiedLauncherWhenClosed() {
+  const panel = document.querySelector<HTMLElement>('[aria-label="JARVIS"]');
+  if (panel) return;
+  const unifiedLauncher = document.querySelector<HTMLElement>("[data-vendorai-unified-assistant]");
+  if (!unifiedLauncher || unifiedLauncher.dataset.jarvisPanelOpen !== "1") return;
+  unifiedLauncher.style.removeProperty("display");
+  delete unifiedLauncher.dataset.jarvisPanelOpen;
 }
 
 function applyJarvisMobileLayout() {
@@ -130,8 +160,10 @@ function enhance() {
   const panel = document.querySelector<HTMLElement>('[aria-label="JARVIS"]');
   if (!panel) {
     restoreToggleWhenClosed();
+    restoreUnifiedLauncherWhenClosed();
     return;
   }
+  harmonizeJarvisPresence(panel);
   applyJarvisMobileLayout();
   setupKeyboardSend(panel);
   setupVoiceAutoSend(panel);
@@ -152,7 +184,7 @@ if (typeof window !== "undefined") {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["title", "disabled"],
+    attributeFilter: ["title", "disabled", "style"],
   });
   window.addEventListener("resize", scheduleEnhance, { passive: true });
   window.visualViewport?.addEventListener("resize", scheduleEnhance, { passive: true });
