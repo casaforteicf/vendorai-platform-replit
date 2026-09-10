@@ -111,6 +111,9 @@ function buildHtml(input: ColdProspectLandingPageInput): string {
 
   <p class="note">Análise produzida a partir de dados empresariais/publicamente acessíveis. Scores são indicadores internos de priorização do VendorAI e não representam auditoria, diagnóstico clínico ou afirmação de resultado financeiro. Dados não verificáveis externamente são tratados como desconhecidos.</p>
 </main>
+<script>
+(()=>{try{const el=document.querySelector('[data-vendorai-cta="demo"]');if(!el)return;el.addEventListener('click',()=>{try{const key='vai_generated_site_session';let sid=sessionStorage.getItem(key);if(!sid){sid=(globalThis.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));sessionStorage.setItem(key,sid)}const slug=(location.hostname.split('.')[0]||'').slice(0,255);const body=JSON.stringify({anonymousSessionId:sid,eventType:'cta_click',pageUrl:location.href,path:location.pathname,referrer:document.referrer||null,siteIdentifier:slug});if(navigator.sendBeacon){const blob=new Blob([body],{type:'application/json'});if(navigator.sendBeacon('/api/generated-site/touchpoint',blob))return}fetch('/api/generated-site/touchpoint',{method:'POST',headers:{'Content-Type':'application/json'},body,keepalive:true}).catch(()=>{})}catch{}})}catch{}})();
+</script>
 </body>
 </html>`;
 }
