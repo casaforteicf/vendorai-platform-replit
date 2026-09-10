@@ -9,6 +9,12 @@ describe("resolveTenantNewsLocation", () => {
     })).toEqual({ city: "Chapecó", stateCode: "SC", stateName: "Santa Catarina" });
   });
 
+  it("aceita UF estruturada sem depender do endereço", () => {
+    expect(resolveTenantNewsLocation({
+      discoveryData: { city: "São Paulo", uf: "SP" },
+    })).toEqual({ city: "São Paulo", stateCode: "SP", stateName: "São Paulo" });
+  });
+
   it("extrai cidade e UF quando o endereço contém localidade", () => {
     expect(resolveTenantNewsLocation({
       endereco: "Av. Brasil, Centro, Iporã do Oeste - SC",
