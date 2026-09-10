@@ -43,6 +43,20 @@ export type CommerceOfferSnapshot = {
   resolvedAt: string;
 };
 
+export type CommerceEvidenceSnapshot = {
+  receiverLegalName?: string | null;
+  receiverCnpj?: string | null;
+  supportWhatsapp?: string | null;
+  termsUrl?: string | null;
+  privacyUrl?: string | null;
+  cancellationUrl?: string | null;
+  checkoutId?: string | null;
+  asaasChargeId?: string | null;
+  paymentConfirmedAt?: string | null;
+  tenantProvisionedAt?: string | null;
+  firstLoginAt?: string | null;
+};
+
 export const commerceCheckoutSessionsTable = pgTable("commerce_checkout_sessions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   siteId: text("site_id").notNull().references(() => generatedSitesTable.id, { onDelete: "restrict" }),
@@ -65,6 +79,11 @@ export const commerceCheckoutSessionsTable = pgTable("commerce_checkout_sessions
   errorCode: text("error_code"),
   paidAt: timestamp("paid_at"),
   provisionedAt: timestamp("provisioned_at"),
+  termsVersion: text("terms_version").notNull().default("checkout-legal-v1-2026-09-10"),
+  termsAcceptedAt: timestamp("terms_accepted_at").notNull().defaultNow(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  evidenceSnapshot: jsonb("evidence_snapshot").$type<CommerceEvidenceSnapshot>().notNull().default({}),
   recoveryStatus: text("recovery_status").$type<CommerceRecoveryStatus>().notNull().default("idle"),
   recoveryAttempts: integer("recovery_attempts").notNull().default(0),
   recoveryNextAt: timestamp("recovery_next_at"),
@@ -79,5 +98,6 @@ export const commerceCheckoutSessionsTable = pgTable("commerce_checkout_sessions
   index("commerce_checkout_site_idx").on(t.siteId, t.createdAt),
   index("commerce_checkout_email_idx").on(t.email, t.createdAt),
   index("commerce_checkout_status_idx").on(t.status, t.createdAt),
+  index("commerce_checkout_terms_idx").on(t.termsVersion, t.termsAcceptedAt),
   index("commerce_checkout_recovery_idx").on(t.recoveryStatus, t.recoveryNextAt),
 ]);
