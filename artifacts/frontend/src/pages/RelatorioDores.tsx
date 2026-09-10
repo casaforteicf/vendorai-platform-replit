@@ -6,6 +6,8 @@ import { useLocation } from "wouter";
 import {
   useListCustomerIntelligence,
   getListCustomerIntelligenceQueryKey,
+  useListTenantLeads,
+  getListTenantLeadsQueryKey,
 } from "@workspace/api-client-react";
 import {
   BarChart,
@@ -25,10 +27,22 @@ export default function RelatorioDores() {
   const { data: ciList = [] } = useListCustomerIntelligence(tenantId, {
     query: { queryKey: getListCustomerIntelligenceQueryKey(tenantId), enabled: !!tenantId },
   });
+  const { data: leads = [] } = useListTenantLeads(tenantId, {
+    query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
+  });
+
+  // O relatório usa a mesma base ativa da tela de Leads. Registros de
+  // inteligência órfãos, excluídos ou classificados como não-lead não entram.
+  const activeLeadIds = new Set(
+    leads
+      .filter((lead) => !lead.excluidoEm && !lead.naoLeadTipo)
+      .map((lead) => lead.id),
+  );
+  const activeCiList = ciList.filter((ci) => activeLeadIds.has(ci.leadId));
 
   // Contar dores
   const dorCounts: Record<string, number> = {};
-  for (const ci of ciList) {
+  for (const ci of activeCiList) {
     const reasons = ci.churnReasons;
     if (Array.isArray(reasons)) {
       for (const r of reasons) {
@@ -56,7 +70,9 @@ export default function RelatorioDores() {
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dores Principais</h1>
-        <p className="text-sm text-muted-foreground mt-1">Dores mapeadas nos leads via Inteligência de Clientes</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Dores mapeadas nos leads ativos via Inteligência de Clientes · {activeCiList.length} lead(s) analisado(s)
+        </p>
       </div>
 
       {/* KPI */}
