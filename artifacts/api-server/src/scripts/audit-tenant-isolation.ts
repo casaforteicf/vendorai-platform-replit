@@ -91,13 +91,26 @@ for (const filePath of walk(root)) {
       (relativeFile === "routes/jarvis_email_actions.ts" || relativeFile === "routes/jarvis_external_actions.ts") &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\s*\?\?\s*["']{2}\)/.test(line) &&
       /if\s*\(req\.user\?\.platformRole\s*!==\s*["']super_admin["']\s*&&\s*req\.user\?\.tenantId\s*!==\s*tenantId\)\s*return\s+next\(\)/.test(guardWindow);
+    // Finance and commission routers resolve the route tenant only to enforce the
+    // shared authenticated same-tenant/super-admin guard before touching tenant data.
+    // Keep the allowlist exact so any future router or unguarded access is still flagged.
+    const guardedFinanceTenant =
+      [
+        "routes/finance_integrations.ts",
+        "routes/finance_contracts.ts",
+        "routes/finance_procurement.ts",
+        "routes/commission_engine.ts",
+      ].includes(relativeFile) &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!canAccess\(req,\s*tenantId\)/.test(guardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
       previousLine.includes("tenant-audit: reviewed") ||
       guardedMarketingTenant ||
       guardedImplementationSuperAdminTenant ||
-      guardedJarvisAgentTaskTenant
+      guardedJarvisAgentTaskTenant ||
+      guardedFinanceTenant
     ) {
       return;
     }
