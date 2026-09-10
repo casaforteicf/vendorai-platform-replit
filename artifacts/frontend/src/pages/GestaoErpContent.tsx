@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import FinanceIntegrationsPanel from "@/components/finance/FinanceIntegrationsPanel";
+import FinanceProcurementPanel from "@/components/finance/FinanceProcurementPanel";
 import ComissoesVendedor from "@/pages/ComissoesVendedor";
 import Estoque from "@/pages/Estoque";
 import { Activity, Banknote, Barcode, Boxes, Camera, FileCheck2, FileText, Landmark, Loader2, Network, PackageCheck, Plus, Receipt, RefreshCw, Scale, ShieldCheck, ShoppingCart, TrendingUp, WalletCards } from "lucide-react";
@@ -83,7 +84,7 @@ export default function GestaoErp() {
 
     <Tabs defaultValue={initialTab}>
       <TabsList className="flex flex-wrap h-auto gap-1 justify-start">
-        <TabsTrigger value="visao">Visão geral</TabsTrigger><TabsTrigger value="contas">Receber/Pagar</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="dre">DRE %</TabsTrigger><TabsTrigger value="fiscal">Faturamento</TabsTrigger><TabsTrigger value="integracoes">ERP e Integrações</TabsTrigger><TabsTrigger value="comissoes">Comissões</TabsTrigger><TabsTrigger value="estoque">Estoque</TabsTrigger><TabsTrigger value="operacao">Compras e vendas</TabsTrigger><TabsTrigger value="controle">Controle ERP</TabsTrigger>
+        <TabsTrigger value="visao">Visão geral</TabsTrigger><TabsTrigger value="contas">Receber/Pagar</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="dre">DRE %</TabsTrigger><TabsTrigger value="fiscal">Faturamento</TabsTrigger><TabsTrigger value="integracoes">ERP e Integrações</TabsTrigger><TabsTrigger value="comissoes">Comissões</TabsTrigger><TabsTrigger value="estoque">Estoque</TabsTrigger><TabsTrigger value="compras">Compras e fornecedores</TabsTrigger><TabsTrigger value="operacao">Compras e vendas</TabsTrigger><TabsTrigger value="controle">Controle ERP</TabsTrigger>
       </TabsList>
 
       <TabsContent value="visao" className="mt-4 grid lg:grid-cols-2 gap-4">
@@ -103,6 +104,7 @@ export default function GestaoErp() {
 
       <TabsContent value="comissoes" className="mt-4"><ComissoesVendedor embedded /></TabsContent>
       <TabsContent value="estoque" className="mt-4 -mx-4 md:-mx-6"><Estoque /></TabsContent>
+      <TabsContent value="compras" className="mt-4"><FinanceProcurementPanel tenantId={tenantId} /></TabsContent>
       <TabsContent value="operacao" className="mt-4"><div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">{[
         {title:"Vendas e preços",desc:"Pedidos, conversão, propostas e tabelas de preço.",href:"/propostas",icon:Receipt},
         {title:"Estoque",desc:"Produtos, localização, entradas, saídas e inventário.",href:"/erp?tab=estoque",icon:Boxes},
