@@ -352,7 +352,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                       {item.confidence != null && <span className="text-[11px] text-muted-foreground">{item.confidence}% compatível</span>}
                     </div>
                     <h4 className="mt-3 text-sm font-semibold leading-5">{item.title}</h4>
-                    <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
                     {why && <p className="mt-3 rounded-lg bg-muted/30 px-3 py-2 text-xs leading-5"><strong>Por que importa:</strong> {why}</p>}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
                       <button
@@ -428,7 +428,7 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                       <span>{formatTime(item.publishedAt ?? item.collectedAt)}</span>
                     </div>
                     <h4 className="mt-2 text-sm font-semibold leading-5">{item.title}</h4>
-                    {item.excerpt && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.excerpt}</p>}
+                    {item.excerpt && <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.excerpt}</p>}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
                       <button
                         type="button"
