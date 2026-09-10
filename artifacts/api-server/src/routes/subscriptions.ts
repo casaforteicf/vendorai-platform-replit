@@ -4,10 +4,12 @@ import {
   billingEventsTable,
   db,
   subscriptionsTable,
+  tenantsTable,
   insertSubscriptionSchema,
   updateSubscriptionSchema,
 } from "@workspace/db";
 import { findChargeByExternalReference } from "../lib/asaas.js";
+import { addCalendarMonth, addCalendarYear } from "../lib/vendorai-subscription-rules.js";
 
 const router: IRouter = Router();
 
@@ -20,6 +22,17 @@ function isPgCode(err: unknown, code: string): boolean {
 
 function canReadTenant(req: any, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+function localStatus(status: string | null | undefined): "pending" | "paid" | "overdue" {
+  if (status && ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(status)) return "paid";
+  if (status === "OVERDUE") return "overdue";
+  return "pending";
+}
+
+function nextDue(due: Date, billingCycle: string | null | undefined) {
+  const anchorDay = due.getUTCDate();
+  return billingCycle === "annual" ? addCalendarYear(due, anchorDay) : addCalendarMonth(due, anchorDay);
 }
 
 router.post("/subscriptions", async (req, res) => {
@@ -138,6 +151,96 @@ router.get("/tenants/:tenantId/subscription/renewal-state", async (req, res) => 
     paymentStatus,
     paymentUrl,
   });
+});
+
+router.post("/tenants/:tenantId/subscription/verify-payment", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canReadTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [subscription] = await db
+    .select({
+      id: subscriptionsTable.id,
+      tenantId: subscriptionsTable.tenantId,
+      status: subscriptionsTable.status,
+      billingProvider: subscriptionsTable.billingProvider,
+      proximaCobranca: subscriptionsTable.proximaCobranca,
+      billingCycle: tenantsTable.billingCycle,
+    })
+    .from(subscriptionsTable)
+    .innerJoin(tenantsTable, eq(tenantsTable.id, subscriptionsTable.tenantId))
+    .where(eq(subscriptionsTable.tenantId, tenantId))
+    .limit(1);
+
+  if (!subscription) {
+    res.status(404).json({ error: "Subscription not found" });
+    return;
+  }
+  if (subscription.billingProvider !== "asaas") {
+    res.status(409).json({ error: "Esta assinatura não usa Asaas" });
+    return;
+  }
+
+  const [cycle] = await db
+    .select()
+    .from(billingEventsTable)
+    .where(and(
+      eq(billingEventsTable.tenantId, tenantId),
+      like(billingEventsTable.mes, `subscription:${subscription.id}:%`),
+    ))
+    .orderBy(desc(billingEventsTable.createdAt))
+    .limit(1);
+
+  if (!cycle?.mes) {
+    res.status(409).json({ error: "Ainda não existe cobrança de renovação para verificar" });
+    return;
+  }
+
+  try {
+    const charge = await findChargeByExternalReference(cycle.mes);
+    if (!charge) {
+      res.status(404).json({ error: "Cobrança não encontrada no Asaas" });
+      return;
+    }
+
+    const status = localStatus(charge.status);
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.update(billingEventsTable).set({
+        asaasChargeId: charge.id,
+        status,
+        ...(status === "paid" ? { paidAt: now } : {}),
+      }).where(eq(billingEventsTable.id, cycle.id));
+
+      if (status === "paid") {
+        const logicalDue = subscription.proximaCobranca ?? cycle.dueDate ?? now;
+        await tx.update(subscriptionsTable).set({
+          status: "ativa",
+          proximaCobranca: nextDue(logicalDue, subscription.billingCycle),
+          updatedAt: now,
+        }).where(eq(subscriptionsTable.id, subscription.id));
+      } else if (status === "overdue") {
+        await tx.update(subscriptionsTable).set({
+          status: "inadimplente",
+          updatedAt: now,
+        }).where(eq(subscriptionsTable.id, subscription.id));
+      }
+    });
+
+    res.json({
+      ok: true,
+      verified: true,
+      paymentStatus: charge.status,
+      localStatus: status,
+      paid: status === "paid",
+      paymentUrl: charge.invoiceUrl || charge.bankSlipUrl || null,
+    });
+  } catch (err) {
+    req.log.error({ err, tenantId, subscriptionId: subscription.id }, "subscription-verify-payment: Asaas lookup failed");
+    res.status(502).json({ error: "Não foi possível verificar o pagamento no Asaas agora" });
+  }
 });
 
 router.get("/subscriptions/:id", async (req, res) => {
