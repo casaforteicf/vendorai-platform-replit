@@ -18,12 +18,10 @@ router.get("/admin/produtos-internos", requireRole("super_admin"), async (_req, 
   res.json(produtos);
 });
 
-// Versão de leitura pra qualquer usuário autenticado (não só super_admin) --
-// achado real (Marcos): o catálogo só servia pra consulta interna, não
-// alimentava as ferramentas de marketing. Gestão (criar/editar/excluir)
-// continua só pra super_admin; leitura fica aberta pra qualquer tenant
-// escolher um produto como base ao gerar landing page/post/anúncio.
-router.get("/produtos-internos", async (_req, res) => {
+// Compatibilidade com consumidores internos antigos: o catálogo comercial
+// continua acessível por esta rota, mas exclusivamente para super_admin.
+// Tenants não devem consultar nem receber os produtos comerciais internos.
+router.get("/produtos-internos", requireRole("super_admin"), async (_req, res) => {
   const produtos = await db
     .select()
     .from(produtosInternosTable)
