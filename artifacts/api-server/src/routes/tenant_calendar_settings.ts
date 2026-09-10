@@ -2,19 +2,23 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import {
   db,
+  leadsTable,
   tenantCalendarSettingsTable,
   insertTenantCalendarSettingsSchema,
   updateTenantCalendarSettingsSchema,
 } from "@workspace/db";
 import type { CommercialDate, ProfessionalDate } from "@workspace/db";
-import { mergeProfessionalDates } from "../lib/professional-calendar.js";
+import {
+  buildRelevantProfessionalDates,
+  canonicalizeProfessionalDates,
+} from "../lib/professional-calendar-selection.js";
 
 const router: IRouter = Router();
 
 function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; professionalDates?: ProfessionalDate[]; enableSpouseGiftFlow?: boolean } {
-  // Frontend is the single source of truth for commercialDates array.
-  // Professional dates are canonicalized below so date/profession mappings are
-  // maintained by VendorAI, while the tenant only controls activation.
+  // Frontend remains the source of truth for commercialDates.
+  // Professional dates are canonicalized by the backend so month/day and
+  // profession mappings cannot drift from the VendorAI master catalog.
   return {
     commercialDates: Array.isArray(body.commercialDates) ? (body.commercialDates as CommercialDate[]) : undefined,
     professionalDates: Array.isArray(body.professionalDates) ? (body.professionalDates as ProfessionalDate[]) : undefined,
@@ -38,22 +42,35 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
     return res.status(404).json({ error: "Not found" });
   }
 
-  const professionalDates = mergeProfessionalDates(settings.professionalDates);
+  const canonicalStoredDates = canonicalizeProfessionalDates(settings.professionalDates);
+  let persistedSettings = settings;
 
-  // Lazy migration for existing tenants: opening the settings screen upgrades
-  // the old free-text list to the master catalog. All new catalog items are
-  // inactive by default, so this never starts a campaign by itself.
-  if (JSON.stringify(professionalDates) !== JSON.stringify(settings.professionalDates)) {
+  // Lazy correction for old/free-text records. Only already configured rows are
+  // persisted here; the full catalog is never dumped into the tenant settings.
+  if (JSON.stringify(canonicalStoredDates) !== JSON.stringify(settings.professionalDates)) {
     const [updated] = await db
       .update(tenantCalendarSettingsTable)
-      .set({ professionalDates, updatedAt: new Date() })
+      .set({ professionalDates: canonicalStoredDates, updatedAt: new Date() })
       .where(eq(tenantCalendarSettingsTable.tenantId, tenantId))
       .returning();
 
-    return res.json(updated);
+    if (updated) persistedSettings = updated;
   }
 
-  return res.json(settings);
+  // Discover which catalog dates matter to this tenant from the profession
+  // actually stored on lead cards. This keeps the current UI compact while
+  // removing the need to type profession aliases manually.
+  const professionRows = await db
+    .selectDistinct({ profissao: leadsTable.profissao })
+    .from(leadsTable)
+    .where(eq(leadsTable.tenantId, tenantId));
+
+  const professionalDates = buildRelevantProfessionalDates(
+    canonicalStoredDates,
+    professionRows.map((row) => row.profissao),
+  );
+
+  return res.json({ ...persistedSettings, professionalDates });
 });
 
 router.post("/tenants/:tenantId/calendar-settings", async (req, res) => {
@@ -66,7 +83,7 @@ router.post("/tenants/:tenantId/calendar-settings", async (req, res) => {
   const payload = {
     ...normalized,
     tenantId,
-    professionalDates: mergeProfessionalDates(normalized.professionalDates),
+    professionalDates: canonicalizeProfessionalDates(normalized.professionalDates),
   };
   const parsed = insertTenantCalendarSettingsSchema.safeParse(payload);
   if (!parsed.success) {
@@ -97,7 +114,7 @@ router.patch("/tenants/:tenantId/calendar-settings", async (req, res) => {
   const payload = {
     ...normalized,
     ...(normalized.professionalDates !== undefined
-      ? { professionalDates: mergeProfessionalDates(normalized.professionalDates) }
+      ? { professionalDates: canonicalizeProfessionalDates(normalized.professionalDates) }
       : {}),
   };
   const parsed = updateTenantCalendarSettingsSchema.safeParse(payload);
@@ -114,12 +131,7 @@ router.patch("/tenants/:tenantId/calendar-settings", async (req, res) => {
   if (!existing) {
     const [created] = await db
       .insert(tenantCalendarSettingsTable)
-      .values({
-        tenantId,
-        ...parsed.data,
-        professionalDates: parsed.data.professionalDates ?? mergeProfessionalDates([]),
-        updatedAt: new Date(),
-      })
+      .values({ tenantId, ...parsed.data, updatedAt: new Date() })
       .returning();
     return res.status(201).json(created);
   }
