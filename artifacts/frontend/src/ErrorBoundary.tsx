@@ -8,8 +8,6 @@ const STALE_MINIFIED_RUNTIME_PATTERN =
   /^[A-Za-z_$][\w$]* is not a function$/;
 
 const RELOAD_FLAG_PREFIX = "vendorai_error_boundary_recovered_bundle";
-const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
-const RECOVERY_WINDOW_MS = 30_000;
 
 function currentBundleReloadKey() {
   const entryScript = Array.from(document.scripts).find((script) =>
@@ -54,15 +52,6 @@ async function clearObsoleteFrontendState() {
   }
 }
 
-function wasRecoveredRecently() {
-  try {
-    const lastRecoveryAt = Number(sessionStorage.getItem(RECOVERY_AT_KEY) || "0");
-    return Date.now() - lastRecoveryAt < RECOVERY_WINDOW_MS;
-  } catch {
-    return false;
-  }
-}
-
 function isKnownStaleAssetError(error: Error) {
   return (
     CHUNK_ERROR_PATTERN.test(error.message) ||
@@ -74,8 +63,9 @@ function isKnownStaleAssetError(error: Error) {
 async function carregarVersaoAtual(force = false, targetPath?: string) {
   const now = Date.now();
   try {
-    if (!force && wasRecoveredRecently()) return;
-    sessionStorage.setItem(RECOVERY_AT_KEY, String(now));
+    // O bloqueio precisa ser por bundle, não por uma janela global de tempo.
+    // Em produção podem ocorrer vários deploys em sequência; um timestamp global
+    // fazia a segunda troca de versão cair na tela manual mesmo sendo outro bundle.
     if (force) sessionStorage.removeItem(currentBundleReloadKey());
   } catch {
     // sessionStorage indisponível não deve bloquear a recuperação.
@@ -105,7 +95,7 @@ async function carregarVersaoAtual(force = false, targetPath?: string) {
 function tentarRecuperarDeVersaoAntiga(error: Error): boolean {
   const knownStaleAssetError = isKnownStaleAssetError(error);
 
-  if (wasRecoveredRecently() || bundleRecoveryWasTried()) return false;
+  if (bundleRecoveryWasTried()) return false;
 
   // Erros conhecidos de asset antigo sempre recuperam. Para mensagens genéricas,
   // permitimos a mesma tentativa única: um ErrorBoundary de topo já perdeu o estado
