@@ -2,11 +2,18 @@ export type JarvisOrchestrationRoute =
   | "conversation"
   | "analysis"
   | "mission"
+  | "decision"
   | "action_plan"
   | "approval"
   | "execution"
   | "external_action"
   | "specialist_agent";
+
+export type JarvisOrchestrationOwner =
+  | "natural_actions"
+  | "action_plans"
+  | "missions"
+  | "support";
 
 export type JarvisExecutorAgent =
   | "sdr"
@@ -23,6 +30,7 @@ export type JarvisExecutorAgent =
 
 export type JarvisOrchestrationDecision = {
   route: JarvisOrchestrationRoute;
+  owner: JarvisOrchestrationOwner;
   explicitAction: boolean;
   preferredAgent: JarvisExecutorAgent | null;
   reason: string;
@@ -52,100 +60,108 @@ function preferredAgentFor(text: string): JarvisExecutorAgent | null {
   return null;
 }
 
+function ownerFor(route: JarvisOrchestrationRoute): JarvisOrchestrationOwner {
+  if (route === "approval" || route === "execution") return "natural_actions";
+  if (route === "action_plan") return "action_plans";
+  if (route === "mission" || route === "decision") return "missions";
+  return "support";
+}
+
+function decision(
+  route: JarvisOrchestrationRoute,
+  explicitAction: boolean,
+  preferredAgent: JarvisExecutorAgent | null,
+  reason: string,
+): JarvisOrchestrationDecision {
+  return { route, owner: ownerFor(route), explicitAction, preferredAgent, reason };
+}
+
 export function resolveJarvisOrchestration(text: string): JarvisOrchestrationDecision {
   const normalized = normalize(text);
   const preferredAgent = preferredAgentFor(normalized);
 
   if (!normalized) {
-    return { route: "conversation", explicitAction: false, preferredAgent: null, reason: "mensagem vazia" };
+    return decision("conversation", false, null, "mensagem vazia");
   }
 
   if (/\b(aprova|aprovar|aprove|rejeita|rejeitar|rejeite)\b/.test(normalized)) {
-    return {
-      route: "approval",
-      explicitAction: true,
-      preferredAgent,
-      reason: "comando explícito sobre uma decisão/aprovação",
-    };
+    return decision("approval", true, preferredAgent, "comando explícito sobre uma decisão/aprovação");
   }
 
   if (/\b(executa|execute|executar|rode|rodar|prossiga|prossegue)\b/.test(normalized)
     && /\b(acao|acoes|tarefa|tarefas|plano|etapa|aprov\w*|pendenc\w*|envio|mensagem|desconto|fechamento|estoque)\b/.test(normalized)) {
-    return {
-      route: "execution",
-      explicitAction: true,
-      preferredAgent,
-      reason: "comando explícito para executar trabalho operacional já definido",
-    };
+    return decision("execution", true, preferredAgent, "comando explícito para executar trabalho operacional já definido");
   }
 
-  if (/\b(missao|missoes)\b/.test(normalized)
-    && /\b(crie|criar|registre|registrar|pause|pausar|retome|retomar|conclua|concluir|atualize|atualizar|acompanhe|acompanhar)\b/.test(normalized)) {
-    return {
-      route: "mission",
-      explicitAction: true,
-      preferredAgent,
-      reason: "comando explícito para operar o Mission Engine",
-    };
+  const missionSubject = /\b(missao|missoes)\b/.test(normalized);
+  const missionCommand = /\b(crie|criar|registre|registrar|pause|pausar|retome|retomar|conclua|concluir|atualize|atualizar|acompanhe|acompanhar)\b/.test(normalized);
+  if (missionSubject && missionCommand) {
+    return decision("mission", true, preferredAgent, "comando explícito para operar o Mission Engine");
   }
 
-  if (/\b(plano de acao|plano operacional|planejamento de acao)\b/.test(normalized)
-    && /\b(crie|criar|monte|montar|gere|gerar|execute|executar|delegue|delegar|acompanhe|acompanhar)\b/.test(normalized)) {
-    return {
-      route: "action_plan",
-      explicitAction: true,
-      preferredAgent,
-      reason: "pedido explícito para criar, delegar ou acompanhar um plano de ação",
-    };
+  if (/\b(registre|registrar|grave|gravar)\b/.test(normalized)
+    && /\b(decisao|decisoes)\b/.test(normalized)) {
+    return decision("decision", true, preferredAgent, "comando explícito para registrar decisão empresarial");
+  }
+
+  if (missionSubject && /\b(quais|liste|listar|como estao|como esta|status|andamento|progresso|atrasad\w*|bloquead\w*)\b/.test(normalized)) {
+    return decision("mission", false, preferredAgent, "consulta de estado das Missões; somente leitura");
+  }
+
+  if (/\b(decisao|decisoes)\b/.test(normalized)
+    && /\b(quais|liste|listar|como estao|como esta|status|resultado|resultados|revisao|revisar)\b/.test(normalized)) {
+    return decision("decision", false, preferredAgent, "consulta de decisões e resultados; somente leitura");
+  }
+
+  const actionPlanSubject = /\b(plano de acao|planos de acao|plano operacional|planos operacionais|planejamento de acao)\b/.test(normalized);
+  const actionPlanCommand = /\b(crie|criar|monte|montar|gere|gerar|execute|executar|delegue|delegar|acompanhe|acompanhar)\b/.test(normalized);
+  if (actionPlanSubject && actionPlanCommand) {
+    return decision("action_plan", true, preferredAgent, "pedido explícito para criar, delegar ou acompanhar um plano de ação");
+  }
+
+  const executionSubject = actionPlanSubject
+    || /\b(plano|planos|execucao|execucoes|acao|acoes|delegacao|delegacoes|pendencia|pendencias|etapa|etapas)\b/.test(normalized);
+  const statusIntent = /\b(como esta|como estao|status|andamento|o que falta|o que esta em andamento|o que esta bloqueado|o que terminou|o que foi concluido|qual o andamento|quais pendencias)\b/.test(normalized);
+  if (executionSubject && statusIntent) {
+    return decision("action_plan", false, preferredAgent, "consulta de andamento de planos e execução; somente leitura");
   }
 
   if (/\b(envie|enviar|mande|mandar|publique|publicar|agende|agendar|marque|marcar|ligue|ligar)\b/.test(normalized)
     && /\b(whatsapp|mensagem|email|e-mail|instagram|post|publicacao|reuniao|consulta|agenda|cliente|lead|contato)\b/.test(normalized)) {
-    return {
-      route: "external_action",
-      explicitAction: true,
-      preferredAgent,
-      reason: "pedido explícito de ação em canal ou serviço externo",
-    };
+    return decision("external_action", true, preferredAgent, "pedido explícito de ação em canal ou serviço externo");
   }
 
   if (/\b(analise|analisar|avalie|avaliar|compare|comparar|como estamos|o que voce faria|o que eu nao estou vendo|prioridade|prioridades|risco|riscos|oportunidade|oportunidades)\b/.test(normalized)) {
-    return {
-      route: "analysis",
-      explicitAction: false,
-      preferredAgent,
-      reason: "pedido de análise ou decisão; não deve executar ação por inferência",
-    };
+    return decision("analysis", false, preferredAgent, "pedido de análise ou decisão; não deve executar ação por inferência");
   }
 
   if (preferredAgent) {
-    return {
-      route: "specialist_agent",
-      explicitAction: false,
-      preferredAgent,
-      reason: "assunto corresponde a um agente especializado, sem comando explícito de execução",
-    };
+    return decision("specialist_agent", false, preferredAgent, "assunto corresponde a um agente especializado, sem comando explícito de execução");
   }
 
-  return {
-    route: "conversation",
-    explicitAction: false,
-    preferredAgent: null,
-    reason: "conversa ou conhecimento geral sem rota operacional explícita",
-  };
+  return decision("conversation", false, null, "conversa ou conhecimento geral sem rota operacional explícita");
+}
+
+export function ownsJarvisOrchestrationRoute(
+  owner: JarvisOrchestrationOwner,
+  text: string,
+): boolean {
+  return resolveJarvisOrchestration(text).owner === owner;
 }
 
 export function buildJarvisActionOrchestrationContext(text: string) {
-  const decision = resolveJarvisOrchestration(text);
-  const agent = decision.preferredAgent ? ` ${decision.preferredAgent}` : " nenhum agente específico";
+  const routeDecision = resolveJarvisOrchestration(text);
+  const agent = routeDecision.preferredAgent ? ` ${routeDecision.preferredAgent}` : " nenhum agente específico";
 
   return [
     "## Action Orchestrator do JARVIS",
-    `- Rota operacional detectada: ${decision.route}.`,
-    `- Pedido explícito de ação: ${decision.explicitAction ? "sim" : "não"}.`,
+    `- Rota operacional detectada: ${routeDecision.route}.`,
+    `- Proprietário da rota: ${routeDecision.owner}.`,
+    `- Pedido explícito de ação: ${routeDecision.explicitAction ? "sim" : "não"}.`,
     `- Executor preferencial:${agent}.`,
-    `- Motivo do roteamento: ${decision.reason}.`,
-    "- Se não houver pedido explícito de ação, permaneça em análise/conversa e não execute por inferência.",
+    `- Motivo do roteamento: ${routeDecision.reason}.`,
+    "- Cada solicitação tem um único proprietário operacional; routers que não são donos devem apenas seguir o fluxo.",
+    "- Se não houver pedido explícito de ação, permaneça em leitura/análise e não execute por inferência.",
     "- Se houver pedido explícito e existir rota/executor real já integrado, priorize esse caminho em vez de responder genericamente.",
     "- Ações sensíveis continuam sujeitas à aprovação humana, permissões, autonomia, idempotência e confirmação de sucesso do executor real.",
     "- O usuário conversa com o JARVIS; não exponha a complexidade interna de roteamento ou nomes de agentes sem necessidade.",
