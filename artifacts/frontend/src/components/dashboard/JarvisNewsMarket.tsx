@@ -198,7 +198,6 @@ function regionalCaseToNewsItem(item: NewsCase): VieNewsItem | null {
     categories: ["noticias-locais", ...regions],
     sourceScope: "regional",
     sourceCode: "jarvis-local",
-    sourceName: "Radar local JARVIS",
   };
 }
 
@@ -216,10 +215,10 @@ function dedupeItems(items: VieNewsItem[]) {
 
 function emptyMessage(filter: NewsFilter) {
   if (filter === "Notícias Locais") {
-    return "O JARVIS ainda não recebeu notícias locais para este tenant. Se a empresa não tiver cidade e UF configuradas, complete a localização em Configurações para ativar o radar local.";
+    return "Ainda não há notícias locais recentes para esta empresa. O JARVIS usa a cidade e o estado cadastrados para montar este radar.";
   }
   if (filter === "Bolsa de Valores" || filter === "Criptomoedas") {
-    return "A fonte financeira ainda não entregou notícias recentes para esta categoria. O radar tentará novamente na próxima coleta.";
+    return "Ainda não chegaram informações recentes nesta categoria. O JARVIS atualiza o radar automaticamente.";
   }
   return "Nenhuma informação recente nesta categoria agora.";
 }
@@ -427,7 +426,6 @@ export default function JarvisNewsMarket({ token }: { token?: string | null }) {
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       <Badge variant="outline">{primaryJarvisNewsSection(item)}</Badge>
                       <span>{formatTime(item.publishedAt ?? item.collectedAt)}</span>
-                      {item.sourceName && <span className="truncate" title={item.sourceName}>· {item.sourceName}</span>}
                     </div>
                     <h4 className="mt-2 text-sm font-semibold leading-5">{item.title}</h4>
                     {item.excerpt && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.excerpt}</p>}
