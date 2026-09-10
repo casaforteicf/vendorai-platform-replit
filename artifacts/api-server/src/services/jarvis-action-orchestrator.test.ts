@@ -18,7 +18,12 @@ describe("resolveJarvisOrchestration", () => {
     expect(result.preferredAgent).toBe("closer");
   });
 
-  it("roteia execução somente quando há comando e alvo operacional", () => {
+  it("preserva confirmações e comandos curtos já suportados", () => {
+    expect(resolveJarvisOrchestration("Confirmo")).toMatchObject({ route: "approval", owner: "natural_actions", explicitAction: true });
+    expect(resolveJarvisOrchestration("Executa")).toMatchObject({ route: "execution", owner: "natural_actions", explicitAction: true });
+  });
+
+  it("roteia execução somente quando há comando explícito", () => {
     const execution = resolveJarvisOrchestration("Execute a tarefa aprovada");
     expect(execution.route).toBe("execution");
     expect(execution.owner).toBe("natural_actions");
@@ -27,15 +32,19 @@ describe("resolveJarvisOrchestration", () => {
 
   it("separa comandos de Missão de consultas de estado", () => {
     const create = resolveJarvisOrchestration("Crie uma missão para aumentar a conversão em 20%");
+    const declared = resolveJarvisOrchestration("Jarvis, nossa missão é aumentar a conversão em 20% nos próximos 90 dias");
     const status = resolveJarvisOrchestration("Como estão nossas missões?");
     expect(create).toMatchObject({ route: "mission", owner: "missions", explicitAction: true });
+    expect(declared).toMatchObject({ route: "mission", owner: "missions", explicitAction: true });
     expect(status).toMatchObject({ route: "mission", owner: "missions", explicitAction: false });
   });
 
   it("roteia registro e consulta de decisões ao Mission Engine", () => {
     const record = resolveJarvisOrchestration("Registre a decisão: priorizar Joinville neste trimestre");
+    const declared = resolveJarvisOrchestration("Nossa decisão foi priorizar Joinville neste trimestre");
     const list = resolveJarvisOrchestration("Quais decisões ainda precisam de revisão?");
     expect(record).toMatchObject({ route: "decision", owner: "missions", explicitAction: true });
+    expect(declared).toMatchObject({ route: "decision", owner: "missions", explicitAction: true });
     expect(list).toMatchObject({ route: "decision", owner: "missions", explicitAction: false });
   });
 
