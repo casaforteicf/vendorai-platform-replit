@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
@@ -12,6 +12,20 @@ import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
+
+async function markTenantFirstLogin(tenantId: string): Promise<void> {
+  const now = new Date();
+  await db
+    .update(tenantsTable)
+    .set({ firstLoginAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(tenantsTable.id, tenantId),
+        eq(tenantsTable.isDemo, false),
+        isNull(tenantsTable.firstLoginAt),
+      ),
+    );
+}
 
 // ── In-memory rate limiter for demo login ─────────────────────────
 const demoLoginAttempts = new Map<string, number[]>();
@@ -638,6 +652,10 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
 
+  if (user.platformRole === "tenant_admin" && !user.forcePasswordReset) {
+    await markTenantFirstLogin(user.tenantId);
+  }
+
   let partnerId: string | undefined;
   if (user.platformRole === "partner") {
     const [partnerRow] = await db
@@ -883,7 +901,12 @@ protectedRouter.post("/auth/change-password", async (req, res) => {
     return;
   }
 
-  const [existing] = await db.select({ id: usersTable.id, tenantId: usersTable.tenantId, forcePasswordReset: usersTable.forcePasswordReset })
+  const [existing] = await db.select({
+    id: usersTable.id,
+    tenantId: usersTable.tenantId,
+    platformRole: usersTable.platformRole,
+    forcePasswordReset: usersTable.forcePasswordReset,
+  })
     .from(usersTable).where(eq(usersTable.id, req.user!.sub));
   if (!existing) { res.status(404).json({ error: "User not found" }); return; }
 
@@ -892,10 +915,8 @@ protectedRouter.post("/auth/change-password", async (req, res) => {
     .set({ password: hashed, forcePasswordReset: false, updatedAt: new Date() })
     .where(eq(usersTable.id, existing.id));
 
-  if (existing.forcePasswordReset) {
-    await db.update(tenantsTable)
-      .set({ firstLoginAt: new Date() })
-      .where(and(eq(tenantsTable.id, existing.tenantId), eq(tenantsTable.firstLoginAt, null as unknown as Date)));
+  if (existing.forcePasswordReset && existing.platformRole === "tenant_admin") {
+    await markTenantFirstLogin(existing.tenantId);
   }
 
   res.json({ ok: true });
