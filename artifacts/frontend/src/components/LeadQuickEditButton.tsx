@@ -20,7 +20,6 @@ const EDITABLE_STATUSES = [
   { value: "nao_qualificado", label: "Não qualificado" },
   { value: "convertido", label: "Convertido" },
   { value: "perdido", label: "Perdido" },
-  { value: "quente", label: "Quente" },
 ];
 
 type QuickEditDraft = {
@@ -50,7 +49,7 @@ function leadToDraft(lead: Lead): QuickEditDraft {
     segmento,
     telefone: lead.telefone ?? "",
     email: lead.email ?? "",
-    status: lead.status ?? "novo",
+    status: EDITABLE_STATUSES.some((status) => status.value === lead.status) ? lead.status : "novo",
     assignedTo: lead.assignedTo ?? "__none__",
   };
 }
