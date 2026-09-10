@@ -1,5 +1,14 @@
 -- Histórico consolidado de performance de parceiros/afiliados.
 -- Normaliza período, campanha e cidade/região sem criar uma segunda fonte de verdade.
+--
+-- Esta migration é anterior à migration 231, que originalmente introduziu os campos
+-- de atribuição em praca_pedidos. Como ambientes existentes podem ter a 191 pendente,
+-- garantimos aqui apenas as colunas necessárias para a view. A 231 permanece idempotente
+-- e completa os demais campos/índices depois.
+ALTER TABLE praca_pedidos
+  ADD COLUMN IF NOT EXISTS partner_id text REFERENCES partners(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS cupom_codigo text,
+  ADD COLUMN IF NOT EXISTS attribution_metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE OR REPLACE VIEW partner_referral_history AS
 SELECT
