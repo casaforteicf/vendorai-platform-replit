@@ -18,6 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.appvendorai.vendorai",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "A câmera é usada para cadastrar produtos, documentos e comprovantes.",
         "NSPhotoLibraryUsageDescription": "Suas fotos podem ser anexadas a produtos, clientes e documentos.",
         "NSLocationWhenInUseUsageDescription": "A localização ajuda no atendimento, nas visitas e na logística da operação.",
