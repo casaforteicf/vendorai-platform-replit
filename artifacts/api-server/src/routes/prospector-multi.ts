@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { and, asc, eq } from "drizzle-orm";
-import { db, leadsTable, prospectorConfigTable } from "@workspace/db";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { activitiesTable, db, leadsTable, prospectorConfigTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -39,9 +39,6 @@ const multiConfigSchema = z.object({
   tenantId: z.string().optional(),
 });
 
-// Configuração multi-nicho/multi-localidade do Prospector.
-// Cada combinação é persistida como uma linha da tabela já existente. Isso
-// preserva o scheduler oficial sem criar um segundo motor de prospecção.
 router.get("/prospector/config-multi", async (req, res) => {
   try {
     const explicitTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
@@ -71,6 +68,108 @@ router.get("/prospector/config-multi", async (req, res) => {
   } catch (error) {
     const status = (error as { status?: number }).status ?? 500;
     const message = error instanceof Error ? error.message : "Falha ao carregar configuração";
+    return res.status(status).json({ error: message });
+  }
+});
+
+router.get("/prospector/pilot-validation", async (req, res) => {
+  try {
+    const explicitTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
+    const tenantId = resolveTenantId(req, explicitTenantId);
+    const coldSources = ["prospector", "prospector_auto", "cnpj", "recem_aberta", "ad_library"];
+
+    const leads = await db
+      .select({
+        id: leadsTable.id,
+        nome: leadsTable.nome,
+        empresa: leadsTable.empresa,
+        telefone: leadsTable.telefone,
+        email: leadsTable.email,
+        source: leadsTable.source,
+        mercadoSegmento: leadsTable.mercadoSegmento,
+        endereco: leadsTable.endereco,
+        websiteUrl: leadsTable.websiteUrl,
+        enrichmentStatus: leadsTable.enrichmentStatus,
+        propensityScore: leadsTable.propensityScore,
+        intentScore: leadsTable.intentScore,
+        priorityReason: leadsTable.priorityReason,
+        proximaAcao: leadsTable.proximaAcao,
+        metadata: leadsTable.metadata,
+        createdAt: leadsTable.createdAt,
+      })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), inArray(leadsTable.source, coldSources)))
+      .orderBy(desc(leadsTable.createdAt))
+      .limit(5);
+
+    const leadIds = leads.map((lead) => lead.id);
+    const activities = leadIds.length
+      ? await db
+          .select({
+            leadId: activitiesTable.leadId,
+            tipo: activitiesTable.tipo,
+            titulo: activitiesTable.titulo,
+            descricao: activitiesTable.descricao,
+            status: activitiesTable.status,
+            createdAt: activitiesTable.createdAt,
+          })
+          .from(activitiesTable)
+          .where(and(eq(activitiesTable.tenantId, tenantId), inArray(activitiesTable.leadId, leadIds)))
+          .orderBy(desc(activitiesTable.createdAt))
+      : [];
+
+    const latestByLead = new Map<string, (typeof activities)[number]>();
+    for (const activity of activities) {
+      if (!latestByLead.has(activity.leadId)) latestByLead.set(activity.leadId, activity);
+    }
+
+    const prospects = leads.map((lead) => {
+      const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+      const dossierRaw = metadata["coldProspectDossier"];
+      const dossier = dossierRaw && typeof dossierRaw === "object" ? dossierRaw as Record<string, unknown> : {};
+      const evidenceRaw = dossier["evidence"];
+      const evidence = Array.isArray(evidenceRaw) ? evidenceRaw : [];
+      const blockingReasons = Array.isArray(dossier["blockingReasons"])
+        ? (dossier["blockingReasons"] as unknown[]).map(String)
+        : [];
+      const lastActivity = latestByLead.get(lead.id);
+
+      return {
+        id: lead.id,
+        name: lead.empresa ?? lead.nome,
+        contact: lead.telefone ?? lead.email ?? null,
+        city: typeof (dossier["lpBrief"] as Record<string, unknown> | undefined)?.city === "string"
+          ? (dossier["lpBrief"] as Record<string, unknown>).city
+          : lead.endereco,
+        segment: lead.mercadoSegmento,
+        source: lead.source,
+        enrichmentStatus: lead.enrichmentStatus,
+        propensityScore: lead.propensityScore ?? 0,
+        fitScore: Number(dossier["fitScore"] ?? 0),
+        painScore: Number(dossier["painScore"] ?? 0),
+        intentScore: Number(lead.intentScore ?? dossier["intentScore"] ?? 0),
+        dossierStatus: String(dossier["status"] ?? "aguardando_dossie"),
+        evidenceCount: evidence.length,
+        evidence: evidence.slice(0, 4),
+        lpUrl: typeof dossier["lpUrl"] === "string" ? dossier["lpUrl"] : null,
+        blockingReasons,
+        priorityReason: lead.priorityReason,
+        nextAction: lead.proximaAcao,
+        lastActivity: lastActivity ? {
+          type: lastActivity.tipo,
+          title: lastActivity.titulo,
+          description: lastActivity.descricao,
+          status: lastActivity.status,
+          at: lastActivity.createdAt,
+        } : null,
+        createdAt: lead.createdAt,
+      };
+    });
+
+    return res.status(200).json({ prospects, limit: 5 });
+  } catch (error) {
+    const status = (error as { status?: number }).status ?? 500;
+    const message = error instanceof Error ? error.message : "Falha ao carregar validação do piloto";
     return res.status(status).json({ error: message });
   }
 });
@@ -109,7 +208,6 @@ router.put("/prospector/config-multi", async (req, res) => {
         );
         await tx.insert(prospectorConfigTable).values(combinations);
       } else {
-        // Mantém preferências de ritmo mesmo enquanto a busca está vazia/desativada.
         await tx.insert(prospectorConfigTable).values({
           tenantId,
           setor: setores[0] ?? null,
