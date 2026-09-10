@@ -63,7 +63,15 @@ function wasRecoveredRecently() {
   }
 }
 
-async function carregarVersaoAtual(force = false) {
+function isKnownStaleAssetError(error: Error) {
+  return (
+    CHUNK_ERROR_PATTERN.test(error.message) ||
+    STALE_LAZY_MODULE_PATTERN.test(error.message) ||
+    STALE_MINIFIED_RUNTIME_PATTERN.test(error.message.trim())
+  );
+}
+
+async function carregarVersaoAtual(force = false, targetPath?: string) {
   const now = Date.now();
   try {
     if (!force && wasRecoveredRecently()) return;
@@ -76,10 +84,16 @@ async function carregarVersaoAtual(force = false) {
   await clearObsoleteFrontendState();
 
   try {
-    const url = new URL(window.location.href);
+    const url = targetPath
+      ? new URL(targetPath, window.location.origin)
+      : new URL(window.location.href);
     url.searchParams.set("__vendorai_refresh", String(now));
     window.location.replace(url.toString());
   } catch {
+    if (targetPath) {
+      window.location.href = targetPath;
+      return;
+    }
     window.location.reload();
   }
 }
@@ -87,12 +101,9 @@ async function carregarVersaoAtual(force = false) {
 // Um deploy pode trocar os hashes dos chunks enquanto a sessão continua aberta.
 // Também há WebViews mobile que reportam esse mesmo cenário com mensagens genéricas.
 // Por isso fazemos uma única tentativa automática por bundle. Se o mesmo bundle
-// falhar novamente, mostramos o erro normalmente e evitamos qualquer loop.
+// falhar novamente, mostramos uma recuperação manual e um caminho seguro ao painel.
 function tentarRecuperarDeVersaoAntiga(error: Error): boolean {
-  const knownStaleAssetError =
-    CHUNK_ERROR_PATTERN.test(error.message) ||
-    STALE_LAZY_MODULE_PATTERN.test(error.message) ||
-    STALE_MINIFIED_RUNTIME_PATTERN.test(error.message.trim());
+  const knownStaleAssetError = isKnownStaleAssetError(error);
 
   if (wasRecoveredRecently() || bundleRecoveryWasTried()) return false;
 
@@ -135,26 +146,47 @@ export class ErrorBoundary extends React.Component<
       );
     }
     if (this.state.error) {
+      const staleAssetFailure = isKnownStaleAssetError(this.state.error);
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+
       return (
         <div style={{ padding: 24, fontFamily: "sans-serif", background: "#f8fafc", color: "#334155", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ maxWidth: 520, width: "100%", background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, boxShadow: "0 10px 30px rgba(15,23,42,.08)" }}>
             <h1 style={{ color: "#0f172a", fontSize: 18, margin: 0 }}>Não foi possível carregar esta tela</h1>
             <p style={{ marginTop: 10, fontSize: 14, lineHeight: 1.5 }}>
-              O VendorAI interrompeu o erro em vez de deixar a tela carregando indefinidamente.
+              {staleAssetFailure
+                ? "Uma parte do aplicativo ficou incompatível com a versão publicada. O VendorAI pode buscar a versão atual ou voltar ao painel sem prender você nesta tela."
+                : "O VendorAI interrompeu o erro em vez de deixar a tela carregando indefinidamente."}
             </p>
-            <button
-              type="button"
-              style={{ marginTop: 16, border: 0, borderRadius: 8, padding: "10px 14px", fontWeight: 600, cursor: "pointer", background: "#D9673E", color: "white" }}
-              onClick={() => {
-                this.setState({ reloading: true });
-                void carregarVersaoAtual(true);
-              }}
-            >
-              Carregar versão atual
-            </button>
+            <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <button
+                type="button"
+                style={{ border: 0, borderRadius: 8, padding: "10px 14px", fontWeight: 600, cursor: "pointer", background: "#D9673E", color: "white" }}
+                onClick={() => {
+                  this.setState({ reloading: true });
+                  void carregarVersaoAtual(true);
+                }}
+              >
+                Carregar versão atual
+              </button>
+              {currentPath !== "/dashboard" && (
+                <button
+                  type="button"
+                  style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "10px 14px", fontWeight: 600, cursor: "pointer", background: "white", color: "#334155" }}
+                  onClick={() => {
+                    this.setState({ reloading: true });
+                    void carregarVersaoAtual(true, "/dashboard");
+                  }}
+                >
+                  Voltar ao painel
+                </button>
+              )}
+            </div>
             <details style={{ marginTop: 16, fontSize: 12, color: "#64748b" }}>
               <summary>Detalhes técnicos</summary>
-              <p style={{ whiteSpace: "pre-wrap" }}>{this.state.error.message}</p>
+              <p style={{ whiteSpace: "pre-wrap" }}>
+                {currentPath ? `Rota: ${currentPath}\n` : ""}{this.state.error.message}
+              </p>
             </details>
           </div>
         </div>
