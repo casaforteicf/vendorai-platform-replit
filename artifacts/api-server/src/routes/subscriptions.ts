@@ -83,6 +83,7 @@ router.get("/tenants/:tenantId/subscription", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/subscription/renewal-state", async (req, res) => {
+  // tenant-audit: reviewed requested tenant is checked by canReadTenant before any tenant-scoped DB access
   const tenantId = String(req.params.tenantId);
   if (!canReadTenant(req, tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
@@ -154,6 +155,7 @@ router.get("/tenants/:tenantId/subscription/renewal-state", async (req, res) => 
 });
 
 router.post("/tenants/:tenantId/subscription/verify-payment", async (req, res) => {
+  // tenant-audit: reviewed requested tenant is checked by canReadTenant before any tenant-scoped DB access
   const tenantId = String(req.params.tenantId);
   if (!canReadTenant(req, tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
