@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { z } from "zod/v4";
 import { contractsTable, db, dealsTable } from "@workspace/db";
+import financeProcurementRouter from "./finance_procurement.js";
 
 const router: IRouter = Router();
 
@@ -175,5 +176,7 @@ router.post("/tenants/:tenantId/finance-contracts/:contractId/renew", async (req
   req.log.info({ tenantId, sourceContractId: existing.id, renewalContractId: renewal?.id, months: parsed.data.months }, "finance-contract renewal created");
   res.status(201).json({ renewal, sourceContractId: existing.id });
 });
+
+router.use(financeProcurementRouter);
 
 export default router;
