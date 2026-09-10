@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ArrowRight, Menu, X } from "lucide-react";
+import { ArrowRight, Download, Menu, X } from "lucide-react";
 import { useState } from "react";
 import {
   PUBLIC_COUNTRIES,
@@ -12,6 +12,7 @@ const PT = {
   plans: "Planos",
   content: "Conteúdo",
   about: "Sobre",
+  app: "Baixar app",
   trial: "Testar 5 dias grátis",
   login: "Entrar",
   clientLogin: "Já sou cliente — Entrar",
@@ -24,6 +25,7 @@ const ES = {
   plans: "Planes",
   content: "Contenido",
   about: "Nosotros",
+  app: "Descargar app",
   trial: "Probar 5 días gratis",
   login: "Ingresar",
   clientLogin: "Ya soy cliente — Ingresar",
@@ -65,6 +67,14 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href="/baixar-app"
+            className={`inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${location === "/baixar-app" ? "text-white" : "text-slate-400 hover:text-white"}`}
+            data-testid="link-nav-baixar-app"
+          >
+            <Download className="h-4 w-4" />
+            {copy.app}
+          </Link>
           <label className="sr-only" htmlFor="public-country">{copy.country}</label>
           <select
             id="public-country"
@@ -129,6 +139,14 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <Link
+              href="/baixar-app"
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-base font-medium ${location === "/baixar-app" ? "bg-orange-400/[0.10] text-white" : "text-slate-300"}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <Download className="h-4 w-4" />
+              {copy.app}
+            </Link>
             <Link
               href="/demo"
               className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-[0_12px_34px_rgba(249,115,22,0.24)] hover:bg-orange-400"
