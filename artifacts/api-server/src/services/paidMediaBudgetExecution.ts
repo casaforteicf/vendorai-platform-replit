@@ -4,6 +4,7 @@ import { getMetaAdsConnectionByTenantId, refreshMetaAdsToken, META_GRAPH_BASE } 
 import { getGoogleAdsConnectionByTenantId, refreshGoogleAdsToken } from './google-ads-oauth.js';
 import { resolveMarketingAgentAutonomyPolicy } from './marketingAgentAutonomyPolicy.js';
 import { buildTenantPaidMediaBudgetRedistributionPlan } from './paidMediaBudgetOptimizer.js';
+import { enforceMasterAcquisitionBudget } from './acquisitionMasterBudgetGuard.js';
 
 const GOOGLE_ADS_API_BASE = 'https://googleads.googleapis.com/v25';
 const GOOGLE_ADS_DEVELOPER_TOKEN = process.env['GOOGLE_ADS_DEVELOPER_TOKEN'] ?? '';
@@ -169,6 +170,8 @@ async function setGoogleDailyBudget(tenantId: string, externalCampaignId: string
 /**
  * Recalcula o plano no instante da execução e aplica somente a decisão atual.
  * Não publica nem ativa campanha; apenas ajusta verba de campanha já publicada.
+ * Quando o Orquestrador Mestre está ativo, o alvo da campanha também fica
+ * limitado pela verba aprovada para a vertical, acima do teto do plano local.
  */
 export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudgetInput) {
   const autonomyPolicy = await assertAuthorization(input.tenantId, input.authorization);
@@ -202,9 +205,36 @@ export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudg
     return { applied: false, reason: decision.reason, decision, plan, autonomyPolicy, effectiveTransferFraction };
   }
 
+  const draft = segmentacao.mediaPlanDraft && typeof segmentacao.mediaPlanDraft === 'object'
+    ? segmentacao.mediaPlanDraft as Record<string, unknown>
+    : {};
+  const control = segmentacao.campaignControl;
+  if (!control) throw new Error('Campanha sem controle de orçamento/período.');
+  const currentCampaignAllocation = Math.max(0, Number(draft.allocatedTotalBudget ?? control.totalBudget ?? decision.currentAllocation));
+  const masterBudget = await enforceMasterAcquisitionBudget({
+    tenantId: input.tenantId,
+    campaignId: campaign.id,
+    vertical: campaign.vertical,
+    currentCampaignAllocation,
+    proposedCampaignAllocation: decision.targetAllocation,
+    authorization: input.authorization,
+  });
+  const effectiveTargetAllocation = masterBudget.cappedTargetAllocation;
+  const effectiveDelta = floorCurrency(Math.abs(effectiveTargetAllocation - currentCampaignAllocation)) * (effectiveTargetAllocation >= currentCampaignAllocation ? 1 : -1);
+  const effectiveDecision = {
+    ...decision,
+    targetAllocation: effectiveTargetAllocation,
+    delta: effectiveDelta,
+    action: effectiveDelta > 0 ? 'increase' as const : effectiveDelta < 0 ? 'decrease' as const : 'hold' as const,
+    reason: masterBudget.enabled ? `${decision.reason} ${masterBudget.reason}` : decision.reason,
+  };
+  if (effectiveDecision.action === 'hold' || effectiveDecision.delta === 0) {
+    return { applied: false, reason: effectiveDecision.reason, decision: effectiveDecision, plan, autonomyPolicy, effectiveTransferFraction, masterBudget };
+  }
+
   const schedule = buildRemainingBudgetSchedule({
-    targetAllocation: decision.targetAllocation,
-    spend: decision.spend,
+    targetAllocation: effectiveDecision.targetAllocation,
+    spend: effectiveDecision.spend,
     endDate,
     now: input.now,
   });
@@ -216,11 +246,6 @@ export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudg
     ? await setMetaDailyBudget(input.tenantId, campaign.externalCampaignId, schedule.dailyBudget)
     : await setGoogleDailyBudget(input.tenantId, campaign.externalCampaignId, schedule.dailyBudget);
 
-  const draft = segmentacao.mediaPlanDraft && typeof segmentacao.mediaPlanDraft === 'object'
-    ? segmentacao.mediaPlanDraft as Record<string, unknown>
-    : {};
-  const control = segmentacao.campaignControl;
-  if (!control) throw new Error('Campanha sem controle de orçamento/período.');
   const nextSegmentacao = {
     ...segmentacao,
     campaignControl: { ...control, totalBudget: schedule.targetAllocation },
@@ -229,7 +254,15 @@ export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudg
       allocatedTotalBudget: schedule.targetAllocation,
       budgetAdjustedAt: new Date().toISOString(),
       budgetAdjustmentAuthorization: input.authorization,
-      budgetAdjustmentReason: decision.reason,
+      budgetAdjustmentReason: effectiveDecision.reason,
+      masterBudgetGuard: masterBudget.enabled ? {
+        vertical: masterBudget.vertical,
+        targetAmount: masterBudget.targetAmount,
+        currentAllocatedAmount: masterBudget.currentAllocatedAmount,
+        availableHeadroom: masterBudget.availableHeadroom,
+        requestedIncrease: masterBudget.requestedIncrease,
+        allowedIncrease: masterBudget.allowedIncrease,
+      } : null,
     },
   };
   await db.update(adCampaignsTable).set({
@@ -242,10 +275,11 @@ export async function executePaidMediaBudgetDecision(input: ExecutePaidMediaBudg
     applied: true,
     authorization: input.authorization,
     autonomyPolicy,
-    decision,
+    decision: effectiveDecision,
     schedule,
     external,
     effectiveTransferFraction,
+    masterBudget,
     humanCeilingRespected: plan.humanCeilingRespected,
     planBudgetTotal: plan.planBudgetTotal,
   };
