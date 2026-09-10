@@ -12,8 +12,10 @@
  * motor e os mesmos arquivos .sql do CLI — sem duplicar SQL em lugar nenhum.
  *
  * Control table : vendorai_schema_migrations
- * Advisory lock : pg_advisory_lock(7767366262)  — evita corrida entre
- *                 réplicas/deploys concorrentes aplicando ao mesmo tempo
+ * Advisory lock : 7767366262. Migrations transacionais usam
+ *                 pg_advisory_xact_lock para o lock morrer junto com a
+ *                 transação/conexão. O lock de sessão fica restrito às
+ *                 raras migrations marcadas como -- no-transaction.
  */
 import type pg from "pg";
 import fs from "fs";
@@ -183,11 +185,32 @@ export interface ApplyResult {
   applied: { version: string; name: string; ms: number }[];
 }
 
+function assertAppliedChecksum(
+  file: MigrationFile,
+  applied: Map<string, string>,
+): void {
+  const stored = applied.get(file.version);
+  if (!stored) return;
+  const content = fs.readFileSync(file.filePath, "utf8");
+  const checksum = sha256(content);
+  if (!isAcceptedMigrationChecksum(file.version, checksum, stored)) {
+    throw new Error(
+      `Checksum mismatch for migration ${file.version} ("${file.name}"). ` +
+        `Migration file was modified after being applied.`,
+    );
+  }
+}
+
 /**
  * Aplica todas as migrations pendentes (mesma lógica do `migrate up` do
- * CLI). Idempotente: se não houver pendências, é um no-op rápido.
- * Adquire o advisory lock antes de checar/aplicar, então é seguro chamar
- * a partir de múltiplas réplicas subindo ao mesmo tempo.
+ * CLI). Idempotente: se não houver pendências, é um no-op rápido e não
+ * disputa advisory lock.
+ *
+ * Para migrations transacionais, o lock é transaction-scoped. Isso evita
+ * que Supavisor/conexões encerradas no meio de um deploy deixem um lock de
+ * sessão órfão bloqueando os boots seguintes. Depois de adquirir o lock a
+ * função relê a tabela de controle, porque outra réplica pode ter aplicado
+ * a mesma migration enquanto esta aguardava.
  */
 export async function applyPendingMigrations(
   pool: pg.Pool,
@@ -196,57 +219,74 @@ export async function applyPendingMigrations(
   const log = opts.logger ?? console;
   const client = await pool.connect();
   const result: ApplyResult = { applied: [] };
+
   try {
     await ensureControlTable(client);
-    await client.query(`SELECT pg_advisory_lock($1::bigint)`, [ADVISORY_LOCK_KEY]);
-    try {
-      const files = readMigrationFiles(opts.migrationsDir);
-      const applied = await getApplied(client);
 
-      // Valida checksum das já aplicadas — se o arquivo mudou depois de
-      // aplicado, algo está errado (migration editada retroativamente).
-      for (const f of files) {
-        if (!applied.has(f.version)) continue;
-        const content = fs.readFileSync(f.filePath, "utf8");
-        const checksum = sha256(content);
-        const stored = applied.get(f.version)!;
-        if (!isAcceptedMigrationChecksum(f.version, checksum, stored)) {
-          throw new Error(
-            `Checksum mismatch for migration ${f.version} ("${f.name}"). ` +
-              `Migration file was modified after being applied.`,
-          );
-        }
-      }
+    const files = readMigrationFiles(opts.migrationsDir);
+    const initialApplied = await getApplied(client);
 
-      const pending = files.filter((f) => !applied.has(f.version));
-      for (const f of pending) {
-        const content = fs.readFileSync(f.filePath, "utf8");
-        const checksum = sha256(content);
-        const t0 = Date.now();
+    // Valida checksum antes de qualquer lock. Em boot normal, quando não há
+    // pendência, a função termina aqui sem poder ficar presa por lock antigo.
+    for (const file of files) assertAppliedChecksum(file, initialApplied);
 
-        if (f.noTransaction) {
-          await client.query(content);
-          await recordMigration(client, f.version, f.name, checksum);
-        } else {
-          await client.query("BEGIN");
-          try {
-            await client.query(content);
-            await recordMigration(client, f.version, f.name, checksum);
-            await client.query("COMMIT");
-          } catch (err) {
-            await client.query("ROLLBACK");
-            throw err;
+    const pending = files.filter((file) => !initialApplied.has(file.version));
+    if (pending.length === 0) return result;
+
+    for (const file of pending) {
+      const content = fs.readFileSync(file.filePath, "utf8");
+      const checksum = sha256(content);
+      const t0 = Date.now();
+
+      if (file.noTransaction) {
+        // Algumas operações PostgreSQL não podem rodar dentro de BEGIN. Para
+        // essas raras migrations mantemos lock de sessão, mas somente durante
+        // a migration que realmente está pendente.
+        await client.query(`SELECT pg_advisory_lock($1::bigint)`, [ADVISORY_LOCK_KEY]);
+        try {
+          const appliedAfterLock = await getApplied(client);
+          const stored = appliedAfterLock.get(file.version);
+          if (stored) {
+            assertAppliedChecksum(file, appliedAfterLock);
+            continue;
           }
+
+          await client.query(content);
+          await recordMigration(client, file.version, file.name, checksum);
+        } finally {
+          await client.query(`SELECT pg_advisory_unlock($1::bigint)`, [ADVISORY_LOCK_KEY]).catch(() => {});
         }
-        const ms = Date.now() - t0;
-        log.info?.(`  ✓  ${f.version}  ${f.name}  (${ms}ms)`);
-        result.applied.push({ version: f.version, name: f.name, ms });
+      } else {
+        await client.query("BEGIN");
+        try {
+          // Transaction-level advisory locks são liberados automaticamente em
+          // COMMIT/ROLLBACK e também quando a conexão morre durante o deploy.
+          await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [ADVISORY_LOCK_KEY]);
+
+          const appliedAfterLock = await getApplied(client);
+          const stored = appliedAfterLock.get(file.version);
+          if (stored) {
+            assertAppliedChecksum(file, appliedAfterLock);
+            await client.query("COMMIT");
+            continue;
+          }
+
+          await client.query(content);
+          await recordMigration(client, file.version, file.name, checksum);
+          await client.query("COMMIT");
+        } catch (err) {
+          await client.query("ROLLBACK").catch(() => {});
+          throw err;
+        }
       }
-    } finally {
-      await client.query(`SELECT pg_advisory_unlock($1::bigint)`, [ADVISORY_LOCK_KEY]).catch(() => {});
+
+      const ms = Date.now() - t0;
+      log.info?.(`  ✓  ${file.version}  ${file.name}  (${ms}ms)`);
+      result.applied.push({ version: file.version, name: file.name, ms });
     }
   } finally {
     client.release();
   }
+
   return result;
 }
