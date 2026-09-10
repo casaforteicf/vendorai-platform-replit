@@ -73,9 +73,17 @@ import { setupApiClient } from "./lib/api";
 
 setupApiClient();
 
-// Identificador útil para diagnóstico e para forçar um novo hash do entrypoint
-// após a correção do cache de assets do Cloudflare Pages.
-document.documentElement.dataset.vendoraiBuild = "asset-recovery-20260910";
+document.documentElement.dataset.vendoraiBuild = "asset-versioning-20260910";
+
+// O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
+// obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
+// que o Clear-Site-Data de recuperação não seja reenviado em toda navegação.
+const recoveryUrl = new URL(window.location.href);
+if (recoveryUrl.searchParams.has("__vendorai_refresh")) {
+  recoveryUrl.searchParams.delete("__vendorai_refresh");
+  const cleanUrl = `${recoveryUrl.pathname}${recoveryUrl.search}${recoveryUrl.hash}`;
+  window.history.replaceState(window.history.state, "", cleanUrl);
+}
 
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 const handoffToken = hashParams.get("vendorai_token");
