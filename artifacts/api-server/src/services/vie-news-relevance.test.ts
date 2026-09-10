@@ -94,4 +94,41 @@ describe("scoreVieNewsForTenant", () => {
     expect(result.signalType).toBe("regional");
     expect(result.matchedRegions).toEqual(["Chapecó SC"]);
   });
+
+  it("não transforma endereço e termos genéricos em oportunidade", () => {
+    const tenant = {
+      name: "Empresa Exemplo",
+      vertical: "software comercial",
+      audience: "empresas",
+      differentiators: "tecnologia digital",
+      competitors: [],
+      suppliers: [],
+      products: ["sistema", "plataforma", "solução digital"],
+      regions: ["Rua René Vegas, 69"],
+    };
+
+    const result = scoreVieNewsForTenant(tenant, {
+      title: "Brasil testa plataforma para pesquisas em microgravidade no espaço",
+      excerpt: "Novo sistema de tecnologia digital será usado em uma missão científica.",
+      categories: ["Tecnologia", "Ciência"],
+      sourceReliability: 90,
+    });
+
+    expect(result.relevant).toBe(false);
+    expect(result.matchedTerms).toHaveLength(0);
+    expect(result.matchedRegions).toHaveLength(0);
+  });
+
+  it("exige correspondência completa para considerar uma região", () => {
+    const tenant = { ...constructionTenant, regions: ["Santa Catarina"] };
+    const result = scoreVieNewsForTenant(tenant, {
+      title: "Santa Maria anuncia festival cultural",
+      excerpt: "Programação reúne artistas e visitantes durante o fim de semana.",
+      categories: ["Cultura"],
+      sourceReliability: 88,
+    });
+
+    expect(result.matchedRegions).toHaveLength(0);
+    expect(result.relevant).toBe(false);
+  });
 });

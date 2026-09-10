@@ -13,6 +13,8 @@ const STOPWORDS = new Set([
   "para", "com", "sem", "uma", "que", "dos", "das", "por", "como", "mais", "seu", "sua",
   "empresa", "empresas", "brasil", "brasileiro", "brasileira", "servico", "servicos", "produto", "produtos",
   "rua", "avenida", "rodovia", "bairro",
+  "sistema", "sistemas", "plataforma", "plataformas", "solucao", "solucoes", "tecnologia", "tecnologias",
+  "digital", "digitais", "modelo", "modelos", "ferramenta", "ferramentas",
 ]);
 
 const OPPORTUNITY_WORDS = [
@@ -82,7 +84,6 @@ function tenantKeywords(context: TenantContext): string[] {
     ...context.competitors.flatMap(terms),
     ...context.suppliers.flatMap(terms),
     ...context.products.flatMap(terms),
-    ...context.regions.flatMap(terms),
   ])].slice(0, 100);
 }
 
@@ -99,7 +100,11 @@ function matchingNamedEntities(text: string, entities: string[]): string[] {
 }
 
 function matchingRegions(text: string, regions: string[]): string[] {
-  return regions.filter((region) => terms(region).some((term) => text.includes(term)));
+  return regions.filter((region) => {
+    const regionTerms = terms(region);
+    if (!regionTerms.length) return false;
+    return regionTerms.every((term) => text.includes(term));
+  });
 }
 
 export function scoreVieNewsForTenant(context: TenantContext, news: NewsInput): VieTenantNewsScore {
@@ -189,10 +194,7 @@ async function loadTenantContext(tenantId: string): Promise<TenantContext | null
   const discovery = profileRow?.discoveryData ?? {};
   const discoveredRegions = ["cidade", "city", "municipio", "estado", "state", "regiao", "region"]
     .flatMap((key) => typeof discovery[key] === "string" ? [discovery[key] as string] : []);
-  const regions = [...new Set([
-    ...(profileRow?.endereco ? [profileRow.endereco] : []),
-    ...discoveredRegions,
-  ].filter(Boolean))];
+  const regions = [...new Set(discoveredRegions.filter(Boolean))];
 
   return {
     name: profileRow?.nomeFantasia || profileRow?.razaoSocial || tenantRow?.nomeEmpresa || tenantRow?.name || "Tenant",
