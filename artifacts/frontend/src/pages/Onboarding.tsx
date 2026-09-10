@@ -36,14 +36,7 @@ import {
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
-type WizardStep = 1 | 2 | 3 | 4 | "done";
-
-interface PlanFromApi {
-  id: string;
-  name: string;
-  monthlyPriceCents: number | null;
-  monthlyPriceAnnualCents: number | null;
-}
+type WizardStep = 1 | 2 | 3 | "done";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const AGENT_CARDS = [
@@ -57,14 +50,6 @@ const AGENT_CARDS = [
   { key: "onboarding",     labelKey: "onboarding.agent.label.prospector", descKey: "onboarding.agent.prospector", Icon: Telescope },
 ] as const;
 
-const PLAN_DISPLAY = [
-  { label: "Growth",     implantacao: 4900, quotaIA: "US$20", popular: false },
-  { label: "PME+",       implantacao: 6900, quotaIA: "US$35", popular: true },
-  { label: "Enterprise", implantacao: 8900, quotaIA: "US$50", popular: false },
-];
-
-const VENDORAI_BILLING_CURRENCY = "BRL";
-const PLANO_PARAM_INDEX: Record<string, number> = { growth: 0, pme: 1, enterprise: 2 };
 
 const TOM_OPTIONS = [
   { value: "profissional", labelKey: "onboarding.tone.professional" },
@@ -113,7 +98,7 @@ export default function Onboarding() {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { t, formatCurrency } = useI18n();
+  const { t } = useI18n();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(true);
@@ -137,22 +122,8 @@ export default function Onboarding() {
   const [s3NomePerfil,  setS3NomePerfil]  = useState("");
   const [s3Tom,         setS3Tom]         = useState("profissional");
 
-  // Step 4 state
-  const [s4Ciclo,       setS4Ciclo]       = useState<"mensal" | "anual">("mensal");
-  const [s4PlanoId,     setS4PlanoId]     = useState<string | null>(null);
-  const [plans,         setPlans]         = useState<PlanFromApi[]>([]);
-  const [plansLoading,  setPlansLoading]  = useState(false);
-
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
 
-  // ── Persist ?plano= query param across login redirect ───────────────────────
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const plano = params.get("plano")?.toLowerCase();
-    if (plano && PLANO_PARAM_INDEX[plano] !== undefined) {
-      sessionStorage.setItem("vendorai_selected_plano", plano);
-    }
-  }, []);
 
   // ── Load progress on mount ──────────────────────────────────────────────────
   useEffect(() => {
@@ -170,7 +141,7 @@ export default function Onboarding() {
           setStep("done");
           return;
         }
-        setStep(Math.min(Math.max(s, 1), 4) as WizardStep);
+        setStep(Math.min(Math.max(s, 1), 3) as WizardStep);
       } catch {
         // ignore — start at step 1
       } finally {
@@ -179,24 +150,6 @@ export default function Onboarding() {
     })();
   }, [user?.tenantId, setLocation]);
 
-  // ── Load plans when reaching step 4 ────────────────────────────────────────
-  useEffect(() => {
-    if (step !== 4) return;
-    setPlansLoading(true);
-    apiGet("/api/onboarding/plans")
-      .then((data) => {
-        const arr = (data as PlanFromApi[]).slice(0, 3);
-        setPlans(arr);
-        if (arr.length > 0 && !s4PlanoId) {
-          const stored = sessionStorage.getItem("vendorai_selected_plano");
-          const idx = stored !== null ? (PLANO_PARAM_INDEX[stored] ?? 0) : 0;
-          setS4PlanoId(arr[Math.min(idx, arr.length - 1)].id);
-        }
-      })
-      .catch(() => {/* ignore */})
-      .finally(() => setPlansLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
 
   // ── Logo upload ─────────────────────────────────────────────────────────────
   async function handleLogoUpload(file: File) {
@@ -343,22 +296,6 @@ export default function Onboarding() {
     }
   }
 
-  async function handleStep4() {
-    if (!s4PlanoId) {
-      toast({ title: t("onboarding.error.plan"), variant: "destructive" });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await apiPatch("/api/onboarding/step/4", { planoId: s4PlanoId, ciclo: s4Ciclo });
-      setStep("done");
-    } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.confirmPlan")), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function goToDashboard() {
     setSubmitting(true);
     try {
@@ -403,7 +340,7 @@ export default function Onboarding() {
         <div className="flex items-center gap-4">
           {step !== "done" && (
             <span className="text-sm text-muted-foreground">
-              {t("onboarding.header.step", { current: stepNum, total: 4 })}
+              {t("onboarding.header.step", { current: stepNum, total: 3 })}
             </span>
           )}
           <button
@@ -729,154 +666,6 @@ export default function Onboarding() {
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {t("onboarding.agent.activateContinue")}
                     <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ═══════════════════════════════════════════════════════
-              STEP 4 — PLANO
-          ═══════════════════════════════════════════════════════ */}
-          {step === 4 && (
-            <Card>
-              <CardContent className="pt-6 space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold">{t("onboarding.plan.title")}</h2>
-                  <p className="text-sm text-muted-foreground mt-1">{t("onboarding.plan.subtitle")}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{t("onboarding.plan.billingBrl")}</p>
-                </div>
-
-                {/* Ciclo toggle */}
-                <div className="flex items-center gap-0 rounded-lg border p-1 w-fit mx-auto">
-                  <button
-                    type="button"
-                    onClick={() => setS4Ciclo("mensal")}
-                    className={`px-5 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      s4Ciclo === "mensal"
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t("onboarding.plan.monthly")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setS4Ciclo("anual")}
-                    className={`px-5 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                      s4Ciclo === "anual"
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t("onboarding.plan.annual")}
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      s4Ciclo === "anual"
-                        ? "bg-white/20 text-white"
-                        : "bg-green-100 text-green-700"
-                    }`}>
-                      {t("onboarding.plan.freeMonths")}
-                    </span>
-                  </button>
-                </div>
-
-                {plansLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : plans.length === 0 ? (
-                  <div className="rounded-lg border border-muted p-6 text-center text-sm text-muted-foreground">
-                    {t("onboarding.plan.none")}
-                    <br />
-                    {t("onboarding.plan.contactSupport")}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {plans.map((plan, i) => {
-                      const display = PLAN_DISPLAY[i] ?? {
-                        label: plan.name,
-                        implantacao: 0,
-                        quotaIA: "—",
-                        popular: false,
-                      };
-                      const priceCents =
-                        s4Ciclo === "anual" && plan.monthlyPriceAnnualCents
-                          ? plan.monthlyPriceAnnualCents
-                          : (plan.monthlyPriceCents ?? 0);
-                      const selected = s4PlanoId === plan.id;
-
-                      return (
-                        <button
-                          key={plan.id}
-                          type="button"
-                          onClick={() => setS4PlanoId(plan.id)}
-                          className={`relative w-full text-left rounded-xl border-2 p-4 transition-all hover:shadow-sm ${
-                            selected
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/40"
-                          }`}
-                        >
-                          {display.popular && (
-                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[11px] font-bold px-3 py-0.5 rounded-full">
-                              {t("onboarding.plan.popular")}
-                            </span>
-                          )}
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-base">{display.label}</span>
-                              </div>
-                              <div className="text-2xl font-bold mt-1">
-                                {formatCurrency(priceCents / 100, VENDORAI_BILLING_CURRENCY)}
-                                <span className="text-sm font-normal text-muted-foreground">{t("onboarding.plan.perMonth")}</span>
-                              </div>
-                            </div>
-                            <div
-                              className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                selected ? "border-primary bg-primary" : "border-muted-foreground/40"
-                              }`}
-                            >
-                              {selected && <Check className="h-3 w-3 text-white" />}
-                            </div>
-                          </div>
-                          <div className="mt-3 pt-3 border-t flex gap-6 text-xs text-muted-foreground">
-                            <span>
-                              {t("onboarding.plan.setup")}{" "}
-                              <strong className="text-foreground">
-                                {formatCurrency(display.implantacao, VENDORAI_BILLING_CURRENCY)}
-                              </strong>
-                            </span>
-                            <span>
-                              {t("onboarding.plan.aiQuota")}{" "}
-                              <strong className="text-foreground">{display.quotaIA}{t("onboarding.plan.perMonth")}</strong>
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="flex gap-3 pt-1">
-                  <Button variant="ghost" onClick={() => setStep(3)} className="gap-1.5">
-                    <ChevronLeft className="h-4 w-4" /> {t("common.back")}
-                  </Button>
-                  <Button
-                    className="flex-1 gap-2"
-                    disabled={submitting || !s4PlanoId || plans.length === 0}
-                    onClick={handleStep4}
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        {t("onboarding.plan.settingUp")}
-                      </>
-                    ) : (
-                      <>
-                        {t("onboarding.plan.confirmStart")}
-                        <ChevronRight className="h-4 w-4" />
-                      </>
-                    )}
                   </Button>
                 </div>
               </CardContent>
