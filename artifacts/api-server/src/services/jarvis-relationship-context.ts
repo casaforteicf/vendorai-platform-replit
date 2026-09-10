@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, dealsTable, leadsTable, propostasTable } from "@workspace/db";
 
 const MAX_RELATIONSHIPS = 10;
@@ -35,7 +35,7 @@ export type JarvisRelationshipContext = {
 
 /**
  * Builds a tenant-scoped relationship graph from the CRM's canonical tables.
- * This is read-only context for JARVIS: it does not create a parallel CRM state.
+ * Read-only and intentionally bounded: three batched queries per context load.
  */
 export async function loadJarvisRelationshipContext(tenantId: string): Promise<JarvisRelationshipContext> {
   const leads = await db
@@ -50,43 +50,53 @@ export async function loadJarvisRelationshipContext(tenantId: string): Promise<J
     .from(leadsTable)
     .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.pipelineExempt, false)))
     .orderBy(desc(leadsTable.updatedAt))
-    .limit(MAX_RELATIONSHIPS * 2);
+    .limit(MAX_RELATIONSHIPS);
 
-  const activeLeads = leads.slice(0, MAX_RELATIONSHIPS);
-  if (!activeLeads.length) {
+  if (!leads.length) {
     return { relationships: [], coverage: { leads: 0, withDeal: 0, withProposal: 0, withNextAction: 0 } };
   }
 
-  const rows = await Promise.all(activeLeads.map(async (lead) => {
-    const [dealRows, proposalRows] = await Promise.all([
-      db
-        .select({
-          id: dealsTable.id,
-          titulo: dealsTable.titulo,
-          etapa: dealsTable.etapa,
-          probabilidade: dealsTable.probabilidade,
-          updatedAt: dealsTable.updatedAt,
-        })
-        .from(dealsTable)
-        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.leadId, lead.id)))
-        .orderBy(desc(dealsTable.updatedAt))
-        .limit(1),
-      db
-        .select({
-          id: propostasTable.id,
-          titulo: propostasTable.titulo,
-          status: propostasTable.status,
-          validadeAte: propostasTable.validadeAte,
-          updatedAt: propostasTable.updatedAt,
-        })
-        .from(propostasTable)
-        .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, lead.id)))
-        .orderBy(desc(propostasTable.updatedAt))
-        .limit(1),
-    ]);
+  const leadIds = leads.map((lead) => lead.id);
+  const [deals, proposals] = await Promise.all([
+    db
+      .select({
+        id: dealsTable.id,
+        leadId: dealsTable.leadId,
+        titulo: dealsTable.titulo,
+        etapa: dealsTable.etapa,
+        probabilidade: dealsTable.probabilidade,
+        updatedAt: dealsTable.updatedAt,
+      })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.tenantId, tenantId), inArray(dealsTable.leadId, leadIds)))
+      .orderBy(desc(dealsTable.updatedAt)),
+    db
+      .select({
+        id: propostasTable.id,
+        leadId: propostasTable.leadId,
+        titulo: propostasTable.titulo,
+        status: propostasTable.status,
+        validadeAte: propostasTable.validadeAte,
+        updatedAt: propostasTable.updatedAt,
+      })
+      .from(propostasTable)
+      .where(and(eq(propostasTable.tenantId, tenantId), inArray(propostasTable.leadId, leadIds)))
+      .orderBy(desc(propostasTable.updatedAt)),
+  ]);
 
-    const deal = dealRows[0] ?? null;
-    const proposal = proposalRows[0] ?? null;
+  const latestDealByLead = new Map<string, (typeof deals)[number]>();
+  for (const deal of deals) {
+    if (deal.leadId && !latestDealByLead.has(deal.leadId)) latestDealByLead.set(deal.leadId, deal);
+  }
+
+  const latestProposalByLead = new Map<string, (typeof proposals)[number]>();
+  for (const proposal of proposals) {
+    if (!latestProposalByLead.has(proposal.leadId)) latestProposalByLead.set(proposal.leadId, proposal);
+  }
+
+  const rows = leads.map((lead) => {
+    const deal = latestDealByLead.get(lead.id) ?? null;
+    const proposal = latestProposalByLead.get(lead.id) ?? null;
     return {
       leadId: lead.id,
       leadName: compact(lead.nome, 120),
@@ -102,7 +112,7 @@ export async function loadJarvisRelationshipContext(tenantId: string): Promise<J
       proposalStatus: proposal?.status ?? null,
       proposalValidUntil: proposal?.validadeAte ?? null,
     };
-  }));
+  });
 
   return {
     relationships: rows,
