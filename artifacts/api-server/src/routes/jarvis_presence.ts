@@ -40,6 +40,7 @@ Sua função não é parecer um chatbot de suporte. Você funciona como braço d
 - Use o primeiro nome quando ele estiver disponível no contexto autenticado, de forma natural e não repetitiva.
 - Em conversa pessoal ou geral, não force o assunto de volta para o negócio.
 - Se o usuário demonstrar preocupação, dúvida ou entusiasmo, responda ao assunto primeiro. Não transforme emoção em chamado de suporte.
+- Se o usuário chamar você por outro nome em uma conversa casual, não interrompa para corrigi-lo. Só esclareça sua identidade se isso for relevante ou se ele perguntar.
 
 ## Modo executivo
 Quando a pergunta envolver o negócio, opere como chief of staff e segunda visão:
@@ -60,6 +61,7 @@ Não invente métrica, causa, impacto financeiro, cliente, compromisso, decisão
 - Considere mensagens anteriores, assunto anterior, tela atual, Missões, decisões, prioridades, radar e estado operacional quando fornecidos no contexto.
 - Resolva referências como “isso”, “aquele cliente”, “a missão”, “o que falamos” com o contexto disponível antes de pedir repetição.
 - Não repita informação já dada, exceto quando necessário para uma decisão.
+- Quando houver um assunto em andamento, continue dele naturalmente em vez de reiniciar a conversa.
 
 ## Separação de suporte
 Esta rota representa conversa/presença normal. Não gere protocolo, chamado, “atendimento registrado” nem marcador VENDORAI_REPORT. Problemas técnicos explícitos são encaminhados para o fluxo de suporte separado.
@@ -84,6 +86,30 @@ export function isJarvisSupportIncident(text: string): boolean {
   if (/\b(problema|defeito)\b/.test(value) && /\b(tela|sistema|app|aplicativo|pagina|botao|campo|login|integracao|api|whatsapp|instagram|google|menu|layout)\b/.test(value)) return true;
 
   return false;
+}
+
+export function isSimpleJarvisGreeting(text: string): boolean {
+  const value = normalize(text)
+    .replace(/\b(jarvis|jade)\b/g, "")
+    .replace(/[!,.?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(bom dia|boa tarde|boa noite|oi|ola|opa|e ai|fala|salve)$/.test(value);
+}
+
+function firstNameFromRequestContext(context: string): string | null {
+  const match = context.match(/\bprimeiro_nome=([^|\n]+)/);
+  const value = match?.[1]?.trim();
+  return value && value !== "não_definido" ? value : null;
+}
+
+function greetingResponse(text: string, firstName: string | null): string {
+  const value = normalize(text);
+  const name = firstName ? `, ${firstName}` : "";
+  if (value.includes("bom dia")) return `Bom dia${name}. Tô por aqui.`;
+  if (value.includes("boa tarde")) return `Boa tarde${name}. Tô por aqui.`;
+  if (value.includes("boa noite")) return `Boa noite${name}. Tô por aqui.`;
+  return `Oi${name}. Tô por aqui.`;
 }
 
 function lastUserText(messages: Array<{ role: "user" | "assistant"; content: string }>) {
@@ -130,6 +156,33 @@ router.post("/support/chat", async (req, res, next) => {
   if (isJarvisSupportIncident(text)) return next();
 
   const startedAt = Date.now();
+
+  // Cumprimentos simples não precisam acionar provider, radar nem LLM. Isso evita
+  // respostas artificiais e reduz drasticamente a latência percebida na abertura.
+  if (isSimpleJarvisGreeting(text)) {
+    let requestContext = "";
+    try {
+      requestContext = await loadJarvisRequestContext({
+        tenantId,
+        userId: req.user?.sub ?? null,
+        route: parsed.data.context?.route ?? null,
+      });
+    } catch (err) {
+      req.log?.warn({ err, tenantId }, "jarvis presence: identidade indisponível em cumprimento rápido");
+    }
+
+    const content = greetingResponse(text, firstNameFromRequestContext(requestContext));
+    setSseHeaders(res);
+    res.write(`data: ${JSON.stringify({ content })}\n\n`);
+    res.write(`data: ${JSON.stringify({
+      done: true,
+      jarvisMode: "presence_fast_greeting",
+      performance: { firstTokenMs: Date.now() - startedAt, providerMs: 0, totalMs: Date.now() - startedAt },
+    })}\n\n`);
+    res.end();
+    return;
+  }
+
   const providerStartedAt = Date.now();
 
   const [operationalResult, requestResult, providerResult] = await Promise.allSettled([
