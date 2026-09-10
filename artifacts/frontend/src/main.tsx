@@ -37,6 +37,7 @@ import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePrev
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { JarvisVoiceReplayControl } from "./components/support/JarvisVoiceReplayControl";
 import { JarvisResponseHealthNotice } from "./components/support/JarvisResponseHealthNotice";
+import { UnifiedAssistantLauncher } from "./components/UnifiedAssistantLauncher";
 import "./components/admin/devAgentRuntimeJsBridge";
 import "./components/admin/devAgentRuntimeHttpBridge";
 import "./components/admin/devAgentVisualContextBridge";
@@ -97,6 +98,7 @@ createRoot(document.getElementById("root")!).render(
           <FrontendRecoveryGuard />
           <VideoRouteThemeSync />
           <App />
+          <UnifiedAssistantLauncher />
           <JarvisVoiceReplayControl />
           <JarvisResponseHealthNotice />
           <BudgetImportAutofill />

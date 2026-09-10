@@ -117,12 +117,34 @@ function applyMarketingRedundancyFilter(root: HTMLElement) {
   });
 }
 
+function useBrowserLocationSnapshot(routerLocation: string) {
+  const [value, setValue] = useState(() => `${window.location.pathname}${window.location.search}`);
+
+  useEffect(() => {
+    const sync = () => {
+      const next = `${window.location.pathname}${window.location.search}`;
+      setValue((current) => current === next ? current : next);
+    };
+
+    sync();
+    window.addEventListener("popstate", sync);
+    const timer = window.setInterval(sync, 200);
+    return () => {
+      window.removeEventListener("popstate", sync);
+      window.clearInterval(timer);
+    };
+  }, [routerLocation]);
+
+  return value;
+}
+
 export default function ContentHub() {
   const rootRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [location, setLocation] = useLocation();
-  const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
+  const browserLocation = useBrowserLocationSnapshot(location);
+  const queryString = browserLocation.includes("?") ? browserLocation.split("?")[1] ?? "" : "";
   const params = new URLSearchParams(queryString);
   const mediaPlanSource = params.get("source") === "media-plan" || params.get("from") === "media-plan";
   const manualCreation = params.get("mode") === "avulso";
