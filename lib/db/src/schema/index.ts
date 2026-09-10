@@ -219,3 +219,13 @@ export * from "./erp_operacional";
 export * from "./finance_integration_registry";
 export * from "./vendor_stories";
 export * from "./variedades_dia";
+export * from "./vehicle_lookup";
+export * from "./vehicle_ad_reservations";
+export * from "./content_autopilot";
+export * from "./site_blog_posts";
+
+export * from "./access_licenses";
+
+export * from "./ad_campaign_events";
+
+export * from "./item_ad_reservations";
