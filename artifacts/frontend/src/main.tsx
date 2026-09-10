@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { useLayoutEffect } from "react";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -88,6 +89,29 @@ const tenantSiteMatch = hostname.match(/^([a-z0-9-]+)\.appvendorai\.com$/);
 const isAppHost = hostname === "app.appvendorai.com" || /^[a-z0-9-]+\.app\.appvendorai\.com$/.test(hostname);
 const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
+function CanonicalMarketingRouteBridge() {
+  useLayoutEffect(() => {
+    const canonicalize = () => {
+      if (window.location.pathname !== "/marketing/plano-de-midia") return;
+      const params = new URLSearchParams(window.location.search);
+      params.set("tab", "planejamento");
+      const target = `/content?${params.toString()}`;
+      window.history.replaceState(window.history.state, "", target);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    };
+
+    canonicalize();
+    window.addEventListener("popstate", canonicalize);
+    const timer = window.setInterval(canonicalize, 250);
+    return () => {
+      window.removeEventListener("popstate", canonicalize);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return null;
+}
+
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <I18nProvider>
@@ -97,6 +121,7 @@ createRoot(document.getElementById("root")!).render(
         <>
           <FrontendRecoveryGuard />
           <VideoRouteThemeSync />
+          <CanonicalMarketingRouteBridge />
           <App />
           <UnifiedAssistantLauncher />
           <JarvisVoiceReplayControl />
