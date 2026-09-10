@@ -11,15 +11,15 @@ function canAccess(req: any, tenantId: string) {
 
 const KPI_DICTIONARY = [
   { key: "new_leads", label: "Leads novos", source: "leads.created_at", formula: "Leads válidos criados no período", availability: "native" },
-  { key: "active_opportunities", label: "Oportunidades ativas", source: "deals.etapa", formula: "Deals da pipeline comercial, excluindo aquecimento, parceiros, execução e etapas encerradas", availability: "native" },
+  { key: "active_opportunities", label: "Oportunidades ativas", source: "deals.etapa + leads", formula: "Deals ativos vinculados a leads válidos, não excluídos e não classificados como não-lead", availability: "native" },
   { key: "confirmed_sales", label: "Vendas confirmadas", source: "deals.etapa + data_fechamento/won_at", formula: "Deals ganhos cuja data real de fechamento está no período", availability: "native" },
   { key: "sold_revenue", label: "Receita vendida", source: "deals.valor", formula: "Soma do valor dos deals ganhos no período", availability: "native" },
   { key: "average_ticket", label: "Ticket médio", source: "deals.valor", formula: "Receita vendida / vendas confirmadas", availability: "native" },
-  { key: "commercial_conversion", label: "Conversão comercial", source: "deals", formula: "Deals ganhos criados no período / oportunidades criadas no período", availability: "native" },
+  { key: "commercial_conversion", label: "Conversão comercial", source: "deals + leads", formula: "Deals válidos ganhos criados no período / oportunidades válidas criadas no período", availability: "native" },
   { key: "overdue_tasks", label: "Tarefas vencidas", source: "activities", formula: "Atividades pendentes ou planejadas com vencimento anterior a agora", availability: "native" },
   { key: "execution_active", label: "Execução ativa", source: "work_cards", formula: "Cards de execução não terminais", availability: "native" },
   { key: "support_active", label: "Suporte ativo", source: "work_cards", formula: "Cards de suporte não terminais", availability: "native" },
-  { key: "customers_at_risk", label: "Clientes em risco", source: "customer_intelligence.churn_risk", formula: "Leads com churnRisk > 60 e não encerrados", availability: "native" },
+  { key: "customers_at_risk", label: "Clientes em risco", source: "customer_intelligence.churn_risk", formula: "Leads válidos com churnRisk > 60 e não encerrados", availability: "native" },
   { key: "ai_actions_executed", label: "Ações executadas pela IA", source: "agent_actions_log", formula: "Ações com status executed no período", availability: "native" },
   { key: "stage_time", label: "Tempo por etapa", source: "process_stage_events", formula: "Duração real entre entrada e saída, excluindo backfill sem histórico", availability: "historical" },
   { key: "stage_sla", label: "SLA por etapa", source: "process_stage_events + process_stage_policies", formula: "Duração real comparada ao SLA configurado", availability: "historical" },
@@ -42,6 +42,17 @@ type GoalRow = {
   team_key: string | null;
   responsible_name?: string | null;
 };
+
+const validCommercialDealSql = (dealAlias: string) => sql.raw(`
+  EXISTS (
+    SELECT 1
+    FROM leads l
+    WHERE l.id = ${dealAlias}.lead_id
+      AND l.tenant_id = ${dealAlias}.tenant_id
+      AND l.excluido_em IS NULL
+      AND l.nao_lead_tipo IS NULL
+  )
+`);
 
 async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<number | null> {
   const start = new Date(goal.starts_at);
@@ -67,6 +78,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
       FROM deals d
       WHERE d.tenant_id = ${tenantId}
         AND d.etapa NOT IN ('em_aquecimento', 'parceiro', 'em_execucao', 'ganho', 'entregue', 'perdido')
+        AND ${validCommercialDealSql("d")}
         AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
     `);
     return Number((result.rows[0] as any)?.actual ?? 0);
@@ -101,6 +113,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
       FROM deals d
       WHERE d.tenant_id = ${tenantId}
         AND d.created_at >= ${start} AND d.created_at <= ${end}
+        AND ${validCommercialDealSql("d")}
         AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
     `);
     const row = (result.rows[0] ?? {}) as any;
@@ -151,6 +164,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
         SELECT d.* FROM deals d
         WHERE d.tenant_id = ${tenantId}
           AND d.created_at >= ${periodStart} AND d.created_at <= ${periodEnd}
+          AND ${validCommercialDealSql("d")}
       )
       SELECT
         (SELECT count(*)::int FROM leads l
@@ -160,7 +174,8 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
             AND l.created_at >= ${periodStart} AND l.created_at <= ${periodEnd}) AS new_leads,
         (SELECT count(*)::int FROM deals d
           WHERE d.tenant_id = ${tenantId}
-            AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')) AS active_opportunities,
+            AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
+            AND ${validCommercialDealSql("d")}) AS active_opportunities,
         (SELECT count(*)::int FROM won w
           WHERE w.closed_at >= ${periodStart} AND w.closed_at <= ${periodEnd}) AS confirmed_sales,
         (SELECT COALESCE(sum(w.valor), 0)::numeric FROM won w
@@ -189,7 +204,9 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
         count(*)::int AS intelligence_profiles
       FROM customer_intelligence ci
       JOIN leads l ON l.id = ci.lead_id
-      WHERE ci.tenant_id = ${tenantId} AND l.nao_lead_tipo IS NULL
+      WHERE ci.tenant_id = ${tenantId}
+        AND l.nao_lead_tipo IS NULL
+        AND l.excluido_em IS NULL
     `),
     db.execute(sql`
       SELECT
@@ -497,40 +514,6 @@ router.post("/tenants/:tenantId/customer-feedback", async (req, res) => {
     ) RETURNING *
   `);
   return res.status(201).json(result.rows[0]);
-});
-
-router.get("/tenants/:tenantId/process-stage-policies", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
-  const result = await db.execute(sql`
-    SELECT * FROM process_stage_policies
-    WHERE tenant_id = ${tenantId} AND active = true
-    ORDER BY pipeline, position, stage_key
-  `);
-  return res.json(result.rows);
-});
-
-router.patch("/tenants/:tenantId/process-stage-policies/:id", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
-  const parsed = z.object({
-    slaMinutes: z.number().int().positive().nullable().optional(),
-    criticality: z.enum(["low", "normal", "high", "critical"]).optional(),
-    visibleOnDashboard: z.boolean().optional(),
-  }).safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
-  const p = parsed.data;
-  const result = await db.execute(sql`
-    UPDATE process_stage_policies
-    SET sla_minutes = COALESCE(${p.slaMinutes === undefined ? null : p.slaMinutes}, sla_minutes),
-        criticality = COALESCE(${p.criticality ?? null}, criticality),
-        visible_on_dashboard = COALESCE(${p.visibleOnDashboard === undefined ? null : p.visibleOnDashboard}, visible_on_dashboard),
-        updated_at = now()
-    WHERE id = ${String(req.params.id)} AND tenant_id = ${tenantId}
-    RETURNING *
-  `);
-  if (!result.rows[0]) return res.status(404).json({ error: "Política não encontrada" });
-  return res.json(result.rows[0]);
 });
 
 export default router;
