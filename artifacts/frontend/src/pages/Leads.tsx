@@ -37,6 +37,8 @@ import {
   Trash2,
   UserRound,
   Tags,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -228,6 +230,114 @@ function SegmentBadge({ segment }: { segment: string }) {
       <Tags className="h-3 w-3 mr-1 shrink-0" />
       <span className="truncate">{segment}</span>
     </Badge>
+  );
+}
+
+function EditableSegmentBadge({ lead }: { lead: Lead }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const updateSegment = useUpdateLead();
+  const segment = getLeadSegment(lead);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(segment);
+
+  function openEditor(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    setDraft(segment);
+    setOpen(true);
+  }
+
+  function saveSegment() {
+    const nextSegment = draft.trim();
+    const currentDadosPj = (lead as any).dadosPj;
+    const data: Record<string, unknown> = {
+      mercadoSegmento: nextSegment || null,
+    };
+
+    if (currentDadosPj && typeof currentDadosPj === "object") {
+      data.dadosPj = {
+        ...currentDadosPj,
+        segmento: nextSegment || null,
+      };
+    }
+
+    updateSegment.mutate(
+      { id: lead.id, data: data as any },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(lead.tenantId) });
+          queryClient.invalidateQueries({ queryKey: ["leads-overview-context", lead.tenantId] });
+          setOpen(false);
+          toast({
+            title: nextSegment ? "Segmento atualizado" : "Segmento removido",
+            description: nextSegment ? `${lead.nome} · ${nextSegment}` : `${lead.nome} ficou sem segmento definido.`,
+          });
+        },
+        onError: () => {
+          toast({ title: "Não foi possível atualizar o segmento", variant: "destructive" });
+        },
+      },
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openEditor}
+        className="group inline-flex max-w-full items-center gap-1 rounded-md p-1 -m-1 text-left hover:bg-muted/70 transition-colors"
+        title={segment ? "Clique para editar o segmento" : "Clique para informar o segmento"}
+        data-testid={`edit-segment-${lead.id}`}
+      >
+        <SegmentBadge segment={segment} />
+        <Pencil className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </button>
+
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (nextOpen) setDraft(segment);
+        }}
+      >
+        <DialogContent
+          className="max-w-sm"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <DialogHeader>
+            <DialogTitle>Segmento do lead</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Segmento</label>
+              <Input
+                autoFocus
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Ex.: Clínica odontológica"
+                data-testid={`input-segment-${lead.id}`}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !updateSegment.isPending) saveSegment();
+                  if (event.key === "Escape") setOpen(false);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Use a atividade principal do cliente. Essa informação alimenta filtros e regras comerciais.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={saveSegment} disabled={updateSegment.isPending}>
+                {updateSegment.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -655,9 +765,7 @@ export default function Leads() {
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => setLocation("/contacts-nonleads")}>
-            Outros contatos
-          </Button>
+          <Button variant="outline" onClick={() => setLocation("/contacts-nonleads")}>Outros contatos</Button>
 
           <Dialog
             open={isImportOpen}
@@ -680,15 +788,9 @@ export default function Leads() {
                 <div className="space-y-4">
                   <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
                     <p className="font-medium">Formato esperado (colunas em ordem):</p>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      nome, telefone, endereco, email, instagram, empresa, status, responsavel
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      A primeira linha deve ser o cabeçalho. Colunas empresa/status/responsavel são opcionais. Máximo 500 leads por importação.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Colunas extras são preservadas no cadastro. Se a planilha tiver uma coluna segmento, ela também poderá ser exibida como tag.
-                    </p>
+                    <p className="font-mono text-xs text-muted-foreground">nome, telefone, endereco, email, instagram, empresa, status, responsavel</p>
+                    <p className="text-xs text-muted-foreground">A primeira linha deve ser o cabeçalho. Colunas empresa/status/responsavel são opcionais. Máximo 500 leads por importação.</p>
+                    <p className="text-xs text-muted-foreground">Colunas extras são preservadas no cadastro. Se a planilha tiver uma coluna segmento, ela também poderá ser exibida como tag.</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -725,17 +827,11 @@ export default function Leads() {
 
                   {parsedRows.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-emerald-700">
-                        {parsedRows.length} lead(s) detectado(s) — prévia (primeiros 5):
-                      </p>
+                      <p className="text-sm font-medium text-emerald-700">{parsedRows.length} lead(s) detectado(s) — prévia (primeiros 5):</p>
                       {(() => {
-                        const extraKeys = Array.from(
-                          new Set(parsedRows.flatMap((row) => Object.keys(row.camposExtras))),
-                        );
+                        const extraKeys = Array.from(new Set(parsedRows.flatMap((row) => Object.keys(row.camposExtras))));
                         return extraKeys.length > 0 ? (
-                          <p className="text-xs text-muted-foreground">
-                            Colunas extras detectadas: <span className="font-medium text-foreground">{extraKeys.join(", ")}</span>
-                          </p>
+                          <p className="text-xs text-muted-foreground">Colunas extras detectadas: <span className="font-medium text-foreground">{extraKeys.join(", ")}</span></p>
                         ) : null;
                       })()}
                       <div className="overflow-x-auto rounded-lg border text-xs">
@@ -944,7 +1040,6 @@ export default function Leads() {
                 filteredLeads.map((lead) => {
                   const ci = ciMap.get(lead.id);
                   const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
-                  const segment = getLeadSegment(lead);
                   return (
                     <div
                       key={lead.id}
@@ -958,7 +1053,7 @@ export default function Leads() {
                           <p className="font-medium text-sm truncate">{lead.nome}</p>
                         </div>
                         {lead.empresa && <p className="text-xs text-muted-foreground truncate">{lead.empresa}</p>}
-                        {segment && <div><SegmentBadge segment={segment} /></div>}
+                        <div><EditableSegmentBadge lead={lead} /></div>
                         <div className="flex items-center gap-1.5">
                           {lead.assignedTo && userMap.get(lead.assignedTo) && (
                             <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>
@@ -1074,7 +1169,6 @@ export default function Leads() {
                       filteredLeads.map((lead) => {
                         const ci = ciMap.get(lead.id);
                         const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
-                        const segment = getLeadSegment(lead);
                         return (
                           <TableRow
                             key={lead.id}
@@ -1090,7 +1184,7 @@ export default function Leads() {
                             </TableCell>
                             <TableCell className="text-muted-foreground">{lead.empresa || "—"}</TableCell>
                             <TableCell className="min-w-[150px] max-w-[240px]">
-                              <SegmentBadge segment={segment} />
+                              <EditableSegmentBadge lead={lead} />
                             </TableCell>
                             <TableCell className="text-muted-foreground font-mono text-sm">{lead.telefone || "—"}</TableCell>
                             <TableCell>
