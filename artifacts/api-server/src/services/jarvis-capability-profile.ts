@@ -1,4 +1,5 @@
 import { buildJarvisExecutiveReasoningContext } from "./jarvis-executive-reasoning.js";
+import { buildJarvisDecisionContext } from "./jarvis-decision-engine.js";
 
 export type JarvisCapabilityFamily =
   | "vendorai_business"
@@ -187,6 +188,7 @@ export function resolveJarvisCapability(text: string): JarvisCapabilityResolutio
 export function buildJarvisCapabilityContext(text: string): string {
   const capability = resolveJarvisCapability(text);
   const executiveReasoning = buildJarvisExecutiveReasoningContext(text);
+  const decisionContext = buildJarvisDecisionContext(text);
   return [
     "## Capability Gateway do JARVIS",
     `- Domínio principal detectado: ${capability.label} (${capability.family}).`,
@@ -197,6 +199,7 @@ export function buildJarvisCapabilityContext(text: string): string {
     `- Conduta: ${capability.guidance}`,
     "- Nunca afirme que consultou fonte externa, criou arquivo, tocou música, enviou mensagem, publicou, contratou ou executou uma ação se a ferramenta/integração correspondente não tiver realmente sido usada e confirmado sucesso.",
     executiveReasoning,
+    decisionContext,
   ].join("\n");
 }
 
