@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, jarvisDecisionsTable, jarvisMissionsTable } from "@workspace/db";
+import { buildJarvisMissionTrackingSignals } from "./jarvis-mission-tracking.js";
 
 function compact(value: string | null | undefined, max = 360) {
   if (!value) return "";
@@ -22,6 +23,7 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
       strategy: jarvisMissionsTable.strategy,
       deadlineAt: jarvisMissionsTable.deadlineAt,
       lastReviewedAt: jarvisMissionsTable.lastReviewedAt,
+      createdAt: jarvisMissionsTable.createdAt,
       updatedAt: jarvisMissionsTable.updatedAt,
     }).from(jarvisMissionsTable)
       .where(and(eq(jarvisMissionsTable.tenantId, tenantId), eq(jarvisMissionsTable.status, "active")))
@@ -50,11 +52,26 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
 
   if (!missions.length && !decisions.length) return "";
 
+  const trackingSignals = buildJarvisMissionTrackingSignals(missions, decisions);
   const lines = [
     "",
     "## Missões e decisões persistentes do JARVIS",
     "Este bloco é tenant-scoped e representa objetivos e decisões explicitamente registrados. Use-o para manter continuidade entre conversas. Não altere missão, decisão ou resultado sem uma rota de escrita realmente executada.",
   ];
+
+  if (trackingSignals.length) {
+    lines.push("", `### Acompanhamento automático de Missões (${trackingSignals.length})`);
+    lines.push("Estes sinais são determinísticos e derivados apenas de prazo, data de revisão e cobertura de medição. Em perguntas amplas sobre o negócio ou sobre Missões, apresente primeiro sinais critical/high e proponha a próxima revisão concreta. Não invente progresso.");
+    for (const signal of trackingSignals.slice(0, 12)) {
+      const relation = [
+        signal.missionId ? `missão=${signal.missionId}` : null,
+        signal.decisionId ? `decisão=${signal.decisionId}` : null,
+      ].filter(Boolean).join(" | ");
+      lines.push(`- ${signal.severity} | ${signal.type}${relation ? ` | ${relation}` : ""} | ${compact(signal.title, 180)}`);
+      lines.push(`  ${compact(signal.detail, 360)}`);
+    }
+    lines.push("Atraso e lacuna de medição são alertas operacionais, não prova de fracasso. Data de revisão vencida significa que o resultado ainda precisa ser medido, não que a decisão foi ruim.");
+  }
 
   if (missions.length) {
     lines.push("", `### Missões ativas (${missions.length})`);
@@ -93,6 +110,8 @@ export async function loadJarvisMissionContext(tenantId: string): Promise<string
     "",
     "### Regras de continuidade",
     "- 'Qual é nossa missão?', 'onde queremos chegar?' ou equivalente: priorize Missões ativas.",
+    "- 'Como estão nossas missões?' ou 'estamos avançando?': use primeiro Acompanhamento automático de Missões; depois detalhe baseline, meta, estado atual e prazo. Não calcule avanço percentual quando a medição não for compatível.",
+    "- 'O que está atrasado?': destaque missões fora do prazo, missões sem revisão e decisões com revisão vencida; diferencie atraso de fracasso.",
     "- 'Por que decidimos isso?': procure primeiro a Biblioteca de decisões explícitas e só depois Casos Vendor encerrados.",
     "- 'Funcionou?': compare resultado esperado, métrica e resultado observado; se ainda não foi medido, diga que a decisão permanece pendente de revisão.",
     "- Ao recomendar nova ação, considere as missões ativas e decisões anteriores para evitar contradizer estratégia registrada sem explicar por que a evidência mudou.",
