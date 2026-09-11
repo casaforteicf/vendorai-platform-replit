@@ -7,6 +7,7 @@ import Campanhas from "@/pages/Campanhas";
 import CampanhasHub from "@/pages/CampanhasHub";
 import PlanoMidia from "@/pages/PlanoMidia";
 import SiteGenerator from "@/pages/SiteGenerator";
+import VisitorIntelligence from "@/pages/VisitorIntelligence";
 import ContentProductionQueue from "@/components/marketing/ContentProductionQueue";
 import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ const COPY_REPLACEMENTS: Array<[string, string]> = [
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
 
-type MainMarketingTab = "visao-geral" | "planejamento" | "campanhas" | "conteudos" | "resultados";
+type MainMarketingTab = "visao-geral" | "planejamento" | "campanhas" | "conteudos" | "resultados" | "rastreamento";
 
 type PlannerChannel = {
   canal: string;
@@ -95,7 +96,7 @@ function normalizeChannel(value: string) {
 function normalizeMainTab(tab: string): MainMarketingTab {
   if (tab === "gerador") return "conteudos";
   if (tab === "variedades") return "campanhas";
-  if (tab === "planejamento" || tab === "campanhas" || tab === "conteudos" || tab === "resultados" || tab === "visao-geral") {
+  if (tab === "planejamento" || tab === "campanhas" || tab === "conteudos" || tab === "resultados" || tab === "rastreamento" || tab === "visao-geral") {
     return tab;
   }
   return "visao-geral";
@@ -105,6 +106,11 @@ function applyMarketingRedundancyFilter(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
     const label = heading.textContent?.replace(/\s+/g, " ").trim() ?? "";
     if (REDUNDANT_CHILD_TITLES.has(label) && !heading.hidden) heading.hidden = true;
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+    const label = button.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    if (label === "Visitantes") button.style.display = "none";
   });
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -151,7 +157,8 @@ export default function ContentHub() {
   const mediaPlanSource = params.get("source") === "media-plan" || params.get("from") === "media-plan";
   const manualCreation = params.get("mode") === "avulso";
   const requestedTab = params.get("tab") ?? "visao-geral";
-  const activeTab = normalizeMainTab(requestedTab);
+  const legacyVisitorView = requestedTab === "campanhas" && params.get("view") === "visitantes";
+  const activeTab: MainMarketingTab = legacyVisitorView ? "rastreamento" : normalizeMainTab(requestedTab);
   const requestedMediaPlanId = params.get("mediaPlanId")?.trim() ?? "";
   const requestedPlannerCampaignId = params.get("campaignId")?.trim() ?? "";
   const legacyPracaView = requestedTab === "variedades";
@@ -199,7 +206,7 @@ export default function ContentHub() {
 
   function handleTabChange(nextTab: string) {
     const normalized = normalizeMainTab(nextTab);
-    if (mediaPlanSource && normalized !== "visao-geral" && normalized !== "resultados") {
+    if (mediaPlanSource && normalized !== "visao-geral" && normalized !== "resultados" && normalized !== "rastreamento") {
       setLocation(plannerUrl({ tab: normalized }));
       return;
     }
@@ -311,7 +318,7 @@ export default function ContentHub() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" /> Marketing
           </h1>
-          <p className="text-sm text-muted-foreground">Um fluxo simples: planejar, executar, criar e medir.</p>
+          <p className="text-sm text-muted-foreground">Um fluxo simples: planejar, executar, criar, medir e rastrear.</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -321,6 +328,7 @@ export default function ContentHub() {
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>2. Campanhas</TabsTrigger>
             <TabsTrigger value="conteudos" className="gap-2"><Images className="h-4 w-4"/>3. Conteúdos & Criativos</TabsTrigger>
             <TabsTrigger value="resultados" className="gap-2"><BarChart3 className="h-4 w-4"/>4. Resultados</TabsTrigger>
+            <TabsTrigger value="rastreamento" className="gap-2"><Radio className="h-4 w-4"/>Rastreamento</TabsTrigger>
           </TabsList>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
@@ -360,9 +368,12 @@ export default function ContentHub() {
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="font-semibold">Tudo começa no Planejamento e termina em Resultados.</p>
-                      <p className="text-sm text-muted-foreground">Mídias, Vídeos com IA, Sites & LPs e Anúncios continuam disponíveis como ferramentas independentes, sem quebrar o fluxo principal.</p>
+                      <p className="text-sm text-muted-foreground">Rastreamento acompanha visitas, origem, cidade, jornada e recorrência sem ficar preso a uma campanha específica.</p>
                     </div>
-                    <Button onClick={() => handleTabChange("planejamento")}><Target className="h-4 w-4 mr-2"/>Começar pelo Planejamento</Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => handleTabChange("rastreamento")}><Radio className="h-4 w-4 mr-2"/>Abrir Rastreamento</Button>
+                      <Button onClick={() => handleTabChange("planejamento")}><Target className="h-4 w-4 mr-2"/>Começar pelo Planejamento</Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -462,6 +473,12 @@ export default function ContentHub() {
                 <Button variant="outline" onClick={() => handleTabChange("planejamento")}><CalendarDays className="h-4 w-4 mr-2"/>Voltar ao Planejamento</Button>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="rastreamento" className="-mx-4 md:-mx-6">
+            <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
+              <VisitorIntelligence />
+            </div>
           </TabsContent>
         </Tabs>
 

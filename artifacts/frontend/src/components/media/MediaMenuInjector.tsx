@@ -8,6 +8,7 @@ const MAIN_ITEMS = [
   { label: "2. Campanhas", href: "/content?tab=campanhas" },
   { label: "3. Conteúdos & Criativos", href: "/content?tab=conteudos" },
   { label: "4. Resultados", href: "/content?tab=resultados" },
+  { label: "Rastreamento", href: "/content?tab=rastreamento" },
 ];
 
 const TOOL_ITEMS = [
@@ -24,7 +25,8 @@ function isActiveHref(href: string) {
   if (target.pathname === "/content") {
     const targetTab = target.searchParams.get("tab") ?? "visao-geral";
     const current = new URLSearchParams(window.location.search);
-    const currentTab = current.get("tab") ?? "visao-geral";
+    const legacyTracking = current.get("tab") === "campanhas" && current.get("view") === "visitantes";
+    const currentTab = legacyTracking ? "rastreamento" : (current.get("tab") ?? "visao-geral");
     if (targetTab !== currentTab) return false;
 
     const targetView = target.searchParams.get("view");

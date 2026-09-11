@@ -157,6 +157,18 @@ function identitySourceLabel(session: VisitorSession) {
   return "Visitante anônimo";
 }
 
+function recurrenceKey(session: VisitorSession) {
+  if (session.leadId) return `lead:${session.leadId}`;
+  if (session.userId) return `user:${session.userId}`;
+  if (session.visitorId) return `visitor:${session.visitorId}`;
+  return null;
+}
+
+function recurrenceCount(session: VisitorSession, counts: Map<string, number>) {
+  const key = recurrenceKey(session);
+  return key ? counts.get(key) ?? 1 : 1;
+}
+
 function mapDetails(session: VisitorSession) {
   const latitude = session.geo.latitude;
   const longitude = session.geo.longitude;
@@ -295,6 +307,15 @@ export default function VisitorIntelligence() {
     refetchInterval: tab === "realtime" ? 15_000 : 60_000,
   });
 
+  const recurrenceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const session of query.data?.sessions ?? []) {
+      const key = recurrenceKey(session);
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [query.data]);
+
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
   const filteredSessions = useMemo(() => (query.data?.sessions ?? []).filter((session) =>
     (surface === "all" || session.surface === surface)
@@ -308,6 +329,7 @@ export default function VisitorIntelligence() {
     [query.data, selectedSessionId],
   );
   const selectedMap = useMemo(() => selected ? mapDetails(selected) : null, [selected]);
+  const selectedRecurrenceCount = selected ? recurrenceCount(selected, recurrenceCounts) : 0;
 
   const totals = query.data?.totals ?? {
     visitors: 0,
@@ -383,7 +405,14 @@ export default function VisitorIntelligence() {
                   <span className="truncate">{visitorLabel(session)}</span>
                   {session.hotOpportunity ? <Flame className="h-4 w-4 shrink-0 text-orange-600" /> : null}
                 </div>
-                <div className="mt-1 truncate text-[11px] font-medium text-muted-foreground">{identitySourceLabel(session)}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                  <span>{identitySourceLabel(session)}</span>
+                  {recurrenceCount(session, recurrenceCounts) > 1 ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300"><Repeat2 className="h-3 w-3" />Recorrente · {recurrenceCount(session, recurrenceCounts)} sessões</span>
+                  ) : (
+                    <span className="rounded-full border px-1.5 py-0.5 text-muted-foreground">Novo no período</span>
+                  )}
+                </div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">{session.currentPath || "/"}</div>
                 <div className="mt-1 text-[11px] text-muted-foreground">{session.lastSeenAt ? new Date(session.lastSeenAt).toLocaleString("pt-BR") : ""}</div>
               </div>
@@ -410,6 +439,11 @@ export default function VisitorIntelligence() {
                 <span className={`h-2.5 w-2.5 rounded-full ${selected.online ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
                 <h2 className="font-medium">{visitorLabel(selected)}</h2>
                 <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{identitySourceLabel(selected)}</span>
+                {selectedRecurrenceCount > 1 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"><Repeat2 className="h-3 w-3" />Recorrente · {selectedRecurrenceCount} sessões</span>
+                ) : (
+                  <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">Novo no período</span>
+                )}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{surfaceLabel(selected.surface)} · {locationLabel(selected)}</p>
             </div>
@@ -433,6 +467,11 @@ export default function VisitorIntelligence() {
                     : "Quando o visitante fizer login, converter ou for associado a um lead, o nome passa a aparecer automaticamente aqui."}
                 </p>
               )}
+              <div className="mt-3 flex items-center gap-2 rounded-md border bg-background/70 px-2.5 py-2 text-xs">
+                <Repeat2 className="h-3.5 w-3.5 text-primary" />
+                <span className="font-medium">Recorrência:</span>
+                <span className="text-muted-foreground">{selectedRecurrenceCount > 1 ? `recorrente no período selecionado (${selectedRecurrenceCount} sessões)` : "primeira sessão identificada no período selecionado"}</span>
+              </div>
               <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
                 <div className="truncate">Lead ID: {selected.leadId || "—"}</div>
                 <div className="truncate">User ID: {selected.userId || "—"}</div>
@@ -533,7 +572,7 @@ export default function VisitorIntelligence() {
             <Radio className="h-5 w-5 text-primary" />
             <h1 className="text-2xl font-semibold tracking-tight">Visitor Intelligence</h1>
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Tempo real, histórico, origem, cidade, jornada, intenção e conversão do site, app web e app mobile em uma única ferramenta.</p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Tempo real, histórico, origem, cidade, jornada, recorrência, intenção e conversão do site, app web e app mobile em uma única ferramenta.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -628,7 +667,7 @@ export default function VisitorIntelligence() {
                 {filteredHot.slice(0, 6).map((session) => (
                   <button key={session.sessionId} type="button" onClick={() => selectSession(session.sessionId)} className="rounded-lg border bg-background p-3 text-left transition-colors hover:bg-muted/50">
                     <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{visitorLabel(session)}</span><span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${intentClass(session.intent.tier)}`}>{session.intent.score}/100</span></div>
-                    <div className="mt-1 text-[11px] font-medium text-muted-foreground">{identitySourceLabel(session)} · {surfaceLabel(session.surface)}</div>
+                    <div className="mt-1 text-[11px] font-medium text-muted-foreground">{identitySourceLabel(session)} · {surfaceLabel(session.surface)} · {recurrenceCount(session, recurrenceCounts) > 1 ? `Recorrente (${recurrenceCount(session, recurrenceCounts)} sessões)` : "Novo no período"}</div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">{session.currentPath || "/"} · {locationLabel(session)}</div>
                   </button>
                 ))}
