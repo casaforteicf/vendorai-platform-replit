@@ -3,6 +3,7 @@ const PUBLIC_ORIGIN = "https://appvendorai.com";
 const OG_IMAGE = `${PUBLIC_ORIGIN}/opengraph.jpg`;
 const MARKET_LOCALES = { BR: "pt-BR", PY: "es-PY", AR: "es-AR", UY: "es-UY", CL: "es-CL" };
 let manifestCache = null;
+let manifestVersion = null;
 
 async function proxyApi(request) {
   const incomingUrl = new URL(request.url);
@@ -36,11 +37,25 @@ function humanize(slug = "") {
   return slug.split("-").filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
 }
 
+async function getDeploymentVersion(env, origin) {
+  const versionUrl = new URL("/deployment-version.txt", origin);
+  versionUrl.searchParams.set("ts", Date.now().toString());
+  const response = await env.ASSETS.fetch(new Request(versionUrl, { headers: { "Cache-Control": "no-cache" } }));
+  if (!response.ok) return "unknown";
+  return (await response.text()).trim() || "unknown";
+}
+
 async function getManifest(env, origin) {
-  if (manifestCache) return manifestCache;
-  const response = await env.ASSETS.fetch(new Request(new URL("/seo-manifest.json", origin)));
+  const version = await getDeploymentVersion(env, origin);
+  if (manifestCache && manifestVersion === version) return manifestCache;
+
+  const manifestUrl = new URL("/seo-manifest.json", origin);
+  manifestUrl.searchParams.set("v", version);
+  const response = await env.ASSETS.fetch(new Request(manifestUrl, { headers: { "Cache-Control": "no-cache" } }));
   if (!response.ok) return null;
+
   manifestCache = await response.json();
+  manifestVersion = version;
   return manifestCache;
 }
 
@@ -55,6 +70,29 @@ const STATIC_ES = {
   "/baixar-app": ["Descargar App VendorAI — CRM e Inteligencia Comercial", "Accede a VendorAI desde el móvil para acompañar leads, conversaciones, agenda, oportunidades e indicadores."],
   "/blog": ["Blog VendorAI — Ventas, CRM, Marketing e IA", "Contenido práctico sobre CRM, inteligencia artificial, ventas, marketing, prospección, automatización, retención e ingresos."],
   "/parceiros": ["Socios VendorAI — Red Comercial y Ecosistema", "Conoce el programa de socios VendorAI y las oportunidades comerciales del ecosistema."],
+};
+
+const HUB_FALLBACKS = {
+  "/solucoes": {
+    pathname: "/solucoes",
+    title: "Soluções para CRM, Vendas e Receita com IA | VendorAI",
+    description: "Encontre soluções VendorAI por problema: CRM e WhatsApp, follow-up, recuperação de leads, reativação, recompra, prospecção e inteligência de receita.",
+    esTitle: "Soluciones para CRM, Ventas e Ingresos con IA | VendorAI",
+    esDescription: "Encuentra soluciones VendorAI por problema: CRM y WhatsApp, seguimiento, recuperación de leads, reactivación, recompra, prospección e inteligencia de ingresos.",
+    type: "collection",
+    name: "Soluções por problema",
+    indexable: true,
+  },
+  "/comparar": {
+    pathname: "/comparar",
+    title: "Comparações de CRM, Follow-up e Prospecção com IA | VendorAI",
+    description: "Compare CRM com IA, follow-up automático e prospecção assistida por IA com abordagens tradicionais antes de escolher sua operação comercial.",
+    esTitle: "Comparaciones de CRM, Seguimiento y Prospección con IA | VendorAI",
+    esDescription: "Compara CRM con IA, seguimiento automático y prospección asistida por IA con enfoques tradicionales antes de elegir tu operación comercial.",
+    type: "collection",
+    name: "Comparações comerciais",
+    indexable: true,
+  },
 };
 
 function localizeMeta(meta, pathname, country) {
@@ -100,7 +138,10 @@ async function fetchDynamicBlogMeta(pathname) {
 
 async function resolveMeta(manifest, url) {
   const pathname = normalizePath(url.pathname);
-  let meta = manifest?.routes?.find((item) => item.pathname === pathname) || null;
+  let meta = manifest?.routes?.find((item) => item.pathname === pathname)
+    || manifest?.growthHubs?.find((item) => item.pathname === pathname)
+    || HUB_FALLBACKS[pathname]
+    || null;
 
   if (!meta) meta = await fetchDynamicBlogMeta(pathname);
 
