@@ -12,17 +12,9 @@ const baseUrl = "https://appvendorai.com";
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const verticalSource = fs.readFileSync(path.resolve(repoRoot, "lib/vendor-brain/src/marketing-verticals.ts"), "utf8");
+const siteSlugOverrides = JSON.parse(fs.readFileSync(path.resolve(siteRoot, "src/data/publicVerticalSlugs.json"), "utf8"));
 const macrosegments = new Set(manifest.macrosegments || []);
 const parsedVerticals = {};
-
-// O Vendor Brain pode reutilizar um slug semântico entre macrosegmentos.
-// A camada pública precisa manter 50 URLs únicas sem alterar os IDs/slugs internos.
-const SITE_SLUG_OVERRIDES = {
-  "retail-building": "materiais-construcao-acabamentos",
-  "industry-building": "industria-materiais-construcao",
-  "dist-autoparts": "distribuidora-autopecas",
-  "industry-food": "industria-alimentos-bebidas",
-};
 
 for (const block of verticalSource.split("v({").slice(1)) {
   const id = block.match(/id\s*:\s*['"]([^'"]+)['"]/)?.[1];
@@ -30,7 +22,7 @@ for (const block of verticalSource.split("v({").slice(1)) {
   const name = block.match(/name\s*:\s*['"]([^'"]+)['"]/)?.[1];
   const semanticSlug = block.match(/slug\s*:\s*['"]([^'"]+)['"]/)?.[1];
   if (!id || !macrosegment || !name || !semanticSlug) continue;
-  const slug = SITE_SLUG_OVERRIDES[id] ?? semanticSlug;
+  const slug = siteSlugOverrides[id] ?? semanticSlug;
   parsedVerticals[slug] = {
     id,
     slug,
