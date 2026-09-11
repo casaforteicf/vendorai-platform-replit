@@ -22,6 +22,16 @@ describe("SITE_GENERATOR_SYSTEM_PROMPT", () => {
     expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("seções vazias");
     expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("pronto para apresentação");
   });
+
+  it("applies the global light premium standard to every generated page type", () => {
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("PADRÃO VISUAL GLOBAL VENDORAI");
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("O padrão default é CLARO");
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("no máximo UMA seção escura");
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("Página de produto (product)");
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("Um produto selecionado = uma página daquele produto");
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("É proibido listar, recomendar, precificar ou criar cards de outros produtos");
+    expect(SITE_GENERATOR_SYSTEM_PROMPT).toContain("CTA CONTEXTUAL");
+  });
 });
 
 describe("validateSiteHtml", () => {
@@ -50,6 +60,15 @@ describe("validateSiteHtml", () => {
         "empty-section",
       ]),
     );
+  });
+
+  it("detects vertical CTA/navigation text that can break mobile", () => {
+    const html = completeHtml(
+      `<header><a class="btn" href="#comprar">Carrinho</a></header>`,
+      `.btn{writing-mode:vertical-rl;text-orientation:upright}a{color:#175cd3}`,
+    );
+    const codes = validateSiteHtml(html).issues.map((issue) => issue.code);
+    expect(codes).toContain("vertical-text");
   });
 
   it("detects global invisible styles, oversized spacing, and unstable images", () => {
@@ -104,6 +123,8 @@ describe("site HTML preparation", () => {
     expect(second.match(/id="__vai_quality_guard__"/g)).toHaveLength(1);
     expect(second).toContain("@media(min-width:48rem)");
     expect(second).toContain(":focus-visible");
+    expect(second).toContain("--vai-primary:#6366f1");
+    expect(second).toContain("writing-mode:horizontal-tb!important");
 
     const prepared = prepareSiteHtml(source);
     expect(prepared.validation.valid).toBe(true);
@@ -120,6 +141,17 @@ describe("site HTML preparation", () => {
     expect(prepared.html).toContain("effectiveBg=el");
     expect(prepared.html).toContain("data-vai-contrast-repaired");
     expect(prepared.html).toContain("button,.btn");
+    expect(prepared.validation.valid).toBe(true);
+  });
+
+  it("forces generated CTA text back to horizontal layout", () => {
+    const source = completeHtml(
+      `<header><a class="btn" href="#comprar">Carrinho</a></header>`,
+      `.btn{writing-mode:vertical-rl;text-orientation:upright}a{color:#175cd3}`,
+    );
+    const prepared = prepareSiteHtml(source);
+    expect(prepared.html).toContain("writing-mode:horizontal-tb!important");
+    expect(prepared.html).toContain("setProperty('writing-mode','horizontal-tb','important')");
     expect(prepared.validation.valid).toBe(true);
   });
 
