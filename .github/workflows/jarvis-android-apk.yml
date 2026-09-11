@@ -1,4 +1,4 @@
-name: Build Jarvis Android APK
+name: Publish Existing VendorAI Android APK
 
 on:
   workflow_dispatch:
@@ -6,89 +6,44 @@ on:
     branches: [main]
     paths:
       - .github/workflows/jarvis-android-apk.yml
-      - artifacts/mobile/**
 
 permissions:
   contents: write
 
 jobs:
-  build-apk:
+  publish-existing-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 20
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
+      EXISTING_BUILD_ID: 942fee26-33dc-46a2-b171-dd9417137430
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Aplicar identidade visual do site no app
-        shell: bash
-        run: |
-          cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/images/icon.png
-          test -s artifacts/mobile/assets/images/icon.png
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.26.1 --activate
-
       - name: Validar EXPO_TOKEN
         shell: bash
-        run: |
-          test -n "$EXPO_TOKEN" || (echo "Secret EXPO_TOKEN ausente" && exit 1)
-          if [ -z "$PICOVOICE_ACCESS_KEY" ]; then
-            echo "PICOVOICE_ACCESS_KEY ainda ausente: APK será gerado com voz do JARVIS, mas wake word em segundo plano ficará desativada."
-          fi
-
-      - name: Baixar modelo Porcupine pt-BR
-        if: ${{ env.PICOVOICE_ACCESS_KEY != '' }}
-        shell: bash
-        run: |
-          mkdir -p artifacts/mobile/assets/jarvis
-          curl -fL \
-            https://raw.githubusercontent.com/Picovoice/porcupine/master/lib/common/porcupine_params_pt.pv \
-            -o artifacts/mobile/assets/jarvis/porcupine_params_pt.pv
-          test -s artifacts/mobile/assets/jarvis/porcupine_params_pt.pv
-
-      - name: Instalar dependências
-        run: pnpm install --no-frozen-lockfile
+        run: test -n "$EXPO_TOKEN" || (echo "Secret EXPO_TOKEN ausente" && exit 1)
 
       - name: Instalar EAS CLI
         run: npm install --global eas-cli
 
-      - name: Inicializar projeto EAS
-        working-directory: artifacts/mobile
-        run: eas init --force --non-interactive
-
-      - name: Sincronizar Picovoice no EAS
-        if: ${{ env.PICOVOICE_ACCESS_KEY != '' }}
-        working-directory: artifacts/mobile
-        run: |
-          eas env:set preview \
-            --name PICOVOICE_ACCESS_KEY \
-            --value "$PICOVOICE_ACCESS_KEY" \
-            --visibility secret \
-            --scope project \
-            --non-interactive
-
-      - name: Gerar APK Android e capturar link direto
+      - name: Obter link direto do APK existente
         working-directory: artifacts/mobile
         shell: bash
         run: |
           set -euo pipefail
-          eas build --platform android --profile preview --non-interactive --wait --json > /tmp/eas-build.json
+          eas build:view "$EXISTING_BUILD_ID" --json > /tmp/eas-build.json
 
           APK_URL="$(node <<'NODE'
           const fs = require('fs');
-          const payload = JSON.parse(fs.readFileSync('/tmp/eas-build.json', 'utf8'));
-          const build = Array.isArray(payload) ? payload[0] : payload;
+          const build = JSON.parse(fs.readFileSync('/tmp/eas-build.json', 'utf8'));
           const url =
             build?.artifacts?.buildUrl ||
             build?.artifacts?.applicationArchiveUrl ||
@@ -96,7 +51,8 @@ jobs:
             build?.buildUrl ||
             '';
           if (!url || !/^https:\/\/expo\.dev\/artifacts\/eas\/.+\.apk(?:\?.*)?$/.test(url)) {
-            console.error('EAS não retornou um link direto de APK válido.');
+            console.error('O build existente não retornou um link direto de APK válido.');
+            console.error(JSON.stringify(build?.artifacts || build, null, 2));
             process.exit(1);
           }
           process.stdout.write(url);
@@ -104,7 +60,7 @@ jobs:
           )"
 
           echo "APK_URL=$APK_URL" >> "$GITHUB_ENV"
-          echo "APK direto capturado com sucesso."
+          echo "Link direto do APK existente capturado com sucesso."
 
       - name: Publicar endereço próprio do APK
         shell: bash
@@ -122,5 +78,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(site): atualizar APK Android publicado"
+          git commit -m "chore(site): apontar download para APK direto existente"
           git push origin HEAD:main
