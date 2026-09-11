@@ -54,7 +54,7 @@ function classifyIntent(score: number): Pick<BehaviorIntentSummary, "tier" | "ti
   };
 }
 
-function buildSummary(events: Array<{
+export function buildBehaviorIntentSummary(events: Array<{
   eventType: string;
   path: string | null;
   engagedMs: number | null;
@@ -71,7 +71,7 @@ function buildSummary(events: Array<{
   };
 
   for (const event of events) {
-    if (event.eventType === "page_view") {
+    if (event.eventType === "page_view" || event.eventType === "screen_view") {
       signals.pageViews++;
       if (/\/(pricing|planos|precos|preços)(\/|\?|$)/i.test(event.path ?? "")) {
         signals.pricingViews++;
@@ -177,7 +177,7 @@ export async function syncBehaviorIntentForLead(
     .limit(500);
 
   if (events.length === 0) return null;
-  const behaviorIntent = buildSummary(events);
+  const behaviorIntent = buildBehaviorIntentSummary(events);
   await db
     .update(leadsTable)
     .set({
