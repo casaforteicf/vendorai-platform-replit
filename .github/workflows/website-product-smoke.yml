@@ -1,0 +1,46 @@
+name: Website Product Routes Smoke Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/website/**"
+      - ".github/workflows/website-product-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Validate product routes in production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for edge propagation
+        run: sleep 10
+
+      - name: Validate product routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /produtos /produtos/crm; do
+            url="https://appvendorai.com${path}?smoke=${GITHUB_SHA}"
+            status=$(curl -L -sS -H 'Accept: text/html' -o /tmp/page.html -w '%{http_code}' "$url")
+            echo "$path -> HTTP $status"
+            test "$status" = "200"
+            grep -q '<div id="root"></div>' /tmp/page.html
+          done
+
+      - name: Validate deployed bundle contains product pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L -sS -H 'Cache-Control: no-cache' "https://appvendorai.com/?smoke=${GITHUB_SHA}" -o /tmp/index.html
+          asset=$(grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' /tmp/index.html | head -1)
+          test -n "$asset"
+          echo "Production bundle: $asset"
+          curl -L -sS -H 'Cache-Control: no-cache' "https://appvendorai.com${asset}?smoke=${GITHUB_SHA}" -o /tmp/app.js
+          grep -q 'CRM Inteligente' /tmp/app.js
+          grep -q 'Todos os produtos' /tmp/app.js
+          echo "Product pages are present in the production JavaScript bundle."
