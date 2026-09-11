@@ -46,12 +46,42 @@ for (const page of pages) {
   else manifest.routes.push(route);
 }
 
+const hubs = [
+  {
+    pathname: "/solucoes",
+    title: "Soluções para CRM, Vendas e Receita com IA | VendorAI",
+    description: "Encontre soluções VendorAI por problema: CRM e WhatsApp, follow-up, recuperação de leads, reativação, recompra, prospecção e inteligência de receita.",
+    esTitle: "Soluciones para CRM, Ventas e Ingresos con IA | VendorAI",
+    esDescription: "Encuentra soluciones VendorAI por problema: CRM y WhatsApp, seguimiento, recuperación de leads, reactivación, recompra, prospección e inteligencia de ingresos.",
+    type: "collection",
+    name: "Soluções por problema",
+    priority: 0.91,
+  },
+  {
+    pathname: "/comparar",
+    title: "Comparações de CRM, Follow-up e Prospecção com IA | VendorAI",
+    description: "Compare CRM com IA, follow-up automático e prospecção assistida por IA com abordagens tradicionais antes de escolher sua operação comercial.",
+    esTitle: "Comparaciones de CRM, Seguimiento y Prospección con IA | VendorAI",
+    esDescription: "Compara CRM con IA, seguimiento automático y prospección asistida por IA con enfoques tradicionales antes de elegir tu operación comercial.",
+    type: "collection",
+    name: "Comparações comerciais",
+    priority: 0.86,
+  },
+];
+
+for (const hub of hubs) {
+  const index = manifest.routes.findIndex((item) => item.pathname === hub.pathname);
+  if (index >= 0) manifest.routes[index] = { ...manifest.routes[index], ...hub };
+  else manifest.routes.push(hub);
+}
+
 manifest.growthPages = pages;
+manifest.growthHubs = hubs;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
 // Marca a versão realmente publicada para o smoke esperar o deploy correto no edge.
 const deploymentVersion = process.env.GITHUB_SHA || "local";
 fs.writeFileSync(path.resolve(outDir, "deployment-version.txt"), `${deploymentVersion}\n`);
 
-console.log(`[seo-growth] appended ${pages.length} commercial-intent pages`);
+console.log(`[seo-growth] appended ${pages.length} commercial-intent pages and ${hubs.length} hubs`);
 console.log(`[deploy] version ${deploymentVersion}`);

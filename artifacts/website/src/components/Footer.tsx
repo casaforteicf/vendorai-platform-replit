@@ -7,6 +7,8 @@ const PT = {
   products: "Soluções",
   company: "Empresa",
   allProducts: "Todos os produtos",
+  solutionGuides: "Soluções por problema",
+  comparisons: "Comparar abordagens",
   features: "Funcionalidades",
   plans: "Planos e Preços",
   blog: "Conteúdo e Blog",
@@ -32,6 +34,8 @@ const ES = {
   products: "Soluciones",
   company: "Empresa",
   allProducts: "Todos los productos",
+  solutionGuides: "Soluciones por problema",
+  comparisons: "Comparar enfoques",
   features: "Funciones",
   plans: "Planes y precios",
   blog: "Contenido y Blog",
@@ -73,6 +77,8 @@ export default function Footer() {
             <h4 className="mb-4 font-semibold text-slate-950">{copy.platform}</h4>
             <ul className="space-y-2 text-sm">
               <li><Link href="/produtos" className={linkClass}>{copy.allProducts}</Link></li>
+              <li><Link href="/solucoes" className={linkClass}>{copy.solutionGuides}</Link></li>
+              <li><Link href="/comparar" className={linkClass}>{copy.comparisons}</Link></li>
               <li><Link href="/funcionalidades" className={linkClass}>{copy.features}</Link></li>
               <li><Link href="/precos" className={linkClass}>{copy.plans}</Link></li>
               <li><Link href="/blog" className={linkClass}>{copy.blog}</Link></li>
