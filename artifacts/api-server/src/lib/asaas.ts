@@ -15,6 +15,10 @@ function getApiKey(explicit?: string | null): string | null {
   return explicit ?? process.env.ASAAS_API_KEY ?? null;
 }
 
+export function getPlatformAsaasApiKey(): string | null {
+  return getApiKey();
+}
+
 /**
  * Reads and decrypts a tenant's own Asaas API key (`tenants.asaas_api_key`,
  * stored encrypted with lib/crypto.ts). Each tenant is expected to have its
@@ -222,6 +226,81 @@ export interface AsaasPixQrCode {
 
 export async function getPixQrCode(chargeId: string, apiKey?: string | null): Promise<AsaasPixQrCode> {
   return asaasRequest<AsaasPixQrCode>("GET", `/payments/${chargeId}/pixQrCode`, undefined, apiKey);
+}
+
+export interface AsaasSubscriptionInput {
+  customer: string;
+  billingType: AsaasBillingType;
+  value: number;
+  nextDueDate: string;
+  cycle: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "BIMONTHLY" | "QUARTERLY" | "SEMIANNUALLY" | "YEARLY";
+  description?: string;
+  externalReference?: string;
+  endDate?: string;
+  maxPayments?: number;
+}
+
+export interface AsaasSubscriptionOutput {
+  id: string;
+  status?: string;
+  customer?: string;
+  value?: number;
+  nextDueDate?: string;
+  cycle?: string;
+  externalReference?: string | null;
+}
+
+export async function createSubscription(
+  data: AsaasSubscriptionInput,
+  apiKey?: string | null,
+): Promise<AsaasSubscriptionOutput> {
+  return asaasRequest<AsaasSubscriptionOutput>("POST", "/subscriptions", data, apiKey);
+}
+
+export interface AsaasWebhookConfig {
+  id: string;
+  name?: string;
+  url?: string;
+  enabled?: boolean;
+  interrupted?: boolean;
+  events?: string[];
+}
+
+export async function ensureAsaasPaymentWebhook(
+  input: { email: string; name?: string },
+  apiKey?: string | null,
+): Promise<{ configured: boolean; id?: string; reason?: string }> {
+  const authToken = process.env.ASAAS_WEBHOOK_ACCESS_TOKEN?.trim();
+  const apiBase = (process.env.PUBLIC_API_URL || process.env.APP_URL || "").trim().replace(/\/$/, "");
+  if (!authToken || authToken.length < 32 || !apiBase) {
+    return { configured: false, reason: "server_webhook_config_missing" };
+  }
+
+  const webhookUrl = `${apiBase}/api/webhooks/asaas`;
+  const existing = await asaasRequest<{ data?: AsaasWebhookConfig[] }>("GET", "/webhooks?limit=100", undefined, apiKey)
+    .catch(() => ({ data: [] }));
+  const match = existing.data?.find((item) => item.url === webhookUrl || item.name === "VendorAI Checkout");
+  if (match?.id) return { configured: true, id: match.id };
+
+  const created = await asaasRequest<AsaasWebhookConfig>("POST", "/webhooks", {
+    name: input.name || "VendorAI Checkout",
+    url: webhookUrl,
+    email: input.email,
+    enabled: true,
+    interrupted: false,
+    apiVersion: 3,
+    authToken,
+    sendType: "SEQUENTIALLY",
+    events: [
+      "PAYMENT_RECEIVED",
+      "PAYMENT_CONFIRMED",
+      "PAYMENT_OVERDUE",
+      "PAYMENT_DELETED",
+      "PAYMENT_CANCELLED",
+    ],
+  }, apiKey);
+
+  return { configured: true, id: created.id };
 }
 
 /**
