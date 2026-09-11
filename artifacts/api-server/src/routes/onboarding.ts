@@ -808,9 +808,7 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
   } else {
     await db
       .insert(agentConfigsTable)
-      // setupCompletedAt/autonomyEnabledAt na criação -- ver comentário
-      // em agent_configs.ts (rota POST /agent-configs).
-      .values({ tenantId, metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null, setupCompletedAt: now, autonomyEnabledAt: now });
+      .values({ tenantId, metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null });
   }
 
   // Save phone to business profile
@@ -897,7 +895,12 @@ router.patch("/onboarding/step/3", authenticate, async (req, res) => {
     };
     await db
       .update(agentConfigsTable)
-      .set({ agents: { ...currentAgents, [agentKey]: updatedEntry }, updatedAt: now })
+      .set({
+        agents: { ...currentAgents, [agentKey]: updatedEntry },
+        setupCompletedAt: existingConfig.setupCompletedAt ?? now,
+        autonomyEnabledAt: existingConfig.autonomyEnabledAt ?? now,
+        updatedAt: now,
+      })
       .where(eq(agentConfigsTable.id, existingConfig.id));
   } else {
     const newEntry = {
