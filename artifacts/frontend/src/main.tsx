@@ -35,6 +35,7 @@ import { CampaignAbTestControl } from "./components/marketing/CampaignAbTestCont
 import { CampaignAbWinnerApprovalBridge } from "./components/marketing/CampaignAbWinnerApprovalBridge";
 import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPlanProductionRuntimeBridge";
 import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
+import { SearchPerformanceTrackingBridge } from "./components/marketing/SearchPerformanceTrackingBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { JarvisVoiceReplayControl } from "./components/support/JarvisVoiceReplayControl";
 import { JarvisResponseHealthNotice } from "./components/support/JarvisResponseHealthNotice";
@@ -188,6 +189,7 @@ createRoot(document.getElementById("root")!).render(
           <CampaignAbWinnerApprovalBridge />
           <MediaPlanProductionRuntimeBridge />
           <AdsCreativePreviewBridge />
+          <SearchPerformanceTrackingBridge />
         </>
       )}
     </I18nProvider>
