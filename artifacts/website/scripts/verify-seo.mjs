@@ -11,11 +11,11 @@ const sitemapPath = path.join(outDir, "sitemap.xml");
 const baseUrl = "https://appvendorai.com";
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const source = fs.readFileSync(path.resolve(repoRoot, "lib/vendor-brain/src/marketing-verticals.ts"), "utf8");
+const verticalSource = fs.readFileSync(path.resolve(repoRoot, "lib/vendor-brain/src/marketing-verticals.ts"), "utf8");
 const macrosegments = new Set(manifest.macrosegments || []);
 const parsedVerticals = {};
 
-for (const block of source.split("v({").slice(1)) {
+for (const block of verticalSource.split("v({").slice(1)) {
   const macrosegment = block.match(/macrosegment\s*:\s*['"]([^'"]+)['"]/)?.[1];
   const name = block.match(/name\s*:\s*['"]([^'"]+)['"]/)?.[1];
   const slug = block.match(/slug\s*:\s*['"]([^'"]+)['"]/)?.[1];
@@ -61,6 +61,46 @@ for (const macrosegment of macrosegments) {
   }
 }
 
+const blogSource = fs.readFileSync(path.resolve(siteRoot, "src/data/blog-posts.ts"), "utf8");
+const blogSlugs = [...blogSource.matchAll(/slug:\s*["']([^"']+)["']/g)];
+for (let index = 0; index < blogSlugs.length; index += 1) {
+  const slugMatch = blogSlugs[index];
+  const slug = slugMatch[1];
+  const start = slugMatch.index ?? 0;
+  const end = blogSlugs[index + 1]?.index ?? blogSource.length;
+  const block = blogSource.slice(start, end);
+  const title = block.match(/title:\s*["']([^"']+)["']/)?.[1] || slug.split("-").join(" ");
+  const summary = block.match(/summary:\s*["']([^"']+)["']/)?.[1] || "Conteúdo VendorAI sobre vendas, CRM, marketing, automação e inteligência artificial.";
+  const pathname = `/blog/${slug}`;
+  if (!manifest.routes.some((route) => route.pathname === pathname)) {
+    manifest.routes.push({ pathname, title: `${title} | Blog VendorAI`, description: summary, type: "article", name: title, priority: 0.72 });
+  }
+}
+
+try {
+  const response = await fetch(`${baseUrl}/api/sites/vendorai/blog-data`, { signal: AbortSignal.timeout(3500) });
+  if (response.ok) {
+    const data = await response.json();
+    for (const post of data.posts || []) {
+      if (!post?.slug || !post?.titulo) continue;
+      const pathname = `/blog/${post.slug}`;
+      const route = {
+        pathname,
+        title: `${post.titulo} | Blog VendorAI`,
+        description: post.metaDescription || "Conteúdo VendorAI sobre vendas, CRM, marketing, automação e inteligência artificial.",
+        type: "article",
+        name: post.titulo,
+        priority: 0.72,
+      };
+      const existingIndex = manifest.routes.findIndex((item) => item.pathname === pathname);
+      if (existingIndex >= 0) manifest.routes[existingIndex] = { ...manifest.routes[existingIndex], ...route };
+      else manifest.routes.push(route);
+    }
+  }
+} catch {
+  console.warn("[seo-verify] dynamic blog unavailable during build; static posts remain indexed");
+}
+
 const NOINDEX_PATHS = new Set(["/demo", "/privacy", "/terms", "/cadastro-praca"]);
 manifest.routes = manifest.routes.map((route) => ({
   ...route,
@@ -72,6 +112,7 @@ const duplicates = routePaths.filter((pathname, index) => routePaths.indexOf(pat
 const emptyMeta = manifest.routes.filter((route) => !route.title?.trim() || !route.description?.trim());
 const productCount = Object.keys(manifest.products || {}).length;
 const verticalCount = Object.keys(manifest.verticals || {}).length;
+const articleCount = manifest.routes.filter((route) => route.type === "article").length;
 
 if (duplicates.length) throw new Error(`[seo] duplicate routes: ${[...new Set(duplicates)].join(", ")}`);
 if (emptyMeta.length) throw new Error(`[seo] routes without title/description: ${emptyMeta.map((route) => route.pathname).join(", ")}`);
@@ -98,7 +139,7 @@ const sitemapEntries = manifest.routes
       const href = country ? `${loc}?country=${country}` : loc;
       return `    <xhtml:link rel="alternate" hreflang="${lang}" href="${xmlEscape(href)}" />`;
     }).join("\n");
-    return `  <url>\n    <loc>${xmlEscape(loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${route.type === "blog" ? "weekly" : "monthly"}</changefreq>\n    <priority>${route.priority ?? 0.7}</priority>\n${alternates}\n    <xhtml:link rel="alternate" hreflang="x-default" href="${xmlEscape(loc)}" />\n  </url>`;
+    return `  <url>\n    <loc>${xmlEscape(loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${route.type === "article" || route.type === "blog" ? "weekly" : "monthly"}</changefreq>\n    <priority>${route.priority ?? 0.7}</priority>\n${alternates}\n    <xhtml:link rel="alternate" hreflang="x-default" href="${xmlEscape(loc)}" />\n  </url>`;
   }).join("\n");
 
 fs.writeFileSync(
@@ -107,4 +148,4 @@ fs.writeFileSync(
 );
 
 const sitemapUrlCount = (fs.readFileSync(sitemapPath, "utf8").match(/<url>/g) || []).length;
-console.log(`[seo-verify] OK: ${manifest.routes.length} routes, ${productCount} products, ${verticalCount} verticals, ${manifest.macrosegments.length} macrosegments, ${sitemapUrlCount} sitemap URLs`);
+console.log(`[seo-verify] OK: ${manifest.routes.length} routes, ${productCount} products, ${verticalCount} verticals, ${manifest.macrosegments.length} macrosegments, ${articleCount} articles, ${sitemapUrlCount} sitemap URLs`);
