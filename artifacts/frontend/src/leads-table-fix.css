@@ -1,51 +1,64 @@
-/* Leads desktop table: keep all columns inside the card without horizontal scrolling.
-   Nothing important may be hidden: long content wraps instead of using ellipsis.
-   Scope is intentionally limited to the desktop Leads table. */
+/* Leads desktop table readability fix.
+   Keep every column readable and prevent badges/responsible names from overlapping.
+   The table may scroll horizontally on narrower desktop widths instead of compressing
+   10 business columns into an unreadable layout. Scope is limited to Leads. */
 @media (min-width: 768px) {
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) {
-    overflow-x: hidden;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-gutter: stable;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) > table {
     width: 100%;
+    min-width: 1320px;
     table-layout: fixed;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td {
     min-width: 0 !important;
-    padding-left: 0.55rem;
-    padding-right: 0.55rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
     vertical-align: middle;
   }
 
-  /* Balanced distribution: enough space for names and actions while keeping
-     the processes column as the largest area. */
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th {
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  /* 10 columns in Leads.tsx:
+     1 Nome, 2 Empresa, 3 Segmento, 4 Telefone, 5 Status,
+     6 Negócios/processos, 7 Responsável, 8 Maior orçamento,
+     9 Churn Risk, 10 Ações. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(1),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 13%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(2),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 11%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(3),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3) { width: 10%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(4),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4) { width: 10%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) { width: 25%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) { width: 9%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 19%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) { width: 10%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) { width: 8%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 4%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 5%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) { width: 5%; }
 
-  /* Never hide lead data. Long values wrap and increase row height naturally. */
+  /* Text columns may wrap, but never overlap adjacent cells. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) {
-    overflow: visible;
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) {
+    overflow: hidden;
     text-overflow: clip;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -54,35 +67,50 @@
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) > span,
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) > span {
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) > span {
     min-width: 0;
     max-width: 100%;
     white-space: normal;
     flex-wrap: wrap;
   }
 
-  /* Processes/deals: badges may grow vertically, but their text must remain visible. */
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) > *,
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) button,
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) [class*="max-w-"] {
+  /* Keep phone, status, money, risk and actions compact and predictable. */
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(4),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) {
+    white-space: nowrap;
+  }
+
+  /* Processes/deals are column 6. Give them the largest usable area and let
+     multiple badges wrap vertically instead of invading Responsável. */
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) > *,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) button,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) [class*="max-w-"] {
     min-width: 0;
     max-width: 100% !important;
   }
 
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) button {
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) button {
     width: 100%;
   }
 
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) .truncate,
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) [class*="truncate"] {
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) .truncate,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) [class*="truncate"] {
     overflow: visible !important;
     text-overflow: clip !important;
     white-space: normal !important;
     max-width: none !important;
   }
 
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) [class*="inline-flex"],
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) [class*="rounded-full"] {
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) [class*="inline-flex"],
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) [class*="rounded-full"] {
     white-space: normal !important;
     flex-wrap: wrap;
     justify-content: flex-start;
@@ -90,32 +118,32 @@
     text-align: left;
   }
 
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) {
-    text-align: right;
-  }
-
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) {
-    text-align: center;
-  }
-
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8) button {
-    width: 100%;
-    justify-content: center;
-    white-space: normal;
+    text-align: right;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) {
-    padding-left: 0.2rem;
-    padding-right: 0.35rem;
+    text-align: center;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9) button {
+    width: 100%;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) {
+    padding-left: 0.35rem;
+    padding-right: 0.5rem;
     text-align: right;
   }
 
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) > span {
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) > span {
     justify-content: flex-end;
-    gap: 0;
+    gap: 0.15rem;
     flex-wrap: nowrap;
   }
 }
