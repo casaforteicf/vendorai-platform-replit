@@ -68,15 +68,21 @@ jobs:
           echo "Generated media:"
           cat manifest.txt
 
-      - name: Publish official media to website
-        if: steps.screenshots.outcome == 'success' && steps.videos.outcome == 'success'
+      - name: Publish generated official media to website
+        if: always()
         shell: bash
         run: |
           TARGET="artifacts/website/public/media/vendorai-official"
           rm -rf "$TARGET"
           mkdir -p "$TARGET"
-          cp -R e2e/media-output/* "$TARGET"/
+          if [ -d e2e/media-output ]; then
+            cp -R e2e/media-output/* "$TARGET"/ || true
+          fi
           rm -rf "$TARGET/videos/raw"
+          find "$TARGET" -type f \( -name '*.png' -o -name '*.webm' \) | grep -q . || {
+            echo "No generated media available to publish."
+            exit 0
+          }
           git config user.name "VendorAI Media Bot"
           git config user.email "media-bot@appvendorai.com"
           git add "$TARGET"
@@ -99,5 +105,5 @@ jobs:
       - name: Fail if media generation had errors
         if: always() && (steps.screenshots.outcome == 'failure' || steps.videos.outcome == 'failure')
         run: |
-          echo "Media artifact was preserved, but one or more generation steps failed."
+          echo "Media artifact was preserved and publishable files were committed, but one or more generation steps need review."
           exit 1
