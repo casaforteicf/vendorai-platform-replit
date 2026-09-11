@@ -61,11 +61,25 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
   return { ...runtime, promptContext: runtime.promptContext + paidMediaLearning };
 }
 
+const ASAAS_COMMERCE_POLICY = `
+CHECKOUT FINANCEIRO VENDORAI — REGRA INEGOCIÁVEL
+- Se a página tiver produto, carrinho, compra ou e-commerce, WhatsApp NUNCA pode finalizar pagamento. WhatsApp é somente contato, suporte ou venda assistida.
+- O botão final deve dizer algo como "Finalizar compra" ou "Pagar com Asaas" e abrir um formulário curto com nome, e-mail, telefone e CPF/CNPJ opcional.
+- Ao confirmar, envie POST JSON para /api/public/tenant-commerce/checkout com: siteSlug, customer, billingType:"UNDEFINED", items:[{sku,quantity}] e pageUrl:location.href.
+- Use exclusivamente SKUs reais recebidos no catálogo. Nunca envie preço do navegador; o backend consulta o preço oficial do tenant.
+- Redirecione para paymentUrl retornada pela API. Esse é o fluxo financeiro oficial via Asaas.
+- Se a API retornar asaas_not_configured, informe que a empresa precisa conectar o Asaas. É proibido cair para checkout via WhatsApp como fallback.
+- Itens recorrentes são cobrados no primeiro pagamento e a recorrência mensal é provisionada pelo backend após confirmação no Asaas.
+`;
+
 export function enrichSiteGeneratorServicesContext(existingServices: unknown, promptContext: string): string {
   const current = typeof existingServices === 'string' ? existingServices.trim() : '';
   const marker = 'DIREÇÃO CRIATIVA WEB OFICIAL DO VENDORAI';
-  if (!promptContext.trim() || current.includes(marker)) return current;
-  return [current, promptContext.trim()].filter(Boolean).join('\n\n');
+  const hasCreativeContext = promptContext.trim() && !current.includes(marker);
+  const parts = [current];
+  if (hasCreativeContext) parts.push(promptContext.trim());
+  if (!current.includes('CHECKOUT FINANCEIRO VENDORAI — REGRA INEGOCIÁVEL')) parts.push(ASAAS_COMMERCE_POLICY.trim());
+  return parts.filter(Boolean).join('\n\n');
 }
 
 export function inspectGeneratedSite(input: {
@@ -101,6 +115,13 @@ export function inspectGeneratedSite(input: {
   const hasCartCue = /carrinho|cart|adicionar ao carrinho|add to cart/i.test(text);
   const hasProductCue = /produto|preço|r\$|comprar/i.test(text);
   const ecommerceMissingCore = input.surface === 'ecommerce' && (!hasCartCue || !hasProductCue);
+  const ecommerceUsesWhatsAppCheckout = input.surface === 'ecommerce' && (
+    /id=["'][^"']*checkout[^"']*["'][^>]{0,500}href=["']https?:\/\/(?:wa\.me|api\.whatsapp)/i.test(html)
+    || /getElementById\(["'][^"']*checkout[^"']*["']\)[\s\S]{0,500}(?:wa\.me|api\.whatsapp)/i.test(html)
+    || /finalizar[^<\n]{0,120}whatsapp/i.test(cssAndHtml)
+  );
+  const ecommerceHasAsaasCheckout = input.surface !== 'ecommerce'
+    || /\/api\/public\/tenant-commerce\/checkout/i.test(html);
 
   const severeLayoutIssues = [
     hasVerticalWriting,
@@ -108,6 +129,8 @@ export function inspectGeneratedSite(input: {
     hasFixedGiantHeader,
     suspiciousMobileTypography,
     ecommerceMissingCore,
+    ecommerceUsesWhatsAppCheckout,
+    !ecommerceHasAsaasCheckout,
   ].filter(Boolean).length;
   const moderateLayoutIssues = [hasAnywhereWrap, hasViewportWidthHack, !hasMobileMedia].filter(Boolean).length;
 
@@ -146,6 +169,8 @@ export function inspectGeneratedSite(input: {
       ...(hasFixedGiantHeader ? ['Header/nav com altura fixa excessiva detectado.'] : []),
       ...(suspiciousMobileTypography ? ['Tipografia mobile excessivamente grande detectada.'] : []),
       ...(ecommerceMissingCore ? ['E-commerce sem sinais suficientes de catálogo e carrinho.'] : []),
+      ...(ecommerceUsesWhatsAppCheckout ? ['Checkout financeiro via WhatsApp detectado. Pagamentos de e-commerce devem finalizar exclusivamente pelo Asaas.'] : []),
+      ...(!ecommerceHasAsaasCheckout ? ['E-commerce sem integração ao checkout oficial Asaas do tenant.'] : []),
       ...((input.injectedImageCount ?? 0) > 0 ? ['Parte das mídias obrigatórias precisou ser reinserida pelo fallback determinístico.'] : []),
     ],
     recommendations: [
@@ -154,6 +179,7 @@ export function inspectGeneratedSite(input: {
       ...(!hasResponsiveMeta || !hasMobileMedia ? ['Garantir layout mobile-first real em 360px, 768px e desktop.'] : []),
       ...(severeLayoutIssues > 0 ? ['Regenerar a composição usando o padrão visual avançado antes de publicar.'] : []),
       ...(ecommerceMissingCore ? ['Reposicionar a grade de produtos como foco da página e usar carrinho compacto e funcional.'] : []),
+      ...(ecommerceUsesWhatsAppCheckout || !ecommerceHasAsaasCheckout ? ['Trocar a finalização por POST /api/public/tenant-commerce/checkout e redirecionar para paymentUrl do Asaas.'] : []),
     ],
     threshold: severeLayoutIssues > 0 ? 88 : 82,
   });
