@@ -2,6 +2,12 @@ name: VendorAI Official Media Capture
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - e2e/tests/media-capture.spec.ts
+      - e2e/scripts/media-video.ts
+      - .github/workflows/vendorai-media-capture.yml
 
 permissions:
   contents: read
@@ -10,7 +16,7 @@ jobs:
   capture:
     name: Capture official screenshots and videos
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       MEDIA_BASE_URL: https://app.appvendorai.com
       MEDIA_OUTPUT_DIR: ${{ github.workspace }}/e2e/media-output
@@ -62,7 +68,7 @@ jobs:
         with:
           name: vendorai-official-media-${{ github.run_number }}
           path: e2e/media-output
-          retention-days: 14
+          retention-days: 30
           if-no-files-found: error
 
       - name: Fail if media generation had errors
