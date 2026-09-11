@@ -1,170 +1,323 @@
 import { Link } from "wouter";
-import { ArrowRight, BarChart3, Megaphone, Radar, Sparkles, Target, UsersRound } from "lucide-react";
+import {
+  ArrowRight,
+  BarChart3,
+  Check,
+  Megaphone,
+  Radar,
+  Sparkles,
+  Target,
+  UsersRound,
+} from "lucide-react";
 import { usePublicCountry } from "@/lib/publicCountry";
 
 const PT = {
   badge: "Plataforma de crescimento e receita com IA",
   title: "Gere demanda. Encontre clientes. Venda mais.",
-  accent: "E faça a receita voltar.",
+  accent: "Faça a receita voltar.",
   description:
     "O VendorAI conecta marketing, prospecção, atendimento, CRM, vendas, pós-venda e inteligência em um único ciclo que gera, converte e expande receita.",
   primary: "Testar 5 dias grátis",
-  secondary: "Explorar produtos",
-  note1: "Sem limite de usuários",
-  note2: "5 dias grátis por mês",
-  note3: "Implantação autoguiada",
-  enginesTitle: "3 motores de crescimento. Uma só inteligência.",
-  enginesSubtitle: "A receita pode nascer antes do lead, fora do inbound ou dentro da sua própria carteira.",
+  secondary: "Ver todos os produtos",
+  benefits: [
+    "Sem limite de usuários",
+    "5 dias grátis por mês",
+    "Implantação autoguiada",
+    "Suporte em português",
+  ],
+  enginesIntro: "3 motores trabalham juntos",
   engines: [
     {
       icon: Megaphone,
-      label: "1. Gerar demanda",
       title: "Marketing & Inbound",
-      description: "Conteúdo, mídia, sites e landing pages para criar procura e capturar intenção.",
-      chips: ["Ads", "Conteúdo", "Sites & LPs"],
+      text: "Gera demanda com Ads, conteúdo, sites e landing pages.",
     },
     {
       icon: Radar,
-      label: "2. Encontrar demanda",
       title: "Prospector & Outbound",
-      description: "Descubra empresas, enriqueça dados, identifique fit e priorize quem abordar.",
-      chips: ["Prospector IA", "Enriquecimento", "Scoring"],
+      text: "Encontra empresas, enriquece dados e prioriza novos clientes.",
     },
     {
       icon: Target,
-      label: "3. Expandir receita",
       title: "Revenue Intelligence",
-      description: "Encontre recompra, upsell, cross-sell, risco de churn e próxima melhor ação.",
-      chips: ["Revenue Scout", "Churn", "NBA"],
+      text: "Encontra recompra, expansão, churn e próxima melhor ação.",
     },
   ],
-  core: "Tudo converge no VendorAI",
-  flow: ["Captar", "Entender", "Converter", "Vender", "Reter", "Aprender"],
+  proofBadge: "Telas reais do VendorAI",
+  proofTitle: "Produto real. Operação real.",
+  proofSubtitle: "Algumas das telas que já fazem parte da plataforma.",
+  screenshots: {
+    crm: {
+      title: "CRM & Pipeline",
+      text: "Oportunidades, etapas e próxima ação.",
+      alt: "Tela real do CRM e pipeline do VendorAI",
+    },
+    prospector: {
+      title: "Prospector IA",
+      text: "Descoberta e priorização de novos clientes.",
+      alt: "Tela real do Prospector IA do VendorAI",
+    },
+    revenue: {
+      title: "Revenue Scout",
+      text: "Recompra e novas oportunidades na carteira.",
+      alt: "Tela real do Revenue Scout do VendorAI",
+    },
+    omnichannel: {
+      title: "Omnichannel",
+      text: "Atendimento e conversas em um único lugar.",
+      alt: "Tela real do Omnichannel do VendorAI",
+    },
+    jarvis: {
+      title: "JARVIS",
+      text: "Inteligência executiva sobre toda a operação.",
+      alt: "Tela real do JARVIS do VendorAI",
+    },
+  },
 };
 
 const ES = {
   badge: "Plataforma de crecimiento e ingresos con IA",
   title: "Genere demanda. Encuentre clientes. Venda más.",
-  accent: "Y haga que los ingresos vuelvan.",
+  accent: "Haga que los ingresos vuelvan.",
   description:
     "VendorAI conecta marketing, prospección, atención, CRM, ventas, posventa e inteligencia en un único ciclo que genera, convierte y expande ingresos.",
   primary: "Probar 5 días gratis",
-  secondary: "Explorar productos",
-  note1: "Sin límite de usuarios",
-  note2: "5 días gratis por mes",
-  note3: "Implementación autoguiada",
-  enginesTitle: "3 motores de crecimiento. Una sola inteligencia.",
-  enginesSubtitle: "Los ingresos pueden nacer antes del lead, fuera del inbound o dentro de su propia cartera.",
+  secondary: "Ver todos los productos",
+  benefits: [
+    "Sin límite de usuarios",
+    "5 días gratis por mes",
+    "Implementación autoguiada",
+    "Soporte en español",
+  ],
+  enginesIntro: "3 motores trabajan juntos",
   engines: [
     {
       icon: Megaphone,
-      label: "1. Generar demanda",
       title: "Marketing & Inbound",
-      description: "Contenido, medios, sitios y landing pages para crear demanda y capturar intención.",
-      chips: ["Ads", "Contenido", "Sites & LPs"],
+      text: "Genera demanda con Ads, contenido, sitios y landing pages.",
     },
     {
       icon: Radar,
-      label: "2. Encontrar demanda",
       title: "Prospector & Outbound",
-      description: "Descubra empresas, enriquezca datos, identifique fit y priorice a quién abordar.",
-      chips: ["Prospector IA", "Enriquecimiento", "Scoring"],
+      text: "Encuentra empresas, enriquece datos y prioriza nuevos clientes.",
     },
     {
       icon: Target,
-      label: "3. Expandir ingresos",
       title: "Revenue Intelligence",
-      description: "Encuentre recompra, upsell, cross-sell, riesgo de churn y la próxima mejor acción.",
-      chips: ["Revenue Scout", "Churn", "NBA"],
+      text: "Encuentra recompra, expansión, churn y la próxima mejor acción.",
     },
   ],
-  core: "Todo converge en VendorAI",
-  flow: ["Captar", "Entender", "Convertir", "Vender", "Retener", "Aprender"],
+  proofBadge: "Pantallas reales de VendorAI",
+  proofTitle: "Producto real. Operación real.",
+  proofSubtitle: "Algunas de las pantallas que ya forman parte de la plataforma.",
+  screenshots: {
+    crm: {
+      title: "CRM & Pipeline",
+      text: "Oportunidades, etapas y próxima acción.",
+      alt: "Pantalla real del CRM y pipeline de VendorAI",
+    },
+    prospector: {
+      title: "Prospector IA",
+      text: "Descubrimiento y priorización de nuevos clientes.",
+      alt: "Pantalla real del Prospector IA de VendorAI",
+    },
+    revenue: {
+      title: "Revenue Scout",
+      text: "Recompra y nuevas oportunidades en la cartera.",
+      alt: "Pantalla real de Revenue Scout de VendorAI",
+    },
+    omnichannel: {
+      title: "Omnichannel",
+      text: "Atención y conversaciones en un único lugar.",
+      alt: "Pantalla real de Omnichannel de VendorAI",
+    },
+    jarvis: {
+      title: "JARVIS",
+      text: "Inteligencia ejecutiva sobre toda la operación.",
+      alt: "Pantalla real de JARVIS de VendorAI",
+    },
+  },
 };
+
+const MEDIA = "/media/vendorai-official";
 
 export default function GrowthRevenueHero() {
   const { isSpanish } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
 
   return (
-    <section className="relative overflow-hidden bg-[#07101f] text-white">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(59,130,246,0.20),transparent_30%),radial-gradient(circle_at_82%_12%,rgba(249,115,22,0.14),transparent_26%),radial-gradient(circle_at_50%_100%,rgba(14,165,233,0.10),transparent_34%)]" />
-      <div className="relative mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8 lg:py-24">
-        <div>
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-sm font-medium text-blue-100">
+    <section className="relative overflow-hidden border-b border-slate-200/80 bg-[#fbfaf7] text-slate-950">
+      <div className="pointer-events-none absolute -left-40 top-10 h-96 w-96 rounded-full bg-orange-200/45 blur-3xl" />
+      <div className="pointer-events-none absolute -right-32 top-0 h-[420px] w-[420px] rounded-full bg-sky-100/65 blur-3xl" />
+
+      <div className="relative mx-auto grid max-w-[1440px] gap-12 px-6 py-16 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:px-8 lg:py-20 xl:gap-16">
+        <div className="max-w-2xl">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white/85 px-4 py-2 text-sm font-semibold text-orange-700 shadow-sm">
             <Sparkles className="h-4 w-4" /> {copy.badge}
           </div>
 
-          <h1 className="max-w-4xl text-5xl font-semibold leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:text-7xl xl:text-[78px]">
+          <h1 className="text-5xl font-semibold leading-[0.98] tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-[68px] xl:text-[76px]">
             {copy.title}
-            <span className="mt-2 block bg-gradient-to-r from-blue-300 via-sky-400 to-orange-300 bg-clip-text text-transparent">
-              {copy.accent}
-            </span>
+            <span className="mt-2 block text-orange-600">{copy.accent}</span>
           </h1>
 
-          <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">{copy.description}</p>
+          <p className="mt-7 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl">
+            {copy.description}
+          </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
               href="/demo"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-500 px-6 py-4 font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.25)] transition hover:bg-orange-400"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-600 px-6 py-4 font-semibold text-white shadow-[0_12px_30px_rgba(234,88,12,0.20)] transition hover:bg-orange-500"
             >
               {copy.primary} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/produtos"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 py-4 font-semibold text-white transition hover:bg-white/10"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-6 py-4 font-semibold text-slate-800 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
             >
               {copy.secondary}
             </Link>
           </div>
 
-          <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 text-sm text-slate-400">
-            <span className="inline-flex items-center gap-2"><UsersRound className="h-4 w-4 text-emerald-400" />{copy.note1}</span>
-            <span className="inline-flex items-center gap-2"><BarChart3 className="h-4 w-4 text-emerald-400" />{copy.note2}</span>
-            <span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-400" />{copy.note3}</span>
+          <div className="mt-6 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+            {copy.benefits.map((benefit, index) => (
+              <span key={benefit} className="inline-flex items-center gap-2">
+                {index === 0 ? (
+                  <UsersRound className="h-4 w-4 text-emerald-600" />
+                ) : index === 1 ? (
+                  <BarChart3 className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Check className="h-4 w-4 text-emerald-600" />
+                )}
+                {benefit}
+              </span>
+            ))}
+          </div>
+
+          <div className="mt-9">
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+              {copy.enginesIntro}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {copy.engines.map((engine) => {
+                const Icon = engine.icon;
+                return (
+                  <div
+                    key={engine.title}
+                    className="rounded-2xl border border-slate-200 bg-white/90 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+                  >
+                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <p className="text-sm font-semibold text-slate-900">{engine.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{engine.text}</p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-white/10 bg-[#0d1728]/90 p-5 shadow-2xl shadow-black/30 backdrop-blur sm:p-6">
-          <div className="mb-5">
-            <p className="text-lg font-semibold text-white">{copy.enginesTitle}</p>
-            <p className="mt-1 text-sm leading-6 text-slate-400">{copy.enginesSubtitle}</p>
+        <div className="min-w-0">
+          <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-orange-500" /> {copy.proofBadge}
+              </div>
+              <h2 className="mt-3 text-2xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-3xl">
+                {copy.proofTitle}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">{copy.proofSubtitle}</p>
+            </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            {copy.engines.map((engine) => {
-              const Icon = engine.icon;
-              return (
-                <div key={engine.title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-orange-300">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{engine.label}</p>
-                  <h2 className="mt-2 text-base font-semibold text-white">{engine.title}</h2>
-                  <p className="mt-2 min-h-[72px] text-sm leading-6 text-slate-400">{engine.description}</p>
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {engine.chips.map((chip) => (
-                      <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300">{chip}</span>
-                    ))}
-                  </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <article className="group overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)] sm:col-span-2">
+              <picture>
+                <source
+                  media="(max-width: 640px)"
+                  srcSet={`${MEDIA}/crm-pipeline/mobile-390.png`}
+                />
+                <img
+                  src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
+                  alt={copy.screenshots.crm.alt}
+                  loading="eager"
+                  fetchPriority="high"
+                  className="aspect-[16/8.2] w-full object-cover object-top transition duration-500 group-hover:scale-[1.01]"
+                />
+              </picture>
+              <div className="flex items-start justify-between gap-4 border-t border-slate-100 px-4 py-3.5">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{copy.screenshots.crm.title}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.crm.text}</p>
                 </div>
-              );
-            })}
-          </div>
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                  Real
+                </span>
+              </div>
+            </article>
 
-          <div className="mt-4 rounded-2xl border border-blue-300/15 bg-blue-400/[0.07] p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-blue-100">
-              <Sparkles className="h-4 w-4 text-blue-300" /> {copy.core}
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-              {copy.flow.map((step, index) => (
-                <div key={step} className="relative rounded-xl border border-white/10 bg-[#0a1322] px-2 py-3 text-center text-xs font-medium text-slate-200">
-                  <span className="mb-1 block text-[10px] text-slate-600">0{index + 1}</span>
-                  {step}
-                </div>
-              ))}
-            </div>
+            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
+              <picture>
+                <source media="(max-width: 640px)" srcSet={`${MEDIA}/prospector/mobile-390.png`} />
+                <img
+                  src={`${MEDIA}/prospector/desktop-1440.png`}
+                  alt={copy.screenshots.prospector.alt}
+                  loading="eager"
+                  className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
+                />
+              </picture>
+              <div className="border-t border-slate-100 px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.prospector.title}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.prospector.text}</p>
+              </div>
+            </article>
+
+            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
+              <picture>
+                <source media="(max-width: 640px)" srcSet={`${MEDIA}/revenue-scout/mobile-390.png`} />
+                <img
+                  src={`${MEDIA}/revenue-scout/desktop-1440.png`}
+                  alt={copy.screenshots.revenue.alt}
+                  loading="eager"
+                  className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
+                />
+              </picture>
+              <div className="border-t border-slate-100 px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.revenue.title}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.revenue.text}</p>
+              </div>
+            </article>
+
+            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
+              <picture>
+                <source media="(max-width: 640px)" srcSet={`${MEDIA}/omnichannel/mobile-390.png`} />
+                <img
+                  src={`${MEDIA}/omnichannel/desktop-1440.png`}
+                  alt={copy.screenshots.omnichannel.alt}
+                  loading="lazy"
+                  className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
+                />
+              </picture>
+              <div className="border-t border-slate-100 px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.omnichannel.title}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.omnichannel.text}</p>
+              </div>
+            </article>
+
+            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
+              <img
+                src={`${MEDIA}/jarvis/desktop-aberto.png`}
+                alt={copy.screenshots.jarvis.alt}
+                loading="lazy"
+                className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
+              />
+              <div className="border-t border-slate-100 px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.jarvis.title}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.jarvis.text}</p>
+              </div>
+            </article>
           </div>
         </div>
       </div>
