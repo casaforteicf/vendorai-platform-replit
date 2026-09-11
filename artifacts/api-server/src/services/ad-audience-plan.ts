@@ -29,25 +29,30 @@ export type MarketingContextForAds = {
   campaignName?: string;
   marketingIntelligence?: {
     source?: string;
-    keywords?: Array<{
-      text?: string;
-      avgMonthlySearches?: number;
-      competition?: string;
-    }>;
-    seo?: {
-      primaryKeyword?: string;
-      secondaryKeywords?: string[];
-    };
+    keywords?: Array<{ text?: string; avgMonthlySearches?: number; competition?: string }>;
+    seo?: { primaryKeyword?: string; secondaryKeywords?: string[] };
     tracking?: MarketingTrackingPlan;
   };
+};
+
+export type RemarketingAudienceRule = {
+  key: string;
+  label: string;
+  lookbackDays: number;
+  description: string;
+  includeSignals: string[];
+  excludeSignals?: string[];
+  stage: "remarketing" | "nutricao" | "oportunidade" | "prioridade";
 };
 
 export type AdsAudiencePlan = {
   summary: string;
   google: { keywords: string[] };
-  meta: {
-    interestQueries: string[];
-    resolvedInterests?: Array<{ id: string; name: string }>;
+  meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
+  remarketing: {
+    strategy: "continuous_lead_journey";
+    rules: RemarketingAudienceRule[];
+    principle: string;
   };
 };
 
@@ -81,13 +86,40 @@ function parseLegacyContext(label: string) {
   const parts = label.split("|").map((part) => part.trim());
   const find = (prefix: string) => clean(parts.find((part) => part.toLowerCase().startsWith(prefix))?.split(":").slice(1).join(":"));
   return {
-    audienceSegment: find("público:"),
-    audienceNiche: find("nicho do público:"),
-    campaignGoal: find("objetivo:"),
-    location: find("local:"),
-    region: find("região/bairro:"),
-    project: find("empreendimento/local:"),
+    audienceSegment: find("público:"), audienceNiche: find("nicho do público:"), campaignGoal: find("objetivo:"),
+    location: find("local:"), region: find("região/bairro:"), project: find("empreendimento/local:"),
   };
+}
+
+function buildRemarketingRules(offers: string[]): RemarketingAudienceRule[] {
+  const productLabel = offers[0] ? ` de ${offers[0]}` : "";
+  return [
+    {
+      key: "all_visitors_30d", label: "Todos os visitantes · 30 dias", lookbackDays: 30,
+      description: `Reimpactar quem visitou o site${productLabel} e ainda não converteu.`,
+      includeSignals: ["Todos os visitantes"], excludeSignals: ["Converteu"], stage: "remarketing",
+    },
+    {
+      key: "returning_visitors_30d", label: "Visitantes recorrentes · 30 dias", lookbackDays: 30,
+      description: "Pessoas que voltaram ao site e demonstraram continuidade de interesse.",
+      includeSignals: ["Visitantes recorrentes"], excludeSignals: ["Converteu"], stage: "nutricao",
+    },
+    {
+      key: "pricing_high_intent_30d", label: "Preços + alta intenção · 30 dias", lookbackDays: 30,
+      description: "Público de decisão: preços, orçamento, proposta, CTA ou score comercial alto.",
+      includeSignals: ["Visitou preços", "Alta intenção", "Clicou em CTA"], excludeSignals: ["Converteu"], stage: "oportunidade",
+    },
+    {
+      key: "form_abandon_14d", label: "Abandonou formulário · 14 dias", lookbackDays: 14,
+      description: "Recuperar quem iniciou um formulário e não concluiu.",
+      includeSignals: ["Abandonou formulário"], excludeSignals: ["Converteu"], stage: "prioridade",
+    },
+    {
+      key: "converted_exclusion_180d", label: "Convertidos · exclusão", lookbackDays: 180,
+      description: "Evita continuar campanhas de aquisição para quem já converteu; pode alimentar pós-venda e novas ofertas.",
+      includeSignals: ["Converteu"], stage: "nutricao",
+    },
+  ];
 }
 
 export function buildAdsAudiencePlan(segmentacao: Segmentacao): AdsAudiencePlan | undefined {
@@ -117,61 +149,44 @@ export function buildAdsAudiencePlan(segmentacao: Segmentacao): AdsAudiencePlan 
     ...(intelligence?.keywords ?? []).map((item) => clean(item?.text)),
   ].filter(Boolean);
 
-  // Local, empreendimento e oferta entram como sinais de intenção. Restrições e
-  // detalhes livres ficam fora das keywords para não transformar instruções
-  // internas em termos de compra ou segmentação. Quando há pesquisa salva, os
-  // termos pesquisados entram antes dos derivados heurísticos.
   const keywords = unique([
-    ...manualKeywords,
-    ...intelligenceKeywords,
-    ...offers,
+    ...manualKeywords, ...intelligenceKeywords, ...offers,
     ...offers.flatMap((offer) => [
       audienceNiche && `${offer} ${audienceNiche}`,
       audienceSegment && `${offer} para ${audienceSegment.replace(/\([^)]*\)/g, "").trim()}`,
-      location && `${offer} ${location}`,
-      region && `${offer} ${region}`,
-      project && `${offer} ${project}`,
+      location && `${offer} ${location}`, region && `${offer} ${region}`, project && `${offer} ${project}`,
       campaignGoal && `${offer} ${campaignGoal}`,
     ].filter(Boolean) as string[]),
     audienceNiche && location ? `${audienceNiche} ${location}` : "",
-    project && location ? `${project} ${location}` : "",
-    audienceNiche,
-    project,
-    campaignGoal,
+    project && location ? `${project} ${location}` : "", audienceNiche, project, campaignGoal,
   ], 15);
 
-  // Meta resolve interesses por entidades/categorias. Localização e keywords de
-  // busca não são forçadas como interesses inexistentes; a pesquisa continua
-  // disponível para copy/landing page e o targeting geográfico segue separado.
   const interestQueries = unique([
-    audienceNiche,
-    audienceSegment.replace(/\([^)]*\)/g, "").trim(),
-    ...offers,
+    audienceNiche, audienceSegment.replace(/\([^)]*\)/g, "").trim(), ...offers,
   ], 8);
 
-  if (!keywords.length && !interestQueries.length) return undefined;
+  const remarketing = {
+    strategy: "continuous_lead_journey" as const,
+    rules: buildRemarketingRules(offers),
+    principle: "A campanha termina; a jornada do lead continua. O histórico comportamental permanece elegível para futuras campanhas compatíveis.",
+  };
+
+  if (!keywords.length && !interestQueries.length && !context.campaignId && !campaignName) return undefined;
 
   return {
     summary: [
-      campaignName && `Campanha: ${campaignName}`,
-      audienceSegment && `Público: ${audienceSegment}`,
-      audienceNiche && `Nicho: ${audienceNiche}`,
-      offers.length && `Oferta: ${offers.join(", ")}`,
-      campaignGoal && `Objetivo: ${campaignGoal}`,
-      location && `Local: ${location}`,
-      region && `Região: ${region}`,
-      project && `Empreendimento/local: ${project}`,
-      details && `Contexto: ${details}`,
+      campaignName && `Campanha: ${campaignName}`, audienceSegment && `Público: ${audienceSegment}`,
+      audienceNiche && `Nicho: ${audienceNiche}`, offers.length && `Oferta: ${offers.join(", ")}`,
+      campaignGoal && `Objetivo: ${campaignGoal}`, location && `Local: ${location}`, region && `Região: ${region}`,
+      project && `Empreendimento/local: ${project}`, details && `Contexto: ${details}`,
       differentiators && `Diferenciais obrigatórios: ${differentiators}`,
-      restrictions && `Restrições criativas: ${restrictions}`,
-      primaryKpi && `KPI: ${primaryKpi}`,
+      restrictions && `Restrições criativas: ${restrictions}`, primaryKpi && `KPI: ${primaryKpi}`,
       clean(intelligence?.seo?.primaryKeyword) && `Keyword principal: ${clean(intelligence?.seo?.primaryKeyword)}`,
       clean(intelligence?.tracking?.utmCampaign) && `Tracking mestre: ${clean(intelligence?.tracking?.utmCampaign)}`,
-      context.researchEnabled && "Pesquisa pública: solicitada",
-      context.seoTrackingEnabled && "SEO/tracking: habilitado",
+      context.researchEnabled && "Pesquisa pública: solicitada", context.seoTrackingEnabled && "SEO/tracking: habilitado",
+      "Remarketing comportamental: planejado",
     ].filter(Boolean).join(" · "),
-    google: { keywords },
-    meta: { interestQueries },
+    google: { keywords }, meta: { interestQueries }, remarketing,
   };
 }
 
@@ -179,9 +194,5 @@ export function enrichAdsSegmentacao(segmentacao: Segmentacao): Segmentacao {
   const audiencePlan = buildAdsAudiencePlan(segmentacao);
   const marketingTracking = segmentacao.marketingContext?.marketingIntelligence?.tracking;
   if (!audiencePlan && !marketingTracking) return segmentacao;
-  return {
-    ...segmentacao,
-    ...(audiencePlan ? { audiencePlan } : {}),
-    ...(marketingTracking ? { marketingTracking } : {}),
-  };
+  return { ...segmentacao, ...(audiencePlan ? { audiencePlan } : {}), ...(marketingTracking ? { marketingTracking } : {}) };
 }
