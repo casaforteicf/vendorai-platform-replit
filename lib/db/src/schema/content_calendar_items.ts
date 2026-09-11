@@ -46,6 +46,8 @@ export const contentCalendarItemsTable = pgTable("content_calendar_items", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   mediaPlanId: text("media_plan_id").references(() => mediaPlansTable.id, { onDelete: "set null" }),
   dataAgendada: date("data_agendada").notNull(),
+  // Horário próprio do slot. Quando NULL, a publicação usa o horário padrão do plano.
+  horarioAgendado: text("horario_agendado"),
   pilar: text("pilar").notNull(),
   temaSugerido: text("tema_sugerido").notNull(),
   tipo: text("tipo").$type<ContentCalendarTipo>().notNull().default("feed"),
@@ -63,5 +65,6 @@ export const contentCalendarItemsTable = pgTable("content_calendar_items", {
 export const selectContentCalendarItemSchema = createSelectSchema(contentCalendarItemsTable, {
   tipo: z.enum(CONTENT_CALENDAR_TIPOS),
   status: z.enum(CONTENT_CALENDAR_STATUS),
+  horarioAgendado: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
 });
 export type ContentCalendarItem = typeof contentCalendarItemsTable.$inferSelect;
