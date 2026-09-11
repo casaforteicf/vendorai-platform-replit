@@ -9,8 +9,12 @@ on:
       - e2e/scripts/media-video.ts
       - .github/workflows/vendorai-media-capture.yml
 
+concurrency:
+  group: vendorai-official-media
+  cancel-in-progress: true
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   capture:
@@ -23,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -61,6 +67,25 @@ jobs:
           find . -type f \( -name '*.png' -o -name '*.webm' \) -print | sort > manifest.txt
           echo "Generated media:"
           cat manifest.txt
+
+      - name: Publish official media to website
+        if: steps.screenshots.outcome == 'success' && steps.videos.outcome == 'success'
+        shell: bash
+        run: |
+          TARGET="artifacts/website/public/media/vendorai-official"
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          cp -R e2e/media-output/* "$TARGET"/
+          rm -rf "$TARGET/videos/raw"
+          git config user.name "VendorAI Media Bot"
+          git config user.email "media-bot@appvendorai.com"
+          git add "$TARGET"
+          if git diff --cached --quiet; then
+            echo "Official media is already up to date."
+          else
+            git commit -m "chore(media): publish latest official VendorAI captures"
+            git push origin HEAD:main
+          fi
 
       - name: Upload official media artifact
         if: always()
