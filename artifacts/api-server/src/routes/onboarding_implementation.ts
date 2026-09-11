@@ -92,10 +92,22 @@ async function readImplementationFacts(tenantId: string) {
     }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
     db.select({ value: count() }).from(usersTable)
       .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))),
-    db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId)),
+    db.select({ value: count() }).from(leadsTable).where(and(
+      eq(leadsTable.tenantId, tenantId),
+      isNull(leadsTable.excluidoEm),
+      isNull(leadsTable.naoLeadTipo),
+      isNull(leadsTable.naoLeadClassificadoEm),
+    )),
     getActiveCatalogCount(tenantId),
-    db.select({ id: whatsappConnectionsTable.id }).from(whatsappConnectionsTable)
-      .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active"))).limit(1),
+    db.select({
+      id: whatsappConnectionsTable.id,
+      tokenExpiresAt: whatsappConnectionsTable.tokenExpiresAt,
+    }).from(whatsappConnectionsTable)
+      .where(and(
+        eq(whatsappConnectionsTable.tenantId, tenantId),
+        eq(whatsappConnectionsTable.status, "active"),
+        isNull(whatsappConnectionsTable.disconnectedAt),
+      )).limit(1),
     db.select({
       id: instagramConnectionsTable.id,
       pageAccessToken: instagramConnectionsTable.pageAccessToken,
@@ -105,21 +117,35 @@ async function readImplementationFacts(tenantId: string) {
         eq(instagramConnectionsTable.tenantId, tenantId),
         isNull(instagramConnectionsTable.disconnectedAt),
       )).limit(1),
-    db.select({ id: agendasTable.id, googleCalendarId: agendasTable.googleCalendarId }).from(agendasTable)
+    db.select({
+      id: agendasTable.id,
+      googleCalendarId: agendasTable.googleCalendarId,
+      googleAccessToken: agendasTable.googleAccessToken,
+      googleRefreshToken: agendasTable.googleRefreshToken,
+      googleTokenExpiresAt: agendasTable.googleTokenExpiresAt,
+    }).from(agendasTable)
       .where(eq(agendasTable.tenantId, tenantId)).limit(1),
   ]);
 
   if (!tenant) return null;
 
+  const now = Date.now();
   const facts: ImplementationFacts = {
     onboardingComplete: tenant.onboardingConcluido === true || !!tenant.setupCompletedAt,
     profileConfigured: !!profile,
     activeUsers: Number(activeUsers?.value ?? 0),
-    whatsappConnected: !!whatsapp || config?.evolutionConnected === true || !!(config?.metaPhoneNumberId && config?.metaAccessToken),
+    whatsappConnected:
+      (!!whatsapp && (!whatsapp.tokenExpiresAt || whatsapp.tokenExpiresAt.getTime() > now)) ||
+      config?.evolutionConnected === true ||
+      !!(config?.metaPhoneNumberId && config?.metaAccessToken),
     instagramConnected:
       !!instagram?.pageAccessToken &&
-      (!instagram.tokenExpiresAt || instagram.tokenExpiresAt.getTime() > Date.now()),
-    calendarConnected: !!calendar?.googleCalendarId,
+      (!instagram.tokenExpiresAt || instagram.tokenExpiresAt.getTime() > now),
+    calendarConnected:
+      !!calendar?.googleCalendarId &&
+      (!!calendar.googleRefreshToken ||
+        (!!calendar.googleAccessToken &&
+          (!calendar.googleTokenExpiresAt || calendar.googleTokenExpiresAt.getTime() > now))),
     leadCount: Number(leads?.value ?? 0),
     catalogCount,
     agentsConfigured: !!config?.setupCompletedAt,
