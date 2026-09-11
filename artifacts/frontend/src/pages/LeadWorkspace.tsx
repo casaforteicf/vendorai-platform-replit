@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ArrowRight, AlertTriangle, Clock3, Loader2, Settings2, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, Clock3, Loader2, Pencil, Settings2, UserRound } from "lucide-react";
 
 const fallbackStages = [
   { key: "em_aquecimento", label: "Em aquecimento", ordem: 0 },
@@ -95,6 +95,7 @@ export default function LeadWorkspace() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const tenantId = user?.tenantId ?? "";
+  const canEditOwner = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
   const search = new URLSearchParams(window.location.search);
   const requestedDealId = search.get("dealId");
   const requestedStage = search.get("targetStage");
@@ -134,12 +135,18 @@ export default function LeadWorkspace() {
   const [saving, setSaving] = useState(false);
   const [editEligible, setEditEligible] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
+  const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
+  const [currentOwner, setCurrentOwner] = useState("");
+  const [savingOwner, setSavingOwner] = useState(false);
 
   const targetStage = stages.find((s) => s.key === nextStage);
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
   const eligibleUsers = eligibleIds && eligibleIds.length > 0 ? users.filter((u) => eligibleIds.includes(u.id)) : users;
   const [draftEligible, setDraftEligible] = useState<string[]>([]);
   useEffect(() => { setDraftEligible(eligibleIds ?? []); }, [nextStage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
+  }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
 
   function startAttendance() {
     if (!lead) return;
@@ -197,6 +204,46 @@ export default function LeadWorkspace() {
     );
   }
 
+  async function saveCurrentOwner() {
+    if (!currentOwner) {
+      toast({ title: "Selecione um responsável.", variant: "destructive" });
+      return;
+    }
+    setSavingOwner(true);
+    try {
+      const leadResponse = await fetch("/api/leads/" + id, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ assignedTo: currentOwner }),
+      });
+      const leadResult = await leadResponse.json().catch(() => ({}));
+      if (!leadResponse.ok) throw new Error(leadResult.error ?? "Não foi possível atualizar o responsável do lead.");
+
+      if (deal && deal.assignedTo !== currentOwner) {
+        const dealResponse = await fetch("/api/deals/" + deal.id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ assignedTo: currentOwner }),
+        });
+        const dealResult = await dealResponse.json().catch(() => ({}));
+        if (!dealResponse.ok) throw new Error(dealResult.error ?? "Não foi possível atualizar o responsável do atendimento.");
+      }
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+      ]);
+      setOwner(currentOwner);
+      setOwnerEditorOpen(false);
+      toast({ title: "Responsável atualizado", description: displayUser(currentOwner) + " agora é o responsável pelo atendimento." });
+    } catch (e) {
+      toast({ title: "Erro ao atualizar responsável", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingOwner(false);
+    }
+  }
+
   async function advance() {
     if (!deal || !nextStage || !owner || title.trim().length < 3) {
       toast({ title: "Preencha etapa, responsável e próxima atividade.", variant: "destructive" });
@@ -244,7 +291,37 @@ export default function LeadWorkspace() {
                 {nextPendingOverdue && <Badge variant="destructive" className="h-5 px-2 text-[11px]">Atividade vencida</Badge>}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:text-sm">
-                <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />Responsável: {displayUser(deal?.assignedTo ?? lead.assignedTo)}</span>
+                {ownerEditorOpen && canEditOwner ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />Responsável:</span>
+                    <Select value={currentOwner} onValueChange={setCurrentOwner}>
+                      <SelectTrigger className="h-8 min-w-[190px] bg-background text-foreground"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>{users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button type="button" size="sm" className="h-8" disabled={savingOwner || !currentOwner} onClick={saveCurrentOwner}>
+                      {savingOwner && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}Salvar
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-8" disabled={savingOwner} onClick={() => setOwnerEditorOpen(false)}>Cancelar</Button>
+                  </div>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserRound className="h-3.5 w-3.5" />Responsável: {displayUser(deal?.assignedTo ?? lead.assignedTo)}
+                    {canEditOwner && (
+                      <button
+                        type="button"
+                        className="rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+                        title="Editar responsável"
+                        aria-label="Editar responsável"
+                        onClick={() => {
+                          setCurrentOwner(deal?.assignedTo ?? lead.assignedTo ?? "");
+                          setOwnerEditorOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                )}
                 {nextPending ? <>
                   <span>· Próxima atividade: {nextPending.titulo}</span>
                   <span className={`inline-flex items-center gap-1 ${nextPendingOverdue ? "font-medium text-destructive" : ""}`}><Clock3 className="h-3.5 w-3.5" />{formatDeadline(nextPending.dataVencimento)}</span>
