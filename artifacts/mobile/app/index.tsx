@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Linking, Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, BackHandler, Linking, Platform, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { WebView } from "react-native-webview";
 
@@ -39,6 +39,34 @@ const MOBILE_NORMALIZE_JS = `
             p, span, label, button, input, textarea, select { -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important; }
             button, input, textarea, select { font-size: 12.5px !important; }
             main, section { max-width: 100vw !important; }
+            header.md\\:hidden {
+              position: relative !important;
+              min-height: 58px !important;
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              gap: 0 !important;
+              padding-left: 58px !important;
+              padding-right: 58px !important;
+              padding-top: 10px !important;
+              padding-bottom: 10px !important;
+            }
+            header.md\\:hidden > button:first-of-type {
+              position: absolute !important;
+              left: 12px !important;
+              bottom: 9px !important;
+              width: 40px !important;
+              height: 40px !important;
+              min-width: 40px !important;
+              min-height: 40px !important;
+              border-radius: 12px !important;
+            }
+            header.md\\:hidden > img,
+            header.md\\:hidden > div img {
+              max-height: 30px !important;
+              width: auto !important;
+              object-fit: contain !important;
+            }
             .vendor-settings-compact { font-size: 12.5px !important; }
             .vendor-settings-compact > section,
             .vendor-settings-compact > details {
@@ -109,44 +137,49 @@ export default function VendorAIMobileShell() {
   }
 
   return (
-    <WebView
-      ref={webViewRef}
-      source={{ uri: APP_URL }}
-      style={styles.webview}
-      originWhitelist={["*"]}
-      javaScriptEnabled
-      domStorageEnabled
-      sharedCookiesEnabled
-      thirdPartyCookiesEnabled
-      allowsInlineMediaPlayback
-      mediaPlaybackRequiresUserAction={false}
-      pullToRefreshEnabled
-      startInLoadingState
-      setSupportMultipleWindows={false}
-      textZoom={82}
-      injectedJavaScriptBeforeContentLoaded={MOBILE_NORMALIZE_JS}
-      injectedJavaScript={MOBILE_NORMALIZE_JS}
-      onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
-      onShouldStartLoadWithRequest={(request) => {
-        const url = request.url;
-        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("about:blank")) {
-          return true;
-        }
-        Linking.openURL(url).catch(() => undefined);
-        return false;
-      }}
-      onError={() => setLoadError(true)}
-      renderLoading={() => (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#D9673E" />
-          <Text style={styles.loadingText}>Abrindo VendorAI...</Text>
-        </View>
-      )}
-    />
+    <View style={styles.appContainer}>
+      <WebView
+        ref={webViewRef}
+        source={{ uri: APP_URL }}
+        style={styles.webview}
+        originWhitelist={["*"]}
+        javaScriptEnabled
+        domStorageEnabled
+        sharedCookiesEnabled
+        thirdPartyCookiesEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        pullToRefreshEnabled
+        startInLoadingState
+        setSupportMultipleWindows={false}
+        textZoom={82}
+        injectedJavaScriptBeforeContentLoaded={MOBILE_NORMALIZE_JS}
+        injectedJavaScript={MOBILE_NORMALIZE_JS}
+        onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
+        onShouldStartLoadWithRequest={(request) => {
+          const url = request.url;
+          if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("about:blank")) return true;
+          Linking.openURL(url).catch(() => undefined);
+          return false;
+        }}
+        onError={() => setLoadError(true)}
+        renderLoading={() => (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#D9673E" />
+            <Text style={styles.loadingText}>Abrindo VendorAI...</Text>
+          </View>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  appContainer: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0,
+  },
   webview: { flex: 1, backgroundColor: "#070b14" },
   loadingWrap: {
     ...StyleSheet.absoluteFillObject,
@@ -156,23 +189,8 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   loadingText: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
-  errorWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#070b14",
-    padding: 28,
-  },
+  errorWrap: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#070b14", padding: 28 },
   errorTitle: { color: "#ffffff", fontSize: 22, fontWeight: "700", textAlign: "center" },
   errorText: { color: "#94a3b8", fontSize: 15, textAlign: "center", marginTop: 10 },
-  retry: {
-    color: "#ffffff",
-    backgroundColor: "#D9673E",
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 22,
-    overflow: "hidden",
-    fontWeight: "700",
-  },
+  retry: { color: "#ffffff", backgroundColor: "#D9673E", paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, marginTop: 22, overflow: "hidden", fontWeight: "700" },
 });
