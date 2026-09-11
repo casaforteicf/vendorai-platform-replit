@@ -60,9 +60,9 @@ function localMinuteKey(timeZone: string, now = new Date()): string {
   return `${values.get("year")}-${values.get("month")}-${values.get("day")}T${values.get("hour")}:${values.get("minute")}`;
 }
 
-function isDue(date: string, settings: OrganicPublicationSettings, now = new Date()) {
+function isDue(date: string, itemTime: string | null, settings: OrganicPublicationSettings, now = new Date()) {
   const timezone = validTimezone(settings.timezone);
-  const time = validTime(settings.horario);
+  const time = validTime(itemTime || settings.horario);
   return {
     due: localMinuteKey(timezone, now) >= `${date}T${time}`,
     timezone,
@@ -118,6 +118,7 @@ async function createScheduledPublication(input: {
     tipo: string;
     temaSugerido: string;
     dataAgendada: string;
+    horarioAgendado: string | null;
     contentGenerationId: string;
     variationIdx: number | null;
   };
@@ -176,6 +177,7 @@ async function createScheduledPublication(input: {
       scheduledDate: item.dataAgendada,
       scheduledTime: input.time,
       scheduledTimezone: input.timezone,
+      scheduleSource: item.horarioAgendado ? "calendar-item" : "plan-default",
     },
     updatedAt: new Date(),
   }).where(and(
@@ -192,6 +194,7 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
     tenantId: contentCalendarItemsTable.tenantId,
     mediaPlanId: contentCalendarItemsTable.mediaPlanId,
     dataAgendada: contentCalendarItemsTable.dataAgendada,
+    horarioAgendado: contentCalendarItemsTable.horarioAgendado,
     temaSugerido: contentCalendarItemsTable.temaSugerido,
     canal: contentCalendarItemsTable.canal,
     tipo: contentCalendarItemsTable.tipo,
@@ -216,7 +219,7 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
       sql`${mediaPlansTable.conteudo}->>'statusPlanejamento' = 'aprovado'`,
       sql`${mediaPlansTable.conteudo}->'publicacaoOrganica'->>'modo' = 'automatico'`,
     ))
-    .orderBy(asc(contentCalendarItemsTable.dataAgendada))
+    .orderBy(asc(contentCalendarItemsTable.dataAgendada), asc(contentCalendarItemsTable.horarioAgendado))
     .limit(MAX_DUE_ITEMS_PER_TICK);
 
   let queued = 0;
@@ -224,7 +227,7 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
     if (!row.contentGenerationId || !row.mediaPlanId) continue;
     const planContent = row.planContent;
     const settings = planContent.publicacaoOrganica ?? { modo: "manual" as const };
-    const schedule = isDue(row.dataAgendada, settings, now);
+    const schedule = isDue(row.dataAgendada, row.horarioAgendado, settings, now);
     if (!schedule.due) continue;
     if (!providerFor(row)) continue;
 
@@ -252,6 +255,7 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
           tipo: row.tipo,
           temaSugerido: row.temaSugerido,
           dataAgendada: row.dataAgendada,
+          horarioAgendado: row.horarioAgendado,
           contentGenerationId: row.contentGenerationId,
           variationIdx: row.variationIdx,
         },
