@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 
 const CUSTOM_MENU_ATTR = "data-marketing-flow-menu";
+const CAMPAIGNS_HREF = "/content?source=media-plan&tab=campanhas";
 
 const MAIN_ITEMS = [
   { label: "Visão Geral", href: "/content?tab=visao-geral" },
   { label: "1. Planejamento", href: "/content?tab=planejamento" },
-  { label: "2. Campanhas", href: "/content?tab=campanhas" },
+  { label: "2. Campanhas", href: CAMPAIGNS_HREF },
   { label: "3. Conteúdos & Criativos", href: "/content?tab=conteudos" },
   { label: "4. Resultados", href: "/content?tab=resultados" },
   { label: "Rastreamento", href: "/content?tab=rastreamento" },
@@ -118,14 +119,30 @@ export function MediaMenuInjector() {
       });
     };
 
+    // A aba superior também deve entrar primeiro na lista de campanhas.
+    // Isso evita cair novamente no antigo Command Center sem escolher uma campanha.
+    const handleCampaignTabClick = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const tab = target?.closest<HTMLElement>('[role="tab"]');
+      const label = tab?.textContent?.replace(/\s+/g, " ").trim();
+      if (window.location.pathname !== "/content" || label !== "2. Campanhas") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      window.history.pushState({}, "", CAMPAIGNS_HREF);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    };
+
     ensureMarketingMenu();
     const observer = new MutationObserver(ensureMarketingMenu);
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("popstate", ensureMarketingMenu);
+    document.addEventListener("click", handleCampaignTabClick, true);
 
     return () => {
       observer.disconnect();
       window.removeEventListener("popstate", ensureMarketingMenu);
+      document.removeEventListener("click", handleCampaignTabClick, true);
       document.querySelectorAll<HTMLElement>(`[${CUSTOM_MENU_ATTR}]`).forEach((menu) => menu.remove());
       document.querySelectorAll<HTMLElement>('a[href="/content"]').forEach((contentLink) => {
         const container = contentLink.parentElement;
