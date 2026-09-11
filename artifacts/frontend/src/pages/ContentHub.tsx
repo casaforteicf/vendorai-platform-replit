@@ -347,13 +347,15 @@ export default function ContentHub() {
             <TabsTrigger value="rastreamento" className="gap-2"><Radio className="h-4 w-4"/>Rastreamento</TabsTrigger>
           </TabsList>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-            <span className="text-xs font-medium text-muted-foreground mr-1">Ferramentas:</span>
-            <Button size="sm" variant="outline" onClick={() => setLocation("/midias")}><Images className="h-3.5 w-3.5 mr-1.5"/>Mídias</Button>
-            <Button size="sm" variant="outline" onClick={() => setLocation("/content-studio/video")}><Film className="h-3.5 w-3.5 mr-1.5"/>Vídeos com IA</Button>
-            <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=lp")}><Globe2 className="h-3.5 w-3.5 mr-1.5"/>Sites & LPs</Button>
-            <Button size="sm" variant="outline" onClick={() => setLocation("/ads")}><Megaphone className="h-3.5 w-3.5 mr-1.5"/>Anúncios</Button>
-          </div>
+          {activeTab !== "planejamento" && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+              <span className="text-xs font-medium text-muted-foreground mr-1">Ferramentas:</span>
+              <Button size="sm" variant="outline" onClick={() => setLocation("/midias")}><Images className="h-3.5 w-3.5 mr-1.5"/>Mídias</Button>
+              <Button size="sm" variant="outline" onClick={() => setLocation("/content-studio/video")}><Film className="h-3.5 w-3.5 mr-1.5"/>Vídeos com IA</Button>
+              <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=lp")}><Globe2 className="h-3.5 w-3.5 mr-1.5"/>Sites & LPs</Button>
+              <Button size="sm" variant="outline" onClick={() => setLocation("/ads")}><Megaphone className="h-3.5 w-3.5 mr-1.5"/>Anúncios</Button>
+            </div>
+          )}
 
           <TabsContent value="visao-geral" className="mt-5">
             <div className="space-y-4">
