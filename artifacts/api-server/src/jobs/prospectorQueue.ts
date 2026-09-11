@@ -336,6 +336,25 @@ async function processQueueItem(params: {
     status:    "concluida",
   });
 
+  // Every imported lead must already enter the work center with a concrete
+  // next action and SLA. LeadWorkspace uses the earliest pending activity as
+  // "Próxima atividade", so this removes the undefined state immediately.
+  const firstContactDeadline = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  await db.insert(activitiesTable).values({
+    tenantId,
+    leadId,
+    dealId,
+    tipo: item.telefone ? "whatsapp" : "tarefa",
+    titulo: item.telefone
+      ? "Realizar primeiro contato com o lead"
+      : "Localizar canal de contato e iniciar abordagem",
+    descricao: item.telefone
+      ? "Fazer a primeira abordagem, confirmar o decisor e a necessidade. Registrar o resultado e combinar o próximo passo."
+      : "Identificar telefone, WhatsApp, e-mail ou outro canal válido. Iniciar a abordagem e registrar o próximo passo.",
+    status: "pendente",
+    dataVencimento: firstContactDeadline,
+  });
+
   // ── Mark queue as importado ───────────────────────────────────────────────
   await db
     .update(prospectorQueueTable)
