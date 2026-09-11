@@ -1,5 +1,7 @@
 FROM node:22-bookworm AS build
 
+LABEL vendorai.build="android-apk"
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
