@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft, ArrowRight, CheckCircle2, CircleDot, ImageIcon, PlugZap, Sparkles } from "lucide-react";
-import { getProduct } from "@/data/products";
+import { getProduct } from "@/data/allProducts";
 import {
   catalogImages,
   fetchPublicVendorProductBySlug,
