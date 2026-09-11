@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 45
     env:
       PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
+      CI: '1'
 
     steps:
       - name: Checkout
@@ -63,7 +64,11 @@ jobs:
         working-directory: artifacts/mobile
         env:
           EXPO_NO_DOTENV: '1'
-        run: pnpm exec expo prebuild --platform android --clean --non-interactive
+          CI: '1'
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+
+      - name: Sync dependencies after prebuild
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build signed release APK locally
         working-directory: artifacts/mobile/android
