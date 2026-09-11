@@ -1976,7 +1976,7 @@ export default function Configuracoes() {
     const connected = url.searchParams.get("searchConsoleConnected");
     const error = url.searchParams.get("searchConsoleError");
     if (connected === "pending") {
-      toast({ title: "Search Console autorizado — clique em \"Verificar propriedade\" em alguns instantes." });
+      toast({ title: "Search Console autorizado.", description: "Sua conta Google já está conectada. Aguarde de 2 a 5 minutos e clique em “Verificar agora”. Não é necessário reconectar." });
       loadSearchConsoleConnection();
       window.history.replaceState({}, "", window.location.pathname);
     }
