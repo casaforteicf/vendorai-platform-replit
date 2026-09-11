@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, webBehaviorEventsTable } from "@workspace/db";
+import { buildBehaviorIntentSummary } from "../jobs/behaviorIntentSync.js";
 
 export type VisitorIntelligenceFilters = {
   minutes?: number;
@@ -68,13 +69,21 @@ export async function getVisitorIntelligence(
     const maxEngagedMs = sessionEvents.reduce((max, event) => Math.max(max, event.engagedMs ?? 0), 0);
     const metadata = latest.metadata as Metadata | null | undefined;
     const userId = metadataString(metadata, "userId");
+    const intent = buildBehaviorIntentSummary(sessionEvents.map((event) => ({
+      eventType: event.eventType,
+      path: event.path,
+      engagedMs: event.engagedMs,
+      scrollDepth: event.scrollDepth,
+    })));
 
     const lastSeen = latest.createdAt;
     const online = lastSeen >= onlineSince;
+    const hotOpportunity = online && intent.score >= 60;
 
     return {
       sessionId,
       online,
+      hotOpportunity,
       identified: Boolean(latest.leadId || userId),
       identityType: latest.leadId ? "lead" : userId ? "user" : "anonymous",
       leadId: latest.leadId,
@@ -93,6 +102,7 @@ export async function getVisitorIntelligence(
       formSubmits,
       maxScrollDepth,
       maxEngagedMs,
+      intent,
       geo: {
         country: metadataString(metadata, "country"),
         region: metadataString(metadata, "region"),
@@ -117,7 +127,11 @@ export async function getVisitorIntelligence(
     };
   });
 
-  sessions.sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)));
+  sessions.sort((a, b) => {
+    if (a.hotOpportunity !== b.hotOpportunity) return a.hotOpportunity ? -1 : 1;
+    if (a.intent.score !== b.intent.score) return b.intent.score - a.intent.score;
+    return String(b.lastSeenAt).localeCompare(String(a.lastSeenAt));
+  });
 
   const [totals] = await db
     .select({
@@ -141,7 +155,9 @@ export async function getVisitorIntelligence(
       conversions: Number(totals?.conversions ?? 0),
       onlineNow: sessions.filter((session) => session.online).length,
       identified: sessions.filter((session) => session.identified).length,
+      hotNow: sessions.filter((session) => session.hotOpportunity).length,
     },
+    hotOpportunities: sessions.filter((session) => session.hotOpportunity).slice(0, 20),
     sessions,
   };
 }
