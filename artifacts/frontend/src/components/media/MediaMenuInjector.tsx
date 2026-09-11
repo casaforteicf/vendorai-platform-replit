@@ -242,15 +242,12 @@ function ensureCampaignGuidance() {
     return;
   }
 
-  // O bloco de ferramentas internas criava quatro caminhos concorrentes.
-  // Mantemos apenas o CTA principal do bloco "Próximo passo".
   document.querySelectorAll<HTMLElement>("p,div").forEach((node) => {
     if (normalizedText(node.textContent ?? "") !== "Ferramentas desta campanha") return;
     const card = closestCard(node);
     if (card) hideForCampaign(card, "campaign-tools");
   });
 
-  // Detalhes ficam fechados por padrão; continuam disponíveis para auditoria.
   const hideDetailsButton = findButton("Ocultar detalhes");
   if (hideDetailsButton) hideDetailsButton.click();
 
@@ -291,18 +288,30 @@ function cleanupCampaignWorkspace() {
     removeCampaignGuidance();
     return;
   }
+
   const params = new URLSearchParams(window.location.search);
-  if (params.get("tab") !== "campanhas") {
+  const tab = params.get("tab");
+  const focusedFlowTab = tab === "campanhas" || tab === "conteudos";
+  if (!focusedFlowTab) {
     removeCampaignGuidance();
     return;
   }
 
+  // Nas etapas operacionais do fluxo, a barra superior de Ferramentas apenas
+  // duplica a navegação lateral e cria caminhos concorrentes.
   document.querySelectorAll<HTMLElement>("span").forEach((label) => {
     if (normalizedText(label.textContent ?? "") === "Ferramentas:") {
       const row = label.parentElement;
       if (row) hideForCampaign(row, "tools");
     }
   });
+
+  // Conteúdos & Criativos só precisa da limpeza da barra geral. A orientação
+  // específica de campanha continua restrita à aba Campanhas.
+  if (tab === "conteudos") {
+    removeCampaignGuidance();
+    return;
+  }
 
   if (!params.get("campaignId")) {
     removeCampaignGuidance();
