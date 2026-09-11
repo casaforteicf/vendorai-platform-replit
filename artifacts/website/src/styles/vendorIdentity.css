@@ -1,0 +1,85 @@
+:root {
+  --vendor-orange: #f97316;
+  --vendor-orange-strong: #ea580c;
+  --vendor-orange-soft: #fff7ed;
+  --vendor-orange-border: #fed7aa;
+  --vendor-ink: #0f172a;
+  --vendor-ink-soft: #334155;
+  --vendor-muted: #64748b;
+  --vendor-line: #e2e8f0;
+  --vendor-canvas: #f8fafc;
+  --vendor-surface: #ffffff;
+  --vendor-surface-warm: #fffaf5;
+  --vendor-blue: #2563eb;
+  --vendor-blue-soft: #eff6ff;
+  --vendor-green: #059669;
+  --vendor-green-soft: #ecfdf5;
+  --vendor-radius-lg: 24px;
+  --vendor-radius-xl: 30px;
+  --vendor-shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.06);
+  --vendor-shadow-md: 0 24px 70px rgba(15, 23, 42, 0.10);
+}
+
+.vendor-public-shell {
+  background: var(--vendor-canvas);
+  color: var(--vendor-ink);
+}
+
+.vendor-page {
+  min-height: 100%;
+  background: var(--vendor-canvas);
+  color: var(--vendor-ink);
+}
+
+.vendor-hero {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--vendor-line);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(249, 115, 22, 0.13), transparent 28%),
+    radial-gradient(circle at 84% 24%, rgba(37, 99, 235, 0.08), transparent 24%),
+    linear-gradient(180deg, #fffdf9 0%, #ffffff 100%);
+  color: var(--vendor-ink);
+}
+
+.vendor-eyebrow {
+  color: var(--vendor-orange-strong);
+}
+
+.vendor-card {
+  border: 1px solid var(--vendor-line);
+  background: var(--vendor-surface);
+  box-shadow: var(--vendor-shadow-sm);
+}
+
+.vendor-card:hover {
+  border-color: rgba(249, 115, 22, 0.32);
+  box-shadow: var(--vendor-shadow-md);
+}
+
+.vendor-soft-orange {
+  border: 1px solid var(--vendor-orange-border);
+  background: var(--vendor-orange-soft);
+}
+
+.vendor-soft-blue {
+  border: 1px solid #bfdbfe;
+  background: var(--vendor-blue-soft);
+}
+
+.vendor-soft-green {
+  border: 1px solid #a7f3d0;
+  background: var(--vendor-green-soft);
+}
+
+.vendor-muted { color: var(--vendor-muted); }
+.vendor-ink { color: var(--vendor-ink); }
+.vendor-ink-soft { color: var(--vendor-ink-soft); }
+.vendor-link { color: var(--vendor-orange-strong); }
+.vendor-link:hover { color: var(--vendor-orange); }
+
+.vendor-section-alt {
+  border-top: 1px solid var(--vendor-line);
+  border-bottom: 1px solid var(--vendor-line);
+  background: #ffffff;
+}
