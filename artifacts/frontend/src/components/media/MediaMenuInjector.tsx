@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 const CUSTOM_MENU_ATTR = "data-marketing-flow-menu";
 const CAMPAIGNS_HREF = "/content?source=media-plan&tab=campanhas";
+const CLEANUP_ATTR = "data-vendorai-campaign-cleanup";
 
 const MAIN_ITEMS = [
   { label: "Visão Geral", href: "/content?tab=visao-geral" },
@@ -61,6 +62,57 @@ function buildLink(item: { label: string; href: string }, iconSource: SVGElement
   return link;
 }
 
+function restoreCampaignCleanup() {
+  document.querySelectorAll<HTMLElement>(`[${CLEANUP_ATTR}]`).forEach((node) => {
+    node.style.display = node.dataset.vendoraiPreviousDisplay ?? "";
+    delete node.dataset.vendoraiPreviousDisplay;
+    node.removeAttribute(CLEANUP_ATTR);
+  });
+}
+
+function hideForCampaign(node: HTMLElement, kind: string) {
+  if (node.hasAttribute(CLEANUP_ATTR)) return;
+  node.dataset.vendoraiPreviousDisplay = node.style.display;
+  node.setAttribute(CLEANUP_ATTR, kind);
+  node.style.display = "none";
+}
+
+function cleanupCampaignWorkspace() {
+  restoreCampaignCleanup();
+
+  if (window.location.pathname !== "/content") return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("tab") !== "campanhas") return;
+
+  // Ferramentas gerais já existem no menu lateral. Na aba Campanhas elas
+  // duplicam navegação e desviam o foco da campanha atual.
+  document.querySelectorAll<HTMLElement>("span").forEach((label) => {
+    if (label.textContent?.replace(/\s+/g, " ").trim() === "Ferramentas:") {
+      const row = label.parentElement;
+      if (row) hideForCampaign(row, "tools");
+    }
+  });
+
+  // Quando uma campanha está aberta, o ContentHub ainda monta um resumo legado
+  // acima do workspace novo. O bloco possui "Executar em:" e o fundo
+  // bg-primary/[0.03]. Ocultamos apenas esse card duplicado, preservando a
+  // lista de campanhas e o workspace novo abaixo.
+  if (!params.get("campaignId")) return;
+
+  document.querySelectorAll<HTMLElement>("span").forEach((label) => {
+    if (label.textContent?.replace(/\s+/g, " ").trim() !== "Executar em:") return;
+    let current: HTMLElement | null = label.parentElement;
+    while (current && current !== document.body) {
+      const className = typeof current.className === "string" ? current.className : "";
+      if (className.includes("bg-primary/[0.03]") && className.includes("border-primary/25")) {
+        hideForCampaign(current, "legacy-summary");
+        break;
+      }
+      current = current.parentElement;
+    }
+  });
+}
+
 /**
  * Mantém o submenu lateral de Marketing alinhado ao fluxo oficial do módulo.
  *
@@ -99,24 +151,27 @@ export function MediaMenuInjector() {
 
         // Reconstrói somente quando a rota muda ou o React remonta o submenu.
         const routeKey = `${window.location.pathname}${window.location.search}`;
-        if (menu.dataset.routeKey === routeKey && menu.childElementCount > 0) return;
-        menu.dataset.routeKey = routeKey;
-        menu.replaceChildren();
+        if (menu.dataset.routeKey !== routeKey || menu.childElementCount === 0) {
+          menu.dataset.routeKey = routeKey;
+          menu.replaceChildren();
 
-        const iconSource = contentLink.querySelector("svg");
-        MAIN_ITEMS.forEach((item) => menu!.appendChild(buildLink(item, iconSource)));
+          const iconSource = contentLink.querySelector("svg");
+          MAIN_ITEMS.forEach((item) => menu!.appendChild(buildLink(item, iconSource)));
 
-        const divider = document.createElement("div");
-        divider.className = "mx-3 my-2 border-t";
-        menu.appendChild(divider);
+          const divider = document.createElement("div");
+          divider.className = "mx-3 my-2 border-t";
+          menu.appendChild(divider);
 
-        const toolsLabel = document.createElement("p");
-        toolsLabel.className = "px-3 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60";
-        toolsLabel.textContent = "Ferramentas";
-        menu.appendChild(toolsLabel);
+          const toolsLabel = document.createElement("p");
+          toolsLabel.className = "px-3 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60";
+          toolsLabel.textContent = "Ferramentas";
+          menu.appendChild(toolsLabel);
 
-        TOOL_ITEMS.forEach((item) => menu!.appendChild(buildLink(item, iconSource)));
+          TOOL_ITEMS.forEach((item) => menu!.appendChild(buildLink(item, iconSource)));
+        }
       });
+
+      cleanupCampaignWorkspace();
     };
 
     // A aba superior também deve entrar primeiro na lista de campanhas.
@@ -143,6 +198,7 @@ export function MediaMenuInjector() {
       observer.disconnect();
       window.removeEventListener("popstate", ensureMarketingMenu);
       document.removeEventListener("click", handleCampaignTabClick, true);
+      restoreCampaignCleanup();
       document.querySelectorAll<HTMLElement>(`[${CUSTOM_MENU_ATTR}]`).forEach((menu) => menu.remove());
       document.querySelectorAll<HTMLElement>('a[href="/content"]').forEach((contentLink) => {
         const container = contentLink.parentElement;
