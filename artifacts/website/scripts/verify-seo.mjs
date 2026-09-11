@@ -34,22 +34,27 @@ for (const block of verticalSource.split("v({").slice(1)) {
   macrosegments.add(macrosegment);
 }
 
-manifest.verticals = { ...(manifest.verticals || {}), ...parsedVerticals };
+const parsedVerticalCount = Object.keys(parsedVerticals).length;
+if (parsedVerticalCount !== 50) {
+  throw new Error(`[seo] public vertical slug map must resolve exactly 50 unique verticals, found ${parsedVerticalCount}`);
+}
+
+// A lista pública é autoritativa. Remove registros/rotas semânticas produzidos no
+// primeiro estágio para não carregar aliases obsoletos nem URLs duplicadas no sitemap.
+manifest.verticals = parsedVerticals;
+manifest.routes = manifest.routes.filter((route) => !(route.type === "vertical" && route.pathname?.startsWith("/lp/")));
 manifest.macrosegments = [...macrosegments];
 
 for (const [slug, vertical] of Object.entries(parsedVerticals)) {
   const pathname = `/lp/${slug}`;
-  const route = {
+  manifest.routes.push({
     pathname,
     title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`,
     description: vertical.description,
     type: "vertical",
     name: vertical.title,
     priority: 0.8,
-  };
-  const existingIndex = manifest.routes.findIndex((item) => item.pathname === pathname);
-  if (existingIndex >= 0) manifest.routes[existingIndex] = { ...manifest.routes[existingIndex], ...route };
-  else manifest.routes.push(route);
+  });
 }
 
 for (const macrosegment of macrosegments) {
@@ -118,12 +123,14 @@ const duplicates = routePaths.filter((pathname, index) => routePaths.indexOf(pat
 const emptyMeta = manifest.routes.filter((route) => !route.title?.trim() || !route.description?.trim());
 const productCount = Object.keys(manifest.products || {}).length;
 const verticalCount = Object.keys(manifest.verticals || {}).length;
+const publicVerticalRouteCount = manifest.routes.filter((route) => route.type === "vertical" && route.pathname?.startsWith("/lp/")).length;
 const articleCount = manifest.routes.filter((route) => route.type === "article").length;
 
 if (duplicates.length) throw new Error(`[seo] duplicate routes: ${[...new Set(duplicates)].join(", ")}`);
 if (emptyMeta.length) throw new Error(`[seo] routes without title/description: ${emptyMeta.map((route) => route.pathname).join(", ")}`);
 if (productCount < 26) throw new Error(`[seo] expected at least 26 products, found ${productCount}`);
 if (verticalCount !== 50) throw new Error(`[seo] expected exactly 50 official verticals, found ${verticalCount}`);
+if (publicVerticalRouteCount !== 50) throw new Error(`[seo] expected exactly 50 public vertical routes, found ${publicVerticalRouteCount}`);
 if (manifest.macrosegments.length !== 6) throw new Error(`[seo] expected 6 macrosegments, found ${manifest.macrosegments.length}`);
 
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
