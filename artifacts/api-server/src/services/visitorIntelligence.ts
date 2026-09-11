@@ -8,6 +8,7 @@ export type VisitorIntelligenceFilters = {
 };
 
 type Metadata = Record<string, unknown>;
+type VisitorSurface = "site" | "app" | "mobile" | "unknown";
 
 function metadataString(metadata: Metadata | null | undefined, key: string): string | null {
   const value = metadata?.[key];
@@ -17,6 +18,23 @@ function metadataString(metadata: Metadata | null | undefined, key: string): str
 function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function resolveSurface(metadata: Metadata | null | undefined, pageUrl: string | null): VisitorSurface {
+  const explicit = metadataString(metadata, "surface");
+  if (explicit === "site" || explicit === "app" || explicit === "mobile") return explicit;
+
+  if (pageUrl) {
+    try {
+      const hostname = new URL(pageUrl).hostname.toLowerCase();
+      if (hostname === "app.appvendorai.com" || hostname.endsWith(".app.appvendorai.com")) return "app";
+      if (hostname === "appvendorai.com" || hostname === "www.appvendorai.com" || hostname.endsWith(".appvendorai.com")) return "site";
+    } catch {
+      // URLs legadas/incompletas ficam como unknown.
+    }
+  }
+
+  return "unknown";
 }
 
 export async function getVisitorIntelligence(
@@ -79,9 +97,11 @@ export async function getVisitorIntelligence(
     const lastSeen = latest.createdAt;
     const online = lastSeen >= onlineSince;
     const hotOpportunity = online && intent.score >= 60;
+    const surface = resolveSurface(metadata, latest.pageUrl);
 
     return {
       sessionId,
+      surface,
       online,
       hotOpportunity,
       identified: Boolean(latest.leadId || userId),
@@ -156,6 +176,9 @@ export async function getVisitorIntelligence(
       onlineNow: sessions.filter((session) => session.online).length,
       identified: sessions.filter((session) => session.identified).length,
       hotNow: sessions.filter((session) => session.hotOpportunity).length,
+      siteVisitors: sessions.filter((session) => session.surface === "site").length,
+      appVisitors: sessions.filter((session) => session.surface === "app").length,
+      mobileVisitors: sessions.filter((session) => session.surface === "mobile").length,
     },
     hotOpportunities: sessions.filter((session) => session.hotOpportunity).slice(0, 20),
     sessions,
