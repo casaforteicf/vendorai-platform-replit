@@ -15,7 +15,17 @@ export type VisitorTelemetryEventType =
   | "error";
 
 const SESSION_KEY = "vendorai_visitor_session_v1";
+const VISITOR_KEY = "vendorai_visitor_id_v1";
+const ALERTS_KEY = "vendorai_visitor_online_alerts_v1";
+const ALERT_SEEN_KEY = "vendorai_visitor_alert_seen_v1";
 const API_BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_URL || "/api");
+const VISITOR_DASHBOARD_URL = "/content?tab=campanhas&view=visitantes";
+
+function randomId(prefix: string) {
+  return typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
 
 function authToken() {
   try {
@@ -40,13 +50,23 @@ function sessionId(): string {
   try {
     const existing = window.sessionStorage.getItem(SESSION_KEY);
     if (existing) return existing;
-    const created = typeof crypto?.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    const created = randomId("s");
     window.sessionStorage.setItem(SESSION_KEY, created);
     return created;
   } catch {
-    return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    return randomId("s");
+  }
+}
+
+function visitorId(): string {
+  try {
+    const existing = window.localStorage.getItem(VISITOR_KEY);
+    if (existing) return existing;
+    const created = randomId("v");
+    window.localStorage.setItem(VISITOR_KEY, created);
+    return created;
+  } catch {
+    return randomId("v");
   }
 }
 
@@ -86,6 +106,34 @@ function attribution() {
   };
 }
 
+export function getVisitorAlertsEnabled() {
+  try {
+    const saved = window.localStorage.getItem(ALERTS_KEY);
+    return saved === null ? true : saved === "true";
+  } catch {
+    return true;
+  }
+}
+
+export function setVisitorAlertsEnabled(enabled: boolean) {
+  try {
+    window.localStorage.setItem(ALERTS_KEY, String(enabled));
+  } catch {
+    // Preferência local opcional.
+  }
+  window.dispatchEvent(new CustomEvent("vendorai:visitor-alert-preference", { detail: { enabled } }));
+}
+
+export function getVisitorBrowserNotificationState(): NotificationPermission | "unsupported" {
+  if (typeof Notification === "undefined") return "unsupported";
+  return Notification.permission;
+}
+
+export async function requestVisitorBrowserNotifications() {
+  if (typeof Notification === "undefined") return "unsupported" as const;
+  return Notification.requestPermission();
+}
+
 export async function sendVisitorTelemetry(
   eventType: VisitorTelemetryEventType,
   metadata: Record<string, string | number | boolean | null> = {},
@@ -105,6 +153,7 @@ export async function sendVisitorTelemetry(
     utmCampaign: attr.utmCampaign || undefined,
     metadata: {
       surface: surface.surface,
+      visitorId: visitorId(),
       mobilePlatform: surface.mobilePlatform,
       hostname: window.location.hostname,
       deviceType: deviceType(),
@@ -134,6 +183,174 @@ export async function sendVisitorTelemetry(
   }
 }
 
+type AlertSession = {
+  sessionId: string;
+  surface: "site" | "app" | "mobile" | "unknown";
+  online: boolean;
+  identified: boolean;
+  hotOpportunity: boolean;
+  currentPath: string | null;
+  lastSeenAt: string | null;
+  sourceLabel?: string | null;
+  source?: string | null;
+  medium?: string | null;
+  intent: { score: number };
+  geo: { city: string | null; region: string | null; country: string | null };
+};
+
+type AlertResponse = { sessions?: AlertSession[] };
+
+function loadSeenSessions() {
+  try {
+    const raw = window.sessionStorage.getItem(ALERT_SEEN_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set<string>(Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function saveSeenSessions(seen: Set<string>) {
+  try {
+    const values = Array.from(seen).slice(-250);
+    window.sessionStorage.setItem(ALERT_SEEN_KEY, JSON.stringify(values));
+  } catch {
+    // Sem sessionStorage, o dedupe continua em memória.
+  }
+}
+
+function alertLocation(session: AlertSession) {
+  return [session.geo.city, session.geo.region].filter(Boolean).join(" / ") || "localização não disponível";
+}
+
+function alertSource(session: AlertSession) {
+  return session.sourceLabel
+    || [session.source, session.medium].filter(Boolean).join(" / ")
+    || "acesso direto";
+}
+
+function showInAppVisitorAlert(session: AlertSession) {
+  const containerId = "vendorai-visitor-alert-container";
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement("div");
+    container.id = containerId;
+    Object.assign(container.style, {
+      position: "fixed",
+      right: "18px",
+      top: "18px",
+      zIndex: "2147483000",
+      display: "flex",
+      flexDirection: "column",
+      gap: "10px",
+      width: "min(390px, calc(100vw - 36px))",
+      pointerEvents: "none",
+    });
+    document.body.appendChild(container);
+  }
+
+  const card = document.createElement("button");
+  card.type = "button";
+  card.setAttribute("aria-label", "Abrir Visitor Intelligence");
+  card.style.cssText = [
+    "pointer-events:auto",
+    "width:100%",
+    "text-align:left",
+    "border:1px solid rgba(99,102,241,.28)",
+    "border-radius:14px",
+    "background:rgba(15,23,42,.96)",
+    "color:white",
+    "padding:14px 15px",
+    "box-shadow:0 18px 45px rgba(15,23,42,.28)",
+    "cursor:pointer",
+    "font:inherit",
+  ].join(";");
+
+  const title = session.identified ? "Lead identificado está online" : "Novo visitante online";
+  const hot = session.hotOpportunity ? " · 🔥 oportunidade quente" : "";
+  card.innerHTML = `
+    <div style="font-size:13px;font-weight:700;margin-bottom:5px">${title}${hot}</div>
+    <div style="font-size:12px;opacity:.86;line-height:1.45">${alertLocation(session)} · ${alertSource(session)}</div>
+    <div style="font-size:11px;opacity:.72;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${session.currentPath || "/"} · intenção ${session.intent?.score ?? 0}/100</div>
+    <div style="font-size:11px;color:#a5b4fc;margin-top:7px">Clique para acompanhar ao vivo →</div>
+  `;
+  card.onclick = () => {
+    window.location.assign(VISITOR_DASHBOARD_URL);
+  };
+  container.appendChild(card);
+
+  window.setTimeout(() => {
+    card.remove();
+    if (container && !container.childElementCount) container.remove();
+  }, 10_000);
+}
+
+function showBrowserVisitorAlert(session: AlertSession) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  if (document.visibilityState === "visible") return;
+  const notification = new Notification(session.identified ? "Lead identificado online" : "Novo visitante online", {
+    body: `${alertLocation(session)} · ${alertSource(session)} · ${session.currentPath || "/"}`,
+    tag: `vendorai-visitor-${session.sessionId}`,
+  });
+  notification.onclick = () => {
+    window.focus();
+    window.location.assign(VISITOR_DASHBOARD_URL);
+    notification.close();
+  };
+}
+
+function installVisitorOnlineAlerts() {
+  const seen = loadSeenSessions();
+  let stopped = false;
+  let running = false;
+
+  const poll = async () => {
+    if (stopped || running || !getVisitorAlertsEnabled()) return;
+    const token = authToken();
+    if (!token) return;
+    running = true;
+    try {
+      const response = await fetch(`${API_BASE}/visitor-intelligence?minutes=5&onlineWindowSeconds=90`, {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+      const data = await response.json() as AlertResponse;
+      const now = Date.now();
+      const onlineSite = (data.sessions ?? []).filter((session) => session.surface === "site" && session.online);
+      const fresh = onlineSite
+        .filter((session) => !seen.has(session.sessionId))
+        .filter((session) => !session.lastSeenAt || now - new Date(session.lastSeenAt).getTime() <= 75_000)
+        .slice(0, 3);
+
+      for (const session of onlineSite) seen.add(session.sessionId);
+      saveSeenSessions(seen);
+
+      for (const session of fresh) {
+        showInAppVisitorAlert(session);
+        showBrowserVisitorAlert(session);
+        window.dispatchEvent(new CustomEvent("vendorai:visitor-online", { detail: session }));
+      }
+    } catch {
+      // Alertas nunca podem interferir no uso do app.
+    } finally {
+      running = false;
+    }
+  };
+
+  const initialTimer = window.setTimeout(() => void poll(), 4_000);
+  const interval = window.setInterval(() => void poll(), 15_000);
+  const preferenceListener = () => void poll();
+  window.addEventListener("vendorai:visitor-alert-preference", preferenceListener);
+
+  return () => {
+    stopped = true;
+    window.clearTimeout(initialTimer);
+    window.clearInterval(interval);
+    window.removeEventListener("vendorai:visitor-alert-preference", preferenceListener);
+  };
+}
+
 export function installVisitorTelemetry() {
   if (typeof window === "undefined") return () => {};
   let lastPath = `${window.location.pathname}${window.location.search}`;
@@ -141,6 +358,7 @@ export function installVisitorTelemetry() {
 
   void sendVisitorTelemetry("session_start");
   void sendVisitorTelemetry("screen_view");
+  const stopAlerts = installVisitorOnlineAlerts();
 
   const interval = window.setInterval(() => {
     if (stopped || document.visibilityState !== "visible") return;
@@ -159,6 +377,7 @@ export function installVisitorTelemetry() {
 
   return () => {
     stopped = true;
+    stopAlerts();
     window.clearInterval(interval);
     document.removeEventListener("visibilitychange", visibility);
   };
