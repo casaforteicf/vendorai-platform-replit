@@ -161,7 +161,7 @@ router.get("/tenants/:tenantId/search-console-connection", authenticate, async (
 
 router.get("/tenants/:tenantId/search-console-insights", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     if (!assertTenantAccess(req, tenantId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -169,7 +169,7 @@ router.get("/tenants/:tenantId/search-console-insights", authenticate, async (re
     const result = await getSearchConsoleInsights(tenantId, requestedDays);
     return res.json(result);
   } catch (err) {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     const message = err instanceof Error ? err.message : "UNKNOWN";
     logger.error({ err, tenantId }, "Erro ao carregar insights do Search Console");
     if (message === "SEARCH_CONSOLE_NOT_ACTIVE") {
