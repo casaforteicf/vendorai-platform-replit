@@ -218,15 +218,22 @@ function transformHtml(response, meta) {
     .transform(response);
 }
 
+function transformUnknownHtml(response) {
+  return new HTMLRewriter()
+    .on('meta[name="robots"]', { element(element) { element.remove(); } })
+    .on('link[rel="canonical"]', { element(element) { element.remove(); } })
+    .on('link[rel="alternate"][hreflang]', { element(element) { element.remove(); } })
+    .on("head", { element(element) { element.append('<meta name="robots" content="noindex, follow">', { html: true }); } })
+    .transform(response);
+}
+
 async function serveWebsite(request, env) {
   const url = new URL(request.url);
   let response = await env.ASSETS.fetch(request);
   const acceptsHtml = request.method === "GET" && (request.headers.get("accept") || "").includes("text/html");
-  let usedSpaFallback = false;
 
   if (response.status === 404 && acceptsHtml) {
     response = await env.ASSETS.fetch(new Request(new URL("/index.html", url.origin), request));
-    usedSpaFallback = true;
   }
 
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
@@ -234,9 +241,12 @@ async function serveWebsite(request, env) {
   const meta = manifest ? await resolveMeta(manifest, url) : null;
   let result = meta ? transformHtml(response, meta) : new Response(response.body, response);
 
-  if (usedSpaFallback && !meta) {
-    result = new Response(result.body, { status: 404, headers: result.headers });
-    result.headers.set("X-Robots-Tag", "noindex, follow");
+  // Cloudflare Pages pode devolver index.html com HTTP 200 para qualquer rota SPA.
+  // Se a rota HTML não existe no manifesto/dados dinâmicos, convertemos para 404 real.
+  if (!meta && acceptsHtml && contentType.includes("text/html")) {
+    const notFound = new Response(result.body, { status: 404, headers: result.headers });
+    notFound.headers.set("X-Robots-Tag", "noindex, follow");
+    result = transformUnknownHtml(notFound);
   } else if (meta) {
     result.headers.set("X-Robots-Tag", meta.indexable === false ? "noindex, follow" : "index, follow");
   }
