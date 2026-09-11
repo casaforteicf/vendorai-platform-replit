@@ -8,6 +8,7 @@ import CampanhasHub from "@/pages/CampanhasHub";
 import PlanoMidia from "@/pages/PlanoMidia";
 import SiteGenerator from "@/pages/SiteGenerator";
 import ContentProductionQueue from "@/components/marketing/ContentProductionQueue";
+import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -448,7 +449,8 @@ export default function ContentHub() {
           </TabsContent>
 
           <TabsContent value="resultados" className="mt-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <SearchConsoleInsightsPanel tenantId={tenantId} />
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Card><CardContent className="py-5"><p className="text-xs text-muted-foreground">Campanhas</p><p className="mt-1 font-semibold">Compare o desempenho entre campanhas.</p><Button variant="link" className="px-0" onClick={() => handleTabChange("campanhas")}>Abrir campanhas</Button></CardContent></Card>
               <Card><CardContent className="py-5"><p className="text-xs text-muted-foreground">Conteúdos</p><p className="mt-1 font-semibold">Veja quais peças e criativos estão alimentando as ações.</p><Button variant="link" className="px-0" onClick={() => handleTabChange("conteudos")}>Abrir conteúdos</Button></CardContent></Card>
               <Card><CardContent className="py-5"><p className="text-xs text-muted-foreground">Anúncios</p><p className="mt-1 font-semibold">Acompanhe mídia paga e campanhas patrocinadas.</p><Button variant="link" className="px-0" onClick={() => setLocation("/ads")}>Abrir anúncios</Button></CardContent></Card>
