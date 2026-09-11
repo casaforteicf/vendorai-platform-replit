@@ -1,30 +1,9 @@
 // Product routes are part of the public website deployment (Cloudflare production sync).
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/Home";
-import Funcionalidades from "@/pages/Funcionalidades";
-import RecursoDetalhe from "@/pages/RecursoDetalhe";
-import AgenteDetalhe from "@/pages/AgenteDetalhe";
-import Produtos from "@/pages/Produtos";
-import ProdutoDetalhe from "@/pages/ProdutoDetalhe";
-import Precos from "@/pages/Precos";
-import Sobre from "@/pages/Sobre";
-import Contato from "@/pages/Contato";
-import Demo from "@/pages/Demo";
-import CadastroPraca from "@/pages/CadastroPraca";
-import DownloadApp from "@/pages/DownloadApp";
-import Privacy from "@/pages/Privacy";
-import Terms from "@/pages/Terms";
-import VerticalPage from "@/pages/site/VerticalPage";
-import ParceirosPage from "@/pages/site/ParceirosPage";
-import BlogList from "@/pages/blog/BlogList";
-import BlogPost from "@/pages/blog/BlogPost";
-import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
-import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import GrowthRevenueHero from "@/components/GrowthRevenueHero";
@@ -32,14 +11,40 @@ import DistributedProductScreens from "@/components/DistributedProductScreens";
 import RevenueMagicCalculator from "@/components/RevenueMagicCalculator";
 import PublicSeoManager from "@/components/PublicSeoManager";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
-import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
 import "@/styles/vendorIdentity.css";
 import {
   captureLaunchAttribution,
   installPublicFormConsentBridge,
 } from "@/lib/launchAttribution";
 
+const Home = lazy(() => import("@/pages/Home"));
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Funcionalidades = lazy(() => import("@/pages/Funcionalidades"));
+const RecursoDetalhe = lazy(() => import("@/pages/RecursoDetalhe"));
+const AgenteDetalhe = lazy(() => import("@/pages/AgenteDetalhe"));
+const Produtos = lazy(() => import("@/pages/Produtos"));
+const ProdutoDetalhe = lazy(() => import("@/pages/ProdutoDetalhe"));
+const Precos = lazy(() => import("@/pages/Precos"));
+const Sobre = lazy(() => import("@/pages/Sobre"));
+const Contato = lazy(() => import("@/pages/Contato"));
+const Demo = lazy(() => import("@/pages/Demo"));
+const CadastroPraca = lazy(() => import("@/pages/CadastroPraca"));
+const DownloadApp = lazy(() => import("@/pages/DownloadApp"));
+const Privacy = lazy(() => import("@/pages/Privacy"));
+const Terms = lazy(() => import("@/pages/Terms"));
+const VerticalPage = lazy(() => import("@/pages/site/VerticalPage"));
+const ParceirosPage = lazy(() => import("@/pages/site/ParceirosPage"));
+const BlogList = lazy(() => import("@/pages/blog/BlogList"));
+const BlogPost = lazy(() => import("@/pages/blog/BlogPost"));
+const UnifiedLpRouter = lazy(() => import("@/pages/lp/UnifiedLpRouter"));
+const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
+const AgentSimulatorWidget = lazy(() => import("@/components/AgentSimulatorWidget").then((module) => ({ default: module.AgentSimulatorWidget })));
+
 const queryClient = new QueryClient();
+
+function RouteFallback() {
+  return <div className="min-h-[45vh] bg-white" aria-live="polite" aria-busy="true" />;
+}
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -60,7 +65,7 @@ function FloatingActions() {
   return (
     <>
       <WhatsAppFloatButton />
-      <AgentSimulatorWidget />
+      <Suspense fallback={null}><AgentSimulatorWidget /></Suspense>
     </>
   );
 }
@@ -80,40 +85,42 @@ function HomeWithGrowthRevenueHero() {
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/verticais/:slug" component={VerticalPage} />
-      <Route path="/parceiros" component={ParceirosPage} />
-      <Route path="/segmentos/:slug" component={MacrosegmentHub} />
-      <Route path="/lp/:slug" component={UnifiedLpRouter} />
+    <Suspense fallback={<RouteFallback />}>
+      <Switch>
+        <Route path="/verticais/:slug" component={VerticalPage} />
+        <Route path="/parceiros" component={ParceirosPage} />
+        <Route path="/segmentos/:slug" component={MacrosegmentHub} />
+        <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
-      <Route>
-        <div className="vendor-public-shell flex min-h-screen flex-col overflow-x-clip">
-          <Navbar />
-          <main className="min-w-0 flex-1">
-            <Switch>
-              <Route path="/" component={HomeWithGrowthRevenueHero} />
-              <Route path="/produtos/:slug" component={ProdutoDetalhe} />
-              <Route path="/produtos" component={Produtos} />
-              <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
-              <Route path="/funcionalidades" component={Funcionalidades} />
-              <Route path="/agentes/:slug" component={AgenteDetalhe} />
-              <Route path="/precos" component={Precos} />
-              <Route path="/sobre" component={Sobre} />
-              <Route path="/contato" component={Contato} />
-              <Route path="/demo" component={Demo} />
-              <Route path="/baixar-app" component={DownloadApp} />
-              <Route path="/cadastro-praca" component={CadastroPraca} />
-              <Route path="/privacy" component={Privacy} />
-              <Route path="/terms" component={Terms} />
-              <Route path="/blog/:slug" component={BlogPost} />
-              <Route path="/blog" component={BlogList} />
-              <Route component={NotFound} />
-            </Switch>
-          </main>
-          <Footer />
-        </div>
-      </Route>
-    </Switch>
+        <Route>
+          <div className="vendor-public-shell flex min-h-screen flex-col overflow-x-clip">
+            <Navbar />
+            <main className="min-w-0 flex-1">
+              <Switch>
+                <Route path="/" component={HomeWithGrowthRevenueHero} />
+                <Route path="/produtos/:slug" component={ProdutoDetalhe} />
+                <Route path="/produtos" component={Produtos} />
+                <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
+                <Route path="/funcionalidades" component={Funcionalidades} />
+                <Route path="/agentes/:slug" component={AgenteDetalhe} />
+                <Route path="/precos" component={Precos} />
+                <Route path="/sobre" component={Sobre} />
+                <Route path="/contato" component={Contato} />
+                <Route path="/demo" component={Demo} />
+                <Route path="/baixar-app" component={DownloadApp} />
+                <Route path="/cadastro-praca" component={CadastroPraca} />
+                <Route path="/privacy" component={Privacy} />
+                <Route path="/terms" component={Terms} />
+                <Route path="/blog/:slug" component={BlogPost} />
+                <Route path="/blog" component={BlogList} />
+                <Route component={NotFound} />
+              </Switch>
+            </main>
+            <Footer />
+          </div>
+        </Route>
+      </Switch>
+    </Suspense>
   );
 }
 

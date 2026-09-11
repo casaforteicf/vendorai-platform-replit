@@ -9,6 +9,8 @@ type SeoRoute = {
   type?: string;
   name?: string;
   price?: number | null;
+  image?: string | null;
+  indexable?: boolean;
 };
 
 type SeoManifest = {
@@ -89,7 +91,7 @@ function schemaFor(meta: SeoRoute, canonical: string, locale: string) {
     if (meta.price) app.offers = { "@type": "Offer", priceCurrency: "BRL", price: Number(meta.price).toFixed(2), url: canonical, availability: "https://schema.org/InStock" };
     graph.push(app);
   } else if (meta.type === "article") {
-    graph.push({ "@type": "Article", headline: meta.name ?? meta.title, description: meta.description, url: canonical, inLanguage: locale });
+    graph.push({ "@type": "Article", headline: meta.name ?? meta.title, description: meta.description, url: canonical, inLanguage: locale, ...(meta.image ? { image: meta.image } : {}) });
   } else {
     graph.push({ "@type": meta.type === "collection" ? "CollectionPage" : "WebPage", name: meta.title, description: meta.description, url: canonical, inLanguage: locale });
   }
@@ -119,48 +121,48 @@ export default function PublicSeoManager() {
   useEffect(() => {
     if (!manifest) return;
     let baseMeta = manifest.routes.find((item) => item.pathname === pathname);
-    if (!baseMeta && pathname.startsWith("/blog/")) {
-      const slug = pathname.split("/").pop() ?? "artigo";
-      baseMeta = { pathname, title: `${humanize(slug)} | Blog VendorAI`, description: "Conteúdo VendorAI sobre vendas, CRM, marketing, inteligência artificial, automação e crescimento de receita.", type: "article", name: humanize(slug) };
-    }
     if (!baseMeta && pathname.startsWith("/verticais/")) {
       const slug = pathname.split("/").pop() ?? "empresas";
       const vertical = manifest.verticals?.[slug];
-      baseMeta = { pathname, title: `VendorAI para ${vertical?.title ?? humanize(slug)} — CRM, Vendas e IA`, description: vertical?.description ?? `Conheça o VendorAI para ${humanize(slug)}.`, type: "vertical", name: vertical?.title ?? humanize(slug) };
+      if (vertical) baseMeta = { pathname, title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`, description: vertical.description, type: "vertical", name: vertical.title, indexable: true };
     }
     if (!baseMeta) return;
 
     const meta = localizeMeta(baseMeta, countryCode);
+    const indexable = meta.indexable !== false;
     const canonical = countryCode === "BR" ? `${manifest.baseUrl}${pathname}` : `${manifest.baseUrl}${pathname}?country=${countryCode}`;
+    const image = meta.image || manifest.ogImage;
     document.title = meta.title;
     document.documentElement.lang = country.locale;
     upsertMeta('meta[name="description"]', { name: "description", content: meta.description });
-    upsertMeta('meta[name="robots"]', { name: "robots", content: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" });
+    upsertMeta('meta[name="robots"]', { name: "robots", content: indexable ? "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" : "noindex, follow" });
     upsertLink('link[rel="canonical"]', { rel: "canonical", href: canonical });
     upsertMeta('meta[property="og:url"]', { property: "og:url", content: canonical });
     upsertMeta('meta[property="og:title"]', { property: "og:title", content: meta.title });
     upsertMeta('meta[property="og:description"]', { property: "og:description", content: meta.description });
-    upsertMeta('meta[property="og:image"]', { property: "og:image", content: manifest.ogImage });
+    upsertMeta('meta[property="og:image"]', { property: "og:image", content: image });
     upsertMeta('meta[name="twitter:card"]', { name: "twitter:card", content: "summary_large_image" });
     upsertMeta('meta[name="twitter:title"]', { name: "twitter:title", content: meta.title });
     upsertMeta('meta[name="twitter:description"]', { name: "twitter:description", content: meta.description });
-    upsertMeta('meta[name="twitter:image"]', { name: "twitter:image", content: manifest.ogImage });
+    upsertMeta('meta[name="twitter:image"]', { name: "twitter:image", content: image });
 
     document.head.querySelectorAll('link[rel="alternate"][data-vendorai-hreflang="true"]').forEach((node) => node.remove());
-    (Object.entries(PUBLIC_COUNTRIES) as [PublicCountryCode, (typeof PUBLIC_COUNTRIES)[PublicCountryCode]][]).forEach(([code, market]) => {
-      const link = document.createElement("link");
-      link.rel = "alternate";
-      link.hreflang = market.locale;
-      link.href = code === "BR" ? `${manifest.baseUrl}${pathname}` : `${manifest.baseUrl}${pathname}?country=${code}`;
-      link.dataset.vendoraiHreflang = "true";
-      document.head.appendChild(link);
-    });
-    const xDefault = document.createElement("link");
-    xDefault.rel = "alternate";
-    xDefault.hreflang = "x-default";
-    xDefault.href = `${manifest.baseUrl}${pathname}`;
-    xDefault.dataset.vendoraiHreflang = "true";
-    document.head.appendChild(xDefault);
+    if (indexable) {
+      (Object.entries(PUBLIC_COUNTRIES) as [PublicCountryCode, (typeof PUBLIC_COUNTRIES)[PublicCountryCode]][]).forEach(([code, market]) => {
+        const link = document.createElement("link");
+        link.rel = "alternate";
+        link.hreflang = market.locale;
+        link.href = code === "BR" ? `${manifest.baseUrl}${pathname}` : `${manifest.baseUrl}${pathname}?country=${code}`;
+        link.dataset.vendoraiHreflang = "true";
+        document.head.appendChild(link);
+      });
+      const xDefault = document.createElement("link");
+      xDefault.rel = "alternate";
+      xDefault.hreflang = "x-default";
+      xDefault.href = `${manifest.baseUrl}${pathname}`;
+      xDefault.dataset.vendoraiHreflang = "true";
+      document.head.appendChild(xDefault);
+    }
 
     document.head.querySelectorAll('script[type="application/ld+json"][data-vendorai-seo="runtime"]').forEach((node) => node.remove());
     const schema = document.createElement("script");

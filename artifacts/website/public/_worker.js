@@ -11,10 +11,8 @@ async function proxyApi(request) {
   headers.delete("host");
   headers.set("x-forwarded-host", incomingUrl.host);
   headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", ""));
-
   const init = { method: request.method, headers, redirect: "manual" };
   if (request.method !== "GET" && request.method !== "HEAD") init.body = request.body;
-
   const upstream = await fetch(new Request(target.toString(), init));
   const response = new Response(upstream.body, upstream);
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
@@ -22,11 +20,7 @@ async function proxyApi(request) {
 }
 
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function safeJson(value) {
@@ -38,16 +32,16 @@ function normalizePath(pathname) {
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 }
 
+function humanize(slug = "") {
+  return slug.split("-").filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+}
+
 async function getManifest(env, origin) {
   if (manifestCache) return manifestCache;
   const response = await env.ASSETS.fetch(new Request(new URL("/seo-manifest.json", origin)));
   if (!response.ok) return null;
   manifestCache = await response.json();
   return manifestCache;
-}
-
-function humanize(slug = "") {
-  return slug.split("-").filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
 }
 
 const STATIC_ES = {
@@ -67,47 +61,59 @@ function localizeMeta(meta, pathname, country) {
   if (country === "BR") return meta;
   const staticEs = STATIC_ES[pathname];
   if (staticEs) return { ...meta, title: staticEs[0], description: staticEs[1] };
-  if (meta.type === "product") {
-    return { ...meta, title: `${meta.name || "Producto VendorAI"} — IA y automatización para empresas | VendorAI`, description: `Conoce ${meta.name || "esta solución"} de VendorAI: tecnología, oportunidades, automatización e inteligencia conectadas a la operación comercial.` };
-  }
-  if (meta.type === "agent") {
-    return { ...meta, title: `${meta.name || "Agente de IA"} | VendorAI`, description: `Conoce ${meta.name || "este agente"} de VendorAI y cómo automatiza etapas de atención, ventas y relación con clientes.` };
-  }
-  if (meta.type === "feature") {
-    return { ...meta, title: `${meta.name || "Función"} | VendorAI`, description: `Conoce ${meta.name || "esta función"} dentro del ecosistema VendorAI para automatización, marketing e inteligencia comercial.` };
-  }
-  if (meta.type === "vertical" || meta.type === "segment") {
-    return { ...meta, title: `VendorAI para ${meta.name || humanize(pathname.split("/").pop())} — CRM, Ventas e IA`, description: `VendorAI para ${meta.name || "este segmento"}: marketing, prospección, atención, CRM, ventas e inteligencia de ingresos en una operación conectada.` };
-  }
+  if (meta.type === "product") return { ...meta, title: `${meta.name || "Producto VendorAI"} — IA y automatización para empresas | VendorAI`, description: `Conoce ${meta.name || "esta solución"} de VendorAI: tecnología, oportunidades, automatización e inteligencia conectadas a la operación comercial.` };
+  if (meta.type === "agent") return { ...meta, title: `${meta.name || "Agente de IA"} | VendorAI`, description: `Conoce ${meta.name || "este agente"} de VendorAI y cómo automatiza etapas de atención, ventas y relación con clientes.` };
+  if (meta.type === "feature") return { ...meta, title: `${meta.name || "Función"} | VendorAI`, description: `Conoce ${meta.name || "esta función"} dentro del ecosistema VendorAI para automatización, marketing e inteligencia comercial.` };
+  if (meta.type === "vertical" || meta.type === "segment") return { ...meta, title: `VendorAI para ${meta.name || humanize(pathname.split("/").pop())} — CRM, Ventas e IA`, description: `VendorAI para ${meta.name || "este segmento"}: marketing, prospección, atención, CRM, ventas e inteligencia de ingresos en una operación conectada.` };
   return meta;
 }
 
-function resolveMeta(manifest, url) {
-  const pathname = normalizePath(url.pathname);
-  const route = manifest?.routes?.find((item) => item.pathname === pathname);
-  let meta = route || null;
-
-  if (!meta && pathname.startsWith("/blog/") && pathname.split("/").filter(Boolean).length === 2) {
-    const slug = pathname.split("/").pop();
-    meta = {
+async function fetchDynamicBlogMeta(pathname) {
+  if (!pathname.startsWith("/blog/") || pathname.split("/").filter(Boolean).length !== 2) return null;
+  const slug = pathname.split("/").pop();
+  try {
+    const response = await fetch(`${RAILWAY_ORIGIN}/api/sites/vendorai/blog-data/${encodeURIComponent(slug)}`, {
+      headers: { accept: "application/json" },
+      cf: { cacheTtl: 300, cacheEverything: true },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const post = data?.post;
+    if (!post?.slug || !post?.titulo) return null;
+    return {
       pathname,
-      title: `${humanize(slug)} | Blog VendorAI`,
-      description: "Conteúdo VendorAI sobre vendas, CRM, marketing, inteligência artificial, automação e crescimento de receita.",
+      title: `${post.titulo} | Blog VendorAI`,
+      description: post.metaDescription || "Conteúdo VendorAI sobre vendas, CRM, marketing, automação e inteligência artificial.",
       type: "article",
-      name: humanize(slug),
+      name: post.titulo,
+      image: post.imagemCapaUrl || null,
+      datePublished: post.publicadoEm || null,
+      indexable: true,
     };
+  } catch {
+    return null;
   }
+}
+
+async function resolveMeta(manifest, url) {
+  const pathname = normalizePath(url.pathname);
+  let meta = manifest?.routes?.find((item) => item.pathname === pathname) || null;
+
+  if (!meta) meta = await fetchDynamicBlogMeta(pathname);
 
   if (!meta && pathname.startsWith("/verticais/")) {
     const slug = pathname.split("/").pop();
     const vertical = manifest?.verticals?.[slug];
-    meta = {
-      pathname,
-      title: `VendorAI para ${vertical?.title || humanize(slug)} — CRM, Vendas e IA`,
-      description: vertical?.description || `Conheça como o VendorAI atende ${humanize(slug)} com CRM, automação e inteligência artificial.`,
-      type: "vertical",
-      name: vertical?.title || humanize(slug),
-    };
+    if (vertical) {
+      meta = {
+        pathname,
+        title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`,
+        description: vertical.description,
+        type: "vertical",
+        name: vertical.title,
+        indexable: true,
+      };
+    }
   }
 
   if (!meta) return null;
@@ -136,14 +142,7 @@ function breadcrumbSchema(meta, canonical) {
 
 function buildSchema(meta, canonical) {
   const graph = [];
-  const org = {
-    "@type": "Organization",
-    "@id": `${PUBLIC_ORIGIN}/#organization`,
-    name: "VendorAI",
-    url: `${PUBLIC_ORIGIN}/`,
-    logo: `${PUBLIC_ORIGIN}/apple-touch-icon.png`,
-  };
-
+  const org = { "@type": "Organization", "@id": `${PUBLIC_ORIGIN}/#organization`, name: "VendorAI", url: `${PUBLIC_ORIGIN}/`, logo: `${PUBLIC_ORIGIN}/apple-touch-icon.png` };
   if (meta.pathname === "/") {
     graph.push(org);
     graph.push({ "@type": "WebSite", "@id": `${PUBLIC_ORIGIN}/#website`, url: `${PUBLIC_ORIGIN}/`, name: "VendorAI", publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` }, inLanguage: meta.locale });
@@ -153,13 +152,15 @@ function buildSchema(meta, canonical) {
     if (meta.price) app.offers = { "@type": "Offer", priceCurrency: "BRL", price: Number(meta.price).toFixed(2), availability: "https://schema.org/InStock", url: canonical };
     graph.push(org, app);
   } else if (meta.type === "article") {
-    graph.push({ "@type": "Article", headline: meta.name || meta.title, description: meta.description, url: canonical, publisher: org, inLanguage: meta.locale });
+    const article = { "@type": "Article", headline: meta.name || meta.title, description: meta.description, url: canonical, publisher: org, inLanguage: meta.locale };
+    if (meta.datePublished) article.datePublished = meta.datePublished;
+    if (meta.image) article.image = meta.image;
+    graph.push(article);
   } else if (meta.type === "collection") {
     graph.push({ "@type": "CollectionPage", name: meta.title, description: meta.description, url: canonical, inLanguage: meta.locale });
   } else {
     graph.push({ "@type": "WebPage", name: meta.title, description: meta.description, url: canonical, inLanguage: meta.locale });
   }
-
   const breadcrumb = breadcrumbSchema(meta, canonical);
   if (breadcrumb) graph.push(breadcrumb);
   return { "@context": "https://schema.org", "@graph": graph };
@@ -167,24 +168,25 @@ function buildSchema(meta, canonical) {
 
 function buildHead(meta) {
   const canonical = canonicalFor(meta);
-  const alternates = Object.entries(MARKET_LOCALES).map(([country, locale]) => {
+  const indexable = meta.indexable !== false;
+  const alternates = indexable ? Object.entries(MARKET_LOCALES).map(([country, locale]) => {
     const href = country === "BR" ? `${PUBLIC_ORIGIN}${meta.pathname}` : `${PUBLIC_ORIGIN}${meta.pathname}?country=${country}`;
     return `<link rel="alternate" hreflang="${locale}" href="${escapeHtml(href)}">`;
-  }).join("\n");
-  const schema = buildSchema(meta, canonical);
-
+  }).join("\n") : "";
+  const xDefault = indexable ? `<link rel="alternate" hreflang="x-default" href="${escapeHtml(`${PUBLIC_ORIGIN}${meta.pathname}`)}">` : "";
+  const image = meta.image || OG_IMAGE;
   return `
 <title>${escapeHtml(meta.title)}</title>
 <meta name="description" content="${escapeHtml(meta.description)}">
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="robots" content="${indexable ? "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" : "noindex, follow"}">
 <link rel="canonical" href="${escapeHtml(canonical)}">
 ${alternates}
-<link rel="alternate" hreflang="x-default" href="${escapeHtml(`${PUBLIC_ORIGIN}${meta.pathname}`)}">
+${xDefault}
 <meta property="og:type" content="${meta.type === "article" ? "article" : "website"}">
 <meta property="og:url" content="${escapeHtml(canonical)}">
 <meta property="og:title" content="${escapeHtml(meta.title)}">
 <meta property="og:description" content="${escapeHtml(meta.description)}">
-<meta property="og:image" content="${OG_IMAGE}">
+<meta property="og:image" content="${escapeHtml(image)}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:locale" content="${meta.locale.replace("-", "_")}">
@@ -192,8 +194,8 @@ ${alternates}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escapeHtml(meta.title)}">
 <meta name="twitter:description" content="${escapeHtml(meta.description)}">
-<meta name="twitter:image" content="${OG_IMAGE}">
-<script type="application/ld+json" data-vendorai-seo="edge">${safeJson(schema)}</script>`;
+<meta name="twitter:image" content="${escapeHtml(image)}">
+<script type="application/ld+json" data-vendorai-seo="edge">${safeJson(buildSchema(meta, canonical))}</script>`;
 }
 
 function transformHtml(response, meta) {
@@ -217,39 +219,41 @@ async function serveWebsite(request, env) {
   const url = new URL(request.url);
   let response = await env.ASSETS.fetch(request);
   const acceptsHtml = request.method === "GET" && (request.headers.get("accept") || "").includes("text/html");
+  let usedSpaFallback = false;
 
   if (response.status === 404 && acceptsHtml) {
     response = await env.ASSETS.fetch(new Request(new URL("/index.html", url.origin), request));
+    usedSpaFallback = true;
   }
 
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   const manifest = contentType.includes("text/html") && acceptsHtml ? await getManifest(env, url.origin) : null;
-  const meta = manifest ? resolveMeta(manifest, url) : null;
+  const meta = manifest ? await resolveMeta(manifest, url) : null;
   let result = meta ? transformHtml(response, meta) : new Response(response.body, response);
 
-  if (url.pathname.startsWith("/assets/")) {
-    result.headers.set("Cache-Control", "public, max-age=31536000, immutable");
-  } else if (contentType.includes("text/html") || url.pathname === "/" || !url.pathname.includes(".")) {
-    result.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+  if (usedSpaFallback && !meta) {
+    result = new Response(result.body, { status: 404, headers: result.headers });
+    result.headers.set("X-Robots-Tag", "noindex, follow");
+  } else if (meta) {
+    result.headers.set("X-Robots-Tag", meta.indexable === false ? "noindex, follow" : "index, follow");
   }
-  result.headers.set("X-Robots-Tag", meta ? "index, follow" : result.headers.get("X-Robots-Tag") || "index, follow");
+
+  if (url.pathname.startsWith("/assets/")) result.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  else if (contentType.includes("text/html") || url.pathname === "/" || !url.pathname.includes(".")) result.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
   return result;
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
     if (url.hostname === "www.appvendorai.com") {
       url.hostname = "appvendorai.com";
       return Response.redirect(url.toString(), 301);
     }
-
     if (url.pathname !== "/" && url.pathname.endsWith("/")) {
       url.pathname = url.pathname.slice(0, -1);
       return Response.redirect(url.toString(), 301);
     }
-
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) return proxyApi(request);
     return serveWebsite(request, env);
   },
