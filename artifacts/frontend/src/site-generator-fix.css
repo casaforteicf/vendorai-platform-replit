@@ -1,14 +1,13 @@
 /*
  * Correções de layout do Gerador de Sites e do shell autenticado do Vendor.ai.
  *
- * O shell autenticado deve ficar limitado ao viewport e a rolagem deve acontecer
- * dentro de main.vendor-scrollbar. O #root não precisa ser position:fixed: isso
- * cria um novo containing block para elementos sticky/fixed e, ao redimensionar
- * a viewport (por exemplo com DevTools aberto), pode deixar o Gerador com o
- * rodapé sticky no meio da tela e uma grande área vazia abaixo.
+ * O problema original era o <main> flexível crescer além do viewport e deixar o
+ * body assumir a rolagem. O shell continua travado no viewport; no Gerador novo,
+ * porém, existe uma exceção específica porque o #root fixed cria um containing
+ * block que pode desalinhar o rodapé sticky quando a viewport é redimensionada.
  */
 
-/* Permite que o <main> encolha corretamente dentro do shell flex. */
+/* Regra estrutural: permite que o <main> encolha dentro do flex e role por si. */
 #root main.vendor-scrollbar {
   min-height: 0 !important;
   max-height: 100% !important;
@@ -19,17 +18,31 @@ html:has(#root main.vendor-scrollbar),
 body:has(#root main.vendor-scrollbar) {
   width: 100%;
   height: 100%;
-  min-height: 100%;
   overflow: hidden !important;
   overscroll-behavior: none;
 }
 
 /*
- * Não fixe o #root. O próprio SidebarLayout já usa h-screen e contém a rolagem.
- * position:relative preserva o fluxo normal e evita o bug de altura/blank area
- * observado no Gerador quando a viewport muda de tamanho.
+ * Comportamento padrão já validado nas demais telas autenticadas. Mantemos este
+ * guard global para não reabrir regressões de rolagem em CRM, pipelines e outras
+ * páginas longas.
  */
 body:has(#root main.vendor-scrollbar) > #root {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+/*
+ * Exceção somente para o Gerador novo em Sites & Content Autopilot.
+ * A barra "Pronto para gerar" identifica o workspace atual. Aqui o #root volta
+ * ao fluxo normal sem liberar o scroll do body; a rolagem permanece no main.
+ * Isso corrige o rodapé parado no meio da tela e o grande bloco vazio abaixo.
+ */
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  > #root {
   position: relative !important;
   inset: auto !important;
   width: 100% !important;
@@ -38,19 +51,16 @@ body:has(#root main.vendor-scrollbar) > #root {
   overflow: hidden !important;
 }
 
-/*
- * Guard específico do Gerador novo dentro de Sites & Content Autopilot.
- * O seletor só entra em ação quando a barra "Pronto para gerar" está montada,
- * então não interfere nas telas /conversations, /deals e /negocios que possuem
- * política própria de rolagem.
- */
 body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
   main.vendor-scrollbar {
+  min-height: 0 !important;
+  max-height: 100% !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   scroll-behavior: auto;
 }
 
+/* Remove limites intermediários que faziam o conteúdo do tab parecer terminar cedo. */
 body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
   .vendor-page-canvas,
 body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
@@ -64,8 +74,8 @@ body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-cen
 }
 
 /*
- * A barra final continua sticky, mas sempre dentro do main correto e acima dos
- * demais widgets flutuantes. Isso evita que ela "pare" no meio da tela.
+ * A barra final fica presa ao rodapé do main — nunca ao meio da página — e
+ * permanece acima dos controles auxiliares.
  */
 body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
   div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3 {
@@ -75,7 +85,7 @@ body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-cen
   margin-top: 1rem !important;
 }
 
-/* Dá espaço real no final da página para a barra sticky sem esconder conteúdo. */
+/* Espaço real no fim do workspace para o sticky não cobrir o último conteúdo. */
 body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
   .vendor-page-canvas > :first-child {
   padding-bottom: 5.5rem !important;
