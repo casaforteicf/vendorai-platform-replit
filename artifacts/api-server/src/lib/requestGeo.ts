@@ -107,15 +107,17 @@ function headerGeo(req: Request): RequestGeo {
     "cf-ipcity",
     "x-city",
   ]);
-  const latitude = Number(firstHeader(req, ["x-vercel-ip-latitude", "cf-iplatitude"]));
-  const longitude = Number(firstHeader(req, ["x-vercel-ip-longitude", "cf-iplongitude"]));
+  const latitudeHeader = firstHeader(req, ["x-vercel-ip-latitude", "cf-iplatitude"]);
+  const longitudeHeader = firstHeader(req, ["x-vercel-ip-longitude", "cf-iplongitude"]);
+  const latitude = latitudeHeader === null ? null : Number(latitudeHeader);
+  const longitude = longitudeHeader === null ? null : Number(longitudeHeader);
 
   return {
     country,
     region,
     city,
-    latitude: Number.isFinite(latitude) ? latitude : null,
-    longitude: Number.isFinite(longitude) ? longitude : null,
+    latitude: latitude !== null && Number.isFinite(latitude) ? latitude : null,
+    longitude: longitude !== null && Number.isFinite(longitude) ? longitude : null,
     source: country || region || city ? "edge_headers" : "unavailable",
   };
 }
