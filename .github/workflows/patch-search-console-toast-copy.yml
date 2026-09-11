@@ -1,0 +1,38 @@
+name: Patch Search Console toast copy
+
+on:
+  push:
+    branches:
+      - fix/search-console-toast-copy
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/search-console-toast-copy
+      - name: Update Search Console authorization toast
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('artifacts/frontend/src/pages/ConfiguracoesLegacy.tsx')
+          s = p.read_text()
+          old = 'toast({ title: "Search Console autorizado — clique em \\"Verificar propriedade\\" em alguns instantes." });'
+          new = 'toast({ title: "Search Console autorizado.", description: "Sua conta Google já está conectada. Aguarde de 2 a 5 minutos e clique em “Verificar agora”. Não é necessário reconectar." });'
+          if old not in s:
+              raise SystemExit('Texto antigo não encontrado')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          rm .github/workflows/patch-search-console-toast-copy.yml
+      - name: Commit patch
+        run: |
+          git config user.name "VendorAI Automation"
+          git config user.email "vendorai-automation@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(search-console): atualizar orientação após autorização"
+          git push origin HEAD:fix/search-console-toast-copy
