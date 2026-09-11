@@ -29,6 +29,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import GrowthRevenueHero from "@/components/GrowthRevenueHero";
 import DistributedProductScreens from "@/components/DistributedProductScreens";
+import RevenueMagicCalculator from "@/components/RevenueMagicCalculator";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
 import {
@@ -66,7 +67,8 @@ function HomeWithGrowthRevenueHero() {
   return (
     <>
       <GrowthRevenueHero />
-      <div className="[&>div>section:first-child]:hidden">
+      <RevenueMagicCalculator />
+      <div className="[&>div>section:first-child]:hidden [&>div>section.border-y.border-slate-200.bg-slate-50]:hidden">
         <Home />
       </div>
       <DistributedProductScreens />
