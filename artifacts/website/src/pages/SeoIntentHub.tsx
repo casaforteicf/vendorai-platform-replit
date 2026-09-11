@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { ArrowRight, GitCompareArrows, Search, Sparkles } from "lucide-react";
-import growthMatrix from "@/data/seoGrowthMatrix.json";
+import { seoGrowthPages } from "@/data/seoGrowthPages";
 import { usePublicCountry } from "@/lib/publicCountry";
 
 type GrowthPage = {
@@ -56,7 +56,7 @@ export default function SeoIntentHub() {
   const locale = isSpanish ? "es" : "pt";
   const kind: GrowthPage["kind"] = location.split("?")[0].startsWith("/comparar") ? "comparison" : "solution";
   const copy = COPY[locale][kind];
-  const pages = (growthMatrix.pages as GrowthPage[]).filter((page) => page.kind === kind);
+  const pages = (seoGrowthPages as GrowthPage[]).filter((page) => page.kind === kind);
   const Icon = kind === "comparison" ? GitCompareArrows : Sparkles;
 
   return (
