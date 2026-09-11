@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { ArrowRight, BarChart3, CheckCircle2, Search, Sparkles } from "lucide-react";
-import growthMatrix from "@/data/seoGrowthMatrix.json";
+import { seoGrowthPages } from "@/data/seoGrowthPages";
 import { usePublicCountry } from "@/lib/publicCountry";
 
 type LocaleCopy = {
@@ -74,7 +74,7 @@ function cleanPath(location: string) {
 export default function SeoIntentPage() {
   const [location] = useLocation();
   const { isSpanish } = usePublicCountry();
-  const pages = growthMatrix.pages as GrowthPage[];
+  const pages = seoGrowthPages as GrowthPage[];
   const page = pages.find((entry) => entry.path === cleanPath(location));
   const labels = isSpanish ? LABELS.es : LABELS.pt;
 
