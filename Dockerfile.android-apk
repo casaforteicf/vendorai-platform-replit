@@ -1,0 +1,41 @@
+FROM node:22-bookworm AS build
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools
+ENV CI=true
+ENV EXPO_NO_DOTENV=1
+ENV PICOVOICE_ACCESS_KEY=
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk wget unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
+    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip \
+    && unzip -q /tmp/cmdline-tools.zip -d /tmp/android-cmdline \
+    && mkdir -p ${ANDROID_HOME}/cmdline-tools/latest \
+    && mv /tmp/android-cmdline/cmdline-tools/* ${ANDROID_HOME}/cmdline-tools/latest/ \
+    && yes | sdkmanager --licenses >/dev/null \
+    && sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+WORKDIR /app
+COPY . .
+
+RUN corepack enable \
+    && corepack prepare pnpm@10.26.1 --activate \
+    && pnpm install --no-frozen-lockfile
+
+RUN cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/images/icon.png \
+    && cd artifacts/mobile \
+    && pnpm exec expo prebuild --platform android --clean --no-install \
+    && cd android \
+    && chmod +x gradlew \
+    && ./gradlew assembleDebug --no-daemon --stacktrace
+
+FROM nginx:1.27-alpine
+COPY --from=build /app/artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk /usr/share/nginx/html/vendorai.apk
+RUN printf 'server { listen ${PORT}; location = / { add_header Content-Type text/plain; return 200 "VendorAI APK Builder OK"; } location = /vendorai.apk { root /usr/share/nginx/html; add_header Content-Type application/vnd.android.package-archive; add_header Content-Disposition "attachment; filename=vendorai.apk"; } }' > /etc/nginx/templates/default.conf.template
+EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]
