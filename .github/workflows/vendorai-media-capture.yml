@@ -1,0 +1,71 @@
+name: VendorAI Official Media Capture
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture official screenshots and videos
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MEDIA_BASE_URL: https://app.appvendorai.com
+      MEDIA_TENANT_ID: 70ea6eb6-ffd8-4dc6-9224-d628a6d4e67d
+      MEDIA_EMAIL: ${{ secrets.MEDIA_EMAIL }}
+      MEDIA_PASSWORD: ${{ secrets.MEDIA_PASSWORD }}
+      MEDIA_AUTH_TOKEN: ${{ secrets.MEDIA_AUTH_TOKEN }}
+      MEDIA_OUTPUT_DIR: ${{ github.workspace }}/e2e/media-output
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
+
+      - name: Validate media credentials
+        shell: bash
+        run: |
+          if [ -z "${MEDIA_AUTH_TOKEN:-}" ] && { [ -z "${MEDIA_EMAIL:-}" ] || [ -z "${MEDIA_PASSWORD:-}" ]; }; then
+            echo "Configure MEDIA_AUTH_TOKEN or MEDIA_EMAIL + MEDIA_PASSWORD in repository secrets."
+            exit 1
+          fi
+
+      - name: Capture screenshots
+        run: pnpm --filter @workspace/e2e media:capture
+
+      - name: Record product videos
+        run: pnpm --filter @workspace/e2e media:video
+
+      - name: Build manifest
+        shell: bash
+        run: |
+          cd e2e/media-output
+          find . -type f \( -name '*.png' -o -name '*.webm' \) -print | sort > manifest.txt
+          echo "Generated media:"
+          cat manifest.txt
+
+      - name: Upload official media artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendorai-official-media-${{ github.run_number }}
+          path: e2e/media-output
+          retention-days: 14
+          if-no-files-found: error
