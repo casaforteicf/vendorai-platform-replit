@@ -110,8 +110,17 @@ export async function resolveTenantPublicUrl(tenantId: string): Promise<string |
     .where(and(eq(tenantDomainsTable.tenantId, tenantId), eq(tenantDomainsTable.status, "active")))
     .limit(1);
 
-  const host = activeDomain?.domain ?? tenant.subdomainSlug ?? tenant.slug;
-  return `https://${host}/`;
+  const activeHost = activeDomain?.domain
+    ?.trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "");
+  if (activeHost) return `https://${activeHost}/`;
+
+  if (tenant.subdomainSlug) {
+    return `https://${tenant.subdomainSlug}.appvendorai.com/`;
+  }
+
+  return null;
 }
 
 export async function getSearchConsoleConnectionByTenantId(tenantId: string) {
