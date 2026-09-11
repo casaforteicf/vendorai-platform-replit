@@ -118,6 +118,79 @@
     min-height: 38px;
   }
 
+  /* JARVIS News & Market: compact the phone layout without affecting desktop. */
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    padding-bottom: 72px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] > div:first-child,
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] > div[class*="rounded-2xl"] {
+    padding: 14px !important;
+    gap: 10px !important;
+    border-radius: 16px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] h2 {
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] h3 {
+    font-size: 15px !important;
+    line-height: 1.25 !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] h4 {
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] p,
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] span {
+    line-height: 1.35 !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] [class*="p-5"],
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] [class*="md:p-6"] {
+    padding: 14px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] article[class*="p-4"] {
+    padding: 12px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] button,
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] a[class*="inline-flex"] {
+    font-size: 12px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] button[class*="rounded-full"] {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding-left: 11px !important;
+    padding-right: 11px !important;
+    font-size: 11.5px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] > div:first-child button {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    font-size: 12px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] .mt-4.flex.flex-wrap.gap-2 {
+    gap: 6px !important;
+    margin-top: 12px !important;
+  }
+
+  section[class*="max-w-[1600px]"][class*="space-y-4"][class*="pb-8"] .mt-5 {
+    margin-top: 14px !important;
+  }
+
   /* Unified IA launcher: compact and clear of the Android navigation area. */
   [data-vendorai-unified-assistant] {
     right: 12px !important;
