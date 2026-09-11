@@ -1,7 +1,6 @@
 // Product routes are part of the public website deployment (Cloudflare production sync).
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import GrowthRevenueHero from "@/components/GrowthRevenueHero";
@@ -28,16 +27,14 @@ const Privacy = lazy(() => import("@/pages/Privacy"));
 const Terms = lazy(() => import("@/pages/Terms"));
 const VerticalPage = lazy(() => import("@/pages/site/VerticalPage"));
 const ParceirosPage = lazy(() => import("@/pages/site/ParceirosPage"));
-const BlogList = lazy(() => import("@/pages/blog/BlogList"));
-const BlogPost = lazy(() => import("@/pages/blog/BlogPost"));
+const BlogList = lazy(() => import("@/pages/blog/BlogListRoute"));
+const BlogPost = lazy(() => import("@/pages/blog/BlogPostRoute"));
 const UnifiedLpRouter = lazy(() => import("@/pages/lp/UnifiedLpRouter"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
 const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
 const DistributedProductScreens = lazy(() => import("@/components/DistributedProductScreens"));
 const AgentSimulatorWidget = lazy(() => import("@/components/AgentSimulatorWidget").then((module) => ({ default: module.AgentSimulatorWidget })));
 const RouteToasterComponent = lazy(() => import("@/components/ui/toaster").then((module) => ({ default: module.Toaster })));
-
-const queryClient = new QueryClient();
 
 function RouteFallback() {
   return <div className="min-h-[45vh] bg-white" aria-live="polite" aria-busy="true" />;
@@ -201,15 +198,13 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <PublicSeoManager />
-        <ScrollToTop />
-        <Router />
-        <FloatingActions />
-        <RouteToaster />
-      </WouterRouter>
-    </QueryClientProvider>
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+      <PublicSeoManager />
+      <ScrollToTop />
+      <Router />
+      <FloatingActions />
+      <RouteToaster />
+    </WouterRouter>
   );
 }
 
