@@ -34,6 +34,14 @@ export default function VendorAIMobileShell() {
     );
   }
 
+  const surfaceBootstrap = `
+    try {
+      window.localStorage.setItem('vendorai_surface', 'mobile');
+      window.localStorage.setItem('vendorai_mobile_platform', ${JSON.stringify(Platform.OS)});
+    } catch (e) {}
+    true;
+  `;
+
   return (
     <WebView
       ref={webViewRef}
@@ -49,6 +57,7 @@ export default function VendorAIMobileShell() {
       pullToRefreshEnabled
       startInLoadingState
       setSupportMultipleWindows={false}
+      injectedJavaScriptBeforeContentLoaded={surfaceBootstrap}
       onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
       onShouldStartLoadWithRequest={(request) => {
         const url = request.url;
