@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { BrainCircuit, CalendarClock, CheckCircle2, Loader2, MousePointerClick, ServerCog, ShieldCheck, TrendingUp } from "lucide-react";
+import { BrainCircuit, CalendarClock, CheckCircle2, Eye, Loader2, Send, ShieldCheck, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -106,20 +106,22 @@ export function MediaPlanPublicationModeControl() {
       setHost(null);
       return;
     }
+
     let portalHost = document.querySelector<HTMLElement>(`[${HOST_ATTR}]`);
     if (!portalHost) {
       portalHost = document.createElement("div");
       portalHost.setAttribute(HOST_ATTR, "true");
     }
+
     const attach = () => {
-      const plannerCard = Array.from(document.querySelectorAll<HTMLElement>(".overflow-hidden"))
-        .find((element) => element.textContent?.includes("Planejador de Mídia com IA"));
-      if (!plannerCard?.parentElement || !portalHost) return;
-      if (portalHost.parentElement !== plannerCard.parentElement || plannerCard.nextElementSibling !== portalHost) {
-        plannerCard.insertAdjacentElement("afterend", portalHost);
+      const plannerBody = document.querySelector<HTMLElement>(".marketing-plan-responsive");
+      if (!plannerBody?.parentElement || !portalHost) return;
+      if (portalHost.parentElement !== plannerBody.parentElement || plannerBody.nextElementSibling !== portalHost) {
+        plannerBody.insertAdjacentElement("afterend", portalHost);
       }
       setHost((current) => current === portalHost ? current : portalHost);
     };
+
     attach();
     const timer = window.setInterval(attach, 500);
     return () => {
@@ -132,12 +134,13 @@ export function MediaPlanPublicationModeControl() {
     if (!visible || !tenantId || !token) return;
     let cancelled = false;
     setLoading(true);
+
     Promise.all([
       fetch(`/api/tenants/${tenantId}/media-plan`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
       fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
     ])
       .then(async ([planResponse, insightResponse]) => {
-        if (!planResponse.ok) throw new Error("Não foi possível carregar o modo de publicação.");
+        if (!planResponse.ok) throw new Error("Não foi possível carregar a preferência de publicação.");
         const nextPlan = await planResponse.json() as MediaPlan | null;
         const nextInsight = insightResponse.ok ? await insightResponse.json() as PerformanceInsight | null : null;
         return { nextPlan, nextInsight };
@@ -152,6 +155,7 @@ export function MediaPlanPublicationModeControl() {
       })
       .catch(() => undefined)
       .finally(() => { if (!cancelled) setLoading(false); });
+
     return () => { cancelled = true; };
   }, [tenantId, token, visible]);
 
@@ -170,14 +174,14 @@ export function MediaPlanPublicationModeControl() {
         }),
       });
       const body = await response.json().catch(() => ({})) as MediaPlan & { error?: string };
-      if (!response.ok) throw new Error(body.error || "Não foi possível salvar a execução orgânica.");
+      if (!response.ok) throw new Error(body.error || "Não foi possível salvar a preferência de publicação.");
       setPlan(body);
       setSaved(settings);
       toast({
-        title: settings.modo === "automatico" ? "Execução automática autorizada" : "Revisão manual mantida",
+        title: settings.modo === "automatico" ? "Publicação automática ativada" : "Revisão antes de publicar ativada",
         description: settings.modo === "automatico"
-          ? `O servidor prepara as peças antes da data e publica no calendário às ${settings.horario}, no fuso ${settings.timezone}. Não é necessário deixar o VendorAI aberto.`
-          : "As peças podem ser preparadas pelo plano, mas nenhuma publicação orgânica será disparada sem ação humana.",
+          ? "Quando a peça estiver pronta, ela seguirá o calendário aprovado e será publicada sem precisar deixar o VendorAI aberto."
+          : "A IA continuará preparando as peças, mas você fará a aprovação final antes da publicação.",
       });
     } catch (error) {
       toast({ title: "Não foi possível salvar", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -190,21 +194,25 @@ export function MediaPlanPublicationModeControl() {
 
   return createPortal(
     <Card className="mt-3 border-primary/25 bg-primary/[0.025]">
-      <CardContent className="py-4 space-y-3">
+      <CardContent className="py-4 space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <CalendarClock className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Execução das publicações orgânicas</p>
+              <Send className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">7. Publicação</p>
               <Badge variant="outline" className="text-[10px]">Instagram · Facebook · LinkedIn</Badge>
-              <Badge variant="outline" className="gap-1 text-[10px]"><ServerCog className="h-3 w-3" /> Execução no servidor</Badge>
               {plan.conteudo.statusPlanejamento === "aprovado" && <Badge className="bg-emerald-600 text-[10px]">Plano aprovado</Badge>}
             </div>
             <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-              A aprovação do plano autoriza a produção dos materiais. No modo automático, o backend prepara as peças orgânicas antes da data programada e a publicação acontece no horário definido, mesmo sem ninguém estar com o sistema aberto.
+              Esta escolha só define o que acontece depois que o conteúdo estiver produzido e pronto. Aprovar o planejamento não publica nada sozinho.
             </p>
           </div>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+
+        <div className="rounded-lg border bg-background px-3 py-2.5 text-xs">
+          <span className="text-muted-foreground">Sequência</span>
+          <p className="mt-0.5 font-medium">Plano aprovado → Produção → Peça pronta → Revisão opcional → Publicação</p>
         </div>
 
         <div className="grid gap-2 md:grid-cols-2">
@@ -213,27 +221,25 @@ export function MediaPlanPublicationModeControl() {
             onClick={() => setSettings((current) => ({ ...current, modo: "manual" }))}
             className={`rounded-xl border p-3 text-left transition-colors ${settings.modo === "manual" ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
           >
-            <div className="flex items-center gap-2 text-sm font-semibold"><MousePointerClick className="h-4 w-4" /> Revisão manual</div>
-            <p className="mt-1 text-xs text-muted-foreground">O plano pode preparar os rascunhos, mas o usuário continua responsável pelo clique final de publicação.</p>
+            <div className="flex items-center gap-2 text-sm font-semibold"><Eye className="h-4 w-4" /> Revisar antes de publicar</div>
+            <p className="mt-1 text-xs text-muted-foreground">A IA cria e deixa a peça pronta. Você revisa e confirma a publicação.</p>
           </button>
+
           <button
             type="button"
             onClick={() => setSettings((current) => ({ ...current, modo: "automatico" }))}
             className={`rounded-xl border p-3 text-left transition-colors ${settings.modo === "automatico" ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
           >
-            <div className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4" /> Automático no calendário</div>
-            <p className="mt-1 text-xs text-muted-foreground">O servidor prepara Feed, Stories, Carrossel, LinkedIn e Reels até cerca de 24h antes. Se a peça já existir, não gera outra. Na data e hora definidas, o publicador executa.</p>
+            <div className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4" /> Publicar automaticamente</div>
+            <p className="mt-1 text-xs text-muted-foreground">A IA prepara o conteúdo conforme o calendário e publica automaticamente quando a peça estiver pronta.</p>
           </button>
         </div>
 
         {settings.modo === "automatico" && (
           <div className="space-y-3 rounded-xl border bg-background p-3">
-            <div className="flex items-start gap-2 rounded-lg border border-primary/15 bg-primary/[0.035] p-3 text-xs text-muted-foreground">
-              <ServerCog className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <p className="font-medium text-foreground">Produção antecipada no backend</p>
-                <p className="mt-0.5">O worker verifica o plano continuamente, cria o rascunho antes da publicação, acompanha a geração do vídeo quando houver Reel e só libera o disparo depois que a mídia real estiver pronta.</p>
-              </div>
+            <div>
+              <p className="text-xs font-medium">Horário padrão de publicação</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Cada item pode ter horário próprio no calendário. Este horário é usado quando nenhum horário específico tiver sido definido.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
               <div>
@@ -252,12 +258,12 @@ export function MediaPlanPublicationModeControl() {
           <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/10">
             <div className="flex flex-wrap items-center gap-2">
               <BrainCircuit className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
-              <p className="text-sm font-semibold">Aprendizado real do ciclo</p>
+              <p className="text-sm font-semibold">8. Resultados e aprendizado</p>
               <Badge variant="outline" className="text-[10px]">{performanceInsight.baseadoEmPosts} posts analisados</Badge>
-              <Badge variant="outline" className="gap-1 text-[10px]"><TrendingUp className="h-3 w-3" /> Usado no próximo plano</Badge>
+              <Badge variant="outline" className="gap-1 text-[10px]"><TrendingUp className="h-3 w-3" /> Próximo ciclo</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              O Planejador reaproveita estes aprendizados junto com Paid Media e Design QA para decidir o próximo ciclo — sem alterar automaticamente um plano já aprovado.
+              Depois da publicação, os resultados reais alimentam o próximo planejamento sem alterar um plano já aprovado.
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-3">
               <div className="rounded-lg border bg-background/80 p-2.5">
@@ -282,11 +288,11 @@ export function MediaPlanPublicationModeControl() {
         <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            Produção e publicação são etapas separadas. A peça precisa existir e estar pronta antes de entrar em Na fila → Publicando → Publicado/Falhou.
+            Produção e publicação continuam separadas. A peça só pode ser publicada depois de estar pronta.
           </div>
           <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saving || !settings.horario.trim() || !settings.timezone.trim()}>
-            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-            Salvar modo de execução
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="mr-1.5 h-3.5 w-3.5" />}
+            Salvar preferência
           </Button>
         </div>
       </CardContent>
