@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { AlertTriangle, CheckCircle2, ExternalLink, FileSearch, Loader2, RefreshCw, ShieldCheck, Target } from "lucide-react";
+import { AlertTriangle, ChevronDown, ExternalLink, FileSearch, Loader2, RefreshCw, ShieldCheck, Target } from "lucide-react";
 
 type Evidence = {
   key?: string;
@@ -57,23 +57,30 @@ function authHeaders(json = false) {
 }
 
 function stageLabel(stage: ValidationStage) {
-  if (stage === "ready_for_outreach") return "Pronto para abordagem";
+  if (stage === "ready_for_outreach") return "Pronto para abordar";
   if (stage === "ready_for_validation") return "Pronto para validar";
-  if (stage === "needs_enrichment") return "Precisa enriquecer";
+  if (stage === "needs_enrichment") return "Falta informação";
   return "Abaixo do mínimo";
 }
 
-function dossierLabel(status: string) {
-  if (status === "ready_for_outreach") return "Gate automático aprovado";
-  if (status === "needs_more_data") return "Dados incompletos";
-  if (status === "below_score") return "Aguardando score automático";
-  return "Montando dossiê";
+function stageVariant(stage: ValidationStage): "default" | "secondary" | "outline" | "destructive" {
+  if (stage === "ready_for_outreach") return "default";
+  if (stage === "ready_for_validation") return "secondary";
+  if (stage === "needs_enrichment") return "outline";
+  return "destructive";
 }
 
-function scoreTone(value: number) {
-  if (value >= 70) return "font-semibold";
-  if (value >= 40) return "font-medium";
-  return "text-muted-foreground";
+function nextStepText(prospect: PilotProspect) {
+  if (prospect.validationStage === "ready_for_outreach") {
+    return prospect.lpUrl ? "LP pronta. Próximo passo: aprovar abordagem." : "Preparar LP para concluir a validação.";
+  }
+  if (prospect.validationStage === "ready_for_validation") {
+    return prospect.lpUrl ? "LP pronta para revisão." : "Preparar LP para revisar antes do envio.";
+  }
+  if (prospect.validationStage === "needs_enrichment") {
+    return prospect.validationBlockingReasons[0] ?? "Completar os dados deste prospect.";
+  }
+  return prospect.validationBlockingReasons[0] ?? "Prospect ainda abaixo dos critérios do piloto.";
 }
 
 export default function ColdProspectingPilotValidation() {
@@ -107,6 +114,13 @@ export default function ColdProspectingPilotValidation() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const summary = useMemo(() => ({
+    ready: prospects.filter((item) => item.validationStage === "ready_for_outreach").length,
+    validate: prospects.filter((item) => item.validationStage === "ready_for_validation").length,
+    enrich: prospects.filter((item) => item.validationStage === "needs_enrichment").length,
+    below: prospects.filter((item) => item.validationStage === "below_validation_score").length,
+  }), [prospects]);
+
   async function prepareLp(prospect: PilotProspect) {
     setPreparingLeadId(prospect.id);
     setError(null);
@@ -129,104 +143,99 @@ export default function ColdProspectingPilotValidation() {
   return (
     <Card className="border-primary/30">
       <CardHeader className="gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4 text-primary" />Validação do piloto</CardTitle>
-            <CardDescription>50+ de propensão pode preparar LP para revisão; 80 continua sendo o corte do disparo automático.</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4 text-primary" />Próximo passo da prospecção</CardTitle>
+            <CardDescription>Veja quem já pode avançar e o que falta em cada prospect. Os detalhes técnicos ficam recolhidos.</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Atualizar
           </Button>
         </div>
+
+        {prospects.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Prontos para abordar</p><p className="text-2xl font-semibold">{summary.ready}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Prontos para validar</p><p className="text-2xl font-semibold">{summary.validate}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Faltam dados</p><p className="text-2xl font-semibold">{summary.enrich}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Abaixo do mínimo</p><p className="text-2xl font-semibold">{summary.below}</p></div>
+          </div>
+        )}
       </CardHeader>
+
       <CardContent>
         {error && (
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle className="h-4 w-4" />{error}</div>
         )}
+
         {loading && prospects.length === 0 ? (
-          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando os primeiros prospects…</div>
+          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando prospects…</div>
         ) : prospects.length === 0 ? (
           <div className="rounded-lg border border-dashed p-6 text-center">
             <FileSearch className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm font-medium">Ainda não há prospects do novo piloto.</p>
-            <p className="mt-1 text-xs text-muted-foreground">Assim que o Prospector importar o primeiro lote, os cards aparecem aqui automaticamente.</p>
+            <p className="text-sm font-medium">Ainda não há prospects para validar.</p>
           </div>
         ) : (
-          <div className="grid gap-3 xl:grid-cols-5">
+          <div className="space-y-3">
             {prospects.map((prospect, index) => {
               const canPrepare = prospect.validationStage === "ready_for_validation" || prospect.validationStage === "ready_for_outreach";
-              const needsEnrichment = prospect.validationStage === "needs_enrichment";
-              const outreachReady = prospect.validationStage === "ready_for_outreach";
-              const reviewing = prospect.validationStage === "ready_for_validation";
               return (
-                <div key={prospect.id} className="rounded-xl border bg-background p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-2">
+                <div key={prospect.id} className="rounded-xl border bg-background p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Prospect {index + 1}</p>
-                      <p className="truncate font-semibold" title={prospect.name}>{prospect.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{prospect.city ?? prospect.segment ?? "Localidade em enriquecimento"}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-muted-foreground">#{index + 1}</span>
+                        <p className="font-semibold">{prospect.name}</p>
+                        <Badge variant={stageVariant(prospect.validationStage)}>{stageLabel(prospect.validationStage)}</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{prospect.city ?? prospect.segment ?? "Localidade em enriquecimento"}{prospect.contact ? ` · ${prospect.contact}` : ""}</p>
+                      <p className="mt-2 text-sm font-medium">{nextStepText(prospect)}</p>
                     </div>
-                    <Badge variant={outreachReady ? "default" : reviewing ? "secondary" : "outline"} className="shrink-0 text-[10px]">
-                      {stageLabel(prospect.validationStage)}
-                    </Badge>
+
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      {prospect.lpUrl ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={prospect.lpUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-1.5 h-4 w-4" />Abrir LP</a>
+                        </Button>
+                      ) : canPrepare ? (
+                        <Button size="sm" onClick={() => void prepareLp(prospect)} disabled={preparingLeadId === prospect.id}>
+                          {preparingLeadId === prospect.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Target className="mr-1.5 h-4 w-4" />}Preparar LP
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md border p-2"><span className="text-muted-foreground">Fit</span><div className={scoreTone(prospect.fitScore)}>{prospect.fitScore}/100</div></div>
-                    <div className="rounded-md border p-2"><span className="text-muted-foreground">Pain</span><div className={scoreTone(prospect.painScore)}>{prospect.painScore}/100</div></div>
-                    <div className="rounded-md border p-2"><span className="text-muted-foreground">Propensão</span><div className={scoreTone(prospect.propensityScore)}>{prospect.propensityScore}/100</div></div>
-                    <div className="rounded-md border p-2"><span className="text-muted-foreground">Intent</span><div className={scoreTone(prospect.intentScore)}>{Math.round(prospect.intentScore)}/100</div></div>
-                  </div>
+                  <details className="mt-3 border-t pt-3">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <ChevronDown className="h-3.5 w-3.5" />Ver detalhes da análise
+                    </summary>
+                    <div className="mt-3 grid gap-3 text-xs md:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-md border p-2"><span className="text-muted-foreground">Fit</span><div className="font-semibold">{prospect.fitScore}/100</div></div>
+                      <div className="rounded-md border p-2"><span className="text-muted-foreground">Pain</span><div className="font-semibold">{prospect.painScore}/100</div></div>
+                      <div className="rounded-md border p-2"><span className="text-muted-foreground">Propensão</span><div className="font-semibold">{prospect.propensityScore}/100</div></div>
+                      <div className="rounded-md border p-2"><span className="text-muted-foreground">Intent</span><div className="font-semibold">{Math.round(prospect.intentScore)}/100</div></div>
+                    </div>
 
-                  <div className="mt-3 space-y-2 text-xs">
-                    <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Dossiê</span><span className="text-right font-medium">{dossierLabel(prospect.dossierStatus)}</span></div>
-                    <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Evidências</span><span className="font-medium">{prospect.evidenceCount}</span></div>
-                    <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Contato</span><span className="truncate font-medium">{prospect.contact ?? "não disponível"}</span></div>
-                  </div>
-
-                  {prospect.evidence.length > 0 && (
-                    <div className="mt-3 space-y-1 border-t pt-3">
-                      {prospect.evidence.slice(0, 3).map((evidence, evidenceIndex) => (
-                        <div key={`${prospect.id}-${evidenceIndex}`} className="flex items-start gap-1.5 text-[11px]">
-                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
-                          <span className="line-clamp-2">{evidence.label ?? evidence.key ?? "Evidência pública"}{evidence.source ? ` · ${evidence.source}` : ""}</span>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-md border p-3 text-xs">
+                        <p className="font-medium">Evidências ({prospect.evidenceCount})</p>
+                        <div className="mt-2 space-y-1 text-muted-foreground">
+                          {prospect.evidence.length > 0
+                            ? prospect.evidence.slice(0, 4).map((evidence, evidenceIndex) => (
+                                <p key={`${prospect.id}-${evidenceIndex}`}>{evidence.label ?? evidence.key ?? "Evidência pública"}{evidence.source ? ` · ${evidence.source}` : ""}</p>
+                              ))
+                            : <p>Nenhuma evidência registrada ainda.</p>}
                         </div>
-                      ))}
+                      </div>
+                      <div className="rounded-md border p-3 text-xs">
+                        <p className="font-medium">Histórico</p>
+                        <p className="mt-2 text-muted-foreground">Última ação</p>
+                        <p>{prospect.lastActivity?.title ?? "Nenhuma atividade registrada"}</p>
+                        <p className="mt-2 text-muted-foreground">Próxima ação</p>
+                        <p>{prospect.nextAction ?? nextStepText(prospect)}</p>
+                      </div>
                     </div>
-                  )}
-
-                  {needsEnrichment && prospect.validationBlockingReasons.length > 0 && (
-                    <div className="mt-3 rounded-md bg-amber-50 p-2 text-[11px] text-amber-800">
-                      {prospect.validationBlockingReasons[0]}
-                    </div>
-                  )}
-
-                  {reviewing && (
-                    <div className="mt-3 rounded-md bg-primary/5 p-2 text-[11px] text-primary">
-                      Critérios do piloto atingidos. Pode preparar a LP para revisão sem disparar mensagem.
-                    </div>
-                  )}
-
-                  <div className="mt-3 border-t pt-3 text-[11px]">
-                    <p className="text-muted-foreground">Última ação</p>
-                    <p className="line-clamp-2 font-medium">{prospect.lastActivity?.title ?? "Nenhuma atividade registrada"}</p>
-                    <p className="mt-2 text-muted-foreground">Próxima ação</p>
-                    <p className="line-clamp-2 font-medium">{prospect.nextAction ?? (reviewing ? "Preparar LP para revisão" : outreachReady ? "Aguardar execução do SDR" : "Completar qualificação")}</p>
-                  </div>
-
-                  <div className="mt-3 flex gap-2">
-                    {prospect.lpUrl ? (
-                      <Button variant="outline" size="sm" className="h-8 flex-1 text-xs" asChild>
-                        <a href={prospect.lpUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-1.5 h-3 w-3" />Abrir LP</a>
-                      </Button>
-                    ) : canPrepare ? (
-                      <Button variant="outline" size="sm" className="h-8 flex-1 text-xs" disabled={preparingLeadId === prospect.id} onClick={() => void prepareLp(prospect)}>
-                        {preparingLeadId === prospect.id ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Target className="mr-1.5 h-3 w-3" />}Preparar LP
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" className="h-8 flex-1 text-xs" disabled><Target className="mr-1.5 h-3 w-3" />LP pendente</Button>
-                    )}
-                  </div>
+                  </details>
                 </div>
               );
             })}
