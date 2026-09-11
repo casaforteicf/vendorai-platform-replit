@@ -7,9 +7,12 @@ const siteRoot = path.resolve(here, "..");
 const outDir = path.resolve(siteRoot, "dist/public");
 const manifestPath = path.resolve(outDir, "seo-manifest.json");
 const workerPath = path.resolve(outDir, "_worker.js");
+const priorityDepthPath = path.resolve(siteRoot, "src/data/seoPriorityDepth.json");
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const priorityDepth = JSON.parse(fs.readFileSync(priorityDepthPath, "utf8"));
 const growthByPath = new Map((manifest.growthPages || []).map((page) => [page.path, page]));
+const priorityDepthByPath = new Map((priorityDepth.pages || []).map((page) => [page.path, page]));
 
 function escapeHtml(value = "") {
   return String(value)
@@ -66,6 +69,15 @@ function commonLinks(spanish = false) {
       ];
 }
 
+function priorityDepthHtml(pathname, spanish = false) {
+  const entry = priorityDepthByPath.get(pathname);
+  if (!entry) return "";
+  const copy = spanish ? entry.es : entry.pt;
+  if (!copy) return "";
+  const checklistTitle = spanish ? "Checklist para evaluar tu operación" : "Checklist para avaliar sua operação";
+  return `<section data-vendorai-priority-depth="true"><h2>${escapeHtml(copy.title)}</h2>${(copy.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}<h3>${checklistTitle}</h3>${list(copy.checklist)}</section>`;
+}
+
 function growthHtml(route, page, spanish = false) {
   const copy = spanish ? page?.es : page?.pt;
   if (!copy) return "";
@@ -89,6 +101,7 @@ function growthHtml(route, page, spanish = false) {
 <section><h2>${sectionTitle.how}</h2>${list(copy.how)}</section>
 <section><h2>${sectionTitle.opportunities}</h2>${list(copy.opportunities)}</section>
 <section><h2>${sectionTitle.benefits}</h2>${list(copy.benefits)}</section>
+${priorityDepthHtml(route.pathname, spanish)}
 <section><h2>${sectionTitle.metrics}</h2>${list(copy.metrics)}</section>
 ${spanish ? esFaq(copy.faq) : faq(copy.faq)}
 <section><h2>${spanish ? "Continúa explorando VendorAI" : "Continue explorando o VendorAI"}</h2>${links([...productLinks, ...commonLinks(spanish)])}</section>
@@ -132,10 +145,10 @@ function verticalHtml(route, spanish = false) {
         { href: "/solucoes/automatizar-follow-up", label: "Follow-up com IA" },
       ];
   return `<article data-vendorai-seo-content="route">
-<header><p>${spanish ? "VendorAI por segmento" : "VendorAI por segmento"}</p><h1>${escapeHtml(spanish ? stripBrand(route.esTitle || route.title) : stripBrand(route.title))}</h1><p>${escapeHtml(description)}</p></header>
+<header><p>VendorAI por segmento</p><h1>${escapeHtml(spanish ? stripBrand(route.esTitle || route.title) : stripBrand(route.title))}</h1><p>${escapeHtml(description)}</p></header>
 <section><h2>${spanish ? "Operación comercial conectada" : "Operação comercial conectada"}</h2>${body.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}</section>
 ${agents.length ? `<section><h2>${spanish ? "Agentes prioritarios" : "Agentes prioritários"}</h2>${list(agents)}</section>` : ""}
-${keywords.length ? `<section><h2>${spanish ? "Temas relacionados" : "Temas relacionados"}</h2>${list(keywords)}</section>` : ""}
+${keywords.length ? `<section><h2>Temas relacionados</h2>${list(keywords)}</section>` : ""}
 ${spanish ? "" : faq(route.faq)}
 <section><h2>${spanish ? "Soluciones relacionadas" : "Soluções relacionadas"}</h2>${links([...related, ...commonLinks(spanish)])}</section>
 <p><a href="/demo">${spanish ? "Probar VendorAI durante 5 días" : "Testar o VendorAI por 5 dias"}</a></p>
@@ -204,6 +217,16 @@ for (const route of manifest.routes || []) {
   }
 }
 
+for (const pathname of priorityDepthByPath.keys()) {
+  const route = manifest.routes.find((item) => item.pathname === pathname);
+  if (!route?.staticHtml?.includes('data-vendorai-priority-depth="true"')) {
+    throw new Error(`[prerender] priority depth missing for ${pathname}`);
+  }
+  const text = route.staticHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const words = text.split(" ").filter(Boolean).length;
+  if (words < 450) throw new Error(`[prerender] priority route ${pathname} has only ${words} words in initial HTML`);
+}
+
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
 let worker = fs.readFileSync(workerPath, "utf8");
@@ -224,4 +247,4 @@ for (const pathname of strategic) {
   if (words < 120) throw new Error(`[prerender] ${pathname} has only ${words} words in initial HTML`);
 }
 
-console.log(`[prerender] semantic initial HTML generated for ${(manifest.routes || []).filter((route) => route.staticHtml).length} routes`);
+console.log(`[prerender] semantic initial HTML generated for ${(manifest.routes || []).filter((route) => route.staticHtml).length} routes; ${priorityDepthByPath.size} priority routes >= 450 words`);

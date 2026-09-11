@@ -19,6 +19,10 @@ const PT = {
   revenueScout: "Revenue Scout",
   jarvis: "JARVIS",
   agents: "Agentes de IA",
+  crmWhatsapp: "CRM + WhatsApp",
+  followup: "Follow-up automático",
+  recoverLeads: "Recuperar leads parados",
+  revenueIntelligence: "Revenue Intelligence",
   about: "Sobre nós",
   contact: "Contato",
   partners: "Parceiros",
@@ -46,6 +50,10 @@ const ES = {
   revenueScout: "Revenue Scout",
   jarvis: "JARVIS",
   agents: "Agentes de IA",
+  crmWhatsapp: "CRM + WhatsApp",
+  followup: "Seguimiento automático",
+  recoverLeads: "Recuperar leads detenidos",
+  revenueIntelligence: "Revenue Intelligence",
   about: "Nosotros",
   contact: "Contacto",
   partners: "Socios",
@@ -89,6 +97,10 @@ export default function Footer() {
           <div>
             <h4 className="mb-4 font-semibold text-slate-950">{copy.products}</h4>
             <ul className="space-y-2 text-sm">
+              <li><Link href="/solucoes/crm-whatsapp" className={linkClass}>{copy.crmWhatsapp}</Link></li>
+              <li><Link href="/solucoes/automatizar-follow-up" className={linkClass}>{copy.followup}</Link></li>
+              <li><Link href="/solucoes/recuperar-leads-parados" className={linkClass}>{copy.recoverLeads}</Link></li>
+              <li><Link href="/solucoes/revenue-intelligence" className={linkClass}>{copy.revenueIntelligence}</Link></li>
               <li><Link href="/produtos/crm" className={linkClass}>{copy.crm}</Link></li>
               <li><Link href="/produtos/prospeccao" className={linkClass}>{copy.prospector}</Link></li>
               <li><Link href="/produtos/omnichannel" className={linkClass}>{copy.omnichannel}</Link></li>
