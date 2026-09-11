@@ -15,13 +15,26 @@ const verticalSource = fs.readFileSync(path.resolve(repoRoot, "lib/vendor-brain/
 const macrosegments = new Set(manifest.macrosegments || []);
 const parsedVerticals = {};
 
+// O Vendor Brain pode reutilizar um slug semântico entre macrosegmentos.
+// A camada pública precisa manter 50 URLs únicas sem alterar os IDs/slugs internos.
+const SITE_SLUG_OVERRIDES = {
+  "retail-building": "materiais-construcao-acabamentos",
+  "industry-building": "industria-materiais-construcao",
+  "dist-autoparts": "distribuidora-autopecas",
+  "industry-food": "industria-alimentos-bebidas",
+};
+
 for (const block of verticalSource.split("v({").slice(1)) {
+  const id = block.match(/id\s*:\s*['"]([^'"]+)['"]/)?.[1];
   const macrosegment = block.match(/macrosegment\s*:\s*['"]([^'"]+)['"]/)?.[1];
   const name = block.match(/name\s*:\s*['"]([^'"]+)['"]/)?.[1];
-  const slug = block.match(/slug\s*:\s*['"]([^'"]+)['"]/)?.[1];
-  if (!macrosegment || !name || !slug) continue;
+  const semanticSlug = block.match(/slug\s*:\s*['"]([^'"]+)['"]/)?.[1];
+  if (!id || !macrosegment || !name || !semanticSlug) continue;
+  const slug = SITE_SLUG_OVERRIDES[id] ?? semanticSlug;
   parsedVerticals[slug] = {
+    id,
     slug,
+    semanticSlug,
     title: name,
     description: `VendorAI para ${name}: marketing, prospecção, atendimento, CRM, vendas, pós-venda e inteligência de receita em uma operação conectada.`,
     macrosegment,
@@ -34,16 +47,17 @@ manifest.macrosegments = [...macrosegments];
 
 for (const [slug, vertical] of Object.entries(parsedVerticals)) {
   const pathname = `/lp/${slug}`;
-  if (!manifest.routes.some((route) => route.pathname === pathname)) {
-    manifest.routes.push({
-      pathname,
-      title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`,
-      description: vertical.description,
-      type: "vertical",
-      name: vertical.title,
-      priority: 0.8,
-    });
-  }
+  const route = {
+    pathname,
+    title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`,
+    description: vertical.description,
+    type: "vertical",
+    name: vertical.title,
+    priority: 0.8,
+  };
+  const existingIndex = manifest.routes.findIndex((item) => item.pathname === pathname);
+  if (existingIndex >= 0) manifest.routes[existingIndex] = { ...manifest.routes[existingIndex], ...route };
+  else manifest.routes.push(route);
 }
 
 for (const macrosegment of macrosegments) {
