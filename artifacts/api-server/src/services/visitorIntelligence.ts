@@ -58,7 +58,8 @@ function sessionMetadataNumber(events: RawEvent[], key: string): number | null {
 
 function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function resolveSurface(events: RawEvent[]): VisitorSurface {
@@ -72,29 +73,22 @@ function resolveSurface(events: RawEvent[]): VisitorSurface {
       if (hostname === "app.appvendorai.com" || hostname.endsWith(".app.appvendorai.com")) return "app";
       if (hostname === "appvendorai.com" || hostname === "www.appvendorai.com" || hostname.endsWith(".appvendorai.com")) return "site";
     } catch {
-      // URL antiga/incompleta: segue procurando em outro evento da sessão.
+      // URL antiga/incompleta: segue procurando outro evento da sessão.
     }
   }
-
   return "unknown";
 }
 
 function sourceForSession(events: RawEvent[]): string | null {
-  return sessionMetadataString(events, "source")
-    ?? sessionMetadataString(events, "utmSource")
-    ?? null;
+  return sessionMetadataString(events, "source") ?? sessionMetadataString(events, "utmSource") ?? null;
 }
 
 function mediumForSession(events: RawEvent[]): string | null {
-  return sessionMetadataString(events, "medium")
-    ?? sessionMetadataString(events, "utmMedium")
-    ?? null;
+  return sessionMetadataString(events, "medium") ?? sessionMetadataString(events, "utmMedium") ?? null;
 }
 
 function campaignForSession(events: RawEvent[]): string | null {
-  return sessionMetadataString(events, "campaign")
-    ?? sessionMetadataString(events, "utmCampaign")
-    ?? null;
+  return sessionMetadataString(events, "campaign") ?? sessionMetadataString(events, "utmCampaign") ?? null;
 }
 
 function sourceLabel(source: string | null, medium: string | null, referrer: string | null) {
@@ -122,6 +116,18 @@ function topEntries(map: Map<string, number>, limit = 10) {
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, limit);
+}
+
+function commercialJourneyFromLead(discoveryData: unknown) {
+  if (!discoveryData || typeof discoveryData !== "object" || Array.isArray(discoveryData)) return null;
+  const journey = (discoveryData as Record<string, unknown>)["commercialJourney"];
+  return journey && typeof journey === "object" && !Array.isArray(journey)
+    ? journey as Record<string, unknown>
+    : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 export async function getVisitorIntelligence(
@@ -176,6 +182,8 @@ export async function getVisitorIntelligence(
         email: leadsTable.email,
         telefone: leadsTable.telefone,
         empresa: leadsTable.empresa,
+        proximaAcao: leadsTable.proximaAcao,
+        discoveryData: leadsTable.discoveryData,
       })
       .from(leadsTable)
       .where(and(eq(leadsTable.tenantId, tenantId), inArray(leadsTable.id, leadIds)))
@@ -203,13 +211,10 @@ export async function getVisitorIntelligence(
     bySession.set(event.anonymousSessionId, current);
   }
 
-  const sessions = Array.from(bySession.entries()).map(([sessionId, sessionEvents]) => {
+  const baseSessions = Array.from(bySession.entries()).map(([sessionId, sessionEvents]) => {
     const latest = sessionEvents[0];
     const oldest = sessionEvents[sessionEvents.length - 1];
     const pageViews = sessionEvents.filter((event) => event.eventType === "page_view" || event.eventType === "screen_view");
-    const ctaClicks = sessionEvents.filter((event) => event.eventType === "cta_click").length;
-    const formStarts = sessionEvents.filter((event) => event.eventType === "form_start").length;
-    const formSubmits = sessionEvents.filter((event) => event.eventType === "form_submit").length;
     const conversions = sessionEvents.filter((event) => ["form_submit", "signup", "conversion"].includes(event.eventType)).length;
     const maxScrollDepth = sessionEvents.reduce((max, event) => Math.max(max, event.scrollDepth ?? 0), 0);
     const maxEngagedMs = sessionEvents.reduce((max, event) => Math.max(max, event.engagedMs ?? 0), 0);
@@ -218,28 +223,44 @@ export async function getVisitorIntelligence(
     const visitorId = sessionMetadataString(sessionEvents, "visitorId");
     const leadIdentity = leadId ? leadById.get(leadId) : undefined;
     const userIdentity = userId ? userById.get(userId) : undefined;
-    const intent = buildBehaviorIntentSummary(sessionEvents.map((event) => ({
+    const sessionIntent = buildBehaviorIntentSummary(sessionEvents.map((event) => ({
+      anonymousSessionId: event.anonymousSessionId,
       eventType: event.eventType,
       path: event.path,
       engagedMs: event.engagedMs,
       scrollDepth: event.scrollDepth,
+      metadata: event.metadata,
+      createdAt: event.createdAt,
     })));
+    const leadJourney = leadIdentity ? commercialJourneyFromLead(leadIdentity.discoveryData) : null;
 
     const lastSeen = latest.createdAt;
     const online = lastSeen >= onlineSince;
-    const hotOpportunity = online && intent.score >= 60;
     const surface = resolveSurface(sessionEvents);
     const source = sourceForSession(sessionEvents);
     const medium = mediumForSession(sessionEvents);
     const campaign = campaignForSession(sessionEvents);
     const referrer = sessionEvents.find((event) => Boolean(event.referrer))?.referrer ?? null;
+    const journeyScore = typeof leadJourney?.score === "number" ? leadJourney.score : sessionIntent.score;
+    const commercialStage = typeof leadJourney?.stage === "string" ? leadJourney.stage : sessionIntent.commercialStage;
+    const commercialStageLabel = typeof leadJourney?.stageLabel === "string" ? leadJourney.stageLabel : sessionIntent.commercialStageLabel;
+    const commercialSummary = typeof leadJourney?.summary === "string" ? leadJourney.summary : sessionIntent.summary;
+    const nextBestAction = leadIdentity?.proximaAcao
+      || (typeof leadJourney?.nextBestAction === "string" ? leadJourney.nextBestAction : null)
+      || sessionIntent.recommendedAction;
+    const audienceTags = stringArray(leadJourney?.audienceTags).length
+      ? stringArray(leadJourney?.audienceTags)
+      : sessionIntent.audienceTags;
+    const campaigns = stringArray(leadJourney?.campaigns).length
+      ? stringArray(leadJourney?.campaigns)
+      : sessionIntent.campaigns;
 
     return {
       sessionId,
       visitorId,
       surface,
       online,
-      hotOpportunity,
+      hotOpportunity: online && journeyScore >= 60,
       identified: Boolean(leadId || userId),
       identityType: leadId ? "lead" : userId ? "user" : "anonymous",
       identity: leadIdentity
@@ -274,16 +295,28 @@ export async function getVisitorIntelligence(
       referrer,
       firstSeenAt: toIso(oldest.createdAt),
       lastSeenAt: toIso(lastSeen),
-      durationMs: Math.max(0, lastSeen.getTime() - oldest.createdAt.getTime()),
+      durationMs: Math.max(
+        sessionIntent.signals.totalEngagedMs,
+        maxEngagedMs,
+        Math.max(0, lastSeen.getTime() - oldest.createdAt.getTime()),
+      ),
       pageViews: pageViews.length,
-      ctaClicks,
-      formStarts,
-      formSubmits,
+      ctaClicks: sessionIntent.signals.ctaClicks,
+      formStarts: sessionIntent.signals.formStarts,
+      formSubmits: sessionIntent.signals.formSubmits,
       conversions,
       eventCount: sessionEvents.length,
       maxScrollDepth,
       maxEngagedMs,
-      intent,
+      intent: { ...sessionIntent, score: journeyScore },
+      commercialStage,
+      commercialStageLabel,
+      commercialSummary,
+      nextBestAction,
+      audienceTags,
+      campaigns,
+      pageBreakdown: sessionIntent.topPages,
+      clicks: sessionIntent.clicks,
       geo: {
         country: sessionMetadataString(sessionEvents, "country"),
         region: sessionMetadataString(sessionEvents, "region"),
@@ -312,14 +345,43 @@ export async function getVisitorIntelligence(
           at: toIso(event.createdAt),
           engagedMs: event.engagedMs,
           scrollDepth: event.scrollDepth,
+          label: metadataString(event.metadata as Metadata, "label"),
+          href: metadataString(event.metadata as Metadata, "href"),
         })),
+    };
+  });
+
+  const recurrence = new Map<string, number>();
+  for (const session of baseSessions) {
+    const key = session.leadId ? `lead:${session.leadId}` : session.visitorId ? `visitor:${session.visitorId}` : `session:${session.sessionId}`;
+    recurrence.set(key, (recurrence.get(key) ?? 0) + 1);
+  }
+
+  const sessions = baseSessions.map((session) => {
+    const key = session.leadId ? `lead:${session.leadId}` : session.visitorId ? `visitor:${session.visitorId}` : `session:${session.sessionId}`;
+    const recurrenceCount = recurrence.get(key) ?? 1;
+    const signalLabels = new Set<string>();
+    if (recurrenceCount > 1) signalLabels.add(`Retornou ${recurrenceCount}x`);
+    if (session.intent.signals.pricingViews > 0) signalLabels.add("Viu preços");
+    if (session.ctaClicks > 0) signalLabels.add("Clicou em CTA");
+    if (session.formStarts > session.formSubmits) signalLabels.add("Abandonou formulário");
+    if (session.conversions > 0) signalLabels.add("Converteu");
+    if (session.durationMs >= 120_000) signalLabels.add("2min+ no site");
+    if (session.intent.score >= 60) signalLabels.add("Alta intenção");
+    const remarketingReady = session.surface === "site" && (recurrenceCount > 1 || session.intent.score >= 15 || session.pageViews > 0);
+    return {
+      ...session,
+      recurrenceCount,
+      signalLabels: Array.from(signalLabels),
+      remarketingReady,
     };
   });
 
   sessions.sort((a, b) => {
     if (a.hotOpportunity !== b.hotOpportunity) return a.hotOpportunity ? -1 : 1;
-    if (a.online !== b.online) return a.online ? -1 : 1;
+    if (a.identified !== b.identified) return a.identified ? -1 : 1;
     if (a.intent.score !== b.intent.score) return b.intent.score - a.intent.score;
+    if (a.online !== b.online) return a.online ? -1 : 1;
     return String(b.lastSeenAt).localeCompare(String(a.lastSeenAt));
   });
 
@@ -358,9 +420,7 @@ export async function getVisitorIntelligence(
   }
 
   for (const event of events) {
-    if ((event.eventType === "page_view" || event.eventType === "screen_view") && event.path) {
-      increment(topPages, event.path);
-    }
+    if ((event.eventType === "page_view" || event.eventType === "screen_view") && event.path) increment(topPages, event.path);
   }
 
   const uniqueVisitorKeys = new Set(sessions.map((session) => session.visitorId || `session:${session.sessionId}`));
@@ -375,6 +435,7 @@ export async function getVisitorIntelligence(
     ? Math.round(sessions.reduce((sum, session) => sum + session.intent.score, 0) / sessions.length)
     : 0;
   const sessionConversions = sessions.filter((session) => session.conversions > 0).length;
+  const siteSessions = sessions.filter((session) => session.surface === "site");
 
   return {
     periodMinutes: minutes,
@@ -391,7 +452,11 @@ export async function getVisitorIntelligence(
       onlineNow: sessions.filter((session) => session.online).length,
       identified: sessions.filter((session) => session.identified).length,
       hotNow: sessions.filter((session) => session.hotOpportunity).length,
-      siteVisitors: sessions.filter((session) => session.surface === "site").length,
+      hotLeadsNow: sessions.filter((session) => session.hotOpportunity && session.leadId).length,
+      pricingVisitors: siteSessions.filter((session) => session.intent.signals.pricingViews > 0).length,
+      ctaVisitors: siteSessions.filter((session) => session.ctaClicks > 0).length,
+      remarketingReady: siteSessions.filter((session) => session.remarketingReady).length,
+      siteVisitors: siteSessions.length,
       appVisitors: sessions.filter((session) => session.surface === "app").length,
       mobileVisitors: sessions.filter((session) => session.surface === "mobile").length,
       averageSessionDurationMs,
@@ -402,12 +467,12 @@ export async function getVisitorIntelligence(
     },
     analytics: {
       daily: Array.from(daily.entries())
-        .map(([date, values]) => ({ date, ...values }))
+        .map(([date, value]) => ({ date, ...value }))
         .sort((a, b) => a.date.localeCompare(b.date)),
-      topSources: topEntries(topSources, 12),
-      topCities: topEntries(topCities, 12),
-      topCampaigns: topEntries(topCampaigns, 12),
-      topPages: topEntries(topPages, 15),
+      topSources: topEntries(topSources),
+      topCities: topEntries(topCities),
+      topCampaigns: topEntries(topCampaigns),
+      topPages: topEntries(topPages),
     },
     hotOpportunities: sessions.filter((session) => session.hotOpportunity).slice(0, 20),
     sessions,
