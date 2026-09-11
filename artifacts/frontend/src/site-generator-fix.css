@@ -1,42 +1,94 @@
 /*
  * Correções de layout do Gerador de Sites e do shell autenticado do Vendor.ai.
  *
- * O problema visto em produção não era falta de conteúdo: o <main> é um filho
- * flexível do shell h-screen e podia manter min-height:auto. Com o formulário
- * longo, isso fazia o documento/body crescer além do viewport. Ao rolar, o
- * usuário acabava rolando o BODY e deslocava o shell inteiro para cima; por
- * isso sidebar + conteúdo "acabavam" no meio da tela e sobrava um grande bloco
- * cinza. A rolagem correta deve acontecer apenas dentro de main.vendor-scrollbar.
+ * O shell autenticado deve ficar limitado ao viewport e a rolagem deve acontecer
+ * dentro de main.vendor-scrollbar. O #root não precisa ser position:fixed: isso
+ * cria um novo containing block para elementos sticky/fixed e, ao redimensionar
+ * a viewport (por exemplo com DevTools aberto), pode deixar o Gerador com o
+ * rodapé sticky no meio da tela e uma grande área vazia abaixo.
  */
 
-/* Regra estrutural: permite que o <main> encolha dentro do flex e role por si. */
+/* Permite que o <main> encolha corretamente dentro do shell flex. */
 #root main.vendor-scrollbar {
   min-height: 0 !important;
   max-height: 100% !important;
 }
 
-/*
- * Trava o shell autenticado no viewport. O seletor main.vendor-scrollbar é do
- * SidebarLayout e não existe no site público do lojista, então o site público
- * continua com rolagem normal do documento.
- *
- * position:fixed também recupera imediatamente sessões em que o body já tinha
- * ficado com scrollTop > 0 antes deste CSS carregar.
- */
+/* Mantém o documento parado; quem rola é o conteúdo interno do aplicativo. */
 html:has(#root main.vendor-scrollbar),
 body:has(#root main.vendor-scrollbar) {
   width: 100%;
   height: 100%;
+  min-height: 100%;
   overflow: hidden !important;
   overscroll-behavior: none;
 }
 
+/*
+ * Não fixe o #root. O próprio SidebarLayout já usa h-screen e contém a rolagem.
+ * position:relative preserva o fluxo normal e evita o bug de altura/blank area
+ * observado no Gerador quando a viewport muda de tamanho.
+ */
 body:has(#root main.vendor-scrollbar) > #root {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
+  position: relative !important;
+  inset: auto !important;
+  width: 100% !important;
   height: 100dvh !important;
+  min-height: 0 !important;
   overflow: hidden !important;
+}
+
+/*
+ * Guard específico do Gerador novo dentro de Sites & Content Autopilot.
+ * O seletor só entra em ação quando a barra "Pronto para gerar" está montada,
+ * então não interfere nas telas /conversations, /deals e /negocios que possuem
+ * política própria de rolagem.
+ */
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  main.vendor-scrollbar {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scroll-behavior: auto;
+}
+
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  .vendor-page-canvas,
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  .vendor-page-canvas > :first-child,
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  [role="tabpanel"][data-state="active"] {
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/*
+ * A barra final continua sticky, mas sempre dentro do main correto e acima dos
+ * demais widgets flutuantes. Isso evita que ela "pare" no meio da tela.
+ */
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3 {
+  position: sticky !important;
+  bottom: 1rem !important;
+  z-index: 50 !important;
+  margin-top: 1rem !important;
+}
+
+/* Dá espaço real no final da página para a barra sticky sem esconder conteúdo. */
+body:has(.vendor-sites-media-bridge):has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+  .vendor-page-canvas > :first-child {
+  padding-bottom: 5.5rem !important;
+}
+
+/* Evita sobreposição do seletor de mídias com a barra de geração no desktop. */
+@media (min-width: 901px) {
+  body:has(div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3)
+    .vendor-sites-media-bridge.fixed {
+    bottom: 6.75rem !important;
+    right: 1rem !important;
+    z-index: 40 !important;
+  }
 }
 
 /* Quatro tipos de site: 4 colunas no desktop, 2x2 em telas menores. */
@@ -51,8 +103,8 @@ form.flex.flex-col.gap-5:has(> section) > div:first-child > .grid.grid-cols-3 {
 }
 
 /*
- * O formulário e o seletor de contexto participam do fluxo normal da página.
- * A única área que deve rolar é o main.vendor-scrollbar acima.
+ * Compatibilidade com o formulário legado do Gerador. O formulário e o seletor
+ * de contexto participam do fluxo normal da página; somente o main rola.
  */
 form.flex.flex-col.gap-5:has(> section) {
   height: auto !important;
@@ -74,7 +126,7 @@ form.flex.flex-col.gap-5:has(> section) > section {
   content-visibility: visible !important;
 }
 
-/* Mantém os três blocos principais do seletor no fluxo vertical. */
+/* Mantém os três blocos principais do seletor legado no fluxo vertical. */
 form.flex.flex-col.gap-5:has(> section) > section > * {
   position: static !important;
   transform: none !important;
