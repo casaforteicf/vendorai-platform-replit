@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1204",
+    "titulo": "Configurações: abrir integração ao clicar no status",
+    "descricao": "transforma os cards de **Saúde das integrações** em ações clicáveis; exibe CTA contextual: **Conectar agora**, **Revisar integração** ou **Gerenciar integração**; ao clicar, abre a aba **Integrações**, localiza a integração correspondente, rola até ela e destaca o bloco; mantém deep-link por `?tab=integracoes&integration=<provider>`;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-11T12:04:08.000Z",
+    "pullRequest": 1204
+  },
+  {
     "id": "pr-1198",
     "titulo": "ERP gerencial completo: edição, auditoria e visão integrada",
     "descricao": "amplia o Financeiro + ERP Hub com visão geral gerencial, fluxo de caixa, bancos/conciliação, fiscal, compras, vendas, estoque, comissões e auditoria; mantém indicadores executivos em percentuais; adiciona busca e filtros operacionais em contas a pagar/receber; permite editar, duplicar, dar baixa e excluir/cancelar lançamentos;",
