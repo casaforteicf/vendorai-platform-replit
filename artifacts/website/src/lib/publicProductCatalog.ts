@@ -18,7 +18,7 @@ export type PublicCatalogProduct = {
 
 const ENDPOINT = "https://gfocphuiyyufwzcyihbk.supabase.co/functions/v1/vendor-public-products";
 
-// Mapeia as páginas públicas já existentes ao SKU comercial oficial.
+// Mapeia as páginas públicas aos SKUs comerciais oficiais.
 // Growth não entra aqui porque possui régua progressiva própria em /precos.
 export const productSkuBySlug: Record<string, string> = {
   crm: "vendor-crm-monthly",
@@ -34,6 +34,15 @@ export const productSkuBySlug: Record<string, string> = {
   "knowledge-hub": "vendor-knowledge-ai-monthly",
   analytics: "vendor-bi-analytics-monthly",
   automacoes: "vendor-automations-monthly",
+  "content-planner": "vendor-content-planner-monthly",
+  "content-studio": "vendor-content-studio-monthly",
+  "creative-studio": "vendor-creative-studio-monthly",
+  ads: "vendor-ads-monthly",
+  "praca-ai": "vendor-marketplace-praca-monthly",
+  "app-builder": "vendor-app-builder-monthly",
+  reputation: "vendor-reputation-monthly",
+  "app-personalizado": "vendor-custom-app-cash",
+  implantacao: "vendor-implementation-cash",
 };
 
 let cache: Promise<PublicCatalogProduct[]> | null = null;
