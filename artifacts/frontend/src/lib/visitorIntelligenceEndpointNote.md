@@ -1,1 +1,0 @@
-Telemetry do app autenticado deve usar `/api/visitor-intelligence/event` (tenant derivado da sessão autenticada). O endpoint público `/api/site/behavior-event` continua reservado ao site institucional e não deve ser reutilizado para o painel autenticado.
