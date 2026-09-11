@@ -70,8 +70,10 @@ import "./mobile-floating-controls.css";
 import "./jarvis-mobile.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
+import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 
 setupApiClient();
+installVisitorTelemetry();
 
 document.documentElement.dataset.vendoraiBuild = "asset-versioning-20260910";
 
