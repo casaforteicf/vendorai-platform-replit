@@ -1,5 +1,5 @@
 // Product routes are part of the public website deployment (Cloudflare production sync).
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -54,6 +54,38 @@ function ScrollToTop() {
   return null;
 }
 
+function ViewportDeferred({ children, minHeight = 720, rootMargin = "900px 0px" }: { children: ReactNode; minHeight?: number; rootMargin?: string }) {
+  const [enabled, setEnabled] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (enabled) return;
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setEnabled(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setEnabled(true);
+      observer.disconnect();
+    }, { rootMargin });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [enabled, rootMargin]);
+
+  return (
+    <div
+      ref={sentinelRef}
+      style={{ minHeight: enabled ? undefined : minHeight, contentVisibility: "auto", containIntrinsicSize: `auto ${minHeight}px` }}
+    >
+      {enabled ? children : null}
+    </div>
+  );
+}
+
 function IdleAgentSimulator() {
   const [enabled, setEnabled] = useState(false);
 
@@ -100,11 +132,18 @@ function HomeWithGrowthRevenueHero() {
   return (
     <>
       <GrowthRevenueHero />
-      <Suspense fallback={null}><RevenueMagicCalculator /></Suspense>
-      <div className="[&>div>section:first-child]:hidden [&>div>section.border-y.border-slate-200.bg-slate-50]:hidden">
+      <ViewportDeferred minHeight={900} rootMargin="1100px 0px">
+        <Suspense fallback={null}><RevenueMagicCalculator /></Suspense>
+      </ViewportDeferred>
+      <div
+        className="[&>div>section:first-child]:hidden [&>div>section.border-y.border-slate-200.bg-slate-50]:hidden"
+        style={{ contentVisibility: "auto", containIntrinsicSize: "auto 4200px" }}
+      >
         <Home />
       </div>
-      <Suspense fallback={null}><DistributedProductScreens /></Suspense>
+      <ViewportDeferred minHeight={3200} rootMargin="1200px 0px">
+        <Suspense fallback={null}><DistributedProductScreens /></Suspense>
+      </ViewportDeferred>
     </>
   );
 }
