@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable, webBehaviorEventsTable } from "@workspace/db";
-import { eq, and, asc, isNull } from "drizzle-orm";
+import { eq, and, asc, desc, isNull, isNotNull } from "drizzle-orm";
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
 import { storePhone, findLeadByDedup } from "../lib/dedup.js";
@@ -11,6 +11,7 @@ import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 
 const router: IRouter = Router();
 
@@ -151,6 +152,15 @@ function updateConsentOnly(
   };
 }
 
+function decodeGeoHeader(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    return decodeURIComponent(value.trim());
+  } catch {
+    return value.trim();
+  }
+}
+
 const behaviorEventSchema = z.object({
   anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
   eventType: z.enum(["page_view", "cta_click", "form_start", "form_submit", "engagement"]),
@@ -178,9 +188,26 @@ router.post("/site/behavior-event", async (req, res) => {
       logger,
     );
 
+    const [identifiedSession] = await db
+      .select({ leadId: webBehaviorEventsTable.leadId })
+      .from(webBehaviorEventsTable)
+      .where(and(
+        eq(webBehaviorEventsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+        eq(webBehaviorEventsTable.anonymousSessionId, d.anonymousSessionId),
+        isNotNull(webBehaviorEventsTable.leadId),
+      ))
+      .orderBy(desc(webBehaviorEventsTable.createdAt))
+      .limit(1);
+
+    const country = decodeGeoHeader(req.get("x-vercel-ip-country"))
+      ?? decodeGeoHeader(req.get("cf-ipcountry"));
+    const region = decodeGeoHeader(req.get("x-vercel-ip-country-region"));
+    const city = decodeGeoHeader(req.get("x-vercel-ip-city"));
+
     await db.insert(webBehaviorEventsTable).values({
       anonymousSessionId: d.anonymousSessionId,
       tenantId: INSTITUTIONAL_TENANT_ID,
+      leadId: identifiedSession?.leadId ?? null,
       adCampaignId,
       eventType: d.eventType,
       pageUrl: d.pageUrl ?? null,
@@ -189,8 +216,20 @@ router.post("/site/behavior-event", async (req, res) => {
       landingPageSlug: d.landingPageSlug ?? null,
       engagedMs: d.engagedMs ?? null,
       scrollDepth: d.scrollDepth ?? null,
-      metadata: d.metadata ?? {},
+      metadata: {
+        ...(d.metadata ?? {}),
+        surface: d.metadata?.["surface"] ?? "site",
+        country,
+        region,
+        city,
+      },
     });
+
+    if (identifiedSession?.leadId) {
+      void syncBehaviorIntentForLead(identifiedSession.leadId, INSTITUTIONAL_TENANT_ID).catch((err) => {
+        logger.warn({ err, leadId: identifiedSession.leadId }, "site/behavior-event: behavior intent sync failed");
+      });
+    }
 
     return res.status(202).json({ accepted: true });
   } catch (err) {
@@ -390,14 +429,19 @@ router.post("/site/contato", async (req, res) => {
       }
 
       if (behaviorSessionId) {
-        await db
+        const linked = await db
           .update(webBehaviorEventsTable)
           .set({ leadId })
           .where(and(
             eq(webBehaviorEventsTable.tenantId, INSTITUTIONAL_TENANT_ID),
             eq(webBehaviorEventsTable.anonymousSessionId, behaviorSessionId),
             isNull(webBehaviorEventsTable.leadId),
-          ));
+          ))
+          .returning({ id: webBehaviorEventsTable.id });
+
+        if (linked.length > 0) {
+          await syncBehaviorIntentForLead(leadId, INSTITUTIONAL_TENANT_ID);
+        }
       }
 
       if (adCampaignId && attributedNow) {
