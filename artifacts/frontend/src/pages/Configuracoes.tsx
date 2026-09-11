@@ -7,6 +7,7 @@ import { ConfigurationGovernancePanel } from "@/components/ConfigurationGovernan
 import { ConfigurationImpactSimulator } from "@/components/ConfigurationImpactSimulator";
 import { ConfigurationPostChangeValidation } from "@/components/ConfigurationPostChangeValidation";
 import { ConfigurationSectionGuard } from "@/components/ConfigurationSectionGuard";
+import { ConfigurationCatalogProductsBridge } from "@/components/ConfigurationCatalogProductsBridge";
 import { JarvisPermissionsCenter } from "@/components/support/JarvisPermissionsCenter";
 
 export default function Configuracoes() {
@@ -32,6 +33,7 @@ export default function Configuracoes() {
       {!legacySiteDeepLink && <ConfigurationHistoryPanel />}
       {!legacySiteDeepLink && <ConfigurationRollbackPanel />}
       <ConfiguracoesNormalized />
+      {!legacySiteDeepLink && <ConfigurationCatalogProductsBridge />}
     </>
   );
 }
