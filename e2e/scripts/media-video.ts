@@ -5,10 +5,12 @@ import path from "node:path";
 const BASE_URL = process.env.MEDIA_BASE_URL || "https://app.appvendorai.com";
 const MEDIA_AUTH_TOKEN = process.env.MEDIA_AUTH_TOKEN;
 const OUTPUT_ROOT = process.env.MEDIA_OUTPUT_DIR || path.resolve(process.cwd(), "media-output");
-let sharedToken: string | undefined = MEDIA_AUTH_TOKEN;
 
-async function getToken(context: BrowserContext): Promise<string> {
-  if (sharedToken) return sharedToken;
+type DemoSession = { token: string; user?: unknown };
+let sharedSession: DemoSession | undefined = MEDIA_AUTH_TOKEN ? { token: MEDIA_AUTH_TOKEN } : undefined;
+
+async function getSession(context: BrowserContext): Promise<DemoSession> {
+  if (sharedSession) return sharedSession;
 
   const response = await context.request.post(`${BASE_URL}/api/auth/demo-login`, {
     data: { email: "demo", password: "demo" },
@@ -19,22 +21,32 @@ async function getToken(context: BrowserContext): Promise<string> {
     throw new Error(`Login demo falhou (${response.status()}): ${body.slice(0, 300)}`);
   }
   const body = await response.json();
-  sharedToken = body.token as string;
-  return sharedToken;
+  sharedSession = { token: body.token as string, user: body.user };
+  return sharedSession;
 }
 
 async function authenticate(context: BrowserContext, page: Page) {
-  const token = await getToken(context);
+  const session = await getSession(context);
   await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ token }) => {
+  await page.evaluate(({ token, user }) => {
     localStorage.setItem("vendorai_token", token);
+    if (user) localStorage.setItem("vendorai_user_cache", JSON.stringify(user));
     sessionStorage.setItem("vendorai_demo_session", "active");
-  }, { token });
+  }, session);
+}
+
+async function waitForRealContent(page: Page) {
+  await page.waitForFunction(() => {
+    const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
+    return text.length >= 80;
+  }, undefined, { timeout: 30_000 });
+  await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+  await page.waitForTimeout(700);
 }
 
 async function settle(page: Page, route: string) {
   await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2400);
+  await waitForRealContent(page);
   await page.evaluate(() => window.scrollTo(0, 0));
 }
 
@@ -83,9 +95,8 @@ await record("prospector-demo", ["/app/prospector"]);
 await record("revenue-scout-demo", ["/scout", "/scout/oportunidades"]);
 await record("financeiro-erp-demo", ["/erp"]);
 await record("jarvis-demo", ["/"], async (page) => {
-  const launcher = page.locator('button[aria-label="Abrir JARVIS"]');
-  if (await launcher.count()) {
-    await launcher.first().click();
-    await page.waitForTimeout(1800);
-  }
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
+  });
+  await page.waitForTimeout(1800);
 });
