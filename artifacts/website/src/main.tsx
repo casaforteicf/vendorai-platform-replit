@@ -8,11 +8,13 @@ import {
   installPublicFormConsentBridge,
 } from "./lib/launchAttribution";
 import { installSiteVisitorPresence } from "./lib/visitorPresence";
+import { installWebVitalsRUM } from "./lib/webVitalsRUM";
 
 captureLaunchAttribution();
 installPublicFormConsentBridge();
 installFirstPartyBehaviorTracking();
 installSiteVisitorPresence();
+installWebVitalsRUM();
 
 createRoot(document.getElementById("root")!).render(
   <>
