@@ -45,7 +45,10 @@ jobs:
             status=$(curl -sS -H 'Accept: text/html' -D /tmp/headers.txt -o /tmp/page.html -w '%{http_code}' "$url")
             echo "$path -> HTTP $status"
             test "$status" = "200"
-            grep -q '<div id="root"></div>' /tmp/page.html
+            grep -q 'id="root"' /tmp/page.html
+            grep -q 'data-vendorai-prerender="edge"' /tmp/page.html
+            grep -q '<h1' /tmp/page.html
+            grep -q 'href="/' /tmp/page.html
             grep -q "rel=\"canonical\" href=\"${canonical}\"" /tmp/page.html
             grep -q 'name="description"' /tmp/page.html
             grep -q 'application/ld+json' /tmp/page.html
@@ -57,9 +60,11 @@ jobs:
           check_page "/" "https://appvendorai.com/"
           check_page "/produtos" "https://appvendorai.com/produtos"
           check_page "/produtos/crm" "https://appvendorai.com/produtos/crm"
+          grep -q 'Como se encaixa na operação' /tmp/page.html
           check_page "/produtos/revenue-scout" "https://appvendorai.com/produtos/revenue-scout"
           check_page "/lp/moda" "https://appvendorai.com/lp/moda"
           grep -q '"@type":"FAQPage"' /tmp/page.html
+          grep -q 'Operação comercial conectada' /tmp/page.html
           check_page "/lp/distribuidora-materiais-construcao" "https://appvendorai.com/lp/distribuidora-materiais-construcao"
           grep -q '<title>CRM com IA para Distribuidoras de materiais de construção | VendorAI</title>' /tmp/page.html
           grep -q 'Prever recompra, identificar queda e expandir mix' /tmp/page.html
@@ -72,6 +77,7 @@ jobs:
           check_page "/solucoes/crm-whatsapp" "https://appvendorai.com/solucoes/crm-whatsapp"
           grep -q '"@type":"FAQPage"' /tmp/page.html
           grep -q '"relatedLink"' /tmp/page.html
+          grep -q 'Transforme conversas do WhatsApp em uma operação comercial acompanhada até a venda' /tmp/page.html
           check_page "/comparar/crm-com-ia-vs-crm-tradicional" "https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional"
           grep -q '"@type":"FAQPage"' /tmp/page.html
           check_page "/solucoes/propostas-sem-resposta" "https://appvendorai.com/solucoes/propostas-sem-resposta"
@@ -84,11 +90,15 @@ jobs:
           grep -q 'rel="canonical" href="https://appvendorai.com/solucoes/propostas-sem-resposta?country=AR"' /tmp/ar.html
           grep -q '<title>Propuesta Sin Respuesta: Seguimiento con CRM e IA | VendorAI</title>' /tmp/ar.html
           grep -q '"@type":"FAQPage"' /tmp/ar.html
+          grep -q 'data-vendorai-prerender="edge"' /tmp/ar.html
+          grep -q '<h1' /tmp/ar.html
 
           curl -sS -H 'Accept: text/html' 'https://appvendorai.com/lp/distribuidora-materiais-construcao?country=AR' -o /tmp/ar-vertical.html
           grep -q 'lang="es-AR"' /tmp/ar-vertical.html
           grep -q '<title>Distribuidoras de materiales de construcción — CRM e IA | VendorAI</title>' /tmp/ar-vertical.html
           grep -q 'Prever recompra, identificar caída y ampliar mix' /tmp/ar-vertical.html
+          grep -q 'data-vendorai-prerender="edge"' /tmp/ar-vertical.html
+          grep -q 'Operación comercial conectada' /tmp/ar-vertical.html
           ! grep -q '"@type":"FAQPage"' /tmp/ar-vertical.html
 
       - name: Validate sitemap coverage
