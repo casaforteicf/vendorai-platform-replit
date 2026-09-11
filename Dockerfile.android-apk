@@ -37,8 +37,9 @@ RUN cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/ima
     && ./gradlew assembleDebug --no-daemon --stacktrace
 
 FROM nginx:1.27-alpine
-COPY --from=build /app/artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk /usr/share/nginx/html/vendorai.apk
-RUN mkdir -p /etc/nginx/templates \
-    && printf 'server { listen ${PORT}; location = / { add_header Content-Type text/plain; return 200 "VendorAI APK Builder OK"; } location = /vendorai.apk { root /usr/share/nginx/html; add_header Content-Type application/vnd.android.package-archive; add_header Content-Disposition "attachment; filename=vendorai.apk"; } }' > /etc/nginx/templates/default.conf.template
+COPY --from=build /app/artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk /usr/share/nginx/html/vendorai-1.0.1.apk
+RUN cp /usr/share/nginx/html/vendorai-1.0.1.apk /usr/share/nginx/html/vendorai.apk \
+    && mkdir -p /etc/nginx/templates \
+    && printf 'server { listen ${PORT}; location = / { add_header Content-Type text/plain; return 200 "VendorAI APK Builder OK - 1.0.1"; } location ~ ^/vendorai(-1\\.0\\.1)?\\.apk$ { root /usr/share/nginx/html; add_header Content-Type application/vnd.android.package-archive; add_header Content-Disposition "attachment; filename=vendorai-1.0.1.apk"; add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always; add_header Pragma "no-cache" always; add_header Expires "0" always; } }' > /etc/nginx/templates/default.conf.template
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
