@@ -9,16 +9,28 @@ const matrixPath = path.resolve(siteRoot, "src/data/seoGrowthMatrix.json");
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const matrix = JSON.parse(fs.readFileSync(matrixPath, "utf8"));
+const pages = matrix.pages || [];
 
-for (const page of matrix.pages || []) {
-  if (!page?.path || !page?.pt?.seoTitle || !page?.pt?.seoDescription) continue;
+if (pages.length !== 11) {
+  throw new Error(`[seo-growth] expected exactly 11 wave-1 pages, found ${pages.length}`);
+}
+
+const paths = pages.map((page) => page.path);
+const duplicates = paths.filter((pathname, index) => paths.indexOf(pathname) !== index);
+if (duplicates.length) {
+  throw new Error(`[seo-growth] duplicate paths: ${[...new Set(duplicates)].join(", ")}`);
+}
+
+for (const page of pages) {
+  if (!page?.path || !page?.pt?.seoTitle || !page?.pt?.seoDescription) {
+    throw new Error(`[seo-growth] invalid page definition for ${page?.path || "unknown"}`);
+  }
   const route = {
     pathname: page.path,
     title: page.pt.seoTitle,
     description: page.pt.seoDescription,
-    // WebPage schema + Spanish fallback already supported by the edge/runtime feature localizer.
     type: "feature",
-    name: (page.es?.seoTitle || page.pt.seoTitle).replace(/\s*\|.*$/, ""),
+    name: page.pt.seoTitle.replace(/\s*\|.*$/, ""),
     priority: page.priority ?? 0.85,
     cluster: page.cluster,
     intent: page.intent,
@@ -33,6 +45,6 @@ for (const page of matrix.pages || []) {
   else manifest.routes.push(route);
 }
 
-manifest.growthPages = matrix.pages || [];
+manifest.growthPages = pages;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-console.log(`[seo-growth] appended ${(matrix.pages || []).length} commercial-intent pages`);
+console.log(`[seo-growth] appended ${pages.length} commercial-intent pages`);
