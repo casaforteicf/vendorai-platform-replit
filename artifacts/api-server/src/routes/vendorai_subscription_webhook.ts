@@ -12,12 +12,16 @@ import {
 import { deleteCharge } from "../lib/asaas.js";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
 import { commerceCheckoutRouter, provisionCheckout } from "./commerce_checkout.js";
+import { tenantStoreCheckoutRouter, handleTenantSiteCheckoutPayment } from "./tenant_store_checkout.js";
 
 const router: IRouter = Router();
 
 // Public self-service acquisition routes. This router is mounted directly in
 // app.ts before the protected API router, so LP checkout works without login.
 router.use(commerceCheckoutRouter);
+// Public storefront checkout for every generated tenant site. Payment is
+// always created in Asaas; WhatsApp remains a support/sales channel only.
+router.use(tenantStoreCheckoutRouter);
 
 const asaasSubscriptionWebhookBody = z.object({
   event: z.string(),
@@ -40,6 +44,12 @@ function subscriptionIdFromCycleKey(value: string): string | null {
 function checkoutIdFromReference(value: string | null | undefined): string | null {
   if (!value?.startsWith("checkout:")) return null;
   const id = value.slice("checkout:".length).trim();
+  return id || null;
+}
+
+function tenantCheckoutIdFromReference(value: string | null | undefined): string | null {
+  if (!value?.startsWith("tenant_checkout:")) return null;
+  const id = value.slice("tenant_checkout:".length).trim();
   return id || null;
 }
 
@@ -191,6 +201,20 @@ router.post("/webhooks/asaas", async (req, res, next) => {
   }
 
   const { event, payment } = parsed.data;
+  const tenantCheckoutId = tenantCheckoutIdFromReference(payment.externalReference);
+  if (tenantCheckoutId) {
+    try {
+      const result = await handleTenantSiteCheckoutPayment(tenantCheckoutId, event, payment.id);
+      res.status(200).json({ ok: true, lifecycle: "tenant_site_checkout", ...result });
+    } catch (err) {
+      req.log.error({ err, tenantCheckoutId, paymentId: payment.id }, "tenant site checkout: payment lifecycle failed");
+      // ACK prevents an Asaas retry storm. The order keeps recurrence_failed and
+      // a later reconciliation/replayed event can retry subscription creation.
+      res.status(200).json({ ok: true, lifecycle: "tenant_site_checkout", status: "processing_failed" });
+    }
+    return;
+  }
+
   const checkoutId = checkoutIdFromReference(payment.externalReference);
   if (checkoutId) {
     if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
