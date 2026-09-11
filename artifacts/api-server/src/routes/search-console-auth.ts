@@ -12,6 +12,7 @@ import {
   disconnectSearchConsole,
   getSearchConsoleConnectionByTenantId,
 } from "../services/search-console-oauth.js";
+import { getSearchConsoleInsights } from "../services/search-console-insights.js";
 
 const router: IRouter = Router();
 
@@ -22,6 +23,18 @@ function getAppUrl(): string {
     return "https://app.appvendorai.com";
   }
   return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
+}
+
+function safeReturnTo(value: unknown, fallback = "/configuracoes") {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) return fallback;
+  return trimmed.slice(0, 500);
+}
+
+function appendQueryParam(path: string, key: string, value: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
 
 function auditActor(req: Request, userId?: string | null) {
@@ -59,9 +72,10 @@ router.get("/auth/search-console", authenticate, async (req, res) => {
       logger.warn("OAuth Search Console: usuário não autenticado");
       return res.status(401).json({ error: "Unauthorized" });
     }
-    const state = createOAuthState(tenantId, userId, "search-console", "/configuracoes");
+    const returnTo = safeReturnTo(req.query.returnTo);
+    const state = createOAuthState(tenantId, userId, "search-console", returnTo);
     const url = buildSearchConsoleOAuthUrl(state);
-    logger.info({ tenantId, userId }, "Retornando URL OAuth Search Console");
+    logger.info({ tenantId, userId, returnTo }, "Retornando URL OAuth Search Console");
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Search Console");
@@ -72,11 +86,11 @@ router.get("/auth/search-console", authenticate, async (req, res) => {
 router.get("/auth/search-console/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
   const appUrl = getAppUrl();
-  const returnTo = "/configuracoes";
+  let returnTo = "/configuracoes";
 
   if (error || !code || !state) {
     logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Search Console: parâmetros inválidos");
-    return res.redirect(`${appUrl}${returnTo}?searchConsoleError=access_denied`);
+    return res.redirect(`${appUrl}${appendQueryParam(returnTo, "searchConsoleError", "access_denied")}`);
   }
 
   let tenantId: string;
@@ -85,9 +99,10 @@ router.get("/auth/search-console/callback", async (req, res) => {
     const decoded = consumeOAuthState(state, "search-console");
     tenantId = decoded.tenantId;
     auditUserId = decoded.userId ?? null;
+    returnTo = safeReturnTo(decoded.returnTo, returnTo);
   } catch (err) {
     logger.warn({ err }, "Callback Search Console: state inválido, expirado ou reutilizado");
-    return res.redirect(`${appUrl}${returnTo}?searchConsoleError=invalid_state`);
+    return res.redirect(`${appUrl}${appendQueryParam(returnTo, "searchConsoleError", "invalid_state")}`);
   }
 
   try {
@@ -96,12 +111,12 @@ router.get("/auth/search-console/callback", async (req, res) => {
       tokens = await exchangeCodeForTokens(code);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do Search Console");
-      return res.redirect(`${appUrl}${returnTo}?searchConsoleError=token_exchange`);
+      return res.redirect(`${appUrl}${appendQueryParam(returnTo, "searchConsoleError", "token_exchange")}`);
     }
 
     if (!tokens.refresh_token) {
       logger.error({ tenantId }, "Google não retornou refresh_token no callback do Search Console");
-      return res.redirect(`${appUrl}${returnTo}?searchConsoleError=no_refresh_token`);
+      return res.redirect(`${appUrl}${appendQueryParam(returnTo, "searchConsoleError", "no_refresh_token")}`);
     }
 
     const before = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
@@ -109,10 +124,10 @@ router.get("/auth/search-console/callback", async (req, res) => {
     const after = await getSearchConsoleConnectionByTenantId(tenantId).catch(() => null);
     await auditSearchConsoleChange(req, tenantId, before, after, auditUserId, before ? "atualizar" : "criar");
     logger.info({ tenantId }, "Search Console conectado, aguardando verificação da meta tag");
-    return res.redirect(`${appUrl}${returnTo}?searchConsoleConnected=pending`);
+    return res.redirect(`${appUrl}${appendQueryParam(returnTo, "searchConsoleConnected", "pending")}`);
   } catch (err) {
     logger.error({ err, tenantId }, "Erro no callback Search Console");
-    return res.redirect(`${appUrl}${returnTo}?searchConsoleError=exchange_failed`);
+    return res.redirect(`${appUrl}${appendQueryParam(returnTo, "searchConsoleError", "exchange_failed")}`);
   }
 });
 
@@ -140,6 +155,29 @@ router.get("/tenants/:tenantId/search-console-connection", authenticate, async (
     });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao buscar status da conexão Search Console");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.get("/tenants/:tenantId/search-console-insights", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const requestedDays = Number(req.query.days ?? 28);
+    const result = await getSearchConsoleInsights(tenantId, requestedDays);
+    return res.json(result);
+  } catch (err) {
+    const tenantId = String(req.params.tenantId);
+    const message = err instanceof Error ? err.message : "UNKNOWN";
+    logger.error({ err, tenantId }, "Erro ao carregar insights do Search Console");
+    if (message === "SEARCH_CONSOLE_NOT_ACTIVE") {
+      return res.status(409).json({ error: "SEARCH_CONSOLE_NOT_ACTIVE" });
+    }
+    if (message.startsWith("SEARCH_CONSOLE_API_")) {
+      return res.status(502).json({ error: "SEARCH_CONSOLE_UPSTREAM_ERROR" });
+    }
     return res.status(500).json({ error: "Internal error" });
   }
 });
