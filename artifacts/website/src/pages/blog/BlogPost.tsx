@@ -3,7 +3,7 @@ import { getBlogPost } from "@/data/blog-posts";
 import { useSeoMeta } from "@/hooks/use-seo-meta";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, ArrowLeft, MessageCircle, Languages, BadgeCheck, RefreshCw } from "lucide-react";
+import { Calendar, ArrowLeft, MessageCircle, Languages, BadgeCheck, RefreshCw, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import NotFound from "@/pages/not-found";
 import { usePublicCountry } from "@/lib/publicCountry";
@@ -18,6 +18,22 @@ interface DynamicPost {
   updatedAt?: string | null;
 }
 
+type ClusterLink = {
+  label: string;
+  href: string;
+  keywords: string[];
+};
+
+const CLUSTER_LINKS: ClusterLink[] = [
+  { label: "CRM com IA para WhatsApp", href: "/solucoes/crm-whatsapp", keywords: ["whatsapp", "crm", "atendimento", "cliente", "lead"] },
+  { label: "Follow-up automático com IA", href: "/solucoes/automatizar-follow-up", keywords: ["follow-up", "follow up", "retorno", "responder", "acompanhamento"] },
+  { label: "Recuperação de leads parados", href: "/solucoes/recuperar-leads-parados", keywords: ["lead", "leads", "perdida", "perdido", "parado", "esquecido"] },
+  { label: "Reativação e expansão da carteira", href: "/solucoes/reativar-clientes", keywords: ["reativar", "cliente inativo", "recompra", "carteira", "recorrente"] },
+  { label: "Revenue Scout", href: "/produtos/revenue-scout", keywords: ["revenue", "recompra", "upsell", "cross-sell", "receita", "carteira"] },
+  { label: "Prospecção B2B com IA", href: "/produtos/prospeccao", keywords: ["prospecção", "prospeccao", "prospect", "b2b", "distribuidora", "indústria", "industria"] },
+  { label: "Marketing com IA", href: "/produtos/marketing", keywords: ["marketing", "campanha", "anúncio", "anuncio", "conteúdo", "conteudo", "mídia", "midia"] },
+];
+
 const PT = {
   back: "Voltar ao blog",
   fallbackSeo: "Artigo | Vendor.ai",
@@ -29,6 +45,8 @@ const PT = {
   author: "VendorAI",
   editorial: "Conteúdo editorial",
   updated: "Atualizado em",
+  relatedTitle: "Aprofunde este tema no VendorAI",
+  relatedDesc: "Conteúdo e produto passam a compartilhar o mesmo cluster para levar a pesquisa até a solução comercial correspondente.",
 } as const;
 
 const ES = {
@@ -42,6 +60,8 @@ const ES = {
   author: "VendorAI",
   editorial: "Contenido editorial",
   updated: "Actualizado el",
+  relatedTitle: "Profundiza este tema en VendorAI",
+  relatedDesc: "Contenido y producto comparten el mismo clúster para conectar la búsqueda con la solución comercial relacionada.",
 } as const;
 
 function formatDate(iso: string, locale: string) {
@@ -93,6 +113,39 @@ function EditorialMeta({ publishedAt, updatedAt, locale, copy }: { publishedAt?:
   );
 }
 
+function relatedClusters(text: string) {
+  const normalized = text.toLocaleLowerCase("pt-BR");
+  return CLUSTER_LINKS
+    .map((cluster) => ({
+      cluster,
+      score: cluster.keywords.reduce((total, keyword) => total + (normalized.includes(keyword) ? 1 : 0), 0),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((item) => item.cluster);
+}
+
+function CommercialClusterLinks({ text, copy }: { text: string; copy: typeof PT | typeof ES }) {
+  const links = relatedClusters(text);
+  if (!links.length) return null;
+
+  return (
+    <aside className="mt-12 rounded-2xl border border-slate-200 bg-slate-50 p-6" aria-labelledby="related-commercial-cluster">
+      <h2 id="related-commercial-cluster" className="text-lg font-bold text-slate-900">{copy.relatedTitle}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{copy.relatedDesc}</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {links.map((link) => (
+          <Link key={link.href} href={link.href} className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary">
+            <span>{link.label}</span>
+            <ArrowUpRight className="h-4 w-4 shrink-0 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+          </Link>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 function ArticleCta({ copy }: { copy: typeof PT | typeof ES }) {
   return (
     <div className="mt-16 rounded-2xl bg-primary/5 border border-primary/20 p-8 text-center">
@@ -131,6 +184,7 @@ export default function BlogPost() {
   }
 
   if (dynamicPost) {
+    const clusterText = `${dynamicPost.titulo} ${dynamicPost.metaDescription ?? ""} ${dynamicPost.conteudoHtml.replace(/<[^>]+>/g, " ").slice(0, 4000)}`;
     return (
       <article className="py-16 bg-white">
         <div className="container mx-auto px-4 max-w-2xl">
@@ -143,6 +197,7 @@ export default function BlogPost() {
             <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 leading-tight mb-4">{dynamicPost.titulo}</h1>
           </header>
           <div className="prose-slate prose-headings:text-slate-900 prose-headings:font-bold prose-p:text-slate-700 prose-p:leading-relaxed prose-img:rounded-xl border-t border-slate-100 pt-10" dangerouslySetInnerHTML={{ __html: dynamicPost.conteudoHtml }} />
+          <CommercialClusterLinks text={clusterText} copy={copy} />
           <ArticleCta copy={copy} />
         </div>
       </article>
@@ -150,6 +205,7 @@ export default function BlogPost() {
   }
 
   const post = staticPost!;
+  const clusterText = `${post.title} ${post.summary} ${post.metaDescription} ${post.body.slice(0, 4000)}`;
   return (
     <article className="py-16 bg-white">
       <div className="container mx-auto px-4 max-w-2xl">
@@ -163,6 +219,7 @@ export default function BlogPost() {
           <p className="text-lg text-slate-500 leading-relaxed">{post.summary}</p>
         </header>
         <div className="prose-slate space-y-5 border-t border-slate-100 pt-10">{renderMarkdown(post.body)}</div>
+        <CommercialClusterLinks text={clusterText} copy={copy} />
         <ArticleCta copy={copy} />
       </div>
     </article>
