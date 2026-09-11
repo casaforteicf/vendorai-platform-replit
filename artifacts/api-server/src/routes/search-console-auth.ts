@@ -1,4 +1,11 @@
 import { Router, type IRouter, type Request } from "express";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  db,
+  insertSeoBacklinkOpportunitySchema,
+  seoBacklinkOpportunitiesTable,
+  updateSeoBacklinkOpportunitySchema,
+} from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
@@ -178,6 +185,117 @@ router.get("/tenants/:tenantId/search-console-insights", authenticate, async (re
     if (message.startsWith("SEARCH_CONSOLE_API_")) {
       return res.status(502).json({ error: "SEARCH_CONSOLE_UPSTREAM_ERROR" });
     }
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.get("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+    const rows = await db
+      .select()
+      .from(seoBacklinkOpportunitiesTable)
+      .where(eq(seoBacklinkOpportunitiesTable.tenantId, tenantId))
+      .orderBy(desc(seoBacklinkOpportunitiesTable.updatedAt));
+
+    const summary = rows.reduce(
+      (acc, row) => {
+        acc.total += 1;
+        if (row.status in acc.byStatus) acc.byStatus[row.status as keyof typeof acc.byStatus] += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        byStatus: { identified: 0, contacted: 0, negotiating: 0, won: 0, lost: 0 },
+      },
+    );
+
+    return res.json({ opportunities: rows, summary });
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao listar oportunidades de backlinks");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.post("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+    const parsed = insertSeoBacklinkOpportunitySchema.safeParse({
+      ...req.body,
+      tenantId,
+      updatedAt: new Date(),
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ error: "INVALID_BACKLINK_OPPORTUNITY", details: parsed.error.flatten() });
+    }
+
+    const [created] = await db
+      .insert(seoBacklinkOpportunitiesTable)
+      .values(parsed.data)
+      .returning();
+
+    return res.status(201).json(created);
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao criar oportunidade de backlink");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.patch("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    const id = String(req.params.id);
+    if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+    const parsed = updateSeoBacklinkOpportunitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "INVALID_BACKLINK_UPDATE", details: parsed.error.flatten() });
+    }
+
+    const before = await db
+      .select()
+      .from(seoBacklinkOpportunitiesTable)
+      .where(and(eq(seoBacklinkOpportunitiesTable.id, id), eq(seoBacklinkOpportunitiesTable.tenantId, tenantId)))
+      .limit(1);
+    if (!before[0]) return res.status(404).json({ error: "Backlink opportunity not found" });
+
+    const nextStatus = parsed.data.status ?? before[0].status;
+    const [updated] = await db
+      .update(seoBacklinkOpportunitiesTable)
+      .set({
+        ...parsed.data,
+        updatedAt: new Date(),
+        wonAt: nextStatus === "won" ? before[0].wonAt ?? new Date() : null,
+      })
+      .where(and(eq(seoBacklinkOpportunitiesTable.id, id), eq(seoBacklinkOpportunitiesTable.tenantId, tenantId)))
+      .returning();
+
+    return res.json(updated);
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao atualizar oportunidade de backlink");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.delete("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    const id = String(req.params.id);
+    if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+    const [deleted] = await db
+      .delete(seoBacklinkOpportunitiesTable)
+      .where(and(eq(seoBacklinkOpportunitiesTable.id, id), eq(seoBacklinkOpportunitiesTable.tenantId, tenantId)))
+      .returning({ id: seoBacklinkOpportunitiesTable.id });
+
+    if (!deleted) return res.status(404).json({ error: "Backlink opportunity not found" });
+    return res.json({ success: true, id: deleted.id });
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao excluir oportunidade de backlink");
     return res.status(500).json({ error: "Internal error" });
   }
 });
