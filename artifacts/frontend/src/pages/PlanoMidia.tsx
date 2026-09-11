@@ -10,9 +10,17 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  CircleCheckBig,
+  ClipboardCheck,
+  Eye,
+  FileText,
+  Gauge,
+  Megaphone,
+  Palette,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  Target,
   WalletCards,
 } from "lucide-react";
 import PlanoMidiaCore from "@/pages/PlanoMidiaCore";
@@ -39,6 +47,7 @@ type PlanWithContext = {
   conteudo?: {
     nomeCampanha?: string;
     ofertaCampanha?: string;
+    statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
     periodo?: {
       duracaoValor?: number;
       duracaoUnidade?: "horas" | "dias";
@@ -70,6 +79,27 @@ const AVAILABLE_CHANNELS = [
   "Site",
   "Landing Page",
 ] as const;
+
+const JOURNEY_STEPS = [
+  { label: "Estratégia", description: "Objetivo, público, oferta e limites", icon: Target },
+  { label: "Plano", description: "Campanhas, canais e pilares", icon: FileText },
+  { label: "Calendário", description: "Datas, horários e formatos", icon: CalendarClock },
+  { label: "Aprovação", description: "Autoriza a produção", icon: ClipboardCheck },
+  { label: "Produção", description: "IA cria as peças", icon: Palette },
+  { label: "Revisão", description: "Opcional antes de publicar", icon: Eye },
+  { label: "Publicação", description: "Manual ou automática", icon: Megaphone },
+  { label: "Resultados", description: "Métricas alimentam o próximo ciclo", icon: Gauge },
+] as const;
+
+const PERIOD_PRESETS: Array<{ label: string; valor: number; unidade: "horas" | "dias" }> = [
+  { label: "6h", valor: 6, unidade: "horas" },
+  { label: "12h", valor: 12, unidade: "horas" },
+  { label: "1 dia", valor: 1, unidade: "dias" },
+  { label: "7 dias", valor: 7, unidade: "dias" },
+  { label: "30 dias", valor: 30, unidade: "dias" },
+  { label: "90 dias", valor: 90, unidade: "dias" },
+  { label: "1 ano", valor: 365, unidade: "dias" },
+];
 
 function emptyConfig(): PlanningConfig {
   return {
@@ -113,14 +143,45 @@ function fieldLabel(title: string, description?: string) {
 }
 
 function operationalDays(period: FlexiblePeriod): number {
-  if (!period.enabled) return 30;
   return Math.max(1, Math.ceil(period.unidade === "horas" ? period.valor / 24 : period.valor));
 }
 
 function formatMoney(value: string): string {
   const normalized = Number(value.replace(".", "").replace(",", "."));
-  if (!Number.isFinite(normalized) || normalized <= 0) return "Defina o limite";
+  if (!Number.isFinite(normalized) || normalized <= 0) return "Sem limite informado";
   return normalized.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function Journey() {
+  return (
+    <Card className="border-primary/30 bg-primary/[0.02]">
+      <CardContent className="p-4 md:p-5">
+        <div className="mb-3">
+          <p className="text-sm font-semibold">Como o Planejador funciona</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Uma sequência única do planejamento até o aprendizado. Aprovar o plano autoriza produzir; não significa publicar automaticamente.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+          {JOURNEY_STEPS.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <div key={step.label} className="relative rounded-xl border bg-background p-3 min-h-[98px]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <span className="text-[10px] font-semibold text-muted-foreground">{index + 1}/8</span>
+                </div>
+                <p className="mt-2 text-xs font-semibold">{step.label}</p>
+                <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{step.description}</p>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function PlanoMidia() {
@@ -131,7 +192,7 @@ export default function PlanoMidia() {
   const [nomeCampanha, setNomeCampanha] = useState("");
   const [ofertaCampanha, setOfertaCampanha] = useState("");
   const [orcamentoTotal, setOrcamentoTotal] = useState("");
-  const [customPeriod, setCustomPeriod] = useState<FlexiblePeriod>({ enabled: false, valor: 30, unidade: "dias", aberto: false });
+  const [customPeriod, setCustomPeriod] = useState<FlexiblePeriod>({ enabled: true, valor: 7, unidade: "dias", aberto: false });
   const configRef = useRef(config);
   const campaignRef = useRef({ nomeCampanha, ofertaCampanha, orcamentoTotal, customPeriod });
   const hydratedTenantRef = useRef("");
@@ -214,19 +275,17 @@ export default function PlanoMidia() {
             limiteRigido: true,
           };
         }
-        if (human.customPeriod.enabled) {
-          const days = operationalDays(human.customPeriod);
-          body["periodoDias"] = days;
-          body["periodo"] = {
-            duracaoValor: human.customPeriod.valor,
-            duracaoUnidade: human.customPeriod.unidade,
-            aberto: human.customPeriod.aberto,
-            fimEm: human.customPeriod.aberto ? null : undefined,
-          };
-        }
+        const days = operationalDays(human.customPeriod);
+        body["periodoDias"] = days;
+        body["periodo"] = {
+          duracaoValor: human.customPeriod.valor,
+          duracaoUnidade: human.customPeriod.unidade,
+          aberto: human.customPeriod.aberto,
+          fimEm: human.customPeriod.aberto ? null : undefined,
+        };
       }
 
-      if (isCalendarGeneration && human.customPeriod.enabled) {
+      if (isCalendarGeneration) {
         body["semanas"] = Math.max(1, Math.min(53, Math.ceil(operationalDays(human.customPeriod) / 7)));
       }
 
@@ -257,11 +316,9 @@ export default function PlanoMidia() {
     config.canaisPreferidos.length > 0 ? "canais" : "",
   ].filter(Boolean).length, [config]);
 
-  const periodSummary = customPeriod.enabled
-    ? customPeriod.aberto
-      ? `${customPeriod.valor} ${customPeriod.unidade} · sem data final`
-      : `${customPeriod.valor} ${customPeriod.unidade}`
-    : "Atalhos 30 / 60 / 90 dias";
+  const periodSummary = customPeriod.aberto
+    ? `${customPeriod.valor} ${customPeriod.unidade} · sem data final`
+    : `${customPeriod.valor} ${customPeriod.unidade}`;
 
   function toggleChannel(channel: string) {
     setConfig((current) => ({
@@ -272,24 +329,30 @@ export default function PlanoMidia() {
     }));
   }
 
+  function usePreset(valor: number, unidade: "horas" | "dias") {
+    setCustomPeriod({ enabled: true, valor, unidade, aberto: false });
+  }
+
   return (
     <div className="space-y-5">
+      <Journey />
+
       <Card className="overflow-hidden border-primary/40 shadow-sm">
         <div className="border-b bg-gradient-to-r from-primary/10 via-primary/5 to-background px-4 py-4 md:px-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className="gap-1"><Sparkles className="h-3 w-3" /> Planejador de Mídia com IA</Badge>
-                <Badge variant="outline">Humano define os limites</Badge>
+                <Badge className="gap-1"><Sparkles className="h-3 w-3" /> Configuração da campanha</Badge>
+                <Badge variant="outline">Etapa 1 · Estratégia</Badge>
               </div>
-              <h2 className="mt-2 text-lg font-semibold tracking-tight">Defina a campanha. A IA faz a distribuição.</h2>
+              <h2 className="mt-2 text-lg font-semibold tracking-tight">Defina os limites. A IA monta o plano.</h2>
               <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                Escolha o que quer promover, o período e quanto pode ser investido. A IA monta o plano, distribui o orçamento entre os canais e otimiza sem ultrapassar o teto aprovado.
+                O período pode ser curto ou longo: horas, dias, meses ou campanha aberta. Depois a IA cria plano, calendário e distribuição por canal.
               </p>
             </div>
             <div className="rounded-lg border bg-background/90 px-3 py-2 text-xs shadow-sm">
-              <span className="text-muted-foreground">Regra principal</span>
-              <p className="font-medium">A IA pode redistribuir. Não pode aumentar o orçamento.</p>
+              <span className="text-muted-foreground">Regra importante</span>
+              <p className="font-medium">Aprovar o plano = autorizar produção. Publicar é uma etapa separada.</p>
             </div>
           </div>
         </div>
@@ -297,19 +360,19 @@ export default function PlanoMidia() {
         <CardContent className="space-y-5 p-4 md:p-5">
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border bg-muted/20 p-3">
-              <div className="flex items-center gap-2 text-xs font-medium"><CalendarClock className="h-4 w-4 text-primary" /> 1. Período</div>
+              <div className="flex items-center gap-2 text-xs font-medium"><CalendarClock className="h-4 w-4 text-primary" /> Período da campanha</div>
               <p className="mt-1 text-sm font-semibold">{periodSummary}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Pode ser 12 horas, 1 dia, meses, 1 ano ou aberto.</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Qualquer duração. O calendário se adapta ao intervalo.</p>
             </div>
             <div className="rounded-xl border bg-muted/20 p-3">
-              <div className="flex items-center gap-2 text-xs font-medium"><WalletCards className="h-4 w-4 text-primary" /> 2. Orçamento</div>
+              <div className="flex items-center gap-2 text-xs font-medium"><WalletCards className="h-4 w-4 text-primary" /> Limite de investimento</div>
               <p className="mt-1 text-sm font-semibold">{formatMoney(orcamentoTotal)}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Valor total aprovado pelo usuário e tratado como teto rígido.</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Quando informado, funciona como teto rígido.</p>
             </div>
             <div className="rounded-xl border bg-primary/[0.04] p-3">
-              <div className="flex items-center gap-2 text-xs font-medium"><BrainCircuit className="h-4 w-4 text-primary" /> 3. IA executa a estratégia</div>
-              <p className="mt-1 text-sm font-semibold">Distribuição e otimização automáticas</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Canais, percentuais e ajustes seguem desempenho e regras de segurança.</p>
+              <div className="flex items-center gap-2 text-xs font-medium"><BrainCircuit className="h-4 w-4 text-primary" /> Papel da IA</div>
+              <p className="mt-1 text-sm font-semibold">Planejar, distribuir e otimizar</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">A produção começa somente depois da aprovação do plano.</p>
             </div>
           </div>
 
@@ -319,54 +382,72 @@ export default function PlanoMidia() {
               <Input value={nomeCampanha} onChange={(event) => setNomeCampanha(event.target.value)} placeholder="Ex.: Semana da Casa Nova" maxLength={200} />
             </div>
             <div>
-              {fieldLabel("Promoção / oferta", "Opcional. Use para campanha, lançamento ou condição especial.")}
+              {fieldLabel("Promoção / oferta", "Opcional. Use para lançamento ou condição especial.")}
               <Input value={ofertaCampanha} onChange={(event) => setOfertaCampanha(event.target.value)} placeholder="Ex.: condição especial até domingo" maxLength={500} />
             </div>
             <div>
-              {fieldLabel("Orçamento total (R$)", "Este é o teto que a IA nunca pode ultrapassar.")}
+              {fieldLabel("Orçamento total (R$)", "Opcional. Quando preenchido, a IA não pode ultrapassar.")}
               <Input inputMode="decimal" value={orcamentoTotal} onChange={(event) => setOrcamentoTotal(event.target.value.replace(/[^0-9.,]/g, ""))} placeholder="Ex.: 5.000" />
             </div>
             <div>
-              {fieldLabel("Gestão do orçamento", "Regra fixa da campanha.")}
+              {fieldLabel("Gestão do orçamento", "Regra fixa quando houver orçamento.")}
               <div className="flex h-10 items-center gap-2 rounded-md border bg-primary/[0.04] px-3 text-sm font-medium">
-                <BrainCircuit className="h-4 w-4 text-primary" /> IA autônoma dentro do limite
+                <BrainCircuit className="h-4 w-4 text-primary" /> IA dentro do limite aprovado
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border bg-background p-3 space-y-3">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <p className="text-xs font-medium">Período personalizado</p>
-                <p className="text-[11px] text-muted-foreground">Ative para usar horas, qualquer quantidade de dias ou campanha sem data final.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCustomPeriod((current) => ({ ...current, enabled: !current.enabled }))}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${customPeriod.enabled ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-              >
-                {customPeriod.enabled ? "Período personalizado ativo" : "Usar período personalizado"}
-              </button>
+            <div>
+              <p className="text-sm font-semibold">Duração do planejamento</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Não existe mais um prazo obrigatório de 30, 60 ou 90 dias. Escolha qualquer quantidade de horas ou dias; meses e anos usam atalhos em dias.
+              </p>
             </div>
-            {customPeriod.enabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3 items-end">
-                <div>
-                  {fieldLabel("Duração")}
-                  <Input type="number" min={1} max={3650} value={customPeriod.valor} onChange={(event) => setCustomPeriod((current) => ({ ...current, valor: Math.max(1, Number(event.target.value) || 1) }))} />
-                </div>
-                <div>
-                  {fieldLabel("Unidade")}
-                  <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={customPeriod.unidade} onChange={(event) => setCustomPeriod((current) => ({ ...current, unidade: event.target.value as "horas" | "dias" }))}>
-                    <option value="horas">Horas</option>
-                    <option value="dias">Dias</option>
-                  </select>
-                </div>
-                <label className="h-10 flex items-center gap-2 rounded-md border px-3 text-xs cursor-pointer">
-                  <input type="checkbox" checked={customPeriod.aberto} onChange={(event) => setCustomPeriod((current) => ({ ...current, aberto: event.target.checked }))} />
-                  Sem data final
-                </label>
+
+            <div className="flex flex-wrap gap-2">
+              {PERIOD_PRESETS.map((preset) => {
+                const selected = !customPeriod.aberto && customPeriod.valor === preset.valor && customPeriod.unidade === preset.unidade;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => usePreset(preset.valor, preset.unidade)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${selected ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3 items-end">
+              <div>
+                {fieldLabel("Duração")}
+                <Input type="number" min={1} max={3650} value={customPeriod.valor} onChange={(event) => setCustomPeriod((current) => ({ ...current, enabled: true, valor: Math.max(1, Number(event.target.value) || 1) }))} />
               </div>
-            )}
+              <div>
+                {fieldLabel("Unidade")}
+                <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={customPeriod.unidade} onChange={(event) => setCustomPeriod((current) => ({ ...current, enabled: true, unidade: event.target.value as "horas" | "dias" }))}>
+                  <option value="horas">Horas</option>
+                  <option value="dias">Dias</option>
+                </select>
+              </div>
+              <label className="h-10 flex items-center gap-2 rounded-md border px-3 text-xs cursor-pointer">
+                <input type="checkbox" checked={customPeriod.aberto} onChange={(event) => setCustomPeriod((current) => ({ ...current, enabled: true, aberto: event.target.checked }))} />
+                Sem data final
+              </label>
+            </div>
+
+            <div className="rounded-lg border border-primary/20 bg-primary/[0.035] p-3 text-xs text-muted-foreground">
+              <div className="flex items-start gap-2">
+                <CircleCheckBig className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="font-medium text-foreground">Período e antecedência são coisas diferentes</p>
+                  <p className="mt-0.5">A campanha pode durar 6 horas, 7 dias ou 1 ano. A antecedência para a IA produzir cada peça será controlada na etapa de Produção/Publicação.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -467,8 +548,8 @@ export default function PlanoMidia() {
       </Card>
 
       <div className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.02] px-4 py-3">
-        <p className="text-xs font-medium">Abaixo: plano gerado pela IA</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">O resultado deve respeitar exatamente o período e o teto financeiro definidos acima.</p>
+        <p className="text-xs font-medium">Próximas etapas: Plano → Calendário → Aprovação</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">Abaixo a IA apresenta o plano gerado. Depois da aprovação, a produção pode começar; publicação continua sendo uma autorização separada.</p>
       </div>
 
       <div className="marketing-plan-responsive">
