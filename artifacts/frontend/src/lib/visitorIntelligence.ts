@@ -25,6 +25,17 @@ function authToken() {
   }
 }
 
+function telemetrySurface(): { surface: "app" | "mobile"; mobilePlatform: string | null } {
+  try {
+    const marker = window.localStorage.getItem("vendorai_surface");
+    const mobilePlatform = window.localStorage.getItem("vendorai_mobile_platform");
+    if (marker === "mobile") return { surface: "mobile", mobilePlatform };
+  } catch {
+    // Sem storage, o navegador autenticado continua classificado como app web.
+  }
+  return { surface: "app", mobilePlatform: null };
+}
+
 function sessionId(): string {
   try {
     const existing = window.sessionStorage.getItem(SESSION_KEY);
@@ -84,6 +95,7 @@ export async function sendVisitorTelemetry(
   if (!token) return;
 
   const attr = attribution();
+  const surface = telemetrySurface();
   const body = JSON.stringify({
     anonymousSessionId: sessionId(),
     eventType,
@@ -92,7 +104,8 @@ export async function sendVisitorTelemetry(
     referrer: document.referrer || undefined,
     utmCampaign: attr.utmCampaign || undefined,
     metadata: {
-      surface: "app",
+      surface: surface.surface,
+      mobilePlatform: surface.mobilePlatform,
       hostname: window.location.hostname,
       deviceType: deviceType(),
       browser: browser(),
