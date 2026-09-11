@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   agentConfigsTable,
@@ -9,6 +9,7 @@ import {
   db,
   instagramConnectionsTable,
   leadsTable,
+  messagesTable,
   onboardingProgressTable,
   tenantsTable,
   usersTable,
@@ -67,6 +68,7 @@ async function readImplementationFacts(tenantId: string) {
     [config],
     [activeUsers],
     [leads],
+    [testedConversation],
     catalogCount,
     [whatsapp],
     [instagram],
@@ -98,6 +100,15 @@ async function readImplementationFacts(tenantId: string) {
       isNull(leadsTable.naoLeadTipo),
       isNull(leadsTable.naoLeadClassificadoEm),
     )),
+    db.select({ conversationId: messagesTable.conversationId })
+      .from(messagesTable)
+      .where(and(
+        eq(messagesTable.tenantId, tenantId),
+        ne(messagesTable.status, "erro"),
+      ))
+      .groupBy(messagesTable.conversationId)
+      .having(sql`bool_or(${messagesTable.direcao} = 'entrada') AND bool_or(${messagesTable.direcao} = 'saida')`)
+      .limit(1),
     getActiveCatalogCount(tenantId),
     db.select({
       id: whatsappConnectionsTable.id,
@@ -147,6 +158,7 @@ async function readImplementationFacts(tenantId: string) {
         (!!calendar.googleAccessToken &&
           (!calendar.googleTokenExpiresAt || calendar.googleTokenExpiresAt.getTime() > now))),
     leadCount: Number(leads?.value ?? 0),
+    operationalTestPassed: !!testedConversation,
     catalogCount,
     agentsConfigured: !!config?.setupCompletedAt,
     autonomyEnabled: !!config?.autonomyEnabledAt,

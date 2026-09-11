@@ -32,6 +32,7 @@ export type ImplementationFacts = {
   instagramConnected: boolean;
   calendarConnected: boolean;
   leadCount: number;
+  operationalTestPassed: boolean;
   catalogCount: number;
   agentsConfigured: boolean;
   autonomyEnabled: boolean;
@@ -106,7 +107,7 @@ export function normalizeImplementationState(raw: unknown): OnboardingImplementa
 export function buildImplementationPlan(
   segment: string | null | undefined,
   facts: ImplementationFacts,
-  state: OnboardingImplementationState,
+  _state: OnboardingImplementationState,
 ): ImplementationStep[] {
   const segmentName = segment ?? "";
   const productHeavy = hasHint(segmentName, PRODUCT_SEGMENT_HINTS);
@@ -187,10 +188,10 @@ export function buildImplementationPlan(
       title: "Teste operacional",
       description: "Executar um fluxo simples ponta a ponta e confirmar que o resultado está correto.",
       href: "/leads",
-      done: state.manual.test === true,
+      done: facts.operationalTestPassed,
       hardBlocker: true,
-      canAcknowledge: true,
-      source: "manual",
+      canAcknowledge: false,
+      source: "system",
     },
     {
       id: "autonomy",

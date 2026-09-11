@@ -15,6 +15,7 @@ const readyFacts: ImplementationFacts = {
   instagramConnected: false,
   calendarConnected: false,
   leadCount: 0,
+  operationalTestPassed: false,
   catalogCount: 1,
   agentsConfigured: true,
   autonomyEnabled: false,
@@ -48,10 +49,15 @@ describe("onboarding implementation lifecycle", () => {
     expect(readyPlan.find((step) => step.id === "catalog")?.done).toBe(true);
   });
 
-  it("keeps system-observed steps non-acknowledgeable", () => {
+  it("keeps every system-observed step non-acknowledgeable", () => {
     const plan = buildImplementationPlan("Loja", readyFacts, state(false));
-    expect(plan.filter((step) => step.id !== "test").every((step) => step.canAcknowledge === false)).toBe(true);
-    expect(plan.find((step) => step.id === "test")?.canAcknowledge).toBe(true);
+    expect(plan.every((step) => step.canAcknowledge === false)).toBe(true);
+    expect(plan.find((step) => step.id === "test")?.source).toBe("system");
+  });
+
+  it("does not accept a manual confirmation as operational evidence", () => {
+    const plan = buildImplementationPlan("Loja", readyFacts, state(true));
+    expect(plan.find((step) => step.id === "test")?.done).toBe(false);
   });
 
   it("blocks go-live until every hard step is complete", () => {
@@ -62,7 +68,11 @@ describe("onboarding implementation lifecycle", () => {
   });
 
   it("becomes ready when hard facts and the operational test are complete", () => {
-    const plan = buildImplementationPlan("Loja de materiais", readyFacts, state(true));
+    const plan = buildImplementationPlan(
+      "Loja de materiais",
+      { ...readyFacts, operationalTestPassed: true },
+      state(false),
+    );
     expect(buildImplementationReadiness(plan).ready).toBe(true);
   });
 
