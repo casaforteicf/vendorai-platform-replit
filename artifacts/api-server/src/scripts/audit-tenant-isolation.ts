@@ -103,6 +103,13 @@ for (const filePath of walk(root)) {
       ].includes(relativeFile) &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /if\s*\(!canAccess\(req,\s*tenantId\)/.test(guardWindow);
+    // Command Center, goals, feedback and stage-policy routes resolve the route tenant
+    // only to enforce the same-tenant/super-admin guard on the immediately following line.
+    // Keep this exception scoped to this router and exact guard shape.
+    const guardedOfficialMetricsTenant =
+      relativeFile === "routes/official_metrics.ts" &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(guardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
@@ -110,7 +117,8 @@ for (const filePath of walk(root)) {
       guardedMarketingTenant ||
       guardedImplementationSuperAdminTenant ||
       guardedJarvisAgentTaskTenant ||
-      guardedFinanceTenant
+      guardedFinanceTenant ||
+      guardedOfficialMetricsTenant
     ) {
       return;
     }
