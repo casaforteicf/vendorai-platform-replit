@@ -1,0 +1,70 @@
+name: Publish VendorAI Official Media 9
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-official-media-9.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download validated media artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/vendorai-media
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10267843120/zip" \
+            -o /tmp/vendorai-media.zip
+          unzip -q /tmp/vendorai-media.zip -d /tmp/vendorai-media
+          rm -rf /tmp/vendorai-media/videos/raw
+          # Não publicar vídeos reprovados na validação visual.
+          rm -f /tmp/vendorai-media/videos/crm-demo.webm \
+                /tmp/vendorai-media/videos/crm-short.webm \
+                /tmp/vendorai-media/videos/financeiro-erp-demo.webm \
+                /tmp/vendorai-media/videos/financeiro-erp-short.webm
+
+      - name: Publish to website public media
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          TARGET="artifacts/website/public/media/vendorai-official"
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          cp -R /tmp/vendorai-media/* "$TARGET"/
+          git config user.name "VendorAI Media Bot"
+          git config user.email "media-bot@appvendorai.com"
+          git add "$TARGET"
+          if git diff --cached --quiet; then
+            echo "No media changes to publish."
+            exit 0
+          fi
+          git commit -m "chore(media): publish validated VendorAI official media"
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push attempt $attempt failed; retrying..."
+            sleep 3
+          done
+          exit 1
