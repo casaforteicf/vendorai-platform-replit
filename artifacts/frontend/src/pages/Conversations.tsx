@@ -35,7 +35,7 @@ import {
   Bot,
   User,
   Wifi,
-  MessageCircle,
+  Smartphone,
   ChevronLeft,
   UserCheck,
   ArrowRight,
@@ -68,7 +68,7 @@ import {
 } from "@/components/media/MediaAssetPicker";
 
 type InboxFilter = "all" | "unread" | "human" | "ai";
-type ActiveView = "inbox" | "instagram" | "praca";
+type ActiveView = "inbox" | "instagram" | "email" | "app" | "praca";
 
 function channelIcon(channel: string | null | undefined) {
   switch (channel) {
@@ -79,7 +79,7 @@ function channelIcon(channel: string | null | undefined) {
     case "email":
       return <Mail className="h-3.5 w-3.5 text-blue-400" />;
     case "chat":
-      return <MessageCircle className="h-3.5 w-3.5 text-violet-400" />;
+      return <Smartphone className="h-3.5 w-3.5 text-violet-400" />;
     default:
       return <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />;
   }
@@ -90,7 +90,7 @@ function channelLabel(channel: string | null | undefined): string {
     whatsapp: "WhatsApp",
     instagram: "Instagram",
     email: "E-mail",
-    chat: "Chat",
+    chat: "Aplicativo",
   };
   return labels[channel ?? ""] ?? channel ?? "—";
 }
@@ -247,7 +247,6 @@ function MsgBubble({ msg }: { msg: Message }) {
           )}
         </div>
       )}
-
       <div
         className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
           isOutgoing
@@ -1247,7 +1246,6 @@ function ChatPanel({
     </div>
   );
 }
-
 export default function Conversations() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -1341,8 +1339,22 @@ export default function Conversations() {
     .filter((conversation) => conversation.channel === "instagram")
     .reduce((acc, conversation) => acc + conversation.naoLidas, 0);
 
+  const emailUnread = conversations
+    .filter((conversation) => conversation.channel === "email")
+    .reduce((acc, conversation) => acc + conversation.naoLidas, 0);
+
+  const appUnread = conversations
+    .filter((conversation) => conversation.channel === "chat")
+    .reduce((acc, conversation) => acc + conversation.naoLidas, 0);
+
   const effectiveChannelFilter =
-    activeView === "instagram" ? "instagram" : channelFilter;
+    activeView === "instagram"
+      ? "instagram"
+      : activeView === "email"
+        ? "email"
+        : activeView === "app"
+          ? "chat"
+          : channelFilter;
 
   const filteredConversations = [...conversations]
     .sort((a, b) => {
@@ -1408,7 +1420,7 @@ export default function Conversations() {
       ? [{ key: "instagram", label: "Instagram" }]
       : []),
     ...(channelCounts.email ? [{ key: "email", label: "E-mail" }] : []),
-    ...(channelCounts.chat ? [{ key: "chat", label: "Chat" }] : []),
+    ...(channelCounts.chat ? [{ key: "chat", label: "Aplicativo" }] : []),
   ];
 
   const quickFilters: {
@@ -1544,7 +1556,7 @@ export default function Conversations() {
                 </span>
               </div>
               <p className="truncate text-xs text-muted-foreground">
-                WhatsApp, Instagram, e-mail e chat com contexto de CRM e IA.
+                WhatsApp, Instagram, e-mail e aplicativo com contexto de CRM e IA.
               </p>
             </div>
           </div>
@@ -1641,6 +1653,55 @@ export default function Conversations() {
 
           <button
             type="button"
+            onClick={() => {
+              setActiveView("email");
+              setInboxFilter("all");
+            }}
+            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
+              activeView === "email"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Mail className="h-3.5 w-3.5 text-blue-500" />
+            E-mail
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+              {channelCounts.email ?? 0}
+            </span>
+            {emailUnread > 0 && (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                {emailUnread}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveView("app");
+              setInboxFilter("all");
+            }}
+            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
+              activeView === "app"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            title="Canal preparado para mensagens do aplicativo"
+          >
+            <Smartphone className="h-3.5 w-3.5 text-violet-500" />
+            Aplicativo
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+              {channelCounts.chat ?? 0}
+            </span>
+            {appUnread > 0 && (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                {appUnread}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveView("praca")}
             className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
               activeView === "praca"
@@ -1703,7 +1764,7 @@ export default function Conversations() {
               </div>
             </div>
 
-            {activeView !== "instagram" && filterChips.length > 1 && (
+            {activeView === "inbox" && filterChips.length > 1 && (
               <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-border px-3 py-2 scrollbar-none">
                 {filterChips.map((chip) => (
                   <button
