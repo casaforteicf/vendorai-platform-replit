@@ -254,10 +254,14 @@ function improveProductionIntro() {
     ?? findTextElement("p", "Produção do Plano de Mídia");
   if (!title) return;
 
-  title.textContent = "Produção do Plano de Mídia";
+  if (normalizedText(title) !== "Produção do Plano de Mídia") {
+    title.textContent = "Produção do Plano de Mídia";
+  }
+
   const intro = title.parentElement?.querySelectorAll<HTMLParagraphElement>("p")[1];
-  if (intro) {
-    intro.textContent = "O plano já traz briefing, canal, data e KPI. A IA procura primeiro fotos e vídeos da Biblioteca de Mídias; depois você revisa e aprova.";
+  const introText = "O plano já traz briefing, canal, data e KPI. A IA procura primeiro fotos e vídeos da Biblioteca de Mídias; depois você revisa e aprova.";
+  if (intro && normalizedText(intro) !== introText) {
+    intro.textContent = introText;
   }
 
   if (!title.parentElement?.querySelector(`[${FLOW_ATTR}]`)) {
@@ -303,7 +307,9 @@ function ensureProminentMediaButton() {
     referenceBlock.appendChild(button);
   }
 
-  button.textContent = "Biblioteca de Mídias";
+  if (normalizedText(button) !== "Biblioteca de Mídias") {
+    button.textContent = "Biblioteca de Mídias";
+  }
   button.title = "Abrir a Biblioteca para selecionar, organizar ou enviar fotos e vídeos do negócio";
 
   const textContainer = referenceTitle.parentElement;
@@ -344,7 +350,8 @@ function ensurePreviewButtons() {
     }
 
     const isOpen = normalizedText(nativeButton) === "Fechar";
-    previewButton.textContent = isOpen ? "Ocultar conteúdo" : "Visualizar";
+    const previewLabel = isOpen ? "Ocultar conteúdo" : "Visualizar";
+    if (normalizedText(previewButton) !== previewLabel) previewButton.textContent = previewLabel;
     previewButton.title = isOpen
       ? "Fechar a prévia desta versão"
       : "Abrir texto, imagens e demais dados gerados nesta versão";
@@ -400,7 +407,7 @@ function decorateProductionCards() {
 
 function improveReferenceCopy() {
   const createOutsidePlan = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
-    (button) => normalizedText(button) === "Criação avulsa" || normalizedText(button) === "Criar fora do plano",
+    (button) => normalizedText(button) === "Criação avulsa",
   );
   if (createOutsidePlan) {
     createOutsidePlan.textContent = "Criar fora do plano";
@@ -408,8 +415,7 @@ function improveReferenceCopy() {
   }
 
   const completeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter(
-    (button) => normalizedText(button).startsWith("Completar criativos")
-      || normalizedText(button).startsWith("Gerar imagens faltantes"),
+    (button) => normalizedText(button).startsWith("Completar criativos"),
   );
   for (const button of completeButtons) {
     const match = normalizedText(button).match(/\((\d+)\)/);
