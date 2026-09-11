@@ -27,11 +27,8 @@ import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
 import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import ModernHomepageHero from "@/components/ModernHomepageHero";
-import NicheVisualShowcase from "@/components/NicheVisualShowcase";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
-import { usePublicCountry } from "@/lib/publicCountry";
 import {
   captureLaunchAttribution,
   installPublicFormConsentBridge,
@@ -63,20 +60,6 @@ function FloatingActions() {
   );
 }
 
-function HomeWithNicheVisuals() {
-  const { isSpanish } = usePublicCountry();
-
-  return (
-    <>
-      <ModernHomepageHero />
-      {!isSpanish && <NicheVisualShowcase />}
-      <div className="[&>div>section:first-child]:hidden">
-        <Home />
-      </div>
-    </>
-  );
-}
-
 function Router() {
   return (
     <Switch>
@@ -90,7 +73,7 @@ function Router() {
           <Navbar />
           <main className="min-w-0 flex-1">
             <Switch>
-              <Route path="/" component={HomeWithNicheVisuals} />
+              <Route path="/" component={Home} />
               <Route path="/produtos/:slug" component={ProdutoDetalhe} />
               <Route path="/produtos" component={Produtos} />
               <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
