@@ -24,6 +24,7 @@ const RecursoDetalhe = lazy(() => import("@/pages/RecursoDetalhe"));
 const AgenteDetalhe = lazy(() => import("@/pages/AgenteDetalhe"));
 const Produtos = lazy(() => import("@/pages/Produtos"));
 const ProdutoDetalhe = lazy(() => import("@/pages/ProdutoDetalhe"));
+const SeoIntentPage = lazy(() => import("@/pages/SeoIntentPage"));
 const Precos = lazy(() => import("@/pages/Precos"));
 const Sobre = lazy(() => import("@/pages/Sobre"));
 const Contato = lazy(() => import("@/pages/Contato"));
@@ -98,6 +99,8 @@ function Router() {
             <main className="min-w-0 flex-1">
               <Switch>
                 <Route path="/" component={HomeWithGrowthRevenueHero} />
+                <Route path="/solucoes/:slug" component={SeoIntentPage} />
+                <Route path="/comparar/:slug" component={SeoIntentPage} />
                 <Route path="/produtos/:slug" component={ProdutoDetalhe} />
                 <Route path="/produtos" component={Produtos} />
                 <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
