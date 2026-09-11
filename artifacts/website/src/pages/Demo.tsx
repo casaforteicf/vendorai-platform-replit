@@ -9,8 +9,15 @@ import {
   getAdDataConsentState,
   getLaunchAttribution,
   setAdDataConsent,
+  type LaunchAttribution,
 } from "@/lib/launchAttribution";
 import { PUBLIC_COUNTRIES, type PublicCountryCode, usePublicCountry } from "@/lib/publicCountry";
+import {
+  MARKETING_VERTICALS,
+  resolveMarketingVertical,
+  type MarketingVerticalProfile,
+} from "@workspace/vendor-brain/marketing-verticals";
+import publicVerticalSlugs from "@/data/publicVerticalSlugs.json";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
@@ -34,6 +41,85 @@ type TrialForm = {
   tamanhoEquipe: string;
   adDataConsent: boolean;
 };
+
+type EntryContext = {
+  source: "vertical-lp" | "campaign" | "direct";
+  intent?: string;
+  verticalId?: string;
+  verticalSlug?: string;
+  verticalName?: string;
+  macrosegment?: string;
+  landingPageSlug?: string;
+  entryUrl?: string;
+};
+
+const publicSlugOverrides = publicVerticalSlugs as Record<string, string>;
+
+function publicSlugFor(profile: MarketingVerticalProfile): string {
+  return publicSlugOverrides[profile.id] ?? profile.slug;
+}
+
+function profileFromLandingPageSlug(slug?: string): MarketingVerticalProfile | undefined {
+  if (!slug) return undefined;
+  return MARKETING_VERTICALS.find((profile) => publicSlugFor(profile) === slug);
+}
+
+function readEntryContext(): EntryContext {
+  if (typeof window === "undefined") return { source: "direct" };
+
+  const url = new URL(window.location.href);
+  const verticalId = url.searchParams.get("vertical_id");
+  const verticalValue = url.searchParams.get("vertical");
+  const intent = url.searchParams.get("intent") ?? undefined;
+  const attribution = getLaunchAttribution();
+
+  let referrerUrl: URL | null = null;
+  let referrerLpSlug: string | undefined;
+  try {
+    if (document.referrer) {
+      referrerUrl = new URL(document.referrer);
+      const match = referrerUrl.pathname.match(/^\/lp\/([^/?#]+)/);
+      if (match?.[1]) referrerLpSlug = match[1];
+    }
+  } catch {
+    referrerUrl = null;
+  }
+
+  const profile =
+    (verticalId ? resolveMarketingVertical(verticalId) : undefined)
+    ?? profileFromLandingPageSlug(referrerLpSlug)
+    ?? (verticalValue ? resolveMarketingVertical(verticalValue) : undefined);
+
+  const landingPageSlug = referrerLpSlug ?? attribution.landingPageSlug ?? (profile ? publicSlugFor(profile) : undefined);
+  const entryUrl = referrerLpSlug && referrerUrl ? referrerUrl.toString() : attribution.pageUrl;
+  const hasCampaign = Boolean(
+    attribution.utmSource
+      || attribution.utmMedium
+      || attribution.utmCampaign
+      || attribution.gclid
+      || attribution.fbclid,
+  );
+
+  return {
+    source: profile ? "vertical-lp" : hasCampaign ? "campaign" : "direct",
+    intent: intent ?? (profile ? "demo" : undefined),
+    verticalId: profile?.id,
+    verticalSlug: profile?.slug,
+    verticalName: profile?.name,
+    macrosegment: profile?.macrosegment,
+    landingPageSlug,
+    entryUrl,
+  };
+}
+
+function attributionWithEntryContext(context: EntryContext): LaunchAttribution {
+  const attribution = getLaunchAttribution();
+  return {
+    ...attribution,
+    ...(context.entryUrl ? { pageUrl: context.entryUrl } : {}),
+    ...(context.landingPageSlug ? { landingPageSlug: context.landingPageSlug } : {}),
+  };
+}
 
 const initialForm = (countryCode: PublicCountryCode): TrialForm => ({
   countryCode,
@@ -66,6 +152,8 @@ const PT = {
   connectionError: "Erro de conexão",
   tryAgain: "Tente novamente.",
   defaultWarmMessage: "Iniciou o cadastro para o trial de 5 dias do VendorAI.",
+  contextDetected: "Contexto reconhecido",
+  contextDetectedText: (name: string) => `Você veio pela experiência de ${name}. O mesmo acesso VendorAI será preparado com esse contexto.`,
   details: {
     country: "País",
     segment: "Segmento",
@@ -156,6 +244,8 @@ const ES = {
   connectionError: "Error de conexión",
   tryAgain: "Inténtalo nuevamente.",
   defaultWarmMessage: "Inició el registro para la prueba de 5 días de VendorAI.",
+  contextDetected: "Contexto reconocido",
+  contextDetectedText: (name: string) => `Llegaste desde la experiencia de ${name}. El mismo acceso VendorAI se preparará con ese contexto.`,
   details: {
     country: "País",
     segment: "Segmento",
@@ -240,12 +330,20 @@ export default function Demo() {
   const { countryCode, setCountryCode, country, isSpanish } = usePublicCountry();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [entryContext] = useState<EntryContext>(() => readEntryContext());
   const [form, setForm] = useState<TrialForm>(() => initialForm(countryCode));
   const copy = isSpanish ? ES : PT;
 
   useEffect(() => {
     setForm((current) => current.countryCode === countryCode ? current : { ...current, countryCode });
   }, [countryCode]);
+
+  useEffect(() => {
+    if (!entryContext.verticalName) return;
+    setForm((current) => current.segmento
+      ? current
+      : { ...current, segmento: entryContext.verticalName ?? current.segmento });
+  }, [entryContext.verticalName]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, type, value } = e.target;
@@ -262,9 +360,12 @@ export default function Demo() {
 
   const captureWarmLead = async () => {
     if (!form.nomePessoa || !form.email || !form.nomeEmpresa) return;
-    const attribution = getLaunchAttribution();
+    const attribution = attributionWithEntryContext(entryContext);
     const details = [
       `${copy.details.country}: ${country.label} (${form.countryCode})`,
+      entryContext.verticalId && `Vertical ID: ${entryContext.verticalId}`,
+      entryContext.intent && `Intenção de entrada: ${entryContext.intent}`,
+      `Origem do acesso: ${entryContext.source}`,
       form.segmento && `${copy.details.segment}: ${form.segmento}`,
       form.nicho && `${copy.details.niche}: ${form.nicho}`,
       form.produtosServicos && `${copy.details.products}: ${form.produtosServicos}`,
@@ -287,7 +388,7 @@ export default function Demo() {
           telefone: form.telefone || undefined,
           empresa: form.nomeEmpresa,
           mensagem: details || copy.defaultWarmMessage,
-          origem: "trial_progressivo",
+          origem: entryContext.source === "vertical-lp" ? "lp_vertical_trial" : "trial_progressivo",
           ...attribution,
           adDataConsent: form.adDataConsent,
         }),
@@ -333,7 +434,7 @@ export default function Demo() {
     setLoading(true);
     try {
       await captureWarmLead();
-      const attribution = getLaunchAttribution();
+      const attribution = attributionWithEntryContext(entryContext);
       const res = await fetch(`${API_BASE}/auth/demo-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -367,12 +468,22 @@ export default function Demo() {
       toast({ title: copy.createdTitle, description: copy.createdDescription });
       const handoff = new URLSearchParams({ vendorai_token: data.token });
       if (data.tenant?.demoExpiresAt) handoff.set("demo_expires_at", data.tenant.demoExpiresAt);
+      handoff.set("onboarding_empresa", form.nomeEmpresa);
       handoff.set("onboarding_segmento", form.segmento);
+      handoff.set("onboarding_country", form.countryCode);
       if (form.nicho) handoff.set("onboarding_nicho", form.nicho);
       if (form.produtosServicos) handoff.set("onboarding_oferta", form.produtosServicos);
       if (form.objetivoPrincipal) handoff.set("onboarding_objetivo", form.objetivoPrincipal);
       if (form.dorPrincipal) handoff.set("onboarding_dor", form.dorPrincipal);
       if (form.canalPrincipal) handoff.set("onboarding_canal", form.canalPrincipal);
+      if (entryContext.verticalId) handoff.set("onboarding_vertical_id", entryContext.verticalId);
+      if (entryContext.verticalSlug) handoff.set("onboarding_vertical_slug", entryContext.verticalSlug);
+      if (entryContext.verticalName) handoff.set("onboarding_vertical_name", entryContext.verticalName);
+      if (entryContext.macrosegment) handoff.set("onboarding_macrosegment", entryContext.macrosegment);
+      if (entryContext.intent) handoff.set("onboarding_intent", entryContext.intent);
+      handoff.set("onboarding_source", entryContext.source);
+      if (entryContext.landingPageSlug) handoff.set("onboarding_landing_page", entryContext.landingPageSlug);
+      if (entryContext.entryUrl) handoff.set("onboarding_entry_url", entryContext.entryUrl);
 
       setTimeout(() => {
         window.location.href = `${CRM_BASE}/dashboard#${handoff.toString()}`;
@@ -403,6 +514,12 @@ export default function Demo() {
                 <div key={n} className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-primary" : "bg-slate-200"}`} />
               ))}
             </div>
+
+            {entryContext.verticalName && step === 1 ? (
+              <div className="mb-5 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-950">
+                <strong>{copy.contextDetected}:</strong>{" "}{copy.contextDetectedText(entryContext.verticalName)}
+              </div>
+            ) : null}
 
             <h2 className="mb-2 text-2xl font-bold text-slate-900">{copy.stepTitles[step - 1]}</h2>
             <p className="mb-7 text-slate-500">{copy.stepDescriptions[step - 1]}</p>
