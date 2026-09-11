@@ -7,7 +7,7 @@ const router: IRouter = Router();
 const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
 
 const querySchema = z.object({
-  minutes: z.coerce.number().int().min(5).max(1440).optional(),
+  minutes: z.coerce.number().int().min(5).max(90 * 24 * 60).optional(),
   onlineWindowSeconds: z.coerce.number().int().min(30).max(300).optional(),
 });
 
