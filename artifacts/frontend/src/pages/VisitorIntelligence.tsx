@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Flame, Globe2, MapPin, MonitorSmartphone, MousePointerClick, Radio, Smartphone, UserCheck, Users } from "lucide-react";
+import { Flame, Globe2, MapPin, MonitorSmartphone, MousePointerClick, Radio, Smartphone } from "lucide-react";
 
 const API_BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_URL || "/api");
 
 type JourneyItem = { path: string | null; pageUrl: string | null; at: string | null };
 type VisitorSurface = "site" | "app" | "mobile" | "unknown";
+type SessionStatus = "all" | "online" | "hot" | "identified" | "anonymous";
 type IntentSummary = {
   score: number;
   tier: "baixo" | "medio" | "alto" | "muito_alto";
@@ -86,6 +87,37 @@ function intentClass(tier: IntentSummary["tier"]) {
   return "border-border bg-muted text-muted-foreground";
 }
 
+function matchesStatus(session: VisitorSession, status: SessionStatus) {
+  if (status === "online") return session.online;
+  if (status === "hot") return session.hotOpportunity;
+  if (status === "identified") return session.identified;
+  if (status === "anonymous") return !session.identified;
+  return true;
+}
+
+function matchesSearch(session: VisitorSession, query: string) {
+  if (!query) return true;
+  const haystack = [
+    session.sessionId,
+    session.currentPath,
+    session.referrer,
+    session.geo.city,
+    session.geo.region,
+    session.geo.country,
+    session.source,
+    session.medium,
+    session.campaign,
+    session.device.type,
+    session.device.browser,
+    session.device.os,
+    surfaceLabel(session.surface),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("pt-BR");
+  return haystack.includes(query);
+}
+
 async function loadVisitors(minutes: number): Promise<VisitorResponse> {
   const token = window.localStorage.getItem("vendorai_token");
   if (!token) throw new Error("Sessão não autenticada");
@@ -101,6 +133,8 @@ async function loadVisitors(minutes: number): Promise<VisitorResponse> {
 export default function VisitorIntelligence() {
   const [minutes, setMinutes] = useState(60);
   const [surface, setSurface] = useState<"all" | VisitorSurface>("all");
+  const [status, setStatus] = useState<SessionStatus>("all");
+  const [search, setSearch] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   const query = useQuery({
@@ -109,14 +143,19 @@ export default function VisitorIntelligence() {
     refetchInterval: 15_000,
   });
 
+  const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
   const filteredSessions = useMemo(
-    () => (query.data?.sessions ?? []).filter((session) => surface === "all" || session.surface === surface),
-    [query.data, surface],
+    () => (query.data?.sessions ?? []).filter((session) =>
+      (surface === "all" || session.surface === surface)
+      && matchesStatus(session, status)
+      && matchesSearch(session, normalizedSearch),
+    ),
+    [query.data, surface, status, normalizedSearch],
   );
 
   const filteredHot = useMemo(
-    () => (query.data?.hotOpportunities ?? []).filter((session) => surface === "all" || session.surface === surface),
-    [query.data, surface],
+    () => filteredSessions.filter((session) => session.hotOpportunity),
+    [filteredSessions],
   );
 
   const selected = useMemo(
@@ -143,29 +182,16 @@ export default function VisitorIntelligence() {
           <h1 className="text-2xl font-semibold tracking-tight">Visitor Intelligence</h1>
           <p className="text-sm text-muted-foreground">Site, app web e app mobile em uma visão única, com origem, cidade, tela atual, jornada e intenção comercial.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="h-10 rounded-md border bg-background px-3 text-sm"
-            value={surface}
-            onChange={(event) => setSurface(event.target.value as "all" | VisitorSurface)}
-          >
-            <option value="all">Todas as superfícies</option>
-            <option value="site">Site</option>
-            <option value="app">App Web</option>
-            <option value="mobile">App Mobile</option>
-            <option value="unknown">Não classificado</option>
-          </select>
-          <select
-            className="h-10 rounded-md border bg-background px-3 text-sm"
-            value={minutes}
-            onChange={(event) => setMinutes(Number(event.target.value))}
-          >
-            <option value={30}>Últimos 30 min</option>
-            <option value={60}>Última hora</option>
-            <option value={360}>Últimas 6 horas</option>
-            <option value={1440}>Últimas 24 horas</option>
-          </select>
-        </div>
+        <select
+          className="h-10 rounded-md border bg-background px-3 text-sm"
+          value={minutes}
+          onChange={(event) => setMinutes(Number(event.target.value))}
+        >
+          <option value={30}>Últimos 30 min</option>
+          <option value={60}>Última hora</option>
+          <option value={360}>Últimas 6 horas</option>
+          <option value={1440}>Últimas 24 horas</option>
+        </select>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -190,13 +216,51 @@ export default function VisitorIntelligence() {
         <div className="rounded-lg border bg-card px-4 py-3"><div className="text-xs text-muted-foreground">Identificados</div><div className="mt-1 text-lg font-semibold">{totals.identified}</div></div>
       </div>
 
+      <div className="grid gap-2 rounded-xl border bg-card p-3 md:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar cidade, estado, origem, campanha ou tela..."
+          className="h-10 min-w-0 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <select
+          className="h-10 rounded-md border bg-background px-3 text-sm"
+          value={surface}
+          onChange={(event) => setSurface(event.target.value as "all" | VisitorSurface)}
+        >
+          <option value="all">Todas as superfícies</option>
+          <option value="site">Site</option>
+          <option value="app">App Web</option>
+          <option value="mobile">App Mobile</option>
+          <option value="unknown">Não classificado</option>
+        </select>
+        <select
+          className="h-10 rounded-md border bg-background px-3 text-sm"
+          value={status}
+          onChange={(event) => setStatus(event.target.value as SessionStatus)}
+        >
+          <option value="all">Todos os status</option>
+          <option value="online">Online agora</option>
+          <option value="hot">Oportunidades quentes</option>
+          <option value="identified">Identificados</option>
+          <option value="anonymous">Anônimos</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => { setSearch(""); setSurface("all"); setStatus("all"); }}
+          className="h-10 rounded-md border px-3 text-sm font-medium hover:bg-muted"
+        >
+          Limpar filtros
+        </button>
+      </div>
+
       {filteredHot.length ? (
         <div className="rounded-xl border border-orange-500/30 bg-orange-500/[0.04] p-4">
           <div className="flex items-center gap-2">
             <Flame className="h-5 w-5 text-orange-600" />
             <div>
               <h2 className="font-semibold">Oportunidades quentes agora</h2>
-              <p className="text-xs text-muted-foreground">Visitantes online com Behavior Intent a partir de 60/100.</p>
+              <p className="text-xs text-muted-foreground">Visitantes online com Behavior Intent a partir de 60/100 dentro dos filtros atuais.</p>
             </div>
           </div>
           <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
