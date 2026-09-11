@@ -63,11 +63,15 @@ jobs:
           check_page "/comparar" "https://appvendorai.com/comparar"
           check_page "/solucoes/crm-whatsapp" "https://appvendorai.com/solucoes/crm-whatsapp"
           check_page "/comparar/crm-com-ia-vs-crm-tradicional" "https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional"
+          check_page "/solucoes/propostas-sem-resposta" "https://appvendorai.com/solucoes/propostas-sem-resposta"
+          check_page "/solucoes/pipeline-vendas-com-ia" "https://appvendorai.com/solucoes/pipeline-vendas-com-ia"
+          check_page "/comparar/crm-whatsapp-vs-planilha" "https://appvendorai.com/comparar/crm-whatsapp-vs-planilha"
+          check_page "/comparar/revenue-intelligence-vs-bi" "https://appvendorai.com/comparar/revenue-intelligence-vs-bi"
 
-          curl -sS -H 'Accept: text/html' 'https://appvendorai.com/solucoes/crm-whatsapp?country=AR' -o /tmp/ar.html
+          curl -sS -H 'Accept: text/html' 'https://appvendorai.com/solucoes/propostas-sem-resposta?country=AR' -o /tmp/ar.html
           grep -q 'lang="es-AR"' /tmp/ar.html
-          grep -q 'rel="canonical" href="https://appvendorai.com/solucoes/crm-whatsapp?country=AR"' /tmp/ar.html
-          grep -q '<title>CRM con IA para WhatsApp, Ventas y Seguimiento | VendorAI</title>' /tmp/ar.html
+          grep -q 'rel="canonical" href="https://appvendorai.com/solucoes/propostas-sem-resposta?country=AR"' /tmp/ar.html
+          grep -q '<title>Propuesta Sin Respuesta: Seguimiento con CRM e IA | VendorAI</title>' /tmp/ar.html
 
       - name: Validate sitemap coverage
         shell: bash
@@ -82,13 +86,19 @@ jobs:
           grep -q '<loc>https://appvendorai.com/comparar</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/solucoes/crm-whatsapp</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/solucoes/automatizar-follow-up</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/propostas-sem-resposta</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/qualificar-leads-com-ia</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/reduzir-churn</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/previsao-de-vendas</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/comparar/prospeccao-com-ia-vs-manual</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/comparar/crm-whatsapp-vs-planilha</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/comparar/revenue-intelligence-vs-bi</loc>' /tmp/sitemap.xml
           grep -q 'hreflang="es-PY"' /tmp/sitemap.xml
           grep -q 'hreflang="x-default"' /tmp/sitemap.xml
           count=$(grep -o '<url>' /tmp/sitemap.xml | wc -l | tr -d ' ')
           echo "Sitemap URLs: $count"
-          test "$count" -ge 112
+          test "$count" -ge 128
 
       - name: Validate noindex and true 404 behavior
         shell: bash
