@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { ConfigurationHistoryPanel } from "@/components/ConfigurationHistoryPanel";
 import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel";
@@ -24,6 +24,31 @@ export default function Configuracoes() {
   const [showGovernance, setShowGovernance] = useState(false);
   const [showInstallationSettings, setShowInstallationSettings] = useState(false);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+
+  useEffect(() => {
+    const openIntegration = (event: MouseEvent) => {
+      const origin = event.target instanceof Element ? event.target : null;
+      const card = origin?.closest<HTMLElement>("[data-integration-key]");
+      const key = card?.dataset.integrationKey;
+      if (!key) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (key === "domain") {
+        window.location.assign("/content-autopilot?view=settings");
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "integracoes");
+      url.searchParams.set("integration", key);
+      window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+    };
+
+    document.addEventListener("click", openIntegration, true);
+    return () => document.removeEventListener("click", openIntegration, true);
+  }, []);
 
   const applyAutomaticDefaults = () => {
     const current = loadJarvisPermissions();
