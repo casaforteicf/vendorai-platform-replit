@@ -4,6 +4,7 @@ import { z } from "zod";
 import { agentTasksTable, db, generatedSitesTable, leadsTable, webBehaviorEventsTable } from "@workspace/db";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { logger } from "../lib/logger.js";
+import { resolveRequestGeo } from "../lib/requestGeo.js";
 
 const router: IRouter = Router();
 
@@ -111,9 +112,10 @@ router.post("/generated-site/touchpoint", async (req, res) => {
 
   const data = parsed.data;
   try {
-    const [adCampaignId, coldProspectLeadId] = await Promise.all([
+    const [adCampaignId, coldProspectLeadId, geo] = await Promise.all([
       resolveAdCampaignFromUtm(tenantId, data.utmCampaign ?? undefined, logger),
       resolveColdProspectLeadId(tenantId, data.siteIdentifier),
+      resolveRequestGeo(req),
     ]);
 
     await db.insert(webBehaviorEventsTable).values({
@@ -137,6 +139,12 @@ router.post("/generated-site/touchpoint", async (req, res) => {
         utmTerm: data.utmTerm ?? null,
         gclid: data.gclid ?? null,
         fbclid: data.fbclid ?? null,
+        country: geo.country,
+        region: geo.region,
+        city: geo.city,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        geoSource: geo.source,
       },
     });
 
