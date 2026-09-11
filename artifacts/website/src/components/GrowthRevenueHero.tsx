@@ -43,36 +43,11 @@ const PT = {
       text: "Encontra recompra, expansão, churn e próxima melhor ação.",
     },
   ],
-  proofBadge: "Telas reais do VendorAI",
-  proofTitle: "Produto real. Operação real.",
-  proofSubtitle: "Algumas das telas que já fazem parte da plataforma.",
-  screenshots: {
-    crm: {
-      title: "CRM & Pipeline",
-      text: "Oportunidades, etapas e próxima ação.",
-      alt: "Tela real do CRM e pipeline do VendorAI",
-    },
-    prospector: {
-      title: "Prospector IA",
-      text: "Descoberta e priorização de novos clientes.",
-      alt: "Tela real do Prospector IA do VendorAI",
-    },
-    revenue: {
-      title: "Revenue Scout",
-      text: "Recompra e novas oportunidades na carteira.",
-      alt: "Tela real do Revenue Scout do VendorAI",
-    },
-    omnichannel: {
-      title: "Omnichannel",
-      text: "Atendimento e conversas em um único lugar.",
-      alt: "Tela real do Omnichannel do VendorAI",
-    },
-    jarvis: {
-      title: "JARVIS",
-      text: "Inteligência executiva sobre toda a operação.",
-      alt: "Tela real do JARVIS do VendorAI",
-    },
-  },
+  proofBadge: "Tela real do VendorAI",
+  proofTitle: "CRM e Pipeline em operação",
+  proofText: "A primeira dobra mostra apenas o núcleo comercial. As demais telas aparecem ao longo do site, junto da explicação de cada produto.",
+  proofAlt: "Tela real do CRM e pipeline do VendorAI",
+  proofLink: "Conhecer o CRM",
 };
 
 const ES = {
@@ -107,36 +82,11 @@ const ES = {
       text: "Encuentra recompra, expansión, churn y la próxima mejor acción.",
     },
   ],
-  proofBadge: "Pantallas reales de VendorAI",
-  proofTitle: "Producto real. Operación real.",
-  proofSubtitle: "Algunas de las pantallas que ya forman parte de la plataforma.",
-  screenshots: {
-    crm: {
-      title: "CRM & Pipeline",
-      text: "Oportunidades, etapas y próxima acción.",
-      alt: "Pantalla real del CRM y pipeline de VendorAI",
-    },
-    prospector: {
-      title: "Prospector IA",
-      text: "Descubrimiento y priorización de nuevos clientes.",
-      alt: "Pantalla real del Prospector IA de VendorAI",
-    },
-    revenue: {
-      title: "Revenue Scout",
-      text: "Recompra y nuevas oportunidades en la cartera.",
-      alt: "Pantalla real de Revenue Scout de VendorAI",
-    },
-    omnichannel: {
-      title: "Omnichannel",
-      text: "Atención y conversaciones en un único lugar.",
-      alt: "Pantalla real de Omnichannel de VendorAI",
-    },
-    jarvis: {
-      title: "JARVIS",
-      text: "Inteligencia ejecutiva sobre toda la operación.",
-      alt: "Pantalla real de JARVIS de VendorAI",
-    },
-  },
+  proofBadge: "Pantalla real de VendorAI",
+  proofTitle: "CRM y Pipeline en operación",
+  proofText: "La primera pantalla muestra solo el núcleo comercial. Las demás pantallas aparecen a lo largo del sitio, junto a la explicación de cada producto.",
+  proofAlt: "Pantalla real del CRM y pipeline de VendorAI",
+  proofLink: "Conocer el CRM",
 };
 
 const MEDIA = "/media/vendorai-official";
@@ -150,7 +100,7 @@ export default function GrowthRevenueHero() {
       <div className="pointer-events-none absolute -left-40 top-10 h-96 w-96 rounded-full bg-orange-200/45 blur-3xl" />
       <div className="pointer-events-none absolute -right-32 top-0 h-[420px] w-[420px] rounded-full bg-sky-100/65 blur-3xl" />
 
-      <div className="relative mx-auto grid max-w-[1440px] gap-12 px-6 py-16 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:px-8 lg:py-20 xl:gap-16">
+      <div className="relative mx-auto grid max-w-[1440px] gap-12 px-6 py-16 lg:grid-cols-[0.88fr_1.12fr] lg:items-center lg:px-8 lg:py-20 xl:gap-16">
         <div className="max-w-2xl">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white/85 px-4 py-2 text-sm font-semibold text-orange-700 shadow-sm">
             <Sparkles className="h-4 w-4" /> {copy.badge}
@@ -220,104 +170,41 @@ export default function GrowthRevenueHero() {
         </div>
 
         <div className="min-w-0">
-          <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
-                <Sparkles className="h-3.5 w-3.5 text-orange-500" /> {copy.proofBadge}
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-3xl">
-                {copy.proofTitle}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">{copy.proofSubtitle}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <article className="group overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)] sm:col-span-2">
-              <picture>
-                <source
-                  media="(max-width: 640px)"
-                  srcSet={`${MEDIA}/crm-pipeline/mobile-390.png`}
-                />
-                <img
-                  src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
-                  alt={copy.screenshots.crm.alt}
-                  loading="eager"
-                  fetchPriority="high"
-                  className="aspect-[16/8.2] w-full object-cover object-top transition duration-500 group-hover:scale-[1.01]"
-                />
-              </picture>
-              <div className="flex items-start justify-between gap-4 border-t border-slate-100 px-4 py-3.5">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{copy.screenshots.crm.title}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.crm.text}</p>
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.12)]">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+              <div>
+                <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-orange-600">
+                  <Sparkles className="h-3.5 w-3.5" /> {copy.proofBadge}
                 </div>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                  Real
-                </span>
+                <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-2xl">
+                  {copy.proofTitle}
+                </h2>
               </div>
-            </article>
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                Real
+              </span>
+            </div>
 
-            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
-              <picture>
-                <source media="(max-width: 640px)" srcSet={`${MEDIA}/prospector/mobile-390.png`} />
-                <img
-                  src={`${MEDIA}/prospector/desktop-1440.png`}
-                  alt={copy.screenshots.prospector.alt}
-                  loading="eager"
-                  className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
-                />
-              </picture>
-              <div className="border-t border-slate-100 px-3.5 py-3">
-                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.prospector.title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.prospector.text}</p>
-              </div>
-            </article>
-
-            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
-              <picture>
-                <source media="(max-width: 640px)" srcSet={`${MEDIA}/revenue-scout/mobile-390.png`} />
-                <img
-                  src={`${MEDIA}/revenue-scout/desktop-1440.png`}
-                  alt={copy.screenshots.revenue.alt}
-                  loading="eager"
-                  className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
-                />
-              </picture>
-              <div className="border-t border-slate-100 px-3.5 py-3">
-                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.revenue.title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.revenue.text}</p>
-              </div>
-            </article>
-
-            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
-              <picture>
-                <source media="(max-width: 640px)" srcSet={`${MEDIA}/omnichannel/mobile-390.png`} />
-                <img
-                  src={`${MEDIA}/omnichannel/desktop-1440.png`}
-                  alt={copy.screenshots.omnichannel.alt}
-                  loading="lazy"
-                  className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
-                />
-              </picture>
-              <div className="border-t border-slate-100 px-3.5 py-3">
-                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.omnichannel.title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.omnichannel.text}</p>
-              </div>
-            </article>
-
-            <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
+            <picture>
+              <source media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.png`} />
               <img
-                src={`${MEDIA}/jarvis/desktop-aberto.png`}
-                alt={copy.screenshots.jarvis.alt}
-                loading="lazy"
-                className="aspect-[16/9.5] w-full object-cover object-top transition duration-500 group-hover:scale-[1.015]"
+                src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
+                alt={copy.proofAlt}
+                loading="eager"
+                fetchPriority="high"
+                className="aspect-[16/9] w-full object-cover object-top"
               />
-              <div className="border-t border-slate-100 px-3.5 py-3">
-                <p className="text-sm font-semibold text-slate-900">{copy.screenshots.jarvis.title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{copy.screenshots.jarvis.text}</p>
-              </div>
-            </article>
+            </picture>
+
+            <div className="flex flex-col gap-4 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-xl text-sm leading-6 text-slate-600">{copy.proofText}</p>
+              <Link
+                href="/produtos/crm"
+                className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-700 hover:text-orange-600"
+              >
+                {copy.proofLink} <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </div>
       </div>
