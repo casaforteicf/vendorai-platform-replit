@@ -59,6 +59,8 @@ jobs:
           check_page "/produtos/crm" "https://appvendorai.com/produtos/crm"
           check_page "/produtos/revenue-scout" "https://appvendorai.com/produtos/revenue-scout"
           check_page "/lp/moda" "https://appvendorai.com/lp/moda"
+          check_page "/solucoes" "https://appvendorai.com/solucoes"
+          check_page "/comparar" "https://appvendorai.com/comparar"
           check_page "/solucoes/crm-whatsapp" "https://appvendorai.com/solucoes/crm-whatsapp"
           check_page "/comparar/crm-com-ia-vs-crm-tradicional" "https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional"
 
@@ -76,6 +78,8 @@ jobs:
           grep -q '<loc>https://appvendorai.com/produtos/jarvis</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/produtos/revenue-scout</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/lp/moda</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/solucoes</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/comparar</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/solucoes/crm-whatsapp</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/solucoes/automatizar-follow-up</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional</loc>' /tmp/sitemap.xml
@@ -84,7 +88,7 @@ jobs:
           grep -q 'hreflang="x-default"' /tmp/sitemap.xml
           count=$(grep -o '<url>' /tmp/sitemap.xml | wc -l | tr -d ' ')
           echo "Sitemap URLs: $count"
-          test "$count" -ge 110
+          test "$count" -ge 112
 
       - name: Validate noindex and true 404 behavior
         shell: bash
@@ -99,6 +103,7 @@ jobs:
           echo "Unknown route -> HTTP $status"
           test "$status" = "404"
           grep -qi '^X-Robots-Tag: noindex, follow' /tmp/404-headers.txt
+          grep -q 'name="robots" content="noindex, follow"' /tmp/404.html
 
       - name: Validate canonical redirects
         shell: bash
