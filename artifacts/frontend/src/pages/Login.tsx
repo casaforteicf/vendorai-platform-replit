@@ -27,7 +27,8 @@ const PT_COPY = {
   invalidEmail: "Email inválido",
   requiredPassword: "Senha é obrigatória",
   loginErrorTitle: "Erro ao entrar",
-  loginErrorDescription: "Verifique suas credenciais.",
+  loginErrorDescription: "Não foi possível entrar. Tente novamente.",
+  invalidCredentials: "E-mail ou senha incorretos.",
   demoErrorTitle: "Erro ao entrar na demo",
   demoErrorDescription: "Não foi possível acessar a conta de demonstração.",
   title: "Entrar",
@@ -51,7 +52,8 @@ const ES_COPY = {
   invalidEmail: "Correo electrónico inválido",
   requiredPassword: "La contraseña es obligatoria",
   loginErrorTitle: "Error al iniciar sesión",
-  loginErrorDescription: "Verifica tus credenciales.",
+  loginErrorDescription: "No fue posible iniciar sesión. Inténtalo nuevamente.",
+  invalidCredentials: "Correo electrónico o contraseña incorrectos.",
   demoErrorTitle: "Error al entrar en la demo",
   demoErrorDescription: "No fue posible acceder a la cuenta de demostración.",
   title: "Iniciar sesión",
@@ -81,6 +83,16 @@ function consumeSafePostLoginPath(): string | null {
   if (!path || !path.startsWith("/") || path.startsWith("//")) return null;
   sessionStorage.removeItem(POST_LOGIN_PATH_KEY);
   return path;
+}
+
+function isInvalidCredentialsError(message?: string): boolean {
+  const normalized = (message ?? "").toLowerCase();
+  return (
+    normalized.includes("401") ||
+    normalized.includes("invalid credentials") ||
+    normalized.includes("invalid login credentials") ||
+    normalized.includes("unauthorized")
+  );
 }
 
 function GoogleIcon() {
@@ -126,9 +138,12 @@ export default function Login() {
         if (returnPath) window.location.assign(returnPath);
       },
       onError: (error) => {
+        const message = error?.message;
         toast({
           title: copy.loginErrorTitle,
-          description: error.message || copy.loginErrorDescription,
+          description: isInvalidCredentialsError(message)
+            ? copy.invalidCredentials
+            : message || copy.loginErrorDescription,
           variant: "destructive",
         });
       }
