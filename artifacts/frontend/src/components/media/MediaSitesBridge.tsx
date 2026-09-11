@@ -61,6 +61,45 @@ function mergeUnique(existing: unknown, additions: string[]): string[] {
   return [...new Set([...current, ...additions])];
 }
 
+function normalizeText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function contextTokens(body: Record<string, unknown>): string[] {
+  const stop = new Set(["para", "como", "com", "uma", "das", "dos", "por", "que", "seu", "sua", "site", "pagina", "landing", "http", "https", "www"]);
+  const contextOnly = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "images" && key !== "videos"));
+  let serialized = "";
+  try { serialized = JSON.stringify(contextOnly); } catch { serialized = ""; }
+  return Array.from(new Set(
+    normalizeText(serialized)
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length >= 4 && !stop.has(word)),
+  )).slice(0, 80);
+}
+
+function assetIsBlocked(asset: MediaPickerAsset): boolean {
+  return asset.metadata?.aiUsage === "blocked";
+}
+
+function selectRelevantAssets(assets: MediaPickerAsset[], body: Record<string, unknown>): MediaPickerAsset[] {
+  const eligible = assets.filter((asset) => !assetIsBlocked(asset) && (asset.type === "image" || asset.type === "video"));
+  const tokens = contextTokens(body);
+  const ranked = eligible
+    .map((asset, index) => {
+      let metadata = "";
+      try { metadata = JSON.stringify(asset.metadata ?? {}); } catch { metadata = ""; }
+      const haystack = normalizeText(`${asset.originalFilename ?? ""} ${asset.role ?? ""} ${asset.source ?? ""} ${metadata}`);
+      const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 2 : 0), 0);
+      return { asset, score, index };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const images = ranked.filter((entry) => entry.asset.type === "image").slice(0, 12).map((entry) => entry.asset);
+  const videos = ranked.filter((entry) => entry.asset.type === "video").slice(0, 3).map((entry) => entry.asset);
+  return [...images, ...videos];
+}
+
 function goToMediaLibrary() {
   window.history.pushState(window.history.state, "", "/midias");
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -124,7 +163,7 @@ export function MediaSitesBridge() {
       const body = await response.json().catch(() => ({})) as { assets?: MediaPickerAsset[] };
       if (!response.ok) return;
       const next = Array.isArray(body.assets)
-        ? body.assets.filter((asset) => (asset.type === "image" || asset.type === "video") && Boolean(asset.storageUrl)).slice(0, 150)
+        ? body.assets.filter((asset) => !assetIsBlocked(asset) && (asset.type === "image" || asset.type === "video") && Boolean(asset.storageUrl)).slice(0, 150)
         : [];
       setLibraryAssets(next);
     } finally {
@@ -157,19 +196,18 @@ export function MediaSitesBridge() {
             });
             const mediaBody = await mediaResponse.json().catch(() => ({})) as { assets?: MediaPickerAsset[] };
             if (mediaResponse.ok && Array.isArray(mediaBody.assets)) {
-              available = mediaBody.assets.filter((asset) => (asset.type === "image" || asset.type === "video") && Boolean(asset.storageUrl)).slice(0, 150);
+              available = mediaBody.assets.filter((asset) => !assetIsBlocked(asset) && (asset.type === "image" || asset.type === "video") && Boolean(asset.storageUrl)).slice(0, 150);
               libraryAssetsRef.current = available;
               window.setTimeout(() => setLibraryAssets(available), 0);
             }
           }
           if (available.length > 0) {
             const body = JSON.parse(init.body) as Record<string, unknown>;
-            const selectedImages = available.filter((asset) => asset.type === "image").map(absolutePublicMediaUrl);
-            const selectedVideos = available.filter((asset) => asset.type === "video").map(absolutePublicMediaUrl);
+            const chosen = autoModeRef.current ? selectRelevantAssets(available, body) : available;
+            const selectedImages = chosen.filter((asset) => asset.type === "image").map(absolutePublicMediaUrl);
+            const selectedVideos = chosen.filter((asset) => asset.type === "video").map(absolutePublicMediaUrl);
             body["images"] = mergeUnique(body["images"], selectedImages);
             body["videos"] = mergeUnique(body["videos"], selectedVideos);
-            body["mediaLibraryMode"] = autoModeRef.current ? "automatic" : "manual";
-            body["mediaLibraryAssetIds"] = available.map((asset) => asset.id);
             return previousFetch(input, { ...init, body: JSON.stringify(body) });
           }
         }
@@ -247,7 +285,7 @@ export function MediaSitesBridge() {
                 {autoMode
                   ? loadingLibrary
                     ? "Carregando a Biblioteca..."
-                    : `${effectiveAssets.length} mídia(s) disponíveis. A IA escolhe as mais adequadas sem novo upload.`
+                    : `${effectiveAssets.length} mídia(s) no banco. A IA escolhe automaticamente as mais adequadas para cada site.`
                   : effectiveAssets.length
                     ? `${effectiveAssets.length} mídia(s) escolhidas manualmente para a próxima geração.`
                     : "Selecione fotos e vídeos específicos da Biblioteca."}
@@ -295,7 +333,7 @@ export function MediaSitesBridge() {
             </button>
           )}
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground max-[900px]:hidden">
-            No modo automático a Biblioteca é o banco oficial: fotos e vídeos existentes entram como referências da IA sem importar novamente nem pedir mídia a cada geração.
+            No automático, toda a Biblioteca fica disponível como banco. A IA seleciona as referências relevantes para o briefing; mídias marcadas como bloqueadas continuam fora do uso automático.
           </p>
         </div>
       )}
