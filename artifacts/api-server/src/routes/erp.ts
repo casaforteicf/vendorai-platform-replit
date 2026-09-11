@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 import multer from "multer";
 import {
   db, erpTitulosTable, erpPagamentosTable, erpDocumentosFiscaisTable,
-  insertErpTituloSchema, insertErpPagamentoSchema, insertErpDocumentoFiscalSchema,
+  insertErpTituloSchema, updateErpTituloSchema, insertErpPagamentoSchema, insertErpDocumentoFiscalSchema,
   propostasTable, leadsTable, varejoPedidoCompraTable, varejoFornecedorTable,
   erpContasBancariasTable, erpExtratosBancariosTable, estoqueLotesTable,
   compraCotacoesTable, compraCotacaoPropostasTable, erpAuditoriaTable,
@@ -86,6 +86,37 @@ router.post("/tenants/:tenantId/erp/titulos", async (req, res) => {
   res.status(201).json(row);
 });
 
+router.patch("/tenants/:tenantId/erp/titulos/:id", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied to this tenant" });
+  const [existing] = await db.select().from(erpTitulosTable).where(and(eq(erpTitulosTable.id, String(req.params.id)), eq(erpTitulosTable.tenantId, tenantId))).limit(1);
+  if (!existing) return void res.status(404).json({ error: "Título não encontrado" });
+  const parsed = updateErpTituloSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
+  const nextStatus = parsed.data.status ?? existing.status;
+  if (existing.valorPago !== "0" && nextStatus === "cancelado") return void res.status(409).json({ error: "Título com baixa registrada não pode ser cancelado diretamente." });
+  const [row] = await db.update(erpTitulosTable).set({ ...parsed.data, updatedAt: new Date() }).where(and(eq(erpTitulosTable.id, existing.id), eq(erpTitulosTable.tenantId, tenantId))).returning();
+  await audit(req, tenantId, "editar", "titulo", existing.id, { antes: existing, depois: row });
+  res.json(row);
+});
+
+router.delete("/tenants/:tenantId/erp/titulos/:id", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied to this tenant" });
+  const id = String(req.params.id);
+  const [existing] = await db.select().from(erpTitulosTable).where(and(eq(erpTitulosTable.id, id), eq(erpTitulosTable.tenantId, tenantId))).limit(1);
+  if (!existing) return void res.status(404).json({ error: "Título não encontrado" });
+  const payments = await db.select({ id: erpPagamentosTable.id }).from(erpPagamentosTable).where(and(eq(erpPagamentosTable.tenantId, tenantId), eq(erpPagamentosTable.tituloId, id))).limit(1);
+  if (payments.length || Number(existing.valorPago) > 0) {
+    const [row] = await db.update(erpTitulosTable).set({ status: "cancelado", updatedAt: new Date() }).where(eq(erpTitulosTable.id, id)).returning();
+    await audit(req, tenantId, "cancelar", "titulo", id, { antes: existing, depois: row, motivo: "possui_baixa" });
+    return void res.json({ mode: "cancelled", title: row });
+  }
+  await audit(req, tenantId, "excluir", "titulo", id, existing);
+  await db.delete(erpTitulosTable).where(and(eq(erpTitulosTable.id, id), eq(erpTitulosTable.tenantId, tenantId)));
+  res.json({ mode: "deleted", id });
+});
+
 router.post("/tenants/:tenantId/erp/extrair-lancamento", uploadLancamento.single("file"), async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied" });
@@ -133,6 +164,7 @@ router.post("/tenants/:tenantId/erp/titulos/:id/baixar", async (req, res) => {
   if (result.title && result.payment) {
     await emitCommissionForPayment(tenantId, result.title, result.payment, "payment_received", `erp:payment:${result.payment.id}`).catch((error) => req.log.error({ error, tenantId, paymentId: result.payment?.id }, "Falha ao processar comissão do recebimento"));
   }
+  await audit(req, tenantId, "baixar", "titulo", existing.id, result.title);
   res.json(result.title);
 });
 
@@ -225,6 +257,7 @@ router.post("/tenants/:tenantId/erp/documentos-fiscais", async (req, res) => {
   const parsed = insertErpDocumentoFiscalSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) return void res.status(422).json({ error: parsed.error.message });
   const [row] = await db.insert(erpDocumentosFiscaisTable).values(parsed.data).returning();
+  await audit(req, tenantId, "criar", "documento_fiscal", row?.id, row);
   res.status(201).json(row);
 });
 
