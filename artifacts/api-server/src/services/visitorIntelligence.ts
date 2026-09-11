@@ -1,5 +1,5 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { db, webBehaviorEventsTable } from "@workspace/db";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { db, leadsTable, usersTable, webBehaviorEventsTable } from "@workspace/db";
 import { buildBehaviorIntentSummary } from "../jobs/behaviorIntentSync.js";
 
 export type VisitorIntelligenceFilters = {
@@ -30,10 +30,28 @@ function metadataString(metadata: Metadata | null | undefined, key: string): str
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function metadataNumber(metadata: Metadata | null | undefined, key: string): number | null {
+  const value = metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function sessionMetadataString(events: RawEvent[], key: string): string | null {
   for (const event of events) {
     const value = metadataString(event.metadata as Metadata | null | undefined, key);
     if (value) return value;
+  }
+  return null;
+}
+
+function sessionMetadataNumber(events: RawEvent[], key: string): number | null {
+  for (const event of events) {
+    const value = metadataNumber(event.metadata as Metadata | null | undefined, key);
+    if (value !== null) return value;
   }
   return null;
 }
@@ -145,6 +163,39 @@ export async function getVisitorIntelligence(
     .orderBy(desc(webBehaviorEventsTable.createdAt))
     .limit(eventLimit) as RawEvent[];
 
+  const leadIds = Array.from(new Set(events.map((event) => event.leadId).filter((value): value is string => Boolean(value))));
+  const userIds = Array.from(new Set(events
+    .map((event) => metadataString(event.metadata as Metadata | null | undefined, "userId"))
+    .filter((value): value is string => Boolean(value))));
+
+  const leadRows = leadIds.length
+    ? await db
+      .select({
+        id: leadsTable.id,
+        nome: leadsTable.nome,
+        email: leadsTable.email,
+        telefone: leadsTable.telefone,
+        empresa: leadsTable.empresa,
+      })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), inArray(leadsTable.id, leadIds)))
+    : [];
+
+  const userRows = userIds.length
+    ? await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        telefone: usersTable.telefone,
+      })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), inArray(usersTable.id, userIds)))
+    : [];
+
+  const leadById = new Map(leadRows.map((lead) => [lead.id, lead]));
+  const userById = new Map(userRows.map((user) => [user.id, user]));
+
   const bySession = new Map<string, RawEvent[]>();
   for (const event of events) {
     const current = bySession.get(event.anonymousSessionId) ?? [];
@@ -162,8 +213,11 @@ export async function getVisitorIntelligence(
     const conversions = sessionEvents.filter((event) => ["form_submit", "signup", "conversion"].includes(event.eventType)).length;
     const maxScrollDepth = sessionEvents.reduce((max, event) => Math.max(max, event.scrollDepth ?? 0), 0);
     const maxEngagedMs = sessionEvents.reduce((max, event) => Math.max(max, event.engagedMs ?? 0), 0);
+    const leadId = sessionEvents.find((event) => Boolean(event.leadId))?.leadId ?? null;
     const userId = sessionMetadataString(sessionEvents, "userId");
     const visitorId = sessionMetadataString(sessionEvents, "visitorId");
+    const leadIdentity = leadId ? leadById.get(leadId) : undefined;
+    const userIdentity = userId ? userById.get(userId) : undefined;
     const intent = buildBehaviorIntentSummary(sessionEvents.map((event) => ({
       eventType: event.eventType,
       path: event.path,
@@ -186,9 +240,32 @@ export async function getVisitorIntelligence(
       surface,
       online,
       hotOpportunity,
-      identified: Boolean(latest.leadId || userId),
-      identityType: latest.leadId ? "lead" : userId ? "user" : "anonymous",
-      leadId: latest.leadId,
+      identified: Boolean(leadId || userId),
+      identityType: leadId ? "lead" : userId ? "user" : "anonymous",
+      identity: leadIdentity
+        ? {
+          displayName: leadIdentity.nome,
+          email: leadIdentity.email,
+          phone: leadIdentity.telefone,
+          company: leadIdentity.empresa,
+          source: "lead" as const,
+        }
+        : userIdentity
+          ? {
+            displayName: userIdentity.name,
+            email: userIdentity.email,
+            phone: userIdentity.telefone,
+            company: null,
+            source: "user" as const,
+          }
+          : {
+            displayName: null,
+            email: null,
+            phone: null,
+            company: null,
+            source: null,
+          },
+      leadId,
       userId,
       adCampaignId: latest.adCampaignId,
       currentPath: latest.path,
@@ -211,6 +288,9 @@ export async function getVisitorIntelligence(
         country: sessionMetadataString(sessionEvents, "country"),
         region: sessionMetadataString(sessionEvents, "region"),
         city: sessionMetadataString(sessionEvents, "city"),
+        latitude: sessionMetadataNumber(sessionEvents, "latitude"),
+        longitude: sessionMetadataNumber(sessionEvents, "longitude"),
+        source: sessionMetadataString(sessionEvents, "geoSource"),
       },
       device: {
         type: sessionMetadataString(sessionEvents, "deviceType"),
