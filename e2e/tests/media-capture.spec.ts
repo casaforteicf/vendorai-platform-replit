@@ -89,10 +89,11 @@ for (const screen of screens) {
 test("captura JARVIS oficial aberto", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await prepareVisual(page, "/");
-  const launcher = page.locator('button[aria-label="Abrir JARVIS"]');
-  if (await launcher.count()) await launcher.first().click();
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
+  });
   const panel = page.locator('div[aria-label="JARVIS"]');
   await expect(panel).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1000);
   await saveScreenshot(page, "jarvis", "desktop-aberto");
 });
