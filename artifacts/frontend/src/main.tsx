@@ -90,6 +90,23 @@ if (recoveryUrl.searchParams.has("__vendorai_refresh")) {
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 const handoffToken = hashParams.get("vendorai_token");
 const handoffDemoExpiresAt = hashParams.get("demo_expires_at");
+const onboardingContext = Object.fromEntries(
+  Array.from(hashParams.entries())
+    .filter(([key]) => key.startsWith("onboarding_"))
+    .map(([key, value]) => [key.slice("onboarding_".length), value]),
+);
+
+if (Object.keys(onboardingContext).length > 0) {
+  try {
+    localStorage.setItem("vendorai_onboarding_context_v1", JSON.stringify({
+      ...onboardingContext,
+      capturedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // O handoff de autenticação continua mesmo se o storage estiver indisponível.
+  }
+}
+
 if (handoffToken) {
   localStorage.setItem("vendorai_token", handoffToken);
   if (handoffDemoExpiresAt) {
