@@ -24,6 +24,8 @@ import {
   CheckCircle2,
   Clock3,
   CircleDashed,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import MarketingVerticals from "@/pages/MarketingVerticals";
 import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
@@ -113,6 +115,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   async function load() {
     if (!tenantId) return;
@@ -165,6 +168,57 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     published: selectedItems.filter((item) => item.status === "publicado").length,
   }), [selectedItems]);
 
+  const channelSummary = useMemo(() => {
+    const grouped = new Map<string, { canal: string; total: number; ready: number; production: number; published: number }>();
+    selectedItems.forEach((item) => {
+      const key = normalize(item.canal || "Outros");
+      const current = grouped.get(key) ?? { canal: item.canal || "Outros", total: 0, ready: 0, production: 0, published: 0 };
+      current.total += 1;
+      if (item.status === "planejado" || item.status === "aprovado") current.ready += 1;
+      if (item.status === "gerado") current.production += 1;
+      if (item.status === "publicado") current.published += 1;
+      grouped.set(key, current);
+    });
+    return Array.from(grouped.values()).sort((a, b) => b.total - a.total);
+  }, [selectedItems]);
+
+  const campaignStatus = useMemo(() => {
+    if (summary.total === 0) return "Rascunho";
+    if (summary.published === summary.total) return "Finalizada";
+    if (summary.published > 0 || summary.production > 0) return "Ativa";
+    if (summary.ready > 0) return "Preparando";
+    return "Rascunho";
+  }, [summary]);
+
+  const nextStep = useMemo(() => {
+    if (summary.total === 0) {
+      return {
+        title: "Organizar a campanha",
+        description: "Ainda não há ações preparadas para esta campanha.",
+        action: "Abrir Conteúdos & Criativos",
+      };
+    }
+    if (summary.ready > 0) {
+      return {
+        title: `Preparar ${summary.ready} ${summary.ready === 1 ? "ação" : "ações"}`,
+        description: "O planejamento está pronto. Agora prepare os materiais antes de publicar ou enviar.",
+        action: "Preparar materiais",
+      };
+    }
+    if (summary.production > 0) {
+      return {
+        title: "Acompanhar produção",
+        description: `${summary.production} ${summary.production === 1 ? "ação está" : "ações estão"} sendo produzida${summary.production === 1 ? "" : "s"}.`,
+        action: "Acompanhar produção",
+      };
+    }
+    return {
+      title: "Acompanhar resultados",
+      description: "As ações desta campanha já foram publicadas ou concluídas.",
+      action: "Ver resultados",
+    };
+  }, [summary]);
+
   const normalizedChannels = selectedCampaign?.canais.map((channel) => normalize(channel.canal)) ?? [];
   const hasChannel = (terms: string[]) => normalizedChannels.some((channel) => terms.some((term) => channel.includes(term)));
   const hasContent = hasChannel(["instagram", "facebook", "linkedin", "tiktok", "youtube", "blog"]);
@@ -183,21 +237,25 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     return `/content?${params.toString()}`;
   }
 
-  function selectCampaign(nextId: string) {
-    setLocation(executionUrl("campanhas", { campaignId: nextId }));
+  function handlePrimaryAction() {
+    if (summary.ready > 0 || summary.production > 0 || summary.total === 0) {
+      setLocation(executionUrl("conteudos"));
+      return;
+    }
+    setLocation("/content?tab=resultados");
   }
 
   if (loading) {
-    return <div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando execução…</div>;
+    return <div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando campanha…</div>;
   }
 
   if (error || !plan || !selectedCampaign) {
     return (
       <Card className="border-amber-300 bg-amber-50/50">
         <CardContent className="py-6">
-          <p className="font-medium text-amber-900">Não foi possível abrir esta execução.</p>
+          <p className="font-medium text-amber-900">Não foi possível abrir esta campanha.</p>
           <p className="mt-1 text-sm text-amber-800">{error ?? "Nenhuma campanha foi gerada para este planejamento."}</p>
-          <Button className="mt-4" variant="outline" onClick={() => setLocation("/content?tab=planejamento")}>Voltar ao Planejamento</Button>
+          <Button className="mt-4" variant="outline" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="mr-1 h-4 w-4" />Todas as campanhas</Button>
         </CardContent>
       </Card>
     );
@@ -205,67 +263,96 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge className="bg-emerald-600">Execução iniciada</Badge>
-            <span className="text-xs text-muted-foreground">Planejamento aprovado · {plan.conteudo.periodoDias ?? 30} dias</span>
-          </div>
-          <h2 className="mt-2 text-xl font-semibold">Campanhas</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Tudo que foi aprovado no Planejamento é executado e acompanhado aqui.</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button size="sm" variant="ghost" onClick={() => setLocation(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}&view=lista`)}>
+          <ArrowLeft className="mr-1 h-3.5 w-3.5" />Todas as campanhas
+        </Button>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="mr-1 h-3.5 w-3.5" />Atualizar</Button>
-          <Button size="sm" variant="ghost" onClick={() => setLocation("/content?tab=planejamento")}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Planejamento</Button>
+          <Button size="sm" variant="ghost" onClick={() => setLocation("/content?tab=planejamento")}>Planejamento</Button>
         </div>
       </div>
 
-      {campaigns.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {campaigns.map((campaign) => (
-            <Button key={campaign.id} size="sm" variant={campaign.id === selectedCampaign.id ? "default" : "outline"} className="shrink-0" onClick={() => selectCampaign(campaign.id)}>
-              {campaign.nome}
-            </Button>
-          ))}
-        </div>
-      )}
-
       <Card className="border-primary/25">
-        <CardContent className="p-4 md:p-5 space-y-4">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-lg font-semibold">{selectedCampaign.nome}</p>
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{campaignStatus}</Badge>
+                <span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span>
+              </div>
+              <h2 className="mt-2 text-xl font-semibold">{selectedCampaign.nome}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{selectedCampaign.objetivo}</p>
             </div>
-            <Badge variant="outline">{selectedCampaign.kpiPrincipal}</Badge>
+            <Badge variant="outline">KPI: {selectedCampaign.kpiPrincipal}</Badge>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Público</p><p className="mt-1 text-sm font-medium">{selectedCampaign.publico}</p>{selectedCampaign.regiao && <p className="mt-0.5 text-xs text-muted-foreground">{selectedCampaign.regiao}</p>}</div>
-            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Produto / oferta</p><p className="mt-1 text-sm font-medium">{selectedCampaign.produtoServico}</p><p className="mt-0.5 text-xs text-muted-foreground">{selectedCampaign.oferta}</p></div>
-            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 text-sm font-medium">{selectedCampaign.mensagemCentral}</p></div>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Canais desta campanha</p>
-            <div className="flex flex-wrap gap-1.5">{selectedCampaign.canais.map((channel) => <Badge key={channel.canal} variant="outline">{channel.canal}</Badge>)}</div>
+            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Produto</p><p className="mt-1 text-sm font-medium">{selectedCampaign.produtoServico}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Oferta</p><p className="mt-1 text-sm font-medium">{selectedCampaign.oferta}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 text-sm font-medium line-clamp-3">{selectedCampaign.mensagemCentral}</p></div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Ações</p><p className="mt-1 text-2xl font-semibold">{summary.total}</p><p className="text-xs text-muted-foreground">geradas para esta campanha</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Prontas</p><p className="mt-1 text-2xl font-semibold">{summary.ready}</p><p className="text-xs text-muted-foreground">aguardando execução</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Em produção</p><p className="mt-1 text-2xl font-semibold">{summary.production}</p><p className="text-xs text-muted-foreground">sendo produzidas</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Publicadas</p><p className="mt-1 text-2xl font-semibold">{summary.published}</p><p className="text-xs text-muted-foreground">já concluídas</p></CardContent></Card>
+      <Card className="border-primary/30 bg-primary/[0.03]">
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-primary">Próximo passo</p>
+              <p className="mt-1 text-lg font-semibold">{nextStep.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{nextStep.description}</p>
+            </div>
+            <Button onClick={handlePrimaryAction}>{nextStep.action}<ArrowRight className="ml-2 h-4 w-4" /></Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">A preparar</p><p className="mt-1 text-2xl font-semibold">{summary.ready}</p><p className="text-xs text-muted-foreground">aguardando preparação</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{summary.production}</p><p className="text-xs text-muted-foreground">sendo produzidas</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Concluídas</p><p className="mt-1 text-2xl font-semibold">{summary.published}</p><p className="text-xs text-muted-foreground">publicadas ou finalizadas</p></CardContent></Card>
       </div>
 
       <Card>
         <CardContent className="p-4 md:p-5">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="mb-4">
+            <p className="font-semibold">Canais da campanha</p>
+            <p className="mt-1 text-xs text-muted-foreground">As {summary.total} ações ficam agrupadas para você não precisar percorrer uma lista enorme.</p>
+          </div>
+          {channelSummary.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nenhuma ação foi gerada ainda.</div>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {channelSummary.map((channel) => {
+                const completed = channel.published;
+                const progress = channel.total > 0 ? Math.round((completed / channel.total) * 100) : 0;
+                return (
+                  <div key={channel.canal} className="rounded-xl border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{channel.canal}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{channel.total} {channel.total === 1 ? "ação" : "ações"}</p>
+                      </div>
+                      <Badge variant="outline">{progress}%</Badge>
+                    </div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
+                    <div className="mt-2 flex gap-3 text-[11px] text-muted-foreground"><span>{channel.ready} a preparar</span><span>{channel.production} em andamento</span><span>{channel.published} concluídas</span></div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="font-semibold">Executar campanha</p>
-              <p className="mt-1 text-xs text-muted-foreground">Abra somente a ferramenta necessária. O contexto desta campanha é mantido automaticamente.</p>
+              <p className="font-semibold">Ferramentas desta campanha</p>
+              <p className="mt-1 text-xs text-muted-foreground">Abra apenas o que precisa agora. O contexto da campanha é mantido automaticamente.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {hasContent && <Button size="sm" onClick={() => setLocation(executionUrl("conteudos"))}><Images className="mr-1 h-3.5 w-3.5" />Conteúdos & Criativos</Button>}
@@ -279,28 +366,39 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
 
       <Card>
         <CardContent className="p-4 md:p-5">
-          <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Ações da campanha</p>
-              <p className="mt-1 text-xs text-muted-foreground">Aqui está o calendário operacional que antes aparecia no Planejamento.</p>
+              <p className="font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Detalhes das ações</p>
+              <p className="mt-1 text-xs text-muted-foreground">Abra somente quando precisar consultar cada ação individual.</p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setLocation(executionUrl("conteudos"))}>Abrir produção completa <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
+            <Button size="sm" variant="outline" onClick={() => setShowDetails((current) => !current)}>
+              {showDetails ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}
+              {showDetails ? "Ocultar detalhes" : `Ver detalhes (${summary.total})`}
+            </Button>
           </div>
 
-          {selectedItems.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nenhuma ação operacional encontrada para esta campanha.</div>
-          ) : (
-            <div className="divide-y rounded-lg border">
-              {selectedItems.slice(0, 12).map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-3">
-                  <div className="shrink-0">{statusIcon(item.status)}</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap"><span className="text-xs font-medium uppercase text-primary">{item.canal}</span><span className="text-[11px] text-muted-foreground">{item.tipo}</span></div>
-                    <p className="mt-0.5 truncate text-sm font-medium">{item.temaSugerido}</p>
+          {showDetails && (
+            <div className="mt-4">
+              {selectedItems.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nenhuma ação operacional encontrada para esta campanha.</div>
+              ) : (
+                <>
+                  <div className="divide-y rounded-lg border">
+                    {selectedItems.slice(0, 20).map((item) => (
+                      <div key={item.id} className="flex items-center gap-3 p-3">
+                        <div className="shrink-0">{statusIcon(item.status)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap"><span className="text-xs font-medium uppercase text-primary">{item.canal}</span><span className="text-[11px] text-muted-foreground">{item.tipo}</span></div>
+                          <p className="mt-0.5 truncate text-sm font-medium">{item.temaSugerido}</p>
+                        </div>
+                        <div className="shrink-0 text-right"><p className="text-xs font-medium">{statusLabel(item.status)}</p><p className="text-[10px] text-muted-foreground">{new Date(item.dataAgendada).toLocaleDateString("pt-BR")}</p></div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="shrink-0 text-right"><p className="text-xs font-medium">{statusLabel(item.status)}</p><p className="text-[10px] text-muted-foreground">{new Date(item.dataAgendada).toLocaleDateString("pt-BR")}</p></div>
-                </div>
-              ))}
+                  {selectedItems.length > 20 && <p className="mt-2 text-xs text-muted-foreground">Mostrando 20 de {selectedItems.length} ações. Abra a produção completa para consultar todas.</p>}
+                  <Button className="mt-3" size="sm" variant="outline" onClick={() => setLocation(executionUrl("conteudos"))}>Abrir produção completa <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
+                </>
+              )}
             </div>
           )}
         </CardContent>
