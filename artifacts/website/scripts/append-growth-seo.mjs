@@ -39,6 +39,9 @@ for (const page of pages) {
   if (!Array.isArray(page.products) || page.products.length === 0 || !Array.isArray(page.secondaryKeywords) || page.secondaryKeywords.length === 0) {
     throw new Error(`[seo-growth] incomplete commercial data for ${page.path}`);
   }
+  if (!Array.isArray(page.pt?.faq) || page.pt.faq.length === 0 || !Array.isArray(page.es?.faq) || page.es.faq.length === 0) {
+    throw new Error(`[seo-growth] missing visible PT/ES FAQ for ${page.path}`);
+  }
   const route = {
     pathname: page.path,
     title: page.pt.seoTitle,
@@ -51,12 +54,25 @@ for (const page of pages) {
     funnel: page.funnel,
     primaryKeyword: page.primaryKeyword,
     secondaryKeywords: page.secondaryKeywords || [],
+    faq: page.pt.faq,
+    esFaq: page.es.faq,
+    relatedProducts: page.products,
     esTitle: page.es.seoTitle,
     esDescription: page.es.seoDescription,
   };
   const index = manifest.routes.findIndex((item) => item.pathname === page.path);
   if (index >= 0) manifest.routes[index] = { ...manifest.routes[index], ...route };
   else manifest.routes.push(route);
+}
+
+function hubItems(kind) {
+  return pages
+    .filter((page) => page.kind === kind)
+    .map((page) => ({
+      path: page.path,
+      name: page.pt.seoTitle.replace(/\s*\|.*$/, ""),
+      esName: page.es.seoTitle.replace(/\s*\|.*$/, ""),
+    }));
 }
 
 const hubs = [
@@ -69,6 +85,7 @@ const hubs = [
     type: "collection",
     name: "Soluções por problema",
     priority: 0.91,
+    items: hubItems("solution"),
   },
   {
     pathname: "/comparar",
@@ -79,6 +96,7 @@ const hubs = [
     type: "collection",
     name: "Comparações comerciais",
     priority: 0.86,
+    items: hubItems("comparison"),
   },
 ];
 
@@ -96,5 +114,5 @@ fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 const deploymentVersion = process.env.GITHUB_SHA || "local";
 fs.writeFileSync(path.resolve(outDir, "deployment-version.txt"), `${deploymentVersion}\n`);
 
-console.log(`[seo-growth] appended ${pages.length} commercial-intent pages (${wave1Pages.length} wave 1 + ${wave2Pages.length} wave 2) and ${hubs.length} hubs`);
+console.log(`[seo-growth] appended ${pages.length} commercial-intent pages (${wave1Pages.length} wave 1 + ${wave2Pages.length} wave 2), visible FAQ data and ${hubs.length} hubs`);
 console.log(`[deploy] version ${deploymentVersion}`);
