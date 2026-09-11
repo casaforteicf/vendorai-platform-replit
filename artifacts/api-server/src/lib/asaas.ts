@@ -279,7 +279,7 @@ export async function ensureAsaasPaymentWebhook(
   const webhookUrl = `${apiBase}/api/webhooks/asaas`;
   const existing = await asaasRequest<{ data?: AsaasWebhookConfig[] }>("GET", "/webhooks?limit=100", undefined, apiKey)
     .catch(() => ({ data: [] }));
-  const match = existing.data?.find((item) => item.url === webhookUrl || item.name === "VendorAI Checkout");
+  const match = existing.data?.find((item) => item.name === "VendorAI Checkout" && item.url === webhookUrl);
   if (match?.id) return { configured: true, id: match.id };
 
   const created = await asaasRequest<AsaasWebhookConfig>("POST", "/webhooks", {
@@ -321,4 +321,16 @@ export async function isAsaasConfigured(tenantId?: string): Promise<boolean> {
     return !!key;
   }
   return !!getApiKey();
+}
+
+// The platform seller has its own Asaas account. Ensure the authenticated
+// payment webhook exists as soon as the API process starts; tenant accounts
+// are provisioned lazily on their first storefront checkout.
+const platformAsaasKey = getPlatformAsaasApiKey();
+if (platformAsaasKey && process.env.ASAAS_WEBHOOK_ACCESS_TOKEN) {
+  void ensureAsaasPaymentWebhook({
+    email: process.env.ASAAS_WEBHOOK_EMAIL?.trim() || "suporte@appvendorai.com",
+  }, platformAsaasKey).catch((err) => {
+    logger.warn({ err }, "Asaas platform webhook bootstrap failed");
+  });
 }
