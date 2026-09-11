@@ -9,7 +9,7 @@ on:
       - artifacts/mobile/**
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -78,6 +78,49 @@ jobs:
             --scope project \
             --non-interactive
 
-      - name: Gerar APK Android
+      - name: Gerar APK Android e capturar link direto
         working-directory: artifacts/mobile
-        run: eas build --platform android --profile preview --non-interactive --wait
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas build --platform android --profile preview --non-interactive --wait --json > /tmp/eas-build.json
+
+          APK_URL="$(node <<'NODE'
+          const fs = require('fs');
+          const payload = JSON.parse(fs.readFileSync('/tmp/eas-build.json', 'utf8'));
+          const build = Array.isArray(payload) ? payload[0] : payload;
+          const url =
+            build?.artifacts?.buildUrl ||
+            build?.artifacts?.applicationArchiveUrl ||
+            build?.artifact?.url ||
+            build?.buildUrl ||
+            '';
+          if (!url || !/^https:\/\/expo\.dev\/artifacts\/eas\/.+\.apk(?:\?.*)?$/.test(url)) {
+            console.error('EAS não retornou um link direto de APK válido.');
+            process.exit(1);
+          }
+          process.stdout.write(url);
+          NODE
+          )"
+
+          echo "APK_URL=$APK_URL" >> "$GITHUB_ENV"
+          echo "APK direto capturado com sucesso."
+
+      - name: Publicar endereço próprio do APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${APK_URL:-}"
+          printf '/downloads/vendorai.apk %s 302\n' "$APK_URL" > artifacts/website/public/_redirects
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/website/public/_redirects
+
+          if git diff --cached --quiet; then
+            echo "O endereço do APK já está atualizado."
+            exit 0
+          fi
+
+          git commit -m "chore(site): atualizar APK Android publicado"
+          git push origin HEAD:main
