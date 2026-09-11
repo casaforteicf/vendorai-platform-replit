@@ -32,6 +32,7 @@ import DistributedProductScreens from "@/components/DistributedProductScreens";
 import RevenueMagicCalculator from "@/components/RevenueMagicCalculator";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
+import "@/styles/vendorIdentity.css";
 import {
   captureLaunchAttribution,
   installPublicFormConsentBridge,
@@ -85,7 +86,7 @@ function Router() {
       <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
       <Route>
-        <div className="flex min-h-screen flex-col overflow-x-clip">
+        <div className="vendor-public-shell flex min-h-screen flex-col overflow-x-clip">
           <Navbar />
           <main className="min-w-0 flex-1">
             <Switch>
