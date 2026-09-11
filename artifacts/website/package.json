@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts && node scripts/postbuild-seo.mjs && node scripts/append-growth-seo.mjs && node scripts/enrich-vertical-seo.mjs && node scripts/prerender-public-seo.mjs && node scripts/verify-seo.mjs",
+    "build": "vite build --config vite.config.ts && node scripts/postbuild-seo.mjs && node scripts/append-growth-seo.mjs && node scripts/verify-seo.mjs && node scripts/enrich-vertical-seo.mjs && node scripts/prerender-public-seo.mjs",
     "serve": "node static-server.cjs",
     "typecheck": "echo 'skip'"
   },
