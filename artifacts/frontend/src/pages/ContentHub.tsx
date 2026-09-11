@@ -26,6 +26,7 @@ import {
   Loader2,
   Megaphone,
   MessageCircle,
+  Plus,
   Radio,
   Sparkles,
   Target,
@@ -170,12 +171,8 @@ export default function ContentHub() {
 
   const plannerCampaigns = plannerPlan?.conteudo.campanhas ?? [];
   const selectedPlannerCampaign = useMemo(() => {
-    if (plannerCampaigns.length === 0) return null;
-    if (requestedPlannerCampaignId) {
-      const exact = plannerCampaigns.find((campaign) => campaign.id === requestedPlannerCampaignId);
-      if (exact) return exact;
-    }
-    return plannerCampaigns[0] ?? null;
+    if (!requestedPlannerCampaignId || plannerCampaigns.length === 0) return null;
+    return plannerCampaigns.find((campaign) => campaign.id === requestedPlannerCampaignId) ?? null;
   }, [plannerCampaigns, requestedPlannerCampaignId]);
 
   const plannerApproved = plannerPlan?.conteudo.statusPlanejamento === "aprovado";
@@ -202,6 +199,25 @@ export default function ContentHub() {
       if (value) next.set(key, value);
     });
     return `/content?${next.toString()}`;
+  }
+
+  function openPlannerCampaign(campaignId: string) {
+    const next = new URLSearchParams();
+    next.set("source", "media-plan");
+    next.set("tab", "campanhas");
+    const mediaPlanId = plannerPlan?.id ?? requestedMediaPlanId;
+    if (mediaPlanId) next.set("mediaPlanId", mediaPlanId);
+    next.set("campaignId", campaignId);
+    setLocation(`/content?${next.toString()}`);
+  }
+
+  function openCampaignList() {
+    const next = new URLSearchParams();
+    next.set("source", "media-plan");
+    next.set("tab", "campanhas");
+    const mediaPlanId = plannerPlan?.id ?? requestedMediaPlanId;
+    if (mediaPlanId) next.set("mediaPlanId", mediaPlanId);
+    setLocation(`/content?${next.toString()}`);
   }
 
   function handleTabChange(nextTab: string) {
@@ -388,7 +404,7 @@ export default function ContentHub() {
             {mediaPlanSource && (
               <div className="px-4 pt-4 md:px-6 md:pt-6">
                 {plannerLoading ? (
-                  <Card><CardContent className="py-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando a direção do Planejamento…</CardContent></Card>
+                  <Card><CardContent className="py-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando campanhas…</CardContent></Card>
                 ) : plannerError ? (
                   <Card className="border-amber-300 bg-amber-50/50"><CardContent className="py-4 text-sm text-amber-800">{plannerError}</CardContent></Card>
                 ) : selectedPlannerCampaign ? (
@@ -397,13 +413,16 @@ export default function ContentHub() {
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <Badge className={plannerApproved ? "bg-emerald-600" : ""}>{plannerApproved ? "Direção aprovada" : "Plano em revisão"}</Badge>
-                            <span className="text-xs text-muted-foreground">Plano de {plannerPlan?.conteudo.periodoDias ?? 30} dias</span>
+                            <Badge className={plannerApproved ? "bg-emerald-600" : ""}>{plannerApproved ? "Campanha pronta" : "Em revisão"}</Badge>
+                            <span className="text-xs text-muted-foreground">{plannerPlan?.conteudo.periodoDias ?? 30} dias</span>
                           </div>
                           <p className="mt-2 font-semibold">{selectedPlannerCampaign.nome}</p>
                           <p className="mt-1 text-sm text-muted-foreground">{selectedPlannerCampaign.objetivo}</p>
                         </div>
-                        <Button size="sm" variant="ghost" onClick={() => handleTabChange("planejamento")}><ArrowLeft className="h-3.5 w-3.5 mr-1"/>Voltar ao planejamento</Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={openCampaignList}><ArrowLeft className="h-3.5 w-3.5 mr-1"/>Todas as campanhas</Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleTabChange("planejamento")}>Planejamento</Button>
+                        </div>
                       </div>
 
                       <div className="grid gap-2 md:grid-cols-3">
@@ -423,18 +442,73 @@ export default function ContentHub() {
                         <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.messaging} onClick={() => setLocation(plannerUrl({ tab: "campanhas", view: "organicas" }))}><MessageCircle className="h-3.5 w-3.5 mr-1"/>WhatsApp / E-mail</Button>
                       </div>
 
-                      {plannerApproved && <div className="flex items-center gap-1.5 text-[11px] text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5"/>A direção estratégica fica preservada em todos os executores vinculados à campanha.</div>}
+                      {plannerApproved && <div className="flex items-center gap-1.5 text-[11px] text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5"/>Tudo produzido aqui permanece vinculado a esta campanha.</div>}
                     </CardContent>
                   </Card>
-                ) : null}
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-xl font-semibold">Campanhas</h2>
+                          <Badge variant="outline">{plannerCampaigns.length} campanhas</Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">Cada campanha tem nome, público, oferta, canais e execução próprios. Elas podem acontecer em paralelo.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => handleTabChange("planejamento")}>Gerar do Planejamento</Button>
+                        <Button onClick={() => setLocation("/content?tab=campanhas")}><Plus className="h-4 w-4 mr-2"/>Nova campanha</Button>
+                      </div>
+                    </div>
+
+                    {plannerCampaigns.length === 0 ? (
+                      <Card>
+                        <CardContent className="py-8 text-center">
+                          <p className="font-semibold">Nenhuma campanha foi gerada ainda.</p>
+                          <p className="mt-1 text-sm text-muted-foreground">Volte ao Planejamento, aprove a proposta e gere as campanhas.</p>
+                          <Button className="mt-4" onClick={() => handleTabChange("planejamento")}>Abrir Planejamento</Button>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {plannerCampaigns.map((campaign) => (
+                          <button
+                            key={campaign.id}
+                            type="button"
+                            onClick={() => openPlannerCampaign(campaign.id)}
+                            className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-semibold truncate">{campaign.nome}</p>
+                                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{campaign.objetivo}</p>
+                              </div>
+                              <Badge className={plannerApproved ? "bg-emerald-600 shrink-0" : "shrink-0"}>{plannerApproved ? "Pronta" : "Em revisão"}</Badge>
+                            </div>
+                            <div className="mt-4 grid gap-2 text-xs">
+                              <div><span className="text-muted-foreground">Público: </span><span className="font-medium">{campaign.publico}</span></div>
+                              <div><span className="text-muted-foreground">Oferta: </span><span className="font-medium">{campaign.oferta}</span></div>
+                              <div><span className="text-muted-foreground">KPI: </span><span className="font-medium">{campaign.kpiPrincipal}</span></div>
+                            </div>
+                            <div className="mt-4 flex flex-wrap gap-1.5">
+                              {campaign.canais.slice(0, 5).map((channel) => <Badge key={channel.canal} variant="outline" className="text-[10px]">{channel.canal}</Badge>)}
+                              {campaign.canais.length > 5 && <Badge variant="outline" className="text-[10px]">+{campaign.canais.length - 5}</Badge>}
+                            </div>
+                            <div className="mt-4 border-t pt-3 text-xs font-medium text-primary">Abrir campanha →</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {campaignView === "organicas" ? (
+            {mediaPlanSource && !selectedPlannerCampaign && campaignView === "overview" ? null : campaignView === "organicas" ? (
               <Campanhas />
             ) : campaignView === "lp" ? (
               <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
-                <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4"/>Voltar para Campanhas</Button>
+                <Button variant="ghost" size="sm" className="gap-1.5" onClick={mediaPlanSource ? openCampaignList : () => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4"/>Voltar para Campanhas</Button>
                 <SiteGenerator />
               </div>
             ) : (
