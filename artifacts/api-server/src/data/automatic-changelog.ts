@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1276",
+    "titulo": "Corrigir de fato a simplificação de Configurações",
+    "descricao": "mantém **Saúde das integrações**; mantém a aba **Empresa** focada em dados da empresa e conhecimento do negócio; substitui a lista longa de Produtos e Serviços por um **resumo compacto do Catálogo** com contagem e botão **Abrir Catálogo**; recolhe por padrão os blocos menos usados que estavam alongando a aba Empresa;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-11T20:40:10.000Z",
+    "pullRequest": 1276
+  },
+  {
     "id": "pr-1272",
     "titulo": "Simplificar experiência de Configurações",
     "descricao": "mantém **Saúde das integrações** como visão rápida no topo; remove visualmente o bloco redundante **Configuração central do negócio**; renomeia a busca para **Buscar nas configurações**; troca **Contexto para a IA** por **Conhecimento sobre o negócio**, com texto mais claro;",
