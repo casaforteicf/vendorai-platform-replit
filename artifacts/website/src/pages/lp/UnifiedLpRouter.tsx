@@ -2,7 +2,7 @@ import { useParams } from "wouter";
 import { MARKETING_VERTICALS } from "@workspace/vendor-brain/marketing-verticals";
 import { usePublicCountry } from "@/lib/publicCountry";
 import LegacyLpRouter from "./LpPage";
-import OfficialVerticalLp from "./OfficialVerticalLp";
+import OfficialVerticalLp from "./OfficialVerticalLpV2";
 
 export default function UnifiedLpRouter() {
   usePublicCountry();
