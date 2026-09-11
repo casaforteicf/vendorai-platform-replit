@@ -92,6 +92,8 @@ export async function sendVisitorTelemetry(
     referrer: document.referrer || undefined,
     utmCampaign: attr.utmCampaign || undefined,
     metadata: {
+      surface: "app",
+      hostname: window.location.hostname,
       deviceType: deviceType(),
       browser: browser(),
       os: os(),
