@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
+import IntegrationSettingsHub from "./IntegrationSettingsHub";
 import { ConfigurationHistoryPanel } from "@/components/ConfigurationHistoryPanel";
 import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel";
 import { ConfigurationRollbackPanel } from "@/components/ConfigurationRollbackPanel";
@@ -26,13 +27,14 @@ const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
 };
 
 function integrationFallback(key: string) {
-  if (key === "domain" || key === "search-console") return "/content-autopilot?view=settings";
-  return `/onboarding/integracoes?source=settings&focus=${encodeURIComponent(key)}`;
+  if (key === "domain") return "/content-autopilot?view=settings";
+  return `/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`;
 }
 
 export default function Configuracoes() {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
+  const integrationsDeepLink = params.get("tab") === "integracoes";
   const isInstallationMode = params.get("installation") === "1";
 
   const [showJarvis, setShowJarvis] = useState(false);
@@ -75,6 +77,21 @@ export default function Configuracoes() {
 
     const openIntegration = (event: MouseEvent) => {
       const origin = event.target instanceof Element ? event.target : null;
+
+      const tab = origin?.closest<HTMLElement>("[role='tab']");
+      if (tab) {
+        const label = `${tab.getAttribute("aria-label") ?? ""} ${tab.textContent ?? ""}`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+        if (label.includes("integracoes")) {
+          event.preventDefault();
+          event.stopPropagation();
+          window.location.assign("/configuracoes?tab=integracoes");
+          return;
+        }
+      }
+
       const card = origin?.closest<HTMLElement>("[data-integration-key]");
       const key = card?.dataset.integrationKey;
       if (!key || !card) return;
@@ -87,9 +104,6 @@ export default function Configuracoes() {
         return;
       }
 
-      // "Conectar agora" deve iniciar a conexão diretamente. O bloqueio por
-      // senha da aba técnica fica apenas para gerenciar/revisar integrações já
-      // configuradas, não para iniciar um OAuth novo.
       if (card.classList.contains("is-off")) {
         void startDirectConnection(key, card);
         return;
@@ -127,6 +141,10 @@ export default function Configuracoes() {
     setShowGovernance(true);
     setShowInstallationSettings(true);
   };
+
+  if (integrationsDeepLink) {
+    return <IntegrationSettingsHub />;
+  }
 
   if (legacySiteDeepLink) {
     return <ConfiguracoesNormalized />;
