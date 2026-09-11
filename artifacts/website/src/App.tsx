@@ -28,6 +28,7 @@ import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import GrowthRevenueHero from "@/components/GrowthRevenueHero";
+import DistributedProductScreens from "@/components/DistributedProductScreens";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
 import {
@@ -68,6 +69,7 @@ function HomeWithGrowthRevenueHero() {
       <div className="[&>div>section:first-child]:hidden">
         <Home />
       </div>
+      <DistributedProductScreens />
     </>
   );
 }
