@@ -1,4 +1,4 @@
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3, Store, BrainCircuit, ShieldCheck, Sparkles, Radar, Eye } from "lucide-react";
@@ -14,13 +14,14 @@ import ColdProspectingPilotValidation from "@/components/marketing/ColdProspecti
 // As URLs antigas continuam disponíveis por compatibilidade, mas todos os
 // fluxos novos retornam para /content?tab=campanhas para evitar telas paralelas.
 export default function CampanhasHub() {
-  const [location, setLocation] = useLocation();
-  const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
-  const view = new URLSearchParams(queryString).get("view");
+  const [, setLocation] = useLocation();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const view = params.get("view");
   const showMarkets = view === "mercados";
   const showProspecting = view === "prospeccao";
   const showVisitors = view === "visitantes";
-  const showPraca = view === "praca" || new URLSearchParams(window.location.search).get("tab") === "variedades";
+  const showPraca = view === "praca" || params.get("tab") === "variedades";
 
   if (showMarkets) {
     return (
