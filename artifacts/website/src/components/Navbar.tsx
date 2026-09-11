@@ -52,11 +52,11 @@ export default function Navbar() {
   const isActive = (href: string) => location === href || (href === "/produtos" && location.startsWith("/produtos/"));
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#070b14]/88 text-white backdrop-blur-xl">
+    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/92 text-slate-900 shadow-[0_8px_30px_rgba(15,23,42,0.04)] backdrop-blur-xl">
       <div className="container mx-auto flex h-[72px] items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-[-0.02em]" data-testid="link-home">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-base font-bold text-primary-foreground shadow-[0_8px_30px_hsl(var(--primary)/0.28)]">V</div>
-          <span className="text-lg leading-tight">Vendor.ai</span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 text-base font-bold text-white shadow-[0_8px_30px_rgba(249,115,22,0.26)]">V</div>
+          <span className="text-lg leading-tight text-slate-950">Vendor.ai</span>
         </Link>
 
         <nav className="hidden items-center gap-5 md:flex">
@@ -65,7 +65,7 @@ export default function Navbar() {
               key={link.href}
               href={link.href}
               className={`text-sm font-medium transition-colors ${
-                isActive(link.href) ? "text-white" : "text-slate-400 hover:text-white"
+                isActive(link.href) ? "text-orange-600" : "text-slate-600 hover:text-slate-950"
               }`}
               data-testid={`link-nav-${link.href.replace("/", "")}`}
             >
@@ -74,7 +74,7 @@ export default function Navbar() {
           ))}
           <Link
             href="/baixar-app"
-            className={`inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${location === "/baixar-app" ? "text-white" : "text-slate-400 hover:text-white"}`}
+            className={`inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${location === "/baixar-app" ? "text-orange-600" : "text-slate-600 hover:text-slate-950"}`}
             data-testid="link-nav-baixar-app"
           >
             <Download className="h-4 w-4" />
@@ -85,20 +85,20 @@ export default function Navbar() {
             id="public-country"
             value={countryCode}
             onChange={(event) => setCountryCode(event.target.value as PublicCountryCode)}
-            className="h-9 rounded-lg border border-white/10 bg-white/[0.06] px-2 text-xs font-semibold text-slate-200 outline-none transition hover:bg-white/[0.10]"
+            className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-orange-200 hover:bg-orange-50"
             aria-label={copy.country}
           >
             {Object.entries(PUBLIC_COUNTRIES).map(([code, country]) => (
-              <option key={code} value={code} className="bg-slate-950 text-white">
+              <option key={code} value={code} className="bg-white text-slate-900">
                 {country.short}
               </option>
             ))}
           </select>
-          <Link href="/demo" className="group ml-1 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.28)] transition hover:bg-orange-400" data-testid="btn-demo">
+          <Link href="/demo" className="group ml-1 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.24)] transition hover:bg-orange-600" data-testid="btn-demo">
             {copy.trial}
             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
-          <a href="https://app.appvendorai.com" className="ml-1 text-sm font-medium text-slate-400 transition-colors hover:text-white" data-testid="link-entrar">
+          <a href="https://app.appvendorai.com" className="ml-1 text-sm font-medium text-slate-600 transition-colors hover:text-orange-600" data-testid="link-entrar">
             {copy.login}
           </a>
         </nav>
@@ -109,17 +109,17 @@ export default function Navbar() {
             id="public-country-mobile"
             value={countryCode}
             onChange={(event) => setCountryCode(event.target.value as PublicCountryCode)}
-            className="h-9 rounded-lg border border-white/10 bg-white/[0.06] px-2 text-xs font-semibold text-white outline-none"
+            className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 outline-none"
             aria-label={copy.country}
           >
             {Object.entries(PUBLIC_COUNTRIES).map(([code, country]) => (
-              <option key={code} value={code} className="bg-slate-950 text-white">
+              <option key={code} value={code} className="bg-white text-slate-900">
                 {country.short}
               </option>
             ))}
           </select>
           <button
-            className="rounded-lg border border-orange-400/20 bg-orange-400/[0.06] p-2 text-white"
+            className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-orange-700"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             data-testid="btn-mobile-menu"
             aria-label={copy.openMenu}
@@ -130,14 +130,14 @@ export default function Navbar() {
       </div>
 
       {mobileMenuOpen && (
-        <div className="absolute left-0 top-[72px] w-full border-b border-white/10 bg-[#070b14]/98 p-4 shadow-2xl backdrop-blur-xl md:hidden">
+        <div className="absolute left-0 top-[72px] w-full border-b border-slate-200 bg-white/98 p-4 shadow-xl backdrop-blur-xl md:hidden">
           <nav className="flex flex-col gap-2">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 className={`rounded-xl px-4 py-3 text-base font-medium ${
-                  isActive(link.href) ? "bg-orange-400/[0.10] text-white" : "text-slate-300"
+                  isActive(link.href) ? "bg-orange-50 text-orange-700" : "text-slate-700"
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
@@ -146,7 +146,7 @@ export default function Navbar() {
             ))}
             <Link
               href="/baixar-app"
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-base font-medium ${location === "/baixar-app" ? "bg-orange-400/[0.10] text-white" : "text-slate-300"}`}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-base font-medium ${location === "/baixar-app" ? "bg-orange-50 text-orange-700" : "text-slate-700"}`}
               onClick={() => setMobileMenuOpen(false)}
             >
               <Download className="h-4 w-4" />
@@ -154,7 +154,7 @@ export default function Navbar() {
             </Link>
             <Link
               href="/demo"
-              className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-[0_12px_34px_rgba(249,115,22,0.24)] hover:bg-orange-400"
+              className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-[0_12px_34px_rgba(249,115,22,0.20)] hover:bg-orange-600"
               onClick={() => setMobileMenuOpen(false)}
             >
               {copy.trial}
@@ -162,7 +162,7 @@ export default function Navbar() {
             </Link>
             <a
               href="https://app.appvendorai.com"
-              className="mt-1 inline-flex h-12 items-center justify-center rounded-xl border border-white/10 px-5 font-medium text-slate-300"
+              className="mt-1 inline-flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 font-medium text-slate-700"
             >
               {copy.clientLogin}
             </a>
