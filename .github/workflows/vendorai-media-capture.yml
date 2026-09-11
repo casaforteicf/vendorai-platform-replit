@@ -37,23 +37,36 @@ jobs:
         run: pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
 
       - name: Capture screenshots
+        id: screenshots
+        continue-on-error: true
         run: pnpm --filter @workspace/e2e media:capture
 
       - name: Record product videos
+        id: videos
+        continue-on-error: true
         run: pnpm --filter @workspace/e2e media:video
 
       - name: Build manifest
+        if: always()
         shell: bash
         run: |
+          mkdir -p e2e/media-output
           cd e2e/media-output
           find . -type f \( -name '*.png' -o -name '*.webm' \) -print | sort > manifest.txt
           echo "Generated media:"
           cat manifest.txt
 
       - name: Upload official media artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vendorai-official-media-${{ github.run_number }}
           path: e2e/media-output
           retention-days: 14
           if-no-files-found: error
+
+      - name: Fail if media generation had errors
+        if: always() && (steps.screenshots.outcome == 'failure' || steps.videos.outcome == 'failure')
+        run: |
+          echo "Media artifact was preserved, but one or more generation steps failed."
+          exit 1
