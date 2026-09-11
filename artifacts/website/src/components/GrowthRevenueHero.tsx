@@ -190,7 +190,10 @@ export default function GrowthRevenueHero() {
               <img
                 src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
                 alt={copy.proofAlt}
+                width={1440}
+                height={810}
                 loading="eager"
+                decoding="async"
                 fetchPriority="high"
                 className="aspect-[16/9] w-full object-cover object-top"
               />
