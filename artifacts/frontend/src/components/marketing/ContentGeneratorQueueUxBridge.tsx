@@ -4,6 +4,8 @@ const MEDIA_BUTTON_ATTR = "data-vendorai-add-media-button";
 const PREVIEW_BUTTON_ATTR = "data-vendorai-preview-button";
 const STYLE_ID = "vendorai-content-generator-ux-style";
 const CARD_ATTR = "data-vendorai-production-card";
+const FLOW_ATTR = "data-vendorai-content-flow-help";
+const MEDIA_HELP_ATTR = "data-vendorai-media-library-help";
 
 function normalizedText(element: Element | null): string {
   return element?.textContent?.replace(/\s+/g, " ").trim() ?? "";
@@ -34,6 +36,20 @@ function closestProductionCard(element: HTMLElement): HTMLElement | null {
     current = current.parentElement;
   }
   return element.closest<HTMLElement>("div.rounded-lg.border");
+}
+
+function findProductionOverview(): HTMLElement | null {
+  const title = findTextElement("p", "Produção automática do planejamento")
+    ?? findTextElement("p", "Produção do Plano de Mídia");
+  if (!title) return null;
+
+  let current: HTMLElement | null = title.parentElement;
+  while (current && current !== document.body) {
+    const text = normalizedText(current);
+    if (text.includes("Referências reais do negócio") && text.includes("Publicados")) return current;
+    current = current.parentElement;
+  }
+  return null;
 }
 
 function ensureUxStyle() {
@@ -75,6 +91,32 @@ function ensureUxStyle() {
     [${CARD_ATTR}] [data-vendorai-card-actions] > * {
       flex: 0 1 auto;
       max-width: 100%;
+    }
+
+    [${FLOW_ATTR}] {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem .65rem;
+      margin-top: .65rem;
+      font-size: .7rem;
+      color: hsl(var(--muted-foreground));
+    }
+
+    [${FLOW_ATTR}] span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.7rem;
+      padding: 0 .55rem;
+      border: 1px solid hsl(var(--border));
+      border-radius: 9999px;
+      background: hsl(var(--background));
+      white-space: nowrap;
+    }
+
+    [${MEDIA_HELP_ATTR}] {
+      margin-top: .3rem !important;
+      font-size: .7rem !important;
+      color: hsl(var(--muted-foreground));
     }
 
     @media (max-width: 767px) {
@@ -133,6 +175,11 @@ function ensureUxStyle() {
 
       [${CARD_ATTR}] [data-vendorai-preview-button] {
         order: 10;
+      }
+
+      [${FLOW_ATTR}] span {
+        flex: 1 1 auto;
+        justify-content: center;
       }
 
       button[aria-label="Carregar Dev IA"] {
@@ -202,6 +249,42 @@ function focusExpandedPreview(card: HTMLElement | null) {
   }, 120);
 }
 
+function improveProductionIntro() {
+  const title = findTextElement("p", "Produção automática do planejamento")
+    ?? findTextElement("p", "Produção do Plano de Mídia");
+  if (!title) return;
+
+  title.textContent = "Produção do Plano de Mídia";
+  const intro = title.parentElement?.querySelectorAll<HTMLParagraphElement>("p")[1];
+  if (intro) {
+    intro.textContent = "O plano já traz briefing, canal, data e KPI. A IA procura primeiro fotos e vídeos da Biblioteca de Mídias; depois você revisa e aprova.";
+  }
+
+  if (!title.parentElement?.querySelector(`[${FLOW_ATTR}]`)) {
+    const flow = document.createElement("div");
+    flow.setAttribute(FLOW_ATTR, "true");
+    flow.innerHTML = "<span>1. Biblioteca de Mídias</span><span>2. IA cria e organiza</span><span>3. Revisar e aprovar</span>";
+    title.parentElement?.appendChild(flow);
+  }
+}
+
+function improveSummaryLabels() {
+  const overview = findProductionOverview();
+  if (!overview) return;
+
+  const labels = Array.from(overview.querySelectorAll<HTMLElement>("p"));
+  for (const label of labels) {
+    const text = normalizedText(label);
+    if (text === "Prontos") {
+      label.textContent = "Prontos para gerar";
+      label.title = "Peças aprovadas no plano que ainda precisam ser geradas";
+    } else if (text === "Outros") {
+      label.textContent = "Pendentes";
+      label.title = "Itens do plano que ainda não chegaram à etapa de produção ou revisão";
+    }
+  }
+}
+
 function ensureProminentMediaButton() {
   const referenceTitle = findTextElement("p", "Referências reais do negócio");
   const referenceBlock = referenceTitle?.parentElement?.parentElement;
@@ -217,9 +300,18 @@ function ensureProminentMediaButton() {
     button.setAttribute(MEDIA_BUTTON_ATTR, "true");
     button.href = "/midias";
     button.className = "inline-flex min-h-10 w-full sm:w-auto items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-    button.textContent = "Adicionar mídias";
-    button.title = "Adicionar fotos, vídeos e outros arquivos à Central de Mídias";
     referenceBlock.appendChild(button);
+  }
+
+  button.textContent = "Biblioteca de Mídias";
+  button.title = "Abrir a Biblioteca para selecionar, organizar ou enviar fotos e vídeos do negócio";
+
+  const textContainer = referenceTitle.parentElement;
+  if (textContainer && !textContainer.querySelector(`[${MEDIA_HELP_ATTR}]`)) {
+    const help = document.createElement("p");
+    help.setAttribute(MEDIA_HELP_ATTR, "true");
+    help.textContent = "A IA usa automaticamente as mídias compatíveis. Abra a Biblioteca apenas para conferir, selecionar ou adicionar referências.";
+    textContainer.appendChild(help);
   }
 
   if (existingNative) existingNative.style.display = "none";
@@ -307,17 +399,30 @@ function decorateProductionCards() {
 }
 
 function improveReferenceCopy() {
+  const createOutsidePlan = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => normalizedText(button) === "Criação avulsa" || normalizedText(button) === "Criar fora do plano",
+  );
+  if (createOutsidePlan) {
+    createOutsidePlan.textContent = "Criar fora do plano";
+    createOutsidePlan.title = "Criar um conteúdo que não faz parte deste Plano de Mídia";
+  }
+
   const completeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter(
-    (button) => normalizedText(button).startsWith("Completar criativos"),
+    (button) => normalizedText(button).startsWith("Completar criativos")
+      || normalizedText(button).startsWith("Gerar imagens faltantes"),
   );
   for (const button of completeButtons) {
-    button.title = "Produzir somente os criativos que ainda estão faltando para o plano aprovado";
+    const match = normalizedText(button).match(/\((\d+)\)/);
+    button.textContent = `Gerar imagens faltantes${match ? ` (${match[1]})` : ""}`;
+    button.title = "Gerar somente as imagens que ainda faltam nas peças já criadas, preservando os textos existentes";
   }
 }
 
 function decorateContentGenerator() {
   if (window.location.pathname !== "/content") return;
   ensureUxStyle();
+  improveProductionIntro();
+  improveSummaryLabels();
   ensureProminentMediaButton();
   ensurePreviewButtons();
   decorateProductionCards();
