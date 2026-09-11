@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { z } from "zod/v4";
 import { db, webBehaviorEventsTable } from "@workspace/db";
 import { getVisitorIntelligence } from "../services/visitorIntelligence.js";
+import { resolveRequestGeo } from "../lib/requestGeo.js";
 import {
   registerVisitorPushDevice,
   unregisterVisitorPushDevice,
@@ -59,15 +60,6 @@ function userIdFromRequest(req: Request): string | null {
   return user?.sub ?? user?.id ?? null;
 }
 
-function geoHeaders(req: Request) {
-  const clean = (value: string | undefined) => value?.trim() || null;
-  return {
-    country: clean(req.get("x-vercel-ip-country")) ?? clean(req.get("cf-ipcountry")),
-    region: clean(req.get("x-vercel-ip-country-region")),
-    city: clean(req.get("x-vercel-ip-city")),
-  };
-}
-
 router.post("/visitor-intelligence/push/register", async (req, res) => {
   const tenantId = tenantFromRequest(req);
   const userId = userIdFromRequest(req);
@@ -110,7 +102,7 @@ router.post("/visitor-intelligence/event", async (req, res) => {
 
   const d = parsed.data;
   const user = (req as Request & { user?: { sub?: string; id?: string } }).user;
-  const geo = geoHeaders(req);
+  const geo = await resolveRequestGeo(req);
 
   try {
     await db.insert(webBehaviorEventsTable).values({
@@ -128,6 +120,9 @@ router.post("/visitor-intelligence/event", async (req, res) => {
         country: geo.country,
         region: geo.region,
         city: geo.city,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        geoSource: geo.source,
       },
     });
     return res.status(202).json({ accepted: true });
