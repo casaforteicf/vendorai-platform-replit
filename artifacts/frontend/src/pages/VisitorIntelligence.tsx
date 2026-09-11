@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Flame, MapPin, MonitorSmartphone, MousePointerClick, Radio, UserCheck, Users } from "lucide-react";
+import { Activity, Flame, Globe2, MapPin, MonitorSmartphone, MousePointerClick, Radio, Smartphone, UserCheck, Users } from "lucide-react";
 
 const API_BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_URL || "/api");
 
 type JourneyItem = { path: string | null; pageUrl: string | null; at: string | null };
+type VisitorSurface = "site" | "app" | "mobile" | "unknown";
 type IntentSummary = {
   score: number;
   tier: "baixo" | "medio" | "alto" | "muito_alto";
@@ -14,6 +15,7 @@ type IntentSummary = {
 };
 type VisitorSession = {
   sessionId: string;
+  surface: VisitorSurface;
   online: boolean;
   hotOpportunity: boolean;
   identified: boolean;
@@ -40,7 +42,17 @@ type VisitorSession = {
 
 type VisitorResponse = {
   generatedAt: string;
-  totals: { visitors: number; pageViews: number; conversions: number; onlineNow: number; identified: number; hotNow: number };
+  totals: {
+    visitors: number;
+    pageViews: number;
+    conversions: number;
+    onlineNow: number;
+    identified: number;
+    hotNow: number;
+    siteVisitors: number;
+    appVisitors: number;
+    mobileVisitors: number;
+  };
   hotOpportunities: VisitorSession[];
   sessions: VisitorSession[];
 };
@@ -58,6 +70,13 @@ function locationLabel(session: VisitorSession) {
 
 function sourceLabel(session: VisitorSession) {
   return [session.source, session.medium, session.campaign].filter(Boolean).join(" · ") || session.referrer || "Direto / desconhecido";
+}
+
+function surfaceLabel(surface: VisitorSurface) {
+  if (surface === "site") return "Site";
+  if (surface === "app") return "App Web";
+  if (surface === "mobile") return "App Mobile";
+  return "Origem não classificada";
 }
 
 function intentClass(tier: IntentSummary["tier"]) {
@@ -81,6 +100,7 @@ async function loadVisitors(minutes: number): Promise<VisitorResponse> {
 
 export default function VisitorIntelligence() {
   const [minutes, setMinutes] = useState(60);
+  const [surface, setSurface] = useState<"all" | VisitorSurface>("all");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   const query = useQuery({
@@ -89,39 +109,72 @@ export default function VisitorIntelligence() {
     refetchInterval: 15_000,
   });
 
+  const filteredSessions = useMemo(
+    () => (query.data?.sessions ?? []).filter((session) => surface === "all" || session.surface === surface),
+    [query.data, surface],
+  );
+
+  const filteredHot = useMemo(
+    () => (query.data?.hotOpportunities ?? []).filter((session) => surface === "all" || session.surface === surface),
+    [query.data, surface],
+  );
+
   const selected = useMemo(
     () => query.data?.sessions.find((session) => session.sessionId === selectedSessionId) ?? null,
     [query.data, selectedSessionId],
   );
 
-  const totals = query.data?.totals ?? { visitors: 0, pageViews: 0, conversions: 0, onlineNow: 0, identified: 0, hotNow: 0 };
+  const totals = query.data?.totals ?? {
+    visitors: 0,
+    pageViews: 0,
+    conversions: 0,
+    onlineNow: 0,
+    identified: 0,
+    hotNow: 0,
+    siteVisitors: 0,
+    appVisitors: 0,
+    mobileVisitors: 0,
+  };
 
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Visitor Intelligence</h1>
-          <p className="text-sm text-muted-foreground">Acompanhe visitantes, origem, localização aproximada, tela atual, jornada e intenção comercial.</p>
+          <p className="text-sm text-muted-foreground">Site, app web e app mobile em uma visão única, com origem, cidade, tela atual, jornada e intenção comercial.</p>
         </div>
-        <select
-          className="h-10 rounded-md border bg-background px-3 text-sm"
-          value={minutes}
-          onChange={(event) => setMinutes(Number(event.target.value))}
-        >
-          <option value={30}>Últimos 30 min</option>
-          <option value={60}>Última hora</option>
-          <option value={360}>Últimas 6 horas</option>
-          <option value={1440}>Últimas 24 horas</option>
-        </select>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="h-10 rounded-md border bg-background px-3 text-sm"
+            value={surface}
+            onChange={(event) => setSurface(event.target.value as "all" | VisitorSurface)}
+          >
+            <option value="all">Todas as superfícies</option>
+            <option value="site">Site</option>
+            <option value="app">App Web</option>
+            <option value="mobile">App Mobile</option>
+            <option value="unknown">Não classificado</option>
+          </select>
+          <select
+            className="h-10 rounded-md border bg-background px-3 text-sm"
+            value={minutes}
+            onChange={(event) => setMinutes(Number(event.target.value))}
+          >
+            <option value={30}>Últimos 30 min</option>
+            <option value={60}>Última hora</option>
+            <option value={360}>Últimas 6 horas</option>
+            <option value={1440}>Últimas 24 horas</option>
+          </select>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {[
           { label: "Quentes agora", value: totals.hotNow, icon: Flame },
           { label: "Online agora", value: totals.onlineNow, icon: Radio },
-          { label: "Visitantes", value: totals.visitors, icon: Users },
-          { label: "Páginas", value: totals.pageViews, icon: Activity },
-          { label: "Identificados", value: totals.identified, icon: UserCheck },
+          { label: "Site", value: totals.siteVisitors, icon: Globe2 },
+          { label: "App Web", value: totals.appVisitors, icon: MonitorSmartphone },
+          { label: "App Mobile", value: totals.mobileVisitors, icon: Smartphone },
           { label: "Conversões", value: totals.conversions, icon: MousePointerClick },
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="rounded-xl border bg-card p-4 shadow-sm">
@@ -131,7 +184,13 @@ export default function VisitorIntelligence() {
         ))}
       </div>
 
-      {query.data?.hotOpportunities?.length ? (
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border bg-card px-4 py-3"><div className="text-xs text-muted-foreground">Visitantes no período</div><div className="mt-1 text-lg font-semibold">{totals.visitors}</div></div>
+        <div className="rounded-lg border bg-card px-4 py-3"><div className="text-xs text-muted-foreground">Páginas/telas vistas</div><div className="mt-1 text-lg font-semibold">{totals.pageViews}</div></div>
+        <div className="rounded-lg border bg-card px-4 py-3"><div className="text-xs text-muted-foreground">Identificados</div><div className="mt-1 text-lg font-semibold">{totals.identified}</div></div>
+      </div>
+
+      {filteredHot.length ? (
         <div className="rounded-xl border border-orange-500/30 bg-orange-500/[0.04] p-4">
           <div className="flex items-center gap-2">
             <Flame className="h-5 w-5 text-orange-600" />
@@ -141,7 +200,7 @@ export default function VisitorIntelligence() {
             </div>
           </div>
           <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-            {query.data.hotOpportunities.slice(0, 6).map((session) => (
+            {filteredHot.slice(0, 6).map((session) => (
               <button
                 key={session.sessionId}
                 type="button"
@@ -152,6 +211,7 @@ export default function VisitorIntelligence() {
                   <span className="truncate text-sm font-medium">{session.identified ? "Visitante identificado" : `Visitante ${session.sessionId.slice(0, 8)}`}</span>
                   <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${intentClass(session.intent.tier)}`}>{session.intent.score}/100</span>
                 </div>
+                <div className="mt-1 text-[11px] font-medium text-muted-foreground">{surfaceLabel(session.surface)}</div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">{session.currentPath || "/"} · {locationLabel(session)}</div>
               </button>
             ))}
@@ -161,19 +221,20 @@ export default function VisitorIntelligence() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
         <div className="overflow-hidden rounded-xl border bg-card">
-          <div className="border-b px-4 py-3">
+          <div className="flex items-center justify-between border-b px-4 py-3">
             <h2 className="font-medium">Sessões recentes</h2>
+            <span className="text-xs text-muted-foreground">{filteredSessions.length} exibida(s)</span>
           </div>
           <div className="divide-y">
             {query.isLoading && <div className="p-6 text-sm text-muted-foreground">Carregando visitantes…</div>}
             {query.isError && <div className="p-6 text-sm text-destructive">Não foi possível carregar os visitantes.</div>}
-            {!query.isLoading && query.data?.sessions.length === 0 && <div className="p-6 text-sm text-muted-foreground">Nenhuma sessão neste período.</div>}
-            {query.data?.sessions.map((session) => (
+            {!query.isLoading && filteredSessions.length === 0 && <div className="p-6 text-sm text-muted-foreground">Nenhuma sessão neste filtro.</div>}
+            {filteredSessions.map((session) => (
               <button
                 type="button"
                 key={session.sessionId}
                 onClick={() => setSelectedSessionId(session.sessionId)}
-                className="grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/50 md:grid-cols-[minmax(180px,1.1fr)_minmax(150px,0.7fr)_minmax(160px,1fr)_minmax(160px,1fr)_auto] md:items-center"
+                className="grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/50 md:grid-cols-[minmax(180px,1.1fr)_110px_minmax(150px,0.7fr)_minmax(160px,1fr)_minmax(160px,1fr)_auto] md:items-center"
               >
                 <div>
                   <div className="flex items-center gap-2 font-medium">
@@ -183,6 +244,7 @@ export default function VisitorIntelligence() {
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">{session.currentPath || "/"}</div>
                 </div>
+                <div className="text-xs font-medium text-muted-foreground">{surfaceLabel(session.surface)}</div>
                 <div><span className={`rounded-full border px-2 py-1 text-xs font-semibold ${intentClass(session.intent.tier)}`}>{session.intent.score}/100 · {session.intent.tierLabel}</span></div>
                 <div className="text-sm"><MapPin className="mr-1 inline h-3.5 w-3.5" />{locationLabel(session)}</div>
                 <div className="truncate text-sm text-muted-foreground">{sourceLabel(session)}</div>
@@ -202,7 +264,7 @@ export default function VisitorIntelligence() {
             <div className="space-y-5">
               <div>
                 <div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${selected.online ? "bg-emerald-500" : "bg-muted-foreground/30"}`} /><h2 className="font-medium">{selected.identified ? "Visitante identificado" : `Visitante ${selected.sessionId.slice(0, 8)}`}</h2></div>
-                <p className="mt-1 text-xs text-muted-foreground">{locationLabel(selected)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{surfaceLabel(selected.surface)} · {locationLabel(selected)}</p>
               </div>
 
               <div className={`rounded-lg border p-3 ${intentClass(selected.intent.tier)}`}>
@@ -214,9 +276,11 @@ export default function VisitorIntelligence() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><div className="text-xs text-muted-foreground">Página atual</div><div className="mt-1 break-all">{selected.currentPath || "/"}</div></div>
+                <div><div className="text-xs text-muted-foreground">Superfície</div><div className="mt-1">{surfaceLabel(selected.surface)}</div></div>
+                <div><div className="text-xs text-muted-foreground">Página/tela atual</div><div className="mt-1 break-all">{selected.currentPath || "/"}</div></div>
                 <div><div className="text-xs text-muted-foreground">Origem</div><div className="mt-1 break-all">{sourceLabel(selected)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Páginas</div><div className="mt-1">{selected.pageViews}</div></div>
+                <div><div className="text-xs text-muted-foreground">Dispositivo</div><div className="mt-1">{[selected.device.type, selected.device.browser, selected.device.os].filter(Boolean).join(" · ") || "—"}</div></div>
+                <div><div className="text-xs text-muted-foreground">Páginas/telas</div><div className="mt-1">{selected.pageViews}</div></div>
                 <div><div className="text-xs text-muted-foreground">CTAs</div><div className="mt-1">{selected.ctaClicks}</div></div>
                 <div><div className="text-xs text-muted-foreground">Scroll máx.</div><div className="mt-1">{selected.maxScrollDepth}%</div></div>
                 <div><div className="text-xs text-muted-foreground">Tempo</div><div className="mt-1">{duration(selected.durationMs)}</div></div>
