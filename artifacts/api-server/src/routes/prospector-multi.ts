@@ -2,8 +2,13 @@ import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { activitiesTable, db, leadsTable, prospectorConfigTable } from "@workspace/db";
+import { ensureColdProspectLandingPage } from "../services/coldProspectLandingPage.js";
+import type { ColdEvidence } from "../lib/coldProspectQuality.js";
 
 const router: IRouter = Router();
+const PILOT_VALIDATION_FIT = 70;
+const PILOT_VALIDATION_PROPENSITY = 50;
+const PILOT_VALIDATION_EVIDENCE = 2;
 
 function resolveTenantId(req: Express.Request, explicitTenantId?: string): string {
   const user = req.user;
@@ -29,6 +34,31 @@ function cleanUnique(values: string[]): string[] {
     output.push(value);
   }
   return output;
+}
+
+function getDossier(metadata: Record<string, unknown>): Record<string, unknown> {
+  const raw = metadata["coldProspectDossier"];
+  return raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+}
+
+function getEvidence(dossier: Record<string, unknown>): ColdEvidence[] {
+  const raw = dossier["evidence"];
+  return Array.isArray(raw) ? raw as ColdEvidence[] : [];
+}
+
+function validationStage(params: {
+  dossier: Record<string, unknown>;
+  evidenceCount: number;
+  propensityScore: number;
+}): "ready_for_outreach" | "ready_for_validation" | "needs_enrichment" | "below_validation_score" {
+  const { dossier, evidenceCount, propensityScore } = params;
+  if (String(dossier["status"] ?? "") === "ready_for_outreach") return "ready_for_outreach";
+  const fitScore = Number(dossier["fitScore"] ?? 0);
+  const hasValidContact = dossier["hasValidContact"] !== false;
+  const segmentIdentified = dossier["segmentIdentified"] !== false;
+  if (!hasValidContact || !segmentIdentified || evidenceCount < PILOT_VALIDATION_EVIDENCE) return "needs_enrichment";
+  if (fitScore >= PILOT_VALIDATION_FIT && propensityScore >= PILOT_VALIDATION_PROPENSITY) return "ready_for_validation";
+  return "below_validation_score";
 }
 
 const multiConfigSchema = z.object({
@@ -74,7 +104,6 @@ router.get("/prospector/config-multi", async (req, res) => {
 
 router.get("/prospector/pilot-validation", async (req, res) => {
   try {
-    // tenant-audit: reviewed explicit tenant is honored only for authenticated super_admin; all other users are bound to req.user.tenantId by resolveTenantId
     const explicitTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
     const tenantId = resolveTenantId(req, explicitTenantId);
     const coldSources = ["prospector", "prospector_auto", "cnpj", "recem_aberta", "ad_library"];
@@ -125,10 +154,8 @@ router.get("/prospector/pilot-validation", async (req, res) => {
 
     const prospects = leads.map((lead) => {
       const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
-      const dossierRaw = metadata["coldProspectDossier"];
-      const dossier = dossierRaw && typeof dossierRaw === "object" ? dossierRaw as Record<string, unknown> : {};
-      const evidenceRaw = dossier["evidence"];
-      const evidence = Array.isArray(evidenceRaw) ? evidenceRaw : [];
+      const dossier = getDossier(metadata);
+      const evidence = getEvidence(dossier);
       const blockingReasons = Array.isArray(dossier["blockingReasons"])
         ? (dossier["blockingReasons"] as unknown[]).map(String)
         : [];
@@ -136,6 +163,8 @@ router.get("/prospector/pilot-validation", async (req, res) => {
       const lpBrief = dossier["lpBrief"] && typeof dossier["lpBrief"] === "object"
         ? dossier["lpBrief"] as Record<string, unknown>
         : {};
+      const propensityScore = Number(lead.propensityScore ?? 0);
+      const stage = validationStage({ dossier, evidenceCount: evidence.length, propensityScore });
 
       return {
         id: lead.id,
@@ -145,15 +174,24 @@ router.get("/prospector/pilot-validation", async (req, res) => {
         segment: lead.mercadoSegmento,
         source: lead.source,
         enrichmentStatus: lead.enrichmentStatus,
-        propensityScore: lead.propensityScore ?? 0,
+        propensityScore,
         fitScore: Number(dossier["fitScore"] ?? 0),
         painScore: Number(dossier["painScore"] ?? 0),
         intentScore: Number(lead.intentScore ?? dossier["intentScore"] ?? 0),
         dossierStatus: String(dossier["status"] ?? "aguardando_dossie"),
+        validationStage: stage,
+        validationCriteria: {
+          minFit: PILOT_VALIDATION_FIT,
+          minPropensity: PILOT_VALIDATION_PROPENSITY,
+          minEvidence: PILOT_VALIDATION_EVIDENCE,
+        },
         evidenceCount: evidence.length,
         evidence: evidence.slice(0, 4),
         lpUrl: typeof dossier["lpUrl"] === "string" ? dossier["lpUrl"] : null,
         blockingReasons,
+        validationBlockingReasons: stage === "ready_for_validation"
+          ? blockingReasons.filter((reason) => reason !== "score_abaixo_do_threshold")
+          : blockingReasons,
         priorityReason: lead.priorityReason,
         nextAction: lead.proximaAcao,
         lastActivity: lastActivity ? {
@@ -171,6 +209,107 @@ router.get("/prospector/pilot-validation", async (req, res) => {
   } catch (error) {
     const status = (error as { status?: number }).status ?? 500;
     const message = error instanceof Error ? error.message : "Falha ao carregar validação do piloto";
+    return res.status(status).json({ error: message });
+  }
+});
+
+const validationLpSchema = z.object({ tenantId: z.string().optional() });
+
+router.post("/prospector/pilot-validation/:leadId/lp", async (req, res) => {
+  const parsed = validationLpSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Dados inválidos" });
+
+  try {
+    const tenantId = resolveTenantId(req, parsed.data.tenantId);
+    const leadId = req.params["leadId"]!;
+    const [lead] = await db
+      .select({
+        id: leadsTable.id,
+        nome: leadsTable.nome,
+        empresa: leadsTable.empresa,
+        telefone: leadsTable.telefone,
+        email: leadsTable.email,
+        mercadoSegmento: leadsTable.mercadoSegmento,
+        endereco: leadsTable.endereco,
+        logoUrl: leadsTable.logoUrl,
+        websiteUrl: leadsTable.websiteUrl,
+        propensityScore: leadsTable.propensityScore,
+        metadata: leadsTable.metadata,
+      })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+      .limit(1);
+
+    if (!lead) return res.status(404).json({ error: "Prospect não encontrado" });
+
+    const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+    const dossier = getDossier(metadata);
+    const evidence = getEvidence(dossier);
+    const propensityScore = Number(lead.propensityScore ?? dossier["propensityScore"] ?? 0);
+    const stage = validationStage({ dossier, evidenceCount: evidence.length, propensityScore });
+
+    if (stage !== "ready_for_validation" && stage !== "ready_for_outreach") {
+      return res.status(409).json({
+        error: stage === "needs_enrichment"
+          ? "Complete o enriquecimento antes de gerar a LP."
+          : "Prospect ainda não atingiu os critérios mínimos de validação.",
+      });
+    }
+
+    if (typeof dossier["lpUrl"] === "string" && dossier["lpUrl"]) {
+      return res.status(200).json({ lpUrl: dossier["lpUrl"], reused: true, validationStage: stage });
+    }
+
+    const playbook = dossier["playbook"] && typeof dossier["playbook"] === "object"
+      ? dossier["playbook"] as Record<string, unknown>
+      : {};
+    const lpBrief = dossier["lpBrief"] && typeof dossier["lpBrief"] === "object"
+      ? dossier["lpBrief"] as Record<string, unknown>
+      : {};
+    const modules = Array.isArray(playbook["recommendedModules"])
+      ? (playbook["recommendedModules"] as unknown[]).map(String)
+      : ["crm", "sdr", "follow_up", "marketing", "jarvis"];
+
+    const landing = await ensureColdProspectLandingPage({
+      tenantId,
+      leadId,
+      companyName: lead.empresa ?? lead.nome,
+      city: typeof lpBrief["city"] === "string" ? lpBrief["city"] : lead.endereco,
+      niche: String(playbook["niche"] ?? lead.mercadoSegmento ?? "geral"),
+      segment: String(playbook["segment"] ?? lead.mercadoSegmento ?? "geral"),
+      logoUrl: lead.logoUrl,
+      websiteUrl: lead.websiteUrl,
+      evidence,
+      modules,
+      fitScore: Number(dossier["fitScore"] ?? 0),
+      painScore: Number(dossier["painScore"] ?? 0),
+    });
+
+    const updatedDossier = {
+      ...dossier,
+      validationStage: stage,
+      lpUrl: landing.publicUrl,
+      lpSiteId: landing.id,
+      lpSlug: landing.siteSlug,
+      lpGeneratedAt: new Date().toISOString(),
+      lpPreparedForReview: stage === "ready_for_validation",
+    };
+
+    await db
+      .update(leadsTable)
+      .set({
+        metadata: { ...metadata, coldProspectDossier: updatedDossier },
+        proximaAcao: stage === "ready_for_validation"
+          ? "Revisar LP e abordagem antes do disparo"
+          : "Aguardar execução do SDR",
+        updatedAt: new Date(),
+      })
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+    return res.status(200).json({ lpUrl: landing.publicUrl, reused: false, validationStage: stage });
+  } catch (error) {
+    const status = (error as { status?: number }).status ?? 500;
+    const message = error instanceof Error ? error.message : "Falha ao gerar LP para validação";
     return res.status(status).json({ error: message });
   }
 });
