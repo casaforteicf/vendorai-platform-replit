@@ -255,6 +255,21 @@ export default function PlanoMidia() {
     }));
   }
 
+  function updateCampaignName(campaignId: string, name: string) {
+    setPlan((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        conteudo: {
+          ...current.conteudo,
+          campanhas: (current.conteudo.campanhas ?? []).map((campaign) =>
+            campaign.id === campaignId ? { ...campaign, nome: name } : campaign,
+          ),
+        },
+      };
+    });
+  }
+
   async function generateProposal() {
     if (!tenantId) return;
     if (!config.objetivoPrincipal.trim() || !config.produtoServicoPrioritario.trim() || !config.publicoPrioritario.trim()) {
@@ -291,18 +306,27 @@ export default function PlanoMidia() {
 
   async function approvePlanning() {
     if (!plan) return;
+    const unnamedCampaign = (plan.conteudo.campanhas ?? []).find((campaign) => !campaign.nome.trim());
+    if (unnamedCampaign) {
+      toast({ title: "Dê um nome para cada campanha", description: "Todas as campanhas precisam ter um nome antes da aprovação.", variant: "destructive" });
+      return;
+    }
+
     setApproving(true);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ aprovar: true }),
+        body: JSON.stringify({
+          patch: { campanhas: plan.conteudo.campanhas ?? [] },
+          aprovar: true,
+        }),
       });
       const data = (await response.json()) as MediaPlan & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao aprovar o planejamento.");
       setPlan(data);
       setPreviousPlan(data);
-      toast({ title: "Planejamento aprovado", description: "A direção foi aprovada. A execução ainda não começou." });
+      toast({ title: "Planejamento aprovado", description: "Os nomes das campanhas foram salvos. A execução ainda não começou." });
     } catch (error) {
       toast({ title: "Não foi possível aprovar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
     } finally {
@@ -330,7 +354,7 @@ export default function PlanoMidia() {
       const data = await response.json() as Array<unknown> | { error?: string };
       if (!response.ok) throw new Error(!Array.isArray(data) ? data.error ?? "Falha ao gerar as campanhas." : "Falha ao gerar as campanhas.");
       setCampaignsGenerated(true);
-      toast({ title: "Campanhas geradas", description: "Agora começa a execução em Campanhas." });
+      toast({ title: "Campanhas geradas", description: "Agora escolha qual campanha deseja abrir e executar." });
       navigate(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}`);
     } catch (error) {
       toast({ title: "Não foi possível gerar as campanhas", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
@@ -353,7 +377,7 @@ export default function PlanoMidia() {
             {[
               ["1", "Informações", "Você define objetivo, público, oferta e limites"],
               ["2", "Proposta da IA", "Só aparece depois de clicar em gerar"],
-              ["3", "Aprovação", "Você revisa e aprova a direção"],
+              ["3", "Aprovação", "Você revisa, nomeia e aprova as campanhas"],
               ["4", "Gerar Campanhas", "Só aqui começa a execução"],
             ].map(([n, title, description]) => (
               <div key={n} className="rounded-xl border bg-background p-3">
@@ -480,14 +504,33 @@ export default function PlanoMidia() {
 
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">Campanhas propostas</p>
+                <div>
+                  <p className="text-sm font-semibold">Campanhas propostas</p>
+                  {!approved && !showingPrevious && <p className="mt-0.5 text-[11px] text-muted-foreground">A IA sugere os nomes. Edite agora para identificar facilmente cada campanha durante a execução.</p>}
+                </div>
                 <Badge variant="outline">{campaigns.length} sugestões</Badge>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
                 {campaigns.map((campaign) => (
                   <div key={campaign.id} className="rounded-xl border bg-background p-4">
-                    <p className="font-semibold">{campaign.nome}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{campaign.objetivo}</p>
+                    {!approved && !showingPrevious ? (
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Nome da campanha *</label>
+                        <Input
+                          className="mt-1 font-semibold"
+                          value={campaign.nome}
+                          maxLength={120}
+                          onChange={(event) => updateCampaignName(campaign.id, event.target.value)}
+                          placeholder="Ex.: Odonto Brasil — Aquisição"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Nome da campanha</p>
+                        <p className="mt-1 font-semibold">{campaign.nome}</p>
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-muted-foreground">{campaign.objetivo}</p>
                     <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
                       <div><span className="text-muted-foreground">Público: </span>{campaign.publico}</div>
                       <div><span className="text-muted-foreground">Oferta: </span>{campaign.oferta}</div>
@@ -503,7 +546,7 @@ export default function PlanoMidia() {
             {!showingPrevious && (
               <div className="rounded-xl border border-dashed p-4">
                 <p className="text-sm font-semibold flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-primary" />3. Aprovação</p>
-                <p className="mt-1 text-xs text-muted-foreground">Aprovar confirma a direção estratégica. Ainda não cria peças, anúncios, mensagens ou publicações.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Revise os nomes e a direção. Aprovar salva as campanhas, mas ainda não cria peças, anúncios, mensagens ou publicações.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {!approved ? (
                     <Button onClick={approvePlanning} disabled={approving || campaigns.length === 0}>
