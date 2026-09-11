@@ -6,17 +6,34 @@ import {
   BriefcaseBusiness,
   Calculator,
   CircleDollarSign,
-  MessageCircleMore,
   RefreshCcw,
   Sparkles,
   Target,
   TrendingUp,
-  UsersRound,
 } from "lucide-react";
 import { usePublicCountry } from "@/lib/publicCountry";
 
-const SEGMENTS_PT = ["Varejo", "Distribuição / Atacado", "Serviços", "Clínica / Saúde", "Automotivo", "Construção / Obras", "Indústria / B2B", "Outro"];
-const SEGMENTS_ES = ["Retail", "Distribución / Mayorista", "Servicios", "Clínica / Salud", "Automotriz", "Construcción / Obras", "Industria / B2B", "Otro"];
+const SEGMENTS_PT = [
+  "Varejo",
+  "Distribuição / Atacado",
+  "Serviços",
+  "Clínica / Saúde",
+  "Automotivo",
+  "Construção / Obras",
+  "Indústria / B2B",
+  "Outro",
+];
+
+const SEGMENTS_ES = [
+  "Retail",
+  "Distribución / Mayorista",
+  "Servicios",
+  "Clínica / Salud",
+  "Automotriz",
+  "Construcción / Obras",
+  "Industria / B2B",
+  "Otro",
+];
 
 const SCENARIOS = {
   conservative: { recovery: 10, uplift: 10, reactivation: 1 },
@@ -59,6 +76,21 @@ function NumericField({ label, value, onChange, suffix, hint, min = 0, max }: Nu
   );
 }
 
+function CalculatedField({ label, value, suffix, hint }: { label: string; value: string; suffix?: string; hint: string }) {
+  return (
+    <div className="block">
+      <span className="mb-2 flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
+        <span>{label}</span>
+        {suffix && <span className="text-xs font-normal text-slate-400">{suffix}</span>}
+      </span>
+      <div className="flex h-11 w-full items-center rounded-xl border border-orange-200 bg-orange-50/60 px-3 text-sm font-semibold text-slate-900">
+        {value}
+      </div>
+      <span className="mt-1.5 block text-xs leading-5 text-slate-400">{hint}</span>
+    </div>
+  );
+}
+
 function money(value: number, locale: string) {
   return new Intl.NumberFormat(locale, {
     style: "currency",
@@ -91,6 +123,8 @@ const PT = {
   margin: "Margem média",
   revenueDay: "Faturamento por dia",
   revenueMonth: "Faturamento por mês",
+  calculatedDay: "Calculado automaticamente: vendas por dia × ticket médio.",
+  calculatedMonth: "Calculado automaticamente: faturamento por dia × dias úteis.",
   currentMedia: "Investimento atual em marketing/mês",
   plannedMedia: "Investimento pretendido em marketing/mês",
   cpl: "Custo médio por lead (CPL)",
@@ -102,7 +136,7 @@ const PT = {
   recovery: "Recuperar leads desassistidos",
   uplift: "Melhoria relativa de conversão",
   reactivation: "Reativação / recompra da base",
-  currentRevenue: "Faturamento mensal informado",
+  currentRevenue: "Faturamento mensal calculado",
   currentLeads: "Leads pagos estimados/mês",
   plannedLeads: "Leads com a mídia pretendida",
   coverage: "Cobertura de follow-up",
@@ -150,6 +184,8 @@ const ES = {
   margin: "Margen promedio",
   revenueDay: "Facturación por día",
   revenueMonth: "Facturación por mes",
+  calculatedDay: "Calculado automáticamente: ventas por día × ticket promedio.",
+  calculatedMonth: "Calculado automáticamente: facturación por día × días hábiles.",
   currentMedia: "Inversión actual en marketing/mes",
   plannedMedia: "Inversión prevista en marketing/mes",
   cpl: "Costo promedio por lead (CPL)",
@@ -161,7 +197,7 @@ const ES = {
   recovery: "Recuperar leads desatendidos",
   uplift: "Mejora relativa de conversión",
   reactivation: "Reactivación / recompra de la base",
-  currentRevenue: "Facturación mensual informada",
+  currentRevenue: "Facturación mensual calculada",
   currentLeads: "Leads pagos estimados/mes",
   plannedLeads: "Leads con la inversión prevista",
   coverage: "Cobertura de seguimiento",
@@ -176,7 +212,7 @@ const ES = {
   r3: "R³ Reactivar",
   r3Desc: "Ingreso simulado por recompra, reactivación o expansión de la cartera existente.",
   hiddenRevenue: "Ingreso Oculto R³",
-  incrementalProfit: "Margen incremental simulado",
+  incrementalProfit: "Margen incremental simulada",
   vendorRoi: "ROI simulado sobre VendorAI",
   paybackSales: "Ventas extra para pagar VendorAI",
   newMediaRevenue: "Ingreso estimado de la inversión adicional",
@@ -196,8 +232,6 @@ const INITIAL = {
   salesDay: 3,
   ticket: 4000,
   margin: 35,
-  revenueDay: 12000,
-  revenueMonth: 264000,
   currentMedia: 10500,
   plannedMedia: 15000,
   cpl: 35,
@@ -218,8 +252,6 @@ export default function RevenueMagicCalculator() {
   const [salesDay, setSalesDay] = useState(INITIAL.salesDay);
   const [ticket, setTicket] = useState(INITIAL.ticket);
   const [margin, setMargin] = useState(INITIAL.margin);
-  const [revenueDay, setRevenueDay] = useState(INITIAL.revenueDay);
-  const [revenueMonth, setRevenueMonth] = useState(INITIAL.revenueMonth);
   const [currentMedia, setCurrentMedia] = useState(INITIAL.currentMedia);
   const [plannedMedia, setPlannedMedia] = useState(INITIAL.plannedMedia);
   const [cpl, setCpl] = useState(INITIAL.cpl);
@@ -237,7 +269,8 @@ export default function RevenueMagicCalculator() {
     const days = Math.max(1, businessDays);
     const monthlyContacts = contactsDay * days;
     const monthlySales = salesDay * days;
-    const informedRevenue = revenueMonth > 0 ? revenueMonth : revenueDay > 0 ? revenueDay * days : monthlySales * ticket;
+    const revenueDay = salesDay * ticket;
+    const informedRevenue = revenueDay * days;
     const closeRate = contactsDay > 0 ? Math.min(1, salesDay / contactsDay) : 0;
     const paidLeads = cpl > 0 ? currentMedia / cpl : 0;
     const plannedLeads = cpl > 0 ? plannedMedia / cpl : 0;
@@ -259,6 +292,7 @@ export default function RevenueMagicCalculator() {
     return {
       monthlyContacts,
       monthlySales,
+      revenueDay,
       informedRevenue,
       closeRate,
       paidLeads,
@@ -279,7 +313,7 @@ export default function RevenueMagicCalculator() {
       projectedRevenue,
       uncoveredMediaValue: uncoveredPaidLeads * cpl,
     };
-  }, [businessDays, sellers, contactsDay, salesDay, ticket, margin, revenueDay, revenueMonth, currentMedia, plannedMedia, cpl, followup, customerBase, repurchaseTicket, vendorCost, recovery, uplift, reactivation]);
+  }, [businessDays, sellers, contactsDay, salesDay, ticket, margin, currentMedia, plannedMedia, cpl, followup, customerBase, repurchaseTicket, vendorCost, recovery, uplift, reactivation]);
 
   function applyScenario(key: ScenarioKey) {
     setScenario(key);
@@ -296,8 +330,6 @@ export default function RevenueMagicCalculator() {
     setSalesDay(INITIAL.salesDay);
     setTicket(INITIAL.ticket);
     setMargin(INITIAL.margin);
-    setRevenueDay(INITIAL.revenueDay);
-    setRevenueMonth(INITIAL.revenueMonth);
     setCurrentMedia(INITIAL.currentMedia);
     setPlannedMedia(INITIAL.plannedMedia);
     setCpl(INITIAL.cpl);
@@ -321,8 +353,8 @@ export default function RevenueMagicCalculator() {
     }
     if (customerBase > result.paidLeads * 4) {
       return isSpanish
-        ? `Su base instalada es grande frente al volumen mensual de adquisición. El mayor potencial del escenario puede estar en recompra, reactivación y expansión de cartera.`
-        : `Sua base instalada é grande em relação ao volume mensal de aquisição. O maior potencial do cenário pode estar em recompra, reativação e expansão da carteira.`;
+        ? "Su base instalada es grande frente al volumen mensual de adquisición. El mayor potencial del escenario puede estar en recompra, reactivación y expansión de cartera."
+        : "Sua base instalada é grande em relação ao volume mensal de aquisição. O maior potencial do cenário pode estar em recompra, reativação e expansão da carteira.";
     }
     return isSpanish
       ? "El escenario muestra una operación relativamente equilibrada. Compare la mejora de conversión con el aumento de inversión antes de comprar más demanda."
@@ -342,7 +374,7 @@ export default function RevenueMagicCalculator() {
 
         <div className="mt-12 grid gap-7 xl:grid-cols-[1.15fr_.85fr]">
           <div className="space-y-6">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+            <div className="rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm md:p-8">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><BriefcaseBusiness className="h-5 w-5" /></div>
                 <div><h3 className="text-xl font-semibold text-slate-950">{copy.business}</h3><p className="mt-1 text-sm text-slate-500">{copy.businessDesc}</p></div>
@@ -360,8 +392,8 @@ export default function RevenueMagicCalculator() {
                 <NumericField label={copy.salesDay} value={salesDay} onChange={setSalesDay} />
                 <NumericField label={copy.ticket} value={ticket} onChange={setTicket} suffix="R$" />
                 <NumericField label={copy.margin} value={margin} onChange={setMargin} suffix="%" max={100} />
-                <NumericField label={copy.revenueDay} value={revenueDay} onChange={setRevenueDay} suffix="R$" />
-                <NumericField label={copy.revenueMonth} value={revenueMonth} onChange={setRevenueMonth} suffix="R$" />
+                <CalculatedField label={copy.revenueDay} value={money(result.revenueDay, country.locale)} suffix="R$" hint={copy.calculatedDay} />
+                <CalculatedField label={copy.revenueMonth} value={money(result.informedRevenue, country.locale)} suffix="R$" hint={copy.calculatedMonth} />
               </div>
             </div>
 
