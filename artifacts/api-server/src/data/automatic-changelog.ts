@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1272",
+    "titulo": "Simplificar experiência de Configurações",
+    "descricao": "mantém **Saúde das integrações** como visão rápida no topo; remove visualmente o bloco redundante **Configuração central do negócio**; renomeia a busca para **Buscar nas configurações**; troca **Contexto para a IA** por **Conhecimento sobre o negócio**, com texto mais claro;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-11T20:13:15.000Z",
+    "pullRequest": 1272
+  },
+  {
     "id": "pr-1264",
     "titulo": "Transformar Campanhas na área de execução do Planejamento",
     "descricao": "quando a campanha nasce do Planejamento, a aba Campanhas abre diretamente um workspace de execução; mostra a campanha selecionada, público, oferta, mensagem, KPI e canais; traz os indicadores operacionais: ações, prontas, em produção e publicadas; move o calendário operacional para Campanhas;",
