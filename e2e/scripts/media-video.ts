@@ -3,56 +3,31 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const BASE_URL = process.env.MEDIA_BASE_URL || "https://app.appvendorai.com";
-const MEDIA_EMAIL = process.env.MEDIA_EMAIL;
-const MEDIA_PASSWORD = process.env.MEDIA_PASSWORD;
 const MEDIA_AUTH_TOKEN = process.env.MEDIA_AUTH_TOKEN;
-const TENANT_ID = process.env.MEDIA_TENANT_ID || "70ea6eb6-ffd8-4dc6-9224-d628a6d4e67d";
 const OUTPUT_ROOT = process.env.MEDIA_OUTPUT_DIR || path.resolve(process.cwd(), "media-output");
 
 async function getToken(context: BrowserContext): Promise<string> {
   if (MEDIA_AUTH_TOKEN) return MEDIA_AUTH_TOKEN;
-  if (!MEDIA_EMAIL || !MEDIA_PASSWORD) {
-    throw new Error("Defina MEDIA_AUTH_TOKEN ou MEDIA_EMAIL + MEDIA_PASSWORD.");
-  }
-  const response = await context.request.post(`${BASE_URL}/api/auth/login`, {
-    data: { email: MEDIA_EMAIL, password: MEDIA_PASSWORD },
+
+  const response = await context.request.post(`${BASE_URL}/api/auth/demo-login`, {
+    data: { email: "demo", password: "demo" },
+    headers: { "Content-Type": "application/json" },
   });
-  if (!response.ok()) throw new Error(`Login falhou: ${response.status()}`);
+  if (!response.ok()) {
+    const body = await response.text();
+    throw new Error(`Login demo falhou (${response.status()}): ${body.slice(0, 300)}`);
+  }
   const body = await response.json();
   return body.token as string;
 }
 
-async function tenantFromToken(context: BrowserContext, token: string): Promise<string | null> {
-  const response = await context.request.get(`${BASE_URL}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok()) return null;
-  const body = await response.json();
-  return (body?.tenantId ?? body?.user?.tenantId ?? null) as string | null;
-}
-
-async function officialTenantToken(context: BrowserContext, initialToken: string): Promise<string> {
-  if ((await tenantFromToken(context, initialToken)) === TENANT_ID) return initialToken;
-
-  const response = await context.request.post(`${BASE_URL}/api/auth/switch-tenant`, {
-    data: { targetTenantId: TENANT_ID },
-    headers: { Authorization: `Bearer ${initialToken}` },
-  });
-  if (!response.ok()) {
-    throw new Error(`Não foi possível acessar o VendorAI Demo Oficial (${response.status()}). Use uma credencial do próprio tenant ou uma conta habilitada para troca.`);
-  }
-  const body = await response.json();
-  const token = body.token as string;
-  if ((await tenantFromToken(context, token)) !== TENANT_ID) {
-    throw new Error("A troca de tenant não confirmou o VendorAI Demo Oficial; gravação cancelada para evitar mídia do tenant errado.");
-  }
-  return token;
-}
-
 async function authenticate(context: BrowserContext, page: Page) {
-  const token = await officialTenantToken(context, await getToken(context));
+  const token = await getToken(context);
   await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ token }) => localStorage.setItem("vendorai_token", token), { token });
+  await page.evaluate(({ token }) => {
+    localStorage.setItem("vendorai_token", token);
+    sessionStorage.setItem("vendorai_demo_session", "active");
+  }, { token });
 }
 
 async function settle(page: Page, route: string) {
