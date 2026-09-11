@@ -97,16 +97,29 @@ const HUB_FALLBACKS = {
 
 function localizeMeta(meta, pathname, country) {
   if (country === "BR") return meta;
+
+  const localizedExtras = {
+    faq: Array.isArray(meta.esFaq) ? meta.esFaq : null,
+    items: Array.isArray(meta.items)
+      ? meta.items.map((item) => ({ ...item, name: item.esName || item.name }))
+      : meta.items,
+  };
+
   if (meta.esTitle || meta.esDescription) {
-    return { ...meta, title: meta.esTitle || meta.title, description: meta.esDescription || meta.description };
+    return {
+      ...meta,
+      ...localizedExtras,
+      title: meta.esTitle || meta.title,
+      description: meta.esDescription || meta.description,
+    };
   }
   const staticEs = STATIC_ES[pathname];
-  if (staticEs) return { ...meta, title: staticEs[0], description: staticEs[1] };
-  if (meta.type === "product") return { ...meta, title: `${meta.name || "Producto VendorAI"} — IA y automatización para empresas | VendorAI`, description: `Conoce ${meta.name || "esta solución"} de VendorAI: tecnología, oportunidades, automatización e inteligencia conectadas a la operación comercial.` };
-  if (meta.type === "agent") return { ...meta, title: `${meta.name || "Agente de IA"} | VendorAI`, description: `Conoce ${meta.name || "este agente"} de VendorAI y cómo automatiza etapas de atención, ventas y relación con clientes.` };
-  if (meta.type === "feature") return { ...meta, title: `${meta.name || "Función"} | VendorAI`, description: `Conoce ${meta.name || "esta función"} dentro del ecosistema VendorAI para automatización, marketing e inteligencia comercial.` };
-  if (meta.type === "vertical" || meta.type === "segment") return { ...meta, title: `VendorAI para ${meta.name || humanize(pathname.split("/").pop())} — CRM, Ventas e IA`, description: `VendorAI para ${meta.name || "este segmento"}: marketing, prospección, atención, CRM, ventas e inteligencia de ingresos en una operación conectada.` };
-  return meta;
+  if (staticEs) return { ...meta, ...localizedExtras, title: staticEs[0], description: staticEs[1] };
+  if (meta.type === "product") return { ...meta, ...localizedExtras, title: `${meta.name || "Producto VendorAI"} — IA y automatización para empresas | VendorAI`, description: `Conoce ${meta.name || "esta solución"} de VendorAI: tecnología, oportunidades, automatización e inteligencia conectadas a la operación comercial.` };
+  if (meta.type === "agent") return { ...meta, ...localizedExtras, title: `${meta.name || "Agente de IA"} | VendorAI`, description: `Conoce ${meta.name || "este agente"} de VendorAI y cómo automatiza etapas de atención, ventas y relación con clientes.` };
+  if (meta.type === "feature") return { ...meta, ...localizedExtras, title: `${meta.name || "Función"} | VendorAI`, description: `Conoce ${meta.name || "esta función"} dentro del ecosistema VendorAI para automatización, marketing e inteligencia comercial.` };
+  if (meta.type === "vertical" || meta.type === "segment") return { ...meta, ...localizedExtras, title: `VendorAI para ${meta.name || humanize(pathname.split("/").pop())} — CRM, Ventas e IA`, description: `VendorAI para ${meta.name || "este segmento"}: marketing, prospección, atención, CRM, ventas e inteligencia de ingresos en una operación conectada.` };
+  return { ...meta, ...localizedExtras };
 }
 
 async function fetchDynamicBlogMeta(pathname) {
@@ -184,27 +197,74 @@ function breadcrumbSchema(meta, canonical) {
   return { "@type": "BreadcrumbList", itemListElement: items };
 }
 
+function semanticAbout(meta) {
+  return [meta.primaryKeyword, ...(Array.isArray(meta.secondaryKeywords) ? meta.secondaryKeywords : [])]
+    .filter(Boolean)
+    .slice(0, 8)
+    .map((name) => ({ "@type": "Thing", name }));
+}
+
+function faqSchema(meta, canonical) {
+  if (!Array.isArray(meta.faq) || meta.faq.length === 0) return null;
+  const mainEntity = meta.faq
+    .filter((item) => item?.q && item?.a)
+    .map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: { "@type": "Answer", text: item.a },
+    }));
+  if (!mainEntity.length) return null;
+  return { "@type": "FAQPage", "@id": `${canonical}#faq`, url: canonical, inLanguage: meta.locale, mainEntity };
+}
+
 function buildSchema(meta, canonical) {
   const graph = [];
   const org = { "@type": "Organization", "@id": `${PUBLIC_ORIGIN}/#organization`, name: "VendorAI", url: `${PUBLIC_ORIGIN}/`, logo: `${PUBLIC_ORIGIN}/apple-touch-icon.png` };
+  const website = { "@type": "WebSite", "@id": `${PUBLIC_ORIGIN}/#website`, url: `${PUBLIC_ORIGIN}/`, name: "VendorAI", publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` }, inLanguage: meta.locale };
+  const about = semanticAbout(meta);
+  const keywords = [meta.primaryKeyword, ...(Array.isArray(meta.secondaryKeywords) ? meta.secondaryKeywords : [])].filter(Boolean).join(", ") || undefined;
+  const relatedLink = Array.isArray(meta.relatedProducts)
+    ? meta.relatedProducts.map((product) => `${PUBLIC_ORIGIN}${product.href}`).filter(Boolean)
+    : undefined;
+
+  graph.push(org, website);
+
   if (meta.pathname === "/") {
-    graph.push(org);
-    graph.push({ "@type": "WebSite", "@id": `${PUBLIC_ORIGIN}/#website`, url: `${PUBLIC_ORIGIN}/`, name: "VendorAI", publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` }, inLanguage: meta.locale });
     graph.push({ "@type": "SoftwareApplication", name: "VendorAI", applicationCategory: "BusinessApplication", operatingSystem: "Web, Android, iOS", url: `${PUBLIC_ORIGIN}/`, description: meta.description, publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` } });
   } else if (meta.type === "product") {
     const app = { "@type": "SoftwareApplication", name: meta.name, applicationCategory: "BusinessApplication", operatingSystem: "Web", url: canonical, description: meta.description, publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` } };
     if (meta.price) app.offers = { "@type": "Offer", priceCurrency: "BRL", price: Number(meta.price).toFixed(2), availability: "https://schema.org/InStock", url: canonical };
-    graph.push(org, app);
+    graph.push(app);
   } else if (meta.type === "article") {
-    const article = { "@type": "Article", headline: meta.name || meta.title, description: meta.description, url: canonical, publisher: org, inLanguage: meta.locale };
+    const article = { "@type": "Article", headline: meta.name || meta.title, description: meta.description, url: canonical, publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` }, isPartOf: { "@id": `${PUBLIC_ORIGIN}/#website` }, inLanguage: meta.locale };
     if (meta.datePublished) article.datePublished = meta.datePublished;
     if (meta.image) article.image = meta.image;
     graph.push(article);
   } else if (meta.type === "collection") {
-    graph.push({ "@type": "CollectionPage", name: meta.title, description: meta.description, url: canonical, inLanguage: meta.locale });
+    const collection = { "@type": "CollectionPage", "@id": `${canonical}#webpage`, name: meta.title, description: meta.description, url: canonical, isPartOf: { "@id": `${PUBLIC_ORIGIN}/#website` }, publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` }, inLanguage: meta.locale };
+    if (Array.isArray(meta.items) && meta.items.length) {
+      collection.mainEntity = {
+        "@type": "ItemList",
+        itemListElement: meta.items.map((item, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: item.name,
+          url: `${PUBLIC_ORIGIN}${item.path}`,
+        })),
+      };
+    }
+    graph.push(collection);
   } else {
-    graph.push({ "@type": "WebPage", name: meta.title, description: meta.description, url: canonical, inLanguage: meta.locale });
+    const page = { "@type": "WebPage", "@id": `${canonical}#webpage`, name: meta.title, description: meta.description, url: canonical, isPartOf: { "@id": `${PUBLIC_ORIGIN}/#website` }, publisher: { "@id": `${PUBLIC_ORIGIN}/#organization` }, inLanguage: meta.locale };
+    if (about.length) page.about = about;
+    if (keywords) page.keywords = keywords;
+    if (relatedLink?.length) page.relatedLink = relatedLink;
+    graph.push(page);
   }
+
+  const faq = faqSchema(meta, canonical);
+  if (faq) graph.push(faq);
+
   const breadcrumb = breadcrumbSchema(meta, canonical);
   if (breadcrumb) graph.push(breadcrumb);
   return { "@context": "https://schema.org", "@graph": graph };
@@ -214,7 +274,7 @@ function buildHead(meta) {
   const canonical = canonicalFor(meta);
   const indexable = meta.indexable !== false;
   const alternates = indexable ? Object.entries(MARKET_LOCALES).map(([country, locale]) => {
-    const href = country === "BR" ? `${PUBLIC_ORIGIN}${meta.pathname}` : `${PUBLIC_ORIGIN}${meta.pathname}?country=${country}`;
+    const href = country === "BR" ? `${PUBLIC_ORIGIN}${meta.pathname}` : `${baseHref(meta.pathname)}?country=${country}`;
     return `<link rel="alternate" hreflang="${locale}" href="${escapeHtml(href)}">`;
   }).join("\n") : "";
   const xDefault = indexable ? `<link rel="alternate" hreflang="x-default" href="${escapeHtml(`${PUBLIC_ORIGIN}${meta.pathname}`)}">` : "";
@@ -240,6 +300,10 @@ ${xDefault}
 <meta name="twitter:description" content="${escapeHtml(meta.description)}">
 <meta name="twitter:image" content="${escapeHtml(image)}">
 <script type="application/ld+json" data-vendorai-seo="edge">${safeJson(buildSchema(meta, canonical))}</script>`;
+}
+
+function baseHref(pathname) {
+  return `${PUBLIC_ORIGIN}${pathname}`;
 }
 
 function transformHtml(response, meta) {
