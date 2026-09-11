@@ -2,6 +2,10 @@ import { Router, type IRouter, type Request } from "express";
 import { z } from "zod/v4";
 import { db, webBehaviorEventsTable } from "@workspace/db";
 import { getVisitorIntelligence } from "../services/visitorIntelligence.js";
+import {
+  registerVisitorPushDevice,
+  unregisterVisitorPushDevice,
+} from "../services/visitorPushNotifications.js";
 
 const router: IRouter = Router();
 const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
@@ -38,11 +42,21 @@ const eventSchema = z.object({
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 });
 
+const pushDeviceSchema = z.object({
+  expoPushToken: z.string().trim().min(20).max(300),
+  platform: z.enum(["android", "ios", "unknown"]).default("unknown"),
+});
+
 function tenantFromRequest(req: Request): string | null {
   const user = (req as Request & { user?: { tenantId?: string; platformRole?: string } }).user;
   if (user?.tenantId) return String(user.tenantId);
   if (user?.platformRole === "super_admin") return INSTITUTIONAL_TENANT_ID;
   return null;
+}
+
+function userIdFromRequest(req: Request): string | null {
+  const user = (req as Request & { user?: { sub?: string; id?: string } }).user;
+  return user?.sub ?? user?.id ?? null;
 }
 
 function geoHeaders(req: Request) {
@@ -53,6 +67,37 @@ function geoHeaders(req: Request) {
     city: clean(req.get("x-vercel-ip-city")),
   };
 }
+
+router.post("/visitor-intelligence/push/register", async (req, res) => {
+  const tenantId = tenantFromRequest(req);
+  const userId = userIdFromRequest(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "Usuário ou tenant não identificado." });
+
+  const parsed = pushDeviceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dispositivo inválido.", details: parsed.error.issues });
+  }
+
+  try {
+    const result = await registerVisitorPushDevice({ tenantId, userId, ...parsed.data });
+    return res.json(result);
+  } catch (error) {
+    req.log.warn({ error, tenantId, userId }, "visitor-intelligence: push register failed");
+    return res.status(400).json({ error: "Não foi possível registrar as notificações deste aparelho." });
+  }
+});
+
+router.delete("/visitor-intelligence/push/register", async (req, res) => {
+  const tenantId = tenantFromRequest(req);
+  const userId = userIdFromRequest(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "Usuário ou tenant não identificado." });
+
+  const parsed = pushDeviceSchema.pick({ expoPushToken: true }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Dispositivo inválido." });
+
+  await unregisterVisitorPushDevice({ tenantId, userId, expoPushToken: parsed.data.expoPushToken });
+  return res.json({ registered: false });
+});
 
 router.post("/visitor-intelligence/event", async (req, res) => {
   const tenantId = tenantFromRequest(req);
