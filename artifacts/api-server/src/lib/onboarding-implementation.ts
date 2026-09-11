@@ -107,7 +107,7 @@ export function normalizeImplementationState(raw: unknown): OnboardingImplementa
 export function buildImplementationPlan(
   segment: string | null | undefined,
   facts: ImplementationFacts,
-  state: OnboardingImplementationState,
+  _state: OnboardingImplementationState,
 ): ImplementationStep[] {
   const segmentName = segment ?? "";
   const productHeavy = hasHint(segmentName, PRODUCT_SEGMENT_HINTS);
