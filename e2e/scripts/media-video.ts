@@ -44,8 +44,9 @@ async function waitForRealContent(page: Page) {
     const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
     const hasContent = text.length >= 120;
     const looksLikeLogin = /entrar|login|senha/i.test(text) && text.length < 600;
+    const looksLikeOnboarding = /Etapa 1 de 3|Vamos começar!|Nome da empresa/i.test(text);
     const hasBusy = Boolean(document.querySelector('[aria-busy="true"], [data-loading="true"]'));
-    return hasContent && !looksLikeLogin && !hasBusy;
+    return hasContent && !looksLikeLogin && !looksLikeOnboarding && !hasBusy;
   }, undefined, { timeout: 30_000 });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
   await page.waitForTimeout(1800);
@@ -74,6 +75,19 @@ async function gentleTour(page: Page) {
   await page.waitForTimeout(2600);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
   await page.waitForTimeout(2600);
+}
+
+async function openJarvis(page: Page) {
+  const launcher = page.locator('button[aria-label="Abrir JARVIS"]');
+  if (await launcher.count()) {
+    await launcher.first().click();
+  } else {
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
+    });
+  }
+  await page.locator('[aria-label="JARVIS"]').waitFor({ state: "visible", timeout: 12_000 });
+  await page.waitForTimeout(2200);
 }
 
 async function record(
@@ -158,28 +172,17 @@ try {
     finalHoldMs: 2600,
   });
 
-  await record(browser, session, "jarvis-demo", ["/"], {
+  await record(browser, session, "jarvis-demo", ["/dashboard"], {
     holdMs: 5200,
     scroll: false,
     finalHoldMs: 8500,
-    action: async (page) => {
-      await page.evaluate(() => {
-        window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
-      });
-      await page.locator('[aria-label="JARVIS"]').waitFor({ state: "visible", timeout: 12_000 });
-      await page.waitForTimeout(1800);
-    },
+    action: openJarvis,
   });
-  await record(browser, session, "jarvis-short", ["/"], {
+  await record(browser, session, "jarvis-short", ["/dashboard"], {
     holdMs: 3200,
     scroll: false,
     finalHoldMs: 3600,
-    action: async (page) => {
-      await page.evaluate(() => {
-        window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
-      });
-      await page.locator('[aria-label="JARVIS"]').waitFor({ state: "visible", timeout: 12_000 });
-    },
+    action: openJarvis,
   });
 } finally {
   await browser.close();
