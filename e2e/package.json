@@ -6,7 +6,8 @@
   "scripts": {
     "test": "playwright test",
     "test:ui": "playwright test --ui",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "media:capture": "playwright test tests/media-capture.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
