@@ -59,6 +59,9 @@ jobs:
           check_page "/produtos/crm" "https://appvendorai.com/produtos/crm"
           check_page "/produtos/revenue-scout" "https://appvendorai.com/produtos/revenue-scout"
           check_page "/lp/moda" "https://appvendorai.com/lp/moda"
+          check_page "/lp/distribuidora-materiais-construcao" "https://appvendorai.com/lp/distribuidora-materiais-construcao"
+          grep -q '<title>CRM com IA para Distribuidoras de materiais de construção | VendorAI</title>' /tmp/page.html
+          grep -q 'Prever recompra, identificar queda e expandir mix' /tmp/page.html
           check_page "/solucoes" "https://appvendorai.com/solucoes"
           check_page "/comparar" "https://appvendorai.com/comparar"
           check_page "/solucoes/crm-whatsapp" "https://appvendorai.com/solucoes/crm-whatsapp"
@@ -73,6 +76,11 @@ jobs:
           grep -q 'rel="canonical" href="https://appvendorai.com/solucoes/propostas-sem-resposta?country=AR"' /tmp/ar.html
           grep -q '<title>Propuesta Sin Respuesta: Seguimiento con CRM e IA | VendorAI</title>' /tmp/ar.html
 
+          curl -sS -H 'Accept: text/html' 'https://appvendorai.com/lp/distribuidora-materiais-construcao?country=AR' -o /tmp/ar-vertical.html
+          grep -q 'lang="es-AR"' /tmp/ar-vertical.html
+          grep -q '<title>Distribuidoras de materiales de construcción — CRM e IA | VendorAI</title>' /tmp/ar-vertical.html
+          grep -q 'Prever recompra, identificar caída y ampliar mix' /tmp/ar-vertical.html
+
       - name: Validate sitemap coverage
         shell: bash
         run: |
@@ -82,6 +90,7 @@ jobs:
           grep -q '<loc>https://appvendorai.com/produtos/jarvis</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/produtos/revenue-scout</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/lp/moda</loc>' /tmp/sitemap.xml
+          grep -q '<loc>https://appvendorai.com/lp/distribuidora-materiais-construcao</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/solucoes</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/comparar</loc>' /tmp/sitemap.xml
           grep -q '<loc>https://appvendorai.com/solucoes/crm-whatsapp</loc>' /tmp/sitemap.xml
