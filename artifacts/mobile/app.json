@@ -48,6 +48,12 @@
       "expo-web-browser",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "defaultChannel": "visitor-intelligence"
+        }
+      ],
+      [
         "expo-speech-recognition",
         {
           "microphonePermission": "Permita que o Vendor.ai use o microfone para conversar com o Jarvis.",
