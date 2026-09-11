@@ -1,5 +1,6 @@
 import { CheckCircle2 } from "lucide-react";
 import priorityDepth from "@/data/seoPriorityDepth.json";
+import prioritySupplement from "@/data/seoPrioritySupplement.json";
 
 type PriorityDepthLocale = {
   title: string;
@@ -13,11 +14,19 @@ type PriorityDepthPage = {
   es: PriorityDepthLocale;
 };
 
+type PrioritySupplementPage = {
+  path: string;
+  pt: string;
+  es: string;
+};
+
 export function SeoPriorityDepth({ path, isSpanish }: { path: string; isSpanish: boolean }) {
   const entry = (priorityDepth.pages as PriorityDepthPage[]).find((item) => item.path === path);
   if (!entry) return null;
 
+  const supplement = (prioritySupplement.pages as PrioritySupplementPage[]).find((item) => item.path === path);
   const copy = isSpanish ? entry.es : entry.pt;
+  const extra = supplement ? (isSpanish ? supplement.es : supplement.pt) : null;
   const checklistTitle = isSpanish ? "Checklist para evaluar tu operación" : "Checklist para avaliar sua operação";
 
   return (
@@ -30,8 +39,9 @@ export function SeoPriorityDepth({ path, isSpanish }: { path: string; isSpanish:
           <h2 className="mt-3 max-w-4xl text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
             {copy.title}
           </h2>
-          <div className="mt-7 space-y-5 text-base leading-8 text-slate-650">
+          <div className="mt-7 space-y-5 text-base leading-8 text-slate-600">
             {copy.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+            {extra && <p>{extra}</p>}
           </div>
         </article>
 
