@@ -64,7 +64,7 @@ jobs:
           grep -q '<title>CRM com IA para Distribuidoras de materiais de construção | VendorAI</title>' /tmp/page.html
           grep -q 'Prever recompra, identificar queda e expandir mix' /tmp/page.html
           grep -q '"@type":"FAQPage"' /tmp/page.html
-          grep -q '"keywords":"CRM distribuidora materiais construção' /tmp/page.html
+          grep -q '"keywords":"CRM distribuidora construção' /tmp/page.html
           check_page "/solucoes" "https://appvendorai.com/solucoes"
           grep -q '"@type":"ItemList"' /tmp/page.html
           check_page "/comparar" "https://appvendorai.com/comparar"
