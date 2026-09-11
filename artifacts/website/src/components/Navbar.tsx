@@ -8,6 +8,7 @@ import {
 } from "@/lib/publicCountry";
 
 const PT = {
+  products: "Produtos",
   features: "Funcionalidades",
   plans: "Planos",
   content: "Conteúdo",
@@ -21,6 +22,7 @@ const PT = {
 } as const;
 
 const ES = {
+  products: "Productos",
   features: "Funcionalidades",
   plans: "Planes",
   content: "Contenido",
@@ -40,11 +42,14 @@ export default function Navbar() {
   const copy = isSpanish ? ES : PT;
 
   const links = [
+    { href: "/produtos", label: copy.products },
     { href: "/funcionalidades", label: copy.features },
     { href: "/precos", label: copy.plans },
     { href: "/blog", label: copy.content },
     { href: "/sobre", label: copy.about },
   ];
+
+  const isActive = (href: string) => location === href || (href === "/produtos" && location.startsWith("/produtos/"));
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#070b14]/88 text-white backdrop-blur-xl">
@@ -54,13 +59,13 @@ export default function Navbar() {
           <span className="text-lg leading-tight">Vendor.ai</span>
         </Link>
 
-        <nav className="hidden items-center gap-6 md:flex">
+        <nav className="hidden items-center gap-5 md:flex">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={`text-sm font-medium transition-colors ${
-                location === link.href ? "text-white" : "text-slate-400 hover:text-white"
+                isActive(link.href) ? "text-white" : "text-slate-400 hover:text-white"
               }`}
               data-testid={`link-nav-${link.href.replace("/", "")}`}
             >
@@ -132,7 +137,7 @@ export default function Navbar() {
                 key={link.href}
                 href={link.href}
                 className={`rounded-xl px-4 py-3 text-base font-medium ${
-                  location === link.href ? "bg-orange-400/[0.10] text-white" : "text-slate-300"
+                  isActive(link.href) ? "bg-orange-400/[0.10] text-white" : "text-slate-300"
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
