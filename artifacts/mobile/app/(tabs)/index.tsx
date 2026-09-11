@@ -30,19 +30,29 @@ const MOBILE_NORMALIZE_JS = `
             text-size-adjust: 100% !important;
           }
           @media (max-width: 640px) {
-            html { font-size: 13px !important; }
-            body { font-size: 13px !important; line-height: 1.4 !important; }
-            .vendor-settings-compact { font-size: 13px !important; }
+            html { font-size: 12px !important; }
+            body { font-size: 12.5px !important; line-height: 1.38 !important; }
+            h1 { font-size: 1.55rem !important; line-height: 1.12 !important; }
+            h2 { font-size: 1.3rem !important; line-height: 1.16 !important; }
+            h3 { font-size: 1.12rem !important; line-height: 1.2 !important; }
+            h4, h5, h6 { line-height: 1.25 !important; }
+            p, span, label, button, input, textarea, select { -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important; }
+            button, input, textarea, select { font-size: 12.5px !important; }
+            main, section { max-width: 100vw !important; }
+            .vendor-settings-compact { font-size: 12.5px !important; }
             .vendor-settings-compact > section,
             .vendor-settings-compact > details {
-              padding-left: 10px !important;
-              padding-right: 10px !important;
+              padding-left: 8px !important;
+              padding-right: 8px !important;
               margin-bottom: 8px !important;
             }
             .vendor-settings-compact > section > div,
             .vendor-settings-compact > details > summary {
               padding: 10px !important;
             }
+            [class*="px-4"] { padding-left: 12px !important; padding-right: 12px !important; }
+            [class*="p-5"], [class*="p-6"] { padding: 14px !important; }
+            [class*="space-y-4"] > :not([hidden]) ~ :not([hidden]) { margin-top: 12px !important; }
             [data-vendorai-unified-assistant] {
               right: 10px !important;
               bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
@@ -113,7 +123,7 @@ export default function VendorAIMobileShell() {
       pullToRefreshEnabled
       startInLoadingState
       setSupportMultipleWindows={false}
-      textZoom={90}
+      textZoom={82}
       injectedJavaScriptBeforeContentLoaded={MOBILE_NORMALIZE_JS}
       injectedJavaScript={MOBILE_NORMALIZE_JS}
       onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
