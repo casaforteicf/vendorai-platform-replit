@@ -176,6 +176,10 @@ const ES = {
   ],
 };
 
+function modernPath(path: string) {
+  return path.replace(/\.png$/i, ".webp");
+}
+
 export default function DistributedProductScreens() {
   const { isSpanish } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
@@ -196,6 +200,7 @@ export default function DistributedProductScreens() {
         {copy.items.map((item, index) => {
           const imageFirst = index % 2 === 1;
           const bg = index % 3 === 1 ? "bg-[#fbfaf7]" : index % 3 === 2 ? "bg-slate-50" : "bg-white";
+          const mobile = "mobile" in item ? item.mobile : undefined;
 
           return (
             <article key={item.title} className={`border-t border-slate-200 ${bg}`}>
@@ -228,24 +233,18 @@ export default function DistributedProductScreens() {
 
                 <div className={imageFirst ? "lg:order-1" : ""}>
                   <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
-                    {item.mobile ? (
-                      <picture>
-                        <source media="(max-width: 640px)" srcSet={item.mobile} />
-                        <img
-                          src={item.image}
-                          alt={item.alt}
-                          loading="lazy"
-                          className="aspect-[16/9] w-full object-cover object-top"
-                        />
-                      </picture>
-                    ) : (
+                    <picture>
+                      {mobile ? <source type="image/webp" media="(max-width: 640px)" srcSet={modernPath(mobile)} /> : null}
+                      <source type="image/webp" srcSet={modernPath(item.image)} />
+                      {mobile ? <source media="(max-width: 640px)" srcSet={mobile} /> : null}
                       <img
                         src={item.image}
                         alt={item.alt}
                         loading="lazy"
+                        decoding="async"
                         className="aspect-[16/9] w-full object-cover object-top"
                       />
-                    )}
+                    </picture>
                   </div>
                 </div>
               </div>
