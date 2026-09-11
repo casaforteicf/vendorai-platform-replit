@@ -14,9 +14,8 @@ jobs:
     env:
       MEDIA_BASE_URL: https://app.appvendorai.com
       MEDIA_TENANT_ID: 70ea6eb6-ffd8-4dc6-9224-d628a6d4e67d
-      MEDIA_EMAIL: ${{ secrets.MEDIA_EMAIL }}
+      MEDIA_EMAIL: media-capture@appvendorai.com
       MEDIA_PASSWORD: ${{ secrets.MEDIA_PASSWORD }}
-      MEDIA_AUTH_TOKEN: ${{ secrets.MEDIA_AUTH_TOKEN }}
       MEDIA_OUTPUT_DIR: ${{ github.workspace }}/e2e/media-output
     steps:
       - name: Checkout
@@ -40,11 +39,11 @@ jobs:
       - name: Install Chromium
         run: pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
 
-      - name: Validate media credentials
+      - name: Validate media credential
         shell: bash
         run: |
-          if [ -z "${MEDIA_AUTH_TOKEN:-}" ] && { [ -z "${MEDIA_EMAIL:-}" ] || [ -z "${MEDIA_PASSWORD:-}" ]; }; then
-            echo "Configure MEDIA_AUTH_TOKEN or MEDIA_EMAIL + MEDIA_PASSWORD in repository secrets."
+          if [ -z "${MEDIA_PASSWORD:-}" ]; then
+            echo "Configure MEDIA_PASSWORD in repository secrets."
             exit 1
           fi
 
