@@ -5,6 +5,7 @@ import path from "node:path";
 const BASE_URL = process.env.MEDIA_BASE_URL || "https://app.appvendorai.com";
 const MEDIA_AUTH_TOKEN = process.env.MEDIA_AUTH_TOKEN;
 const OUTPUT_ROOT = process.env.MEDIA_OUTPUT_DIR || path.resolve(process.cwd(), "media-output");
+let sharedToken: string | undefined = MEDIA_AUTH_TOKEN;
 
 const screens = [
   { key: "crm-leads", path: "/leads" },
@@ -20,7 +21,7 @@ const screens = [
 ] as const;
 
 async function getToken(page: Page): Promise<string> {
-  if (MEDIA_AUTH_TOKEN) return MEDIA_AUTH_TOKEN;
+  if (sharedToken) return sharedToken;
 
   const response = await page.request.post(`${BASE_URL}/api/auth/demo-login`, {
     data: { email: "demo", password: "demo" },
@@ -33,7 +34,8 @@ async function getToken(page: Page): Promise<string> {
   }
 
   const body = await response.json();
-  return body.token as string;
+  sharedToken = body.token as string;
+  return sharedToken;
 }
 
 async function authenticate(page: Page): Promise<void> {
