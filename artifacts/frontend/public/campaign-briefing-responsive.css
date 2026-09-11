@@ -1,0 +1,120 @@
+/* Campaign briefing modal hotfix
+   Scope is intentionally narrow: only dialogs that contain the expanded
+   MarketingContextSelector section are affected. */
+
+[role="dialog"]:has(section[class*="border-primary/20"][class*="bg-primary/5"]) {
+  width: min(1120px, calc(100vw - 48px)) !important;
+  max-width: min(1120px, calc(100vw - 48px)) !important;
+  max-height: calc(100vh - 32px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+[role="dialog"]:has(section[class*="border-primary/20"][class*="bg-primary/5"])
+  section[class*="border-primary/20"][class*="bg-primary/5"] {
+  min-width: 0;
+}
+
+/* Main Oferta / Público / Objetivo grid */
+section[class*="border-primary/20"][class*="bg-primary/5"] > div.grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  align-items: stretch;
+}
+
+section[class*="border-primary/20"][class*="bg-primary/5"] > div.grid > div {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Oferta: never let the action button overlap the input */
+section[class*="border-primary/20"][class*="bg-primary/5"]
+  > div.grid
+  > div:first-child
+  > div.flex.gap-2 {
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+section[class*="border-primary/20"][class*="bg-primary/5"]
+  > div.grid
+  > div:first-child
+  > div.flex.gap-2
+  > input {
+  flex: 1 1 190px;
+  min-width: 0;
+}
+
+section[class*="border-primary/20"][class*="bg-primary/5"]
+  > div.grid
+  > div:first-child
+  > div.flex.gap-2
+  > button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+/* Keep labels, chips and controls inside their cards */
+section[class*="border-primary/20"][class*="bg-primary/5"] input,
+section[class*="border-primary/20"][class*="bg-primary/5"] textarea,
+section[class*="border-primary/20"][class*="bg-primary/5"] button,
+section[class*="border-primary/20"][class*="bg-primary/5"] [role="combobox"] {
+  max-width: 100%;
+}
+
+section[class*="border-primary/20"][class*="bg-primary/5"] textarea {
+  min-height: 96px;
+}
+
+@media (max-width: 1199px) {
+  [role="dialog"]:has(section[class*="border-primary/20"][class*="bg-primary/5"]) {
+    width: min(920px, calc(100vw - 32px)) !important;
+    max-width: min(920px, calc(100vw - 32px)) !important;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"] > div.grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"] > div.grid > div:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 767px) {
+  [role="dialog"]:has(section[class*="border-primary/20"][class*="bg-primary/5"]) {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    padding: 16px !important;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"] {
+    padding: 12px !important;
+    gap: 12px !important;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"] > div.grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"] > div.grid > div:last-child {
+    grid-column: auto;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"]
+    > div.grid
+    > div:first-child
+    > div.flex.gap-2 {
+    flex-direction: column;
+  }
+
+  section[class*="border-primary/20"][class*="bg-primary/5"]
+    > div.grid
+    > div:first-child
+    > div.flex.gap-2
+    > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
