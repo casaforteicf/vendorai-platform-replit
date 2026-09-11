@@ -1,9 +1,10 @@
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3, Store, BrainCircuit, ShieldCheck, Sparkles, Radar } from "lucide-react";
+import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3, Store, BrainCircuit, ShieldCheck, Sparkles, Radar, Eye } from "lucide-react";
 import MarketingVerticals from "@/pages/MarketingVerticals";
 import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
+import VisitorIntelligence from "@/pages/VisitorIntelligence";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
 import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketingManager";
 import ColdProspectingCampaignPlanner from "@/components/marketing/ColdProspectingCampaignPlanner";
@@ -18,6 +19,7 @@ export default function CampanhasHub() {
   const view = new URLSearchParams(queryString).get("view");
   const showMarkets = view === "mercados";
   const showProspecting = view === "prospeccao";
+  const showVisitors = view === "visitantes";
   const showPraca = view === "praca" || new URLSearchParams(window.location.search).get("tab") === "variedades";
 
   if (showMarkets) {
@@ -39,6 +41,17 @@ export default function CampanhasHub() {
         </Button>
         <ColdProspectingCampaignPlanner />
         <ColdProspectingPilotValidation />
+      </div>
+    );
+  }
+
+  if (showVisitors) {
+    return (
+      <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto">
+        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}>
+          <ArrowLeft className="h-4 w-4" /> Voltar para Campanhas
+        </Button>
+        <VisitorIntelligence />
       </div>
     );
   }
@@ -87,6 +100,9 @@ export default function CampanhasHub() {
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=visitantes")}>
+                <Eye className="mr-1 h-3.5 w-3.5" /> Visitantes ao vivo
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=planejamento")}>Planejar campanha</Button>
               <Button size="sm" onClick={() => setLocation("/content?tab=campanhas&view=prospeccao")}>Prospecção inteligente <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
             </div>
