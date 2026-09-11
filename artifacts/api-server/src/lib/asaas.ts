@@ -119,7 +119,6 @@ export interface AsaasChargeInput {
   installmentValue?: number;
 }
 
-// ── Forma de pagamento (proposta) → Asaas billingType ───────────────────────────
 const FORMA_TO_BILLING_TYPE: Record<string, AsaasBillingType> = {
   pix: "PIX",
   boleto: "BOLETO",
@@ -150,11 +149,6 @@ export async function createCharge(
   return asaasRequest<AsaasChargeOutput>("POST", "/payments", data, apiKey);
 }
 
-/**
- * Removes an unpaid charge from the active Asaas flow. This is not a refund:
- * callers must only use it for pending/overdue local cycles. Asaas documents
- * DELETE /payments/{id} for this purpose and returns { deleted, id }.
- */
 export async function deleteCharge(
   chargeId: string,
   apiKey?: string | null,
@@ -167,12 +161,6 @@ export async function deleteCharge(
   );
 }
 
-/**
- * Recovery path for application-managed idempotency. Asaas recommends that
- * integrations reconcile an inconclusive request before retrying. The launch
- * subscription worker uses its stable externalReference to recover a charge
- * that may have been created remotely before the local process persisted it.
- */
 export async function findChargeByExternalReference(
   externalReference: string,
   apiKey?: string | null,
@@ -277,8 +265,17 @@ export async function ensureAsaasPaymentWebhook(
   }
 
   const webhookUrl = `${apiBase}/api/webhooks/asaas`;
-  const existing = await asaasRequest<{ data?: AsaasWebhookConfig[] }>("GET", "/webhooks?limit=100", undefined, apiKey)
-    .catch(() => ({ data: [] }));
+  let existing: { data?: AsaasWebhookConfig[] } = { data: [] };
+  try {
+    existing = await asaasRequest<{ data?: AsaasWebhookConfig[] }>(
+      "GET",
+      "/webhooks?limit=100",
+      undefined,
+      apiKey,
+    );
+  } catch {
+    existing = { data: [] };
+  }
   const match = existing.data?.find((item) => item.name === "VendorAI Checkout" && item.url === webhookUrl);
   if (match?.id) return { configured: true, id: match.id };
 
@@ -303,18 +300,6 @@ export async function ensureAsaasPaymentWebhook(
   return { configured: true, id: created.id };
 }
 
-/**
- * Whether Asaas billing is available.
- *
- * - `isAsaasConfigured()` (no args): checks the platform-level `ASAAS_API_KEY`
- *   env var. Used by platform-billed flows (tenant paying VendorAI itself).
- * - `isAsaasConfigured(tenantId)`: checks whether that specific tenant has its
- *   own Asaas account configured (`tenants.asaas_api_key`, encrypted). This is
- *   the correct check for tenant-to-customer billing (deal-won charges) —
- *   each tenant has its own Asaas account. Missing configuration here is a
- *   normal, expected state (not an error): callers should fall back to manual
- *   billing rather than treating it as a failure.
- */
 export async function isAsaasConfigured(tenantId?: string): Promise<boolean> {
   if (tenantId) {
     const key = await getTenantAsaasApiKey(tenantId);
@@ -323,9 +308,6 @@ export async function isAsaasConfigured(tenantId?: string): Promise<boolean> {
   return !!getApiKey();
 }
 
-// The platform seller has its own Asaas account. Ensure the authenticated
-// payment webhook exists as soon as the API process starts; tenant accounts
-// are provisioned lazily on their first storefront checkout.
 const platformAsaasKey = getPlatformAsaasApiKey();
 if (platformAsaasKey && process.env.ASAAS_WEBHOOK_ACCESS_TOKEN) {
   void ensureAsaasPaymentWebhook({
