@@ -1,7 +1,7 @@
 /* Leads desktop table readability fix.
    Keep every column readable and prevent badges/responsible names from overlapping.
-   The table may scroll horizontally on narrower desktop widths instead of compressing
-   10 business columns into an unreadable layout. Scope is limited to Leads. */
+   The table should fit the available desktop canvas before falling back to horizontal scroll.
+   Scope is limited to Leads. */
 @media (min-width: 768px) {
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) {
     overflow-x: auto;
@@ -11,21 +11,35 @@
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) > table {
     width: 100%;
-    min-width: 1320px;
+    min-width: 1020px;
     table-layout: fixed;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td {
     min-width: 0 !important;
-    padding-left: 0.65rem;
-    padding-right: 0.65rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
     vertical-align: middle;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th {
     white-space: normal;
     line-height: 1.2;
+  }
+
+  /* Shorten Status do contato to Status without changing the underlying column. */
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5) {
+    font-size: 0;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5)::after {
+    content: "STATUS";
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.055em;
   }
 
   /* Keep the long business-process heading in exactly two lines on desktop. */
@@ -48,25 +62,36 @@
      6 Negócios/processos, 7 Responsável, 8 Maior orçamento,
      9 Churn Risk, 10 Ações. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(1),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 13%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 14%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(2),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 11%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 13%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(3),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3) { width: 11%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(4),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4) { width: 10%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) { width: 9%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) { width: 7%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 19%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 20%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) { width: 10%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) { width: 8%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) { width: 7%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 5%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 4%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) { width: 5%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) { width: 4%; }
+
+  /* Pull Responsável visually closer to Negócios / processos ativos. */
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) {
+    padding-right: 0.3rem;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) {
+    padding-left: 0.3rem;
+  }
 
   /* Text columns may wrap, but never overlap adjacent cells. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1),
@@ -151,14 +176,14 @@
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) {
-    padding-left: 0.35rem;
-    padding-right: 0.5rem;
+    padding-left: 0.25rem;
+    padding-right: 0.35rem;
     text-align: right;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) > span {
     justify-content: flex-end;
-    gap: 0.15rem;
+    gap: 0.1rem;
     flex-wrap: nowrap;
   }
 }
