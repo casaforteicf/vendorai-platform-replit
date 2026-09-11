@@ -3,7 +3,7 @@ import { getBlogPost } from "@/data/blog-posts";
 import { useSeoMeta } from "@/hooks/use-seo-meta";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, ArrowLeft, MessageCircle, Languages } from "lucide-react";
+import { Calendar, ArrowLeft, MessageCircle, Languages, BadgeCheck, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import NotFound from "@/pages/not-found";
 import { usePublicCountry } from "@/lib/publicCountry";
@@ -15,6 +15,7 @@ interface DynamicPost {
   conteudoHtml: string;
   imagemCapaUrl: string | null;
   publicadoEm: string | null;
+  updatedAt?: string | null;
 }
 
 const PT = {
@@ -24,6 +25,10 @@ const PT = {
   ctaDesc: "Teste o atendimento automático com exemplos do seu próprio segmento, sem compromisso.",
   cta: "Experimentar grátis",
   languageNotice: "",
+  by: "Por",
+  author: "VendorAI",
+  editorial: "Conteúdo editorial",
+  updated: "Atualizado em",
 } as const;
 
 const ES = {
@@ -33,6 +38,10 @@ const ES = {
   ctaDesc: "Prueba la atención automática con ejemplos de tu propio segmento, sin compromiso.",
   cta: "Probar gratis",
   languageNotice: "Este artículo forma parte de la biblioteca editorial original y todavía está disponible en portugués.",
+  by: "Por",
+  author: "VendorAI",
+  editorial: "Contenido editorial",
+  updated: "Actualizado el",
 } as const;
 
 function formatDate(iso: string, locale: string) {
@@ -43,12 +52,43 @@ function formatDate(iso: string, locale: string) {
   }).format(new Date(iso));
 }
 
+function sameCalendarDay(a?: string | null, b?: string | null) {
+  if (!a || !b) return true;
+  return new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
+}
+
 function LanguageNotice({ text }: { text: string }) {
   if (!text) return null;
   return (
     <div className="mb-8 flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
       <Languages className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
       <p>{text}</p>
+    </div>
+  );
+}
+
+function EditorialMeta({ publishedAt, updatedAt, locale, copy }: { publishedAt?: string | null; updatedAt?: string | null; locale: string; copy: typeof PT | typeof ES }) {
+  const showUpdated = Boolean(updatedAt && publishedAt && !sameCalendarDay(updatedAt, publishedAt));
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+      <Link href="/sobre" className="inline-flex items-center gap-1.5 font-medium text-slate-600 hover:text-primary transition-colors">
+        <BadgeCheck className="h-4 w-4 text-primary" />
+        {copy.by} {copy.author}
+      </Link>
+      <span className="text-slate-300">•</span>
+      <span>{copy.editorial}</span>
+      {publishedAt ? (
+        <span className="inline-flex items-center gap-1.5">
+          <Calendar className="h-3.5 w-3.5" />
+          <time dateTime={publishedAt}>{formatDate(publishedAt, locale)}</time>
+        </span>
+      ) : null}
+      {showUpdated && updatedAt ? (
+        <span className="inline-flex items-center gap-1.5 text-slate-500">
+          <RefreshCw className="h-3.5 w-3.5" />
+          {copy.updated} <time dateTime={updatedAt}>{formatDate(updatedAt, locale)}</time>
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -99,12 +139,7 @@ export default function BlogPost() {
           </Link>
           {isSpanish ? <LanguageNotice text={copy.languageNotice} /> : null}
           <header className="mb-10">
-            {dynamicPost.publicadoEm && (
-              <div className="flex items-center gap-2 text-sm text-slate-400 mb-4">
-                <Calendar className="h-3.5 w-3.5" />
-                <time dateTime={dynamicPost.publicadoEm}>{formatDate(dynamicPost.publicadoEm, country.locale)}</time>
-              </div>
-            )}
+            <EditorialMeta publishedAt={dynamicPost.publicadoEm} updatedAt={dynamicPost.updatedAt} locale={country.locale} copy={copy} />
             <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 leading-tight mb-4">{dynamicPost.titulo}</h1>
           </header>
           <div className="prose-slate prose-headings:text-slate-900 prose-headings:font-bold prose-p:text-slate-700 prose-p:leading-relaxed prose-img:rounded-xl border-t border-slate-100 pt-10" dangerouslySetInnerHTML={{ __html: dynamicPost.conteudoHtml }} />
@@ -123,10 +158,7 @@ export default function BlogPost() {
         </Link>
         {isSpanish ? <LanguageNotice text={copy.languageNotice} /> : null}
         <header className="mb-10">
-          <div className="flex items-center gap-2 text-sm text-slate-400 mb-4">
-            <Calendar className="h-3.5 w-3.5" />
-            <time dateTime={post.publishedAt}>{formatDate(post.publishedAt, country.locale)}</time>
-          </div>
+          <EditorialMeta publishedAt={post.publishedAt} locale={country.locale} copy={copy} />
           <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 leading-tight mb-4">{post.title}</h1>
           <p className="text-lg text-slate-500 leading-relaxed">{post.summary}</p>
         </header>
