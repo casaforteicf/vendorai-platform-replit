@@ -34,7 +34,8 @@ type GrowthPage = {
 
 const LABELS = {
   pt: {
-    back: "Ver todos os produtos",
+    backSolutions: "Ver soluções por problema",
+    backComparisons: "Ver todas as comparações",
     problem: "O problema que esta busca normalmente revela",
     how: "Como o VendorAI trata tecnicamente",
     comparison: "Diferenças que importam na operação",
@@ -42,13 +43,15 @@ const LABELS = {
     benefits: "O que muda para a empresa",
     metrics: "Indicadores para acompanhar",
     related: "Soluções relacionadas",
+    relatedGuides: "Continue explorando",
     faq: "Perguntas frequentes",
     trial: "Testar 5 dias grátis",
     sales: "Falar com vendas",
     keywords: "Também relacionado a",
   },
   es: {
-    back: "Ver todos los productos",
+    backSolutions: "Ver soluciones por problema",
+    backComparisons: "Ver todas las comparaciones",
     problem: "El problema que esta búsqueda suele revelar",
     how: "Cómo lo aborda técnicamente VendorAI",
     comparison: "Diferencias que importan en la operación",
@@ -56,6 +59,7 @@ const LABELS = {
     benefits: "Qué cambia para la empresa",
     metrics: "Indicadores para acompañar",
     related: "Soluciones relacionadas",
+    relatedGuides: "Sigue explorando",
     faq: "Preguntas frecuentes",
     trial: "Probar 5 días gratis",
     sales: "Hablar con ventas",
@@ -70,7 +74,8 @@ function cleanPath(location: string) {
 export default function SeoIntentPage() {
   const [location] = useLocation();
   const { isSpanish } = usePublicCountry();
-  const page = (growthMatrix.pages as GrowthPage[]).find((entry) => entry.path === cleanPath(location));
+  const pages = growthMatrix.pages as GrowthPage[];
+  const page = pages.find((entry) => entry.path === cleanPath(location));
   const labels = isSpanish ? LABELS.es : LABELS.pt;
 
   if (!page) {
@@ -78,8 +83,8 @@ export default function SeoIntentPage() {
       <section className="bg-white py-24">
         <div className="container mx-auto max-w-3xl px-4 text-center">
           <h1 className="text-3xl font-bold text-slate-950">Página não encontrada</h1>
-          <Link href="/produtos" className="mt-6 inline-flex items-center gap-2 font-semibold text-orange-600">
-            {labels.back}<ArrowRight className="h-4 w-4" />
+          <Link href="/solucoes" className="mt-6 inline-flex items-center gap-2 font-semibold text-orange-600">
+            {labels.backSolutions}<ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>
@@ -88,13 +93,19 @@ export default function SeoIntentPage() {
 
   const copy = isSpanish ? page.es : page.pt;
   const howTitle = page.kind === "comparison" ? labels.comparison : labels.how;
+  const hubHref = page.kind === "comparison" ? "/comparar" : "/solucoes";
+  const hubLabel = page.kind === "comparison" ? labels.backComparisons : labels.backSolutions;
+  const relatedPages = pages
+    .filter((entry) => entry.path !== page.path && entry.kind === page.kind)
+    .sort((a, b) => Number(b.cluster === page.cluster) - Number(a.cluster === page.cluster) || b.priority - a.priority)
+    .slice(0, 3);
 
   return (
     <div className="bg-white text-slate-900">
       <section className="border-b border-slate-200 bg-gradient-to-b from-orange-50/70 via-white to-white py-16 md:py-24">
         <div className="container mx-auto max-w-6xl px-4">
-          <Link href="/produtos" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-orange-600">
-            ← {labels.back}
+          <Link href={hubHref} className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-orange-600">
+            ← {hubLabel}
           </Link>
           <div className="grid gap-10 lg:grid-cols-[1.25fr_.75fr] lg:items-center">
             <div>
@@ -154,7 +165,28 @@ export default function SeoIntentPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20">
+      <section className="py-16">
+        <div className="container mx-auto max-w-6xl px-4">
+          <div className="mb-7 flex items-end justify-between gap-4">
+            <h2 className="text-3xl font-black tracking-tight text-slate-950">{labels.relatedGuides}</h2>
+            <Link href={hubHref} className="hidden items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700 sm:inline-flex">{hubLabel}<ArrowRight className="h-4 w-4" /></Link>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {relatedPages.map((related) => {
+              const relatedCopy = isSpanish ? related.es : related.pt;
+              return (
+                <Link key={related.path} href={related.path} className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-orange-200 hover:shadow-md">
+                  <p className="text-xs font-bold uppercase tracking-[0.13em] text-orange-700">{related.cluster}</p>
+                  <h3 className="mt-3 text-lg font-black leading-snug text-slate-950 group-hover:text-orange-700">{relatedCopy.headline}</h3>
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-orange-600">{related.primaryKeyword}<ArrowRight className="h-4 w-4" /></span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-slate-200 py-16 md:py-20">
         <div className="container mx-auto max-w-4xl px-4">
           <h2 className="text-3xl font-black tracking-tight text-slate-950">{labels.faq}</h2>
           <div className="mt-8 space-y-4">
