@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/finalize-official-media.yml
+      - e2e/scripts/finalize-official-media.mjs
   workflow_dispatch:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
       - name: Install Chromium
         run: pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
       - name: Generate remaining official media
-        run: node scripts/finalize-official-media.mjs
+        run: node e2e/scripts/finalize-official-media.mjs
       - name: Publish remaining official media
         shell: bash
         run: |
