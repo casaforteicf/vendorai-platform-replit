@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -19,6 +19,50 @@ const workspaceVendorBrainPlugin = {
       const subpath = args.path.slice(prefix.length).replace(/^\//, "");
       const relativeFile = subpath ? `${subpath}.ts` : "index.ts";
       return { path: path.resolve(vendorBrainSrcDir, relativeFile) };
+    });
+  },
+};
+
+// Hotfix restrito ao gerador de sites: a variável local `desc` colide com
+// `desc()` do Drizzle apenas no caminho de e-commerce. O transform é guardado
+// e falha o build se o trecho esperado mudar, evitando correções silenciosas
+// ou aplicação em arquivos não relacionados.
+const siteGeneratorDescCollisionHotfixPlugin = {
+  name: "site-generator-desc-collision-hotfix",
+  setup(build) {
+    const target = path.resolve(artifactDir, "src/routes/site_generator_core.ts");
+    build.onLoad({ filter: /site_generator_core\.ts$/ }, async (args) => {
+      if (path.resolve(args.path) !== target) return null;
+
+      let contents = await readFile(args.path, "utf8");
+      const replacements = [
+        [
+          '    const desc = config.desc || bp?.diferenciais || bp?.publicoAlvo || "";',
+          '    const businessDescription = config.desc || bp?.diferenciais || bp?.publicoAlvo || "";',
+        ],
+        [
+          '    if (!name || !desc) {',
+          '    if (!name || !businessDescription) {',
+        ],
+        [
+          '        .orderBy((desc as any)(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)',
+          '        .orderBy(desc(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)',
+        ],
+        [
+          '    const enrichedConfig = { ...config, name, sector, desc, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages, videos: absoluteVideos };',
+          '    const enrichedConfig = { ...config, name, sector, desc: businessDescription, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages, videos: absoluteVideos };',
+        ],
+      ];
+
+      for (const [from, to] of replacements) {
+        const first = contents.indexOf(from);
+        if (first < 0 || contents.indexOf(from, first + from.length) >= 0) {
+          throw new Error(`SiteGenerator hotfix guard failed for: ${from}`);
+        }
+        contents = contents.replace(from, to);
+      }
+
+      return { contents, loader: "ts" };
     });
   },
 };
@@ -116,6 +160,7 @@ async function buildAll() {
     ],
     sourcemap: "linked",
     plugins: [
+      siteGeneratorDescCollisionHotfixPlugin,
       workspaceVendorBrainPlugin,
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })

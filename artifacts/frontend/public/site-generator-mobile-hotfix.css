@@ -1,0 +1,29 @@
+/*
+ * Hotfix responsivo isolado para o card de ações do Gerador de Sites.
+ * O seletor combina todas as classes do bloco atual para não atingir outros
+ * componentes sticky do VendorAI.
+ */
+@media (max-width: 639px) {
+  div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3 {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3 > div:first-child {
+    width: 100%;
+    min-width: 0;
+  }
+
+  div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3 > div:last-child {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  div.sticky.bottom-4.z-10.flex.items-center.justify-between.gap-3 > div:last-child > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
