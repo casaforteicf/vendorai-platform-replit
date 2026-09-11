@@ -142,10 +142,13 @@ export default function PublicSeoManager() {
     upsertMeta('meta[name="description"]', { name: "description", content: meta.description });
     upsertMeta('meta[name="robots"]', { name: "robots", content: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" });
     upsertLink('link[rel="canonical"]', { rel: "canonical", href: canonical });
+    upsertMeta('meta[property="og:type"]', { property: "og:type", content: meta.type === "article" ? "article" : "website" });
     upsertMeta('meta[property="og:url"]', { property: "og:url", content: canonical });
     upsertMeta('meta[property="og:title"]', { property: "og:title", content: meta.title });
     upsertMeta('meta[property="og:description"]', { property: "og:description", content: meta.description });
     upsertMeta('meta[property="og:image"]', { property: "og:image", content: manifest.ogImage });
+    upsertMeta('meta[property="og:locale"]', { property: "og:locale", content: country.locale.replace("-", "_") });
+    upsertMeta('meta[property="og:site_name"]', { property: "og:site_name", content: "VendorAI" });
     upsertMeta('meta[name="twitter:card"]', { name: "twitter:card", content: "summary_large_image" });
     upsertMeta('meta[name="twitter:title"]', { name: "twitter:title", content: meta.title });
     upsertMeta('meta[name="twitter:description"]', { name: "twitter:description", content: meta.description });
@@ -167,12 +170,18 @@ export default function PublicSeoManager() {
     xDefault.dataset.vendoraiHreflang = "true";
     document.head.appendChild(xDefault);
 
+    // O Cloudflare injeta no HTML inicial o schema mais rico (edge). Em uma carga
+    // direta, não adicionamos uma segunda versão simplificada durante a hidratação.
+    // O fallback runtime permanece apenas para navegação SPA/ambientes sem edge.
     document.head.querySelectorAll('script[type="application/ld+json"][data-vendorai-seo="runtime"]').forEach((node) => node.remove());
-    const schema = document.createElement("script");
-    schema.type = "application/ld+json";
-    schema.dataset.vendoraiSeo = "runtime";
-    schema.textContent = JSON.stringify(schemaFor(meta, canonical, country.locale));
-    document.head.appendChild(schema);
+    const edgeSchema = document.head.querySelector('script[type="application/ld+json"][data-vendorai-seo="edge"]');
+    if (!edgeSchema) {
+      const schema = document.createElement("script");
+      schema.type = "application/ld+json";
+      schema.dataset.vendoraiSeo = "runtime";
+      schema.textContent = JSON.stringify(schemaFor(meta, canonical, country.locale));
+      document.head.appendChild(schema);
+    }
   }, [manifest, pathname, countryCode, country.locale]);
 
   return null;
