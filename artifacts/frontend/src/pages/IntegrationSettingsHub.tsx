@@ -71,6 +71,7 @@ async function apiJson(path: string, init?: RequestInit) {
 
 export default function IntegrationSettingsHub() {
   const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -145,7 +146,7 @@ export default function IntegrationSettingsHub() {
       description: "SEO, indexação e desempenho orgânico.",
       connected: status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
       attention: status?.searchConsole?.connected === true && status?.searchConsole?.verified !== true,
-      detail: status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Verificação pendente" : undefined,
+      detail: status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
     },
     {
       key: "linkedin",
@@ -193,6 +194,37 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const verifySearchConsole = async () => {
+    if (!tenantId) {
+      toast({ title: "Não foi possível identificar o tenant para verificar o Search Console.", variant: "destructive" });
+      return;
+    }
+
+    setBusy("search-console");
+    try {
+      const data = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/search-console-connection/verify`, {
+        method: "POST",
+      });
+      if (data?.verified === true) {
+        toast({ title: "Search Console verificado e sitemap enviado com sucesso." });
+      } else {
+        toast({
+          title: "O Google ainda está processando a verificação.",
+          description: "Aguarde de 2 a 5 minutos e clique novamente em “Verificar agora”. Não é necessário reconectar a conta.",
+        });
+      }
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Não foi possível verificar o Search Console agora",
+        description: error instanceof Error ? error.message : "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const validateCredential = async (provider: "asaas" | "zapsign") => {
     const value = provider === "asaas" ? asaasKey.trim() : zapsignKey.trim();
     if (!value) return;
@@ -220,6 +252,23 @@ export default function IntegrationSettingsHub() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const handleRowAction = async (row: IntegrationRow) => {
+    if (row.key === "search-console" && row.attention) {
+      await verifySearchConsole();
+      return;
+    }
+    await startConnection(row.key);
+  };
+
+  const rowActionLabel = (row: IntegrationRow) => {
+    if (busy === row.key) return row.key === "search-console" && row.attention ? "Verificando..." : "Abrindo...";
+    if (row.key === "search-console" && row.attention) return "Verificar agora";
+    if (row.key === "domain") return "Configurar domínio";
+    if (row.connected) return "Reconectar / gerenciar";
+    if (row.attention) return "Revisar integração";
+    return "Conectar agora";
   };
 
   const connectedCount = rows.filter((row) => row.connected).length;
@@ -280,9 +329,9 @@ export default function IntegrationSettingsHub() {
                   className="mt-4"
                   variant={row.connected ? "outline" : "default"}
                   disabled={busy === row.key}
-                  onClick={() => void startConnection(row.key)}
+                  onClick={() => void handleRowAction(row)}
                 >
-                  {busy === row.key ? "Abrindo..." : row.key === "domain" ? "Configurar domínio" : row.connected ? "Reconectar / gerenciar" : row.attention ? "Revisar integração" : "Conectar agora"}
+                  {rowActionLabel(row)}
                 </Button>
               )}
             </div>
