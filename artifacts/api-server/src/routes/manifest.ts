@@ -22,10 +22,11 @@ router.use(appUserRuntimeRouter);
 router.use(appUserDataSourcesRouter);
 router.use(appUserActionsRouter);
 
+// Keep the generic PWA icon tied to the current Vendor.ai brand asset.
+// Using the SVG avoids stale legacy raster icons on new desktop/PWA installs.
 const GENERIC_ICONS = [
-  { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-  { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-  { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+  { src: "/logo-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+  { src: "/logo-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
 ];
 
 const PUBLIC_APP_FIELDS = new Set(["name", "slug", "theme", "navigation", "whiteLabel"]);
@@ -136,7 +137,7 @@ router.get("/manifest.json", async (req, res) => {
     display: "standalone",
     orientation: "any",
     background_color: "#ffffff",
-    theme_color: "#1E3A5F",
+    theme_color: "#D9673E",
     lang: "pt-BR",
     icons,
   });
