@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, MapPin, MonitorSmartphone, MousePointerClick, Radio, UserCheck, Users } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const API_BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_URL || "/api");
 
 type JourneyItem = { path: string | null; pageUrl: string | null; at: string | null };
 type VisitorSession = {
@@ -51,7 +51,13 @@ function sourceLabel(session: VisitorSession) {
 }
 
 async function loadVisitors(minutes: number): Promise<VisitorResponse> {
-  const response = await fetch(`${API_BASE}/visitor-intelligence?minutes=${minutes}`, { credentials: "include" });
+  const token = window.localStorage.getItem("vendorai_token");
+  if (!token) throw new Error("Sessão não autenticada");
+
+  const response = await fetch(`${API_BASE}/visitor-intelligence?minutes=${minutes}`, {
+    credentials: "include",
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!response.ok) throw new Error("Falha ao carregar Visitor Intelligence");
   return response.json();
 }
