@@ -7,10 +7,12 @@ import {
   installFirstPartyBehaviorTracking,
   installPublicFormConsentBridge,
 } from "./lib/launchAttribution";
+import { installSiteVisitorPresence } from "./lib/visitorPresence";
 
 captureLaunchAttribution();
 installPublicFormConsentBridge();
 installFirstPartyBehaviorTracking();
+installSiteVisitorPresence();
 
 createRoot(document.getElementById("root")!).render(
   <>
