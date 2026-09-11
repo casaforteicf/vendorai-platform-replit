@@ -15,6 +15,21 @@ import {
   saveJarvisPermissions,
 } from "@/lib/jarvisPermissions";
 
+const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
+  whatsapp: "/api/auth/whatsapp",
+  instagram: "/api/auth/instagram",
+  "google-calendar": "/api/onboarding/integracoes/google-url",
+  "google-ads": "/api/auth/google-ads?returnTo=/onboarding/integracoes",
+  "search-console": "/api/auth/search-console",
+  linkedin: "/api/auth/linkedin",
+  tiktok: "/api/auth/tiktok",
+};
+
+function integrationFallback(key: string) {
+  if (key === "domain" || key === "search-console") return "/content-autopilot?view=settings";
+  return `/onboarding/integracoes?source=settings&focus=${encodeURIComponent(key)}`;
+}
+
 export default function Configuracoes() {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
@@ -26,17 +41,57 @@ export default function Configuracoes() {
   const [defaultsApplied, setDefaultsApplied] = useState(false);
 
   useEffect(() => {
+    const startDirectConnection = async (key: string, card: HTMLElement) => {
+      const endpoint = DIRECT_OAUTH_ENDPOINTS[key];
+      if (!endpoint) {
+        window.location.assign(integrationFallback(key));
+        return;
+      }
+
+      const actionLabel = card.querySelector<HTMLElement>(".integration-health__action");
+      const originalLabel = actionLabel?.textContent ?? "";
+      const button = card instanceof HTMLButtonElement ? card : null;
+      card.setAttribute("aria-busy", "true");
+      if (button) button.disabled = true;
+      if (actionLabel) actionLabel.textContent = "Abrindo integração…";
+
+      try {
+        const token = localStorage.getItem("vendorai_token");
+        const response = await fetch(endpoint, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        const data = await response.json().catch(() => ({})) as { url?: string };
+        if (!response.ok || !data.url) throw new Error("integration_start_failed");
+        window.location.assign(data.url);
+      } catch {
+        window.location.assign(integrationFallback(key));
+      } finally {
+        card.removeAttribute("aria-busy");
+        if (button) button.disabled = false;
+        if (actionLabel && originalLabel) actionLabel.textContent = originalLabel;
+      }
+    };
+
     const openIntegration = (event: MouseEvent) => {
       const origin = event.target instanceof Element ? event.target : null;
       const card = origin?.closest<HTMLElement>("[data-integration-key]");
       const key = card?.dataset.integrationKey;
-      if (!key) return;
+      if (!key || !card) return;
 
       event.preventDefault();
       event.stopPropagation();
 
       if (key === "domain") {
         window.location.assign("/content-autopilot?view=settings");
+        return;
+      }
+
+      // "Conectar agora" deve iniciar a conexão diretamente. O bloqueio por
+      // senha da aba técnica fica apenas para gerenciar/revisar integrações já
+      // configuradas, não para iniciar um OAuth novo.
+      if (card.classList.contains("is-off")) {
+        void startDirectConnection(key, card);
         return;
       }
 
