@@ -1,1 +1,0 @@
-Visitor Intelligence só pode expor dados agregados/sessões filtradas pelo tenant autenticado. O tenant nunca deve ser aceito por query/body em rotas autenticadas; deve vir exclusivamente do contexto de autenticação do request.
