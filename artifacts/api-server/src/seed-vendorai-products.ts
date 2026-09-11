@@ -2,12 +2,16 @@
  * Seeds VendorAI platform products (SKUs) and quote templates.
  * These are system-level products (tenantId = null) used by VendorAI's own sales team.
  *
- * Modelo de negócio único (a partir de set/2026): não existem mais planos
- * Growth/PME+/Enterprise separados. Existe UM produto pago via catálogo —
- * a implantação/suporte avulsa. A assinatura em si (5 dias grátis →
- * R$497/mês 60 dias → R$990/mês 6 meses → R$1.490/mês normal) e o passe
- * avulso de 5 dias (R$399,99) são controlados por accessLicenseCore.ts,
- * não por linhas de catálogo — não precisam de SKU aqui.
+ * Modelo comercial único (set/2026): existe somente o Growth.
+ * - modo por períodos: 5 dias grátis por mês + blocos de 5 dias por R$399,00
+ * - assinatura contínua: 5 dias iniciais grátis, R$497 pelos primeiros 30 dias
+ *   pagos, R$990/mês nos 5 meses seguintes e R$1.490/mês depois
+ * - sem limite de usuários
+ * - onboarding padrão autoguiado por agente
+ * - implantação humana opcional por R$1.890
+ *
+ * A assinatura e os passes são controlados pelo lifecycle/accessLicenseCore;
+ * este catálogo mantém somente serviços/add-ons cobrados separadamente.
  *
  * Run: pnpm --filter @workspace/api-server exec tsx src/seed-vendorai-products.ts
  */
@@ -17,12 +21,17 @@ import { eq } from "drizzle-orm";
 const SERVICOS_CATEGORY_ID = "5c966c52-dda2-4034-84f0-43f6199932cc"; // "Serviços"
 
 const PRODUCTS = [
-  { sku: "SETUP-SUPORTE", nome: "Implantação e Suporte", precoBase: "1890.00", productType: "service" as const, unidade: "un" },
+  {
+    sku: "SETUP-SUPORTE",
+    nome: "Implantação VendorAI",
+    precoBase: "1890.00",
+    productType: "service" as const,
+    unidade: "un",
+    descricao: "Implantação assistida opcional. O onboarding padrão do Growth é autoguiado pelo agente sem custo adicional.",
+  },
 ];
 
-// SKUs de um modelo antigo (planos por tier) que não existe mais — mantidos
-// aqui só pra garantir que ficam desativados mesmo se o seed rodar de novo
-// em algum ambiente que ainda os tenha.
+// SKUs de modelos antigos por tier/add-on que não fazem parte do Growth atual.
 const RETIRED_SKUS = [
   "PLAN-GROWTH-M", "PLAN-GROWTH-A", "PLAN-PMEMAIS-M", "PLAN-PMEMAIS-A", "PLAN-ENT-M", "PLAN-ENT-A",
   "SETUP-GROWTH", "SETUP-PMEMAIS", "SETUP-ENT",
@@ -32,18 +41,31 @@ const RETIRED_SKUS = [
 
 const TEMPLATES = [
   {
-    slug: "assinatura_com_suporte",
-    name: "Vendor.ai — Assinatura + Implantação",
-    planSlug: "assinatura",
+    slug: "growth_com_implantacao",
+    name: "VendorAI Growth + Implantação Assistida",
+    planSlug: "growth",
     cycle: "monthly",
     itens: [
-      { nome: "Implantação e Suporte", quantidade: 1, valorUnitario: 1890, sku: "SETUP-SUPORTE", descricao: "Configuração inicial, integração de canais e treinamento da equipe — cobrança única" },
-      { nome: "Assinatura Vendor.ai", quantidade: 1, valorUnitario: 497, sku: "ASSINATURA-VENDORAI", descricao: "R$497/mês nos primeiros 60 dias, R$990/mês nos 6 meses seguintes, depois R$1.490/mês" },
+      {
+        nome: "Implantação VendorAI",
+        quantidade: 1,
+        valorUnitario: 1890,
+        sku: "SETUP-SUPORTE",
+        descricao: "Implantação humana opcional: configuração, integrações, parametrização e treinamento — cobrança única",
+      },
+      {
+        nome: "VendorAI Growth",
+        quantidade: 1,
+        valorUnitario: 497,
+        sku: "GROWTH-VENDORAI",
+        descricao: "5 dias iniciais grátis; R$497 pelos primeiros 30 dias pagos; R$990/mês pelos 5 meses seguintes; depois R$1.490/mês. Sem limite de usuários.",
+      },
     ],
   },
 ];
 
 const RETIRED_TEMPLATE_SLUGS = [
+  "assinatura_com_suporte",
   "growth_monthly", "growth_annual", "pme_plus_monthly", "pme_plus_annual", "enterprise_monthly", "enterprise_annual",
 ];
 
@@ -64,17 +86,27 @@ async function seed() {
     if (existing) {
       await db
         .update(produtosCatalogoTable)
-        .set({ nome: p.nome, precoBase: p.precoBase, productType: p.productType, unidade: p.unidade, ativo: true, categoriaId: SERVICOS_CATEGORY_ID, updatedAt: new Date() })
+        .set({
+          nome: p.nome,
+          descricao: p.descricao,
+          precoBase: p.precoBase,
+          productType: p.productType,
+          unidade: p.unidade,
+          ativo: true,
+          categoriaId: SERVICOS_CATEGORY_ID,
+          updatedAt: new Date(),
+        })
         .where(eq(produtosCatalogoTable.sku, p.sku));
       console.log(`  updated: ${p.sku}`);
     } else {
       await db.insert(produtosCatalogoTable).values({
         sku: p.sku,
         nome: p.nome,
+        descricao: p.descricao,
         precoBase: p.precoBase,
         productType: p.productType,
         unidade: p.unidade,
-        tenantId: null as unknown as string, // platform product
+        tenantId: null as unknown as string,
         categoriaId: SERVICOS_CATEGORY_ID,
         ativo: true,
       });
@@ -82,12 +114,12 @@ async function seed() {
     }
   }
 
-  console.log("\nRetiring old tiered-plan quote templates...");
+  console.log("\nRetiring old quote templates...");
   for (const slug of RETIRED_TEMPLATE_SLUGS) {
     await db.update(propostaTemplatesTable).set({ isActive: false, updatedAt: new Date() }).where(eq(propostaTemplatesTable.slug, slug));
   }
 
-  console.log("Seeding quote templates...");
+  console.log("Seeding Growth quote template...");
   for (const t of TEMPLATES) {
     const [existing] = await db
       .select({ id: propostaTemplatesTable.id })
@@ -114,7 +146,7 @@ async function seed() {
     }
   }
 
-  console.log("\nVendorAI products + templates seeded.");
+  console.log("\nVendorAI Growth products + templates seeded.");
 }
 
 seed().catch((err) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACCESS_PASS_HOURS,
+  ACCESS_PASS_PRICE,
   addAccessDays,
   brazilMonthKey,
   hasActiveAccess,
@@ -11,6 +12,10 @@ describe("access license time rules", () => {
   it("uses the calendar month in America/Sao_Paulo", () => {
     const utcAlreadySeptember = new Date("2026-09-01T01:30:00.000Z");
     expect(brazilMonthKey(utcAlreadySeptember)).toBe("2026-08");
+  });
+
+  it("keeps the paid 5-day pass fixed at R$399.00", () => {
+    expect(ACCESS_PASS_PRICE).toBe(399.00);
   });
 
   it("grants exactly five consecutive days (120 hours)", () => {
@@ -47,7 +52,7 @@ describe("access license availability", () => {
     expect(hasActiveAccess({ mode: "legacy", accessEndsAt: null, annualEndsAt: null }, now)).toBe(true);
   });
 
-  it("allows an annual tenant only before the annual expiry", () => {
+  it("allows a legacy annual tenant only before the annual expiry", () => {
     expect(hasActiveAccess({
       mode: "annual",
       accessEndsAt: null,

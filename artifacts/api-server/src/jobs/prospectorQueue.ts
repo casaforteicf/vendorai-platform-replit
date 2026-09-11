@@ -21,7 +21,7 @@
  *
  * Scheduled: every hour at :35 (via scheduler.ts).
  */
-import { and, asc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -32,6 +32,8 @@ import {
   dealsTable,
   activitiesTable,
 } from "@workspace/db";
+import { pickNextVendedor } from "../lib/round-robin.js";
+import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { enrichLead } from "./leadEnrichment.js";
 
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
@@ -244,6 +246,7 @@ async function processQueueItem(params: {
         websiteUrl: leadsTable.websiteUrl,
         metadata: leadsTable.metadata,
         mercadoSegmento: leadsTable.mercadoSegmento,
+        assignedTo: leadsTable.assignedTo,
       })
       .from(leadsTable)
       .where(
@@ -255,6 +258,11 @@ async function processQueueItem(params: {
       .limit(1);
 
     if (dup) {
+      const autoAssignedTo = dup.assignedTo ?? await pickNextVendedor(tenantId, {
+        segmento: item.setor,
+        city: item.cidade,
+        location: item.endereco,
+      });
       const patch: Partial<typeof leadsTable.$inferInsert> = {
         metadata: mergeProspectorMetadata((dup.metadata ?? {}) as Record<string, unknown>, {
           setor: item.setor,
@@ -268,9 +276,25 @@ async function processQueueItem(params: {
       if (!dup.endereco && item.endereco) patch.endereco = item.endereco;
       if (!dup.websiteUrl && item.website) patch.websiteUrl = item.website;
       if (!dup.mercadoSegmento && item.setor) patch.mercadoSegmento = item.setor;
+      if (!dup.assignedTo && autoAssignedTo) patch.assignedTo = autoAssignedTo;
 
       await db.update(leadsTable).set(patch).where(eq(leadsTable.id, dup.id));
-      log.info({ leadId: dup.id, tenantId, setor: item.setor, cidade: item.cidade }, "prospector-queue: duplicate lead tags merged");
+
+      if (!dup.assignedTo && autoAssignedTo) {
+        await db
+          .update(dealsTable)
+          .set({ assignedTo: autoAssignedTo, updatedAt: now })
+          .where(and(eq(dealsTable.leadId, dup.id), isNull(dealsTable.assignedTo)));
+        recordResponsavelChange({
+          leadId: dup.id,
+          responsavelAnteriorId: null,
+          responsavelNovoId: autoAssignedTo,
+          alteradoPorId: null,
+          motivo: "automatico",
+        }).catch(() => {});
+      }
+
+      log.info({ leadId: dup.id, tenantId, setor: item.setor, cidade: item.cidade, assignedTo: autoAssignedTo }, "prospector-queue: duplicate lead tags merged");
 
       await db
         .update(prospectorQueueTable)
@@ -283,6 +307,18 @@ async function processQueueItem(params: {
   }
 
   // ── New lead ───────────────────────────────────────────────────────────────
+  // Segmento + cidade/endereço alimentam o mesmo motor de distribuição usado
+  // nos outros pontos do CRM, para o lead já entrar com a pessoa certa.
+  const assignedTo = await pickNextVendedor(tenantId, {
+    segmento: item.setor,
+    city: item.cidade,
+    location: item.endereco,
+  });
+
+  if (!assignedTo) {
+    log.warn({ queueId: item.id, tenantId, setor: item.setor, cidade: item.cidade }, "prospector-queue: no eligible seller found — lead will remain unassigned");
+  }
+
   const [created] = await db
     .insert(leadsTable)
     .values({
@@ -296,6 +332,7 @@ async function processQueueItem(params: {
       tipoPessoa: "juridica",
       status:     "novo",
       mercadoSegmento: item.setor,
+      assignedTo,
       metadata: mergeProspectorMetadata({}, {
         setor: item.setor,
         cidade: item.cidade,
@@ -312,6 +349,16 @@ async function processQueueItem(params: {
     return;
   }
 
+  if (assignedTo) {
+    recordResponsavelChange({
+      leadId,
+      responsavelAnteriorId: null,
+      responsavelNovoId: assignedTo,
+      alteradoPorId: null,
+      motivo: "automatico",
+    }).catch(() => {});
+  }
+
   // ── Deal in first funil, etapa "novo" ─────────────────────────────────────
   const [newDeal] = await db
     .insert(dealsTable)
@@ -321,6 +368,7 @@ async function processQueueItem(params: {
       titulo:  `${item.nome} — Prospector Auto`,
       funilId: funilId,
       etapa:   "novo",
+      assignedTo,
     })
     .returning({ id: dealsTable.id });
 
@@ -334,6 +382,27 @@ async function processQueueItem(params: {
     titulo:    "Lead importado via Prospector Automático",
     descricao: `Importado automaticamente da fila do Prospector (atividade: ${item.setor ?? "N/A"}, localidade: ${item.cidade ?? "N/A"}).`,
     status:    "concluida",
+    responsavelId: assignedTo,
+  });
+
+  // Every imported lead must already enter the work center with a concrete
+  // next action and SLA. LeadWorkspace uses the earliest pending activity as
+  // "Próxima atividade", so this removes the undefined state immediately.
+  const firstContactDeadline = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  await db.insert(activitiesTable).values({
+    tenantId,
+    leadId,
+    dealId,
+    tipo: item.telefone ? "whatsapp" : "tarefa",
+    titulo: item.telefone
+      ? "Realizar primeiro contato com o lead"
+      : "Localizar canal de contato e iniciar abordagem",
+    descricao: item.telefone
+      ? "Fazer a primeira abordagem, confirmar o decisor e a necessidade. Registrar o resultado e combinar o próximo passo."
+      : "Identificar telefone, WhatsApp, e-mail ou outro canal válido. Iniciar a abordagem e registrar o próximo passo.",
+    status: "pendente",
+    dataVencimento: firstContactDeadline,
+    responsavelId: assignedTo,
   });
 
   // ── Mark queue as importado ───────────────────────────────────────────────
@@ -342,7 +411,7 @@ async function processQueueItem(params: {
     .set({ status: "importado", leadId, updatedAt: now })
     .where(eq(prospectorQueueTable.id, item.id));
 
-  log.info({ queueId: item.id, leadId, dealId, tenantId }, "prospector-queue: lead created — starting predictive enrichment");
+  log.info({ queueId: item.id, leadId, dealId, tenantId, assignedTo }, "prospector-queue: lead created — starting predictive enrichment");
 
   // ── Motor Preditivo (Cmd 22): enrich → score → auto-dispatch ─────────────
   await db

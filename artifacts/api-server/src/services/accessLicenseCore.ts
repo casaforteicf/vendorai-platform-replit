@@ -1,6 +1,6 @@
 export const ACCESS_PASS_DAYS = 5;
 export const ACCESS_PASS_HOURS = 120;
-export const ACCESS_PASS_PRICE = 399.99;
+export const ACCESS_PASS_PRICE = 399.00;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

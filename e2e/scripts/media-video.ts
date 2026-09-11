@@ -9,9 +9,15 @@ const OUTPUT_ROOT = process.env.MEDIA_OUTPUT_DIR || path.resolve(process.cwd(), 
 type DemoSession = { token: string; user?: unknown };
 let sharedSession: DemoSession | undefined = MEDIA_AUTH_TOKEN ? { token: MEDIA_AUTH_TOKEN } : undefined;
 
+type RecordOptions = {
+  holdMs?: number;
+  scroll?: boolean;
+  action?: (page: Page) => Promise<void>;
+  finalHoldMs?: number;
+};
+
 async function getSession(context: BrowserContext): Promise<DemoSession> {
   if (sharedSession) return sharedSession;
-
   const response = await context.request.post(`${BASE_URL}/api/auth/demo-login`, {
     data: { email: "demo", password: "demo" },
     headers: { "Content-Type": "application/json" },
@@ -25,10 +31,8 @@ async function getSession(context: BrowserContext): Promise<DemoSession> {
   return sharedSession;
 }
 
-async function authenticate(context: BrowserContext, page: Page) {
-  const session = await getSession(context);
-  await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ token, user }) => {
+async function installSession(context: BrowserContext, session: DemoSession) {
+  await context.addInitScript(({ token, user }) => {
     localStorage.setItem("vendorai_token", token);
     if (user) localStorage.setItem("vendorai_user_cache", JSON.stringify(user));
     sessionStorage.setItem("vendorai_demo_session", "active");
@@ -38,65 +42,148 @@ async function authenticate(context: BrowserContext, page: Page) {
 async function waitForRealContent(page: Page) {
   await page.waitForFunction(() => {
     const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
-    return text.length >= 80;
+    const hasContent = text.length >= 120;
+    const looksLikeLogin = /entrar|login|senha/i.test(text) && text.length < 600;
+    const looksLikeOnboarding = /Etapa 1 de 3|Vamos começar!|Nome da empresa/i.test(text);
+    const hasBusy = Boolean(document.querySelector('[aria-busy="true"], [data-loading="true"]'));
+    return hasContent && !looksLikeLogin && !looksLikeOnboarding && !hasBusy;
   }, undefined, { timeout: 30_000 });
-  await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
-  await page.waitForTimeout(700);
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+  await page.waitForTimeout(1800);
 }
 
-async function settle(page: Page, route: string) {
+async function settle(page: Page, route: string, holdMs: number) {
   await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
   await waitForRealContent(page);
   await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(holdMs);
 }
 
 async function gentleTour(page: Page) {
-  const height = await page.evaluate(() => document.documentElement.scrollHeight);
-  const viewport = await page.evaluate(() => window.innerHeight);
-  if (height > viewport + 120) {
-    await page.evaluate(() => window.scrollTo({ top: Math.min(window.innerHeight * 0.65, document.documentElement.scrollHeight), behavior: "smooth" }));
-    await page.waitForTimeout(1400);
-    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-    await page.waitForTimeout(1200);
+  const { height, viewport } = await page.evaluate(() => ({
+    height: document.documentElement.scrollHeight,
+    viewport: window.innerHeight,
+  }));
+  if (height <= viewport + 180) {
+    await page.waitForTimeout(2500);
+    return;
   }
+  await page.evaluate(() => window.scrollTo({
+    top: Math.min(window.innerHeight * 0.72, document.documentElement.scrollHeight),
+    behavior: "smooth",
+  }));
+  await page.waitForTimeout(2600);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  await page.waitForTimeout(2600);
 }
 
-async function record(name: string, routes: string[], action?: (page: Page) => Promise<void>) {
+async function openJarvis(page: Page) {
+  const launcher = page.locator('button[aria-label="Abrir JARVIS"]');
+  if (await launcher.count()) {
+    await launcher.first().click();
+  } else {
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
+    });
+  }
+  await page.locator('[aria-label="JARVIS"]').waitFor({ state: "visible", timeout: 12_000 });
+  await page.waitForTimeout(2200);
+}
+
+async function record(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  session: DemoSession,
+  name: string,
+  routes: string[],
+  options: RecordOptions = {},
+) {
   const rawDir = path.join(OUTPUT_ROOT, "videos", "raw");
   const finalDir = path.join(OUTPUT_ROOT, "videos");
   await fs.mkdir(rawDir, { recursive: true });
   await fs.mkdir(finalDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     recordVideo: { dir: rawDir, size: { width: 1440, height: 900 } },
   });
+  await installSession(context, session);
   const page = await context.newPage();
-  await authenticate(context, page);
+  const holdMs = options.holdMs ?? 5200;
 
   for (const route of routes) {
-    await settle(page, route);
-    await gentleTour(page);
+    await settle(page, route, holdMs);
+    if (options.scroll !== false) await gentleTour(page);
+    await page.waitForTimeout(1800);
   }
-  if (action) await action(page);
-  await page.waitForTimeout(1200);
+
+  if (options.action) {
+    await options.action(page);
+    await page.waitForTimeout(options.finalHoldMs ?? 6500);
+  } else {
+    await page.waitForTimeout(options.finalHoldMs ?? 4200);
+  }
 
   const video = page.video();
   await page.close();
   const sourcePath = video ? await video.path() : null;
   await context.close();
-  await browser.close();
   if (sourcePath) await fs.rename(sourcePath, path.join(finalDir, `${name}.webm`));
 }
 
-await record("crm-demo", ["/leads", "/deals", "/conversations", "/agenda"]);
-await record("prospector-demo", ["/app/prospector"]);
-await record("revenue-scout-demo", ["/scout", "/scout/oportunidades"]);
-await record("financeiro-erp-demo", ["/erp"]);
-await record("jarvis-demo", ["/"], async (page) => {
-  await page.evaluate(() => {
-    window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
+const browser = await chromium.launch({ headless: true });
+const authContext = await browser.newContext();
+const session = await getSession(authContext);
+await authContext.close();
+
+try {
+  await record(browser, session, "crm-demo", ["/leads", "/deals", "/conversations", "/agenda"], {
+    holdMs: 5600,
+    finalHoldMs: 5200,
   });
-  await page.waitForTimeout(1800);
-});
+  await record(browser, session, "crm-short", ["/leads", "/deals"], {
+    holdMs: 3600,
+    finalHoldMs: 2600,
+  });
+
+  await record(browser, session, "prospector-demo", ["/app/prospector"], {
+    holdMs: 7000,
+    finalHoldMs: 6500,
+  });
+  await record(browser, session, "prospector-short", ["/app/prospector"], {
+    holdMs: 4000,
+    finalHoldMs: 2500,
+  });
+
+  await record(browser, session, "revenue-scout-demo", ["/scout", "/scout/oportunidades"], {
+    holdMs: 6200,
+    finalHoldMs: 5600,
+  });
+  await record(browser, session, "revenue-scout-short", ["/scout/oportunidades"], {
+    holdMs: 4200,
+    finalHoldMs: 2600,
+  });
+
+  await record(browser, session, "financeiro-erp-demo", ["/erp"], {
+    holdMs: 7600,
+    finalHoldMs: 6500,
+  });
+  await record(browser, session, "financeiro-erp-short", ["/erp"], {
+    holdMs: 4200,
+    finalHoldMs: 2600,
+  });
+
+  await record(browser, session, "jarvis-demo", ["/dashboard"], {
+    holdMs: 5200,
+    scroll: false,
+    finalHoldMs: 8500,
+    action: openJarvis,
+  });
+  await record(browser, session, "jarvis-short", ["/dashboard"], {
+    holdMs: 3200,
+    scroll: false,
+    finalHoldMs: 3600,
+    action: openJarvis,
+  });
+} finally {
+  await browser.close();
+}

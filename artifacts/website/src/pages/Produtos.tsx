@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { ArrowRight, Boxes, CheckCircle2 } from "lucide-react";
-import { products } from "@/data/products";
+import { products } from "@/data/allProducts";
 import {
   fetchPublicVendorProducts,
   formatCatalogPrice,

@@ -55,11 +55,12 @@ async function waitForRealContent(page: Page): Promise<void> {
     const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
     const hasAppContent = text.length >= 80;
     const looksLikeLogin = /entrar|login|senha/i.test(text) && text.length < 500;
-    return hasAppContent && !looksLikeLogin;
+    const looksLikeOnboarding = /Etapa 1 de 3|Vamos começar!|Nome da empresa/i.test(text);
+    return hasAppContent && !looksLikeLogin && !looksLikeOnboarding;
   }, undefined, { timeout: 30_000 });
 
   await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1200);
 }
 
 async function prepareVisual(page: Page, targetPath: string): Promise<void> {
@@ -72,8 +73,14 @@ async function prepareVisual(page: Page, targetPath: string): Promise<void> {
 }
 
 async function saveScreenshot(page: Page, module: string, variant: string): Promise<void> {
-  const textLength = await page.evaluate(() => (document.body?.innerText || "").trim().length);
-  if (textLength < 80) throw new Error(`Captura recusada: ${module}/${variant} ainda não contém conteúdo real`);
+  const pageState = await page.evaluate(() => ({
+    text: (document.body?.innerText || "").replace(/\s+/g, " ").trim(),
+    url: location.href,
+  }));
+  if (pageState.text.length < 80) throw new Error(`Captura recusada: ${module}/${variant} ainda não contém conteúdo real`);
+  if (/Etapa 1 de 3|Vamos começar!|Nome da empresa/i.test(pageState.text)) {
+    throw new Error(`Captura recusada: ${module}/${variant} caiu no onboarding (${pageState.url})`);
+  }
 
   const dir = path.join(OUTPUT_ROOT, module);
   await fs.mkdir(dir, { recursive: true });
@@ -106,12 +113,17 @@ for (const screen of screens) {
 
 test("captura JARVIS oficial aberto", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await prepareVisual(page, "/");
-  await page.evaluate(() => {
-    window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
-  });
+  await prepareVisual(page, "/dashboard");
+  const launcher = page.locator('button[aria-label="Abrir JARVIS"]');
+  if (await launcher.count()) {
+    await launcher.first().click();
+  } else {
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("vendorai:open-support", { detail: {} }));
+    });
+  }
   const panel = page.locator('[aria-label="JARVIS"]');
-  await expect(panel).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(1000);
+  await expect(panel).toBeVisible({ timeout: 12_000 });
+  await page.waitForTimeout(2500);
   await saveScreenshot(page, "jarvis", "desktop-aberto");
 });

@@ -13,7 +13,7 @@ import {
 } from "./vendorai-subscription-rules.js";
 import { resolveClientTenantForDeal } from "./trial-tenant-resolution.js";
 
-describe("VendorAI launch offer phases", () => {
+describe("VendorAI Growth offer phases", () => {
   const startedAt = new Date("2026-01-01T12:00:00.000Z");
   const offer = buildVendorAiLaunchOffer(startedAt);
 
@@ -27,12 +27,14 @@ describe("VendorAI launch offer phases", () => {
     expect(resolveCommercialBillingPhase(offer, offer.trialEndsAt)).toBe("promo_1");
   });
 
-  it("moves to promo_2 exactly after the 60-day first promotional window", () => {
+  it("moves to promo_2 exactly after the 30-day first paid window", () => {
+    expect(offer.promoPhase1EndsAt.toISOString()).toBe("2026-02-05T12:00:00.000Z");
     expect(resolveCommercialBillingPhase(offer, new Date(offer.promoPhase1EndsAt.getTime() - 1))).toBe("promo_1");
     expect(resolveCommercialBillingPhase(offer, offer.promoPhase1EndsAt)).toBe("promo_2");
   });
 
-  it("moves to regular exactly after the six-month second promotional window", () => {
+  it("moves to regular exactly after the five-month second promotional window", () => {
+    expect(offer.promoPhase2EndsAt.toISOString()).toBe("2026-07-05T12:00:00.000Z");
     expect(resolveCommercialBillingPhase(offer, new Date(offer.promoPhase2EndsAt.getTime() - 1))).toBe("promo_2");
     expect(resolveCommercialBillingPhase(offer, offer.promoPhase2EndsAt)).toBe("regular");
   });
@@ -57,13 +59,13 @@ describe("VendorAI subscription pricing", () => {
     expect(resolveVendorAiSubscriptionPrice({ phase: "promo_2", ...common }).price).toBe("990.00");
   });
 
-  it("captures the regular catalog price once and preserves the snapshot", () => {
+  it("captures the R$1.490 Growth catalog price once and preserves the snapshot", () => {
     const firstRegular = resolveVendorAiSubscriptionPrice({
       phase: "regular",
       ...common,
-      catalogMonthlyPriceCents: 129_900,
+      catalogMonthlyPriceCents: 149_000,
     });
-    expect(firstRegular).toEqual({ price: "1299.00", regularSnapshot: "1299.00" });
+    expect(firstRegular).toEqual({ price: "1490.00", regularSnapshot: "1490.00" });
 
     const afterCatalogChange = resolveVendorAiSubscriptionPrice({
       phase: "regular",
@@ -71,7 +73,7 @@ describe("VendorAI subscription pricing", () => {
       regularPriceAtTransition: firstRegular.regularSnapshot,
       catalogMonthlyPriceCents: 199_900,
     });
-    expect(afterCatalogChange).toEqual({ price: "1299.00", regularSnapshot: "1299.00" });
+    expect(afterCatalogChange).toEqual({ price: "1490.00", regularSnapshot: "1490.00" });
   });
 
   it("fails closed when regular price is unavailable", () => {
@@ -82,7 +84,9 @@ describe("VendorAI subscription pricing", () => {
     })).toThrow(/regular catalog price is unavailable/);
   });
 
-  it("freezes the annual catalog price and charges twelve monthly-equivalents", () => {
+  // Annual helpers remain covered for legacy contracts already stored in the
+  // database, even though annual is no longer a new commercial offer.
+  it("freezes a legacy annual catalog price and charges twelve monthly-equivalents", () => {
     const firstAnnual = resolveVendorAiAnnualPrice({
       annualPriceAtTransition: null,
       catalogMonthlyAnnualPriceCents: 79_700,
@@ -99,7 +103,7 @@ describe("VendorAI subscription pricing", () => {
     })).toEqual(firstAnnual);
   });
 
-  it("fails closed when annual price is unavailable", () => {
+  it("fails closed when legacy annual price is unavailable", () => {
     expect(() => resolveVendorAiAnnualPrice({
       annualPriceAtTransition: null,
       catalogMonthlyAnnualPriceCents: null,
@@ -131,7 +135,7 @@ describe("VendorAI billing calendar", () => {
       .toBe("2027-01-31T08:30:00.000Z");
   });
 
-  it("advances annual billing by twelve months and preserves leap-day contract anchor", () => {
+  it("advances legacy annual billing by twelve months and preserves leap-day contract anchor", () => {
     expect(addCalendarYear(new Date("2028-02-29T08:30:00.000Z"), 29).toISOString())
       .toBe("2029-02-28T08:30:00.000Z");
     expect(addCalendarYear(new Date("2029-02-28T08:30:00.000Z"), 29).toISOString())
