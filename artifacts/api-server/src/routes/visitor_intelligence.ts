@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod/v4";
 import { db, webBehaviorEventsTable } from "@workspace/db";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { getVisitorIntelligence } from "../services/visitorIntelligence.js";
 import { resolveRequestGeo } from "../lib/requestGeo.js";
 import {
@@ -48,6 +49,16 @@ const pushDeviceSchema = z.object({
   platform: z.enum(["android", "ios", "unknown"]).default("unknown"),
 });
 
+type VitalName = "CLS" | "FCP" | "INP" | "LCP" | "TTFB";
+type VitalSample = {
+  name: VitalName;
+  value: number;
+  rating: "good" | "needs-improvement" | "poor" | "unknown";
+  path: string;
+  deviceCategory: string | null;
+  createdAt: Date;
+};
+
 function tenantFromRequest(req: Request): string | null {
   const user = (req as Request & { user?: { tenantId?: string; platformRole?: string } }).user;
   if (user?.tenantId) return String(user.tenantId);
@@ -58,6 +69,48 @@ function tenantFromRequest(req: Request): string | null {
 function userIdFromRequest(req: Request): string | null {
   const user = (req as Request & { user?: { sub?: string; id?: string } }).user;
   return user?.sub ?? user?.id ?? null;
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.max(0, Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1));
+  return Number(sorted[index].toFixed(sorted[index] < 10 ? 3 : 1));
+}
+
+function vitalSummary(samples: VitalSample[], name: VitalName) {
+  const metricSamples = samples.filter((sample) => sample.name === name);
+  const values = metricSamples.map((sample) => sample.value);
+  const good = metricSamples.filter((sample) => sample.rating === "good").length;
+  const needsImprovement = metricSamples.filter((sample) => sample.rating === "needs-improvement").length;
+  const poor = metricSamples.filter((sample) => sample.rating === "poor").length;
+  return {
+    name,
+    samples: values.length,
+    p75: percentile(values, 0.75),
+    median: percentile(values, 0.5),
+    goodPercent: values.length ? Math.round((good / values.length) * 100) : null,
+    distribution: { good, needsImprovement, poor },
+  };
+}
+
+function parseVitalSample(row: { path: string | null; metadata: Record<string, unknown>; createdAt: Date }): VitalSample | null {
+  const metadata = row.metadata ?? {};
+  if (metadata["kind"] !== "web_vital") return null;
+  const metric = metadata["metric"];
+  if (metric !== "CLS" && metric !== "FCP" && metric !== "INP" && metric !== "LCP" && metric !== "TTFB") return null;
+  const value = Number(metadata["value"]);
+  if (!Number.isFinite(value) || value < 0) return null;
+  const rawRating = metadata["rating"];
+  const rating = rawRating === "good" || rawRating === "needs-improvement" || rawRating === "poor" ? rawRating : "unknown";
+  return {
+    name: metric,
+    value,
+    rating,
+    path: row.path || "/",
+    deviceCategory: typeof metadata["deviceCategory"] === "string" ? metadata["deviceCategory"] : null,
+    createdAt: row.createdAt,
+  };
 }
 
 router.post("/visitor-intelligence/push/register", async (req, res) => {
@@ -129,6 +182,81 @@ router.post("/visitor-intelligence/event", async (req, res) => {
   } catch (error) {
     req.log.warn({ error, tenantId, eventType: d.eventType }, "visitor-intelligence: event ingest failed");
     return res.status(202).json({ accepted: false });
+  }
+});
+
+router.get("/visitor-intelligence/web-vitals", async (req, res) => {
+  const tenantId = tenantFromRequest(req);
+  if (!tenantId) return res.status(401).json({ error: "Tenant não identificado." });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Filtros inválidos.", details: parsed.error.issues });
+  }
+
+  const minutes = parsed.data.minutes ?? 10_080;
+  const since = new Date(Date.now() - minutes * 60_000);
+
+  try {
+    const rows = await db
+      .select({
+        path: webBehaviorEventsTable.path,
+        metadata: webBehaviorEventsTable.metadata,
+        createdAt: webBehaviorEventsTable.createdAt,
+      })
+      .from(webBehaviorEventsTable)
+      .where(and(
+        eq(webBehaviorEventsTable.tenantId, tenantId),
+        eq(webBehaviorEventsTable.eventType, "engagement"),
+        gte(webBehaviorEventsTable.createdAt, since),
+      ))
+      .orderBy(desc(webBehaviorEventsTable.createdAt))
+      .limit(10_000);
+
+    const samples = rows
+      .map((row) => parseVitalSample({ path: row.path, metadata: row.metadata ?? {}, createdAt: row.createdAt }))
+      .filter((sample): sample is VitalSample => sample !== null);
+
+    const routeMap = new Map<string, VitalSample[]>();
+    for (const sample of samples) {
+      const list = routeMap.get(sample.path) ?? [];
+      list.push(sample);
+      routeMap.set(sample.path, list);
+    }
+
+    const routes = [...routeMap.entries()]
+      .map(([path, routeSamples]) => ({
+        path,
+        samples: routeSamples.length,
+        lcp: vitalSummary(routeSamples, "LCP").p75,
+        inp: vitalSummary(routeSamples, "INP").p75,
+        cls: vitalSummary(routeSamples, "CLS").p75,
+      }))
+      .sort((a, b) => b.samples - a.samples)
+      .slice(0, 20);
+
+    return res.json({
+      minutes,
+      since: since.toISOString(),
+      generatedAt: new Date().toISOString(),
+      sampleCount: samples.length,
+      metrics: {
+        LCP: vitalSummary(samples, "LCP"),
+        INP: vitalSummary(samples, "INP"),
+        CLS: vitalSummary(samples, "CLS"),
+        FCP: vitalSummary(samples, "FCP"),
+        TTFB: vitalSummary(samples, "TTFB"),
+      },
+      devices: {
+        mobile: samples.filter((sample) => sample.deviceCategory === "mobile").length,
+        tablet: samples.filter((sample) => sample.deviceCategory === "tablet").length,
+        desktop: samples.filter((sample) => sample.deviceCategory === "desktop").length,
+      },
+      routes,
+    });
+  } catch (error) {
+    req.log.error({ error, tenantId }, "visitor-intelligence: web vitals failed");
+    return res.status(500).json({ error: "Não foi possível carregar Core Web Vitals." });
   }
 });
 
