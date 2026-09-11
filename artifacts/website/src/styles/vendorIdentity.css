@@ -83,3 +83,51 @@
   border-bottom: 1px solid var(--vendor-line);
   background: #ffffff;
 }
+
+/* Normalize legacy dark heroes so every public route feels like the same VendorAI brand. */
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"],
+.vendor-public-shell main > div > div[class*="bg-slate-900"],
+.vendor-public-shell main main[class*="bg-[#070b14]"] {
+  border-color: var(--vendor-line) !important;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(249, 115, 22, 0.13), transparent 28%),
+    radial-gradient(circle at 84% 24%, rgba(37, 99, 235, 0.08), transparent 24%),
+    linear-gradient(180deg, #fffdf9 0%, #ffffff 100%) !important;
+  color: var(--vendor-ink) !important;
+}
+
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] > div[class*="absolute"][class*="inset-0"] {
+  opacity: 0 !important;
+}
+
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] h1,
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] h2,
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] h3,
+.vendor-public-shell main > div > div[class*="bg-slate-900"] h1,
+.vendor-public-shell main > div > div[class*="bg-slate-900"] h2,
+.vendor-public-shell main > div > div[class*="bg-slate-900"] h3,
+.vendor-public-shell main main[class*="bg-[#070b14]"] h1,
+.vendor-public-shell main main[class*="bg-[#070b14]"] h2,
+.vendor-public-shell main main[class*="bg-[#070b14]"] h3 {
+  color: var(--vendor-ink) !important;
+}
+
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] p[class*="text-slate-"],
+.vendor-public-shell main > div > div[class*="bg-slate-900"] p[class*="text-slate-"],
+.vendor-public-shell main main[class*="bg-[#070b14]"] p[class*="text-slate-"] {
+  color: var(--vendor-muted) !important;
+}
+
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] [class*="text-blue-300"],
+.vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] [class*="text-orange-300"] {
+  color: var(--vendor-orange-strong) !important;
+}
+
+/* Public cards and forms share one neutral surface language. */
+.vendor-public-shell main [class*="rounded-"][class*="border-slate-200"][class*="bg-white"] {
+  box-shadow: var(--vendor-shadow-sm);
+}
+
+.vendor-public-shell main [class*="rounded-"][class*="border-slate-200"][class*="bg-white"]:hover {
+  border-color: rgba(249, 115, 22, 0.28);
+}
