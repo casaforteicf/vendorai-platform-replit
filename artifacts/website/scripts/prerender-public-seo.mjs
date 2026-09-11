@@ -8,11 +8,14 @@ const outDir = path.resolve(siteRoot, "dist/public");
 const manifestPath = path.resolve(outDir, "seo-manifest.json");
 const workerPath = path.resolve(outDir, "_worker.js");
 const priorityDepthPath = path.resolve(siteRoot, "src/data/seoPriorityDepth.json");
+const prioritySupplementPath = path.resolve(siteRoot, "src/data/seoPrioritySupplement.json");
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const priorityDepth = JSON.parse(fs.readFileSync(priorityDepthPath, "utf8"));
+const prioritySupplement = JSON.parse(fs.readFileSync(prioritySupplementPath, "utf8"));
 const growthByPath = new Map((manifest.growthPages || []).map((page) => [page.path, page]));
 const priorityDepthByPath = new Map((priorityDepth.pages || []).map((page) => [page.path, page]));
+const prioritySupplementByPath = new Map((prioritySupplement.pages || []).map((page) => [page.path, page]));
 
 function escapeHtml(value = "") {
   return String(value)
@@ -74,8 +77,10 @@ function priorityDepthHtml(pathname, spanish = false) {
   if (!entry) return "";
   const copy = spanish ? entry.es : entry.pt;
   if (!copy) return "";
+  const supplement = prioritySupplementByPath.get(pathname);
+  const extra = supplement ? (spanish ? supplement.es : supplement.pt) : "";
   const checklistTitle = spanish ? "Checklist para evaluar tu operación" : "Checklist para avaliar sua operação";
-  return `<section data-vendorai-priority-depth="true"><h2>${escapeHtml(copy.title)}</h2>${(copy.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}<h3>${checklistTitle}</h3>${list(copy.checklist)}</section>`;
+  return `<section data-vendorai-priority-depth="true"><h2>${escapeHtml(copy.title)}</h2>${(copy.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}${extra ? `<p>${escapeHtml(extra)}</p>` : ""}<h3>${checklistTitle}</h3>${list(copy.checklist)}</section>`;
 }
 
 function growthHtml(route, page, spanish = false) {
@@ -217,14 +222,19 @@ for (const route of manifest.routes || []) {
   }
 }
 
+const priorityFailures = [];
 for (const pathname of priorityDepthByPath.keys()) {
   const route = manifest.routes.find((item) => item.pathname === pathname);
   if (!route?.staticHtml?.includes('data-vendorai-priority-depth="true"')) {
-    throw new Error(`[prerender] priority depth missing for ${pathname}`);
+    priorityFailures.push(`${pathname}: priority depth missing`);
+    continue;
   }
   const text = route.staticHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const words = text.split(" ").filter(Boolean).length;
-  if (words < 450) throw new Error(`[prerender] priority route ${pathname} has only ${words} words in initial HTML`);
+  if (words < 450) priorityFailures.push(`${pathname}: ${words} words`);
+}
+if (priorityFailures.length) {
+  throw new Error(`[prerender] priority routes below quality gate: ${priorityFailures.join("; ")}`);
 }
 
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
