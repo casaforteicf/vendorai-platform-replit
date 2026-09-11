@@ -28,12 +28,13 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.26.1 --activate
 
-      - name: Connect public visitor presence to native push
+      - name: Connect public visitor presence and notification deep link
         shell: python
         run: |
           from pathlib import Path
-          p = Path('artifacts/api-server/src/routes/site.ts')
-          s = p.read_text()
+
+          site = Path('artifacts/api-server/src/routes/site.ts')
+          s = site.read_text()
           import_line = 'import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";\n'
           push_import = 'import { notifyVisitorOnline } from "../services/visitorPushNotifications.js";\n'
           if push_import not in s:
@@ -46,16 +47,33 @@ jobs:
               if anchor not in s:
                   raise SystemExit('identified session anchor not found')
               s = s.replace(anchor, push_call + anchor, 1)
-          p.write_text(s)
+          site.write_text(s)
+
+          ui = Path('artifacts/frontend/src/pages/VisitorIntelligence.tsx')
+          u = ui.read_text()
+          old = '  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);\n'
+          new = '''  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => {\n    const value = new URLSearchParams(window.location.search).get("session");\n    return value && /^[a-zA-Z0-9_-]{8,120}$/.test(value) ? value : null;\n  });\n'''
+          if old in u:
+              u = u.replace(old, new, 1)
+          elif new not in u:
+              raise SystemExit('VisitorIntelligence selected-session anchor not found')
+          ui.write_text(u)
 
       - name: Refresh workspace lockfile
         run: pnpm install --lockfile-only --no-frozen-lockfile
 
-      - name: Validate API and mobile types
-        run: |
-          pnpm install --no-frozen-lockfile
-          pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
-          pnpm --filter @workspace/mobile typecheck
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Validate API types
+        run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
+
+      - name: Validate Expo native configuration
+        run: pnpm --filter @workspace/mobile exec expo config --type public > /tmp/vendorai-expo-config.json
+
+      - name: Bundle Android JavaScript
+        working-directory: artifacts/mobile
+        run: pnpm exec expo export --platform android --output-dir /tmp/vendorai-mobile-export
 
       - name: Commit generated patch and lockfile
         shell: bash
@@ -63,6 +81,6 @@ jobs:
           rm .github/workflows/native-push-bootstrap.yml
           git config user.name "VendorAI Native Push Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add artifacts/api-server/src/routes/site.ts pnpm-lock.yaml .github/workflows/native-push-bootstrap.yml
+          git add artifacts/api-server/src/routes/site.ts artifacts/frontend/src/pages/VisitorIntelligence.tsx pnpm-lock.yaml .github/workflows/native-push-bootstrap.yml
           git commit -m "feat: connect site presence to native visitor push"
           git push origin HEAD:feat/visitor-native-push
