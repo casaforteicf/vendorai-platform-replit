@@ -1,5 +1,5 @@
 // Product routes are part of the public website deployment (Cloudflare production sync).
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,15 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import GrowthRevenueHero from "@/components/GrowthRevenueHero";
-import DistributedProductScreens from "@/components/DistributedProductScreens";
-import RevenueMagicCalculator from "@/components/RevenueMagicCalculator";
 import PublicSeoManager from "@/components/PublicSeoManager";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import "@/styles/vendorIdentity.css";
-import {
-  captureLaunchAttribution,
-  installPublicFormConsentBridge,
-} from "@/lib/launchAttribution";
 
 const Home = lazy(() => import("@/pages/Home"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -40,6 +34,8 @@ const BlogList = lazy(() => import("@/pages/blog/BlogList"));
 const BlogPost = lazy(() => import("@/pages/blog/BlogPost"));
 const UnifiedLpRouter = lazy(() => import("@/pages/lp/UnifiedLpRouter"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
+const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
+const DistributedProductScreens = lazy(() => import("@/components/DistributedProductScreens"));
 const AgentSimulatorWidget = lazy(() => import("@/components/AgentSimulatorWidget").then((module) => ({ default: module.AgentSimulatorWidget })));
 
 const queryClient = new QueryClient();
@@ -58,6 +54,34 @@ function ScrollToTop() {
   return null;
 }
 
+function IdleAgentSimulator() {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+    const enable = () => setEnabled(true);
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (idleWindow.requestIdleCallback) {
+      idleId = idleWindow.requestIdleCallback(enable, { timeout: 2500 });
+    } else {
+      timeoutId = window.setTimeout(enable, 1200);
+    }
+
+    return () => {
+      if (idleId != null) idleWindow.cancelIdleCallback?.(idleId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  if (!enabled) return null;
+  return <Suspense fallback={null}><AgentSimulatorWidget /></Suspense>;
+}
+
 function FloatingActions() {
   const [location] = useLocation();
   const formFocusedPage = location === "/demo" || location === "/contato" || location === "/cadastro-praca" || location === "/baixar-app";
@@ -67,7 +91,7 @@ function FloatingActions() {
   return (
     <>
       <WhatsAppFloatButton />
-      <Suspense fallback={null}><AgentSimulatorWidget /></Suspense>
+      <IdleAgentSimulator />
     </>
   );
 }
@@ -76,11 +100,11 @@ function HomeWithGrowthRevenueHero() {
   return (
     <>
       <GrowthRevenueHero />
-      <RevenueMagicCalculator />
+      <Suspense fallback={null}><RevenueMagicCalculator /></Suspense>
       <div className="[&>div>section:first-child]:hidden [&>div>section.border-y.border-slate-200.bg-slate-50]:hidden">
         <Home />
       </div>
-      <DistributedProductScreens />
+      <Suspense fallback={null}><DistributedProductScreens /></Suspense>
     </>
   );
 }
@@ -131,9 +155,6 @@ function Router() {
 }
 
 function App() {
-  captureLaunchAttribution();
-  installPublicFormConsentBridge();
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
