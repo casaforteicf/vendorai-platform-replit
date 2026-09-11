@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Building2, HardHat, LayoutDashboard, Radar, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import ProspectorClassic from "./ProspectorClassic";
 import ConstructionRadarWorkspace from "./prospector/ConstructionRadarWorkspace";
 import JarvisProspectingSignals from "./prospector/JarvisProspectingSignals";
+import ProspectorClassicWorkspace from "./prospector/ProspectorClassicWorkspace";
 import ProspectorOverview, { type ProspectorNavigationTarget } from "./prospector/ProspectorOverview";
 
 type ProspectorMode = "painel" | "empresas" | "oportunidades" | "obras";
@@ -135,8 +135,8 @@ export default function Prospector() {
       <JarvisProspectingSignals onNavigate={navigate} compact={mode !== "painel"} />
 
       {mode === "painel" && <ProspectorOverview onNavigate={navigate} />}
-      {mode === "empresas" && <ProspectorClassic key={`empresas-${classicKey}`} />}
-      {mode === "oportunidades" && <ProspectorClassic key={`oportunidades-${classicKey}`} />}
+      {mode === "empresas" && <ProspectorClassicWorkspace key={`empresas-${classicKey}`} section="empresas" />}
+      {mode === "oportunidades" && <ProspectorClassicWorkspace key={`oportunidades-${classicKey}`} section="oportunidades" />}
       {mode === "obras" && <ConstructionRadarWorkspace />}
     </div>
   );
