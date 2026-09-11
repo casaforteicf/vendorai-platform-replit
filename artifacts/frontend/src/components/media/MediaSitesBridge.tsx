@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Image as ImageIcon, Library, Video, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, ChevronDown, Image as ImageIcon, Library, SlidersHorizontal, Video, X } from "lucide-react";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "./MediaAssetPicker";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const STORAGE_KEY = "vendorai_sites_media_assets_v1";
+const MODE_KEY = "vendorai_sites_media_mode_v2";
 
 type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
@@ -35,11 +36,19 @@ function readStoredAssets(): MediaPickerAsset[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as MediaPickerAsset[];
     return Array.isArray(parsed)
-      ? parsed.filter((asset) => asset?.id && (asset.type === "image" || asset.type === "video") && asset.storageUrl).slice(0, 20)
+      ? parsed.filter((asset) => asset?.id && (asset.type === "image" || asset.type === "video") && asset.storageUrl).slice(0, 150)
       : [];
   } catch {
     sessionStorage.removeItem(STORAGE_KEY);
     return [];
+  }
+}
+
+function readAutoMode(): boolean {
+  try {
+    return localStorage.getItem(MODE_KEY) !== "manual";
+  } catch {
+    return true;
   }
 }
 
@@ -52,20 +61,39 @@ function mergeUnique(existing: unknown, additions: string[]): string[] {
   return [...new Set([...current, ...additions])];
 }
 
+function goToMediaLibrary() {
+  window.history.pushState(window.history.state, "", "/midias");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export function MediaSitesBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [assets, setAssets] = useState<MediaPickerAsset[]>(readStoredAssets);
+  const [manualAssets, setManualAssets] = useState<MediaPickerAsset[]>(readStoredAssets);
+  const [libraryAssets, setLibraryAssets] = useState<MediaPickerAsset[]>([]);
+  const [autoMode, setAutoMode] = useState(readAutoMode);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
   const [expanded, setExpanded] = useState(() => typeof window !== "undefined" && window.innerWidth > 900);
-  const assetsRef = useRef<MediaPickerAsset[]>(assets);
+  const manualAssetsRef = useRef<MediaPickerAsset[]>(manualAssets);
+  const libraryAssetsRef = useRef<MediaPickerAsset[]>(libraryAssets);
+  const autoModeRef = useRef(autoMode);
   const tenantId = currentTenantId();
   const onSites = pathname === "/content-autopilot" || pathname.startsWith("/content-autopilot/");
 
   useEffect(() => {
-    assetsRef.current = assets;
-    if (assets.length) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(assets));
+    manualAssetsRef.current = manualAssets;
+    if (manualAssets.length) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(manualAssets));
     else sessionStorage.removeItem(STORAGE_KEY);
-  }, [assets]);
+  }, [manualAssets]);
+
+  useEffect(() => {
+    libraryAssetsRef.current = libraryAssets;
+  }, [libraryAssets]);
+
+  useEffect(() => {
+    autoModeRef.current = autoMode;
+    try { localStorage.setItem(MODE_KEY, autoMode ? "auto" : "manual"); } catch {}
+  }, [autoMode]);
 
   useEffect(() => {
     const updatePath = () => setPathname(window.location.pathname);
@@ -85,6 +113,33 @@ export function MediaSitesBridge() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  const loadLibrary = useCallback(async () => {
+    if (!tenantId || !onSites) return;
+    setLoadingLibrary(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets?limit=150`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` },
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({})) as { assets?: MediaPickerAsset[] };
+      if (!response.ok) return;
+      const next = Array.isArray(body.assets)
+        ? body.assets.filter((asset) => (asset.type === "image" || asset.type === "video") && Boolean(asset.storageUrl)).slice(0, 150)
+        : [];
+      setLibraryAssets(next);
+    } finally {
+      setLoadingLibrary(false);
+    }
+  }, [onSites, tenantId]);
+
+  useEffect(() => {
+    void loadLibrary();
+    if (!onSites) return;
+    const refresh = () => void loadLibrary();
+    window.addEventListener("vendorai-media-library-changed", refresh);
+    return () => window.removeEventListener("vendorai-media-library-changed", refresh);
+  }, [loadLibrary, onSites]);
+
   useEffect(() => {
     const previousFetch = window.fetch.bind(window);
     const mediaAwareFetch: typeof window.fetch = async (input, init = {}) => {
@@ -92,17 +147,31 @@ export function MediaSitesBridge() {
         const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const url = new URL(requestUrl, window.location.origin);
         const method = (init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-        const selected = assetsRef.current;
         const isSiteGenerate = /^\/api\/tenants\/[^/]+\/site-generator\/generate\/?$/.test(url.pathname);
-        if (selected.length && method === "POST" && isSiteGenerate && typeof init.body === "string") {
-          const body = JSON.parse(init.body) as Record<string, unknown>;
-          const selectedImages = selected.filter((asset) => asset.type === "image").map(absolutePublicMediaUrl);
-          const selectedVideos = selected.filter((asset) => asset.type === "video").map(absolutePublicMediaUrl);
-          body["images"] = mergeUnique(body["images"], selectedImages);
-          body["videos"] = mergeUnique(body["videos"], selectedVideos);
-          const response = await previousFetch(input, { ...init, body: JSON.stringify(body) });
-          if (response.ok) window.setTimeout(() => setAssets([]), 0);
-          return response;
+        if (method === "POST" && isSiteGenerate && typeof init.body === "string") {
+          let available = autoModeRef.current ? libraryAssetsRef.current : manualAssetsRef.current;
+          if (autoModeRef.current && available.length === 0 && tenantId) {
+            const mediaResponse = await previousFetch(`/api/tenants/${tenantId}/media/assets?limit=150`, {
+              headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` },
+              cache: "no-store",
+            });
+            const mediaBody = await mediaResponse.json().catch(() => ({})) as { assets?: MediaPickerAsset[] };
+            if (mediaResponse.ok && Array.isArray(mediaBody.assets)) {
+              available = mediaBody.assets.filter((asset) => (asset.type === "image" || asset.type === "video") && Boolean(asset.storageUrl)).slice(0, 150);
+              libraryAssetsRef.current = available;
+              window.setTimeout(() => setLibraryAssets(available), 0);
+            }
+          }
+          if (available.length > 0) {
+            const body = JSON.parse(init.body) as Record<string, unknown>;
+            const selectedImages = available.filter((asset) => asset.type === "image").map(absolutePublicMediaUrl);
+            const selectedVideos = available.filter((asset) => asset.type === "video").map(absolutePublicMediaUrl);
+            body["images"] = mergeUnique(body["images"], selectedImages);
+            body["videos"] = mergeUnique(body["videos"], selectedVideos);
+            body["mediaLibraryMode"] = autoModeRef.current ? "automatic" : "manual";
+            body["mediaLibraryAssetIds"] = available.map((asset) => asset.id);
+            return previousFetch(input, { ...init, body: JSON.stringify(body) });
+          }
         }
       } catch {
         // Requisições não compatíveis seguem sem alteração.
@@ -113,12 +182,13 @@ export function MediaSitesBridge() {
     return () => {
       if (window.fetch === mediaAwareFetch) window.fetch = previousFetch;
     };
-  }, []);
+  }, [tenantId]);
 
   if (!onSites || !tenantId) return null;
 
-  const imageCount = assets.filter((asset) => asset.type === "image").length;
-  const videoCount = assets.filter((asset) => asset.type === "video").length;
+  const effectiveAssets = autoMode ? libraryAssets : manualAssets;
+  const imageCount = effectiveAssets.filter((asset) => asset.type === "image").length;
+  const videoCount = effectiveAssets.filter((asset) => asset.type === "video").length;
 
   return (
     <>
@@ -160,47 +230,72 @@ export function MediaSitesBridge() {
           aria-label="Abrir mídias para este site"
         >
           <Library className="h-4 w-4" />
-          <span className="max-[900px]:hidden">Mídias{assets.length ? ` · ${assets.length}` : ""}</span>
+          <span className="max-[900px]:hidden">Mídias · {autoMode ? "auto" : effectiveAssets.length}</span>
         </button>
       ) : (
-        <div className="vendor-sites-media-bridge fixed bottom-5 right-5 z-[80] w-[min(380px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur max-[900px]:bottom-4 max-[900px]:left-4 max-[900px]:right-4 max-[900px]:w-auto">
+        <div className="vendor-sites-media-bridge fixed bottom-5 right-5 z-[80] w-[min(400px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur max-[900px]:bottom-4 max-[900px]:left-4 max-[900px]:right-4 max-[900px]:w-auto">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted">
               <Library className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold">Mídias para este site</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold">Banco de mídias do site</p>
+                {autoMode && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Automático</span>}
+              </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {assets.length ? `${assets.length} mídia(s) da Biblioteca serão usadas na próxima geração` : "Reutilize fotos e vídeos da Central de Mídias"}
+                {autoMode
+                  ? loadingLibrary
+                    ? "Carregando a Biblioteca..."
+                    : `${effectiveAssets.length} mídia(s) disponíveis. A IA escolhe as mais adequadas sem novo upload.`
+                  : effectiveAssets.length
+                    ? `${effectiveAssets.length} mídia(s) escolhidas manualmente para a próxima geração.`
+                    : "Selecione fotos e vídeos específicos da Biblioteca."}
               </p>
             </div>
             <button type="button" onClick={() => setExpanded(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted max-[900px]:inline-flex hidden" title="Recolher">
               <ChevronDown className="h-4 w-4" />
             </button>
-            {assets.length > 0 && (
-              <button type="button" onClick={() => setAssets([])} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted" title="Limpar mídias da Biblioteca">
+            {!autoMode && manualAssets.length > 0 && (
+              <button type="button" onClick={() => setManualAssets([])} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted" title="Limpar seleção manual">
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
 
-          {assets.length > 0 && (
+          {effectiveAssets.length > 0 && (
             <div className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
               {imageCount > 0 && <span className="flex items-center gap-1 rounded-full border px-2 py-1"><ImageIcon className="h-3 w-3" />{imageCount} foto(s)</span>}
               {videoCount > 0 && <span className="flex items-center gap-1 rounded-full border px-2 py-1"><Video className="h-3 w-3" />{videoCount} vídeo(s)</span>}
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border bg-background text-xs font-medium hover:bg-muted"
-          >
-            <Library className="h-4 w-4" />
-            {assets.length ? "Alterar mídias" : "Escolher da Biblioteca"}
-          </button>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setAutoMode((current) => !current)}
+              className={`flex h-10 items-center justify-center gap-2 rounded-xl border text-xs font-medium ${autoMode ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-background hover:bg-muted"}`}
+            >
+              {autoMode ? <CheckCircle2 className="h-4 w-4" /> : <SlidersHorizontal className="h-4 w-4" />}
+              {autoMode ? "Automático ativo" : "Seleção manual"}
+            </button>
+            <button type="button" onClick={goToMediaLibrary} className="flex h-10 items-center justify-center gap-2 rounded-xl border bg-background text-xs font-medium hover:bg-muted">
+              <Library className="h-4 w-4" /> Abrir Biblioteca
+            </button>
+          </div>
+
+          {!autoMode && (
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border bg-background text-xs font-medium hover:bg-muted"
+            >
+              <Library className="h-4 w-4" />
+              {manualAssets.length ? "Alterar mídias selecionadas" : "Escolher da Biblioteca"}
+            </button>
+          )}
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground max-[900px]:hidden">
-            As mídias escolhidas são adicionadas às fotos e vídeos já anexados no Gerador de Sites, sem duplicar upload.
+            No modo automático a Biblioteca é o banco oficial: fotos e vídeos existentes entram como referências da IA sem importar novamente nem pedir mídia a cada geração.
           </p>
         </div>
       )}
@@ -210,10 +305,10 @@ export function MediaSitesBridge() {
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         allowedTypes={["image", "video"]}
-        maxSelection={20}
+        maxSelection={150}
         title="Escolher mídias para o site"
-        confirmLabel="Usar no site"
-        onConfirm={(selected) => setAssets(selected)}
+        confirmLabel="Usar seleção no site"
+        onConfirm={(selected) => setManualAssets(selected)}
       />
     </>
   );
