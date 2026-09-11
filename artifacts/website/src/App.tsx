@@ -30,6 +30,7 @@ import Footer from "@/components/Footer";
 import GrowthRevenueHero from "@/components/GrowthRevenueHero";
 import DistributedProductScreens from "@/components/DistributedProductScreens";
 import RevenueMagicCalculator from "@/components/RevenueMagicCalculator";
+import PublicSeoManager from "@/components/PublicSeoManager";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
 import "@/styles/vendorIdentity.css";
@@ -124,6 +125,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <PublicSeoManager />
           <ScrollToTop />
           <Router />
           <FloatingActions />
