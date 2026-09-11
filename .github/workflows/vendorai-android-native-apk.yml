@@ -49,9 +49,10 @@ jobs:
       - name: Gerar projeto Android nativo
         working-directory: artifacts/mobile
         env:
+          CI: 'true'
           EXPO_NO_DOTENV: '1'
           PICOVOICE_ACCESS_KEY: ''
-        run: pnpm exec expo prebuild --platform android --clean --non-interactive
+        run: pnpm exec expo prebuild --platform android --clean --no-install
 
       - name: Compilar APK Android
         working-directory: artifacts/mobile/android
