@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { ArrowRight, BarChart3, CheckCircle2, Search, Sparkles } from "lucide-react";
 import { seoGrowthPages } from "@/data/seoGrowthPages";
+import { SeoPriorityDepth } from "@/components/SeoPriorityDepth";
 import { usePublicCountry } from "@/lib/publicCountry";
 
 type LocaleCopy = {
@@ -152,6 +153,8 @@ export default function SeoIntentPage() {
           <ContentCard title={labels.benefits} items={copy.benefits} icon={<CheckCircle2 className="h-5 w-5" />} />
         </div>
       </section>
+
+      <SeoPriorityDepth path={page.path} isSpanish={isSpanish} />
 
       <section className="border-y border-slate-200 bg-slate-50 py-16">
         <div className="container mx-auto max-w-6xl px-4">
