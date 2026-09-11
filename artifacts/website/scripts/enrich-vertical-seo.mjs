@@ -130,6 +130,12 @@ for (const vertical of verticals) {
   route.title = titleFor(vertical.name);
   route.description = descriptionFor(vertical.name, vertical.promise, vertical.corePain);
   route.name = vertical.name;
+  route.corePain = vertical.corePain;
+  route.promise = vertical.promise;
+  route.priorityAgents = vertical.priorityAgents;
+  route.esName = spanish.name;
+  route.esCorePain = spanish.corePain;
+  route.esPromise = spanish.promise;
   route.esTitle = titleFor(spanish.name, true);
   route.esDescription = descriptionFor(spanish.name, spanish.promise, spanish.corePain, true);
   route.primaryKeyword = vertical.googleIntentSeeds[0] || `CRM ${vertical.name}`;
@@ -148,6 +154,9 @@ for (const vertical of verticals) {
       esDescription: route.esDescription,
       primaryKeyword: route.primaryKeyword,
       secondaryKeywords: route.secondaryKeywords,
+      corePain: vertical.corePain,
+      promise: vertical.promise,
+      priorityAgents: vertical.priorityAgents,
     };
   }
   updated += 1;
@@ -159,4 +168,4 @@ const paths = verticals.map((vertical) => `/lp/${slugOverrides[vertical.id] ?? v
 if (new Set(paths).size !== 50) throw new Error("[vertical-seo] public vertical paths are not unique");
 
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-console.log(`[vertical-seo] enriched ${updated} vertical routes with PT/ES metadata, search intent and visible PT FAQ`);
+console.log(`[vertical-seo] enriched ${updated} vertical routes with PT/ES metadata and semantic context`);
