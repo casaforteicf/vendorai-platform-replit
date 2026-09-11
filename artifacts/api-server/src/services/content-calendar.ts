@@ -22,11 +22,12 @@ import { alignMediaChannelFunction, mediaActionFunction } from "./media-channel-
 
 const VALID_TYPES = CONTENT_CALENDAR_TIPOS.join(" | ");
 const MAX_CALENDAR_ACTIONS = 90;
+const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
 const SYSTEM_PROMPT = `Você é o calendário estratégico do Planejador de Mídia do VendorAI.
 O plano já definiu campanhas, públicos, canais, frequência, formatos e a função oficial de cada mídia. Sua função é melhorar títulos e ângulos de AÇÕES planejadas, sem produzir o material final.
 
-Cada slot já chega com campanha, canal, formato/tipo e pilar funcional. RESPEITE esses campos. Não transforme Reels em peça de conversão direta quando o slot for descoberta; não trate Stories como Carrossel; não trate Google Search como mídia de awareness; não trate Landing Page como postagem; não transforme WhatsApp, E-mail ou SMS em cópia de social.
+Cada slot já chega com campanha, canal, formato/tipo, pilar funcional e horário calculado. RESPEITE esses campos. Não transforme Reels em peça de conversão direta quando o slot for descoberta; não trate Stories como Carrossel; não trate Google Search como mídia de awareness; não trate Landing Page como postagem; não transforme WhatsApp, E-mail ou SMS em cópia de social.
 
 REGRA DE SUTILEZA GEOGRÁFICA: quando uma campanha tiver região/bairro, isso orienta a segmentação, mas NÃO deve aparecer em todo título. Em geral, mencione a localização explicitamente em apenas 20–30% das ações. Aumente o uso em Google Search, SEO local e Landing Page; reduza em Reels, Feed, YouTube e conteúdo educativo. Nos demais materiais, trabalhe dor, benefício, comparação, prova, aplicação, produto e transformação sem repetir o nome do local.
 
@@ -34,12 +35,13 @@ Mídia paga pode permanecer ativa continuamente; represente marcos de lançament
 
 Tipos válidos: ${VALID_TYPES}.
 
-Retorne APENAS JSON válido (array), sem markdown. Mantenha campanha, canal, pilar e tipo do slot original; refine principalmente temaSugerido e, quando fizer sentido, diaOffset.`;
+Retorne APENAS JSON válido (array), sem markdown. Mantenha campanha, canal, pilar, tipo e minutoOffset do slot original; refine somente temaSugerido.`;
 
 export class ContentCalendarError extends Error {}
 
 type PlannedAction = {
   diaOffset: number;
+  minutoOffset: number;
   campanha: string;
   pilar: string;
   temaSugerido: string;
@@ -184,7 +186,7 @@ function buildLegacyCampaign(plan: typeof mediaPlansTable.$inferSelect, semanas:
     mensagemCentral: plan.conteudo.pilaresConteudo?.[0] ?? plan.conteudo.diagnostico,
     fase: "aquisição e conversão",
     inicioOffsetDias: 0,
-    duracaoDias: Math.max(7, semanas * 7),
+    duracaoDias: Math.max(1, semanas * 7),
     intensidadeGeografica: "baixa",
     regraComunicacaoGeografica: "A localização orienta a segmentação e aparece apenas quando acrescenta intenção ou contexto.",
     canais: channels,
@@ -222,19 +224,42 @@ function allocateCounts(campaigns: PlannerCampaign[]): Array<{ campaign: Planner
   return pairs.map((pair, index) => ({ campaign: pair.campaign, channel: pair.channel, count: counts[index]! }));
 }
 
-function buildDeterministicActions(campaigns: PlannerCampaign[], periodoDias: number): PlannedAction[] {
+function resolvePeriodMinutes(plan: typeof mediaPlansTable.$inferSelect, semanas: number): number {
+  const period = plan.conteudo.periodo;
+  if (period?.duracaoValor && period.duracaoValor > 0) {
+    return Math.max(60, Math.round(period.duracaoValor * (period.duracaoUnidade === "horas" ? 60 : 1440)));
+  }
+  if (period?.inicioEm && period.fimEm && !period.aberto) {
+    const start = new Date(period.inicioEm).getTime();
+    const end = new Date(period.fimEm).getTime();
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      return Math.max(60, Math.round((end - start) / 60000));
+    }
+  }
+  return Math.max(60, Math.round((plan.conteudo.periodoDias ?? Math.max(1, semanas * 7)) * 1440));
+}
+
+function buildDeterministicActions(campaigns: PlannerCampaign[], periodoMinutos: number): PlannedAction[] {
   const allocated = allocateCounts(campaigns);
   const actions: PlannedAction[] = [];
+  const shortPeriod = periodoMinutos < 1440;
 
   for (const { campaign, channel, count } of allocated) {
-    const start = Math.max(0, Math.min(periodoDias - 1, campaign.inicioOffsetDias ?? 0));
-    const duration = Math.max(1, Math.min(periodoDias - start, campaign.duracaoDias ?? periodoDias));
+    const requestedStart = shortPeriod ? 0 : Math.max(0, (campaign.inicioOffsetDias ?? 0) * 1440);
+    const start = Math.min(Math.max(0, periodoMinutos - 1), requestedStart);
+    const requestedDuration = shortPeriod
+      ? periodoMinutos - start
+      : Math.max(60, (campaign.duracaoDias ?? Math.ceil(periodoMinutos / 1440)) * 1440);
+    const duration = Math.max(1, Math.min(periodoMinutos - start, requestedDuration));
+
     for (let index = 0; index < count; index += 1) {
       const withinCampaign = count <= 1 ? 0 : Math.round((index * Math.max(0, duration - 1)) / (count - 1));
+      const minutoOffset = Math.min(periodoMinutos - 1, start + withinCampaign);
       const formato = channel.formatos[index % Math.max(1, channel.formatos.length)] ?? channel.canal;
       const role = mediaActionFunction(channel.canal, formato, index);
       actions.push({
-        diaOffset: Math.min(periodoDias - 1, start + withinCampaign),
+        diaOffset: Math.floor(minutoOffset / 1440),
+        minutoOffset,
         campanha: campaign.nome,
         pilar: role.pilar,
         temaSugerido: fallbackTitle(campaign, channel, index, formato, role.funcao),
@@ -246,7 +271,7 @@ function buildDeterministicActions(campaigns: PlannerCampaign[], periodoDias: nu
     }
   }
 
-  return actions.sort((a, b) => a.diaOffset - b.diaOffset || a.campanha.localeCompare(b.campanha) || a.canal.localeCompare(b.canal));
+  return actions.sort((a, b) => a.minutoOffset - b.minutoOffset || a.campanha.localeCompare(b.campanha) || a.canal.localeCompare(b.canal));
 }
 
 function overlayAiActions(base: PlannedAction[], rawAi: unknown): PlannedAction[] {
@@ -275,15 +300,42 @@ function overlayAiActions(base: PlannedAction[], rawAi: unknown): PlannedAction[
     const current = result[index]!;
     result[index] = {
       ...current,
-      diaOffset: Number.isFinite(Number(item.diaOffset)) ? Math.max(0, Math.round(Number(item.diaOffset))) : current.diaOffset,
       temaSugerido: item.temaSugerido.trim(),
-      // A IA não troca pilar/tipo: eles vêm da função oficial da mídia.
       pilar: current.pilar,
       tipo: current.tipo,
+      minutoOffset: current.minutoOffset,
+      diaOffset: current.diaOffset,
     };
   }
 
   return result;
+}
+
+function validTimezone(value: unknown): string {
+  const timezone = typeof value === "string" && value.trim() ? value.trim() : DEFAULT_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    return timezone;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+function localDateTimeParts(date: Date, timezone: string): { date: string; time: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${values.get("year")}-${values.get("month")}-${values.get("day")}`,
+    time: `${values.get("hour")}:${values.get("minute")}`,
+  };
 }
 
 export async function generateContentCalendar(
@@ -305,8 +357,9 @@ export async function generateContentCalendar(
     throw new ContentCalendarError("O plano de mídia não tem campanhas ou canais definidos.");
   }
 
-  const periodoDias = Math.max(7, Math.min(90, plan.conteudo.periodoDias ?? semanas * 7));
-  const baseActions = buildDeterministicActions(campanhas, periodoDias);
+  const periodoMinutos = resolvePeriodMinutes(plan, semanas);
+  const periodoDias = Math.max(1, Math.ceil(periodoMinutos / 1440));
+  const baseActions = buildDeterministicActions(campanhas, periodoMinutos);
   if (baseActions.length === 0) {
     throw new ContentCalendarError("O plano não possui materiais distribuíveis entre os canais.");
   }
@@ -320,19 +373,23 @@ export async function generateContentCalendar(
   }
 
   const [ultimoAgendado] = await db
-    .select({ dataAgendada: contentCalendarItemsTable.dataAgendada })
+    .select({ dataAgendada: contentCalendarItemsTable.dataAgendada, horarioAgendado: contentCalendarItemsTable.horarioAgendado })
     .from(contentCalendarItemsTable)
     .where(and(...calendarBaseConditions))
-    .orderBy(desc(contentCalendarItemsTable.dataAgendada))
+    .orderBy(desc(contentCalendarItemsTable.dataAgendada), desc(contentCalendarItemsTable.horarioAgendado))
     .limit(1);
 
+  const configuredStart = plan.conteudo.periodo?.inicioEm ? new Date(plan.conteudo.periodo.inicioEm) : null;
   const dataBase = ultimoAgendado
     ? (() => {
-        const d = new Date(ultimoAgendado.dataAgendada + "T12:00:00");
-        d.setDate(d.getDate() + 1);
+        const time = ultimoAgendado.horarioAgendado || "23:59";
+        const d = new Date(`${ultimoAgendado.dataAgendada}T${time}:00`);
+        d.setMinutes(d.getMinutes() + 1);
         return d;
       })()
-    : new Date();
+    : configuredStart && Number.isFinite(configuredStart.getTime())
+      ? configuredStart
+      : new Date();
 
   let actions = baseActions;
   if (options.refinarComIa !== false) {
@@ -347,6 +404,7 @@ export async function generateContentCalendar(
             role: "user",
             content: JSON.stringify({
               periodoDias,
+              periodoHoras: Math.round((periodoMinutos / 60) * 100) / 100,
               campanhas: campanhas.map((campaign) => ({
                 nome: campaign.nome,
                 objetivo: campaign.objetivo,
@@ -360,7 +418,7 @@ export async function generateContentCalendar(
                 canais: campaign.canais,
               })),
               amostraDeSlotsParaRefinar: baseActions.slice(0, representativeLimit),
-              instrucao: `Refine até ${representativeLimit} slots mantendo exatamente campanha, canal, formato, função, pilar e tipo. Não remova canais nem mude a função da mídia.`,
+              instrucao: `Refine até ${representativeLimit} slots mantendo exatamente campanha, canal, formato, função, pilar, tipo e minutoOffset. Não remova canais, não mude a função da mídia e não altere o horário calculado.`,
             }),
           },
         ],
@@ -376,14 +434,15 @@ export async function generateContentCalendar(
     }
   }
 
-  const maxOffset = Math.max(1, periodoDias - 1);
+  const timezone = validTimezone(plan.conteudo.publicacaoOrganica?.timezone);
   const rows = actions.slice(0, MAX_CALENDAR_ACTIONS).map((item) => {
-    const data = new Date(dataBase);
-    data.setDate(data.getDate() + Math.min(maxOffset, Math.max(0, item.diaOffset)));
+    const scheduledAt = new Date(dataBase.getTime() + Math.max(0, item.minutoOffset) * 60000);
+    const local = localDateTimeParts(scheduledAt, timezone);
     return {
       tenantId,
       mediaPlanId,
-      dataAgendada: data.toISOString().slice(0, 10),
+      dataAgendada: local.date,
+      horarioAgendado: local.time,
       pilar: `${item.campanha} · ${item.pilar}`,
       temaSugerido: item.temaSugerido,
       tipo: item.tipo,
