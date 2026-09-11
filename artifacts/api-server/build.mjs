@@ -67,6 +67,35 @@ const siteGeneratorDescCollisionHotfixPlugin = {
   },
 };
 
+// Hotfix restrito às duas rotas que ainda carregam a URL antiga do Asaas.
+// A API oficial usa /v3/myAccount; /api/v3/myAccount retorna 404. O transform
+// é guardado por arquivo e falha o build se o trecho esperado deixar de existir,
+// para que esta correção não masque mudanças futuras no código-fonte.
+const asaasMyAccountUrlHotfixPlugin = {
+  name: "asaas-my-account-url-hotfix",
+  setup(build) {
+    const targets = new Set([
+      path.resolve(artifactDir, "src/routes/onboarding.ts"),
+      path.resolve(artifactDir, "src/routes/changelog.ts"),
+    ]);
+    const from = "https://api.asaas.com/api/v3/myAccount";
+    const to = "https://api.asaas.com/v3/myAccount";
+
+    build.onLoad({ filter: /(?:onboarding|changelog)\.ts$/ }, async (args) => {
+      const target = path.resolve(args.path);
+      if (!targets.has(target)) return null;
+
+      const contents = await readFile(args.path, "utf8");
+      const first = contents.indexOf(from);
+      if (first < 0 || contents.indexOf(from, first + from.length) >= 0) {
+        throw new Error(`Asaas myAccount hotfix guard failed for: ${target}`);
+      }
+
+      return { contents: contents.replace(from, to), loader: "ts" };
+    });
+  },
+};
+
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
@@ -161,6 +190,7 @@ async function buildAll() {
     sourcemap: "linked",
     plugins: [
       siteGeneratorDescCollisionHotfixPlugin,
+      asaasMyAccountUrlHotfixPlugin,
       workspaceVendorBrainPlugin,
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })
