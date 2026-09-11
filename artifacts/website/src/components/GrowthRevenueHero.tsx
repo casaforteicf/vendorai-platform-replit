@@ -186,6 +186,8 @@ export default function GrowthRevenueHero() {
             </div>
 
             <picture>
+              <source type="image/webp" media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.webp`} />
+              <source type="image/webp" srcSet={`${MEDIA}/crm-pipeline/desktop-1440.webp`} />
               <source media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.png`} />
               <img
                 src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
