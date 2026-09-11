@@ -12,6 +12,7 @@ import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
+import { notifyVisitorOnline } from "../services/visitorPushNotifications.js";
 
 const router: IRouter = Router();
 
@@ -223,6 +224,13 @@ router.post("/site/behavior-event", async (req, res) => {
         region,
         city,
       },
+    });
+
+    void notifyVisitorOnline({
+      tenantId: INSTITUTIONAL_TENANT_ID,
+      sessionId: d.anonymousSessionId,
+    }).catch((err) => {
+      logger.warn({ err, sessionId: d.anonymousSessionId }, "site/behavior-event: native visitor push failed");
     });
 
     if (identifiedSession?.leadId) {

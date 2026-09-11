@@ -237,7 +237,10 @@ export default function VisitorIntelligence() {
   const [surface, setSurface] = useState<"all" | VisitorSurface>("all");
   const [status, setStatus] = useState<SessionStatus>("all");
   const [search, setSearch] = useState("");
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => {
+    const value = new URLSearchParams(window.location.search).get("session");
+    return value && /^[a-zA-Z0-9_-]{8,120}$/.test(value) ? value : null;
+  });
   const [alertsEnabled, setAlertsEnabledState] = useState(() => getVisitorAlertsEnabled());
   const [browserPermission, setBrowserPermission] = useState(() => getVisitorBrowserNotificationState());
 
