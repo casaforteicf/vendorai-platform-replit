@@ -225,6 +225,10 @@ export function ConfigurationCatalogProductsBridge() {
         cards[0].card.insertAdjacentElement("beforebegin", currentIndex);
       }
 
+      const signature = ADVANCED_GROUPS.map((group) => `${group.key}:${openedGroups.has(group.key) ? "1" : "0"}`).join("|");
+      if (currentIndex.dataset.settingsAdvancedSignature === signature) return;
+      currentIndex.dataset.settingsAdvancedSignature = signature;
+
       currentIndex.innerHTML = `
         <style>
           .settings-advanced-index { margin: 1rem 0; padding: 1rem; border: 1px solid hsl(var(--border)); border-radius: .85rem; background: hsl(var(--card)); }
