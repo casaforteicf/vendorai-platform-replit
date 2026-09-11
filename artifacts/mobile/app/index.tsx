@@ -5,6 +5,70 @@ import { WebView } from "react-native-webview";
 
 const APP_URL = process.env.EXPO_PUBLIC_WEB_APP_URL || "https://app.appvendorai.com";
 
+const MOBILE_NORMALIZE_JS = `
+  (function () {
+    try {
+      var viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) {
+        viewport = document.createElement('meta');
+        viewport.setAttribute('name', 'viewport');
+        document.head.appendChild(viewport);
+      }
+      viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+
+      var style = document.getElementById('vendorai-native-mobile-normalize');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'vendorai-native-mobile-normalize';
+        style.textContent = ` + "`" + `
+          html, body, #root {
+            width: 100% !important;
+            max-width: 100vw !important;
+            min-width: 0 !important;
+            overflow-x: hidden !important;
+            -webkit-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
+          }
+          @media (max-width: 640px) {
+            html { font-size: 13px !important; }
+            body { font-size: 13px !important; line-height: 1.4 !important; }
+            .vendor-settings-compact { font-size: 13px !important; }
+            .vendor-settings-compact > section,
+            .vendor-settings-compact > details {
+              padding-left: 10px !important;
+              padding-right: 10px !important;
+              margin-bottom: 8px !important;
+            }
+            .vendor-settings-compact > section > div,
+            .vendor-settings-compact > details > summary {
+              padding: 10px !important;
+            }
+            [data-vendorai-unified-assistant] {
+              right: 10px !important;
+              bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+            }
+            [data-vendorai-unified-assistant] > button[aria-label="Abrir central de assistentes de IA"] {
+              width: 42px !important;
+              height: 42px !important;
+              min-width: 42px !important;
+              min-height: 42px !important;
+              max-width: 42px !important;
+              padding: 0 !important;
+              border-radius: 9999px !important;
+            }
+            [data-vendorai-unified-assistant] > button[aria-label="Abrir central de assistentes de IA"] span,
+            [data-vendorai-unified-assistant] > button[aria-label="Abrir central de assistentes de IA"] svg:last-child {
+              display: none !important;
+            }
+          }
+        ` + "`" + `;
+        document.head.appendChild(style);
+      }
+    } catch (_) {}
+    true;
+  })();
+`;
+
 export default function VendorAIMobileShell() {
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -49,6 +113,9 @@ export default function VendorAIMobileShell() {
       pullToRefreshEnabled
       startInLoadingState
       setSupportMultipleWindows={false}
+      textZoom={90}
+      injectedJavaScriptBeforeContentLoaded={MOBILE_NORMALIZE_JS}
+      injectedJavaScript={MOBILE_NORMALIZE_JS}
       onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
       onShouldStartLoadWithRequest={(request) => {
         const url = request.url;
