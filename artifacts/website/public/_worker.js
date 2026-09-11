@@ -59,6 +59,9 @@ const STATIC_ES = {
 
 function localizeMeta(meta, pathname, country) {
   if (country === "BR") return meta;
+  if (meta.esTitle || meta.esDescription) {
+    return { ...meta, title: meta.esTitle || meta.title, description: meta.esDescription || meta.description };
+  }
   const staticEs = STATIC_ES[pathname];
   if (staticEs) return { ...meta, title: staticEs[0], description: staticEs[1] };
   if (meta.type === "product") return { ...meta, title: `${meta.name || "Producto VendorAI"} — IA y automatización para empresas | VendorAI`, description: `Conoce ${meta.name || "esta solución"} de VendorAI: tecnología, oportunidades, automatización e inteligencia conectadas a la operación comercial.` };
@@ -133,7 +136,7 @@ function breadcrumbSchema(meta, canonical) {
   const items = [{ "@type": "ListItem", position: 1, name: "VendorAI", item: `${PUBLIC_ORIGIN}/` }];
   if (parts.length > 1) {
     const section = parts[0];
-    const sectionNames = { produtos: "Produtos", funcionalidades: "Funcionalidades", agentes: "Agentes", lp: "Segmentos", segmentos: "Segmentos", blog: "Blog", verticais: "Verticais" };
+    const sectionNames = { produtos: "Produtos", funcionalidades: "Funcionalidades", agentes: "Agentes", lp: "Segmentos", segmentos: "Segmentos", blog: "Blog", verticais: "Verticais", solucoes: "Soluções", comparar: "Comparações" };
     items.push({ "@type": "ListItem", position: 2, name: sectionNames[section] || humanize(section), item: `${PUBLIC_ORIGIN}/${section}` });
   }
   items.push({ "@type": "ListItem", position: items.length + 1, name: meta.name || meta.title.replace(/\s*\|.*$/, ""), item: canonical });

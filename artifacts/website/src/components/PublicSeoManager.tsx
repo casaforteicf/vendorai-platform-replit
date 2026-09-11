@@ -9,6 +9,8 @@ type SeoRoute = {
   type?: string;
   name?: string;
   price?: number | null;
+  esTitle?: string | null;
+  esDescription?: string | null;
 };
 
 type SeoManifest = {
@@ -51,6 +53,9 @@ const STATIC_ES: Record<string, [string, string]> = {
 
 function localizeMeta(meta: SeoRoute, countryCode: PublicCountryCode): SeoRoute {
   if (countryCode === "BR") return meta;
+  if (meta.esTitle || meta.esDescription) {
+    return { ...meta, title: meta.esTitle ?? meta.title, description: meta.esDescription ?? meta.description };
+  }
   const staticEs = STATIC_ES[meta.pathname];
   if (staticEs) return { ...meta, title: staticEs[0], description: staticEs[1] };
   if (meta.type === "product") return { ...meta, title: `${meta.name ?? "Producto VendorAI"} — IA y automatización para empresas | VendorAI`, description: `Conoce ${meta.name ?? "esta solución"} de VendorAI: tecnología, oportunidades, automatización e inteligencia conectadas a la operación comercial.` };
