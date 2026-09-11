@@ -234,7 +234,7 @@ async function validateIntegration(
     return {
       status: "warning",
       title: "Search Console conectado, verificação pendente",
-      message: "A conexão existe, porém a propriedade ainda não está verificada. Conclua a verificação antes de considerar o fluxo operacional.",
+      message: "A conta Google já está autorizada. Aguarde de 2 a 5 minutos e clique em “Verificar agora”. Não é necessário reconectar a conta.",
       provider: label,
     };
   }

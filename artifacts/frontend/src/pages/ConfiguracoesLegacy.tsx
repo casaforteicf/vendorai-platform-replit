@@ -2023,8 +2023,8 @@ export default function Configuracoes() {
         toast({ title: "Propriedade verificada e sitemap enviado ao Search Console!" });
       } else {
         toast({
-          title: "Ainda não verificado — aguarde alguns minutos após conectar e tente de novo.",
-          variant: "destructive",
+          title: "O Google ainda está processando a verificação.",
+          description: "Sua conta já está autorizada. Aguarde alguns minutos e clique novamente em “Verificar agora”. Não desconecte a integração.",
         });
       }
       await loadSearchConsoleConnection();
@@ -3510,7 +3510,7 @@ export default function Configuracoes() {
                       : "bg-amber-100 text-amber-700"
                   }`}
                 >
-                  {searchConsoleConnection.verified ? "Verificado" : "Aguardando verificação"}
+                  {searchConsoleConnection.verified ? "Verificado" : "Autorizado — verificando propriedade"}
                 </span>
               )}
             </div>
@@ -3529,14 +3529,20 @@ export default function Configuracoes() {
                     Sitemap enviado{searchConsoleConnection.sitemapSubmittedAt ? ` em ${new Date(searchConsoleConnection.sitemapSubmittedAt).toLocaleDateString("pt-BR")}` : ""}.
                   </p>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    A verificação leva alguns minutos pra propagar no site. Clique abaixo pra confirmar.
-                  </p>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+                    <p className="font-medium text-foreground">Conta Google autorizada. Agora falta confirmar a propriedade do site.</p>
+                    <ol className="mt-2 space-y-1 text-muted-foreground">
+                      <li><span className="font-medium text-foreground">1.</span> Aguarde cerca de 2 a 5 minutos para o Google processar a verificação.</li>
+                      <li><span className="font-medium text-foreground">2.</span> Depois, clique em <span className="font-medium text-foreground">Verificar agora</span>.</li>
+                      <li><span className="font-medium text-foreground">3.</span> Quando o Google confirmar, o status mudará para <span className="font-medium text-foreground">Verificado</span> e o sitemap será enviado automaticamente.</li>
+                    </ol>
+                    <p className="mt-2 text-xs text-muted-foreground">Você não precisa conectar a conta novamente. Se ainda estiver processando, aguarde mais alguns minutos e tente de novo. Não desconecte a integração.</p>
+                  </div>
                 )}
                 <div className="flex gap-2">
                   {!searchConsoleConnection.verified && (
                     <Button size="sm" onClick={onVerifySearchConsole} disabled={searchConsoleVerifying}>
-                      {searchConsoleVerifying ? "Verificando..." : "Verificar propriedade"}
+                      {searchConsoleVerifying ? "Verificando..." : "Verificar agora"}
                     </Button>
                   )}
                   <Button
