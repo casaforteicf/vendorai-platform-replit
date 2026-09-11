@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const siteRoot = path.resolve(here, "..");
-const manifestPath = path.resolve(siteRoot, "dist/public/seo-manifest.json");
+const outDir = path.resolve(siteRoot, "dist/public");
+const manifestPath = path.resolve(outDir, "seo-manifest.json");
 const matrixPath = path.resolve(siteRoot, "src/data/seoGrowthMatrix.json");
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -47,4 +48,10 @@ for (const page of pages) {
 
 manifest.growthPages = pages;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+// Marca a versão realmente publicada para o smoke esperar o deploy correto no edge.
+const deploymentVersion = process.env.GITHUB_SHA || "local";
+fs.writeFileSync(path.resolve(outDir, "deployment-version.txt"), `${deploymentVersion}\n`);
+
 console.log(`[seo-growth] appended ${pages.length} commercial-intent pages`);
+console.log(`[deploy] version ${deploymentVersion}`);
