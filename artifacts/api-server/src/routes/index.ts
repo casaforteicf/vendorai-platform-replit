@@ -251,6 +251,11 @@ router.use(enforceAccessLicense);
 // so typing a hidden URL directly does not bypass the permission.
 router.use(enforceModulePermission);
 
+// Visitor Intelligence e Launch Command Center precisam ser registrados antes
+// dos routers de domínio. Isso evita que guards wildcard de routers posteriores
+// convertam uma rota válida em 403 antes de ela alcançar o handler correto.
+router.use(launchCommandCenterRouter);
+
 // Universal App Builder runtime — tenant scoped, published snapshots only.
 router.use(appRuntimeRouter);
 
@@ -342,7 +347,6 @@ router.use(agentsRouter);
 
 // Marketing Hub
 router.use(campaignsRouter);
-router.use(launchCommandCenterRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);

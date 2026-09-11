@@ -21,6 +21,10 @@ const ALERT_SEEN_KEY = "vendorai_visitor_alert_seen_v1";
 const API_BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_URL || "/api");
 const VISITOR_DASHBOARD_URL = "/content?tab=campanhas&view=visitantes";
 
+function visitorDashboardUrl(sessionId: string) {
+  return `${VISITOR_DASHBOARD_URL}&session=${encodeURIComponent(sessionId)}`;
+}
+
 function randomId(prefix: string) {
   return typeof crypto?.randomUUID === "function"
     ? crypto.randomUUID()
@@ -275,7 +279,7 @@ function showInAppVisitorAlert(session: AlertSession) {
     <div style="font-size:11px;color:#a5b4fc;margin-top:7px">Clique para acompanhar ao vivo →</div>
   `;
   card.onclick = () => {
-    window.location.assign(VISITOR_DASHBOARD_URL);
+    window.location.assign(visitorDashboardUrl(session.sessionId));
   };
   container.appendChild(card);
 
@@ -294,7 +298,7 @@ function showBrowserVisitorAlert(session: AlertSession) {
   });
   notification.onclick = () => {
     window.focus();
-    window.location.assign(VISITOR_DASHBOARD_URL);
+    window.location.assign(visitorDashboardUrl(session.sessionId));
     notification.close();
   };
 }
