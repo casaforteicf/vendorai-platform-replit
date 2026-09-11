@@ -8,6 +8,8 @@ import Home from "@/pages/Home";
 import Funcionalidades from "@/pages/Funcionalidades";
 import RecursoDetalhe from "@/pages/RecursoDetalhe";
 import AgenteDetalhe from "@/pages/AgenteDetalhe";
+import Produtos from "@/pages/Produtos";
+import ProdutoDetalhe from "@/pages/ProdutoDetalhe";
 import Precos from "@/pages/Precos";
 import Sobre from "@/pages/Sobre";
 import Contato from "@/pages/Contato";
@@ -88,6 +90,8 @@ function Router() {
           <main className="min-w-0 flex-1">
             <Switch>
               <Route path="/" component={HomeWithNicheVisuals} />
+              <Route path="/produtos/:slug" component={ProdutoDetalhe} />
+              <Route path="/produtos" component={Produtos} />
               <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
               <Route path="/funcionalidades" component={Funcionalidades} />
               <Route path="/agentes/:slug" component={AgenteDetalhe} />
