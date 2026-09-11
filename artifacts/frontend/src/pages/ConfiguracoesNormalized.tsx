@@ -23,6 +23,18 @@ const CONFIG_SEARCH_INDEX = [
   { section: "Faturamento", terms: "faturamento plano cobrança consumo créditos assinatura mensalidade pagamento" },
 ] as const;
 
+const INTEGRATION_FOCUS_ALIASES: Record<string, string[]> = {
+  whatsapp: ["whatsapp", "meta whatsapp", "central meta"],
+  instagram: ["instagram"],
+  "google-calendar": ["google calendar", "calendar"],
+  "google-ads": ["google ads"],
+  asaas: ["asaas"],
+  zapsign: ["zapsign"],
+  "search-console": ["search console"],
+  linkedin: ["linkedin"],
+  tiktok: ["tiktok"],
+};
+
 type IntegrationHealthPayload = {
   whatsapp?: { connected?: boolean; phone?: string | null };
   googleCalendar?: { connected?: boolean };
@@ -48,6 +60,57 @@ export default function Configuracoes() {
     const root = document.querySelector<HTMLElement>(".vendor-config-without-site");
     if (!root) return;
 
+    const normalizeText = (value: string) => value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLocaleLowerCase("pt-BR");
+
+    const focusIntegration = (key: string) => {
+      if (key === "domain") {
+        window.location.assign("/content-autopilot?view=settings");
+        return;
+      }
+
+      const integrationTab = Array.from(root.querySelectorAll<HTMLElement>("[role='tab']")).find((tab) => {
+        const ariaLabel = normalizeText(tab.getAttribute("aria-label") ?? "");
+        const text = normalizeText(tab.textContent ?? "");
+        return ariaLabel === "integracoes" || text.includes("integracoes");
+      });
+      integrationTab?.click();
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "integracoes");
+      url.searchParams.set("integration", key);
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+
+      window.setTimeout(() => {
+        const panel = root.querySelector<HTMLElement>("[role='tabpanel']:not([hidden])");
+        if (!panel) return;
+
+        const aliases = INTEGRATION_FOCUS_ALIASES[key] ?? [key];
+        const normalizedAliases = aliases.map(normalizeText);
+        const candidates = Array.from(panel.querySelectorAll<HTMLElement>("h2, h3, h4, strong, label, p, button"));
+        const match = candidates.find((element) => {
+          const text = normalizeText(element.textContent ?? "");
+          return normalizedAliases.some((alias) => text.includes(alias));
+        });
+        const target = match?.closest<HTMLElement>("section, article, .rounded-xl, .rounded-lg, .rounded-md, .border") ?? match;
+
+        if (!target) {
+          panel.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+
+        target.dataset.integrationFocusTarget = "true";
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => {
+          delete target.dataset.integrationFocusTarget;
+        }, 2200);
+      }, 140);
+    };
+
     const loadIntegrationHealth = async (panel: HTMLElement) => {
       const summary = panel.querySelector<HTMLElement>("[data-integration-health-summary]");
       const grid = panel.querySelector<HTMLElement>("[data-integration-health-grid]");
@@ -62,26 +125,29 @@ export default function Configuracoes() {
         const data = await response.json() as IntegrationHealthPayload;
 
         const integrations = [
-          { label: "WhatsApp", connected: data.whatsapp?.connected === true, detail: data.whatsapp?.phone || "Canal de atendimento" },
-          { label: "Instagram", connected: data.instagram?.connected === true, detail: data.instagram?.username ? `@${data.instagram.username.replace(/^@/, "")}` : "Mensagens e perfil" },
-          { label: "Google Calendar", connected: data.googleCalendar?.connected === true, detail: "Agenda e compromissos" },
+          { key: "whatsapp", label: "WhatsApp", connected: data.whatsapp?.connected === true, detail: data.whatsapp?.phone || "Canal de atendimento" },
+          { key: "instagram", label: "Instagram", connected: data.instagram?.connected === true, detail: data.instagram?.username ? `@${data.instagram.username.replace(/^@/, "")}` : "Mensagens e perfil" },
+          { key: "google-calendar", label: "Google Calendar", connected: data.googleCalendar?.connected === true, detail: "Agenda e compromissos" },
           {
+            key: "google-ads",
             label: "Google Ads",
             connected: data.googleAds?.connected === true,
             attention: data.googleAds?.pendingAccountSelection === true,
             detail: data.googleAds?.pendingAccountSelection ? "Selecionar conta" : (data.googleAds?.descriptiveName || "Mídia paga"),
           },
-          { label: "Asaas", connected: data.asaas?.connected === true, detail: "Cobranças e pagamentos" },
-          { label: "ZapSign", connected: data.zapsign?.connected === true, detail: "Assinatura eletrônica" },
+          { key: "asaas", label: "Asaas", connected: data.asaas?.connected === true, detail: "Cobranças e pagamentos" },
+          { key: "zapsign", label: "ZapSign", connected: data.zapsign?.connected === true, detail: "Assinatura eletrônica" },
           {
+            key: "search-console",
             label: "Search Console",
             connected: data.searchConsole?.connected === true && data.searchConsole?.verified === true,
             attention: data.searchConsole?.connected === true && data.searchConsole?.verified !== true,
             detail: data.searchConsole?.connected && !data.searchConsole?.verified ? "Aguardando verificação" : "SEO e indexação",
           },
-          { label: "LinkedIn", connected: data.social?.linkedin === true, detail: "Canal social" },
-          { label: "TikTok", connected: data.social?.tiktok === true, detail: "Canal social" },
+          { key: "linkedin", label: "LinkedIn", connected: data.social?.linkedin === true, detail: "Canal social" },
+          { key: "tiktok", label: "TikTok", connected: data.social?.tiktok === true, detail: "Canal social" },
           {
+            key: "domain",
             label: "Domínio",
             connected: data.domain?.active === true,
             attention: data.domain?.configured === true && data.domain?.active !== true,
@@ -95,8 +161,11 @@ export default function Configuracoes() {
         grid.replaceChildren();
 
         integrations.forEach((item) => {
-          const card = document.createElement("div");
+          const card = document.createElement("button");
+          card.type = "button";
           card.className = `integration-health__item ${item.connected ? "is-connected" : item.attention ? "is-attention" : "is-off"}`;
+          card.dataset.integrationKey = item.key;
+          card.setAttribute("aria-label", `${item.connected ? "Gerenciar" : item.attention ? "Revisar" : "Conectar"} ${item.label}`);
 
           const header = document.createElement("div");
           header.className = "integration-health__item-header";
@@ -110,7 +179,13 @@ export default function Configuracoes() {
           const detail = document.createElement("span");
           detail.className = "integration-health__detail";
           detail.textContent = item.detail;
-          card.append(header, detail);
+
+          const action = document.createElement("span");
+          action.className = "integration-health__action";
+          action.textContent = item.connected ? "Gerenciar integração →" : item.attention ? "Revisar integração →" : "Conectar agora →";
+
+          card.addEventListener("click", () => focusIntegration(item.key));
+          card.append(header, detail, action);
           grid.appendChild(card);
         });
       } catch {
@@ -160,6 +235,12 @@ export default function Configuracoes() {
         tab.setAttribute("aria-label", next.label);
         tab.dataset.configSection = next.label.toLowerCase().replace(/\s+/g, "-");
       });
+
+      const requestedIntegration = new URLSearchParams(window.location.search).get("integration");
+      if (requestedIntegration && !root.dataset.integrationDeepLinkHandled) {
+        root.dataset.integrationDeepLinkHandled = "true";
+        window.setTimeout(() => focusIntegration(requestedIntegration), 40);
+      }
 
       if (primaryTabList && !root.querySelector("[data-config-search='true']")) {
         const search = document.createElement("section");
@@ -461,17 +542,27 @@ export default function Configuracoes() {
           background: hsl(var(--muted) / .35); font-size: .73rem; font-weight: 600;
         }
         .integration-health__grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
-        .integration-health__item { min-width: 0; padding: .55rem .6rem; border: 1px solid hsl(var(--border)); border-radius: .6rem; }
+        .integration-health__item {
+          width: 100%; min-width: 0; padding: .55rem .6rem; border: 1px solid hsl(var(--border)); border-radius: .6rem;
+          text-align: left; cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+        }
+        .integration-health__item:hover { transform: translateY(-1px); box-shadow: 0 6px 18px hsl(var(--foreground) / .07); }
+        .integration-health__item:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
         .integration-health__item-header { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
         .integration-health__item-header strong { min-width: 0; font-size: .72rem; }
         .integration-health__badge { flex: 0 0 auto; font-size: .62rem; font-weight: 700; }
         .integration-health__detail { display: block; margin-top: .2rem; font-size: .66rem; color: hsl(var(--muted-foreground)); }
+        .integration-health__action { display: block; margin-top: .35rem; font-size: .64rem; font-weight: 700; color: hsl(var(--foreground)); }
         .integration-health__item.is-connected { background: hsl(142 70% 45% / .08); border-color: hsl(142 55% 45% / .3); }
         .integration-health__item.is-connected .integration-health__badge { color: hsl(142 55% 35%); }
         .integration-health__item.is-attention { background: hsl(38 90% 50% / .09); border-color: hsl(38 80% 50% / .35); }
         .integration-health__item.is-attention .integration-health__badge { color: hsl(32 75% 38%); }
         .integration-health__item.is-off .integration-health__badge { color: hsl(var(--muted-foreground)); }
         .integration-health__loading { grid-column: 1 / -1; padding: .35rem 0; font-size: .74rem; color: hsl(var(--muted-foreground)); }
+        .vendor-config-without-site [data-integration-focus-target="true"] {
+          outline: 2px solid hsl(var(--ring)); outline-offset: 4px; border-radius: .75rem;
+          scroll-margin-block: 7rem;
+        }
         .vendor-config-without-site textarea {
           width: 100%; min-height: 6rem; max-height: 18rem; resize: vertical; transition: min-height 160ms ease;
         }
