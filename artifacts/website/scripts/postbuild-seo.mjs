@@ -21,6 +21,10 @@ function decodeString(value = "") {
   return value.replace(/\\n/g, " ").replace(/\\"/g, '"').replace(/\\'/g, "'").replace(/\s+/g, " ").trim();
 }
 
+function humanize(slug) {
+  return slug.split("-").map((part) => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ");
+}
+
 function parseEntities(source, titleKeys, descriptionKeys) {
   const slugMatches = [...source.matchAll(/slug:\s*["']([^"']+)["']/g)];
   const entities = {};
@@ -45,10 +49,6 @@ function parseEntities(source, titleKeys, descriptionKeys) {
   return entities;
 }
 
-function humanize(slug) {
-  return slug.split("-").map((part) => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ");
-}
-
 function mergeEntities(...groups) {
   return Object.assign({}, ...groups);
 }
@@ -65,7 +65,12 @@ const verticals = {};
 const macrosegments = new Set();
 for (const match of verticalSource.matchAll(/v\(\{\s*id:'[^']+',\s*macrosegment:'([^']+)',\s*name:'([^']+)',\s*slug:'([^']+)'/g)) {
   const [, macrosegment, name, slug] = match;
-  verticals[slug] = { slug, title: name, description: `VendorAI para ${name}: marketing, prospecção, atendimento, CRM, vendas, pós-venda e inteligência de receita em uma operação conectada.`, macrosegment };
+  verticals[slug] = {
+    slug,
+    title: name,
+    description: `VendorAI para ${name}: marketing, prospecção, atendimento, CRM, vendas, pós-venda e inteligência de receita em uma operação conectada.`,
+    macrosegment,
+  };
   macrosegments.add(macrosegment);
 }
 
@@ -169,7 +174,7 @@ const productPrices = {
 for (const [slug, product] of Object.entries(products)) {
   const override = seoOverrides[slug];
   product.seoTitle = override?.[0] ?? `${product.title} | VendorAI`;
-  product.seoDescription = override?.[1] ?? product.description || `Conheça ${product.title} no ecossistema VendorAI.`;
+  product.seoDescription = override?.[1] ?? (product.description || `Conheça ${product.title} no ecossistema VendorAI.`);
   product.price = productPrices[slug] ?? null;
 }
 
@@ -240,4 +245,4 @@ fs.writeFileSync(path.join(outDir, "sitemap.xml"), sitemap);
 const robots = `User-agent: *\nAllow: /\n\nDisallow: /login\nDisallow: /app\nDisallow: /admin\nDisallow: /crm\nDisallow: /tenants\nDisallow: /settings\nDisallow: /api\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
 fs.writeFileSync(path.join(outDir, "robots.txt"), robots);
 
-console.log(`[seo] generated ${routes.length} indexable/public route records, ${Object.keys(products).length} products, ${Object.keys(verticals).length} verticals`);
+console.log(`[seo] generated ${routes.length} route records, ${Object.keys(products).length} products, ${Object.keys(verticals).length} verticals`);
