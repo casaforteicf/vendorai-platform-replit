@@ -27,6 +27,7 @@ import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
 import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import GrowthRevenueHero from "@/components/GrowthRevenueHero";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
 import {
@@ -60,6 +61,17 @@ function FloatingActions() {
   );
 }
 
+function HomeWithGrowthRevenueHero() {
+  return (
+    <>
+      <GrowthRevenueHero />
+      <div className="[&>div>section:first-child]:hidden">
+        <Home />
+      </div>
+    </>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -73,7 +85,7 @@ function Router() {
           <Navbar />
           <main className="min-w-0 flex-1">
             <Switch>
-              <Route path="/" component={Home} />
+              <Route path="/" component={HomeWithGrowthRevenueHero} />
               <Route path="/produtos/:slug" component={ProdutoDetalhe} />
               <Route path="/produtos" component={Produtos} />
               <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
