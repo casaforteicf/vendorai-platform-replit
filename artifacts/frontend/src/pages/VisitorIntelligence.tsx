@@ -5,6 +5,7 @@ import {
   BellOff,
   BellRing,
   Clock3,
+  ExternalLink,
   Flame,
   Globe2,
   History,
@@ -56,6 +57,13 @@ type VisitorSession = {
   hotOpportunity: boolean;
   identified: boolean;
   identityType: "lead" | "user" | "anonymous";
+  identity: {
+    displayName: string | null;
+    email: string | null;
+    phone: string | null;
+    company: string | null;
+    source: "lead" | "user" | null;
+  };
   leadId: string | null;
   userId: string | null;
   currentPath: string | null;
@@ -73,7 +81,14 @@ type VisitorSession = {
   maxScrollDepth: number;
   maxEngagedMs: number;
   intent: IntentSummary;
-  geo: { country: string | null; region: string | null; city: string | null };
+  geo: {
+    country: string | null;
+    region: string | null;
+    city: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    source: string | null;
+  };
   device: { type: string | null; browser: string | null; os: string | null };
   source: string | null;
   medium: string | null;
@@ -130,6 +145,32 @@ function locationLabel(session: VisitorSession) {
   return [session.geo.city, session.geo.region, session.geo.country].filter(Boolean).join(" / ") || "Localização não disponível";
 }
 
+function visitorLabel(session: VisitorSession) {
+  return session.identity.displayName
+    || (session.identified ? "Visitante identificado" : `Visitante ${session.sessionId.slice(0, 8)}`);
+}
+
+function identitySourceLabel(session: VisitorSession) {
+  if (session.identity.source === "lead") return "Lead no CRM";
+  if (session.identity.source === "user") return "Usuário do sistema";
+  if (session.identified) return "Identificado por ID";
+  return "Visitante anônimo";
+}
+
+function mapDetails(session: VisitorSession) {
+  const latitude = session.geo.latitude;
+  const longitude = session.geo.longitude;
+  if (latitude === null || longitude === null || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  const delta = 0.03;
+  const bbox = `${longitude - delta},${latitude - delta},${longitude + delta},${latitude + delta}`;
+  return {
+    latitude,
+    longitude,
+    embedUrl: `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${latitude},${longitude}`)}`,
+    openUrl: `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=13/${latitude}/${longitude}`,
+  };
+}
+
 function sourceLabel(session: VisitorSession) {
   return session.sourceLabel || [session.source, session.medium, session.campaign].filter(Boolean).join(" · ") || session.referrer || "Direto / desconhecido";
 }
@@ -161,6 +202,10 @@ function matchesSearch(session: VisitorSession, query: string) {
   const haystack = [
     session.sessionId,
     session.visitorId,
+    session.identity.displayName,
+    session.identity.email,
+    session.identity.phone,
+    session.identity.company,
     session.currentPath,
     session.referrer,
     session.geo.city,
@@ -262,6 +307,7 @@ export default function VisitorIntelligence() {
     () => query.data?.sessions.find((session) => session.sessionId === selectedSessionId) ?? null,
     [query.data, selectedSessionId],
   );
+  const selectedMap = useMemo(() => selected ? mapDetails(selected) : null, [selected]);
 
   const totals = query.data?.totals ?? {
     visitors: 0,
@@ -280,6 +326,13 @@ export default function VisitorIntelligence() {
     averageIntent: 0,
     conversionRate: 0,
     identifiedRate: 0,
+  };
+
+  const selectSession = (sessionId: string) => {
+    setSelectedSessionId(sessionId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("session", sessionId);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   };
 
   const changeTab = (next: ViewTab) => {
@@ -305,7 +358,7 @@ export default function VisitorIntelligence() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <div>
             <h2 className="font-medium">{tab === "realtime" ? "Sessões agora e recentes" : "Histórico de sessões"}</h2>
-            <p className="text-xs text-muted-foreground">{filteredSessions.length} sessão(ões) dentro dos filtros</p>
+            <p className="text-xs text-muted-foreground">{filteredSessions.length} sessão(ões) dentro dos filtros · clique para visualizar os detalhes</p>
           </div>
           <button type="button" onClick={() => query.refetch()} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium hover:bg-muted">
             <RefreshCw className={`h-3.5 w-3.5 ${query.isFetching ? "animate-spin" : ""}`} /> Atualizar
@@ -319,15 +372,18 @@ export default function VisitorIntelligence() {
             <button
               type="button"
               key={session.sessionId}
-              onClick={() => setSelectedSessionId(session.sessionId)}
-              className={`grid w-full gap-2 px-4 py-3 text-left hover:bg-muted/50 md:grid-cols-[minmax(190px,1.2fr)_100px_145px_minmax(150px,.8fr)_minmax(170px,1fr)_auto] md:items-center ${selectedSessionId === session.sessionId ? "bg-muted/40" : ""}`}
+              onClick={() => selectSession(session.sessionId)}
+              title="Clique para visualizar todas as informações desta sessão"
+              aria-pressed={selectedSessionId === session.sessionId}
+              className={`grid w-full gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50 md:grid-cols-[minmax(190px,1.2fr)_100px_145px_minmax(150px,.8fr)_minmax(170px,1fr)_auto] md:items-center ${selectedSessionId === session.sessionId ? "bg-muted/40 ring-1 ring-inset ring-primary/20" : ""}`}
             >
               <div>
                 <div className="flex items-center gap-2 font-medium">
                   <span className={`h-2.5 w-2.5 rounded-full ${session.online ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
-                  <span className="truncate">{session.identified ? "Visitante identificado" : `Visitante ${session.sessionId.slice(0, 8)}`}</span>
+                  <span className="truncate">{visitorLabel(session)}</span>
                   {session.hotOpportunity ? <Flame className="h-4 w-4 shrink-0 text-orange-600" /> : null}
                 </div>
+                <div className="mt-1 truncate text-[11px] font-medium text-muted-foreground">{identitySourceLabel(session)}</div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">{session.currentPath || "/"}</div>
                 <div className="mt-1 text-[11px] text-muted-foreground">{session.lastSeenAt ? new Date(session.lastSeenAt).toLocaleString("pt-BR") : ""}</div>
               </div>
@@ -345,16 +401,42 @@ export default function VisitorIntelligence() {
         {!selected ? (
           <div className="flex min-h-80 flex-col items-center justify-center text-center text-sm text-muted-foreground">
             <Route className="mb-3 h-7 w-7" />
-            Selecione uma sessão para ver origem, comportamento e jornada completa.
+            Clique em uma sessão para ver identidade, localização, origem, comportamento e jornada completa.
           </div>
         ) : (
           <div className="space-y-5">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className={`h-2.5 w-2.5 rounded-full ${selected.online ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
-                <h2 className="font-medium">{selected.identified ? "Visitante identificado" : `Visitante ${selected.sessionId.slice(0, 8)}`}</h2>
+                <h2 className="font-medium">{visitorLabel(selected)}</h2>
+                <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{identitySourceLabel(selected)}</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{surfaceLabel(selected.surface)} · {locationLabel(selected)}</p>
+            </div>
+
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Identidade no VendorAI</h3>
+                <span className="text-[11px] text-muted-foreground">{selected.identity.source ? "cadastro localizado" : selected.identified ? "ID localizado" : "ainda anônimo"}</span>
+              </div>
+              {selected.identity.displayName ? (
+                <div className="mt-3 space-y-1 text-sm">
+                  <div className="font-semibold">{selected.identity.displayName}</div>
+                  {selected.identity.company ? <div className="text-muted-foreground">{selected.identity.company}</div> : null}
+                  {selected.identity.email ? <div className="break-all text-xs text-muted-foreground">{selected.identity.email}</div> : null}
+                  {selected.identity.phone ? <div className="text-xs text-muted-foreground">{selected.identity.phone}</div> : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {selected.identified
+                    ? "A sessão possui vínculo de usuário/lead, mas o cadastro correspondente não foi encontrado neste tenant."
+                    : "Quando o visitante fizer login, converter ou for associado a um lead, o nome passa a aparecer automaticamente aqui."}
+                </p>
+              )}
+              <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
+                <div className="truncate">Lead ID: {selected.leadId || "—"}</div>
+                <div className="truncate">User ID: {selected.userId || "—"}</div>
+              </div>
             </div>
 
             <div className={`rounded-lg border p-3 ${intentClass(selected.intent.tier)}`}>
@@ -376,6 +458,37 @@ export default function VisitorIntelligence() {
               <div><div className="text-xs text-muted-foreground">CTAs</div><div className="mt-1">{selected.ctaClicks}</div></div>
               <div><div className="text-xs text-muted-foreground">Scroll máximo</div><div className="mt-1">{selected.maxScrollDepth}%</div></div>
               <div><div className="text-xs text-muted-foreground">Conversões</div><div className="mt-1">{selected.conversions}</div></div>
+              <div className="col-span-2"><div className="text-xs text-muted-foreground">Tela/página atual</div><div className="mt-1 break-all">{selected.currentPath || selected.currentPageUrl || "—"}</div></div>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border">
+              <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+                <div>
+                  <h3 className="text-sm font-medium">Mapa aproximado</h3>
+                  <p className="text-[11px] text-muted-foreground">{locationLabel(selected)} · localização aproximada por IP</p>
+                </div>
+                {selectedMap ? (
+                  <a href={selectedMap.openUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium hover:bg-muted">
+                    Abrir mapa <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : null}
+              </div>
+              {selectedMap ? (
+                <>
+                  <iframe
+                    title={`Mapa aproximado de ${visitorLabel(selected)}`}
+                    src={selectedMap.embedUrl}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="h-44 w-full border-0 bg-muted"
+                  />
+                  <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+                    {selectedMap.latitude.toFixed(4)}, {selectedMap.longitude.toFixed(4)}{selected.geo.source ? ` · ${selected.geo.source}` : ""}
+                  </div>
+                </>
+              ) : (
+                <div className="px-3 py-5 text-center text-xs text-muted-foreground">Coordenadas ainda não disponíveis para esta sessão.</div>
+              )}
             </div>
 
             {selected.intent.reasons.length ? (
@@ -487,7 +600,7 @@ export default function VisitorIntelligence() {
       {tab !== "analytics" ? (
         <>
           <div className="grid gap-2 rounded-xl border bg-card p-3 md:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cidade, estado, origem, campanha ou tela..." className="h-10 min-w-0 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar nome, cidade, estado, origem, campanha ou tela..." className="h-10 min-w-0 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
             <select className="h-10 rounded-md border bg-background px-3 text-sm" value={surface} onChange={(event) => setSurface(event.target.value as "all" | VisitorSurface)}>
               <option value="all">Todas as superfícies</option>
               <option value="site">Site</option>
@@ -513,9 +626,9 @@ export default function VisitorIntelligence() {
               </div>
               <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 {filteredHot.slice(0, 6).map((session) => (
-                  <button key={session.sessionId} type="button" onClick={() => setSelectedSessionId(session.sessionId)} className="rounded-lg border bg-background p-3 text-left transition-colors hover:bg-muted/50">
-                    <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{session.identified ? "Visitante identificado" : `Visitante ${session.sessionId.slice(0, 8)}`}</span><span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${intentClass(session.intent.tier)}`}>{session.intent.score}/100</span></div>
-                    <div className="mt-1 text-[11px] font-medium text-muted-foreground">{surfaceLabel(session.surface)}</div>
+                  <button key={session.sessionId} type="button" onClick={() => selectSession(session.sessionId)} className="rounded-lg border bg-background p-3 text-left transition-colors hover:bg-muted/50">
+                    <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{visitorLabel(session)}</span><span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${intentClass(session.intent.tier)}`}>{session.intent.score}/100</span></div>
+                    <div className="mt-1 text-[11px] font-medium text-muted-foreground">{identitySourceLabel(session)} · {surfaceLabel(session.surface)}</div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">{session.currentPath || "/"} · {locationLabel(session)}</div>
                   </button>
                 ))}
