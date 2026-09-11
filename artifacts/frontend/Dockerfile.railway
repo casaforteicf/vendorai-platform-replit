@@ -1,0 +1,19 @@
+FROM node:24-bookworm-slim AS builder
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY . .
+RUN pnpm install --frozen-lockfile \
+  && pnpm --filter @workspace/frontend build
+
+FROM node:24-bookworm-slim AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/artifacts/frontend/dist/public ./artifacts/frontend/dist/public
+COPY --from=builder /app/artifacts/frontend/railway-server.mjs ./artifacts/frontend/railway-server.mjs
+
+EXPOSE 3000
+CMD ["node", "artifacts/frontend/railway-server.mjs"]
