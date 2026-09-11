@@ -29,6 +29,25 @@ export const numericFilterSchema = z.union([
 ]);
 
 /**
+ * Plano de jornada comercial da campanha. A campanha é temporária, mas o lead e
+ * seu histórico são permanentes: ao encerrar uma campanha, o mesmo lead pode
+ * entrar em outra quando voltar a cumprir os sinais de entrada.
+ */
+export const campaignJourneyPlanSchema = z.object({
+  entrySignals: z.array(z.string()).optional(),
+  audienceTags: z.array(z.string()).optional(),
+  sdrActivationScore: z.number().int().min(0).max(100).optional(),
+  opportunityScore: z.number().int().min(0).max(100).optional(),
+  nurtureMaterialTags: z.array(z.string()).optional(),
+  followUpHours: z.array(z.number().int().positive()).optional(),
+  exitSignals: z.array(z.string()).optional(),
+  reentryAllowed: z.boolean().optional(),
+  notes: z.string().optional(),
+}).optional();
+
+export type CampaignJourneyPlan = z.infer<typeof campaignJourneyPlanSchema>;
+
+/**
  * Briefing mestre compartilhado entre campanhas, conteúdo, Ads e demais
  * superfícies de marketing. Os campos continuam opcionais para preservar
  * campanhas legadas e permitir evolução sem migration (segmento_filtro é JSONB).
@@ -56,6 +75,7 @@ export const campaignMarketingContextSchema = z.object({
   marketingIntelligence: z.unknown().optional(),
   campaignId: z.string().optional(),
   campaignName: z.string().optional(),
+  journeyPlan: campaignJourneyPlanSchema,
 });
 
 export type CampaignMarketingContext = z.infer<typeof campaignMarketingContextSchema>;
@@ -68,6 +88,10 @@ export const segmentoFiltroSchema = z
     intentAnalysis: z.string().optional(),
     dealEtapas: z.array(z.string()).optional(),
     leadIds: z.array(z.string()).optional(),
+    audienceTags: z.array(z.string()).optional(),
+    commercialStages: z.array(z.enum(["descoberta", "aquecimento", "quente", "oportunidade"])).optional(),
+    behaviorIntentMin: z.number().int().min(0).max(100).optional(),
+    remarketingEligible: z.boolean().optional(),
     marketingContext: campaignMarketingContextSchema.optional(),
   })
   .optional();
@@ -101,6 +125,7 @@ export type CampaignContext = {
   researchEnabled?: boolean;
   seoTrackingEnabled?: boolean;
   marketingIntelligence?: unknown;
+  journeyPlan?: CampaignJourneyPlan;
   recommendedChannel?: "whatsapp" | "email" | "instagram";
   recommendedPaidPlatform?: "meta" | "google";
   adsHeadline?: string;

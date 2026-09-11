@@ -4,11 +4,11 @@ import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
 
 export interface MediaPlanCanal {
-  canal: string; // ex: "Instagram", "Google Ads", "Meta Ads", "SEO orgânico"
+  canal: string;
   prioridade: "alta" | "media" | "baixa";
   motivo: string;
   tiposCampanhaSugeridos: string[];
-  percentualOrcamento: number; // 0-100, soma dos canais ~100
+  percentualOrcamento: number;
 }
 
 export interface MediaPlanCampaignChannel {
@@ -20,6 +20,18 @@ export interface MediaPlanCampaignChannel {
   quantidadeMateriais: number;
   kpiPrincipal: string;
   percentualOrcamento?: number;
+}
+
+export interface MediaPlanConversionJourney {
+  entrySignals: string[];
+  audienceTags: string[];
+  sdrActivationScore: number;
+  opportunityScore: number;
+  nurtureMaterialTags: string[];
+  followUpHours: number[];
+  exitSignals: string[];
+  reentryAllowed: boolean;
+  notes?: string;
 }
 
 export interface MediaPlanCampaign {
@@ -40,11 +52,10 @@ export interface MediaPlanCampaign {
   kpiPrincipal: string;
   metaPrincipal: string;
   materiaisPlanejados: number;
+  jornadaConversao?: MediaPlanConversionJourney;
   status: "planejada" | "em_revisao" | "aprovada" | "em_producao" | "ativa" | "encerrada";
 }
 
-// Limite financeiro definido pelo humano. Este contrato orienta planejamento e
-// otimização; autorização de publicação/ativação continua em sua camada própria.
 export interface MediaPlanBudget {
   valor: number;
   tipo: "total" | "diario" | "semanal" | "mensal";
@@ -61,12 +72,10 @@ export interface MediaPlanPeriod {
   duracaoUnidade?: "horas" | "dias";
 }
 
-// A aprovação estratégica do plano não implica autorização para publicar.
-// Manual é o comportamento seguro/padrão; automático é opt-in explícito do usuário.
 export interface MediaPlanOrganicPublicationSettings {
   modo: "manual" | "automatico";
-  horario: string; // HH:mm no fuso configurado
-  timezone: string; // IANA, ex.: America/Sao_Paulo
+  horario: string;
+  timezone: string;
 }
 
 export interface MediaPlanConteudo {
@@ -78,7 +87,6 @@ export interface MediaPlanConteudo {
   acoesImediatas: string[];
   concorrentesEncontrados?: Array<{ dominio: string; titulo: string; url: string }>;
   keywordsRelevantes?: Array<{ termo: string; volumeBusca: number | null }>;
-  // Mantido por compatibilidade com planos existentes e calendários baseados em dias.
   periodoDias?: number;
   periodo?: MediaPlanPeriod;
   nomeCampanha?: string;
@@ -90,8 +98,6 @@ export interface MediaPlanConteudo {
   aprovadoEm?: string | null;
   versaoPlanejamento?: number;
   publicacaoOrganica?: MediaPlanOrganicPublicationSettings;
-  // Versão do catálogo que define a função oficial de cada canal/mídia.
-  // Fica dentro do JSON para permitir adequar planos antigos sem migration.
   versaoFuncoesMidia?: number;
 }
 
