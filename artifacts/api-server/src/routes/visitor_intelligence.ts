@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { z } from "zod/v4";
 import { db, webBehaviorEventsTable } from "@workspace/db";
 import { getVisitorIntelligence } from "../services/visitorIntelligence.js";
@@ -38,14 +38,14 @@ const eventSchema = z.object({
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 });
 
-function tenantFromRequest(req: Express.Request): string | null {
-  const user = (req as any).user;
+function tenantFromRequest(req: Request): string | null {
+  const user = (req as Request & { user?: { tenantId?: string; platformRole?: string } }).user;
   if (user?.tenantId) return String(user.tenantId);
   if (user?.platformRole === "super_admin") return INSTITUTIONAL_TENANT_ID;
   return null;
 }
 
-function geoHeaders(req: Express.Request) {
+function geoHeaders(req: Request) {
   const clean = (value: string | undefined) => value?.trim() || null;
   return {
     country: clean(req.get("x-vercel-ip-country")) ?? clean(req.get("cf-ipcountry")),
@@ -64,7 +64,7 @@ router.post("/visitor-intelligence/event", async (req, res) => {
   }
 
   const d = parsed.data;
-  const user = (req as any).user;
+  const user = (req as Request & { user?: { sub?: string; id?: string } }).user;
   const geo = geoHeaders(req);
 
   try {
