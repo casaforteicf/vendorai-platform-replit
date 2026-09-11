@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import BacklinkAuthorityPanel from "@/components/marketing/BacklinkAuthorityPanel";
 
 type ConnectionStatus = {
   connected: boolean;
@@ -40,24 +41,11 @@ type RankedPage = Metric & { page: string; path: string };
 
 type InsightData = {
   generatedAt: string;
-  period: {
-    days: number;
-    startDate: string;
-    endDate: string;
-  };
-  connection: {
-    siteUrl: string;
-    connectedAt: string | null;
-    sitemapSubmittedAt: string | null;
-  };
+  period: { days: number; startDate: string; endDate: string };
+  connection: { siteUrl: string; connectedAt: string | null; sitemapSubmittedAt: string | null };
   summary: Metric;
   previous: Metric;
-  comparison: {
-    clicksPct: number | null;
-    impressionsPct: number | null;
-    ctrPoints: number;
-    positionImprovement: number;
-  };
+  comparison: { clicksPct: number | null; impressionsPct: number | null; ctrPoints: number; positionImprovement: number };
   topQueries: RankedQuery[];
   topPages: RankedPage[];
   opportunities: Array<{
@@ -188,10 +176,7 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
     setActionLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/search-console-connection/verify`, {
-        method: "POST",
-        headers: authHeaders(),
-      });
+      const response = await fetch(`/api/tenants/${tenantId}/search-console-connection/verify`, { method: "POST", headers: authHeaders() });
       if (!response.ok) throw new Error("Não foi possível verificar a propriedade agora.");
       const result = await response.json() as { verified?: boolean };
       const status = await loadConnection();
@@ -215,35 +200,37 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
 
   if (!connection?.connected) {
     return (
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Search className="h-4 w-4 text-primary" />Google Search Console</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Conecte a conta Google deste tenant para trazer cliques, impressões, termos pesquisados e páginas orgânicas para dentro do Marketing e cruzar com Visitor Intelligence/CRM.</p>
-          <Button onClick={connect} disabled={actionLoading}><Link2 className="h-4 w-4 mr-2" />Conectar Google</Button>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card className="border-primary/20">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Search className="h-4 w-4 text-primary" />Google Search Console</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">Conecte a conta Google deste tenant para trazer cliques, impressões, termos pesquisados e páginas orgânicas para dentro do Marketing e cruzar com Visitor Intelligence/CRM.</p>
+            <Button onClick={connect} disabled={actionLoading}><Link2 className="h-4 w-4 mr-2" />Conectar Google</Button>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </CardContent>
+        </Card>
+        <BacklinkAuthorityPanel tenantId={tenantId} />
+      </div>
     );
   }
 
   if (!connection.verified) {
     return (
-      <Card className="border-amber-300 bg-amber-50/40 dark:bg-amber-950/10">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />Google conectado — falta validar o site</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">A conta já foi autorizada. O VendorAI publicou a identificação necessária; confirme a propriedade para liberar os dados de busca.</p>
-          {connection.siteUrl && <p className="text-xs font-mono rounded-md border bg-background px-3 py-2 break-all">{connection.siteUrl}</p>}
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={verify} disabled={actionLoading}>{actionLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}Verificar agora</Button>
-            <Button variant="outline" onClick={connect} disabled={actionLoading}>Reconectar Google</Button>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card className="border-amber-300 bg-amber-50/40 dark:bg-amber-950/10">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />Google conectado — falta validar o site</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">A conta já foi autorizada. O VendorAI publicou a identificação necessária; confirme a propriedade para liberar os dados de busca.</p>
+            {connection.siteUrl && <p className="text-xs font-mono rounded-md border bg-background px-3 py-2 break-all">{connection.siteUrl}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={verify} disabled={actionLoading}>{actionLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}Verificar agora</Button>
+              <Button variant="outline" onClick={connect} disabled={actionLoading}>Reconectar Google</Button>
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </CardContent>
+        </Card>
+        <BacklinkAuthorityPanel tenantId={tenantId} />
+      </div>
     );
   }
 
@@ -268,7 +255,6 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
         <CardContent className="space-y-4">
           {error && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div>}
           {loadingInsights && !data ? <div className="py-8 flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando desempenho orgânico…</div> : null}
-
           {summary && comparison ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-lg border p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><MousePointerClick className="h-3.5 w-3.5" />Cliques</div><p className="mt-2 text-2xl font-semibold">{formatNumber(summary.clicks)}</p><p className={`mt-1 text-xs ${metricTone(comparison.clicksPct)}`}>{signed(comparison.clicksPct)} vs. período anterior</p></div>
@@ -290,7 +276,6 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
               <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Conversões</p><p className="mt-1 text-xl font-semibold">{formatNumber(data.visitorIntelligence.conversions)}</p><p className="text-xs text-muted-foreground">{data.visitorIntelligence.conversionRate.toFixed(1).replace(".", ",")}% das sessões</p></div>
               <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Oportunidades quentes</p><p className="mt-1 text-xl font-semibold flex items-center gap-1.5"><Flame className="h-4 w-4 text-orange-600" />{formatNumber(data.visitorIntelligence.hotOpportunities)}</p></div>
             </div>
-
             {data.visitorIntelligence.topSessions.length > 0 && (
               <div className="rounded-lg border overflow-hidden">
                 <div className="border-b px-3 py-2 text-xs font-medium">Sessões orgânicas com maior intenção</div>
@@ -302,10 +287,7 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
                         <p className="mt-1 truncate text-sm font-medium">{session.currentPath || "/"}</p>
                         <p className="text-xs text-muted-foreground">{[session.city, session.region].filter(Boolean).join(" / ") || "Localização não disponível"}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setLocation(`/visitor-intelligence?session=${encodeURIComponent(session.sessionId)}`)}>Abrir sessão</Button>
-                        {session.leadId && <Button size="sm" onClick={() => setLocation(`/leads/${session.leadId}`)}>Abrir CRM</Button>}
-                      </div>
+                      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setLocation(`/visitor-intelligence?session=${encodeURIComponent(session.sessionId)}`)}>Abrir sessão</Button>{session.leadId && <Button size="sm" onClick={() => setLocation(`/leads/${session.leadId}`)}>Abrir CRM</Button>}</div>
                     </div>
                   ))}
                 </div>
@@ -329,7 +311,6 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
               ))}
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader><CardTitle className="text-base">Páginas com tráfego orgânico</CardTitle></CardHeader>
             <CardContent className="space-y-2">
@@ -357,6 +338,8 @@ export default function SearchConsoleInsightsPanel({ tenantId }: { tenantId: str
           </CardContent>
         </Card>
       ) : null}
+
+      <BacklinkAuthorityPanel tenantId={tenantId} />
 
       {data && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
