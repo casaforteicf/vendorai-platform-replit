@@ -1,23 +1,23 @@
 {
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "backend/Dockerfile",
+    "dockerfilePath": "Dockerfile.android-apk",
     "watchPatterns": [
-      "backend/**",
-      "artifacts/api-server/**",
-      "lib/**",
+      "Dockerfile.android-apk",
+      "artifacts/mobile/**",
+      "artifacts/website/public/apple-touch-icon.png",
       "package.json",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
-      "tsconfig.json",
-      "tsconfig.base.json",
       ".npmrc",
-      ".dockerignore",
       "railway.json"
     ]
   },
   "deploy": {
     "numReplicas": 1,
-    "restartPolicyType": "ON_FAILURE"
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 1
   }
 }
