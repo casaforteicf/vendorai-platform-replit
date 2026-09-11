@@ -6,6 +6,7 @@ import {
   type MarketingMacrosegmentKey,
   type MarketingVerticalProfile,
 } from "@workspace/vendor-brain/marketing-verticals";
+import publicVerticalSlugs from "../../data/publicVerticalSlugs.json";
 import { MACRO_BLUEPRINTS, type LaunchPack, type MacrosegmentKey } from "./verticalTypes";
 
 assertOfficialMarketingArchitecture();
@@ -23,10 +24,7 @@ const OFFICIAL_MACRO_BY_ID = Object.fromEntries(MARKETING_MACROSEGMENTS.map((mac
 
 // A URL pública precisa ser única. O Vendor Brain pode reutilizar um slug semântico
 // entre macrosegmentos; nesses casos, somente a URL recebe um namespace mais específico.
-const SITE_SLUG_OVERRIDES: Record<string, string> = {
-  "retail-building": "materiais-construcao-acabamentos",
-  "industry-building": "industria-materiais-construcao",
-};
+const SITE_SLUG_OVERRIDES: Record<string, string> = publicVerticalSlugs;
 
 function siteSlug(profile: MarketingVerticalProfile): string {
   return SITE_SLUG_OVERRIDES[profile.id] ?? profile.slug;
@@ -198,6 +196,7 @@ const LEGACY_ALIASES: Record<string, string> = {
   "moveis-decoracao-casa": "moveis-decoracao",
   "eletronicos-eletrodomesticos": "eletronicos",
   "supermercados-mercados-emporios": "supermercados",
+  "materiais-construcao": "materiais-construcao-acabamentos",
   "autopecas-acessorios": "autopecas",
   "cosmeticos-perfumaria-beleza": "cosmeticos-perfumaria",
   "joias-presentes": "joias-presentes",
