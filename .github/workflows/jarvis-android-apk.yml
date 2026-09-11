@@ -1,4 +1,4 @@
-name: Publish Existing VendorAI Android APK
+name: Build and Publish VendorAI Android APK
 
 on:
   workflow_dispatch:
@@ -6,77 +6,127 @@ on:
     branches: [main]
     paths:
       - .github/workflows/jarvis-android-apk.yml
+      - artifacts/mobile/**
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish-existing-apk:
+  build-and-publish-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EXISTING_BUILD_ID: 942fee26-33dc-46a2-b171-dd9417137430
+      PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
+          cache: pnpm
 
-      - name: Validar EXPO_TOKEN
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply VendorAI identity to mobile app
         shell: bash
-        run: test -n "$EXPO_TOKEN" || (echo "Secret EXPO_TOKEN ausente" && exit 1)
+        run: |
+          cp artifacts/website/public/apple-touch-icon.png artifacts/mobile/assets/images/icon.png
+          test -s artifacts/mobile/assets/images/icon.png
 
-      - name: Instalar EAS CLI
-        run: npm install --global eas-cli
+      - name: Download Porcupine pt-BR model
+        if: ${{ env.PICOVOICE_ACCESS_KEY != '' }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/mobile/assets/jarvis
+          curl -fL \
+            https://raw.githubusercontent.com/Picovoice/porcupine/master/lib/common/porcupine_params_pt.pv \
+            -o artifacts/mobile/assets/jarvis/porcupine_params_pt.pv
+          test -s artifacts/mobile/assets/jarvis/porcupine_params_pt.pv
 
-      - name: Obter link direto do APK existente
+      - name: Generate native Android project locally
         working-directory: artifacts/mobile
+        env:
+          EXPO_NO_DOTENV: '1'
+        run: pnpm exec expo prebuild --platform android --clean --non-interactive
+
+      - name: Build signed release APK locally
+        working-directory: artifacts/mobile/android
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Locate APK
         shell: bash
         run: |
           set -euo pipefail
-          eas build:view "$EXISTING_BUILD_ID" --json > /tmp/eas-build.json
+          APK_PATH=$(find artifacts/mobile/android/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)
+          test -n "$APK_PATH"
+          test -s "$APK_PATH"
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+          ls -lh "$APK_PATH"
 
-          APK_URL="$(node <<'NODE'
-          const fs = require('fs');
-          const build = JSON.parse(fs.readFileSync('/tmp/eas-build.json', 'utf8'));
-          const url =
-            build?.artifacts?.buildUrl ||
-            build?.artifacts?.applicationArchiveUrl ||
-            build?.artifact?.url ||
-            build?.buildUrl ||
-            '';
-          if (!url || !/^https:\/\/expo\.dev\/artifacts\/eas\/.+\.apk(?:\?.*)?$/.test(url)) {
-            console.error('O build existente não retornou um link direto de APK válido.');
-            console.error(JSON.stringify(build?.artifacts || build, null, 2));
-            process.exit(1);
-          }
-          process.stdout.write(url);
-          NODE
-          )"
+      - name: Prepare VendorAI website with direct APK
+        shell: bash
+        run: |
+          mkdir -p artifacts/website/public/downloads
+          cp "$APK_PATH" artifacts/website/public/downloads/vendorai.apk
+          rm -f artifacts/website/public/_redirects
+          test -s artifacts/website/public/downloads/vendorai.apk
 
-          echo "APK_URL=$APK_URL" >> "$GITHUB_ENV"
-          echo "Link direto do APK existente capturado com sucesso."
+      - name: Build website
+        run: pnpm --filter @workspace/website build
 
-      - name: Publicar endereço próprio do APK
+      - name: Verify website bundle and APK
+        shell: bash
+        run: |
+          test -f artifacts/website/dist/public/index.html
+          test -f artifacts/website/dist/public/_worker.js
+          test -s artifacts/website/dist/public/downloads/vendorai.apk
+          ls -lh artifacts/website/dist/public/downloads/vendorai.apk
+
+      - name: Ensure Cloudflare Pages project
+        run: pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy website and APK to Cloudflare Pages
+        run: pnpm dlx wrangler@3.90.0 pages deploy artifacts/website/dist/public --project-name vendorai-website --branch main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify direct APK URL
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${APK_URL:-}"
-          printf '/downloads/vendorai.apk %s 302\n' "$APK_URL" > artifacts/website/public/_redirects
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add artifacts/website/public/_redirects
-
-          if git diff --cached --quiet; then
-            echo "O endereço do APK já está atualizado."
-            exit 0
-          fi
-
-          git commit -m "chore(site): apontar download para APK direto existente"
-          git push origin HEAD:main
+          for attempt in {1..12}; do
+            status=$(curl -L -sS -o /tmp/vendorai.apk -w '%{http_code}' https://appvendorai.com/downloads/vendorai.apk || true)
+            type=$(file -b --mime-type /tmp/vendorai.apk 2>/dev/null || true)
+            size=$(wc -c < /tmp/vendorai.apk 2>/dev/null || echo 0)
+            echo "Attempt $attempt: HTTP $status, type=$type, size=$size"
+            if [ "$status" = "200" ] && [ "$size" -gt 1000000 ]; then
+              echo "APK direto publicado com sucesso em https://appvendorai.com/downloads/vendorai.apk"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "APK ainda não ficou disponível no domínio após o deploy."
+          exit 1
