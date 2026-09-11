@@ -38,13 +38,13 @@ function buildReminder(license: typeof accessLicensesTable.$inferSelect, now: Da
     if (hours <= 24) return {
       type: "access_ending_24h", cycleKey: license.accessEndsAt.toISOString(),
       title: "Seu acesso termina em menos de 24 horas",
-      message: `Seu VendorAI completo termina em ${date}. Continue por mais 5 dias por R$ 399,99 ou efetive a licença de 1 ano: ${APP_URL}/dashboard`,
+      message: `Seu VendorAI Growth completo termina em ${date}. Continue por mais 5 dias por R$ 399,00 ou escolha a assinatura contínua Growth: ${APP_URL}/dashboard`,
       emailSubject: "Seu acesso VendorAI termina em menos de 24 horas",
     };
     if (hours <= 48) return {
       type: "access_ending_48h", cycleKey: license.accessEndsAt.toISOString(),
       title: "Faltam 2 dias para o fim do acesso",
-      message: `Seu acesso completo termina em ${date}. Antecipe mais 5 dias por R$ 399,99 sem perder o prazo atual ou escolha a licença de 1 ano: ${APP_URL}/dashboard`,
+      message: `Seu acesso completo termina em ${date}. Antecipe mais 5 dias por R$ 399,00 sem perder o prazo atual ou escolha a assinatura contínua Growth: ${APP_URL}/dashboard`,
       emailSubject: "Faltam 2 dias para o fim do seu acesso VendorAI",
     };
     return null;
@@ -56,7 +56,7 @@ function buildReminder(license: typeof accessLicensesTable.$inferSelect, now: Da
     return {
       type: `monthly_activation_${stage}`, cycleKey: month,
       title: "Seus 5 dias gratuitos estão disponíveis",
-      message: `Ative agora seus 5 dias completos do VendorAI deste mês. Todos os módulos, agentes e automações ficam liberados por 120 horas: ${APP_URL}/dashboard`,
+      message: `Ative agora seus 5 dias completos do VendorAI Growth deste mês. Todos os módulos, agentes e automações ficam liberados por 120 horas: ${APP_URL}/dashboard`,
       emailSubject: "Ative seus 5 dias gratuitos do VendorAI",
     };
   }
@@ -64,7 +64,7 @@ function buildReminder(license: typeof accessLicensesTable.$inferSelect, now: Da
   return {
     type: "access_expired", cycleKey: month,
     title: "VendorAI em modo somente consulta",
-    message: `Seu período terminou. Seus dados estão preservados. Compre mais 5 dias por R$ 399,99 ou efetive a licença de 1 ano: ${APP_URL}/dashboard`,
+    message: `Seu período terminou. Seus dados estão preservados. Compre mais 5 dias por R$ 399,00 ou escolha a assinatura contínua Growth: ${APP_URL}/dashboard`,
     emailSubject: "Continue usando o VendorAI completo",
   };
 }

@@ -1,5 +1,5 @@
-export const VENDORAI_LAUNCH_CAMPAIGN = "vendorai_launch_5d_497_990_v1";
-export const VENDORAI_TERMS_VERSION = "vendorai-commercial-2026-08-27";
+export const VENDORAI_LAUNCH_CAMPAIGN = "vendorai_growth_5d_497_990_1490_v2";
+export const VENDORAI_TERMS_VERSION = "vendorai-commercial-2026-09-11";
 
 export type CommercialBillingPhase = "trial" | "promo_1" | "promo_2" | "regular";
 
@@ -29,16 +29,19 @@ function addCalendarMonths(date: Date, months: number): Date {
 }
 
 /**
- * Campaign accepted on signup:
+ * Growth subscription accepted on signup:
  * - 5 full days free
- * - R$ 497/month for the next 60 days
- * - R$ 990/month for the following 6 calendar months
- * - then the normal price in force at transition time
+ * - R$ 497 for the first 30 paid days
+ * - R$ 990/month for the following 5 calendar months
+ * - then the regular Growth price (R$ 1.490/month today), snapshotted at transition
+ *
+ * The separate prepaid mode grants 5 free days once per calendar month and lets
+ * the customer add further 5-day blocks for R$ 399.00 each.
  */
 export function buildVendorAiLaunchOffer(startedAt = new Date()): CommercialOfferSchedule {
   const trialEndsAt = new Date(startedAt.getTime() + 5 * DAY_MS);
-  const promoPhase1EndsAt = new Date(trialEndsAt.getTime() + 60 * DAY_MS);
-  const promoPhase2EndsAt = addCalendarMonths(promoPhase1EndsAt, 6);
+  const promoPhase1EndsAt = new Date(trialEndsAt.getTime() + 30 * DAY_MS);
+  const promoPhase2EndsAt = addCalendarMonths(promoPhase1EndsAt, 5);
 
   return {
     campaignCode: VENDORAI_LAUNCH_CAMPAIGN,

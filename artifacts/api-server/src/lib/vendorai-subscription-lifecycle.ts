@@ -21,13 +21,10 @@ export {
   resolveVendorAiSubscriptionPrice,
 } from "./vendorai-subscription-rules.js";
 
-export const SUBSCRIPTION_PLAN_SLUGS = [
-  "start",
-  "starter",
-  "growth",
-  "pme_plus",
-  "enterprise",
-] as const;
+// Growth is the single commercial SaaS plan. Legacy plan rows may remain in
+// the database for audit/history, but no new subscription may be created on
+// Start/Starter/Light/PME+/Enterprise.
+export const SUBSCRIPTION_PLAN_SLUGS = ["growth"] as const;
 
 export type SubscriptionPlanSlug = typeof SUBSCRIPTION_PLAN_SLUGS[number];
 
@@ -36,11 +33,10 @@ export function isSubscriptionPlanSlug(value: string): value is SubscriptionPlan
 }
 
 /**
- * Creates the commercial subscription snapshot only after the seller chooses a
- * real plan on the deal. Trial signup itself has no plan selection, therefore
- * it must not guess a plan. Repeated calls never reset an existing billing
- * schedule; they only backfill missing launch metadata while the subscription
- * is still a trial.
+ * Creates the commercial Growth subscription snapshot only after the seller
+ * chooses Growth on the deal. Trial signup itself has no paid commitment.
+ * Repeated calls never reset an existing billing schedule; they only backfill
+ * missing campaign metadata while the subscription is still a trial.
  */
 export async function ensureVendorAiLaunchSubscription(params: {
   tenantId: string;
@@ -59,9 +55,6 @@ export async function ensureVendorAiLaunchSubscription(params: {
     .limit(1);
 
   if (!plan) throw new Error(`Plano ativo ${params.planSlug} não encontrado`);
-
-  // Plano gratuito não pertence à campanha paga 497→990→regular.
-  if (Number(plan.monthlyPriceCents ?? 0) <= 0) return null;
 
   const offer = buildVendorAiLaunchOffer(params.trialStartedAt);
   const [existing] = await db
@@ -137,8 +130,8 @@ export async function ensureVendorAiLaunchSubscription(params: {
 
 /**
  * Consolidated entry point used by lifecycle jobs. It only creates a VendorAI
- * launch subscription for a real trial_signup deal with a valid trialTenantId
- * and a seller-selected plan. Normal customer deals are ignored.
+ * Growth subscription for a real trial_signup deal with a valid trialTenantId
+ * and Growth selected. Normal customer deals are ignored.
  */
 export async function ensureVendorAiLaunchSubscriptionForDeal(
   dealId: string,
@@ -156,6 +149,7 @@ export async function ensureVendorAiLaunchSubscriptionForDeal(
     .limit(1);
 
   if (!row || row.leadSource !== "trial_signup" || !row.planSlug) return null;
+  if (!isSubscriptionPlanSlug(row.planSlug)) return null;
 
   const resolution = resolveClientTenantForDeal({
     dealTenantId: row.dealTenantId,
