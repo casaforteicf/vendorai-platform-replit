@@ -59,13 +59,21 @@ jobs:
           check_page "/produtos/crm" "https://appvendorai.com/produtos/crm"
           check_page "/produtos/revenue-scout" "https://appvendorai.com/produtos/revenue-scout"
           check_page "/lp/moda" "https://appvendorai.com/lp/moda"
+          grep -q '"@type":"FAQPage"' /tmp/page.html
           check_page "/lp/distribuidora-materiais-construcao" "https://appvendorai.com/lp/distribuidora-materiais-construcao"
           grep -q '<title>CRM com IA para Distribuidoras de materiais de construção | VendorAI</title>' /tmp/page.html
           grep -q 'Prever recompra, identificar queda e expandir mix' /tmp/page.html
+          grep -q '"@type":"FAQPage"' /tmp/page.html
+          grep -q '"keywords":"CRM distribuidora materiais construção' /tmp/page.html
           check_page "/solucoes" "https://appvendorai.com/solucoes"
+          grep -q '"@type":"ItemList"' /tmp/page.html
           check_page "/comparar" "https://appvendorai.com/comparar"
+          grep -q '"@type":"ItemList"' /tmp/page.html
           check_page "/solucoes/crm-whatsapp" "https://appvendorai.com/solucoes/crm-whatsapp"
+          grep -q '"@type":"FAQPage"' /tmp/page.html
+          grep -q '"relatedLink"' /tmp/page.html
           check_page "/comparar/crm-com-ia-vs-crm-tradicional" "https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional"
+          grep -q '"@type":"FAQPage"' /tmp/page.html
           check_page "/solucoes/propostas-sem-resposta" "https://appvendorai.com/solucoes/propostas-sem-resposta"
           check_page "/solucoes/pipeline-vendas-com-ia" "https://appvendorai.com/solucoes/pipeline-vendas-com-ia"
           check_page "/comparar/crm-whatsapp-vs-planilha" "https://appvendorai.com/comparar/crm-whatsapp-vs-planilha"
@@ -75,11 +83,13 @@ jobs:
           grep -q 'lang="es-AR"' /tmp/ar.html
           grep -q 'rel="canonical" href="https://appvendorai.com/solucoes/propostas-sem-resposta?country=AR"' /tmp/ar.html
           grep -q '<title>Propuesta Sin Respuesta: Seguimiento con CRM e IA | VendorAI</title>' /tmp/ar.html
+          grep -q '"@type":"FAQPage"' /tmp/ar.html
 
           curl -sS -H 'Accept: text/html' 'https://appvendorai.com/lp/distribuidora-materiais-construcao?country=AR' -o /tmp/ar-vertical.html
           grep -q 'lang="es-AR"' /tmp/ar-vertical.html
           grep -q '<title>Distribuidoras de materiales de construcción — CRM e IA | VendorAI</title>' /tmp/ar-vertical.html
           grep -q 'Prever recompra, identificar caída y ampliar mix' /tmp/ar-vertical.html
+          ! grep -q '"@type":"FAQPage"' /tmp/ar-vertical.html
 
       - name: Validate sitemap coverage
         shell: bash
