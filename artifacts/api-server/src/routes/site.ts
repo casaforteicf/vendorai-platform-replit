@@ -13,6 +13,7 @@ import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { notifyVisitorOnline } from "../services/visitorPushNotifications.js";
+import { resolveRequestGeo } from "../lib/requestGeo.js";
 
 const router: IRouter = Router();
 
@@ -153,15 +154,6 @@ function updateConsentOnly(
   };
 }
 
-function decodeGeoHeader(value: string | undefined): string | null {
-  if (!value?.trim()) return null;
-  try {
-    return decodeURIComponent(value.trim());
-  } catch {
-    return value.trim();
-  }
-}
-
 const behaviorEventSchema = z.object({
   anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
   eventType: z.enum(["page_view", "cta_click", "form_start", "form_submit", "engagement"]),
@@ -200,10 +192,7 @@ router.post("/site/behavior-event", async (req, res) => {
       .orderBy(desc(webBehaviorEventsTable.createdAt))
       .limit(1);
 
-    const country = decodeGeoHeader(req.get("x-vercel-ip-country"))
-      ?? decodeGeoHeader(req.get("cf-ipcountry"));
-    const region = decodeGeoHeader(req.get("x-vercel-ip-country-region"));
-    const city = decodeGeoHeader(req.get("x-vercel-ip-city"));
+    const geo = await resolveRequestGeo(req);
 
     await db.insert(webBehaviorEventsTable).values({
       anonymousSessionId: d.anonymousSessionId,
@@ -220,9 +209,12 @@ router.post("/site/behavior-event", async (req, res) => {
       metadata: {
         ...(d.metadata ?? {}),
         surface: d.metadata?.["surface"] ?? "site",
-        country,
-        region,
-        city,
+        country: geo.country,
+        region: geo.region,
+        city: geo.city,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        geoSource: geo.source,
       },
     });
 
