@@ -67,6 +67,7 @@ export async function getVisitorIntelligence(
     const maxScrollDepth = sessionEvents.reduce((max, event) => Math.max(max, event.scrollDepth ?? 0), 0);
     const maxEngagedMs = sessionEvents.reduce((max, event) => Math.max(max, event.engagedMs ?? 0), 0);
     const metadata = latest.metadata as Metadata | null | undefined;
+    const userId = metadataString(metadata, "userId");
 
     const lastSeen = latest.createdAt;
     const online = lastSeen >= onlineSince;
@@ -74,8 +75,10 @@ export async function getVisitorIntelligence(
     return {
       sessionId,
       online,
-      identified: Boolean(latest.leadId),
+      identified: Boolean(latest.leadId || userId),
+      identityType: latest.leadId ? "lead" : userId ? "user" : "anonymous",
       leadId: latest.leadId,
+      userId,
       adCampaignId: latest.adCampaignId,
       currentPath: latest.path,
       currentPageUrl: latest.pageUrl,
