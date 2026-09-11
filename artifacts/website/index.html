@@ -31,14 +31,47 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <meta name="theme-color" content="#D9673E">
 
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18407923582"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://www.googletagmanager.com">
+    <link
+      rel="preload"
+      as="image"
+      href="/media/vendorai-official/crm-pipeline/desktop-1440.png"
+      imagesrcset="/media/vendorai-official/crm-pipeline/mobile-390.png 390w, /media/vendorai-official/crm-pipeline/desktop-1440.png 1440w"
+      imagesizes="(max-width: 640px) 100vw, 56vw"
+      fetchpriority="high"
+    >
+
+    <!-- Mantém a fila de eventos disponível imediatamente, mas só disputa rede
+         com o Google Tag depois do carregamento crítico da página. -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'AW-18407923582');
       gtag('config', 'GT-TNGD3XMH');
+
+      (function loadGoogleTagAfterCriticalRender() {
+        var loaded = false;
+        function load() {
+          if (loaded) return;
+          loaded = true;
+          var script = document.createElement('script');
+          script.async = true;
+          script.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18407923582';
+          document.head.appendChild(script);
+        }
+        if (document.readyState === 'complete') {
+          if ('requestIdleCallback' in window) window.requestIdleCallback(load, { timeout: 1500 });
+          else setTimeout(load, 600);
+        } else {
+          window.addEventListener('load', function () {
+            if ('requestIdleCallback' in window) window.requestIdleCallback(load, { timeout: 1500 });
+            else setTimeout(load, 600);
+          }, { once: true });
+        }
+      })();
     </script>
   </head>
   <body translate="no" class="notranslate">
