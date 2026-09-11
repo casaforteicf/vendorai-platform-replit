@@ -1,29 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  BrainCircuit,
-  CalendarClock,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  CircleCheckBig,
+  ArrowRight,
+  CheckCircle2,
   ClipboardCheck,
-  Eye,
   FileText,
-  Gauge,
-  Megaphone,
-  Palette,
-  RotateCcw,
-  SlidersHorizontal,
+  Loader2,
+  RefreshCw,
   Sparkles,
   Target,
-  WalletCards,
 } from "lucide-react";
-import PlanoMidiaCore from "@/pages/PlanoMidiaCore";
 import "./PlanoMidia.responsive.css";
 
 type PlanningConfig = {
@@ -36,34 +28,55 @@ type PlanningConfig = {
   observacoes: string;
 };
 
-type FlexiblePeriod = {
-  enabled: boolean;
-  valor: number;
-  unidade: "horas" | "dias";
-  aberto: boolean;
+type CampaignChannel = {
+  canal: string;
+  funcao: string;
+  etapaFunil: string;
+  formatos: string[];
+  frequencia: string;
+  quantidadeMateriais: number;
+  kpiPrincipal: string;
 };
 
-type PlanWithContext = {
-  conteudo?: {
+type PlannedCampaign = {
+  id: string;
+  nome: string;
+  objetivo: string;
+  produtoServico: string;
+  publico: string;
+  regiao?: string;
+  oferta: string;
+  mensagemCentral: string;
+  canais: CampaignChannel[];
+  kpiPrincipal: string;
+  metaPrincipal: string;
+  materiaisPlanejados: number;
+};
+
+type MediaPlan = {
+  id: string;
+  conteudo: {
+    diagnostico?: string;
+    pontosFortesAtuais?: string[];
+    oportunidades?: string[];
+    periodoDias?: number;
+    statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
+    campanhas?: PlannedCampaign[];
     nomeCampanha?: string;
     ofertaCampanha?: string;
-    statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
-    periodo?: {
-      duracaoValor?: number;
-      duracaoUnidade?: "horas" | "dias";
-      aberto?: boolean;
-    };
-    orcamento?: {
-      valor?: number;
-      tipo?: "total" | "diario" | "semanal" | "mensal";
-    };
+    orcamento?: { valor?: number; tipo?: string };
   };
   contextoUsado?: {
     configuracaoPlanejamento?: Partial<PlanningConfig> | null;
   } | null;
 };
 
-const AVAILABLE_CHANNELS = [
+type CalendarItem = {
+  id: string;
+  mediaPlanId?: string | null;
+};
+
+const CHANNELS = [
   "Instagram",
   "Facebook",
   "Meta Ads",
@@ -80,26 +93,11 @@ const AVAILABLE_CHANNELS = [
   "Landing Page",
 ] as const;
 
-const JOURNEY_STEPS = [
-  { label: "Estratégia", description: "Objetivo, público, oferta e limites", icon: Target },
-  { label: "Plano", description: "Campanhas, canais e pilares", icon: FileText },
-  { label: "Calendário", description: "Datas, horários e formatos", icon: CalendarClock },
-  { label: "Aprovação", description: "Autoriza a produção", icon: ClipboardCheck },
-  { label: "Produção", description: "IA cria as peças", icon: Palette },
-  { label: "Revisão", description: "Opcional antes de publicar", icon: Eye },
-  { label: "Publicação", description: "Manual ou automática", icon: Megaphone },
-  { label: "Resultados", description: "Métricas alimentam o próximo ciclo", icon: Gauge },
-] as const;
+const PERIODS = [7, 15, 30, 60, 90] as const;
 
-const PERIOD_PRESETS: Array<{ label: string; valor: number; unidade: "horas" | "dias" }> = [
-  { label: "6h", valor: 6, unidade: "horas" },
-  { label: "12h", valor: 12, unidade: "horas" },
-  { label: "1 dia", valor: 1, unidade: "dias" },
-  { label: "7 dias", valor: 7, unidade: "dias" },
-  { label: "30 dias", valor: 30, unidade: "dias" },
-  { label: "90 dias", valor: 90, unidade: "dias" },
-  { label: "1 ano", valor: 365, unidade: "dias" },
-];
+function authHeaders() {
+  return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
+}
 
 function emptyConfig(): PlanningConfig {
   return {
@@ -113,212 +111,93 @@ function emptyConfig(): PlanningConfig {
   };
 }
 
-function normalizeConfig(source: Partial<PlanningConfig> | null | undefined): PlanningConfig {
-  const base = emptyConfig();
-  if (!source) return base;
+function normalizeConfig(source?: Partial<PlanningConfig> | null): PlanningConfig {
+  if (!source) return emptyConfig();
   return {
-    objetivoPrincipal: typeof source.objetivoPrincipal === "string" ? source.objetivoPrincipal : "",
-    produtoServicoPrioritario: typeof source.produtoServicoPrioritario === "string" ? source.produtoServicoPrioritario : "",
-    publicoPrioritario: typeof source.publicoPrioritario === "string" ? source.publicoPrioritario : "",
-    regiao: typeof source.regiao === "string" ? source.regiao : "",
-    ofertaPrincipal: typeof source.ofertaPrincipal === "string" ? source.ofertaPrincipal : "",
-    canaisPreferidos: Array.isArray(source.canaisPreferidos)
-      ? source.canaisPreferidos.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
-      : [],
-    observacoes: typeof source.observacoes === "string" ? source.observacoes : "",
+    objetivoPrincipal: source.objetivoPrincipal ?? "",
+    produtoServicoPrioritario: source.produtoServicoPrioritario ?? "",
+    publicoPrioritario: source.publicoPrioritario ?? "",
+    regiao: source.regiao ?? "",
+    ofertaPrincipal: source.ofertaPrincipal ?? "",
+    canaisPreferidos: Array.isArray(source.canaisPreferidos) ? source.canaisPreferidos : [],
+    observacoes: source.observacoes ?? "",
   };
-}
-
-function authHeaders() {
-  return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
-}
-
-function fieldLabel(title: string, description?: string) {
-  return (
-    <div className="mb-1.5">
-      <p className="text-xs font-medium text-foreground">{title}</p>
-      {description && <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>}
-    </div>
-  );
-}
-
-function operationalDays(period: FlexiblePeriod): number {
-  return Math.max(1, Math.ceil(period.unidade === "horas" ? period.valor / 24 : period.valor));
-}
-
-function formatMoney(value: string): string {
-  const normalized = Number(value.replace(".", "").replace(",", "."));
-  if (!Number.isFinite(normalized) || normalized <= 0) return "Sem limite informado";
-  return normalized.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function Journey() {
-  return (
-    <Card className="border-primary/30 bg-primary/[0.02]">
-      <CardContent className="p-4 md:p-5">
-        <div className="mb-3">
-          <p className="text-sm font-semibold">Como o Planejador funciona</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Uma sequência única do planejamento até o aprendizado. Aprovar o plano autoriza produzir; não significa publicar automaticamente.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-          {JOURNEY_STEPS.map((step, index) => {
-            const Icon = step.icon;
-            return (
-              <div key={step.label} className="relative rounded-xl border bg-background p-3 min-h-[98px]">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <span className="text-[10px] font-semibold text-muted-foreground">{index + 1}/8</span>
-                </div>
-                <p className="mt-2 text-xs font-semibold">{step.label}</p>
-                <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{step.description}</p>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 export default function PlanoMidia() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const tenantId = user?.tenantId ?? "";
-  const [configOpen, setConfigOpen] = useState(false);
+
   const [config, setConfig] = useState<PlanningConfig>(() => emptyConfig());
-  const [nomeCampanha, setNomeCampanha] = useState("");
-  const [ofertaCampanha, setOfertaCampanha] = useState("");
+  const [periodoDias, setPeriodoDias] = useState(30);
   const [orcamentoTotal, setOrcamentoTotal] = useState("");
-  const [customPeriod, setCustomPeriod] = useState<FlexiblePeriod>({ enabled: true, valor: 7, unidade: "dias", aberto: false });
-  const configRef = useRef(config);
-  const campaignRef = useRef({ nomeCampanha, ofertaCampanha, orcamentoTotal, customPeriod });
-  const hydratedTenantRef = useRef("");
+  const [plan, setPlan] = useState<MediaPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [creatingCampaigns, setCreatingCampaigns] = useState(false);
+  const [campaignsGenerated, setCampaignsGenerated] = useState(false);
 
-  useEffect(() => {
-    configRef.current = config;
-  }, [config]);
+  const campaigns = plan?.conteudo.campanhas ?? [];
+  const approved = plan?.conteudo.statusPlanejamento === "aprovado";
 
-  useEffect(() => {
-    campaignRef.current = { nomeCampanha, ofertaCampanha, orcamentoTotal, customPeriod };
-  }, [nomeCampanha, ofertaCampanha, orcamentoTotal, customPeriod]);
+  const configuredCount = useMemo(
+    () => [
+      config.objetivoPrincipal,
+      config.produtoServicoPrioritario,
+      config.publicoPrioritario,
+      config.regiao,
+      config.ofertaPrincipal,
+      config.observacoes,
+      config.canaisPreferidos.length > 0 ? "canais" : "",
+    ].filter(Boolean).length,
+    [config],
+  );
 
-  useEffect(() => {
-    if (!tenantId || hydratedTenantRef.current === tenantId) return;
-    hydratedTenantRef.current = tenantId;
-    let cancelled = false;
+  async function checkGeneratedCampaigns(planId: string) {
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-calendar`, { headers: authHeaders() });
+      if (!response.ok) return;
+      const items = (await response.json()) as CalendarItem[];
+      setCampaignsGenerated(items.some((item) => item.mediaPlanId === planId));
+    } catch {
+      setCampaignsGenerated(false);
+    }
+  }
 
-    fetch(`/api/tenants/${tenantId}/media-plan`, { headers: authHeaders() })
-      .then(async (response) => response.ok ? response.json() as Promise<PlanWithContext | null> : null)
-      .then((plan) => {
-        if (cancelled || !plan) return;
-        if (plan.contextoUsado?.configuracaoPlanejamento) {
-          const next = normalizeConfig(plan.contextoUsado.configuracaoPlanejamento);
-          configRef.current = next;
-          setConfig(next);
-        }
-        if (plan.conteudo?.nomeCampanha) setNomeCampanha(plan.conteudo.nomeCampanha);
-        if (plan.conteudo?.ofertaCampanha) setOfertaCampanha(plan.conteudo.ofertaCampanha);
-        if (typeof plan.conteudo?.orcamento?.valor === "number") setOrcamentoTotal(String(plan.conteudo.orcamento.valor));
-        if (plan.conteudo?.periodo?.duracaoValor && plan.conteudo.periodo.duracaoUnidade) {
-          setCustomPeriod({
-            enabled: true,
-            valor: plan.conteudo.periodo.duracaoValor,
-            unidade: plan.conteudo.periodo.duracaoUnidade,
-            aberto: Boolean(plan.conteudo.periodo.aberto),
-          });
-        }
-      })
-      .catch(() => undefined);
-
-    return () => { cancelled = true; };
-  }, [tenantId]);
-
-  useEffect(() => {
-    if (!tenantId || typeof window === "undefined") return;
-    const nativeFetch = window.fetch.bind(window);
-
-    const wrappedFetch: typeof window.fetch = async (input, init) => {
-      const rawUrl = typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      const isPlanGeneration = method === "POST" && rawUrl.includes(`/api/tenants/${tenantId}/media-plan/gerar`);
-      const isCalendarGeneration = method === "POST" && rawUrl.includes(`/api/tenants/${tenantId}/content-calendar/gerar`);
-
-      if (!isPlanGeneration && !isCalendarGeneration) return nativeFetch(input, init);
-
-      let body: Record<string, unknown> = {};
-      try {
-        const rawBody = init?.body ?? (input instanceof Request ? await input.clone().text() : undefined);
-        if (typeof rawBody === "string" && rawBody.trim()) body = JSON.parse(rawBody) as Record<string, unknown>;
-      } catch {
-        body = {};
+  async function loadPlan() {
+    if (!tenantId) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-plan`, { headers: authHeaders() });
+      if (!response.ok) throw new Error("Não foi possível carregar o planejamento.");
+      const data = (await response.json()) as MediaPlan | null;
+      setPlan(data);
+      if (data) {
+        setConfig(normalizeConfig(data.contextoUsado?.configuracaoPlanejamento));
+        if (data.conteudo.periodoDias) setPeriodoDias(Math.max(1, Math.round(data.conteudo.periodoDias)));
+        if (typeof data.conteudo.orcamento?.valor === "number") setOrcamentoTotal(String(data.conteudo.orcamento.valor));
+        await checkGeneratedCampaigns(data.id);
+      } else {
+        setCampaignsGenerated(false);
       }
-
-      const human = campaignRef.current;
-      if (isPlanGeneration) {
-        body["configuracao"] = configRef.current;
-        if (human.nomeCampanha.trim()) body["nomeCampanha"] = human.nomeCampanha.trim();
-        if (human.ofertaCampanha.trim()) body["ofertaCampanha"] = human.ofertaCampanha.trim();
-        const budget = Number(human.orcamentoTotal.replace(",", "."));
-        if (Number.isFinite(budget) && budget > 0) {
-          body["orcamento"] = {
-            valor: budget,
-            tipo: "total",
-            moeda: "BRL",
-            gestao: "ia_autonoma",
-            limiteRigido: true,
-          };
-        }
-        const days = operationalDays(human.customPeriod);
-        body["periodoDias"] = days;
-        body["periodo"] = {
-          duracaoValor: human.customPeriod.valor,
-          duracaoUnidade: human.customPeriod.unidade,
-          aberto: human.customPeriod.aberto,
-          fimEm: human.customPeriod.aberto ? null : undefined,
-        };
-      }
-
-      if (isCalendarGeneration) {
-        body["semanas"] = Math.max(1, Math.min(53, Math.ceil(operationalDays(human.customPeriod) / 7)));
-      }
-
-      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-      if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-
-      return nativeFetch(input, {
-        ...init,
-        method,
-        headers,
-        body: JSON.stringify(body),
+    } catch (error) {
+      toast({
+        title: "Falha ao carregar planejamento",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
       });
-    };
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    window.fetch = wrappedFetch;
-    return () => {
-      if (window.fetch === wrappedFetch) window.fetch = nativeFetch;
-    };
+  useEffect(() => {
+    void loadPlan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
-
-  const configuredCount = useMemo(() => [
-    config.objetivoPrincipal,
-    config.produtoServicoPrioritario,
-    config.publicoPrioritario,
-    config.regiao,
-    config.ofertaPrincipal,
-    config.observacoes,
-    config.canaisPreferidos.length > 0 ? "canais" : "",
-  ].filter(Boolean).length, [config]);
-
-  const periodSummary = customPeriod.aberto
-    ? `${customPeriod.valor} ${customPeriod.unidade} · sem data final`
-    : `${customPeriod.valor} ${customPeriod.unidade}`;
 
   function toggleChannel(channel: string) {
     setConfig((current) => ({
@@ -329,232 +208,294 @@ export default function PlanoMidia() {
     }));
   }
 
-  function usePreset(valor: number, unidade: "horas" | "dias") {
-    setCustomPeriod({ enabled: true, valor, unidade, aberto: false });
+  async function generateProposal() {
+    if (!tenantId) return;
+    setGenerating(true);
+    try {
+      const budget = Number(orcamentoTotal.replace(",", "."));
+      const response = await fetch(`/api/tenants/${tenantId}/media-plan/gerar`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periodoDias,
+          configuracao: config,
+          orcamento: Number.isFinite(budget) && budget > 0
+            ? { valor: budget, tipo: "total", moeda: "BRL", gestao: "ia_autonoma", limiteRigido: true }
+            : undefined,
+        }),
+      });
+      const data = (await response.json()) as MediaPlan & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao gerar a proposta.");
+      setPlan(data);
+      setCampaignsGenerated(false);
+      toast({
+        title: "Proposta de planejamento pronta",
+        description: "Revise a estratégia e as campanhas sugeridas. Nenhuma execução foi iniciada.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar a proposta",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function approvePlanning() {
+    if (!plan) return;
+    setApproving(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ aprovar: true }),
+      });
+      const data = (await response.json()) as MediaPlan & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao aprovar o planejamento.");
+      setPlan(data);
+      toast({
+        title: "Planejamento aprovado",
+        description: "A direção foi aprovada. A execução ainda não começou.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível aprovar",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  async function generateCampaigns() {
+    if (!plan || !approved) return;
+    if (campaignsGenerated) {
+      navigate(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}`);
+      return;
+    }
+
+    setCreatingCampaigns(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mediaPlanId: plan.id,
+          semanas: Math.max(1, Math.ceil((plan.conteudo.periodoDias ?? periodoDias) / 7)),
+          substituirPlanejado: false,
+        }),
+      });
+      const data = await response.json() as Array<unknown> | { error?: string };
+      if (!response.ok) {
+        throw new Error(!Array.isArray(data) ? data.error ?? "Falha ao gerar as campanhas." : "Falha ao gerar as campanhas.");
+      }
+      setCampaignsGenerated(true);
+      toast({
+        title: "Campanhas geradas",
+        description: "Agora começa a execução. Conteúdos, anúncios, LPs e ações passam a ser acompanhados em Campanhas.",
+      });
+      navigate(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}`);
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar as campanhas",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingCampaigns(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[280px] items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Carregando planejamento…
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
-      <Journey />
-
-      <Card className="overflow-hidden border-primary/40 shadow-sm">
-        <div className="border-b bg-gradient-to-r from-primary/10 via-primary/5 to-background px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge className="gap-1"><Sparkles className="h-3 w-3" /> Configuração da campanha</Badge>
-                <Badge variant="outline">Etapa 1 · Estratégia</Badge>
-              </div>
-              <h2 className="mt-2 text-lg font-semibold tracking-tight">Defina os limites. A IA monta o plano.</h2>
-              <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                O período pode ser curto ou longo: horas, dias, meses ou campanha aberta. Depois a IA cria plano, calendário e distribuição por canal.
-              </p>
-            </div>
-            <div className="rounded-lg border bg-background/90 px-3 py-2 text-xs shadow-sm">
-              <span className="text-muted-foreground">Regra importante</span>
-              <p className="font-medium">Aprovar o plano = autorizar produção. Publicar é uma etapa separada.</p>
-            </div>
+      <Card className="border-primary/30 bg-primary/[0.02]">
+        <CardContent className="p-4 md:p-5">
+          <div className="mb-4">
+            <p className="text-sm font-semibold">Planejamento = decisão, não execução</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Aqui você informa o que quer fazer, a IA sugere a estratégia e você aprova. Somente em “Gerar Campanhas” a execução começa.
+            </p>
           </div>
-        </div>
-
-        <CardContent className="space-y-5 p-4 md:p-5">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-xl border bg-muted/20 p-3">
-              <div className="flex items-center gap-2 text-xs font-medium"><CalendarClock className="h-4 w-4 text-primary" /> Período da campanha</div>
-              <p className="mt-1 text-sm font-semibold">{periodSummary}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Qualquer duração. O calendário se adapta ao intervalo.</p>
-            </div>
-            <div className="rounded-xl border bg-muted/20 p-3">
-              <div className="flex items-center gap-2 text-xs font-medium"><WalletCards className="h-4 w-4 text-primary" /> Limite de investimento</div>
-              <p className="mt-1 text-sm font-semibold">{formatMoney(orcamentoTotal)}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Quando informado, funciona como teto rígido.</p>
-            </div>
-            <div className="rounded-xl border bg-primary/[0.04] p-3">
-              <div className="flex items-center gap-2 text-xs font-medium"><BrainCircuit className="h-4 w-4 text-primary" /> Papel da IA</div>
-              <p className="mt-1 text-sm font-semibold">Planejar, distribuir e otimizar</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">A produção começa somente depois da aprovação do plano.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div>
-              {fieldLabel("Título da campanha", "Opcional. Se vazio, a IA cria o nome.")}
-              <Input value={nomeCampanha} onChange={(event) => setNomeCampanha(event.target.value)} placeholder="Ex.: Semana da Casa Nova" maxLength={200} />
-            </div>
-            <div>
-              {fieldLabel("Promoção / oferta", "Opcional. Use para lançamento ou condição especial.")}
-              <Input value={ofertaCampanha} onChange={(event) => setOfertaCampanha(event.target.value)} placeholder="Ex.: condição especial até domingo" maxLength={500} />
-            </div>
-            <div>
-              {fieldLabel("Orçamento total (R$)", "Opcional. Quando preenchido, a IA não pode ultrapassar.")}
-              <Input inputMode="decimal" value={orcamentoTotal} onChange={(event) => setOrcamentoTotal(event.target.value.replace(/[^0-9.,]/g, ""))} placeholder="Ex.: 5.000" />
-            </div>
-            <div>
-              {fieldLabel("Gestão do orçamento", "Regra fixa quando houver orçamento.")}
-              <div className="flex h-10 items-center gap-2 rounded-md border bg-primary/[0.04] px-3 text-sm font-medium">
-                <BrainCircuit className="h-4 w-4 text-primary" /> IA dentro do limite aprovado
+          <div className="grid gap-2 md:grid-cols-4">
+            {[
+              ["1", "Informações", "Objetivo, público, oferta, região, período e orçamento"],
+              ["2", "Proposta da IA", "Estratégia, campanhas sugeridas, canais e KPIs"],
+              ["3", "Aprovação", "Você revisa e aprova a direção"],
+              ["4", "Gerar Campanhas", "Só aqui começa a execução"],
+            ].map(([n, title, description]) => (
+              <div key={n} className="rounded-xl border bg-background p-3">
+                <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{n}</div>
+                <p className="text-sm font-semibold">{title}</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</p>
               </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-background p-3 space-y-3">
-            <div>
-              <p className="text-sm font-semibold">Duração do planejamento</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Não existe mais um prazo obrigatório de 30, 60 ou 90 dias. Escolha qualquer quantidade de horas ou dias; meses e anos usam atalhos em dias.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {PERIOD_PRESETS.map((preset) => {
-                const selected = !customPeriod.aberto && customPeriod.valor === preset.valor && customPeriod.unidade === preset.unidade;
-                return (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => usePreset(preset.valor, preset.unidade)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${selected ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
-                  >
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3 items-end">
-              <div>
-                {fieldLabel("Duração")}
-                <Input type="number" min={1} max={3650} value={customPeriod.valor} onChange={(event) => setCustomPeriod((current) => ({ ...current, enabled: true, valor: Math.max(1, Number(event.target.value) || 1) }))} />
-              </div>
-              <div>
-                {fieldLabel("Unidade")}
-                <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={customPeriod.unidade} onChange={(event) => setCustomPeriod((current) => ({ ...current, enabled: true, unidade: event.target.value as "horas" | "dias" }))}>
-                  <option value="horas">Horas</option>
-                  <option value="dias">Dias</option>
-                </select>
-              </div>
-              <label className="h-10 flex items-center gap-2 rounded-md border px-3 text-xs cursor-pointer">
-                <input type="checkbox" checked={customPeriod.aberto} onChange={(event) => setCustomPeriod((current) => ({ ...current, enabled: true, aberto: event.target.checked }))} />
-                Sem data final
-              </label>
-            </div>
-
-            <div className="rounded-lg border border-primary/20 bg-primary/[0.035] p-3 text-xs text-muted-foreground">
-              <div className="flex items-start gap-2">
-                <CircleCheckBig className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="font-medium text-foreground">Período e antecedência são coisas diferentes</p>
-                  <p className="mt-0.5">A campanha pode durar 6 horas, 7 dias ou 1 ano. A antecedência para a IA produzir cada peça será controlada na etapa de Produção/Publicação.</p>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      <Card className="border-primary/25 bg-primary/[0.025]">
-        <CardContent className="py-4 space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <SlidersHorizontal className="h-4 w-4 text-primary" />
-                <p className="text-sm font-semibold">Diretrizes estratégicas opcionais</p>
-                {configuredCount > 0 && <Badge variant="outline" className="text-[10px]">{configuredCount} diretriz(es)</Badge>}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground max-w-3xl">
-                Se você não preencher, a IA decide automaticamente. Use apenas quando quiser orientar objetivo, público, região, oferta ou canais prioritários.
-              </p>
-              {!configOpen && configuredCount > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {config.objetivoPrincipal && <Badge variant="secondary" className="text-[10px]">Objetivo: {config.objetivoPrincipal}</Badge>}
-                  {config.produtoServicoPrioritario && <Badge variant="secondary" className="text-[10px]">Prioridade: {config.produtoServicoPrioritario}</Badge>}
-                  {config.regiao && <Badge variant="secondary" className="text-[10px]">Região: {config.regiao}</Badge>}
-                  {config.canaisPreferidos.length > 0 && <Badge variant="secondary" className="text-[10px]">{config.canaisPreferidos.length} canal(is) priorizado(s)</Badge>}
-                </div>
-              )}
+            <div>
+              <CardTitle className="text-base flex items-center gap-2"><Target className="h-4 w-4 text-primary" />1. Informações do planejamento</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">Preencha somente a direção. Nada será publicado, enviado ou colocado em produção nesta etapa.</p>
             </div>
-            <Button type="button" size="sm" variant={configOpen ? "secondary" : "outline"} onClick={() => setConfigOpen((open) => !open)}>
-              {configOpen ? <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> : <ChevronDown className="h-3.5 w-3.5 mr-1.5" />}
-              {configOpen ? "Fechar configuração" : "Configurar estratégia"}
+            <Badge variant="outline">{configuredCount}/7 informações</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium">Objetivo</label>
+              <Input className="mt-1" value={config.objetivoPrincipal} onChange={(e) => setConfig({ ...config, objetivoPrincipal: e.target.value })} placeholder="Ex.: gerar oportunidades qualificadas" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Produto ou serviço</label>
+              <Input className="mt-1" value={config.produtoServicoPrioritario} onChange={(e) => setConfig({ ...config, produtoServicoPrioritario: e.target.value })} placeholder="Ex.: VendorAI para clínicas odontológicas" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Público</label>
+              <Input className="mt-1" value={config.publicoPrioritario} onChange={(e) => setConfig({ ...config, publicoPrioritario: e.target.value })} placeholder="Ex.: clínicas odontológicas privadas" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Região</label>
+              <Input className="mt-1" value={config.regiao} onChange={(e) => setConfig({ ...config, regiao: e.target.value })} placeholder="Ex.: Brasil" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Oferta / CTA</label>
+              <Input className="mt-1" value={config.ofertaPrincipal} onChange={(e) => setConfig({ ...config, ofertaPrincipal: e.target.value })} placeholder="Ex.: diagnóstico + demonstração" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Orçamento total</label>
+              <Input className="mt-1" value={orcamentoTotal} onChange={(e) => setOrcamentoTotal(e.target.value)} placeholder="Opcional" inputMode="decimal" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium">Período</label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {PERIODS.map((days) => (
+                <Button key={days} type="button" size="sm" variant={periodoDias === days ? "default" : "outline"} onClick={() => setPeriodoDias(days)}>{days} dias</Button>
+              ))}
+              <Input className="h-9 w-28" type="number" min={1} max={3650} value={periodoDias} onChange={(e) => setPeriodoDias(Math.max(1, Number(e.target.value) || 1))} />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium">Canais que deseja considerar</label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {CHANNELS.map((channel) => (
+                <Button key={channel} type="button" size="sm" variant={config.canaisPreferidos.includes(channel) ? "default" : "outline"} onClick={() => toggleChannel(channel)}>{channel}</Button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium">Observações para a IA</label>
+            <textarea
+              className="mt-1 min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={config.observacoes}
+              onChange={(e) => setConfig({ ...config, observacoes: e.target.value })}
+              placeholder="Restrições, diferenciais, prioridades ou qualquer orientação importante."
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={generateProposal} disabled={generating}>
+              {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              {plan ? "Gerar nova proposta" : "Gerar proposta com IA"}
             </Button>
           </div>
-
-          {configOpen && (
-            <div className="border-t pt-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <div>
-                  {fieldLabel("Objetivo principal do período", "Ex.: gerar leads, vender um lançamento, aumentar recorrência.")}
-                  <Input value={config.objetivoPrincipal} onChange={(event) => setConfig((current) => ({ ...current, objetivoPrincipal: event.target.value }))} placeholder="IA decide automaticamente" maxLength={300} />
-                </div>
-                <div>
-                  {fieldLabel("Produto ou serviço prioritário", "A IA continua podendo usar o restante do portfólio quando fizer sentido.")}
-                  <Input value={config.produtoServicoPrioritario} onChange={(event) => setConfig((current) => ({ ...current, produtoServicoPrioritario: event.target.value }))} placeholder="Ex.: Plano Pró, consultoria, linha X" maxLength={300} />
-                </div>
-                <div>
-                  {fieldLabel("Público prioritário", "Defina apenas se quiser restringir ou refinar o público já cadastrado.")}
-                  <Input value={config.publicoPrioritario} onChange={(event) => setConfig((current) => ({ ...current, publicoPrioritario: event.target.value }))} placeholder="Ex.: PMEs de 10 a 50 funcionários" maxLength={500} />
-                </div>
-                <div>
-                  {fieldLabel("Região / área de atuação", "Serve para segmentação; não obriga a IA a repetir o local em todos os materiais.")}
-                  <Input value={config.regiao} onChange={(event) => setConfig((current) => ({ ...current, regiao: event.target.value }))} placeholder="Ex.: Brasil, SC, Chapecó e região" maxLength={250} />
-                </div>
-                <div className="md:col-span-2">
-                  {fieldLabel("Oferta ou CTA principal", "O próximo passo comercial que deve orientar conversão e campanhas.")}
-                  <Input value={config.ofertaPrincipal} onChange={(event) => setConfig((current) => ({ ...current, ofertaPrincipal: event.target.value }))} placeholder="Ex.: solicitar demonstração, orçamento, teste grátis" maxLength={500} />
-                </div>
-              </div>
-
-              <div>
-                {fieldLabel("Canais que quero priorizar", "A IA completa o mix necessário para o funil; estes canais recebem prioridade explícita.")}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2">
-                  {AVAILABLE_CHANNELS.map((channel) => {
-                    const selected = config.canaisPreferidos.includes(channel);
-                    return (
-                      <button key={channel} type="button" onClick={() => toggleChannel(channel)} className={`min-h-9 rounded-md border px-2 py-1.5 text-xs text-left transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "bg-background hover:bg-muted"}`}>
-                        <span className="flex items-center gap-1.5">
-                          <span className={`h-3.5 w-3.5 shrink-0 rounded border flex items-center justify-center ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
-                            {selected && <Check className="h-2.5 w-2.5" />}
-                          </span>
-                          <span>{channel}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                {fieldLabel("Observações e restrições para a IA", "Registre nuances do ciclo sem precisar editar campanha por campanha depois.")}
-                <textarea className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" value={config.observacoes} onChange={(event) => setConfig((current) => ({ ...current, observacoes: event.target.value }))} placeholder="Ex.: comunicação mais sutil, evitar repetir a cidade em todas as peças, priorizar prova e demonstração, não usar desconto..." maxLength={1500} />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-3">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  Ao clicar em Planejar/Replanejar com IA, estas diretrizes serão enviadas automaticamente.
-                </div>
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfig(emptyConfig())} disabled={configuredCount === 0}>
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Deixar IA decidir estratégia
-                  </Button>
-                  <Button type="button" size="sm" onClick={() => setConfigOpen(false)}>
-                    <Check className="h-3.5 w-3.5 mr-1.5" />Usar estas configurações
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
-      <div className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.02] px-4 py-3">
-        <p className="text-xs font-medium">Próximas etapas: Plano → Calendário → Aprovação</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">Abaixo a IA apresenta o plano gerado. Depois da aprovação, a produção pode começar; publicação continua sendo uma autorização separada.</p>
-      </div>
+      {plan && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary" />2. Proposta da IA</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">Estas campanhas ainda são sugestões de planejamento. Não estão em execução.</p>
+              </div>
+              <Badge className={approved ? "bg-emerald-600" : ""}>{approved ? "Planejamento aprovado" : "Aguardando aprovação"}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {plan.conteudo.diagnostico && (
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <p className="text-xs font-semibold">Direção recomendada</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-line">{plan.conteudo.diagnostico}</p>
+              </div>
+            )}
 
-      <div className="marketing-plan-responsive">
-        <PlanoMidiaCore />
-      </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">Campanhas propostas</p>
+                <Badge variant="outline">{campaigns.length} sugestões</Badge>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                {campaigns.map((campaign) => (
+                  <div key={campaign.id} className="rounded-xl border bg-background p-4">
+                    <p className="font-semibold">{campaign.nome}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{campaign.objetivo}</p>
+                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                      <div><span className="text-muted-foreground">Público: </span>{campaign.publico}</div>
+                      <div><span className="text-muted-foreground">Oferta: </span>{campaign.oferta}</div>
+                      <div><span className="text-muted-foreground">KPI: </span>{campaign.kpiPrincipal}</div>
+                      <div><span className="text-muted-foreground">Materiais previstos: </span>{campaign.materiaisPlanejados}</div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {campaign.canais.map((channel) => <Badge key={channel.canal} variant="outline" className="text-[10px]">{channel.canal}</Badge>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-dashed p-4">
+              <p className="text-sm font-semibold flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-primary" />3. Aprovação</p>
+              <p className="mt-1 text-xs text-muted-foreground">Aprovar confirma a direção estratégica. Ainda não cria peças, anúncios, mensagens ou publicações.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!approved ? (
+                  <Button onClick={approvePlanning} disabled={approving || campaigns.length === 0}>
+                    {approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                    Aprovar planejamento
+                  </Button>
+                ) : (
+                  <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1 h-3.5 w-3.5" />Direção aprovada</Badge>
+                )}
+                <Button variant="outline" onClick={generateProposal} disabled={generating}>
+                  <RefreshCw className="mr-2 h-4 w-4" />Recalcular proposta
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-primary/30 bg-primary/[0.03] p-4">
+              <p className="text-sm font-semibold">4. Gerar Campanhas</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Este é o ponto de virada: somente depois deste botão começam calendário, produção de materiais, anúncios, LPs, mensagens e demais ações de execução.
+              </p>
+              <div className="mt-3">
+                <Button onClick={generateCampaigns} disabled={!approved || creatingCampaigns}>
+                  {creatingCampaigns ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
+                  {campaignsGenerated ? "Abrir Campanhas" : "Gerar Campanhas e iniciar execução"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
