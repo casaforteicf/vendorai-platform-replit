@@ -1,9 +1,10 @@
 import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
 import type { Logger } from "pino";
-import { db, leadsTable, webBehaviorEventsTable } from "@workspace/db";
+import { db, leadEventsTable, leadsTable, notificationsTable, webBehaviorEventsTable } from "@workspace/db";
 
 const LOOKBACK_DAYS = 30;
 const MAX_LEADS_PER_RUN = 250;
+const HOT_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 export type BehaviorIntentTier = "baixo" | "medio" | "alto" | "muito_alto";
 
@@ -140,6 +141,46 @@ export function buildBehaviorIntentSummary(events: Array<{
   };
 }
 
+async function notifyHotBehaviorIntent(input: {
+  leadId: string;
+  tenantId: string;
+  leadName: string;
+  summary: BehaviorIntentSummary;
+}) {
+  if (input.summary.score < 60) return;
+
+  const [recent] = await db
+    .select({ id: leadEventsTable.id })
+    .from(leadEventsTable)
+    .where(and(
+      eq(leadEventsTable.leadId, input.leadId),
+      eq(leadEventsTable.tipo, "visitor_intent_hot"),
+      gte(leadEventsTable.createdAt, new Date(Date.now() - HOT_ALERT_COOLDOWN_MS)),
+    ))
+    .limit(1);
+
+  if (recent) return;
+
+  const reasonSummary = input.summary.reasons.slice(0, 3).join("; ");
+  const description = `🔥 Behavior Intent ${input.summary.score}/100 (${input.summary.tierLabel}). ${reasonSummary || input.summary.recommendedAction}`;
+  const now = new Date();
+
+  await db.insert(leadEventsTable).values({
+    leadId: input.leadId,
+    tipo: "visitor_intent_hot",
+    descricao: description,
+    scoreBoost: 0,
+    notifiedAt: now,
+  });
+
+  await db.insert(notificationsTable).values({
+    tenantId: input.tenantId,
+    title: "🔥 Oportunidade quente agora",
+    message: `${input.leadName}: intenção ${input.summary.score}/100. ${input.summary.recommendedAction}`,
+    type: "info",
+  });
+}
+
 /**
  * Recalcula o Behavior Intent de um único lead logo após uma sessão anônima
  * ser identificada. O tenant faz parte da condição para impedir qualquer
@@ -154,7 +195,12 @@ export async function syncBehaviorIntentForLead(
 ): Promise<BehaviorIntentSummary | null> {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const [lead] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, discoveryData: leadsTable.discoveryData })
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      nome: leadsTable.nome,
+      discoveryData: leadsTable.discoveryData,
+    })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
@@ -188,6 +234,13 @@ export async function syncBehaviorIntentForLead(
       updatedAt: new Date(),
     })
     .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId)));
+
+  await notifyHotBehaviorIntent({
+    leadId: lead.id,
+    tenantId: lead.tenantId,
+    leadName: lead.nome,
+    summary: behaviorIntent,
+  });
 
   return behaviorIntent;
 }
