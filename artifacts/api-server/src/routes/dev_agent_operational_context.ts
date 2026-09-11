@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { classifyBackendDrift } from "../lib/dev-agent-deploy-relevance.js";
 import { loadEngineeringMemory, recordExecutionMemory } from "./dev_agent_memory";
 
 const router = Router();
@@ -9,7 +10,7 @@ type EngineeringAlert = {
   severity: AlertSeverity;
   title: string;
   detail: string;
-  source: "railway" | "vercel" | "github" | "runtime" | "pull_request";
+  source: "railway" | "github" | "runtime" | "pull_request";
 };
 
 type SentinelWatchdog = {
@@ -24,10 +25,19 @@ type SentinelWatchdog = {
   lastError: string | null;
 };
 
+type DeploymentDrift = {
+  backendRelevant: boolean | null;
+  changedFiles: string[];
+  relevantFiles: string[];
+  ignoredFiles: string[];
+  reason: string | null;
+};
+
 type OperationalContext = {
   observedRevision: string | null;
   mainRevision: string | null;
   productionState: "aligned" | "stale" | "unknown";
+  deploymentDrift: DeploymentDrift;
   openDevPrs: Array<{ number: number; title: string; head: string; updatedAt: string }>;
   memoryCount: number;
   healthScore: number;
@@ -43,11 +53,7 @@ type SentinelLogger = {
   error: (...args: any[]) => void;
 };
 
-const REQUIRED_VERCEL_CONTEXTS = new Set([
-  "vendorai-platform-replit-frontend",
-  "tad-vendorai",
-]);
-
+const RAILWAY_BACKEND_CONTEXT = "responsible-flow - vendorai-platform-replit";
 const SENTINEL_INTERVAL_MS = 5 * 60 * 1000;
 let sentinelTimer: NodeJS.Timeout | null = null;
 let activeIncidentKey: string | null = null;
@@ -80,7 +86,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Operational-Context/3.1",
+      "User-Agent": "VendorAI-Dev-Operational-Context/3.2",
     },
   });
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
@@ -97,13 +103,57 @@ function revisionsMatch(a: string | null, b: string | null) {
   return a === b || a.startsWith(b) || b.startsWith(a);
 }
 
-function normalizeCheckContext(value: unknown) {
-  return String(value ?? "").replace(/^Vercel\s*[–-]\s*/i, "").trim();
+function emptyDeploymentDrift(): DeploymentDrift {
+  return {
+    backendRelevant: null,
+    changedFiles: [],
+    relevantFiles: [],
+    ignoredFiles: [],
+    reason: null,
+  };
+}
+
+async function resolveDeploymentDrift(
+  owner: string,
+  repo: string,
+  observedRevision: string | null,
+  mainRevision: string | null,
+): Promise<DeploymentDrift> {
+  if (!observedRevision || !mainRevision) {
+    return { ...emptyDeploymentDrift(), reason: "revision_unavailable" };
+  }
+  if (revisionsMatch(observedRevision, mainRevision)) {
+    return {
+      backendRelevant: false,
+      changedFiles: [],
+      relevantFiles: [],
+      ignoredFiles: [],
+      reason: "runtime_matches_main",
+    };
+  }
+
+  try {
+    const comparison = await gh(`/repos/${owner}/${repo}/compare/${observedRevision}...${mainRevision}`);
+    const paths = (Array.isArray(comparison?.files) ? comparison.files : [])
+      .map((file: any) => String(file?.filename ?? "").trim())
+      .filter(Boolean);
+    const classified = classifyBackendDrift(paths);
+    return {
+      ...classified,
+      reason: classified.backendRelevant ? "backend_changes_pending" : "only_non_backend_changes",
+    };
+  } catch (error) {
+    return {
+      ...emptyDeploymentDrift(),
+      reason: error instanceof Error ? `compare_failed:${error.message}` : "compare_failed",
+    };
+  }
 }
 
 function buildSentinelAlerts(args: {
   observedRevision: string | null;
   mainRevision: string | null;
+  deploymentDrift: DeploymentDrift;
   checks: OperationalContext["checks"];
   openDevPrs: OperationalContext["openDevPrs"];
   githubAvailable: boolean;
@@ -129,71 +179,43 @@ function buildSentinelAlerts(args: {
       source: "runtime",
     });
   } else if (args.mainRevision && !revisionsMatch(args.observedRevision, args.mainRevision)) {
-    alerts.push({
-      id: "runtime-stale",
-      severity: "critical",
-      title: "Produção diferente da main",
-      detail: `Runtime ${args.observedRevision.slice(0, 9)} e main ${args.mainRevision.slice(0, 9)} não estão alinhados.`,
-      source: "runtime",
-    });
+    if (args.deploymentDrift.backendRelevant === true) {
+      alerts.push({
+        id: "runtime-stale",
+        severity: "critical",
+        title: "Backend de produção atrás da main",
+        detail: `Há ${args.deploymentDrift.relevantFiles.length} arquivo(s) relevante(s) ao backend ainda não presentes no runtime ${args.observedRevision.slice(0, 9)}.`,
+        source: "runtime",
+      });
+    } else if (args.deploymentDrift.backendRelevant === null) {
+      alerts.push({
+        id: "runtime-drift-unclassified",
+        severity: "warning",
+        title: "Diferença entre runtime e main ainda não classificada",
+        detail: "A Sentinela não conseguiu determinar se as mudanças pendentes exigem deploy do backend.",
+        source: "runtime",
+      });
+    }
   }
 
-  const requiredSeen = new Set<string>();
   for (const check of args.checks) {
-    const normalized = normalizeCheckContext(check.context);
-    if (REQUIRED_VERCEL_CONTEXTS.has(normalized)) {
-      requiredSeen.add(normalized);
-      if (check.state === "failure" || check.state === "error") {
-        alerts.push({
-          id: `vercel-${normalized}-failure`,
-          severity: "critical",
-          title: `Deploy Vercel falhou: ${normalized}`,
-          detail: "O check obrigatório da main está em falha.",
-          source: "vercel",
-        });
-      } else if (check.state === "pending") {
-        alerts.push({
-          id: `vercel-${normalized}-pending`,
-          severity: "warning",
-          title: `Deploy Vercel pendente: ${normalized}`,
-          detail: "A publicação da main ainda não terminou.",
-          source: "vercel",
-        });
-      }
-    }
-
-    if (check.context === "responsible-flow - vendorai-platform-replit") {
-      if (check.state === "failure" || check.state === "error") {
-        alerts.push({
-          id: "railway-failure",
-          severity: "critical",
-          title: "Gate Railway falhou",
-          detail: "O fluxo responsável do backend está em falha na main.",
-          source: "railway",
-        });
-      } else if (check.state === "pending") {
-        alerts.push({
-          id: "railway-pending",
-          severity: "warning",
-          title: "Railway ainda processando",
-          detail: "O gate/deploy do backend ainda não terminou.",
-          source: "railway",
-        });
-      }
-    }
-  }
-
-  if (args.githubAvailable) {
-    for (const context of REQUIRED_VERCEL_CONTEXTS) {
-      if (!requiredSeen.has(context)) {
-        alerts.push({
-          id: `vercel-${context}-missing`,
-          severity: "warning",
-          title: `Check Vercel ausente: ${context}`,
-          detail: "A main ainda não publicou evidência desse check obrigatório.",
-          source: "vercel",
-        });
-      }
+    if (check.context !== RAILWAY_BACKEND_CONTEXT) continue;
+    if (check.state === "failure" || check.state === "error") {
+      alerts.push({
+        id: "railway-failure",
+        severity: "critical",
+        title: "Gate Railway falhou",
+        detail: "O fluxo responsável do backend está em falha na main.",
+        source: "railway",
+      });
+    } else if (check.state === "pending") {
+      alerts.push({
+        id: "railway-pending",
+        severity: "warning",
+        title: "Railway ainda processando",
+        detail: "O gate/deploy do backend ainda não terminou.",
+        source: "railway",
+      });
     }
   }
 
@@ -262,12 +284,13 @@ async function persistIncidentMemory(
       status,
       summary,
       ...(context.mainRevision ? { mergeSha: context.mainRevision } : {}),
-      changedFiles: [],
+      changedFiles: context.deploymentDrift.relevantFiles.slice(0, 20),
       engines: ["production-sentinel"],
       failures: status === "production_incident" ? critical.map((alert) => alert.id).slice(0, 8) : [],
       evidence: [
         `health_score=${context.healthScore}`,
         `production_state=${context.productionState}`,
+        `backend_relevant_drift=${String(context.deploymentDrift.backendRelevant)}`,
         context.mainRevision ? `main=${context.mainRevision.slice(0, 12)}` : "main=unknown",
         context.observedRevision ? `runtime=${context.observedRevision.slice(0, 12)}` : "runtime=unknown",
         ...evidenceAlerts.map((alert) => `${alert.source}:${alert.id}:${alert.title}`),
@@ -288,6 +311,7 @@ export async function getOperationalContext(): Promise<OperationalContext> {
   let mainRevision: string | null = null;
   let openDevPrs: OperationalContext["openDevPrs"] = [];
   let checks: OperationalContext["checks"] = [];
+  let deploymentDrift = emptyDeploymentDrift();
   let memoryCount = 0;
   let githubAvailable = true;
 
@@ -296,11 +320,13 @@ export async function getOperationalContext(): Promise<OperationalContext> {
     const main = await gh(`/repos/${owner}/${repo}/commits/main`);
     mainRevision = normalizeRevision(main?.sha);
 
-    const [pulls, status] = await Promise.all([
+    const [pulls, status, drift] = await Promise.all([
       gh(`/repos/${owner}/${repo}/pulls?state=open&per_page=50&sort=updated&direction=desc`),
       mainRevision ? gh(`/repos/${owner}/${repo}/commits/${mainRevision}/status`) : Promise.resolve({ statuses: [] }),
+      resolveDeploymentDrift(owner, repo, observedRevision, mainRevision),
     ]);
 
+    deploymentDrift = drift;
     openDevPrs = (pulls ?? [])
       .filter((pr: any) => {
         const ref = String(pr?.head?.ref ?? "");
@@ -333,15 +359,27 @@ export async function getOperationalContext(): Promise<OperationalContext> {
 
   let productionState: OperationalContext["productionState"] = "unknown";
   if (observedRevision && mainRevision) {
-    productionState = revisionsMatch(observedRevision, mainRevision) ? "aligned" : "stale";
+    if (revisionsMatch(observedRevision, mainRevision) || deploymentDrift.backendRelevant === false) {
+      productionState = "aligned";
+    } else if (deploymentDrift.backendRelevant === true) {
+      productionState = "stale";
+    }
   }
 
-  const alerts = buildSentinelAlerts({ observedRevision, mainRevision, checks, openDevPrs, githubAvailable });
+  const alerts = buildSentinelAlerts({
+    observedRevision,
+    mainRevision,
+    deploymentDrift,
+    checks,
+    openDevPrs,
+    githubAvailable,
+  });
 
   return {
     observedRevision,
     mainRevision,
     productionState,
+    deploymentDrift,
     openDevPrs,
     memoryCount,
     healthScore: calculateHealthScore(alerts),
@@ -379,6 +417,9 @@ async function runSentinelWatchdog(logger: SentinelLogger) {
       criticalCount,
       warningCount,
       productionState: context.productionState,
+      backendRelevantDrift: context.deploymentDrift.backendRelevant,
+      relevantFiles: context.deploymentDrift.relevantFiles.length,
+      ignoredFiles: context.deploymentDrift.ignoredFiles.length,
       observedRevision: context.observedRevision?.slice(0, 9) ?? null,
       mainRevision: context.mainRevision?.slice(0, 9) ?? null,
       consecutiveCritical: watchdog.consecutiveCritical,
@@ -394,23 +435,24 @@ async function runSentinelWatchdog(logger: SentinelLogger) {
         activeIncidentPersisted = await persistIncidentMemory(context, "production_incident", currentIncidentKey, logger);
       }
       logger.error(logContext, "dev-ia sentinel: critical production signal");
-    } else {
-      if (activeIncidentKey && activeIncidentPersisted) {
-        const recovered = await persistIncidentMemory(context, "production_recovered", activeIncidentKey, logger);
-        if (recovered) {
-          activeIncidentKey = null;
-          activeIncidentPersisted = false;
-        }
-      } else if (activeIncidentKey) {
+      return;
+    }
+
+    if (activeIncidentKey && activeIncidentPersisted) {
+      const recovered = await persistIncidentMemory(context, "production_recovered", activeIncidentKey, logger);
+      if (recovered) {
         activeIncidentKey = null;
         activeIncidentPersisted = false;
       }
+    } else if (activeIncidentKey) {
+      activeIncidentKey = null;
+      activeIncidentPersisted = false;
+    }
 
-      if (warningCount > 0) {
-        if (changed) logger.warn(logContext, "dev-ia sentinel: production needs attention");
-      } else if (changed || previousScore === null) {
-        logger.info(logContext, "dev-ia sentinel: production healthy");
-      }
+    if (warningCount > 0) {
+      if (changed) logger.warn(logContext, "dev-ia sentinel: production needs attention");
+    } else if (changed || previousScore === null) {
+      logger.info(logContext, "dev-ia sentinel: production healthy");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown sentinel error";
