@@ -15,7 +15,15 @@ export type VisitorTelemetryEventType =
   | "error";
 
 const SESSION_KEY = "vendorai_visitor_session_v1";
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const API_BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_URL || "/api");
+
+function authToken() {
+  try {
+    return window.localStorage.getItem("vendorai_token");
+  } catch {
+    return null;
+  }
+}
 
 function sessionId(): string {
   try {
@@ -72,6 +80,9 @@ export async function sendVisitorTelemetry(
   metadata: Record<string, string | number | boolean | null> = {},
 ) {
   if (typeof window === "undefined") return;
+  const token = authToken();
+  if (!token) return;
+
   const attr = attribution();
   const body = JSON.stringify({
     anonymousSessionId: sessionId(),
@@ -84,6 +95,7 @@ export async function sendVisitorTelemetry(
       deviceType: deviceType(),
       browser: browser(),
       os: os(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
       utmSource: attr.utmSource,
       utmMedium: attr.utmMedium,
       utmCampaign: attr.utmCampaign,
@@ -92,9 +104,12 @@ export async function sendVisitorTelemetry(
   });
 
   try {
-    await fetch(`${API_BASE}/site/behavior-event`, {
+    await fetch(`${API_BASE}/visitor-intelligence/event`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       credentials: "include",
       keepalive: true,
       body,
