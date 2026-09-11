@@ -50,6 +50,46 @@
     text-size-adjust: 100% !important;
   }
 
+  /* Header mobile: keep menu clear of the Android clock/status icons and center branding. */
+  header.md\:hidden {
+    position: relative !important;
+    min-height: 58px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding-left: 58px !important;
+    padding-right: 58px !important;
+    padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 10px !important;
+  }
+
+  header.md\:hidden > button:first-of-type {
+    position: absolute !important;
+    left: 12px !important;
+    bottom: 9px !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    border-radius: 12px !important;
+  }
+
+  header.md\:hidden > img,
+  header.md\:hidden > div img {
+    max-height: 30px !important;
+    width: auto !important;
+    object-fit: contain !important;
+  }
+
+  header.md\:hidden > div {
+    max-width: 68vw !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
   /* Settings screen shown inside the Android shell. */
   .vendor-settings-compact {
     font-size: 13.5px;
