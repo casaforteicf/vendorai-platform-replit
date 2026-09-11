@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1198",
+    "titulo": "ERP gerencial completo: edição, auditoria e visão integrada",
+    "descricao": "amplia o Financeiro + ERP Hub com visão geral gerencial, fluxo de caixa, bancos/conciliação, fiscal, compras, vendas, estoque, comissões e auditoria; mantém indicadores executivos em percentuais; adiciona busca e filtros operacionais em contas a pagar/receber; permite editar, duplicar, dar baixa e excluir/cancelar lançamentos;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-11T10:09:19.000Z",
+    "pullRequest": 1198
+  },
+  {
     "id": "pr-1167",
     "titulo": "edição rápida das informações na lista",
     "descricao": "adiciona ação **Editar** (ícone de lápis) diretamente em cada lead, no desktop e no mobile abre um modal sem sair da tela de Leads permite editar nome, empresa, segmento, telefone/WhatsApp, e-mail e status do contato permite editar o responsável quando o usuário é admin",
