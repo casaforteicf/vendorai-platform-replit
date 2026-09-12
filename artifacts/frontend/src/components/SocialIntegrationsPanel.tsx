@@ -6,16 +6,28 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload } from "lucide-react";
 
 type Provider = "youtube" | "linkedin" | "tiktok";
+type IdentityRole = "brand" | "personal" | "operational";
 type Connection = {
   provider: Provider;
   connected: boolean;
   configured: boolean;
   accountName?: string | null;
+  identityRole: IdentityRole;
   approvalRequired: boolean;
   capabilities: { publish: boolean; metrics: boolean; comments: boolean; reply: boolean; ads: boolean; directMessages: boolean };
 };
 
 const labels: Record<Provider, string> = { youtube: "YouTube", linkedin: "LinkedIn", tiktok: "TikTok" };
+const identityRoleLabels: Record<IdentityRole, string> = {
+  brand: "Perfil oficial da marca",
+  personal: "Conta pessoal",
+  operational: "Operacional / anúncios",
+};
+const identityRoleHints: Record<IdentityRole, string> = {
+  brand: "Pode representar publicamente a empresa em site, GEO e dados estruturados quando houver URL oficial confirmada.",
+  personal: "Usada para autenticação ou publicação, mas não representa a identidade pública da empresa.",
+  operational: "Usada para operação, publicação ou anúncios; não entra automaticamente como perfil oficial da marca.",
+};
 
 type Mode = "connect" | "publish";
 
@@ -66,6 +78,26 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
     await fetch(`/api/tenants/${tenantId}/social-connections/${item.provider}`, { method: "DELETE" });
     await load();
     setBusy(undefined);
+  }
+
+  async function updateIdentityRole(item: Connection, identityRole: IdentityRole) {
+    if (!tenantId || !item.connected) return;
+    setBusy(`identity-${item.provider}`);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/social-connections/${item.provider}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identityRole }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "identity_role_update_failed");
+      await load();
+      toast({ title: `${labels[item.provider]}: uso da conta atualizado.`, description: identityRoleLabels[identityRole] });
+    } catch (error) {
+      toast({ title: "Não foi possível atualizar o uso da conta.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(undefined);
+    }
   }
 
   async function publish(item: Connection) {
@@ -166,12 +198,30 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
               <span className={`text-xs ${item.connected ? "text-emerald-600" : "text-muted-foreground"}`}>{item.connected ? "Conectado" : "Desconectado"}</span>
             </div>
             {item.accountName && <p className="text-sm">{item.accountName}</p>}
+            {item.connected && <p className="text-xs font-medium text-slate-600">{identityRoleLabels[item.identityRole]}</p>}
 
             {mode === "connect" && (
               <>
                 <p className="text-xs text-muted-foreground">
                   Publicações e métricas{item.capabilities.reply ? ", comentários e respostas" : ""}{item.capabilities.ads ? ", anúncios mediante aprovação" : ""}.
                 </p>
+                {item.connected && (
+                  <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                    <label className="block text-xs font-semibold" htmlFor={`identity-role-${item.provider}`}>Uso desta conta</label>
+                    <select
+                      id={`identity-role-${item.provider}`}
+                      className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                      value={item.identityRole}
+                      disabled={busy === `identity-${item.provider}`}
+                      onChange={(event) => void updateIdentityRole(item, event.target.value as IdentityRole)}
+                    >
+                      <option value="brand">Perfil oficial da marca</option>
+                      <option value="personal">Conta pessoal</option>
+                      <option value="operational">Operacional / anúncios</option>
+                    </select>
+                    <p className="text-xs leading-5 text-muted-foreground">{identityRoleHints[item.identityRole]}</p>
+                  </div>
+                )}
                 {!item.configured && <p className="text-xs text-amber-700">Credenciais OAuth pendentes no servidor.</p>}
                 <Button size="sm" variant={item.connected ? "outline" : "default"} disabled={busy === item.provider} onClick={() => item.connected ? disconnect(item) : connect(item)}>
                   {busy === item.provider ? "Aguarde…" : item.connected ? "Desconectar" : `Conectar ${labels[item.provider]}`}
