@@ -9,7 +9,7 @@ import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
   buildSocialOAuthUrl, createSocialPublication, disconnectSocial, exchangeSocialCode,
   getActiveSocialConnection, listSocialConnections, providerAvailability, saveSocialConnection,
-  listSocialComments, replyToSocialComment,
+  setSocialConnectionIdentityRole, listSocialComments, replyToSocialComment,
   type SocialProvider,
 } from "../services/social-platforms.js";
 import { createInstagramOrganicPublication } from "../services/instagram-organic-publication.js";
@@ -20,6 +20,7 @@ import { startSocialPublicationWorker } from "../services/social-publication-wor
 const router: IRouter = Router();
 const callbackRouter: IRouter = Router();
 const providers = new Set<SocialProvider>(["youtube", "linkedin", "tiktok"]);
+const socialIdentityRoleSchema = z.object({ identityRole: z.enum(["brand", "personal", "operational"]) });
 startSocialPublicationWorker();
 
 function provider(value: unknown): SocialProvider | null {
@@ -101,6 +102,34 @@ router.get("/tenants/:tenantId/social-connections", authenticate, async (req, re
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   return res.json({ connections: await listSocialConnections(tenantId) });
+});
+
+router.patch("/tenants/:tenantId/social-connections/:provider", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const selected = provider(req.params.provider);
+  if (!selected) return res.status(404).json({ error: "provider_not_supported" });
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = socialIdentityRoleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid_identity_role", details: parsed.error.flatten() });
+
+  const before = await getActiveSocialConnection(tenantId, selected);
+  if (!before || before.disconnectedAt) return res.status(404).json({ error: "connection_not_found" });
+  const previousRole = before.metadata?.["identityRole"] === "brand" || before.metadata?.["identityRole"] === "personal" || before.metadata?.["identityRole"] === "operational"
+    ? before.metadata["identityRole"]
+    : selected === "youtube" ? "operational" : "personal";
+  const updated = await setSocialConnectionIdentityRole(tenantId, selected, parsed.data.identityRole);
+  if (!updated) return res.status(404).json({ error: "connection_not_found" });
+
+  await auditSocialConnectionChange({
+    tenantId,
+    selected,
+    action: "atualizar",
+    before: { identityRole: previousRole, accountName: before.accountName },
+    after: { identityRole: parsed.data.identityRole, accountName: before.accountName },
+    userId: req.user?.sub ?? null,
+    ip: req.ip ?? null,
+  });
+  return res.json({ success: true, provider: selected, identityRole: parsed.data.identityRole });
 });
 
 router.get("/tenants/:tenantId/facebook-organic-capability", authenticate, async (req, res) => {
