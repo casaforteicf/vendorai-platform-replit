@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 const GraphicDesignDirectorPanel = lazy(() => import("@/components/video/GraphicDesignDirectorPanel"));
+const GraphicDesignTimelineHandoff = lazy(() => import("@/components/video/GraphicDesignTimelineHandoff"));
 const ProfessionalCreationModelPanel = lazy(() => import("@/components/video/ProfessionalCreationModelPanel"));
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
@@ -82,6 +83,10 @@ export default function VideoHome() {
           <GraphicDesignDirectorPanel />
         </Suspense>
       )}
+
+      <Suspense fallback={null}>
+        <GraphicDesignTimelineHandoff />
+      </Suspense>
 
       <section className="rounded-2xl border border-border bg-card">
         <button type="button" onClick={() => setShowProfessionalModel((value) => !value)} className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5">
