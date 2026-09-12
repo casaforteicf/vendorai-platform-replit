@@ -53,6 +53,7 @@ export async function getMetaRemarketingOverview(tenantId: string) {
     FROM leads
     WHERE tenant_id = ${tenantId}
       AND excluido_em IS NULL
+      AND nao_lead_tipo IS NULL
       AND discovery_data ? 'metaEngagement'
   `);
 
