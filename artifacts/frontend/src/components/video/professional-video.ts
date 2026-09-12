@@ -1,3 +1,9 @@
+import {
+  rankMediaForScene,
+  type MediaRetrievalCandidate,
+  type MediaRetrievalContext,
+} from "@workspace/vendor-brain/media-retrieval-director";
+
 export type ProfessionalVideoMode = "duble" | "library_voiceover";
 
 export type ProfessionalScene = {
@@ -24,6 +30,13 @@ export type ProfessionalMediaAsset = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type ProfessionalMediaRetrievalContext = Omit<MediaRetrievalContext, "usedAssetIds">;
+
+export type ProfessionalMediaSuggestion = {
+  asset: ProfessionalMediaAsset;
+  ranking: MediaRetrievalCandidate;
+};
+
 export type ProfessionalAudioKind = "music" | "voiceover" | "sound_effect" | "jingle" | "sonic_identity" | "other";
 
 export type FidelitySnapshot = {
@@ -42,6 +55,52 @@ export type ProfessionalGate = {
   blockers: string[];
   warnings: string[];
 };
+
+const GRAPHIC_DESIGN_PLAN_KEY = "vendorai_graphic_design_plan_v1";
+const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
+const VALID_MEDIA_FORMATS = new Set(["9:16", "4:5", "1:1", "16:9"]);
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function runtimeMediaRetrievalContext(): ProfessionalMediaRetrievalContext {
+  const context: ProfessionalMediaRetrievalContext = {};
+  if (typeof window === "undefined") return context;
+
+  try {
+    const raw = sessionStorage.getItem(GRAPHIC_DESIGN_PLAN_KEY);
+    if (raw) {
+      const stored = asRecord(JSON.parse(raw));
+      const plan = asRecord(stored.plan);
+      const brief = asRecord(stored.brief);
+      const format = String(plan.format ?? "");
+      if (plan.approved === true && VALID_MEDIA_FORMATS.has(format)) {
+        context.targetFormat = format as ProfessionalMediaRetrievalContext["targetFormat"];
+      }
+      if (typeof brief.channel === "string" && brief.channel.trim()) context.channel = brief.channel;
+    }
+  } catch {
+    // O ranking continua funcional mesmo sem uma direção gráfica salva.
+  }
+
+  try {
+    if (!context.channel) {
+      const raw = sessionStorage.getItem(MEDIA_PLAN_EXECUTION_KEY);
+      if (raw) {
+        const execution = asRecord(JSON.parse(raw));
+        const calendarItem = asRecord(execution.calendarItem);
+        if (typeof calendarItem.canal === "string" && calendarItem.canal.trim()) context.channel = calendarItem.canal;
+      }
+    }
+  } catch {
+    // Contexto do Plano de Mídia é opcional.
+  }
+
+  return context;
+}
 
 export function mediaUrl(raw: string): string {
   if (!raw) return "";
@@ -110,26 +169,41 @@ export function scenesFromGeneration(data: unknown): ProfessionalScene[] {
   }));
 }
 
-function tokenSet(value: string): string[] {
-  const stop = new Set(["para", "como", "com", "uma", "das", "dos", "por", "que", "seu", "sua", "de", "do", "da", "em", "no", "na", "mais", "video", "cena"]);
-  return Array.from(new Set(normalized(value).replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word.length >= 4 && !stop.has(word))));
+export function rankAssetsForScene(
+  scene: ProfessionalScene,
+  assets: ProfessionalMediaAsset[],
+  usedIds: Set<string>,
+  context: ProfessionalMediaRetrievalContext = {},
+): ProfessionalMediaSuggestion[] {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const runtimeContext = runtimeMediaRetrievalContext();
+  return rankMediaForScene(
+    {
+      visual: scene.visual,
+      fala: scene.fala,
+    },
+    assets,
+    {
+      ...runtimeContext,
+      ...context,
+      usedAssetIds: usedIds,
+      allowGenerated: context.allowGenerated ?? runtimeContext.allowGenerated ?? false,
+    },
+  )
+    .map((ranking) => {
+      const asset = byId.get(ranking.assetId);
+      return asset ? { asset, ranking } : null;
+    })
+    .filter((item): item is ProfessionalMediaSuggestion => Boolean(item));
 }
 
-export function suggestAssetForScene(scene: ProfessionalScene, assets: ProfessionalMediaAsset[], usedIds: Set<string>): ProfessionalMediaAsset | null {
-  const tokens = tokenSet(`${scene.visual} ${scene.fala}`);
-  const ranked = assets
-    .filter((asset) => (asset.type === "image" || asset.type === "video") && !usedIds.has(asset.id))
-    .map((asset) => {
-      let metadata = "";
-      try { metadata = JSON.stringify(asset.metadata ?? {}); } catch {}
-      const haystack = normalized(`${assetLabel(asset)} ${asset.role ?? ""} ${metadata}`);
-      const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 2 : 0), 0)
-        + (asset.source === "upload" || asset.source === "imported" ? 2 : 0)
-        + (asset.source === "generated" ? -4 : 0);
-      return { asset, score };
-    })
-    .sort((a, b) => b.score - a.score);
-  return ranked[0]?.asset ?? null;
+export function suggestAssetForScene(
+  scene: ProfessionalScene,
+  assets: ProfessionalMediaAsset[],
+  usedIds: Set<string>,
+  context: ProfessionalMediaRetrievalContext = {},
+): ProfessionalMediaAsset | null {
+  return rankAssetsForScene(scene, assets, usedIds, context)[0]?.asset ?? null;
 }
 
 export function fidelityFromIdentityPayload(data: unknown): FidelitySnapshot {
