@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const ProfessionalCreationModelPanel = lazy(() => import("@/components/video/ProfessionalCreationModelPanel"));
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
@@ -42,7 +43,8 @@ function LoadingPanel({ label }: { label: string }) {
 export default function VideoHome() {
   const [, navigate] = useLocation();
   const planExecution = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "media-calendar";
-  const [showProfessionalStudio, setShowProfessionalStudio] = useState(true);
+  const [showProfessionalModel, setShowProfessionalModel] = useState(true);
+  const [showDubleStudio, setShowDubleStudio] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showBrandKit, setShowBrandKit] = useState(false);
 
@@ -57,23 +59,41 @@ export default function VideoHome() {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo Studio Profissional</h1>
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">Qualidade antes da geração</span>
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">Direção → produção → QA</span>
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
                 {planExecution
-                  ? "A direção do Plano de Mídia foi carregada. Revise o briefing, aprove o roteiro e produza com Dublê validado ou mídias reais."
-                  : "Crie vídeos publicáveis a partir de roteiro aprovado, Dublê Digital validado, mídias reais, música, efeitos e QA."}
+                  ? "A direção do Plano de Mídia foi carregada. Escolha o modelo criativo, aprove o roteiro, vincule mídias reais e produza com controle de qualidade."
+                  : "Crie como um estúdio: escolha a lógica da peça, defina o briefing, aprove o roteiro, monte o storyboard, selecione áudio, renderize e valide o arquivo final."}
               </p>
             </div>
           </div>
-          <Button onClick={() => setShowProfessionalStudio((value) => !value)} className="w-full rounded-xl lg:w-auto">
-            <Sparkles className="mr-2 h-4 w-4" />{showProfessionalStudio ? "Recolher Studio" : "Criar vídeo profissional"}
+          <Button onClick={() => setShowProfessionalModel((value) => !value)} className="w-full rounded-xl lg:w-auto">
+            <Sparkles className="mr-2 h-4 w-4" />{showProfessionalModel ? "Recolher criação" : "Criar vídeo profissional"}
           </Button>
         </div>
       </header>
 
-      {showProfessionalStudio && (
-        <Suspense fallback={<LoadingPanel label="Carregando Diretor de Vídeo Profissional…" />}>
+      {showProfessionalModel && (
+        <Suspense fallback={<LoadingPanel label="Carregando modelo profissional de criação…" />}>
+          <ProfessionalCreationModelPanel />
+        </Suspense>
+      )}
+
+      <section className="rounded-2xl border border-border bg-card">
+        <button type="button" onClick={() => setShowDubleStudio((value) => !value)} className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Mic2 className="h-5 w-5" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">Produção com Dublê Digital validado</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Use quando a peça precisar de apresentador: Fidelity Score, voz, lip-sync, B-roll real e finalização.</p>
+          </div>
+          <span className="hidden rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-xs text-primary sm:inline">Fluxo especializado</span>
+          <ArrowRight className={`h-4 w-4 text-muted-foreground transition-transform ${showDubleStudio ? "rotate-90" : ""}`} />
+        </button>
+      </section>
+
+      {showDubleStudio && (
+        <Suspense fallback={<LoadingPanel label="Carregando produção com Dublê…" />}>
           <ProfessionalVideoStudioPanel />
         </Suspense>
       )}
