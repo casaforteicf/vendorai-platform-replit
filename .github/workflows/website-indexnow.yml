@@ -1,0 +1,94 @@
+name: Website IndexNow Submission
+
+on:
+  workflow_run:
+    workflows: ["Cloudflare Website"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify IndexNow key is live
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="2600373020a0cc04048d1b0cae551e635b89cd4574dc2681ee20af366a6fb73d"
+          key_url="https://appvendorai.com/${key}.txt"
+
+          for attempt in {1..18}; do
+            body=$(curl -fsS --max-time 10 "$key_url" 2>/dev/null || true)
+            if [ "$body" = "$key" ]; then
+              echo "IndexNow key verified at $key_url"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "IndexNow key file was not reachable with the expected content"
+          exit 1
+
+      - name: Submit priority URLs to IndexNow
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="2600373020a0cc04048d1b0cae551e635b89cd4574dc2681ee20af366a6fb73d"
+          host="appvendorai.com"
+          key_location="https://${host}/${key}.txt"
+          endpoint="https://api.indexnow.org/indexnow"
+
+          urls=(
+            "https://appvendorai.com/"
+            "https://appvendorai.com/produtos/crm"
+            "https://appvendorai.com/produtos/agentes-ia"
+            "https://appvendorai.com/produtos/prospeccao"
+            "https://appvendorai.com/produtos/revenue-scout"
+            "https://appvendorai.com/produtos/marketing"
+            "https://appvendorai.com/solucoes/crm-whatsapp"
+            "https://appvendorai.com/solucoes/automatizar-follow-up"
+            "https://appvendorai.com/solucoes/prospeccao-b2b-ia"
+            "https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional"
+            "https://appvendorai.com/blog/crm-integrado-com-whatsapp-o-que-e-e-como-funciona"
+            "https://appvendorai.com/lp/distribuidora-materiais-construcao"
+            "https://appvendorai.com/lp/clinica-medica"
+            "https://appvendorai.com/lp/moda"
+            "https://appvendorai.com/precos"
+          )
+
+          url_json=$(printf '%s\n' "${urls[@]}" | jq -R . | jq -s .)
+          payload=$(jq -nc \
+            --arg host "$host" \
+            --arg key "$key" \
+            --arg keyLocation "$key_location" \
+            --argjson urlList "$url_json" \
+            '{host:$host,key:$key,keyLocation:$keyLocation,urlList:$urlList}')
+
+          response_file=$(mktemp)
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -X POST "$endpoint" \
+            --data "$payload")
+
+          echo "IndexNow HTTP status: $status"
+          if [ -s "$response_file" ]; then cat "$response_file"; fi
+
+          case "$status" in
+            200)
+              echo "IndexNow received the priority URL batch."
+              ;;
+            202)
+              echo "IndexNow accepted the batch; key validation is still pending."
+              ;;
+            *)
+              echo "IndexNow submission failed with HTTP $status"
+              exit 1
+              ;;
+          esac
