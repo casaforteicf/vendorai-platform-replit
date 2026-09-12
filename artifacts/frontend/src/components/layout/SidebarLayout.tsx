@@ -6,7 +6,12 @@ import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
 import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
 import { AdsMediaPlanContextBanner } from "@/components/marketing/AdsMediaPlanContextBanner";
 import { MessagingMediaPlanBridge } from "@/components/marketing/MessagingMediaPlanBridge";
-import { getGetBusinessProfileByTenantQueryKey, useGetBusinessProfileByTenant } from "@workspace/api-client-react";
+import {
+  getGetBusinessProfileByTenantQueryKey,
+  getGetTenantQueryKey,
+  useGetBusinessProfileByTenant,
+  useGetTenant,
+} from "@workspace/api-client-react";
 
 type TenantNavModule = {
   moduleKey: string;
@@ -38,12 +43,12 @@ const PRACA_AI_LINK_SELECTOR = Array.from(PRACA_AI_PATHS)
  *
  * Branding policy:
  * - regular tenant sessions show only the tenant/client logo;
- * - the only tenant logo source is Perfil da Empresa → Logo da empresa;
+ * - Configurações → Logo da empresa (`tenant.logoUrl`) is the live source;
+ * - Perfil da Empresa (`businessProfile.logoUrl`) remains a legacy fallback;
  * - Super Admin keeps the VendorAI brand in its own environment;
  * - when Super Admin opens a tenant/vertical preview, the preview follows the
  *   tenant-only branding rule;
- * - a missing/broken company-profile logo falls back to the company name,
- *   never VendorAI.
+ * - a missing/broken tenant logo falls back to the company name, never VendorAI.
  */
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, tenantOverride, token } = useAuth();
@@ -63,6 +68,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     },
   });
 
+  const tenantQuery = useGetTenant(effectiveTenantId, {
+    query: {
+      queryKey: getGetTenantQueryKey(effectiveTenantId),
+      enabled: !!effectiveTenantId && !!token,
+      staleTime: 5 * 60_000,
+    },
+  });
+
   const businessProfileQuery = useGetBusinessProfileByTenant(effectiveTenantId, {
     query: {
       queryKey: getGetBusinessProfileByTenantQueryKey(effectiveTenantId),
@@ -71,7 +84,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     },
   });
 
-  const rawCompanyLogo = businessProfileQuery.data?.logoUrl?.trim() || null;
+  const rawCompanyLogo =
+    tenantQuery.data?.logoUrl?.trim() ||
+    businessProfileQuery.data?.logoUrl?.trim() ||
+    null;
+
   const companyLogoUrl = rawCompanyLogo
     ? rawCompanyLogo.startsWith("/objects/")
       ? `/api/storage${rawCompanyLogo}`
@@ -81,6 +98,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const companyName =
     businessProfileQuery.data?.nomeFantasia?.trim() ||
     businessProfileQuery.data?.razaoSocial?.trim() ||
+    tenantQuery.data?.name?.trim() ||
     tenantOverride?.name ||
     (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
     "Sua empresa";
