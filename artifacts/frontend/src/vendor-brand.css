@@ -1,0 +1,128 @@
+/* VendorAI unified brand layer — shared visual language with appvendorai.com. */
+@font-face {
+  font-family: 'Rigter';
+  src: url('/fonts/vendorai/rigter.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Malibu Sunday Serif';
+  src: url('/fonts/vendorai/MalibuSundaySerif-gwMnE.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  /* Same core palette used by the public VendorAI site. */
+  --background: 210 40% 98%;       /* #f8fafc */
+  --foreground: 222 47% 11%;       /* #0f172a */
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --card-border: 214 32% 91%;      /* #e2e8f0 */
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 91%;
+
+  --primary: 25 95% 53%;           /* #f97316 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;        /* #f1f5f9 */
+  --secondary-foreground: 215 25% 27%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%; /* #64748b */
+  --accent: 33 100% 96%;           /* orange-50 */
+  --accent-foreground: 21 90% 40%; /* orange-700 */
+  --border: 214 32% 91%;
+  --input: 213 27% 84%;
+  --ring: 25 95% 53%;
+
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 222 47% 11%;
+  --sidebar-border: 214 32% 91%;
+  --sidebar-primary: 25 95% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 33 100% 96%;
+  --sidebar-accent-foreground: 21 90% 40%;
+  --sidebar-ring: 25 95% 53%;
+
+  --chart-1: 25 95% 53%;
+  --chart-2: 221 83% 53%;           /* #2563eb */
+  --chart-3: 160 84% 39%;
+  --chart-4: 38 92% 50%;
+  --chart-5: 350 89% 60%;
+
+  --app-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  --app-font-display: 'Rigter', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --app-font-serif: 'Malibu Sunday Serif', Georgia, serif;
+
+  --vendor-brand-orange: #f97316;
+  --vendor-brand-orange-strong: #ea580c;
+  --vendor-brand-blue: #2563eb;
+  --vendor-brand-ink: #0f172a;
+  --vendor-brand-muted: #64748b;
+  --vendor-brand-canvas: #f8fafc;
+}
+
+.dark {
+  --background: 222 47% 7%;
+  --foreground: 210 40% 96%;
+  --card: 222 32% 11%;
+  --card-foreground: 210 40% 96%;
+  --card-border: 215 28% 17%;
+  --popover: 222 32% 11%;
+  --popover-foreground: 210 40% 96%;
+  --popover-border: 215 28% 17%;
+  --primary: 25 95% 56%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 215 28% 17%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 215 28% 17%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 22 55% 18%;
+  --accent-foreground: 33 100% 90%;
+  --border: 215 28% 17%;
+  --input: 215 25% 22%;
+  --ring: 25 95% 56%;
+  --sidebar: 222 47% 7%;
+  --sidebar-foreground: 210 40% 96%;
+  --sidebar-border: 215 28% 17%;
+  --sidebar-primary: 25 95% 56%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 22 55% 18%;
+  --sidebar-accent-foreground: 33 100% 90%;
+  --sidebar-ring: 25 95% 56%;
+}
+
+/* Brand typography is intentionally restricted to hierarchy, never body copy. */
+.vendor-page-title,
+.vendor-page-canvas :where(h1, h2),
+[data-vendor-brand-title='true'] {
+  font-family: var(--app-font-display);
+  font-weight: 400;
+}
+
+/* Operational headings remain legible while sharing the same visual rhythm. */
+.vendor-page-canvas :where(h3, h4) {
+  font-family: var(--app-font-sans);
+  font-weight: 700;
+}
+
+/* Common surfaces now match the public-site visual system. */
+.vendor-page-canvas :where(.rounded-xl.border, .rounded-2xl.border, [data-slot='card']) {
+  border-color: hsl(var(--border));
+  background-color: hsl(var(--card));
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.045);
+}
+
+.vendor-page-canvas :where(button[data-variant='default'], .bg-primary) {
+  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.16);
+}
+
+.vendor-brand-wordmark,
+[data-vendor-wordmark='true'] {
+  font-family: var(--app-font-display);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+}
