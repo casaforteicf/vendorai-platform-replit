@@ -1,34 +1,34 @@
 /* Leads desktop table readability fix.
-   Keep every column readable and prevent badges/responsible names from overlapping.
-   The table should fit the available desktop canvas before falling back to horizontal scroll.
+   Keep all ten columns inside the available desktop canvas and prevent
+   business/process badges from pushing Responsável off screen.
    Scope is limited to Leads. */
 @media (min-width: 768px) {
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) {
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: visible;
-    scrollbar-gutter: stable;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) > table {
     width: 100%;
-    min-width: 1020px;
+    min-width: 0 !important;
     table-layout: fixed;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td {
     min-width: 0 !important;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
     vertical-align: middle;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th {
     white-space: normal;
-    line-height: 1.2;
+    line-height: 1.15;
+    font-size: 10px;
   }
 
-  /* Shorten Status do contato to Status without changing the underlying column. */
+  /* Shorten Status do contato to Status without depending on JSX text. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5) {
     font-size: 0;
   }
@@ -36,13 +36,13 @@
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5)::after {
     content: "STATUS";
     display: inline-block;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    line-height: 1.2;
-    letter-spacing: 0.055em;
+    line-height: 1.15;
+    letter-spacing: 0.045em;
   }
 
-  /* Keep the long business-process heading in exactly two lines on desktop. */
+  /* Keep the business/process heading in exactly two lines. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6) {
     font-size: 0;
   }
@@ -51,49 +51,52 @@
     content: "NEGÓCIOS / PROCESSOS\A ATIVOS";
     display: inline-block;
     white-space: pre-line;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    line-height: 1.2;
-    letter-spacing: 0.055em;
+    line-height: 1.15;
+    letter-spacing: 0.045em;
   }
 
   /* 10 columns in Leads.tsx:
      1 Nome, 2 Empresa, 3 Segmento, 4 Telefone, 5 Status,
      6 Negócios/processos, 7 Responsável, 8 Maior orçamento,
-     9 Churn Risk, 10 Ações. */
+     9 Churn Risk, 10 Ações.
+
+     Total = 100%. The table stays inside the card instead of pushing the
+     last columns beyond the right edge. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(1),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 14%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 13%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(2),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 13%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 12%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(3),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3) { width: 11%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3) { width: 10%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(4),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4) { width: 9%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) { width: 7%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 20%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 18%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) { width: 11%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) { width: 7%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) { width: 8%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 4%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 6%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
-  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) { width: 4%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) { width: 6%; }
 
-  /* Pull Responsável visually closer to Negócios / processos ativos. */
+  /* Keep Responsável immediately next to Negócios / processos. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) {
-    padding-right: 0.3rem;
+    padding-right: 0.2rem;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) {
-    padding-left: 0.3rem;
+    padding-left: 0.2rem;
   }
 
-  /* Text columns may wrap, but never overlap adjacent cells. */
+  /* Text columns may wrap but never overlap adjacent cells. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3),
@@ -103,7 +106,7 @@
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: normal;
-    line-height: 1.35;
+    line-height: 1.3;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) > span,
@@ -114,7 +117,7 @@
     flex-wrap: wrap;
   }
 
-  /* Keep phone, status, money, risk and actions compact and predictable. */
+  /* Phone, status, money, risk and actions stay compact. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(4),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5),
@@ -128,8 +131,8 @@
     white-space: nowrap;
   }
 
-  /* Processes/deals are column 6. Give them the largest usable area and let
-     multiple badges wrap vertically instead of invading Responsável. */
+  /* Processes/deals are column 6. Let their badges wrap inside their own cell
+     instead of expanding the table or invading Responsável. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) > *,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) button,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) [class*="max-w-"] {
@@ -154,7 +157,7 @@
     white-space: normal !important;
     flex-wrap: wrap;
     justify-content: flex-start;
-    line-height: 1.25;
+    line-height: 1.2;
     text-align: left;
   }
 
@@ -171,19 +174,25 @@
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9) button {
     width: 100%;
     justify-content: center;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.05;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(10),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) {
-    padding-left: 0.25rem;
-    padding-right: 0.35rem;
+    padding-left: 0.15rem;
+    padding-right: 0.2rem;
     text-align: right;
   }
 
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) > span {
     justify-content: flex-end;
-    gap: 0.1rem;
+    gap: 0;
     flex-wrap: nowrap;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(10) button {
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
   }
 }
