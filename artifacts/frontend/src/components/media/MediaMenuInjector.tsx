@@ -291,14 +291,14 @@ function cleanupCampaignWorkspace() {
 
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  const focusedFlowTab = tab === "campanhas" || tab === "conteudos";
-  if (!focusedFlowTab) {
+  const shouldHideGlobalTools = tab !== "planejamento";
+  if (!shouldHideGlobalTools) {
     removeCampaignGuidance();
     return;
   }
 
-  // Nas etapas operacionais do fluxo, a barra superior de Ferramentas apenas
-  // duplica a navegação lateral e cria caminhos concorrentes.
+  // A barra superior de Ferramentas duplica a navegação lateral do Marketing.
+  // Ela deve permanecer oculta em todas as abas em que era renderizada.
   document.querySelectorAll<HTMLElement>("span").forEach((label) => {
     if (normalizedText(label.textContent ?? "") === "Ferramentas:") {
       const row = label.parentElement;
