@@ -10,10 +10,10 @@ const baseUrl = "https://appvendorai.com";
 
 const route = {
   pathname: "/imprensa",
-  title: "Imprensa e Media Kit VendorAI — Informações Oficiais",
-  description: "Dados oficiais do VendorAI para imprensa, parceiros, diretórios e publicações: descrição institucional, identidade da empresa, produtos, ativos e contato.",
-  esTitle: "Prensa y Media Kit VendorAI — Información Oficial",
-  esDescription: "Datos oficiales de VendorAI para prensa, socios, directorios y publicaciones: descripción institucional, identidad de la empresa, productos, activos y contacto.",
+  title: "Informações oficiais para citar o VendorAI | VendorAI",
+  description: "Media kit oficial do VendorAI, plataforma operada por Windoor Serviços de Gerenciamento de Obras Ltda, CNPJ 59.623.589/0001-27: identidade, produtos, ativos e contato.",
+  esTitle: "Información oficial para citar a VendorAI | VendorAI",
+  esDescription: "Media kit oficial de VendorAI, plataforma operada por Windoor Serviços de Gerenciamento de Obras Ltda, CNPJ 59.623.589/0001-27: identidad, productos, activos y contacto.",
   type: "webpage",
   name: "Imprensa e Media Kit VendorAI",
   priority: 0.72,
@@ -21,9 +21,9 @@ const route = {
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 manifest.routes = Array.isArray(manifest.routes) ? manifest.routes : [];
-if (!manifest.routes.some((item) => item.pathname === route.pathname)) {
-  manifest.routes.push(route);
-}
+const existingRoute = manifest.routes.findIndex((item) => item.pathname === route.pathname);
+if (existingRoute >= 0) manifest.routes[existingRoute] = route;
+else manifest.routes.push(route);
 manifest.staticPages = manifest.staticPages ?? {};
 manifest.staticPages[route.pathname] = {
   title: route.title,
@@ -51,4 +51,4 @@ if (!sitemap.includes(`<loc>${loc}</loc>`)) {
   fs.writeFileSync(sitemapPath, sitemap);
 }
 
-console.log("[media-kit-seo] /imprensa added to SEO manifest and sitemap");
+console.log("[media-kit-seo] /imprensa added to SEO manifest and sitemap with official entity data");
