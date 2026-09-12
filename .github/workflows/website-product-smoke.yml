@@ -105,29 +105,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -sS -H 'Cache-Control: no-cache' "https://appvendorai.com/sitemap.xml?smoke=${GITHUB_SHA}" -o /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/produtos/crm</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/produtos/jarvis</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/produtos/revenue-scout</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/lp/moda</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/lp/distribuidora-materiais-construcao</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/comparar</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes/crm-whatsapp</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes/automatizar-follow-up</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes/propostas-sem-resposta</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes/qualificar-leads-com-ia</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes/reduzir-churn</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/solucoes/previsao-de-vendas</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/comparar/prospeccao-com-ia-vs-manual</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/comparar/crm-whatsapp-vs-planilha</loc>' /tmp/sitemap.xml
-          grep -q '<loc>https://appvendorai.com/comparar/revenue-intelligence-vs-bi</loc>' /tmp/sitemap.xml
-          grep -q 'hreflang="es-PY"' /tmp/sitemap.xml
-          grep -q 'hreflang="x-default"' /tmp/sitemap.xml
-          count=$(grep -o '<url>' /tmp/sitemap.xml | wc -l | tr -d ' ')
-          echo "Sitemap URLs: $count"
-          test "$count" -ge 128
+          curl -fsS -H 'Cache-Control: no-cache' "https://appvendorai.com/sitemap.xml?smoke=${GITHUB_SHA}" -o /tmp/sitemap.xml
+          grep -q '<sitemapindex' /tmp/sitemap.xml
+
+          : > /tmp/sitemap-all.xml
+          for child in core products solutions segments content; do
+            child_url="https://appvendorai.com/sitemap-${child}.xml?smoke=${GITHUB_SHA}"
+            curl -fsS -H 'Cache-Control: no-cache' "$child_url" -o "/tmp/sitemap-${child}.xml"
+            grep -q '<urlset' "/tmp/sitemap-${child}.xml"
+            cat "/tmp/sitemap-${child}.xml" >> /tmp/sitemap-all.xml
+          done
+
+          grep -q '<loc>https://appvendorai.com/produtos/crm</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/produtos/jarvis</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/produtos/revenue-scout</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/lp/moda</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/lp/distribuidora-materiais-construcao</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/comparar</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/crm-whatsapp</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/automatizar-follow-up</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/propostas-sem-resposta</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/qualificar-leads-com-ia</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/reduzir-churn</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/solucoes/previsao-de-vendas</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/comparar/crm-com-ia-vs-crm-tradicional</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/comparar/prospeccao-com-ia-vs-manual</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/comparar/crm-whatsapp-vs-planilha</loc>' /tmp/sitemap-all.xml
+          grep -q '<loc>https://appvendorai.com/comparar/revenue-intelligence-vs-bi</loc>' /tmp/sitemap-all.xml
+          grep -q 'hreflang="es-PY"' /tmp/sitemap-all.xml
+          grep -q 'hreflang="x-default"' /tmp/sitemap-all.xml
+          count=$(grep -o '<url>' /tmp/sitemap-all.xml | wc -l | tr -d ' ')
+          echo "Sitemap URLs across children: $count"
+          test "$count" -eq 142
 
       - name: Validate noindex and true 404 behavior
         shell: bash
