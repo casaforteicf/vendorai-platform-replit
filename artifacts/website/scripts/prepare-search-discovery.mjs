@@ -29,49 +29,18 @@ const withoutOldOaiBlock = currentRobots
 
 fs.writeFileSync(robotsPath, `${oaiBlock}\n\n${withoutOldOaiBlock}\n`);
 
-const llms = `# VendorAI
+// O llms.txt oficial já vive em public/ e é copiado pelo Vite para o bundle.
+// Preservamos esse conteúdo porque ele é a fonte editorial canônica usada pelos
+// smoke tests GEO; esta etapa cuida apenas da descoberta/crawling adicional.
+const llmsPath = path.join(outDir, "llms.txt");
+if (!fs.existsSync(llmsPath)) {
+  throw new Error("Search discovery aborted: canonical llms.txt is missing from the website bundle");
+}
+const llms = fs.readFileSync(llmsPath, "utf8");
+if (!llms.startsWith("# VendorAI") || !llms.includes(`${baseUrl}/produtos/crm`)) {
+  throw new Error("Search discovery aborted: canonical llms.txt failed integrity checks");
+}
 
-> Plataforma de CRM, vendas, marketing, atendimento, prospecção e inteligência de receita com agentes de IA para empresas.
-
-O VendorAI conecta geração de demanda, WhatsApp e atendimento omnichannel, CRM, follow-up, propostas, agenda, pós-venda, reativação de clientes, Revenue Scout, conteúdo, mídia e análise comercial em uma operação integrada.
-
-## Páginas principais
-
-- [Página inicial](${baseUrl}/)
-- [Produtos](${baseUrl}/produtos)
-- [Funcionalidades](${baseUrl}/funcionalidades)
-- [Soluções](${baseUrl}/solucoes)
-- [Segmentos](${baseUrl}/segmentos/retail)
-- [Preços](${baseUrl}/precos)
-- [Sobre o VendorAI](${baseUrl}/sobre)
-- [Blog](${baseUrl}/blog)
-
-## Soluções prioritárias
-
-- [CRM com IA para WhatsApp](${baseUrl}/solucoes/crm-whatsapp)
-- [Automatizar follow-up](${baseUrl}/solucoes/automatizar-follow-up)
-- [Recuperar leads parados](${baseUrl}/solucoes/recuperar-leads-parados)
-- [Prospecção B2B com IA](${baseUrl}/solucoes/prospeccao-b2b-ia)
-- [Revenue Intelligence](${baseUrl}/solucoes/revenue-intelligence)
-- [Agentes de IA para vendas](${baseUrl}/solucoes/agentes-ia-vendas)
-- [CRM com IA vs. CRM tradicional](${baseUrl}/comparar/crm-com-ia-vs-crm-tradicional)
-
-## Produtos centrais
-
-- [CRM](${baseUrl}/produtos/crm)
-- [Agentes de IA](${baseUrl}/produtos/agentes-ia)
-- [Prospecção](${baseUrl}/produtos/prospeccao)
-- [Revenue Scout](${baseUrl}/produtos/revenue-scout)
-- [Omnichannel](${baseUrl}/produtos/omnichannel)
-- [Marketing com IA](${baseUrl}/produtos/marketing)
-
-## Descoberta
-
-- [Sitemap](${baseUrl}/sitemap.xml)
-- [Robots](${baseUrl}/robots.txt)
-`;
-
-fs.writeFileSync(path.join(outDir, "llms.txt"), llms);
 fs.writeFileSync(path.join(outDir, `${indexNowKey}.txt`), `${indexNowKey}\n`);
 
-console.log(`[search-discovery] wrote robots OAI-SearchBot rules, llms.txt and IndexNow key file ${indexNowKey}.txt`);
+console.log(`[search-discovery] preserved canonical llms.txt, added OAI-SearchBot rules and wrote IndexNow key file ${indexNowKey}.txt`);
