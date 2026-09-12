@@ -3,6 +3,7 @@ import { db, socialConnectionsTable, socialPublicationsTable } from "@workspace/
 import type { OAuthProvider } from "../lib/oauth-state.js";
 
 export type SocialProvider = Extract<OAuthProvider, "youtube" | "linkedin" | "tiktok">;
+export type SocialIdentityRole = "brand" | "personal" | "operational";
 
 type ProviderConfig = {
   clientId?: string;
@@ -42,6 +43,19 @@ export const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, ProviderConfig> = {
 
 function apiUrl(): string {
   return (process.env["PUBLIC_API_URL"] || process.env["APP_URL"] || "http://localhost:3000").replace(/\/$/, "");
+}
+
+function defaultIdentityRole(provider: SocialProvider): SocialIdentityRole {
+  // LinkedIn OpenID and TikTok Login identify a person/account used for OAuth by default.
+  // A tenant must explicitly mark a connection as a brand before it can be treated as public company identity.
+  return provider === "youtube" ? "operational" : "personal";
+}
+
+function identityRoleFromMetadata(provider: SocialProvider, metadata?: Record<string, unknown> | null): SocialIdentityRole {
+  const value = metadata?.["identityRole"];
+  return value === "brand" || value === "personal" || value === "operational"
+    ? value
+    : defaultIdentityRole(provider);
 }
 
 export function socialRedirectUri(provider: SocialProvider): string {
@@ -128,6 +142,9 @@ async function accountIdentity(provider: SocialProvider, token: string) {
 export async function saveSocialConnection(tenantId: string, provider: SocialProvider, tokens: TokenResult) {
   const identity = await accountIdentity(provider, tokens.access_token);
   const now = new Date();
+  const [existing] = await db.select().from(socialConnectionsTable)
+    .where(and(eq(socialConnectionsTable.tenantId, tenantId), eq(socialConnectionsTable.provider, provider))).limit(1);
+  const identityRole = identityRoleFromMetadata(provider, existing?.metadata);
   const values = {
     externalAccountId: identity.id || null,
     accountName: identity.name || null,
@@ -136,12 +153,10 @@ export async function saveSocialConnection(tenantId: string, provider: SocialPro
     tokenExpiresAt: tokens.expires_in ? new Date(now.getTime() + tokens.expires_in * 1000) : null,
     scopes: (tokens.scope ? tokens.scope.split(/[ ,]+/) : SOCIAL_PROVIDER_CONFIG[provider].scopes),
     status: "active",
-    metadata: identity.metadata,
+    metadata: { ...identity.metadata, identityRole },
     disconnectedAt: null,
     updatedAt: now,
   };
-  const [existing] = await db.select().from(socialConnectionsTable)
-    .where(and(eq(socialConnectionsTable.tenantId, tenantId), eq(socialConnectionsTable.provider, provider))).limit(1);
   if (existing) {
     await db.update(socialConnectionsTable).set(values).where(eq(socialConnectionsTable.id, existing.id));
     return existing.id;
@@ -154,9 +169,30 @@ export async function listSocialConnections(tenantId: string) {
   const rows = await db.select().from(socialConnectionsTable).where(eq(socialConnectionsTable.tenantId, tenantId));
   return (["youtube", "linkedin", "tiktok"] as SocialProvider[]).map((provider) => {
     const row = rows.find((item) => item.provider === provider && item.status === "active" && !item.disconnectedAt);
-    return { provider, connected: Boolean(row), accountId: row?.externalAccountId, accountName: row?.accountName,
-      connectedAt: row?.connectedAt, ...providerAvailability(provider) };
+    return {
+      provider,
+      connected: Boolean(row),
+      accountId: row?.externalAccountId,
+      accountName: row?.accountName,
+      identityRole: row ? identityRoleFromMetadata(provider, row.metadata) : defaultIdentityRole(provider),
+      connectedAt: row?.connectedAt,
+      ...providerAvailability(provider),
+    };
   });
+}
+
+export async function setSocialConnectionIdentityRole(tenantId: string, provider: SocialProvider, identityRole: SocialIdentityRole) {
+  const [row] = await db.select().from(socialConnectionsTable).where(and(
+    eq(socialConnectionsTable.tenantId, tenantId),
+    eq(socialConnectionsTable.provider, provider),
+    eq(socialConnectionsTable.status, "active"),
+  )).limit(1);
+  if (!row || row.disconnectedAt) return null;
+  const [updated] = await db.update(socialConnectionsTable).set({
+    metadata: { ...(row.metadata || {}), identityRole },
+    updatedAt: new Date(),
+  }).where(eq(socialConnectionsTable.id, row.id)).returning();
+  return updated || null;
 }
 
 export async function disconnectSocial(tenantId: string, provider: SocialProvider) {
