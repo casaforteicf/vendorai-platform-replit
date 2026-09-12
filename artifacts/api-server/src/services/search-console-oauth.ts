@@ -35,6 +35,24 @@ const SCOPES = [
   "https://www.googleapis.com/auth/webmasters",
 ].join(" ");
 
+function normalizeMetaVerificationToken(token: string | null | undefined): string | null {
+  const trimmed = token?.trim();
+  if (!trimmed) return null;
+
+  // A Site Verification API devolve o token do método META como a tag HTML
+  // completa (ex.: <meta name="google-site-verification" content="..." />).
+  // O middleware público já monta a tag; portanto persistimos/retornamos só
+  // o valor do atributo content. Isso também corrige conexões antigas que
+  // salvaram a tag completa e acabavam gerando uma meta tag inválida.
+  if (/^<meta\b/i.test(trimmed) && /google-site-verification/i.test(trimmed)) {
+    const contentMatch = trimmed.match(/\bcontent\s*=\s*(["'])(.*?)\1/i);
+    const content = contentMatch?.[2]?.trim();
+    return content || null;
+  }
+
+  return trimmed;
+}
+
 export function buildSearchConsoleOAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: CLIENT_ID ?? "",
@@ -160,7 +178,11 @@ export async function saveSearchConsolePendingConnection(
     throw new Error(`Site verification token request failed: ${tokenRes.status}`);
   }
   const tokenData = (await tokenRes.json()) as { token?: string };
-  const verificationMetaToken = tokenData.token ?? null;
+  const verificationMetaToken = normalizeMetaVerificationToken(tokenData.token);
+  if (!verificationMetaToken) {
+    logger.error({ tenantId }, "Google retornou token META vazio ou inválido para Search Console");
+    throw new Error("Site verification token inválido");
+  }
 
   const [existing] = await db
     .select()
@@ -325,5 +347,5 @@ export async function disconnectSearchConsole(tenantId: string): Promise<void> {
 export async function getPendingVerificationMetaToken(tenantId: string): Promise<string | null> {
   const conn = await getSearchConsoleConnectionByTenantId(tenantId);
   if (!conn || conn.verified || conn.status === "disconnected") return null;
-  return conn.verificationMetaToken ?? null;
+  return normalizeMetaVerificationToken(conn.verificationMetaToken);
 }
