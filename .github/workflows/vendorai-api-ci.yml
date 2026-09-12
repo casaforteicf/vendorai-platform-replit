@@ -50,6 +50,11 @@ jobs:
       - name: Launch lifecycle and analytics typecheck
         run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
 
+      - name: AI visibility tests
+        run: >-
+          pnpm --filter @workspace/api-server exec vitest run
+          src/lib/ai-visibility.test.ts
+
       - name: JARVIS Action Orchestrator tests
         run: >-
           pnpm --filter @workspace/api-server exec vitest run
