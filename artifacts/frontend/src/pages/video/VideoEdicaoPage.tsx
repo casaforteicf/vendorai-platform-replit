@@ -4,11 +4,13 @@ import CreativeFontToolbar from "@/components/video/CreativeFontToolbar";
 import ProfessionalGraphicCanvasEditorV2 from "@/components/video/ProfessionalGraphicCanvasEditorV2";
 import ProfessionalGraphicFinalRenderPanel from "@/components/video/ProfessionalGraphicFinalRenderPanel";
 import ProfessionalGraphicRenderVersionLinker from "@/components/video/ProfessionalGraphicRenderVersionLinker";
+import SmartStoryboardNavigator from "@/components/video/SmartStoryboardNavigator";
 import VideoTimelineEditor from "@/components/video/VideoTimelineEditor";
 
 export default function VideoEdicaoPage() {
   return (
     <div className="space-y-5">
+      <SmartStoryboardNavigator />
       <ProfessionalGraphicRenderVersionLinker />
       <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.05] px-4 py-3 sm:px-5">
         <div className="flex items-start gap-3">
