@@ -7,6 +7,7 @@ import ProfessionalGraphicRenderVersionLinker from "@/components/video/Professio
 import SmartStoryboardAudioDirectorPanel from "@/components/video/SmartStoryboardAudioDirectorPanel";
 import SmartStoryboardMasterComposerPanel from "@/components/video/SmartStoryboardMasterComposerPanel";
 import SmartStoryboardNavigator from "@/components/video/SmartStoryboardNavigator";
+import SmartStoryboardQualityDirectorPanel from "@/components/video/SmartStoryboardQualityDirectorPanel";
 import VideoTimelineEditor from "@/components/video/VideoTimelineEditor";
 
 export default function VideoEdicaoPage() {
@@ -15,6 +16,7 @@ export default function VideoEdicaoPage() {
       <SmartStoryboardNavigator />
       <SmartStoryboardMasterComposerPanel />
       <SmartStoryboardAudioDirectorPanel />
+      <SmartStoryboardQualityDirectorPanel />
       <ProfessionalGraphicRenderVersionLinker />
       <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.05] px-4 py-3 sm:px-5">
         <div className="flex items-start gap-3">
