@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   billingEventsTable,
   db,
   dealsTable,
+  instagramConnectionsTable,
   plansTable,
   subscriptionsTable,
   tenantsTable,
@@ -22,6 +23,153 @@ router.use(commerceCheckoutRouter);
 // Public storefront checkout for every generated tenant site. Payment is
 // always created in Asaas; WhatsApp remains a support/sales channel only.
 router.use(tenantStoreCheckoutRouter);
+
+async function resolveInstagramTenant(pageId: string): Promise<string | null> {
+  if (!pageId) return null;
+  const [connection] = await db
+    .select({ tenantId: instagramConnectionsTable.tenantId })
+    .from(instagramConnectionsTable)
+    .where(and(
+      eq(instagramConnectionsTable.pageId, pageId),
+      sql`${instagramConnectionsTable.disconnectedAt} IS NULL`,
+    ))
+    .limit(1);
+  return connection?.tenantId ?? null;
+}
+
+async function reserveNativeMetaEvent(input: {
+  tenantId: string;
+  externalEventId: string;
+  eventType: "dm" | "comment" | "mention";
+  instagramScopedId: string;
+  username?: string | null;
+  text?: string | null;
+  mediaId?: string | null;
+}) {
+  const inserted = await db.execute(sql`
+    INSERT INTO meta_engagement_events (
+      tenant_id, external_event_id, event_type, instagram_scoped_id,
+      username, text_content, media_id, metadata
+    ) VALUES (
+      ${input.tenantId}, ${input.externalEventId}, ${input.eventType}, ${input.instagramScopedId},
+      ${input.username ?? null}, ${input.text ?? null}, ${input.mediaId ?? null},
+      ${JSON.stringify({ source: "meta_native_webhook" })}::jsonb
+    )
+    ON CONFLICT (tenant_id, external_event_id) DO NOTHING
+    RETURNING id
+  `);
+  return Array.isArray(inserted.rows) && inserted.rows.length > 0;
+}
+
+// Idempotency guard for the native Instagram webhook. Meta can retry the same
+// comment/DM when delivery is delayed or the first request is acknowledged
+// before all downstream work finishes. We reserve the provider event ID before
+// the legacy handler runs, remove duplicates from the payload, and let brand-new
+// events fall through unchanged so SDR/omnichannel behavior remains intact.
+router.post("/webhooks/meta/instagram", async (req, res, next) => {
+  const body = req.body as Record<string, unknown>;
+  if (body.object !== "instagram") return next();
+
+  const entries = Array.isArray(body.entry) ? body.entry as Array<Record<string, unknown>> : [];
+  let sawNativeEvent = false;
+  let keptNativeEvent = false;
+
+  for (const entry of entries) {
+    const entryPageId = String(entry.id ?? "");
+    const changes = Array.isArray(entry.changes) ? entry.changes as Array<Record<string, unknown>> : [];
+    const filteredChanges: Array<Record<string, unknown>> = [];
+
+    for (const change of changes) {
+      if (change.field === "comments") {
+        sawNativeEvent = true;
+        const value = (change.value ?? {}) as Record<string, unknown>;
+        const from = (value.from ?? {}) as Record<string, unknown>;
+        const media = (value.media ?? {}) as Record<string, unknown>;
+        const commentId = String(value.id ?? "");
+        const igsid = String(from.id ?? "");
+        const tenantId = await resolveInstagramTenant(entryPageId);
+        if (!commentId || !igsid || !tenantId) {
+          filteredChanges.push(change);
+          keptNativeEvent = true;
+          continue;
+        }
+        const firstSeen = await reserveNativeMetaEvent({
+          tenantId,
+          externalEventId: commentId,
+          eventType: "comment",
+          instagramScopedId: igsid,
+          username: typeof from.username === "string" ? from.username : null,
+          text: typeof value.text === "string" ? value.text : null,
+          mediaId: typeof media.id === "string" ? media.id : null,
+        });
+        if (firstSeen) {
+          filteredChanges.push(change);
+          keptNativeEvent = true;
+        } else {
+          req.log.info({ tenantId, commentId, igsid }, "meta-native-idempotency: duplicate comment ignored");
+        }
+        continue;
+      }
+
+      const value = (change.value ?? {}) as Record<string, unknown>;
+      const messaging = Array.isArray(value.messaging) ? value.messaging as Array<Record<string, unknown>> : null;
+      if (!messaging) {
+        filteredChanges.push(change);
+        continue;
+      }
+
+      const filteredMessaging: Array<Record<string, unknown>> = [];
+      for (const item of messaging) {
+        const message = (item.message ?? {}) as Record<string, unknown>;
+        if (message.is_echo === true) {
+          filteredMessaging.push(item);
+          continue;
+        }
+        const sender = (item.sender ?? {}) as Record<string, unknown>;
+        const recipient = (item.recipient ?? {}) as Record<string, unknown>;
+        const messageId = String(message.mid ?? message.id ?? "");
+        const igsid = String(sender.id ?? "");
+        if (!messageId || !igsid) {
+          filteredMessaging.push(item);
+          continue;
+        }
+        sawNativeEvent = true;
+        const tenantId = await resolveInstagramTenant(String(recipient.id ?? entryPageId));
+        if (!tenantId) {
+          filteredMessaging.push(item);
+          keptNativeEvent = true;
+          continue;
+        }
+        const firstSeen = await reserveNativeMetaEvent({
+          tenantId,
+          externalEventId: messageId,
+          eventType: "dm",
+          instagramScopedId: igsid,
+          text: typeof message.text === "string" ? message.text : null,
+        });
+        if (firstSeen) {
+          filteredMessaging.push(item);
+          keptNativeEvent = true;
+        } else {
+          req.log.info({ tenantId, messageId, igsid }, "meta-native-idempotency: duplicate DM ignored");
+        }
+      }
+
+      if (filteredMessaging.length > 0) {
+        filteredChanges.push({ ...change, value: { ...value, messaging: filteredMessaging } });
+      }
+    }
+
+    entry.changes = filteredChanges;
+  }
+
+  if (sawNativeEvent && !keptNativeEvent) {
+    res.status(200).json({ status: "received", duplicate: true });
+    return;
+  }
+
+  next();
+});
 
 const asaasSubscriptionWebhookBody = z.object({
   event: z.string(),
