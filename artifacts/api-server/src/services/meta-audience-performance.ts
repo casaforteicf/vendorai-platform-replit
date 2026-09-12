@@ -1,6 +1,9 @@
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 
+export type MetaAudienceMediaAction = "manter" | "reduzir" | "pausar" | "testar_criativo" | "escalar";
+export type MetaAudienceConfidence = "baixa" | "media" | "alta";
+
 export type MetaAudiencePerformanceRow = {
   key: string;
   label: string;
@@ -20,6 +23,14 @@ export type MetaAudiencePerformanceRow = {
   roas: number | null;
   score: number;
   recommendation: string;
+  mediaAction: {
+    action: MetaAudienceMediaAction;
+    label: string;
+    reason: string;
+    confidence: MetaAudienceConfidence;
+    requiresApproval: boolean;
+    suggestedBudgetChangePct: number | null;
+  };
 };
 
 function ratio(numerator: number, denominator: number) {
@@ -39,7 +50,7 @@ function performanceScore(input: { spend: number; leads: number; sales: number; 
   return Math.max(0, Math.min(100, Math.round(saleSignal + leadSignal + roasSignal)));
 }
 
-function recommendation(row: Omit<MetaAudiencePerformanceRow, "score" | "recommendation">) {
+function recommendation(row: Omit<MetaAudiencePerformanceRow, "score" | "recommendation" | "mediaAction">) {
   if (row.spend === 0 && row.leads === 0) return "Ainda sem mídia ou dados suficientes para comparar.";
   if (row.spend > 0 && row.leads === 0) return "Revisar criativo, oferta ou tamanho da audiência antes de investir mais.";
   if (row.leads >= 3 && row.sales === 0) return "A audiência gera leads, mas ainda não gera venda; revisar qualidade e follow-up.";
@@ -47,6 +58,93 @@ function recommendation(row: Omit<MetaAudiencePerformanceRow, "score" | "recomme
   if (row.roas !== null && row.roas >= 1.5) return "Bom sinal comercial; manter e ampliar gradualmente se o custo por venda continuar saudável.";
   if (row.sales > 0) return "Já converte em venda; otimizar criativo e atendimento para elevar ROAS.";
   return "Manter em aprendizado e comparar com as demais audiências antes de escalar.";
+}
+
+function actionConfidence(row: Omit<MetaAudiencePerformanceRow, "score" | "recommendation" | "mediaAction">): MetaAudienceConfidence {
+  if (row.sales >= 2 || row.leads >= 10 || row.clicks >= 50) return "alta";
+  if (row.sales >= 1 || row.leads >= 3 || row.clicks >= 20) return "media";
+  return "baixa";
+}
+
+function mediaAction(row: Omit<MetaAudiencePerformanceRow, "score" | "recommendation" | "mediaAction">): MetaAudiencePerformanceRow["mediaAction"] {
+  const confidence = actionConfidence(row);
+
+  if (row.roas !== null && row.roas >= 3 && row.sales >= 2) {
+    return {
+      action: "escalar",
+      label: "Escalar",
+      reason: `ROAS ${row.roas.toFixed(2)}x com ${row.sales} venda(s). A audiência já tem sinal comercial suficiente para testar aumento gradual.`,
+      confidence,
+      requiresApproval: true,
+      suggestedBudgetChangePct: 15,
+    };
+  }
+
+  if (row.spend > 0 && row.impressions >= 3000 && row.clicks >= 50 && row.leads === 0) {
+    return {
+      action: "pausar",
+      label: "Pausar",
+      reason: `${row.impressions} impressões e ${row.clicks} cliques sem nenhum lead atribuído. O sinal de desperdício já é relevante.`,
+      confidence,
+      requiresApproval: true,
+      suggestedBudgetChangePct: -100,
+    };
+  }
+
+  if (row.spend > 0 && row.impressions >= 1500 && row.clicks < 10 && row.leads === 0) {
+    return {
+      action: "reduzir",
+      label: "Reduzir",
+      reason: `A audiência recebeu ${row.impressions} impressões, mas gerou só ${row.clicks} clique(s) e nenhum lead. Reduzir exposição até revisar público e mensagem.`,
+      confidence,
+      requiresApproval: true,
+      suggestedBudgetChangePct: -15,
+    };
+  }
+
+  if (row.clicks >= 20 && row.leads === 0) {
+    return {
+      action: "testar_criativo",
+      label: "Testar criativo",
+      reason: `${row.clicks} cliques sem lead indicam que o tráfego chega, mas oferta, criativo ou destino ainda não convertem.`,
+      confidence,
+      requiresApproval: false,
+      suggestedBudgetChangePct: null,
+    };
+  }
+
+  if (row.leads >= 5 && row.sales === 0) {
+    return {
+      action: "manter",
+      label: "Manter",
+      reason: `${row.leads} leads e nenhuma venda: não escalar verba ainda. Manter o teste enquanto comercial/follow-up são revisados.`,
+      confidence,
+      requiresApproval: false,
+      suggestedBudgetChangePct: null,
+    };
+  }
+
+  if (row.roas !== null && row.roas >= 1.5 && row.sales > 0) {
+    return {
+      action: "manter",
+      label: "Manter",
+      reason: `ROAS ${row.roas.toFixed(2)}x com venda atribuída. Preservar orçamento atual até acumular mais evidência para escala.`,
+      confidence,
+      requiresApproval: false,
+      suggestedBudgetChangePct: null,
+    };
+  }
+
+  return {
+    action: "manter",
+    label: "Manter",
+    reason: row.spend === 0
+      ? "Ainda não há gasto suficiente para recomendar mudança de verba ou status."
+      : "Os dados ainda estão em aprendizado; manter sem ampliar orçamento é a opção mais segura.",
+    confidence,
+    requiresApproval: false,
+    suggestedBudgetChangePct: null,
+  };
 }
 
 export async function getMetaAudiencePerformance(tenantId: string) {
@@ -141,7 +239,8 @@ export async function getMetaAudiencePerformance(tenantId: string) {
     return {
       ...metrics,
       score: performanceScore(base),
-      recommendation: recommendation({ ...metrics, score: 0, recommendation: "" } as MetaAudiencePerformanceRow),
+      recommendation: recommendation(metrics),
+      mediaAction: mediaAction(metrics),
     };
   });
 
@@ -153,5 +252,10 @@ export async function getMetaAudiencePerformance(tenantId: string) {
     winner: winner ? { key: winner.key, label: winner.label, score: winner.score, roas: winner.roas } : null,
     generatedAt: new Date().toISOString(),
     attribution: "campaign_custom_audience",
+    safety: {
+      automaticBudgetChanges: false,
+      automaticPauseResume: false,
+      approvalRequiredForSpendChanges: true,
+    },
   };
 }
