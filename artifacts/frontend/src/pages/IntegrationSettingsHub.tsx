@@ -206,7 +206,7 @@ export default function IntegrationSettingsHub() {
         method: "POST",
       });
       if (data?.verified === true) {
-        toast({ title: "Search Console verificado e sitemap enviado com sucesso." });
+        toast({ title: "Search Console confirmado e sitemap enviado ao Google com sucesso." });
       } else {
         toast({
           title: "O Google ainda está processando a verificação.",
@@ -255,7 +255,7 @@ export default function IntegrationSettingsHub() {
   };
 
   const handleRowAction = async (row: IntegrationRow) => {
-    if (row.key === "search-console" && row.attention) {
+    if (row.key === "search-console" && (row.attention || row.connected)) {
       await verifySearchConsole();
       return;
     }
@@ -263,8 +263,12 @@ export default function IntegrationSettingsHub() {
   };
 
   const rowActionLabel = (row: IntegrationRow) => {
-    if (busy === row.key) return row.key === "search-console" && row.attention ? "Verificando..." : "Abrindo...";
+    if (busy === row.key) {
+      if (row.key === "search-console") return row.connected ? "Enviando sitemap..." : "Verificando...";
+      return "Abrindo...";
+    }
     if (row.key === "search-console" && row.attention) return "Verificar agora";
+    if (row.key === "search-console" && row.connected) return "Reenviar sitemap";
     if (row.key === "domain") return "Configurar domínio";
     if (row.connected) return "Reconectar / gerenciar";
     if (row.attention) return "Revisar integração";
