@@ -55,6 +55,9 @@ jobs:
           pnpm --filter @workspace/api-server exec vitest run
           src/lib/ai-visibility.test.ts
 
+      - name: Frontend typecheck
+        run: pnpm --filter @workspace/frontend typecheck
+
       - name: JARVIS Action Orchestrator tests
         run: >-
           pnpm --filter @workspace/api-server exec vitest run
