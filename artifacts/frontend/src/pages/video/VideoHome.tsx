@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
 
@@ -26,9 +27,9 @@ interface VideoCard {
 }
 
 const CARDS: VideoCard[] = [
-  { title: "Pessoas & Vozes", description: "Pessoas autorizadas, vozes e permissões.", icon: Mic2, route: "/content-studio/video/avatar", action: "Gerenciar" },
-  { title: "Vídeo de Produto", description: "Fotos reais viram Reels, Stories e campanhas.", icon: ShoppingBag, route: "/content-studio/video/produto", action: "Criar vídeo" },
-  { title: "Edição automática", description: "Corte silêncios e trechos desnecessários.", icon: Scissors, route: "/content-studio/video/edicao", action: "Editar vídeo" },
+  { title: "Pessoas & Vozes", description: "Dublês autorizados, vozes, consentimentos e Fidelity Score.", icon: Mic2, route: "/content-studio/video/avatar", action: "Gerenciar" },
+  { title: "Vídeo de Produto", description: "Fotos e vídeos reais viram Reels, Stories e campanhas.", icon: ShoppingBag, route: "/content-studio/video/produto", action: "Criar vídeo" },
+  { title: "Edição profissional", description: "Timeline, áudio, música, efeitos, textos, cortes e finalização.", icon: Scissors, route: "/content-studio/video/edicao", action: "Editar vídeo" },
   { title: "Legendagem", description: "Transcreva e aplique legendas automaticamente.", icon: Captions, route: "/content-studio/video/legenda", action: "Gerar legenda" },
   { title: "Clipes automáticos", description: "Transforme vídeos longos em cortes curtos.", icon: Clapperboard, route: "/content-studio/video/clipes", action: "Criar clipes" },
   { title: "Vídeo em lote", description: "Produza vários vídeos com dados estruturados.", icon: LayoutGrid, route: "/content-studio/video/lote", action: "Iniciar lote" },
@@ -41,7 +42,8 @@ function LoadingPanel({ label }: { label: string }) {
 export default function VideoHome() {
   const [, navigate] = useLocation();
   const planExecution = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "media-calendar";
-  const [showGenerator, setShowGenerator] = useState(planExecution);
+  const [showProfessionalStudio, setShowProfessionalStudio] = useState(true);
+  const [showGenerator, setShowGenerator] = useState(false);
   const [showBrandKit, setShowBrandKit] = useState(false);
 
   return (
@@ -50,41 +52,52 @@ export default function VideoHome() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Sparkles className="h-5 w-5" />
+              <Clapperboard className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo com IA</h1>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                {planExecution ? "Briefing do plano carregado. Revise e gere." : "Crie, edite e publique vídeos em um fluxo único."}
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo Studio Profissional</h1>
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">Qualidade antes da geração</span>
+              </div>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                {planExecution
+                  ? "A direção do Plano de Mídia foi carregada. Revise o briefing, aprove o roteiro e produza com Dublê validado ou mídias reais."
+                  : "Crie vídeos publicáveis a partir de roteiro aprovado, Dublê Digital validado, mídias reais, música, efeitos e QA."}
               </p>
             </div>
           </div>
-          <Button onClick={() => setShowGenerator((value) => !value)} className="w-full rounded-xl lg:w-auto">
-            <WandSparkles className="mr-2 h-4 w-4" />{showGenerator ? "Fechar gerador" : "Novo vídeo"}
+          <Button onClick={() => setShowProfessionalStudio((value) => !value)} className="w-full rounded-xl lg:w-auto">
+            <Sparkles className="mr-2 h-4 w-4" />{showProfessionalStudio ? "Recolher Studio" : "Criar vídeo profissional"}
           </Button>
         </div>
       </header>
 
-      {showGenerator ? (
-        <Suspense fallback={<LoadingPanel label="Carregando gerador de vídeo…" />}>
+      {showProfessionalStudio && (
+        <Suspense fallback={<LoadingPanel label="Carregando Diretor de Vídeo Profissional…" />}>
+          <ProfessionalVideoStudioPanel />
+        </Suspense>
+      )}
+
+      <section className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04]">
+        <button type="button" onClick={() => setShowGenerator((value) => !value)} className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-300"><WandSparkles className="h-5 w-5" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">B-roll / geração visual com IA</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Ferramenta auxiliar. Use somente para completar cenas específicas quando a Biblioteca não tiver material adequado.</p>
+          </div>
+          <span className="hidden rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 sm:inline dark:text-amber-300">Não é o fluxo principal</span>
+          <ArrowRight className={`h-4 w-4 text-muted-foreground transition-transform ${showGenerator ? "rotate-90" : ""}`} />
+        </button>
+      </section>
+
+      {showGenerator && (
+        <Suspense fallback={<LoadingPanel label="Carregando ferramenta de B-roll…" />}>
           <VideoGeneratePanel />
         </Suspense>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowGenerator(true)}
-          className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-5 py-4 text-left transition hover:border-primary/30 hover:shadow-sm"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><WandSparkles className="h-5 w-5" /></div>
-            <div><p className="font-semibold text-foreground">Criar novo vídeo</p><p className="text-sm text-muted-foreground">Briefing, mídias, formato e estilo em um só editor.</p></div>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-        </button>
       )}
 
       <section className="space-y-3">
-        <div><h2 className="text-lg font-semibold text-foreground">Ferramentas</h2><p className="text-sm text-muted-foreground">Escolha apenas o fluxo que você precisa.</p></div>
+        <div><h2 className="text-lg font-semibold text-foreground">Ferramentas</h2><p className="text-sm text-muted-foreground">Recursos especializados para captura, edição e distribuição.</p></div>
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
           {CARDS.map((card, index) => {
             const Icon = card.icon;
@@ -108,7 +121,7 @@ export default function VideoHome() {
       <section className="rounded-2xl border border-border bg-card">
         <button type="button" onClick={() => setShowBrandKit((value) => !value)} className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><Settings2 className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1"><p className="font-semibold text-foreground">Padrão visual dos vídeos</p><p className="mt-0.5 text-sm text-muted-foreground">Logo, abertura, encerramento, trilha e legendas.</p></div>
+          <div className="min-w-0 flex-1"><p className="font-semibold text-foreground">Padrão visual e sonoro dos vídeos</p><p className="mt-0.5 text-sm text-muted-foreground">Logo, abertura, encerramento, trilha, B-roll e legendas.</p></div>
           <span className="hidden rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">Brand Video Kit</span>
           <ArrowRight className={`h-4 w-4 text-muted-foreground transition-transform ${showBrandKit ? "rotate-90" : ""}`} />
         </button>
