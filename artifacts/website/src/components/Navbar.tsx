@@ -6,6 +6,7 @@ import {
   type PublicCountryCode,
   usePublicCountry,
 } from "@/lib/publicCountry";
+import "@/styles/vendorFonts.css";
 
 const PT = {
   products: "Produtos",

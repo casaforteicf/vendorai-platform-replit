@@ -1,0 +1,36 @@
+@font-face {
+  font-family: 'Rigter';
+  src: url('/fonts/vendorai/rigter.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Malibu Sunday Serif';
+  src: url('/fonts/vendorai/MalibuSundaySerif-gwMnE.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Type Ultimate Swashes';
+  src: url('/fonts/vendorai/type-ultimate-swashes.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Adobo';
+  src: url('/fonts/vendorai/adobo.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --vendor-display-font: 'Rigter', 'Sora', 'Inter', sans-serif;
+  --vendor-editorial-font: 'Malibu Sunday Serif', Georgia, serif;
+}
