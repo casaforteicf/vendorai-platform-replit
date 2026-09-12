@@ -132,7 +132,7 @@ async function requestSitemapSync(tenantId: string) {
     method: "POST",
     headers: authHeaders(),
   });
-  if (!response.ok) throw new Error("Não foi possível enviar o sitemap ao Google agora.");
+  if (!response.ok) throw new Error("Não foi possível verificar a propriedade e enviar o sitemap ao Google agora.");
   const result = await response.json() as { verified?: boolean };
   if (!result.verified) throw new Error("O Google ainda não confirmou a propriedade. Tente novamente em alguns instantes.");
 }
@@ -156,12 +156,12 @@ function PerformanceCard() {
     try {
       let status = await fetchConnectionStatus(resolvedTenantId);
 
-      if (autoRepairSitemap && status.connected && status.verified && !status.sitemapSubmittedAt) {
+      if (autoRepairSitemap && status.connected && (!status.verified || !status.sitemapSubmittedAt)) {
         try {
           await requestSitemapSync(resolvedTenantId);
           status = await fetchConnectionStatus(resolvedTenantId);
         } catch (repairError) {
-          setError(repairError instanceof Error ? repairError.message : "Sitemap pendente de envio ao Google.");
+          setError(repairError instanceof Error ? repairError.message : "Verificação ou sitemap pendente no Google.");
         }
       }
 
@@ -247,7 +247,7 @@ function PerformanceCard() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-medium">Google conectado. Falta validar a propriedade.</p>
-              <p className="mt-1 text-xs text-muted-foreground">Ao validar, o VendorAI também envia o sitemap da propriedade ao Search Console.</p>
+              <p className="mt-1 text-xs text-muted-foreground">O VendorAI tenta validar automaticamente; ao confirmar, também envia o sitemap da propriedade.</p>
             </div>
             <Button onClick={verify} disabled={actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Verificar e enviar sitemap</Button>
           </div>
