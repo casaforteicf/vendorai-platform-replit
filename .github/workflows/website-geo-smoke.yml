@@ -32,7 +32,7 @@ jobs:
           echo "Timed out waiting for ${GITHUB_SHA} on Cloudflare edge."
           exit 1
 
-      - name: Validate llms.txt
+      - name: Validate llms.txt and official entity signals
         shell: bash
         run: |
           set -euo pipefail
@@ -42,7 +42,14 @@ jobs:
           grep -q 'Plataforma brasileira de CRM' /tmp/llms.txt
           grep -q 'https://appvendorai.com/produtos/crm' /tmp/llms.txt
           grep -q 'https://appvendorai.com/produtos/revenue-scout' /tmp/llms.txt
+          grep -q 'https://www.instagram.com/appvendor.ai/' /tmp/llms.txt
+          grep -q '59.623.589/0001-27' /tmp/llms.txt
           grep -q 'Orientação para sistemas de IA' /tmp/llms.txt
+
+          curl -fsS -H 'Accept: text/html' -H 'Cache-Control: no-cache' "https://appvendorai.com/?smoke=${GITHUB_SHA}" -o /tmp/home.html
+          grep -q 'data-vendorai-entity="official"' /tmp/home.html
+          grep -q '"sameAs": \["https://www.instagram.com/appvendor.ai/"\]' /tmp/home.html
+          grep -q '59.623.589/0001-27' /tmp/home.html
 
       - name: Validate sitemap index and child sitemaps
         shell: bash
