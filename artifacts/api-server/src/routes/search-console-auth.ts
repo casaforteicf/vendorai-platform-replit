@@ -191,7 +191,7 @@ router.get("/tenants/:tenantId/search-console-insights", authenticate, async (re
 
 router.get("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
     const rows = await db
@@ -214,14 +214,14 @@ router.get("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) =>
 
     return res.json({ opportunities: rows, summary });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao listar oportunidades de backlinks");
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao listar oportunidades de backlinks"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.post("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
     const parsed = insertSeoBacklinkOpportunitySchema.safeParse({
@@ -240,14 +240,14 @@ router.post("/tenants/:tenantId/seo/backlinks", authenticate, async (req, res) =
 
     return res.status(201).json(created);
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao criar oportunidade de backlink");
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao criar oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.patch("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     const id = String(req.params.id);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -276,14 +276,14 @@ router.patch("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, r
 
     return res.json(updated);
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao atualizar oportunidade de backlink");
+    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao atualizar oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
 
 router.delete("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, res) => {
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed authenticated route checks tenant access immediately below
     const id = String(req.params.id);
     if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -295,7 +295,7 @@ router.delete("/tenants/:tenantId/seo/backlinks/:id", authenticate, async (req, 
     if (!deleted) return res.status(404).json({ error: "Backlink opportunity not found" });
     return res.json({ success: true, id: deleted.id });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao excluir oportunidade de backlink");
+    logger.error({ err, tenantId: String(req.params.tenantId), id: String(req.params.id) }, "Erro ao excluir oportunidade de backlink"); // tenant-audit: reviewed logging-only tenant identifier in authenticated route
     return res.status(500).json({ error: "Internal error" });
   }
 });
