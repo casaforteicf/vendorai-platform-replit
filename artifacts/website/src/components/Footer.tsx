@@ -24,6 +24,7 @@ const PT = {
   recoverLeads: "Recuperar leads parados",
   revenueIntelligence: "Revenue Intelligence",
   about: "Sobre nós",
+  press: "Imprensa e Media Kit",
   contact: "Contato",
   partners: "Parceiros",
   privacy: "Privacidade",
@@ -55,6 +56,7 @@ const ES = {
   recoverLeads: "Recuperar leads detenidos",
   revenueIntelligence: "Revenue Intelligence",
   about: "Nosotros",
+  press: "Prensa y Media Kit",
   contact: "Contacto",
   partners: "Socios",
   privacy: "Privacidad",
@@ -114,6 +116,7 @@ export default function Footer() {
             <h4 className="mb-4 font-semibold text-slate-950">{copy.company}</h4>
             <ul className="space-y-2 text-sm">
               <li><Link href="/sobre" className={linkClass}>{copy.about}</Link></li>
+              <li><Link href="/imprensa" className={linkClass}>{copy.press}</Link></li>
               <li><Link href="/contato" className={linkClass}>{copy.contact}</Link></li>
               <li><Link href="/parceiros" className={linkClass}>{copy.partners}</Link></li>
               <li><Link href="/privacy" className={linkClass}>{copy.privacy}</Link></li>
