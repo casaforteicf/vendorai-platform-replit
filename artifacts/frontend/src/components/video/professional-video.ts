@@ -200,9 +200,14 @@ export function professionalGate(input: {
     blockers.push("Motor de voz indisponível para gerar a locução");
   }
 
+  const baseReady = input.scriptApproved && input.scenes.length > 0;
+  const previewReady = input.mode === "duble"
+    ? baseReady && input.voiceReady && input.lipSyncReady
+    : baseReady && input.voiceReady && input.selectedVisualCount === input.scenes.length;
+
   return {
     publishReady: blockers.length === 0,
-    previewReady: input.scriptApproved && input.scenes.length > 0,
+    previewReady,
     blockers,
     warnings,
   };
