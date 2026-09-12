@@ -24,6 +24,19 @@ function authHeaders(json = false): Record<string, string> {
   };
 }
 
+function planRevision(value: StoredSmartDesignPlan | null) {
+  if (!value) return "";
+  const media = value.mediaAutocomposition;
+  return [
+    value.approvedAt,
+    value.plan.directionId,
+    value.plan.format,
+    value.plan.overallScore,
+    media?.generatedAt ?? "",
+    media?.scenes.map((scene) => `${scene.sceneIndex}:${scene.assetId}:${scene.score}:${Math.round(scene.crop.x)}:${Math.round(scene.crop.y)}`).join("|") ?? "",
+  ].join("::");
+}
+
 export default function SmartStoryboardComposerPanel() {
   const { user, tenantOverride } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
@@ -38,7 +51,8 @@ export default function SmartStoryboardComposerPanel() {
 
   const refreshStored = useCallback(() => {
     if (!tenantId) return;
-    setStored(parseSmartDesign(sessionStorage.getItem(DESIGN_PLAN_KEY), tenantId));
+    const next = parseSmartDesign(sessionStorage.getItem(DESIGN_PLAN_KEY), tenantId);
+    setStored((current) => planRevision(current) === planRevision(next) ? current : next);
   }, [tenantId]);
 
   useEffect(() => {
