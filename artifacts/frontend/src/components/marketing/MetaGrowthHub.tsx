@@ -27,6 +27,28 @@ type GrowthAlert = {
   message: string;
 };
 
+type MetaRemarketingOverview = {
+  eligibleLeads30d?: number;
+  warmLeads30d?: number;
+  hotLeads30d?: number;
+  dmLeads30d?: number;
+  commentLeads30d?: number;
+  mentionLeads30d?: number;
+  campaignEngagedLeads30d?: number;
+  audiences?: Array<{
+    key: string;
+    label: string;
+    count: number;
+    lookbackDays: number;
+    intent: "engaged" | "warm" | "hot";
+    recommendedAction: string;
+  }>;
+  externalAudienceSync?: {
+    status: string;
+    reason: string;
+  };
+};
+
 type MetaGrowthOverview = {
   connected?: boolean;
   instagramConnected?: boolean;
@@ -75,6 +97,7 @@ export function MetaGrowthHub() {
   const { user, tenantOverride, token } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const [data, setData] = useState<MetaGrowthOverview | null>(null);
+  const [remarketing, setRemarketing] = useState<MetaRemarketingOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,15 +107,24 @@ export function MetaGrowthHub() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/tenants/${tenantId}/meta-growth/overview`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(async (response) => {
-        if (response.status === 404) return null;
-        if (!response.ok) throw new Error("Não foi possível carregar os indicadores da Meta.");
-        return response.json() as Promise<MetaGrowthOverview>;
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`/api/tenants/${tenantId}/meta-growth/overview`, { headers }),
+      fetch(`/api/tenants/${tenantId}/meta-growth/remarketing`, { headers }),
+    ])
+      .then(async ([overviewResponse, remarketingResponse]) => {
+        if (!overviewResponse.ok) throw new Error("Não foi possível carregar os indicadores da Meta.");
+        if (!remarketingResponse.ok) throw new Error("Não foi possível carregar as audiências de remarketing.");
+        return Promise.all([
+          overviewResponse.json() as Promise<MetaGrowthOverview>,
+          remarketingResponse.json() as Promise<MetaRemarketingOverview>,
+        ]);
       })
-      .then((overview) => { if (!cancelled) setData(overview); })
+      .then(([overview, audiences]) => {
+        if (cancelled) return;
+        setData(overview);
+        setRemarketing(audiences);
+      })
       .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Falha ao carregar a Meta."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -103,12 +135,15 @@ export function MetaGrowthHub() {
     setRefreshing(true);
     setError(null);
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/meta-growth/atualizar`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Não foi possível atualizar os indicadores da Meta.");
-      setData(await response.json() as MetaGrowthOverview);
+      const headers = { Authorization: `Bearer ${token}` };
+      const [overviewResponse, remarketingResponse] = await Promise.all([
+        fetch(`/api/tenants/${tenantId}/meta-growth/atualizar`, { method: "POST", headers }),
+        fetch(`/api/tenants/${tenantId}/meta-growth/remarketing`, { headers }),
+      ]);
+      if (!overviewResponse.ok) throw new Error("Não foi possível atualizar os indicadores da Meta.");
+      if (!remarketingResponse.ok) throw new Error("Não foi possível atualizar as audiências de remarketing.");
+      setData(await overviewResponse.json() as MetaGrowthOverview);
+      setRemarketing(await remarketingResponse.json() as MetaRemarketingOverview);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao atualizar a Meta.");
     } finally {
@@ -167,6 +202,40 @@ export function MetaGrowthHub() {
         <Metric icon={<MessageCircle className="h-4 w-4" />} label="Leads Meta" value={n(data?.leads30d)} detail={`${n(data?.opportunities30d)} oportunidades`} />
         <Metric icon={<BarChart3 className="h-4 w-4" />} label="Pipeline atribuído" value={money(data?.pipelineValue30d)} detail={`${money(data?.paidSpend30d)} investidos em Ads`} />
       </div>
+
+      {remarketing ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base">Audiências prontas para remarketing</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">Engajamentos entram na mesma jornada comercial do CRM e ficam elegíveis por 30 dias.</p>
+              </div>
+              <Badge variant="outline">{n(remarketing.eligibleLeads30d)} elegíveis</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric icon={<Users className="h-4 w-4" />} label="Engajados 30d" value={n(remarketing.eligibleLeads30d)} detail={`${n(remarketing.warmLeads30d)} em aquecimento`} />
+              <Metric icon={<Target className="h-4 w-4" />} label="Alta intenção" value={n(remarketing.hotLeads30d)} detail="Prioridade de reimpacto" />
+              <Metric icon={<MessageCircle className="h-4 w-4" />} label="DMs 30d" value={n(remarketing.dmLeads30d)} detail={`${n(remarketing.commentLeads30d)} por comentário`} />
+              <Metric icon={<Megaphone className="h-4 w-4" />} label="Vindos de campanha" value={n(remarketing.campaignEngagedLeads30d)} detail="Atribuição preservada no CRM" />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {(remarketing.audiences ?? []).map((audience) => (
+                <div key={audience.key} className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{audience.label}</p>
+                    <Badge variant={audience.intent === "hot" ? "default" : "outline"}>{n(audience.count)}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{audience.recommendedAction}</p>
+                </div>
+              ))}
+            </div>
+            {remarketing.externalAudienceSync?.reason ? <p className="text-xs text-muted-foreground">{remarketing.externalAudienceSync.reason}</p> : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {data?.alerts?.length ? (
         <Card>
