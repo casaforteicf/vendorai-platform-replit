@@ -6,6 +6,7 @@ import { Mail, MessageCircle, ShieldCheck, Sparkles, Target } from "lucide-react
 import { useAuth } from "@/contexts/AuthContext";
 import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentAutopilotMediaPlanBanner";
 import { OrganicCalendarPublisher } from "@/components/marketing/OrganicCalendarPublisher";
+import { MetaGrowthHub } from "@/components/marketing/MetaGrowthHub";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
@@ -110,6 +111,10 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
   const source = params.get("from") || params.get("source");
   const fromMediaPlan = source === "media-plan" || source === "media-calendar";
   const route = pathname.split("?")[0];
+
+  if (route === "/content" && params.get("tab") === "resultados") {
+    return <div className="px-4 pt-4 md:px-6"><MetaGrowthHub /></div>;
+  }
 
   if (route === "/content-autopilot" && fromMediaPlan) {
     return <ContentAutopilotMediaPlanBanner pathname={pathname} />;
