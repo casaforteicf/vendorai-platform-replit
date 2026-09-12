@@ -1,7 +1,7 @@
 // Loop de aprendizado com métricas dos próprios posts — 3ª lacuna
 // identificada contra o Dalea AI. Ver content-performance.ts (service)
 // pra lógica real de coleta e análise.
-import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -55,3 +55,18 @@ export const contentPerformanceInsightsTable = pgTable("content_performance_insi
 });
 
 export type ContentPerformanceInsight = typeof contentPerformanceInsightsTable.$inferSelect;
+
+export const metaGrowthDailySnapshotsTable = pgTable("meta_growth_daily_snapshots", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  snapshotDate: text("snapshot_date").notNull(),
+  followers: integer("followers"),
+  reach30d: integer("reach_30d"),
+  profileVisits30d: integer("profile_visits_30d"),
+  engagedAccounts30d: integer("engaged_accounts_30d"),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+}, (table) => ({
+  tenantDayUnique: uniqueIndex("meta_growth_daily_snapshots_tenant_day_uidx").on(table.tenantId, table.snapshotDate),
+}));
+
+export type MetaGrowthDailySnapshot = typeof metaGrowthDailySnapshotsTable.$inferSelect;
