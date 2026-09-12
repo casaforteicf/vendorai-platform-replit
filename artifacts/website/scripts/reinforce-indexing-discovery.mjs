@@ -125,6 +125,17 @@ for (const pathname of priorityPaths) {
   )}</section>`;
 }
 
+const priorityBlogPath = "/blog/crm-integrado-com-whatsapp-o-que-e-e-como-funciona";
+const priorityBlog = routeByPath.get(priorityBlogPath);
+if (!priorityBlog?.staticHtml) throw new Error(`[indexing-discovery] ${priorityBlogPath} missing static HTML`);
+
+priorityBlog.title = "CRM com WhatsApp: como funciona | VendorAI";
+priorityBlog.esTitle = "CRM con WhatsApp: cómo funciona | VendorAI";
+priorityBlog.image = priorityBlog.image || "https://appvendorai.com/opengraph.jpg";
+priorityBlog.datePublished = priorityBlog.datePublished || "2026-09-12";
+priorityBlog.staticHtml += `<section data-vendorai-priority-blog-depth="crm-whatsapp"><h2>O que muda quando WhatsApp e CRM trabalham juntos</h2><p>Integrar WhatsApp e CRM significa transformar cada conversa em histórico comercial útil. Em vez de o atendimento ficar preso no celular de uma pessoa, o lead passa a ter origem, responsável, etapa, próxima ação e contexto visíveis para a equipe. Isso reduz perda de informação quando o cliente volta dias depois, quando muda de vendedor ou quando a oportunidade precisa de follow-up.</p><p>A integração também permite medir o processo. A empresa consegue acompanhar tempo de primeira resposta, conversas que viraram oportunidades, negócios sem próxima ação, retornos vencidos e conversão por etapa. O ganho não vem apenas de responder dentro do WhatsApp, mas de conectar a conversa ao pipeline e às atividades que precisam acontecer até a venda.</p><h2>Onde a inteligência artificial entra</h2><p>Com o histórico centralizado, agentes de IA podem resumir conversas, identificar intenção, sugerir prioridade, preparar respostas e executar tarefas autorizadas. Um lead que pediu orçamento pode receber acompanhamento no momento certo; uma proposta sem resposta pode voltar para a fila; um cliente recorrente pode ser reativado quando há sinal de queda no relacionamento. A automação funciona melhor quando usa dados do CRM em vez de tratar cada mensagem como uma conversa isolada.</p><p>Para começar, conecte os canais, defina responsáveis e etapas do pipeline e escolha quais ações devem ser apenas sugeridas e quais podem ser automatizadas. Depois, acompanhe métricas de resposta, follow-up e conversão para ajustar o fluxo. Veja também <a href="/solucoes/crm-whatsapp">CRM integrado ao WhatsApp</a>, <a href="/produtos/crm">CRM com IA</a> e <a href="/solucoes/automatizar-follow-up">follow-up automático</a>.</p></section>`;
+priorityBlog.esStaticHtml = (priorityBlog.esStaticHtml || priorityBlog.staticHtml) + `<section data-vendorai-priority-blog-depth="crm-whatsapp"><h2>Qué cambia cuando WhatsApp y CRM trabajan juntos</h2><p>Integrar WhatsApp y CRM convierte cada conversación en historial comercial útil. En lugar de dejar la atención aislada en el teléfono de una persona, cada lead mantiene origen, responsable, etapa, próxima acción y contexto visibles para el equipo.</p><p>La integración también permite medir tiempos de respuesta, conversaciones que se convierten en oportunidades, negocios sin próxima acción y conversión por etapa. Con ese contexto, los agentes de IA pueden resumir conversaciones, identificar intención, sugerir prioridades y ejecutar tareas autorizadas sin tratar cada mensaje como una conversación aislada.</p><p>Para empezar, conecta los canales, define responsables y etapas del pipeline y decide qué acciones deben ser sugeridas y cuáles pueden automatizarse. Luego acompaña respuesta, seguimiento y conversión. Consulta también <a href="/solucoes/crm-whatsapp">CRM integrado con WhatsApp</a>, <a href="/produtos/crm">CRM con IA</a> y <a href="/solucoes/automatizar-follow-up">seguimiento automático</a>.</p></section>`;
+
 for (const pathname of priorityPaths) {
   if (!home.staticHtml.includes(`href="${pathname}"`)) {
     throw new Error(`[indexing-discovery] home missing direct link to ${pathname}`);
@@ -133,4 +144,4 @@ for (const pathname of priorityPaths) {
 
 manifest.generatedAt = new Date().toISOString();
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-console.log(`[indexing-discovery] home links directly to ${priorityPaths.length} priority routes; priority routes cross-link hubs`);
+console.log(`[indexing-discovery] home links directly to ${priorityPaths.length} priority routes; priority routes cross-link hubs; priority blog enriched`);
