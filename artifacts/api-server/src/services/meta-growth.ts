@@ -1,9 +1,10 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import {
   contentPublishedPostsTable,
   db,
   dealsTable,
   leadsTable,
+  metaGrowthDailySnapshotsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { getInstagramConnectionByTenantId } from "./instagram-oauth.js";
@@ -14,7 +15,8 @@ import {
 } from "./meta-ads-oauth.js";
 
 const IG_GRAPH_BASE = "https://graph.instagram.com/v26.0";
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * DAY_MS;
 
 type InsightMetric = { name?: string; total_value?: { value?: number } };
 type InsightResponse = { data?: InsightMetric[] };
@@ -22,6 +24,13 @@ type InsightResponse = { data?: InsightMetric[] };
 type MetaAdsInsightRow = {
   spend?: string;
   actions?: Array<{ action_type?: string; value?: string }>;
+};
+
+export type MetaGrowthAlert = {
+  id: string;
+  severity: "success" | "warning" | "info";
+  title: string;
+  message: string;
 };
 
 function isMetaSource(source: string | null | undefined) {
@@ -32,6 +41,14 @@ function isMetaSource(source: string | null | undefined) {
 function isPaidMetaLead(lead: { source: string; adCampaignId: string | null }) {
   const value = lead.source.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return Boolean(lead.adCampaignId) || value.includes("ads") || value.includes("anuncio") || value.includes("patrocin");
+}
+
+function isoDay(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function dayAgo(days: number) {
+  return isoDay(new Date(Date.now() - days * DAY_MS));
 }
 
 async function fetchInstagramProfile(accountId: string, token: string) {
@@ -86,6 +103,98 @@ async function fetchMetaAds30d(adAccountId: string, token: string) {
   return { spend, leads };
 }
 
+async function saveDailySnapshot(params: {
+  tenantId: string;
+  followers: number;
+  reach30d: number | null;
+  profileVisits30d: number | null;
+  engagedAccounts30d: number | null;
+}) {
+  const snapshotDate = isoDay();
+  await db
+    .insert(metaGrowthDailySnapshotsTable)
+    .values({ ...params, snapshotDate, capturedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [metaGrowthDailySnapshotsTable.tenantId, metaGrowthDailySnapshotsTable.snapshotDate],
+      set: {
+        followers: params.followers,
+        reach30d: params.reach30d,
+        profileVisits30d: params.profileVisits30d,
+        engagedAccounts30d: params.engagedAccounts30d,
+        capturedAt: new Date(),
+      },
+    });
+}
+
+async function followerDelta(tenantId: string, followers: number, days: number) {
+  const [snapshot] = await db
+    .select({ followers: metaGrowthDailySnapshotsTable.followers, snapshotDate: metaGrowthDailySnapshotsTable.snapshotDate })
+    .from(metaGrowthDailySnapshotsTable)
+    .where(and(
+      eq(metaGrowthDailySnapshotsTable.tenantId, tenantId),
+      lte(metaGrowthDailySnapshotsTable.snapshotDate, dayAgo(days)),
+    ))
+    .orderBy(desc(metaGrowthDailySnapshotsTable.snapshotDate))
+    .limit(1);
+  return snapshot?.followers == null ? null : followers - snapshot.followers;
+}
+
+function buildAlerts(params: {
+  instagramConnected: boolean;
+  facebookConnected: boolean;
+  followersDelta7d: number | null;
+  paidSpend30d: number | null;
+  leads30d: number;
+  topContent: Array<{ title: string; engagements: number }>;
+}): MetaGrowthAlert[] {
+  const alerts: MetaGrowthAlert[] = [];
+  if (!params.instagramConnected) {
+    alerts.push({
+      id: "instagram-disconnected",
+      severity: "warning",
+      title: "Instagram precisa de conexão",
+      message: "Conecte ou renove o Instagram para acompanhar audiência e crescimento real.",
+    });
+  }
+  if (!params.facebookConnected) {
+    alerts.push({
+      id: "facebook-disconnected",
+      severity: "info",
+      title: "Meta Ads não está ativo",
+      message: "Sem uma conexão ativa de Ads, investimento e conversões pagas ficam incompletos.",
+    });
+  }
+  if (params.followersDelta7d != null && params.followersDelta7d > 0) {
+    alerts.push({
+      id: "followers-growing",
+      severity: "success",
+      title: "Audiência em crescimento",
+      message: `O perfil ganhou ${params.followersDelta7d} seguidores nos últimos 7 dias.`,
+    });
+  }
+  if ((params.paidSpend30d ?? 0) > 0 && params.leads30d === 0) {
+    alerts.push({
+      id: "spend-without-leads",
+      severity: "warning",
+      title: "Investimento sem leads atribuídos",
+      message: "Há gasto em mídia nos últimos 30 dias, mas nenhum lead Meta foi atribuído no CRM.",
+    });
+  }
+  if (params.topContent.length >= 3) {
+    const average = params.topContent.reduce((sum, item) => sum + item.engagements, 0) / params.topContent.length;
+    const best = params.topContent[0];
+    if (best && average > 0 && best.engagements >= average * 1.5) {
+      alerts.push({
+        id: `top-content-${best.title}`,
+        severity: "success",
+        title: "Conteúdo acima da média",
+        message: `“${best.title}” está com pelo menos 50% mais interações que a média dos conteúdos recentes.`,
+      });
+    }
+  }
+  return alerts.slice(0, 4);
+}
+
 export async function getMetaGrowthOverview(tenantId: string) {
   const cutoff = new Date(Date.now() - THIRTY_DAYS_MS);
   const [instagram, metaAds, recentLeads, recentPosts] = await Promise.all([
@@ -120,6 +229,16 @@ export async function getMetaGrowthOverview(tenantId: string) {
     reach30d = reach;
     profileVisits30d = visits;
     engagedAccounts30d = engaged;
+  }
+
+  let followersDelta7d: number | null = null;
+  let followersDelta30d: number | null = null;
+  if (followers != null) {
+    await saveDailySnapshot({ tenantId, followers, reach30d, profileVisits30d, engagedAccounts30d });
+    [followersDelta7d, followersDelta30d] = await Promise.all([
+      followerDelta(tenantId, followers, 7),
+      followerDelta(tenantId, followers, 30),
+    ]);
   }
 
   const metaLeads = recentLeads.filter((lead) => isMetaSource(lead.source));
@@ -162,13 +281,22 @@ export async function getMetaGrowthOverview(tenantId: string) {
     .sort((a, b) => b.engagements - a.engagements)
     .slice(0, 5);
 
+  const alerts = buildAlerts({
+    instagramConnected,
+    facebookConnected,
+    followersDelta7d,
+    paidSpend30d,
+    leads30d: metaLeads.length,
+    topContent: topContent.map((item) => ({ title: item.title, engagements: item.engagements })),
+  });
+
   return {
     connected: instagramConnected || facebookConnected,
     instagramConnected,
     facebookConnected,
     followers,
-    followersDelta7d: null,
-    followersDelta30d: null,
+    followersDelta7d,
+    followersDelta30d,
     reach30d,
     profileVisits30d,
     engagedAccounts30d,
@@ -179,8 +307,10 @@ export async function getMetaGrowthOverview(tenantId: string) {
     paidLeads30d: paidMetaLeadIds.length || paidLeadsFromAds,
     organicLeads30d: organicMetaLeadIds.length,
     topContent,
+    alerts,
+    refreshedAt: new Date().toISOString(),
     dataQuality: {
-      followerDeltas: "pending_daily_snapshots",
+      followerDeltas: followersDelta7d != null || followersDelta30d != null ? "historical_snapshots" : "collecting_daily_snapshots",
       contentFollowerAttribution: "not_available_from_current_history",
       paidLeadsSource: paidMetaLeadIds.length ? "crm" : paidLeadsFromAds != null ? "meta_ads" : "unavailable",
     },
