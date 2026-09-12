@@ -15,6 +15,7 @@ import { getMetaGrowthOverview } from "../services/meta-growth.js";
 import { ingestMetaEngagement } from "../services/meta-engagement-crm.js";
 import { getMetaRemarketingOverview } from "../services/meta-remarketing.js";
 import { listMetaCustomAudiences, syncMetaCustomAudience } from "../services/meta-custom-audiences.js";
+import { publishMetaCampaignWithCustomAudience } from "../services/meta-custom-audience-campaign.js";
 
 const router: IRouter = Router();
 
@@ -43,6 +44,22 @@ const metaCustomAudienceKey = z.enum([
 const applyCustomAudienceBody = z.object({
   campaignId: z.string().min(1),
 });
+
+async function loadSyncedAudience(tenantId: string, key: string) {
+  const audienceResult = await db.execute(sql`
+    SELECT audience_key, label, external_audience_id, status
+      FROM meta_custom_audiences
+     WHERE tenant_id = ${tenantId}
+       AND audience_key = ${key}
+     LIMIT 1
+  `);
+  return audienceResult.rows?.[0] as {
+    audience_key?: string;
+    label?: string;
+    external_audience_id?: string | null;
+    status?: string;
+  } | undefined;
+}
 
 router.post("/tenants/:tenantId/meta-growth/engagements/ingest", async (req, res) => {
   const tenantId = String(req.params.tenantId);
@@ -114,20 +131,7 @@ router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/apply-to-campa
   const body = applyCustomAudienceBody.safeParse(req.body);
   if (!key.success || !body.success) return res.status(422).json({ error: "Audiência ou campanha inválida." });
 
-  const audienceResult = await db.execute(sql`
-    SELECT audience_key, label, external_audience_id, status
-      FROM meta_custom_audiences
-     WHERE tenant_id = ${tenantId}
-       AND audience_key = ${key.data}
-     LIMIT 1
-  `);
-  const audience = audienceResult.rows?.[0] as {
-    audience_key?: string;
-    label?: string;
-    external_audience_id?: string | null;
-    status?: string;
-  } | undefined;
-
+  const audience = await loadSyncedAudience(tenantId, key.data);
   if (!audience?.external_audience_id || audience.status !== "synced") {
     return res.status(409).json({ error: "Sincronize esta Custom Audience com a Meta antes de usá-la em uma campanha." });
   }
@@ -174,6 +178,44 @@ router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/apply-to-campa
     campaignActivated: false,
     spendActivated: false,
   });
+});
+
+router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/publish-campaign", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const key = metaCustomAudienceKey.safeParse(String(req.params.key));
+  const body = applyCustomAudienceBody.safeParse(req.body);
+  if (!key.success || !body.success) return res.status(422).json({ error: "Audiência ou campanha inválida." });
+
+  const audience = await loadSyncedAudience(tenantId, key.data);
+  if (!audience?.external_audience_id || audience.status !== "synced") {
+    return res.status(409).json({ error: "Sincronize esta Custom Audience com a Meta antes de publicar o remarketing." });
+  }
+
+  const [campaign] = await db
+    .select({ id: adCampaignsTable.id, plataforma: adCampaignsTable.plataforma, externalCampaignId: adCampaignsTable.externalCampaignId })
+    .from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, body.data.campaignId), eq(adCampaignsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+  if (campaign.plataforma !== "meta") return res.status(422).json({ error: "Este fluxo só publica campanhas Meta." });
+  if (campaign.externalCampaignId) return res.status(409).json({ error: "A campanha já foi publicada." });
+
+  try {
+    const result = await publishMetaCampaignWithCustomAudience({
+      tenantId,
+      campaignId: campaign.id,
+      audienceKey: key.data,
+      audienceLabel: audience.label ?? key.data,
+      externalAudienceId: audience.external_audience_id,
+    });
+    return res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Não foi possível publicar a campanha de remarketing.";
+    logger.warn({ err, tenantId, campaignId: campaign.id, audienceKey: key.data }, "meta-growth: falha ao publicar campanha com Custom Audience");
+    return res.status(422).json({ error: message });
+  }
 });
 
 router.get("/tenants/:tenantId/meta-growth/overview", authenticate, async (req, res) => {
