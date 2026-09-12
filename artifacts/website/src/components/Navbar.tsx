@@ -52,11 +52,16 @@ export default function Navbar() {
   const isActive = (href: string) => location === href || (href === "/produtos" && location.startsWith("/produtos/"));
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/92 text-slate-900 shadow-[0_8px_30px_rgba(15,23,42,0.04)] backdrop-blur-xl">
+    <header className="vendor-nav-shell sticky top-0 z-50 w-full text-slate-900">
       <div className="container mx-auto flex h-[72px] items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-[-0.02em]" data-testid="link-home">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 text-base font-bold text-white shadow-[0_8px_30px_rgba(249,115,22,0.26)]">V</div>
-          <span className="text-lg leading-tight text-slate-950">Vendor.ai</span>
+        <Link href="/" className="flex items-center gap-2.5" data-testid="link-home" aria-label="Vendor.ai — início">
+          <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-[11px] bg-slate-950 text-base font-bold text-white shadow-[0_8px_28px_rgba(15,23,42,0.16)]">
+            V
+            <span className="absolute bottom-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-orange-500" />
+          </div>
+          <span className="vendor-brand-wordmark text-[20px] leading-none text-slate-950">
+            Vendor<span className="vendor-brand-dot">.</span>ai
+          </span>
         </Link>
 
         <nav className="hidden items-center gap-5 md:flex">
@@ -85,7 +90,7 @@ export default function Navbar() {
             id="public-country"
             value={countryCode}
             onChange={(event) => setCountryCode(event.target.value as PublicCountryCode)}
-            className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-orange-200 hover:bg-orange-50"
+            className="h-9 rounded-lg border border-slate-200 bg-white/80 px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-orange-200 hover:bg-orange-50"
             aria-label={copy.country}
           >
             {Object.entries(PUBLIC_COUNTRIES).map(([code, country]) => (
@@ -94,7 +99,7 @@ export default function Navbar() {
               </option>
             ))}
           </select>
-          <Link href="/demo" className="group ml-1 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.24)] transition hover:bg-orange-600" data-testid="btn-demo">
+          <Link href="/demo" className="group ml-1 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.24)] transition hover:-translate-y-0.5 hover:bg-orange-600" data-testid="btn-demo">
             {copy.trial}
             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
@@ -109,7 +114,7 @@ export default function Navbar() {
             id="public-country-mobile"
             value={countryCode}
             onChange={(event) => setCountryCode(event.target.value as PublicCountryCode)}
-            className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 outline-none"
+            className="h-9 rounded-lg border border-slate-200 bg-white/80 px-2 text-xs font-semibold text-slate-700 outline-none"
             aria-label={copy.country}
           >
             {Object.entries(PUBLIC_COUNTRIES).map(([code, country]) => (
