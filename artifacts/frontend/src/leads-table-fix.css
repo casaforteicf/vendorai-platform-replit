@@ -1,3 +1,24 @@
+/* Keep the primary action in the Leads header readable even if a page/theme
+   override changes the generic primary button colors. */
+[data-testid="button-novo-lead"] {
+  min-width: 8.5rem;
+  background: #202a78 !important;
+  border-color: #202a78 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+[data-testid="button-novo-lead"]:hover {
+  background: #192263 !important;
+  border-color: #192263 !important;
+  color: #ffffff !important;
+}
+
+[data-testid="button-novo-lead"] svg {
+  color: #ffffff !important;
+  stroke: currentColor;
+}
+
 /* Leads desktop table readability fix.
    Keep all ten columns inside the desktop card, prevent horizontal drift,
    and avoid the right-side headers colliding with each other. */
