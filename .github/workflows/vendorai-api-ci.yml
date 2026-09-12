@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "artifacts/api-server/**"
+      - "artifacts/frontend/src/components/marketing/AiVisibility*.tsx"
+      - "artifacts/frontend/src/components/marketing/BacklinkAuthorityPanel.tsx"
       - "lib/db/**"
       - "lib/vendor-brain/**"
       - ".github/workflows/vendorai-api-ci.yml"
