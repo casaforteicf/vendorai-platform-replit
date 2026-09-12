@@ -13,6 +13,7 @@ import {
 } from "../services/content-performance.js";
 import { getMetaGrowthOverview } from "../services/meta-growth.js";
 import { ingestMetaEngagement } from "../services/meta-engagement-crm.js";
+import { getMetaRemarketingOverview } from "../services/meta-remarketing.js";
 
 const router: IRouter = Router();
 
@@ -53,6 +54,17 @@ router.post("/tenants/:tenantId/meta-growth/engagements/ingest", async (req, res
   } catch (err) {
     logger.error({ err, tenantId, externalEventId: parsed.data.externalEventId }, "meta-growth: erro ao ingerir engajamento");
     return res.status(500).json({ error: "Não foi possível registrar o engajamento da Meta." });
+  }
+});
+
+router.get("/tenants/:tenantId/meta-growth/remarketing", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    return res.json(await getMetaRemarketingOverview(tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "meta-growth: erro ao carregar audiências de remarketing");
+    return res.status(500).json({ error: "Não foi possível carregar as audiências de remarketing." });
   }
 });
 
