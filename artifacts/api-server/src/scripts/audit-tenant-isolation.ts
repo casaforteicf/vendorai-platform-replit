@@ -71,6 +71,7 @@ for (const filePath of walk(root)) {
   lines.forEach((line, index) => {
     const previousLine = lines[index - 1] ?? "";
     const guardWindow = lines.slice(index + 1, index + 3).join(" ");
+    const routeWindow = lines.slice(index, index + 24).join(" ");
     // These marketing/site middlewares read the route tenant only to compare it
     // immediately against the authenticated tenant before touching tenant data.
     // Allow one intervening resource-id declaration (e.g. siteId) before the guard.
@@ -110,6 +111,29 @@ for (const filePath of walk(root)) {
       relativeFile === "routes/official_metrics.ts" &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(guardWindow);
+    // Meta Growth dashboard/custom-audience routes are authenticated and compare the
+    // route tenant against the signed-in tenant (or Super Admin) immediately after reading it.
+    const guardedMetaGrowthAuthenticatedTenant =
+      relativeFile === "routes/content_performance.ts" &&
+      previousLine.includes("/tenants/:tenantId/meta-growth/") &&
+      previousLine.includes("authenticate") &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!assertTenantAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(guardWindow);
+    // Meta engagement ingestion is a webhook rather than a user session. The tenant id
+    // is accepted only when the caller proves possession of that tenant's stored webhook secret.
+    const guardedMetaGrowthWebhookTenant =
+      relativeFile === "routes/content_performance.ts" &&
+      previousLine.includes('router.post("/tenants/:tenantId/meta-growth/engagements/ingest"') &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /agentConfigsTable\.tenantId,\s*tenantId/.test(routeWindow) &&
+      /config\?\.webhookSecret\s*!==\s*secret/.test(routeWindow);
+    // The identity-role PATCH only changes the current tenant's social connection after
+    // the same authenticated tenant/Super Admin guard used by the rest of this router.
+    const guardedSocialIdentityRoleTenant =
+      relativeFile === "routes/social-integrations.ts" &&
+      previousLine.includes('router.patch("/tenants/:tenantId/social-connections/:provider", authenticate') &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(guardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
@@ -118,7 +142,10 @@ for (const filePath of walk(root)) {
       guardedImplementationSuperAdminTenant ||
       guardedJarvisAgentTaskTenant ||
       guardedFinanceTenant ||
-      guardedOfficialMetricsTenant
+      guardedOfficialMetricsTenant ||
+      guardedMetaGrowthAuthenticatedTenant ||
+      guardedMetaGrowthWebhookTenant ||
+      guardedSocialIdentityRoleTenant
     ) {
       return;
     }
