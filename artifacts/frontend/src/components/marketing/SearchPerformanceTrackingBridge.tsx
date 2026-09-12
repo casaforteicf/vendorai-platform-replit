@@ -92,16 +92,27 @@ function delta(value: number | null, suffix = "%") {
   return `${sign}${value.toFixed(1).replace(".", ",")}${suffix}`;
 }
 
+function isTrackingRoute() {
+  if (window.location.pathname !== "/content") return false;
+  const params = new URLSearchParams(window.location.search);
+  const requestedTab = params.get("tab") ?? "visao-geral";
+  return requestedTab === "rastreamento" || (requestedTab === "campanhas" && params.get("view") === "visitantes");
+}
+
 function findTrackingHeader(): HTMLElement | null {
+  if (!isTrackingRoute()) return null;
   const headings = Array.from(document.querySelectorAll("h1"));
-  const h1 = headings.find((node) => node.textContent?.trim() === "Rastreamento") as HTMLElement | undefined;
-  return h1?.parentElement?.parentElement?.parentElement ?? null;
+  const h1 = headings.find((node) => node.textContent?.replace(/\s+/g, " ").trim() === "Marketing") as HTMLElement | undefined;
+  return h1?.parentElement ?? null;
 }
 
 function ensureMount(): HTMLElement | null {
-  const header = findTrackingHeader();
-  if (!header?.parentElement) return null;
   const existing = document.getElementById(MOUNT_ID);
+  const header = findTrackingHeader();
+  if (!header?.parentElement) {
+    existing?.remove();
+    return null;
+  }
   if (existing) return existing;
   const mount = document.createElement("div");
   mount.id = MOUNT_ID;
