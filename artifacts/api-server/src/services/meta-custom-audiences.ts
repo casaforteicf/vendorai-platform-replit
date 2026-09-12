@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, leadsTable } from "@workspace/db";
 import {
   getMetaAdsConnectionByTenantId,
@@ -56,7 +56,7 @@ function normalizeEmail(value: string | null): string | null {
 
 function normalizePhone(value: string | null): string | null {
   const digits = value?.replace(/\D/g, "") ?? "";
-  // Customer-list matching needs country code. Do not guess a country for short/local numbers.
+  // Customer-list matching precisa de DDI. Não inferimos país para número local.
   return digits.length >= 12 && digits.length <= 15 ? digits : null;
 }
 
@@ -148,19 +148,28 @@ async function loadEligibleIdentifiers(tenantId: string, key: MetaCustomAudience
     audienceMatched,
     emailHashes: [...emailHashes],
     phoneHashes: [...phoneHashes],
-    matchable: new Set([...emailHashes.map((v) => `e:${v}`), ...phoneHashes.map((v) => `p:${v}`)]).size,
+    matchableIdentifiers: emailHashes.size + phoneHashes.size,
   };
 }
 
-async function getStoredAudience(tenantId: string, key: MetaCustomAudienceKey) {
-  const result = await db.execute<{ external_audience_id: string | null; status: string; synced_count: number; eligible_count: number; last_error: string | null; last_synced_at: Date | null }>(
-    `SELECT external_audience_id, status, synced_count, eligible_count, last_error, last_synced_at
-       FROM meta_custom_audiences
-      WHERE tenant_id = $1 AND audience_key = $2
-      LIMIT 1`,
-    [tenantId, key],
-  );
-  return result.rows?.[0] ?? null;
+type StoredAudienceRow = {
+  external_audience_id: string | null;
+  status: string;
+  synced_count: number;
+  eligible_count: number;
+  last_error: string | null;
+  last_synced_at: Date | null;
+};
+
+async function getStoredAudience(tenantId: string, key: MetaCustomAudienceKey): Promise<StoredAudienceRow | null> {
+  const result = await db.execute(sql`
+    SELECT external_audience_id, status, synced_count, eligible_count, last_error, last_synced_at
+      FROM meta_custom_audiences
+     WHERE tenant_id = ${tenantId}
+       AND audience_key = ${key}
+     LIMIT 1
+  `);
+  return (result.rows?.[0] as StoredAudienceRow | undefined) ?? null;
 }
 
 async function persistAudience(input: {
@@ -174,32 +183,24 @@ async function persistAudience(input: {
   syncedAt?: Date | null;
 }) {
   const label = AUDIENCES[input.key].label;
-  await db.execute(
-    `INSERT INTO meta_custom_audiences (
-       tenant_id, audience_key, label, external_audience_id, status,
-       eligible_count, synced_count, last_error, last_synced_at, updated_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-     ON CONFLICT (tenant_id, audience_key) DO UPDATE SET
-       label = EXCLUDED.label,
-       external_audience_id = EXCLUDED.external_audience_id,
-       status = EXCLUDED.status,
-       eligible_count = EXCLUDED.eligible_count,
-       synced_count = EXCLUDED.synced_count,
-       last_error = EXCLUDED.last_error,
-       last_synced_at = EXCLUDED.last_synced_at,
-       updated_at = NOW()`,
-    [
-      input.tenantId,
-      input.key,
-      label,
-      input.externalAudienceId,
-      input.status,
-      input.eligibleCount,
-      input.syncedCount,
-      input.lastError,
-      input.syncedAt ?? null,
-    ],
-  );
+  await db.execute(sql`
+    INSERT INTO meta_custom_audiences (
+      tenant_id, audience_key, label, external_audience_id, status,
+      eligible_count, synced_count, last_error, last_synced_at, updated_at
+    ) VALUES (
+      ${input.tenantId}, ${input.key}, ${label}, ${input.externalAudienceId}, ${input.status},
+      ${input.eligibleCount}, ${input.syncedCount}, ${input.lastError}, ${input.syncedAt ?? null}, NOW()
+    )
+    ON CONFLICT (tenant_id, audience_key) DO UPDATE SET
+      label = EXCLUDED.label,
+      external_audience_id = EXCLUDED.external_audience_id,
+      status = EXCLUDED.status,
+      eligible_count = EXCLUDED.eligible_count,
+      synced_count = EXCLUDED.synced_count,
+      last_error = EXCLUDED.last_error,
+      last_synced_at = EXCLUDED.last_synced_at,
+      updated_at = NOW()
+  `);
 }
 
 async function ensureExternalAudience(tenantId: string, key: MetaCustomAudienceKey) {
@@ -221,6 +222,7 @@ async function ensureExternalAudience(tenantId: string, key: MetaCustomAudienceK
 
 async function uploadHashes(audienceId: string, accessToken: string, schema: "EMAIL" | "PHONE", hashes: string[]) {
   const chunkSize = 1000;
+  const sessionId = Date.now();
   let uploaded = 0;
   for (let start = 0; start < hashes.length; start += chunkSize) {
     const chunk = hashes.slice(start, start + chunkSize);
@@ -228,7 +230,7 @@ async function uploadHashes(audienceId: string, accessToken: string, schema: "EM
     await metaPost(`${audienceId}/users`, accessToken, {
       payload: JSON.stringify({ schema: [schema], data: chunk.map((value) => [value]) }),
       session: JSON.stringify({
-        session_id: Date.now(),
+        session_id: sessionId,
         batch_seq: batchSeq,
         last_batch: start + chunkSize >= hashes.length,
         estimated_num_total: hashes.length,
@@ -239,26 +241,27 @@ async function uploadHashes(audienceId: string, accessToken: string, schema: "EM
   return uploaded;
 }
 
+type AudienceListRow = {
+  audience_key: MetaCustomAudienceKey;
+  label: string;
+  external_audience_id: string | null;
+  status: string;
+  eligible_count: number;
+  synced_count: number;
+  last_error: string | null;
+  last_synced_at: Date | null;
+};
+
 export async function listMetaCustomAudiences(tenantId: string) {
-  const rows = await db.execute<{
-    audience_key: MetaCustomAudienceKey;
-    label: string;
-    external_audience_id: string | null;
-    status: string;
-    eligible_count: number;
-    synced_count: number;
-    last_error: string | null;
-    last_synced_at: Date | null;
-  }>(
-    `SELECT audience_key, label, external_audience_id, status, eligible_count, synced_count, last_error, last_synced_at
-       FROM meta_custom_audiences
-      WHERE tenant_id = $1
-      ORDER BY created_at ASC`,
-    [tenantId],
-  );
+  const result = await db.execute(sql`
+    SELECT audience_key, label, external_audience_id, status, eligible_count, synced_count, last_error, last_synced_at
+      FROM meta_custom_audiences
+     WHERE tenant_id = ${tenantId}
+     ORDER BY created_at ASC
+  `);
 
   return {
-    audiences: rows.rows ?? [],
+    audiences: (result.rows ?? []) as AudienceListRow[],
     supportedKeys: Object.entries(AUDIENCES).map(([key, value]) => ({ key, label: value.label })),
   };
 }
@@ -267,7 +270,7 @@ export async function syncMetaCustomAudience(tenantId: string, key: MetaCustomAu
   if (!(key in AUDIENCES)) throw new Error("Audiência Meta não suportada.");
 
   const identifiers = await loadEligibleIdentifiers(tenantId, key);
-  if (identifiers.matchable === 0) {
+  if (identifiers.matchableIdentifiers === 0) {
     await persistAudience({
       tenantId,
       key,
