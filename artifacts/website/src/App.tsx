@@ -32,6 +32,7 @@ const BlogPost = lazy(() => import("@/pages/blog/BlogPostRoute"));
 const UnifiedLpRouter = lazy(() => import("@/pages/lp/UnifiedLpRouter"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
 const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
+const PromptHubConceptSection = lazy(() => import("@/components/PromptHubConceptSection"));
 const DistributedProductScreens = lazy(() => import("@/components/DistributedProductScreens"));
 const AgentSimulatorWidget = lazy(() => import("@/components/AgentSimulatorWidget").then((module) => ({ default: module.AgentSimulatorWidget })));
 const RouteToasterComponent = lazy(() => import("@/components/ui/toaster").then((module) => ({ default: module.Toaster })));
@@ -135,6 +136,9 @@ function HomeWithGrowthRevenueHero() {
   return (
     <>
       <GrowthRevenueHero />
+      <ViewportDeferred minHeight={980} rootMargin="1200px 0px">
+        <Suspense fallback={null}><PromptHubConceptSection /></Suspense>
+      </ViewportDeferred>
       <ViewportDeferred minHeight={900} rootMargin="1100px 0px">
         <Suspense fallback={null}><RevenueMagicCalculator /></Suspense>
       </ViewportDeferred>
