@@ -19,6 +19,7 @@ const SeoIntentPage = lazy(() => import("@/pages/SeoIntentPage"));
 const SeoIntentHub = lazy(() => import("@/pages/SeoIntentHub"));
 const Precos = lazy(() => import("@/pages/Precos"));
 const Sobre = lazy(() => import("@/pages/Sobre"));
+const Imprensa = lazy(() => import("@/pages/Imprensa"));
 const Contato = lazy(() => import("@/pages/Contato"));
 const Demo = lazy(() => import("@/pages/Demo"));
 const CadastroPraca = lazy(() => import("@/pages/CadastroPraca"));
@@ -181,6 +182,7 @@ function Router() {
                 <Route path="/agentes/:slug" component={AgenteDetalhe} />
                 <Route path="/precos" component={Precos} />
                 <Route path="/sobre" component={Sobre} />
+                <Route path="/imprensa" component={Imprensa} />
                 <Route path="/contato" component={Contato} />
                 <Route path="/demo" component={Demo} />
                 <Route path="/baixar-app" component={DownloadApp} />
