@@ -36,6 +36,22 @@ const SCOPES = [
   "https://www.googleapis.com/auth/webmasters",
 ].join(" ");
 
+function normalizeMetaVerificationToken(token: string | null | undefined): string | null {
+  const trimmed = token?.trim();
+  if (!trimmed) return null;
+
+  // A Site Verification API pode devolver o método META como a tag HTML
+  // completa. O middleware público já monta a tag, então persistimos apenas
+  // o valor do atributo content. Também corrige conexões antigas.
+  if (/^<meta\b/i.test(trimmed) && /google-site-verification/i.test(trimmed)) {
+    const contentMatch = trimmed.match(/\bcontent\s*=\s*(["'])(.*?)\1/i);
+    const content = contentMatch?.[2]?.trim();
+    return content || null;
+  }
+
+  return trimmed;
+}
+
 export function buildSearchConsoleOAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: CLIENT_ID ?? "",
@@ -140,7 +156,7 @@ async function submitSitemap(accessToken: string, siteUrl: string, tenantId: str
   return true;
 }
 
-async function requestVerificationMetaToken(accessToken: string, siteUrl: string, tenantId: string): Promise<string | null> {
+async function requestVerificationMetaToken(accessToken: string, siteUrl: string, tenantId: string): Promise<string> {
   const normalizedSiteUrl = normalizePublicUrl(siteUrl);
   const tokenRes = await fetch(`${SITE_VERIFICATION_API}/token`, {
     method: "POST",
@@ -156,7 +172,12 @@ async function requestVerificationMetaToken(accessToken: string, siteUrl: string
     throw new Error(`Site verification token request failed: ${tokenRes.status}`);
   }
   const tokenData = await tokenRes.json() as { token?: string };
-  return tokenData.token ?? null;
+  const verificationMetaToken = normalizeMetaVerificationToken(tokenData.token);
+  if (!verificationMetaToken) {
+    logger.error({ tenantId, siteUrl: normalizedSiteUrl }, "Google retornou token META vazio ou inválido para Search Console");
+    throw new Error("Site verification token inválido");
+  }
+  return verificationMetaToken;
 }
 
 export async function exchangeCodeForTokens(code: string): Promise<GoogleTokenResponse> {
@@ -361,7 +382,7 @@ export async function verifyAndActivateSearchConsole(tenantId: string): Promise<
     return { verified: true };
   }
 
-  if (!conn.verificationMetaToken || conn.siteUrl !== canonicalSiteUrl) {
+  if (!conn.verificationMetaToken) {
     const verificationMetaToken = await requestVerificationMetaToken(conn.accessToken!, canonicalSiteUrl, tenantId);
     await db
       .update(searchConsoleConnectionsTable)
@@ -462,5 +483,5 @@ export async function disconnectSearchConsole(tenantId: string): Promise<void> {
 export async function getPendingVerificationMetaToken(tenantId: string): Promise<string | null> {
   const conn = await getSearchConsoleConnectionByTenantId(tenantId);
   if (!conn || conn.verified || conn.status === "disconnected") return null;
-  return conn.verificationMetaToken ?? null;
+  return normalizeMetaVerificationToken(conn.verificationMetaToken);
 }
