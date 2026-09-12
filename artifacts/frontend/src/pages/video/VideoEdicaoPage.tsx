@@ -1,7 +1,7 @@
 import { ShieldCheck } from "lucide-react";
 import VideoAudioStudioPanel from "@/components/video/VideoAudioStudioPanel";
 import CreativeFontToolbar from "@/components/video/CreativeFontToolbar";
-import ProfessionalGraphicCanvasEditor from "@/components/video/ProfessionalGraphicCanvasEditor";
+import ProfessionalGraphicCanvasEditorV2 from "@/components/video/ProfessionalGraphicCanvasEditorV2";
 import VideoTimelineEditor from "@/components/video/VideoTimelineEditor";
 
 export default function VideoEdicaoPage() {
@@ -16,7 +16,7 @@ export default function VideoEdicaoPage() {
           </div>
         </div>
       </section>
-      <ProfessionalGraphicCanvasEditor />
+      <ProfessionalGraphicCanvasEditorV2 />
       <VideoAudioStudioPanel />
       <CreativeFontToolbar />
       <div data-video-font-scope>
