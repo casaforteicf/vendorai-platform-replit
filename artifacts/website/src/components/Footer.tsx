@@ -31,6 +31,7 @@ const PT = {
   terms: "Termos de Uso",
   rights: "Todos os direitos reservados.",
   termsShort: "Termos de uso",
+  instagram: "Instagram oficial",
 } as const;
 
 const ES = {
@@ -63,6 +64,7 @@ const ES = {
   terms: "Términos de uso",
   rights: "Todos los derechos reservados.",
   termsShort: "Términos de uso",
+  instagram: "Instagram oficial",
 } as const;
 
 const linkClass = "transition-colors hover:text-orange-600";
@@ -128,6 +130,7 @@ export default function Footer() {
             <h4 className="mb-4 font-semibold text-slate-950">{copy.contact}</h4>
             <ul className="space-y-2 text-sm text-slate-600">
               <li><a href="mailto:vendorai@appvendorai.com" className={linkClass}>vendorai@appvendorai.com</a></li>
+              <li><a href="https://www.instagram.com/appvendor.ai/" rel="me" className={linkClass}>{copy.instagram}: @appvendor.ai</a></li>
               <li>Florianópolis, SC — Brasil</li>
             </ul>
           </div>
