@@ -132,8 +132,18 @@ async function requestSitemapSync(tenantId: string) {
     method: "POST",
     headers: authHeaders(),
   });
-  if (!response.ok) throw new Error("Não foi possível verificar a propriedade e enviar o sitemap ao Google agora.");
-  const result = await response.json() as { verified?: boolean };
+  const result = await response.json().catch(() => ({})) as { verified?: boolean; error?: string; message?: string };
+
+  if (!response.ok) {
+    if (result.error === "SEARCH_CONSOLE_API_DISABLED") {
+      throw new Error("A API do Google Search Console está desativada no projeto Google Cloud conectado. Ative a API e tente novamente.");
+    }
+    if (response.status >= 500) {
+      throw new Error("O Google Search Console não concluiu a validação. Se o erro persistir, confirme se a Search Console API está ativada no projeto Google Cloud conectado e tente novamente.");
+    }
+    throw new Error(result.message || "Não foi possível verificar a propriedade e enviar o sitemap ao Google agora.");
+  }
+
   if (!result.verified) throw new Error("O Google ainda não confirmou a propriedade. Tente novamente em alguns instantes.");
 }
 
