@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1329",
+    "titulo": "Site público: adicionar conceito visual do Prompt Hub",
+    "descricao": "adiciona na home uma seção dedicada ao conceito do **Prompt Hub visual** explica o fluxo **Biblioteca de Mídias → controles simples → prompt técnico automático → geração → reutilização** mostra visualmente preservação de identidade, luz principal, contraste, rim light e fundo apresenta os destinos integrados: **site, campanhas e vídeo**",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-12T01:27:09.000Z",
+    "pullRequest": 1329
+  },
+  {
     "id": "pr-1276",
     "titulo": "Corrigir de fato a simplificação de Configurações",
     "descricao": "mantém **Saúde das integrações**; mantém a aba **Empresa** focada em dados da empresa e conhecimento do negócio; substitui a lista longa de Produtos e Serviços por um **resumo compacto do Catálogo** com contagem e botão **Abrir Catálogo**; recolhe por padrão os blocos menos usados que estavam alongando a aba Empresa;",
