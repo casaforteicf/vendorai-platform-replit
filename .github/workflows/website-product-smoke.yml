@@ -75,6 +75,9 @@ jobs:
           check_page "/produtos/crm" "https://appvendorai.com/produtos/crm"
           grep -q 'Como se encaixa na operação' /tmp/page.html
           check_page "/produtos/revenue-scout" "https://appvendorai.com/produtos/revenue-scout"
+          check_page "/imprensa" "https://appvendorai.com/imprensa"
+          grep -q 'Informações oficiais para citar o VendorAI' /tmp/page.html
+          grep -q '59.623.589/0001-27' /tmp/page.html
           check_page "/lp/moda" "https://appvendorai.com/lp/moda"
           grep -q '"@type":"FAQPage"' /tmp/page.html
           grep -q 'Operação comercial conectada' /tmp/page.html
@@ -129,6 +132,7 @@ jobs:
             cat "/tmp/sitemap-${child}.xml" >> /tmp/sitemap-all.xml
           done
 
+          grep -q '<loc>https://appvendorai.com/imprensa</loc>' /tmp/sitemap-all.xml
           grep -q '<loc>https://appvendorai.com/produtos/crm</loc>' /tmp/sitemap-all.xml
           grep -q '<loc>https://appvendorai.com/produtos/jarvis</loc>' /tmp/sitemap-all.xml
           grep -q '<loc>https://appvendorai.com/produtos/revenue-scout</loc>' /tmp/sitemap-all.xml
@@ -150,7 +154,7 @@ jobs:
           grep -q 'hreflang="x-default"' /tmp/sitemap-all.xml
           count=$(grep -o '<url>' /tmp/sitemap-all.xml | wc -l | tr -d ' ')
           echo "Sitemap URLs across children: $count"
-          test "$count" -eq 142
+          test "$count" -eq 143
 
       - name: Validate noindex and true 404 behavior
         shell: bash
