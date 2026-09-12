@@ -87,12 +87,23 @@ function gateForAsset(asset: {
   const blockers = asStringArray(gate.blockers);
   const scoreRaw = gate.score ?? metadata.qualityScore;
   const score = Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : null;
+  const minimumRaw = gate.minimumScore;
+  const minimumScore = Number.isFinite(Number(minimumRaw)) ? Number(minimumRaw) : null;
 
   let publishReady: boolean | null = null;
   if (metadata.publishReady === true || metadata.publishReady === false) {
     publishReady = metadata.publishReady;
   } else if (gate.publishReady === true || gate.publishReady === false) {
     publishReady = gate.publishReady;
+  } else if (Object.keys(gate).length > 0) {
+    // Protege registros parciais/legados do Quality Director: se o relatório já
+    // existe, blockers ou score abaixo do mínimo continuam reprovando mesmo que
+    // o booleano publishReady não tenha sido persistido por alguma falha anterior.
+    if (blockers.length > 0 || (score !== null && minimumScore !== null && score < minimumScore)) {
+      publishReady = false;
+    } else if (score !== null && minimumScore !== null && score >= minimumScore) {
+      publishReady = true;
+    }
   }
 
   return {
