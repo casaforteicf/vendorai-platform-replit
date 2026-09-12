@@ -147,6 +147,12 @@ function aspectRatioFor(channel: Channel): "portrait" | "landscape" {
   return channel === "YouTube" || channel === "Site / Landing Page" ? "landscape" : "portrait";
 }
 
+function generatorTypeFor(channel: Channel): "reels" | "youtube" | "tiktok" {
+  if (channel === "YouTube") return "youtube";
+  if (channel === "TikTok") return "tiktok";
+  return "reels";
+}
+
 function directorPrompt(input: {
   profile: CreationProfile;
   objective: string;
@@ -379,9 +385,10 @@ export default function ProfessionalCreationModelPanel() {
       } catch {}
     };
     void load();
+    if (job?.status === "done" || job?.status === "error") return () => { cancelled = true; };
     const timer = window.setInterval(() => { void load(); }, 3000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [tenantId, projectId, jobId, toast]);
+  }, [tenantId, projectId, jobId, job?.status, toast]);
 
   useEffect(() => {
     if (!resultUrl) {
@@ -412,7 +419,7 @@ export default function ProfessionalCreationModelPanel() {
       const data = await apiJson<Record<string, unknown>>(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
         body: JSON.stringify({
-          type: channel === "YouTube" ? "video" : "reels",
+          type: generatorTypeFor(channel),
           theme: direction.slice(0, 8000),
           variations: 1,
           imageCount: 1,
@@ -505,14 +512,14 @@ export default function ProfessionalCreationModelPanel() {
               preset: profile.preset,
               intensity: profile.intensity,
               transition: "smooth",
-              motion: profile.id === "performance" ? "dynamic" : "drift",
+              motion: profile.id === "performance" ? "punch" : "drift",
               color: "natural",
               grain: false,
               vignette: false,
               sharpen: true,
               beatSync: Boolean(musicAssetId),
               bpm: 112,
-              sfx: effectAssetId ? "selected" : "none",
+              sfx: "none",
             },
             professionalCreation: {
               version: 2,
