@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { pool } from "@workspace/db";
 import { createMediaJob } from "./media-jobs.js";
 import { createProcessingMediaProject } from "./media-library.js";
 import { startVendorAiPhotoVideo } from "./vendorai-photo-video.js";
@@ -105,11 +106,117 @@ function mediaBatchItems(value: unknown): MediaBatchItem[] {
   }));
 }
 function optionalString(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
+function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function normalize(value: unknown): string { return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+function tokens(value: unknown): string[] {
+  const stop = new Set(["para", "como", "com", "uma", "das", "dos", "por", "que", "seu", "sua", "de", "do", "da", "em", "no", "na", "mais", "video", "cena", "campanha"]);
+  return Array.from(new Set(normalize(value).replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word.length >= 4 && !stop.has(word))));
+}
+
+type ProfessionalLibraryAsset = {
+  id: string;
+  type: "image" | "video";
+  role: string;
+  source: string;
+  originalFilename: string;
+  metadata: Record<string, unknown>;
+  createdAt: string | Date | null;
+};
+
+async function realMediaPlanInputs(tenantId: string, context: Record<string, unknown>): Promise<Array<Record<string, unknown>>> {
+  const requested = Array.isArray(context["mediaInputs"])
+    ? (context["mediaInputs"] as unknown[]).map(record).filter((item) => Boolean(String(item["assetId"] ?? "").trim()))
+    : [];
+  const requestedIds = new Set(requested.map((item) => String(item["assetId"] ?? "").trim()));
+  const result = await pool.query(
+    `SELECT id, type, role, source, original_filename, metadata, created_at
+       FROM media_assets
+      WHERE tenant_id = $1
+        AND type IN ('image', 'video')
+        AND source <> 'generated'
+      ORDER BY created_at DESC
+      LIMIT 250`,
+    [tenantId],
+  );
+  const assets: ProfessionalLibraryAsset[] = result.rows.map((row) => ({
+    id: String(row.id),
+    type: row.type === "video" ? "video" : "image",
+    role: String(row.role ?? "source"),
+    source: String(row.source ?? "upload"),
+    originalFilename: String(row.original_filename ?? ""),
+    metadata: record(row.metadata),
+    createdAt: row.created_at ?? null,
+  }));
+  if (!assets.length) return [];
+
+  const search = tokens([
+    context["prompt"], context["campaignName"], context["channel"], context["contentType"],
+  ].filter(Boolean).join(" "));
+  const ranked = assets.map((asset, index) => {
+    let metadataText = "";
+    try { metadataText = JSON.stringify(asset.metadata); } catch {}
+    const haystack = normalize(`${asset.originalFilename} ${asset.role} ${metadataText}`);
+    const overlap = search.reduce((score, token) => score + (haystack.includes(token) ? 4 : 0), 0);
+    const requestedBonus = requestedIds.has(asset.id) ? 100 : 0;
+    const ownedBonus = asset.source === "upload" || asset.source === "imported" ? 15 : 0;
+    const brollBonus = asset.role === "broll" ? 8 : 0;
+    return { asset, index, score: overlap + requestedBonus + ownedBonus + brollBonus };
+  }).sort((a, b) => b.score !== a.score ? b.score - a.score : a.index - b.index);
+
+  const selectedAssets = ranked
+    .slice(0, Math.min(8, Math.max(3, requestedIds.size || 6)))
+    .map((item) => item.asset);
+  const selectedCount = selectedAssets.length;
+  return selectedAssets.map((asset, index) => ({
+    assetId: asset.id,
+    type: asset.type,
+    role: index === 0 ? "opening" : index === selectedCount - 1 ? "closing" : asset.role === "product" ? "product" : "broll",
+    importance: "preferred",
+    order: index,
+    note: `Mídia real da Biblioteca: ${asset.originalFilename || asset.id}`,
+  }));
+}
+
+async function prepareProfessionalMediaPlanVideo(input: {
+  tenantId: string;
+  operation: VendorAiMediaCapability;
+  context: Record<string, unknown>;
+}): Promise<Record<string, unknown>> {
+  if (input.operation !== "video_generate") return input.context;
+  const source = String(input.context["source"] ?? "").trim().toLowerCase();
+  if (source !== "media-plan") return input.context;
+
+  const mediaInputs = await realMediaPlanInputs(input.tenantId, input.context);
+  if (!mediaInputs.length) {
+    throw new Error("VIDEO_PROFESSIONAL_MEDIA_REQUIRED: o roteiro está pronto, mas o tenant ainda não possui fotos/vídeos reais suficientes na Biblioteca. Adicione mídias ou produza com um Dublê validado no Vídeo Studio Profissional.");
+  }
+  const currentEffects = record(input.context["effects"]);
+  return {
+    ...input.context,
+    generationMode: "media_only",
+    mediaInputs,
+    professionalProduction: true,
+    professionalPolicy: "real_media_first",
+    effects: {
+      ...currentEffects,
+      preset: "clean",
+      intensity: "soft",
+      transition: "smooth",
+      motion: "drift",
+      color: "natural",
+      grain: false,
+      vignette: false,
+      sharpen: true,
+      sfx: "none",
+    },
+  };
+}
 
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
 }) {
-  const context = input.context ?? {};
+  const initialContext = input.context ?? {};
+  const context = await prepareProfessionalMediaPlanVideo({ tenantId: input.tenantId, operation: input.operation, context: initialContext });
 
   if (input.operation === "photo_video") {
     const rawFormat = String(context["format"] ?? "16:9");
