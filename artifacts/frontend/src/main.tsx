@@ -24,6 +24,7 @@ import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/
 import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanAutoProductionBridge";
 import { MediaPlanFailedRetryBridge } from "./components/marketing/MediaPlanFailedRetryBridge";
 import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
+import { MediaPlanLandingPageStrategy } from "./components/marketing/MediaPlanLandingPageStrategy";
 import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaPlanPreparationActionsBridge";
 import { MediaPlanLifecycleSummary } from "./components/marketing/MediaPlanLifecycleSummary";
 import { CheckoutConversionFunnel } from "./components/marketing/CheckoutConversionFunnel";
@@ -81,9 +82,6 @@ installVisitorTelemetry();
 
 document.documentElement.dataset.vendoraiBuild = "asset-versioning-20260910";
 
-// O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
-// obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
-// que o Clear-Site-Data de recuperação não seja reenviado em toda navegação.
 const recoveryUrl = new URL(window.location.href);
 if (recoveryUrl.searchParams.has("__vendorai_refresh")) {
   recoveryUrl.searchParams.delete("__vendorai_refresh");
@@ -107,7 +105,6 @@ if (Object.keys(onboardingContext).length > 0) {
       capturedAt: new Date().toISOString(),
     }));
   } catch {
-    // O handoff de autenticação continua mesmo se o storage estiver indisponível.
   }
 }
 
@@ -180,6 +177,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaPlanProjectKindCompatibilityBridge />
           <MediaPlanAutoProductionBridge />
           <MediaPlanFailedRetryBridge />
+          <MediaPlanLandingPageStrategy />
           <MediaPlanPublicationModeControl />
           <MediaPlanPreparationActionsBridge />
           <MediaPlanLifecycleSummary />
