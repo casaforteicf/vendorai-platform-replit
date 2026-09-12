@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Type } from "lucide-react";
-import { VENDORAI_FONT_CATALOG } from "@workspace/vendor-brain";
+import { getPublishedVendorFonts } from "@workspace/vendor-brain";
 
 const STORAGE_KEY = "vendorai:creative-font-family";
 const FALLBACK = "Inter";
-const PUBLISHED_FONT_IDS = new Set([
-  "rigter",
-  "malibu-serif",
-  "type-ultimate-swashes",
-  "adobo",
-]);
 
 declare global {
   interface Window {
@@ -21,7 +15,7 @@ function fontAssetName(sourceFile: string) {
   return `${sourceFile.replace(/\.(otf|ttf)$/i, "")}.woff2`;
 }
 
-const PUBLISHED_FONTS = VENDORAI_FONT_CATALOG.filter((font) => PUBLISHED_FONT_IDS.has(font.id));
+const PUBLISHED_FONTS = getPublishedVendorFonts();
 
 function installFontFaces() {
   const id = "vendorai-creative-font-faces";
@@ -30,7 +24,7 @@ function installFontFaces() {
   style.id = id;
   style.textContent = PUBLISHED_FONTS.map((font) => {
     const url = `/fonts/vendorai/${encodeURIComponent(fontAssetName(font.sourceFile))}`;
-    return `@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(url)}) format('woff2');font-style:normal;font-weight:100 900;font-display:swap;}`;
+    return `@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(url)}) format('woff2');font-style:normal;font-weight:normal;font-display:swap;}`;
   }).join("\n");
   document.head.appendChild(style);
 }
@@ -75,7 +69,7 @@ export default function CreativeFontToolbar() {
     window.__vendorCreativeFontFamily = family;
     localStorage.setItem(STORAGE_KEY, family);
     document.documentElement.style.setProperty("--vendor-creative-font", `"${family}", Inter, Arial, sans-serif`);
-    document.fonts?.load?.(`600 24px "${family}"`).catch(() => undefined);
+    document.fonts?.load?.(`24px "${family}"`).catch(() => undefined);
   }, [family]);
 
   return (
