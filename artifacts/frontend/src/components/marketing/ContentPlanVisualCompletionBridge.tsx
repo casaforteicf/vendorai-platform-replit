@@ -114,6 +114,13 @@ function patchGenerationPayload(payload: ContentGeneration, imageUrls: string[])
   return { ...payload, result: { ...(payload.result ?? {}), variations } };
 }
 
+function refreshProductionView() {
+  const refreshButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => (button.textContent ?? "").replace(/\s+/g, " ").trim() === "Atualizar",
+  );
+  refreshButton?.click();
+}
+
 export function ContentPlanVisualCompletionBridge() {
   const tenantId = currentTenantId();
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -122,6 +129,7 @@ export function ContentPlanVisualCompletionBridge() {
   const [incomplete, setIncomplete] = useState<CalendarItem[]>([]);
   const [repairing, setRepairing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+  const [lastError, setLastError] = useState("");
   const nativeFetchRef = useRef<typeof window.fetch | null>(null);
 
   const onPlanContent = useMemo(() => {
@@ -269,43 +277,64 @@ export function ContentPlanVisualCompletionBridge() {
     if (!tenantId || incomplete.length === 0 || repairing) return;
     const totalImages = incomplete.reduce((sum, item) => sum + desiredImageCount(item.tipo), 0);
     const confirmed = window.confirm(
-      `Completar ${incomplete.length} peça(s) sem criativo? A IA vai gerar aproximadamente ${totalImages} imagem(ns), reaproveitando os textos já prontos.`,
+      `Gerar imagens para ${incomplete.length} peça(s) sem criativo? A IA vai gerar aproximadamente ${totalImages} imagem(ns), reaproveitando os textos já prontos.`,
     );
     if (!confirmed) return;
 
+    setLastError("");
     setRepairing(true);
     setProgress({ done: 0, total: incomplete.length, failed: 0 });
     let failed = 0;
+    let firstError = "";
     const fetcher = nativeFetchRef.current ?? window.fetch.bind(window);
+
     for (let index = 0; index < incomplete.length; index += 1) {
       const item = incomplete[index]!;
       try {
         await regenerateVisual(fetcher, tenantId, item.contentGenerationId!, desiredImageCount(item.tipo));
-      } catch {
+      } catch (error) {
         failed += 1;
+        if (!firstError) {
+          firstError = error instanceof Error ? error.message : "Falha desconhecida ao gerar imagem.";
+        }
       }
       setProgress({ done: index + 1, total: incomplete.length, failed });
     }
-    setRepairing(false);
+
     await loadIncomplete();
-    window.setTimeout(() => window.location.reload(), 350);
+    refreshProductionView();
+    setRepairing(false);
+
+    if (failed > 0) {
+      setLastError(
+        `${failed} de ${incomplete.length} peça(s) não receberam imagem. ${firstError} Você pode tentar novamente; somente as imagens ainda faltantes serão processadas.`,
+      );
+    }
   }, [incomplete, loadIncomplete, repairing, tenantId]);
 
   if (!host || incomplete.length === 0) return null;
 
   return createPortal(
-    <button
-      type="button"
-      onClick={() => void repairAll()}
-      disabled={repairing}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-      title="Gera apenas as imagens que faltam, preservando os textos já criados"
-    >
-      {repairing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-      {repairing
-        ? `Completando ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} falha(s)` : ""}`
-        : `Completar criativos (${incomplete.length})`}
-    </button>,
+    <div className="flex flex-col items-start gap-1.5">
+      <button
+        type="button"
+        data-vendorai-visual-completion-action="true"
+        onClick={() => void repairAll()}
+        disabled={repairing}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+        title="Gera apenas as imagens que faltam, preservando os textos já criados"
+      >
+        {repairing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+        {repairing
+          ? `Gerando ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} falha(s)` : ""}`
+          : `Gerar imagens faltantes (${incomplete.length})`}
+      </button>
+      {lastError ? (
+        <p className="max-w-xl text-xs font-medium text-destructive" role="alert">
+          {lastError}
+        </p>
+      ) : null}
+    </div>,
     host,
   );
 }
