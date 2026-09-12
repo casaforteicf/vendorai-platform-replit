@@ -21,9 +21,9 @@ export function detectAiAssistant(input: AiTrafficSourceInput): string | null {
 export function normalizePageKey(value: string | null | undefined): string {
   if (!value) return "/";
   try {
-    const url = new URL(value);
-    const path = `${url.pathname}${url.search}` || "/";
-    return path.length > 1 ? path.replace(/\/$/, "") : path;
+    const url = new URL(value, "https://vendorai.local");
+    const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/$/, "") : url.pathname;
+    return `${pathname}${url.search}` || "/";
   } catch {
     const trimmed = value.trim();
     if (!trimmed) return "/";
