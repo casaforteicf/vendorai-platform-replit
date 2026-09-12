@@ -89,6 +89,15 @@ export { resolveBrandProfileFromBusinessSource, buildCreativeExecutionPlan, fina
 export type { BusinessBrandSource, CreativeExecutionPlan, DesignQaInput } from './creative-runtime'
 export { buildWebCreativeRuntime, getWebCreativeGuidance } from './web-runtime'
 export type { WebSurface, WebCreativeGuidance, WebCreativeRuntime } from './web-runtime'
+export {
+  VENDORAI_FONT_CATALOG,
+  VENDORAI_PUBLISHED_FONT_IDS,
+  getPublishedVendorFonts,
+  getFontsForChannel,
+  selectFontPair,
+  isPublishedVendorFont,
+} from './font-catalog'
+export type { FontCatalogItem, FontCategory, CreativeChannel } from './font-catalog'
 
 // Intelligence / Observer / Business Agent
 export { routeSignal, routeSignals } from './intelligence-routing'
