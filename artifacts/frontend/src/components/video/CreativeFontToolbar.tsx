@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Type } from "lucide-react";
-import { VENDORAI_FONT_CATALOG } from "@workspace/vendor-brain";
+import { VENDORAI_FONT_CATALOG } from "@workspace/vendor-brain/font-catalog";
 
 const STORAGE_KEY = "vendorai:creative-font-family";
 const FALLBACK = "Inter";
