@@ -126,14 +126,14 @@ for (const filePath of walk(root)) {
       previousLine.includes('router.post("/tenants/:tenantId/meta-growth/engagements/ingest"') &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /agentConfigsTable\.tenantId,\s*tenantId/.test(routeWindow) &&
-      /config\?\.webhookSecret\s*!==\s*secret/.test(routeWindow);
+      /!config\?\.webhookSecret\s*\|\|\s*config\.webhookSecret\s*!==\s*secret/.test(routeWindow);
     // The identity-role PATCH only changes the current tenant's social connection after
     // the same authenticated tenant/Super Admin guard used by the rest of this router.
     const guardedSocialIdentityRoleTenant =
       relativeFile === "routes/social-integrations.ts" &&
       previousLine.includes('router.patch("/tenants/:tenantId/social-connections/:provider", authenticate') &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
-      /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(guardWindow);
+      /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(routeWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
