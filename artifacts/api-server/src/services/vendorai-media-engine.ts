@@ -106,10 +106,31 @@ function mediaBatchItems(value: unknown): MediaBatchItem[] {
 }
 function optionalString(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
 
+function assertProfessionalMediaPlanVideo(input: {
+  operation: VendorAiMediaCapability;
+  context: Record<string, unknown>;
+}): void {
+  if (input.operation !== "video_generate") return;
+  const source = String(input.context["source"] ?? "").trim().toLowerCase();
+  if (source !== "media-plan") return;
+  const mode = String(input.context["generationMode"] ?? "ai_only").trim().toLowerCase();
+  const mediaInputs = Array.isArray(input.context["mediaInputs"]) ? input.context["mediaInputs"] as unknown[] : [];
+  const hasRealVisualInput = mediaInputs.some((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const item = raw as Record<string, unknown>;
+    const type = String(item["type"] ?? "").toLowerCase();
+    return Boolean(String(item["assetId"] ?? "").trim()) && (type === "image" || type === "video");
+  });
+  if (mode === "ai_only" || !hasRealVisualInput) {
+    throw new Error("VIDEO_PROFESSIONAL_MEDIA_REQUIRED: vídeos do Plano de Mídia precisam de roteiro aprovado e mídia real da Biblioteca; geração visual aleatória por IA não é permitida como material final");
+  }
+}
+
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
 }) {
   const context = input.context ?? {};
+  assertProfessionalMediaPlanVideo({ operation: input.operation, context });
 
   if (input.operation === "photo_video") {
     const rawFormat = String(context["format"] ?? "16:9");
