@@ -124,8 +124,8 @@ export function suggestAssetForScene(scene: ProfessionalScene, assets: Professio
       try { metadata = JSON.stringify(asset.metadata ?? {}); } catch {}
       const haystack = normalized(`${assetLabel(asset)} ${asset.role ?? ""} ${metadata}`);
       const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 2 : 0), 0)
-        + (asset.source === "upload" ? 1 : 0)
-        + (asset.source === "generated" ? -1 : 0);
+        + (asset.source === "upload" || asset.source === "imported" ? 2 : 0)
+        + (asset.source === "generated" ? -4 : 0);
       return { asset, score };
     })
     .sort((a, b) => b.score - a.score);
@@ -141,7 +141,11 @@ export function fidelityFromIdentityPayload(data: unknown): FidelitySnapshot {
   const components = fidelity.components && typeof fidelity.components === "object" ? fidelity.components as Record<string, unknown> : {};
   const deep = quality.deepFidelity && typeof quality.deepFidelity === "object" ? quality.deepFidelity as Record<string, unknown> : {};
   const deepScores = deep.scores && typeof deep.scores === "object" ? deep.scores as Record<string, unknown> : {};
-  const numberOrNull = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : null;
+  const numberOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
   const confidence = String(fidelity.confidence ?? quality.fidelityConfidence ?? "insufficient") as FidelitySnapshot["confidence"];
   return {
     score: numberOrNull(fidelity.score ?? quality.fidelityScore),
@@ -168,7 +172,15 @@ export function professionalGate(input: {
   const warnings: string[] = [];
   if (!input.scriptApproved) blockers.push("Roteiro ainda não foi aprovado");
   if (!input.scenes.length) blockers.push("Storyboard ainda não foi criado");
-  if (input.selectedVisualCount === 0) blockers.push("Nenhuma mídia visual real foi selecionada");
+
+  if (input.mode === "library_voiceover") {
+    if (input.scenes.length > 0 && input.selectedVisualCount < input.scenes.length) {
+      blockers.push(`Selecione mídia real para todas as cenas (${input.selectedVisualCount}/${input.scenes.length})`);
+    }
+  } else if (input.selectedVisualCount === 0) {
+    warnings.push("O vídeo ficará somente com o Dublê; adicione B-roll real quando houver material relevante");
+  }
+
   if (!input.musicReady) warnings.push("Sem trilha selecionada; será usada a trilha padrão do Brand Video Kit quando disponível");
 
   if (input.mode === "duble") {
@@ -179,10 +191,13 @@ export function professionalGate(input: {
     } else {
       if ((input.fidelity.score ?? 0) < 85) blockers.push("Fidelity Score abaixo de 85/100");
       if ((input.fidelity.visual ?? 0) < 85) blockers.push("Fidelidade visual abaixo de 85/100");
-      if (input.fidelity.human !== null && input.fidelity.human < 80) blockers.push("Avaliação humana abaixo de 80/100");
+      if (input.fidelity.human === null) blockers.push("Avaliação humana do Dublê ainda não foi concluída");
+      else if (input.fidelity.human < 80) blockers.push("Avaliação humana abaixo de 80/100");
       if (input.fidelity.confidence !== "validated") blockers.push("Dublê ainda não está validado para publicação");
       if (input.fidelity.pendingChecks.length) warnings.push("Ainda existem verificações de fidelidade pendentes");
     }
+  } else if (!input.voiceReady) {
+    blockers.push("Motor de voz indisponível para gerar a locução");
   }
 
   return {
