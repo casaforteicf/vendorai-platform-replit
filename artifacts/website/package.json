@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../api-server/scripts/generate-website-modern-images.mjs && vite --config vite.config.ts --host 0.0.0.0",
-    "build": "node ../api-server/scripts/generate-website-modern-images.mjs && vite build --config vite.config.ts && node scripts/postbuild-seo.mjs && node scripts/append-growth-seo.mjs && node scripts/normalize-priority-titles.mjs && node scripts/verify-seo.mjs && node scripts/enrich-vertical-seo.mjs && node scripts/prerender-public-seo.mjs && node scripts/enrich-home-segment-static-html.mjs && node scripts/enrich-thin-hubs-static-html.mjs && node scripts/enrich-commercial-static-html.mjs && node scripts/reinforce-indexing-discovery.mjs && node scripts/split-sitemap-index.mjs",
+    "build": "node ../api-server/scripts/generate-website-modern-images.mjs && vite build --config vite.config.ts && node scripts/postbuild-seo.mjs && node scripts/append-growth-seo.mjs && node scripts/normalize-priority-titles.mjs && node scripts/verify-seo.mjs && node scripts/enrich-vertical-seo.mjs && node scripts/prerender-public-seo.mjs && node scripts/enrich-home-segment-static-html.mjs && node scripts/enrich-thin-hubs-static-html.mjs && node scripts/enrich-commercial-static-html.mjs && node scripts/reinforce-indexing-discovery.mjs && node scripts/split-sitemap-index.mjs && node scripts/prepare-search-discovery.mjs",
     "serve": "node static-server.cjs",
     "typecheck": "echo 'skip'"
   },
