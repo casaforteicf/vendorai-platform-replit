@@ -4,7 +4,11 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
-RUN pnpm install --frozen-lockfile \
+# The Railway frontend image builds the full monorepo workspace context. If another
+# workspace package gains a dependency before the root lockfile is regenerated,
+# --frozen-lockfile blocks an otherwise valid frontend build. Refresh the ephemeral
+# lockfile inside the image, then build only the frontend package.
+RUN pnpm install --no-frozen-lockfile \
   && pnpm --filter @workspace/frontend build
 
 FROM node:24-bookworm-slim AS runtime
