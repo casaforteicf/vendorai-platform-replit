@@ -14,6 +14,7 @@ import {
 import { getMetaGrowthOverview } from "../services/meta-growth.js";
 import { ingestMetaEngagement } from "../services/meta-engagement-crm.js";
 import { getMetaRemarketingOverview } from "../services/meta-remarketing.js";
+import { listMetaCustomAudiences, syncMetaCustomAudience } from "../services/meta-custom-audiences.js";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,13 @@ const metaEngagementBody = z.object({
   campaignId: z.string().optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+const metaCustomAudienceKey = z.enum([
+  "meta_engaged_30d",
+  "meta_hot_intent_30d",
+  "instagram_dm_30d",
+  "instagram_comments_30d",
+]);
 
 router.post("/tenants/:tenantId/meta-growth/engagements/ingest", async (req, res) => {
   const tenantId = String(req.params.tenantId);
@@ -65,6 +73,32 @@ router.get("/tenants/:tenantId/meta-growth/remarketing", authenticate, async (re
   } catch (err) {
     logger.error({ err, tenantId }, "meta-growth: erro ao carregar audiências de remarketing");
     return res.status(500).json({ error: "Não foi possível carregar as audiências de remarketing." });
+  }
+});
+
+router.get("/tenants/:tenantId/meta-growth/custom-audiences", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    return res.json(await listMetaCustomAudiences(tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "meta-growth: erro ao listar Custom Audiences");
+    return res.status(500).json({ error: "Não foi possível carregar as Custom Audiences da Meta." });
+  }
+});
+
+router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/sync", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = metaCustomAudienceKey.safeParse(String(req.params.key));
+  if (!parsed.success) return res.status(422).json({ error: "Audiência Meta não suportada." });
+
+  try {
+    return res.json(await syncMetaCustomAudience(tenantId, parsed.data));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Não foi possível sincronizar a audiência na Meta.";
+    logger.warn({ err, tenantId, audienceKey: parsed.data }, "meta-growth: falha ao sincronizar Custom Audience");
+    return res.status(422).json({ error: message });
   }
 });
 
