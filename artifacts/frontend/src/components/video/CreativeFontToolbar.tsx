@@ -4,6 +4,12 @@ import { VENDORAI_FONT_CATALOG } from "@workspace/vendor-brain";
 
 const STORAGE_KEY = "vendorai:creative-font-family";
 const FALLBACK = "Inter";
+const PUBLISHED_FONT_IDS = new Set([
+  "rigter",
+  "malibu-serif",
+  "type-ultimate-swashes",
+  "adobo",
+]);
 
 declare global {
   interface Window {
@@ -15,12 +21,14 @@ function fontAssetName(sourceFile: string) {
   return `${sourceFile.replace(/\.(otf|ttf)$/i, "")}.woff2`;
 }
 
+const PUBLISHED_FONTS = VENDORAI_FONT_CATALOG.filter((font) => PUBLISHED_FONT_IDS.has(font.id));
+
 function installFontFaces() {
   const id = "vendorai-creative-font-faces";
   if (document.getElementById(id)) return;
   const style = document.createElement("style");
   style.id = id;
-  style.textContent = VENDORAI_FONT_CATALOG.map((font) => {
+  style.textContent = PUBLISHED_FONTS.map((font) => {
     const url = `/fonts/vendorai/${encodeURIComponent(fontAssetName(font.sourceFile))}`;
     return `@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(url)}) format('woff2');font-style:normal;font-weight:100 900;font-display:swap;}`;
   }).join("\n");
@@ -52,8 +60,10 @@ function patchCanvasFont() {
 }
 
 export default function CreativeFontToolbar() {
-  const fonts = useMemo(() => [...VENDORAI_FONT_CATALOG].sort((a, b) => b.priority - a.priority), []);
-  const [family, setFamily] = useState(() => localStorage.getItem(STORAGE_KEY) || "Rigter");
+  const fonts = useMemo(() => [...PUBLISHED_FONTS].sort((a, b) => b.priority - a.priority), []);
+  const storedFamily = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+  const initialFamily = fonts.some((font) => font.family === storedFamily) ? storedFamily! : "Rigter";
+  const [family, setFamily] = useState(initialFamily);
 
   useEffect(() => {
     installFontFaces();
@@ -75,7 +85,7 @@ export default function CreativeFontToolbar() {
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Type className="h-4 w-4" /></div>
           <div>
             <p className="font-semibold text-foreground">Tipografia dos criativos</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">Escolha a fonte usada na prévia e na renderização dos textos e legendas deste projeto.</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">A fonte escolhida é aplicada à prévia e à renderização dos textos e legendas deste projeto.</p>
           </div>
         </div>
         <label className="min-w-0 sm:w-[290px]">
