@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import "../../../lib/vendor-brand/src/theme.css";
 import "./index.css";
 import { AdDataConsentControl } from "./components/AdDataConsentControl";
 import {
