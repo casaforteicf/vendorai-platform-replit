@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { typography } from "@/constants/typography";
 
 const STATUS_COLOR: Record<string, string> = {
   pendente: "#f59e0b",
@@ -72,8 +73,6 @@ export default function AgendaScreen() {
   );
   const todayItems = upcoming.filter((a: any) => isToday(a.dataHoraInicio));
   const futureItems = upcoming.filter((a: any) => !isToday(a.dataHoraInicio));
-
-  const topPadding = Platform.OS === "web" ? 67 : insets.top + 8;
 
   const AgendaItem = ({ item }: { item: any }) => {
     const statusColor = STATUS_COLOR[item.status] ?? colors.mutedForeground;
@@ -160,12 +159,12 @@ export default function AgendaScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, gap: 4 },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  count: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  title: { fontSize: typography.size.pageTitle, fontFamily: typography.family.bold, letterSpacing: -0.5 },
+  count: { fontSize: typography.size.label, fontFamily: typography.family.regular },
   list: { paddingHorizontal: 20, paddingTop: 8 },
   sectionLabel: {
     fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: typography.family.semibold,
     textTransform: "uppercase",
     letterSpacing: 0.8,
     marginTop: 16,
@@ -181,16 +180,16 @@ const styles = StyleSheet.create({
   },
   accent: { width: 4, alignSelf: "stretch" },
   itemContent: { flex: 1, padding: 12, gap: 6 },
-  itemTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  itemTitle: { fontSize: typography.size.body, fontFamily: typography.family.semibold },
   itemMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
-  itemTime: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  itemTime: { fontSize: 12, fontFamily: typography.family.regular },
   statusBadge: {
     marginRight: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  statusText: { fontSize: 11, fontFamily: typography.family.semibold },
   empty: { alignItems: "center", gap: 10, paddingTop: 80 },
-  emptyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  emptyText: { fontSize: 15, fontFamily: typography.family.regular },
 });
