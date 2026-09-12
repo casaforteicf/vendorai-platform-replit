@@ -17,6 +17,8 @@
     "./channel-publication": "./src/channel-publication.ts",
     "./creative-design": "./src/creative-design.ts",
     "./creative-runtime": "./src/creative-runtime.ts",
+    "./font-catalog": "./src/font-catalog.ts",
+    "./graphic-design-director": "./src/graphic-design-director.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
     "./revenue-scout-bridge": "./src/revenue-scout-bridge.ts",
     "./business-observer": "./src/business-observer.ts",
