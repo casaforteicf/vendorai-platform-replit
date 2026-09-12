@@ -18,6 +18,7 @@ import { Feather } from "@expo/vector-icons";
 import { LeadCard } from "@/components/LeadCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { typography } from "@/constants/typography";
 
 type FilterType = "all" | "high";
 
@@ -145,8 +146,8 @@ export default function LeadsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, gap: 10 },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  count: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  title: { fontSize: typography.size.pageTitle, fontFamily: typography.family.bold, letterSpacing: -0.5 },
+  count: { fontSize: typography.size.label, fontFamily: typography.family.regular },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -156,7 +157,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
-  searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  searchInput: { flex: 1, fontSize: 15, fontFamily: typography.family.regular },
   filters: { flexDirection: "row", gap: 8 },
   filterBtn: {
     paddingHorizontal: 14,
@@ -164,8 +165,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
   },
-  filterText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  filterText: { fontSize: typography.size.label, fontFamily: typography.family.medium },
   list: { paddingHorizontal: 20, paddingTop: 12 },
   empty: { alignItems: "center", gap: 10, paddingTop: 60 },
-  emptyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  emptyText: { fontSize: 15, fontFamily: typography.family.regular },
 });
