@@ -31,6 +31,25 @@ function intentScore(text: string | null | undefined) {
   return 5;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function eventAudienceTags(input: MetaEngagementInput, scoreBoost: number) {
+  const tags = new Set<string>(["Meta engajados 30d", "Instagram engajados 30d"]);
+  if (input.eventType === "dm") tags.add("Instagram DM 30d");
+  if (input.eventType === "comment") tags.add("Instagram comentários 30d");
+  if (input.eventType === "mention") tags.add("Instagram menções 30d");
+  if (scoreBoost >= 15) tags.add("Meta alta intenção 30d");
+  if (scoreBoost >= 30) tags.add("Meta intenção comercial forte 30d");
+  if (input.campaignId) tags.add("Meta campanha engajada 30d");
+  return Array.from(tags);
+}
+
 async function reserveEvent(tenantId: string, input: MetaEngagementInput) {
   const inserted = await db.execute(sql`
     INSERT INTO meta_engagement_events (
@@ -149,6 +168,66 @@ async function recordConversation(tenantId: string, leadId: string, input: MetaE
   return { conversationId: conversation.id, messageId: message.id };
 }
 
+async function updateRemarketingJourney(
+  tenantId: string,
+  leadId: string,
+  input: MetaEngagementInput,
+  scoreBoost: number,
+) {
+  const [current] = await db
+    .select({ discoveryData: leadsTable.discoveryData, proximaAcao: leadsTable.proximaAcao })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!current) return [] as string[];
+
+  const discoveryData = asRecord(current.discoveryData);
+  const existingJourney = asRecord(discoveryData["commercialJourney"]);
+  const existingMeta = asRecord(discoveryData["metaEngagement"]);
+  const nextTags = Array.from(new Set([
+    ...stringArray(existingJourney["audienceTags"]),
+    ...eventAudienceTags(input, scoreBoost),
+  ]));
+  const nowIso = new Date().toISOString();
+  const nextAction = scoreBoost >= 30
+    ? "Responder o engajamento Meta agora e manter o lead em audiência de alta intenção até conversão."
+    : scoreBoost >= 15
+      ? "Priorizar follow-up e manter em audiência Meta de alta intenção por 30 dias."
+      : "Manter em audiência Meta de engajados por 30 dias e reavaliar quando houver novo sinal.";
+
+  await db
+    .update(leadsTable)
+    .set({
+      discoveryData: {
+        ...discoveryData,
+        commercialJourney: {
+          ...existingJourney,
+          stage: scoreBoost >= 15 ? "oportunidade" : existingJourney["stage"] ?? "remarketing",
+          stageLabel: scoreBoost >= 15 ? "Oportunidade social" : existingJourney["stageLabel"] ?? "Remarketing",
+          nextBestAction: nextAction,
+          audienceTags: nextTags,
+          lastSignalAt: nowIso,
+        },
+        metaEngagement: {
+          ...existingMeta,
+          lastEventType: input.eventType,
+          lastEventAt: nowIso,
+          lastMediaId: input.mediaId ?? existingMeta["lastMediaId"] ?? null,
+          lastCampaignId: input.campaignId ?? existingMeta["lastCampaignId"] ?? null,
+          lastScoreBoost: scoreBoost,
+          hotIntent: scoreBoost >= 15,
+          remarketingEligibleUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          audienceTags: nextTags.filter((tag) => tag.startsWith("Meta") || tag.startsWith("Instagram")),
+        },
+      },
+      proximaAcao: current.proximaAcao?.trim() ? current.proximaAcao : nextAction,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+  return nextTags;
+}
+
 export async function ingestMetaEngagement(tenantId: string, input: MetaEngagementInput) {
   const firstSeen = await reserveEvent(tenantId, input);
   if (!firstSeen) return { duplicate: true } as const;
@@ -168,6 +247,7 @@ export async function ingestMetaEngagement(tenantId: string, input: MetaEngageme
     scoreBoost,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
+  const audienceTags = await updateRemarketingJourney(tenantId, lead.id, input, scoreBoost);
 
   return {
     duplicate: false,
@@ -176,6 +256,8 @@ export async function ingestMetaEngagement(tenantId: string, input: MetaEngageme
     dealId,
     scoreBoost,
     hotIntent: scoreBoost >= 15,
+    remarketingEligible: true,
+    audienceTags,
     ...conversation,
     attribution: {
       source: input.eventType === "comment" ? "instagram_comment" : "instagram",
