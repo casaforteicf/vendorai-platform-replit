@@ -1,3 +1,9 @@
+import {
+  rankMediaForScene,
+  type MediaRetrievalCandidate,
+  type MediaRetrievalContext,
+} from "@workspace/vendor-brain/media-retrieval-director";
+
 export type ProfessionalVideoMode = "duble" | "library_voiceover";
 
 export type ProfessionalScene = {
@@ -22,6 +28,13 @@ export type ProfessionalMediaAsset = {
   mime_type?: string | null;
   source?: string | null;
   metadata?: Record<string, unknown> | null;
+};
+
+export type ProfessionalMediaRetrievalContext = Omit<MediaRetrievalContext, "usedAssetIds">;
+
+export type ProfessionalMediaSuggestion = {
+  asset: ProfessionalMediaAsset;
+  ranking: MediaRetrievalCandidate;
 };
 
 export type ProfessionalAudioKind = "music" | "voiceover" | "sound_effect" | "jingle" | "sonic_identity" | "other";
@@ -110,26 +123,39 @@ export function scenesFromGeneration(data: unknown): ProfessionalScene[] {
   }));
 }
 
-function tokenSet(value: string): string[] {
-  const stop = new Set(["para", "como", "com", "uma", "das", "dos", "por", "que", "seu", "sua", "de", "do", "da", "em", "no", "na", "mais", "video", "cena"]);
-  return Array.from(new Set(normalized(value).replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word.length >= 4 && !stop.has(word))));
+export function rankAssetsForScene(
+  scene: ProfessionalScene,
+  assets: ProfessionalMediaAsset[],
+  usedIds: Set<string>,
+  context: ProfessionalMediaRetrievalContext = {},
+): ProfessionalMediaSuggestion[] {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  return rankMediaForScene(
+    {
+      visual: scene.visual,
+      fala: scene.fala,
+    },
+    assets,
+    {
+      ...context,
+      usedAssetIds: usedIds,
+      allowGenerated: context.allowGenerated ?? false,
+    },
+  )
+    .map((ranking) => {
+      const asset = byId.get(ranking.assetId);
+      return asset ? { asset, ranking } : null;
+    })
+    .filter((item): item is ProfessionalMediaSuggestion => Boolean(item));
 }
 
-export function suggestAssetForScene(scene: ProfessionalScene, assets: ProfessionalMediaAsset[], usedIds: Set<string>): ProfessionalMediaAsset | null {
-  const tokens = tokenSet(`${scene.visual} ${scene.fala}`);
-  const ranked = assets
-    .filter((asset) => (asset.type === "image" || asset.type === "video") && !usedIds.has(asset.id))
-    .map((asset) => {
-      let metadata = "";
-      try { metadata = JSON.stringify(asset.metadata ?? {}); } catch {}
-      const haystack = normalized(`${assetLabel(asset)} ${asset.role ?? ""} ${metadata}`);
-      const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 2 : 0), 0)
-        + (asset.source === "upload" || asset.source === "imported" ? 2 : 0)
-        + (asset.source === "generated" ? -4 : 0);
-      return { asset, score };
-    })
-    .sort((a, b) => b.score - a.score);
-  return ranked[0]?.asset ?? null;
+export function suggestAssetForScene(
+  scene: ProfessionalScene,
+  assets: ProfessionalMediaAsset[],
+  usedIds: Set<string>,
+  context: ProfessionalMediaRetrievalContext = {},
+): ProfessionalMediaAsset | null {
+  return rankAssetsForScene(scene, assets, usedIds, context)[0]?.asset ?? null;
 }
 
 export function fidelityFromIdentityPayload(data: unknown): FidelitySnapshot {
