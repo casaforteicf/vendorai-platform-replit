@@ -27,6 +27,8 @@ export type ProspectorNavigationTarget = {
   tab?: "busca" | "cnpj" | "anunciantes" | "fila" | "aprovacoes";
 };
 
+type QueueFilter = "todos" | "quentes" | "aquecendo" | "analisando";
+
 type QueueLead = {
   id: string;
   nome: string;
@@ -158,7 +160,15 @@ export default function ProspectorOverview({ onNavigate }: Props) {
     },
   ];
 
-  const openQueue = () => onNavigate({ mode: "empresas", tab: "fila" });
+  const openQueue = (filter: QueueFilter = "todos") => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (filter === "todos") url.searchParams.delete("queueFilter");
+      else url.searchParams.set("queueFilter", filter);
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    onNavigate({ mode: "empresas", tab: "fila" });
+  };
   const metricButtonClass =
     "rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
   const metricCardClass =
@@ -174,7 +184,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades na fila">
+          <button type="button" onClick={() => openQueue("todos")} className={metricButtonClass} aria-label="Abrir oportunidades na fila">
             <Card className={metricCardClass}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -189,7 +199,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
               </CardContent>
             </Card>
           </button>
-          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades quentes">
+          <button type="button" onClick={() => openQueue("quentes")} className={metricButtonClass} aria-label="Abrir oportunidades quentes">
             <Card className={`${metricCardClass} border-emerald-200`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -204,7 +214,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
               </CardContent>
             </Card>
           </button>
-          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades em aquecimento">
+          <button type="button" onClick={() => openQueue("aquecendo")} className={metricButtonClass} aria-label="Abrir oportunidades em aquecimento">
             <Card className={`${metricCardClass} border-amber-200`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -219,7 +229,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
               </CardContent>
             </Card>
           </button>
-          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades em análise">
+          <button type="button" onClick={() => openQueue("analisando")} className={metricButtonClass} aria-label="Abrir oportunidades em análise">
             <Card className={metricCardClass}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -234,7 +244,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
               </CardContent>
             </Card>
           </button>
-          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir detalhes do potencial da fila">
+          <button type="button" onClick={() => openQueue("todos")} className={metricButtonClass} aria-label="Abrir detalhes do potencial da fila">
             <Card className={metricCardClass}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -332,7 +342,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
                 })}
               </div>
             )}
-            <Button variant="outline" className="mt-4 w-full" onClick={openQueue}>
+            <Button variant="outline" className="mt-4 w-full" onClick={() => openQueue("todos")}>
               Ver fila completa <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
