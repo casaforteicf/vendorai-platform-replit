@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { VendorBrand } from "@/components/VendorBrand";
+import { typography } from "@/constants/typography";
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -49,13 +51,8 @@ export default function LoginScreen() {
       >
         <View style={[styles.content, { paddingTop: insets.top + 40 }]}>
           <View style={styles.header}>
-            <View style={[styles.logoWrap, { backgroundColor: colors.primary }]}>
-              <Text style={styles.logoText}>V</Text>
-            </View>
-            <Text style={[styles.title, { color: colors.foreground }]}>VendorAI</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              CRM com Inteligência Artificial
-            </Text>
+            <VendorBrand />
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>CRM com Inteligência Artificial</Text>
           </View>
 
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -78,9 +75,7 @@ export default function LoginScreen() {
               autoCorrect={false}
             />
 
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 12 }]}>
-              Senha
-            </Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 12 }]}>Senha</Text>
             <TextInput
               style={[
                 styles.input,
@@ -133,37 +128,28 @@ const styles = StyleSheet.create({
   inner: { flex: 1 },
   content: { flex: 1, paddingHorizontal: 24, gap: 32 },
   header: { alignItems: "center", gap: 10 },
-  logoWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoText: { fontSize: 32, fontFamily: "Inter_700Bold", color: "#fff" },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  subtitle: { fontSize: typography.size.body, fontFamily: typography.family.regular },
   card: {
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
     gap: 4,
   },
-  fieldLabel: { fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 4 },
+  fieldLabel: { fontSize: typography.size.label, fontFamily: typography.family.medium, marginBottom: 4 },
   input: {
     height: 48,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 14,
     fontSize: 15,
-    fontFamily: "Inter_400Regular",
+    fontFamily: typography.family.regular,
   },
   errorWrap: {
     marginTop: 8,
     padding: 10,
     borderRadius: 8,
   },
-  errorText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  errorText: { fontSize: typography.size.label, fontFamily: typography.family.medium },
   btn: {
     height: 50,
     borderRadius: 12,
@@ -171,5 +157,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 16,
   },
-  btnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  btnText: { color: "#fff", fontSize: 16, fontFamily: typography.family.semibold },
 });
