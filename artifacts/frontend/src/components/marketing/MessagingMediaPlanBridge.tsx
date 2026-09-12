@@ -8,6 +8,7 @@ import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentA
 import { OrganicCalendarPublisher } from "@/components/marketing/OrganicCalendarPublisher";
 import { MetaGrowthHub } from "@/components/marketing/MetaGrowthHub";
 import { MetaCustomAudienceSync } from "@/components/marketing/MetaCustomAudienceSync";
+import { MetaCampaignAudienceBridge } from "@/components/marketing/MetaCampaignAudienceBridge";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
@@ -115,6 +116,10 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
 
   if (route === "/content" && params.get("tab") === "resultados") {
     return <div className="space-y-4 px-4 pt-4 md:px-6"><MetaGrowthHub /><MetaCustomAudienceSync /></div>;
+  }
+
+  if (route === "/ads") {
+    return <MetaCampaignAudienceBridge />;
   }
 
   if (route === "/content-autopilot" && fromMediaPlan) {
