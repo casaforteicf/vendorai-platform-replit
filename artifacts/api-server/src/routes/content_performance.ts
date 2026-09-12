@@ -16,6 +16,7 @@ import { ingestMetaEngagement } from "../services/meta-engagement-crm.js";
 import { getMetaRemarketingOverview } from "../services/meta-remarketing.js";
 import { listMetaCustomAudiences, syncMetaCustomAudience } from "../services/meta-custom-audiences.js";
 import { publishMetaCampaignWithCustomAudience } from "../services/meta-custom-audience-campaign.js";
+import { getMetaAudiencePerformance } from "../services/meta-audience-performance.js";
 
 const router: IRouter = Router();
 
@@ -215,6 +216,17 @@ router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/publish-campai
     const message = err instanceof Error ? err.message : "Não foi possível publicar a campanha de remarketing.";
     logger.warn({ err, tenantId, campaignId: campaign.id, audienceKey: key.data }, "meta-growth: falha ao publicar campanha com Custom Audience");
     return res.status(422).json({ error: message });
+  }
+});
+
+router.get("/tenants/:tenantId/meta-growth/audience-performance", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    return res.json(await getMetaAudiencePerformance(tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "meta-growth: erro ao calcular performance por audiência");
+    return res.status(500).json({ error: "Não foi possível calcular o resultado por audiência Meta." });
   }
 });
 
