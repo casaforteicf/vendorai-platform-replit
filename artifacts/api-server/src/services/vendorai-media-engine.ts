@@ -163,11 +163,14 @@ async function realMediaPlanInputs(tenantId: string, context: Record<string, unk
     return { asset, index, score: overlap + requestedBonus + ownedBonus + brollBonus };
   }).sort((a, b) => b.score !== a.score ? b.score - a.score : a.index - b.index);
 
-  const selected = ranked.slice(0, Math.min(8, Math.max(3, requestedIds.size || 6))).map((item) => item.asset);
-  return selected.map((asset, index) => ({
+  const selectedAssets = ranked
+    .slice(0, Math.min(8, Math.max(3, requestedIds.size || 6)))
+    .map((item) => item.asset);
+  const selectedCount = selectedAssets.length;
+  return selectedAssets.map((asset, index) => ({
     assetId: asset.id,
     type: asset.type,
-    role: index === 0 ? "opening" : index === selected.length - 1 ? "closing" : asset.role === "product" ? "product" : "broll",
+    role: index === 0 ? "opening" : index === selectedCount - 1 ? "closing" : asset.role === "product" ? "product" : "broll",
     importance: "preferred",
     order: index,
     note: `Mídia real da Biblioteca: ${asset.originalFilename || asset.id}`,
