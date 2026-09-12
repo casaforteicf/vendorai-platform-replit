@@ -1,7 +1,7 @@
 import GraphicDesignDirectorBasePanel from "./GraphicDesignDirectorBasePanel";
 import VisualCompositionIntelligencePanel from "./VisualCompositionIntelligencePanel";
 import GraphicDesignIntelligencePanel from "./GraphicDesignIntelligencePanel";
-import SmartMediaCanvasAutocomposePanel from "./SmartMediaCanvasAutocomposePanel";
+import SmartMediaCanvasAutocomposeGate from "./SmartMediaCanvasAutocomposeGate";
 import SmartStoryboardComposerPanel from "./SmartStoryboardComposerPanel";
 
 export default function GraphicDesignDirectorPanel() {
@@ -10,7 +10,7 @@ export default function GraphicDesignDirectorPanel() {
       <GraphicDesignDirectorBasePanel />
       <VisualCompositionIntelligencePanel />
       <GraphicDesignIntelligencePanel />
-      <SmartMediaCanvasAutocomposePanel />
+      <SmartMediaCanvasAutocomposeGate />
       <SmartStoryboardComposerPanel />
     </div>
   );
