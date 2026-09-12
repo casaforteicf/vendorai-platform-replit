@@ -4,17 +4,28 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  AlertTriangle,
   BarChart3,
+  CheckCircle2,
   Facebook,
+  Info,
   Instagram,
   Loader2,
   Megaphone,
   MessageCircle,
+  RefreshCw,
   Sparkles,
   Target,
   TrendingUp,
   Users,
 } from "lucide-react";
+
+type GrowthAlert = {
+  id: string;
+  severity: "success" | "warning" | "info";
+  title: string;
+  message: string;
+};
 
 type MetaGrowthOverview = {
   connected?: boolean;
@@ -32,6 +43,8 @@ type MetaGrowthOverview = {
   paidSpend30d?: number | null;
   paidLeads30d?: number | null;
   organicLeads30d?: number | null;
+  alerts?: GrowthAlert[];
+  refreshedAt?: string;
   topContent?: Array<{
     id: string;
     title: string;
@@ -48,6 +61,11 @@ function n(value: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
 
+function signed(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `${value >= 0 ? "+" : ""}${n(value)}`;
+}
+
 function money(value: number | null | undefined) {
   if (value == null) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -58,6 +76,7 @@ export function MetaGrowthHub() {
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const [data, setData] = useState<MetaGrowthOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,6 +97,24 @@ export function MetaGrowthHub() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [tenantId, token]);
+
+  async function refreshMeta() {
+    if (!tenantId || !token || refreshing) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/meta-growth/atualizar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Não foi possível atualizar os indicadores da Meta.");
+      setData(await response.json() as MetaGrowthOverview);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao atualizar a Meta.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const attribution = useMemo(() => {
     const organic = data?.organicLeads30d ?? 0;
@@ -101,10 +138,15 @@ export function MetaGrowthHub() {
             <div>
               <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /><CardTitle>Meta Growth</CardTitle></div>
               <p className="mt-1 text-sm text-muted-foreground">Instagram + Facebook: audiência, conteúdo, mídia paga, conversas e receita em uma única visão.</p>
+              {data?.refreshedAt ? <p className="mt-1 text-xs text-muted-foreground">Atualizado em {new Date(data.refreshedAt).toLocaleString("pt-BR")}</p> : null}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={data?.instagramConnected ? "default" : "outline"} className="gap-1"><Instagram className="h-3 w-3" />Instagram</Badge>
               <Badge variant={data?.facebookConnected ? "default" : "outline"} className="gap-1"><Facebook className="h-3 w-3" />Facebook</Badge>
+              <Button size="sm" variant="outline" onClick={refreshMeta} disabled={refreshing || !tenantId}>
+                {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Atualizar Meta
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -112,7 +154,7 @@ export function MetaGrowthHub() {
           {!data ? (
             <div className="rounded-lg border border-dashed p-4">
               <p className="font-medium">Camada de Growth pronta para receber os dados da Meta.</p>
-              <p className="mt-1 text-sm text-muted-foreground">A integração atual continua funcionando; o próximo passo é alimentar esta visão com Insights, Ads e atribuição CRM.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Conecte Instagram/Facebook para alimentar esta visão com Insights, Ads e atribuição CRM.</p>
             </div>
           ) : null}
           {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
@@ -120,11 +162,20 @@ export function MetaGrowthHub() {
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric icon={<Users className="h-4 w-4" />} label="Seguidores" value={n(data?.followers)} detail={data?.followersDelta30d != null ? `${data.followersDelta30d >= 0 ? "+" : ""}${n(data.followersDelta30d)} em 30 dias` : "Meta: crescimento qualificado"} />
+        <Metric icon={<Users className="h-4 w-4" />} label="Seguidores" value={n(data?.followers)} detail={`${signed(data?.followersDelta7d)} em 7 dias · ${signed(data?.followersDelta30d)} em 30 dias`} />
         <Metric icon={<TrendingUp className="h-4 w-4" />} label="Alcance 30 dias" value={n(data?.reach30d)} detail={`${n(data?.profileVisits30d)} visitas ao perfil`} />
         <Metric icon={<MessageCircle className="h-4 w-4" />} label="Leads Meta" value={n(data?.leads30d)} detail={`${n(data?.opportunities30d)} oportunidades`} />
         <Metric icon={<BarChart3 className="h-4 w-4" />} label="Pipeline atribuído" value={money(data?.pipelineValue30d)} detail={`${money(data?.paidSpend30d)} investidos em Ads`} />
       </div>
+
+      {data?.alerts?.length ? (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Alertas de crescimento</CardTitle></CardHeader>
+          <CardContent className="grid gap-2 md:grid-cols-2">
+            {data.alerts.map((alert) => <GrowthAlertCard key={alert.id} alert={alert} />)}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
         <Card>
@@ -133,10 +184,10 @@ export function MetaGrowthHub() {
             {(data?.topContent?.length ? data.topContent : []).slice(0, 5).map((item) => (
               <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-md border p-3">
                 <div className="min-w-0"><p className="truncate text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.format || "Conteúdo"} · {n(item.reach)} alcance · {n(item.engagements)} interações</p></div>
-                <div className="text-right"><p className="text-sm font-semibold">+{n(item.followersGained)}</p><p className="text-[11px] text-muted-foreground">seguidores</p></div>
+                <div className="text-right"><p className="text-sm font-semibold">{item.followersGained == null ? "—" : signed(item.followersGained)}</p><p className="text-[11px] text-muted-foreground">seguidores atribuídos</p></div>
               </div>
             ))}
-            {!data?.topContent?.length ? <p className="text-sm text-muted-foreground">Assim que os Insights forem sincronizados, o VendorAI vai identificar quais peças realmente geram seguidores, leads e vendas.</p> : null}
+            {!data?.topContent?.length ? <p className="text-sm text-muted-foreground">Assim que os Insights forem sincronizados, o VendorAI vai identificar quais peças realmente geram alcance, interações, leads e vendas.</p> : null}
           </CardContent>
         </Card>
 
@@ -153,6 +204,16 @@ export function MetaGrowthHub() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function GrowthAlertCard({ alert }: { alert: GrowthAlert }) {
+  const Icon = alert.severity === "success" ? CheckCircle2 : alert.severity === "warning" ? AlertTriangle : Info;
+  return (
+    <div className="flex gap-3 rounded-md border p-3">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <div><p className="text-sm font-semibold">{alert.title}</p><p className="text-xs text-muted-foreground">{alert.message}</p></div>
     </div>
   );
 }
