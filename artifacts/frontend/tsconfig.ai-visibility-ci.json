@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/components/marketing/AiVisibilityPanel.tsx",
+    "src/components/marketing/AiVisibilityDimensionsPanel.tsx",
+    "src/components/marketing/AiVisibilityIntelligencePanel.tsx"
+  ],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "incremental": false,
+    "noEmit": true
+  }
+}
