@@ -73,11 +73,29 @@ export const VENDORAI_FONT_CATALOG: FontCatalogItem[] = [
   { id: "orcish", family: "Orcish", sourceFile: "OrcishPersonalUse-lxm0y-BF6a9f92cf1fe43.ttf", category: "decorative", tags: ["gaming", "fantasy", "entertainment"], recommendedChannels: ["instagram", "tiktok", "youtube"], recommendedUse: ["headline", "video-overlay"], priority: 55 },
 ];
 
+export const VENDORAI_PUBLISHED_FONT_IDS = [
+  "rigter",
+  "malibu-serif",
+  "type-ultimate-swashes",
+  "adobo",
+] as const;
+
+const PUBLISHED_FONT_SET = new Set<string>(VENDORAI_PUBLISHED_FONT_IDS);
+
+export function isPublishedVendorFont(font: FontCatalogItem | string): boolean {
+  return PUBLISHED_FONT_SET.has(typeof font === "string" ? font : font.id);
+}
+
+export function getPublishedVendorFonts(): FontCatalogItem[] {
+  return VENDORAI_FONT_CATALOG.filter(isPublishedVendorFont);
+}
+
 export function getFontsForChannel(channel: string, tags: string[] = []): FontCatalogItem[] {
   const normalized = channel.toLowerCase() as CreativeChannel;
   const tagSet = new Set(tags.map((tag) => tag.toLowerCase()));
 
   return VENDORAI_FONT_CATALOG
+    .filter(isPublishedVendorFont)
     .filter((font) => font.recommendedChannels.includes(normalized) || normalized === "website")
     .map((font) => ({
       font,
@@ -89,7 +107,7 @@ export function getFontsForChannel(channel: string, tags: string[] = []): FontCa
 
 export function selectFontPair(channel: string, tags: string[] = []) {
   const fonts = getFontsForChannel(channel, tags);
-  const heading = fonts[0] ?? VENDORAI_FONT_CATALOG[0];
+  const heading = fonts[0] ?? getPublishedVendorFonts()[0] ?? VENDORAI_FONT_CATALOG[0];
   const body = fonts.find((font) => font.id !== heading.id && (font.category === "sans" || font.category === "serif")) ?? fonts[1] ?? heading;
   return { heading, body };
 }
