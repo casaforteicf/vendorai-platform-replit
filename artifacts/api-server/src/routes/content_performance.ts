@@ -8,12 +8,24 @@ import {
   refreshPerformanceInsights,
   PerformanceError,
 } from "../services/content-performance.js";
+import { getMetaGrowthOverview } from "../services/meta-growth.js";
 
 const router: IRouter = Router();
 
 function assertTenantAccess(req: any, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
+
+router.get("/tenants/:tenantId/meta-growth/overview", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    return res.json(await getMetaGrowthOverview(tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "meta-growth: erro ao carregar overview");
+    return res.status(500).json({ error: "Não foi possível carregar os indicadores da Meta." });
+  }
+});
 
 router.get("/tenants/:tenantId/content-performance/posts", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
