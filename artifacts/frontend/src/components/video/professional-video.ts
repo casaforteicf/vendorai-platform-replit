@@ -56,6 +56,52 @@ export type ProfessionalGate = {
   warnings: string[];
 };
 
+const GRAPHIC_DESIGN_PLAN_KEY = "vendorai_graphic_design_plan_v1";
+const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
+const VALID_MEDIA_FORMATS = new Set(["9:16", "4:5", "1:1", "16:9"]);
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function runtimeMediaRetrievalContext(): ProfessionalMediaRetrievalContext {
+  const context: ProfessionalMediaRetrievalContext = {};
+  if (typeof window === "undefined") return context;
+
+  try {
+    const raw = sessionStorage.getItem(GRAPHIC_DESIGN_PLAN_KEY);
+    if (raw) {
+      const stored = asRecord(JSON.parse(raw));
+      const plan = asRecord(stored.plan);
+      const brief = asRecord(stored.brief);
+      const format = String(plan.format ?? "");
+      if (plan.approved === true && VALID_MEDIA_FORMATS.has(format)) {
+        context.targetFormat = format as ProfessionalMediaRetrievalContext["targetFormat"];
+      }
+      if (typeof brief.channel === "string" && brief.channel.trim()) context.channel = brief.channel;
+    }
+  } catch {
+    // O ranking continua funcional mesmo sem uma direção gráfica salva.
+  }
+
+  try {
+    if (!context.channel) {
+      const raw = sessionStorage.getItem(MEDIA_PLAN_EXECUTION_KEY);
+      if (raw) {
+        const execution = asRecord(JSON.parse(raw));
+        const calendarItem = asRecord(execution.calendarItem);
+        if (typeof calendarItem.canal === "string" && calendarItem.canal.trim()) context.channel = calendarItem.canal;
+      }
+    }
+  } catch {
+    // Contexto do Plano de Mídia é opcional.
+  }
+
+  return context;
+}
+
 export function mediaUrl(raw: string): string {
   if (!raw) return "";
   if (/^https?:\/\//i.test(raw) || raw.startsWith("blob:")) return raw;
@@ -130,6 +176,7 @@ export function rankAssetsForScene(
   context: ProfessionalMediaRetrievalContext = {},
 ): ProfessionalMediaSuggestion[] {
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const runtimeContext = runtimeMediaRetrievalContext();
   return rankMediaForScene(
     {
       visual: scene.visual,
@@ -137,9 +184,10 @@ export function rankAssetsForScene(
     },
     assets,
     {
+      ...runtimeContext,
       ...context,
       usedAssetIds: usedIds,
-      allowGenerated: context.allowGenerated ?? false,
+      allowGenerated: context.allowGenerated ?? runtimeContext.allowGenerated ?? false,
     },
   )
     .map((ranking) => {
