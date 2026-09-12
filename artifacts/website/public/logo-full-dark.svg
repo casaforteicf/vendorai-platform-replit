@@ -1,0 +1,6 @@
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" rx="40" fill="#F97316"/>
+  <path d="M48 54 L90 128 L132 54" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="212" y="102" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="58" font-weight="700" letter-spacing="-1.5" fill="#FFFFFF">Vendor<tspan fill="#FB923C">.ai</tspan></text>
+  <text x="212" y="130" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="500" fill="#94A3B8" letter-spacing="2.5">INTELIGÊNCIA COMERCIAL</text>
+</svg>

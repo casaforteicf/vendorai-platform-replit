@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { typography } from "@/constants/typography";
 
 const CHANNEL_ICON: Record<string, string> = {
   whatsapp: "message-circle",
@@ -103,10 +104,7 @@ export default function ConversationsScreen() {
                     </Text>
                   </View>
                   <View style={styles.bottomRow}>
-                    <Text
-                      style={[styles.preview, { color: colors.mutedForeground }]}
-                      numberOfLines={1}
-                    >
+                    <Text style={[styles.preview, { color: colors.mutedForeground }]} numberOfLines={1}>
                       {canal.charAt(0).toUpperCase() + canal.slice(1)} · {item.status ?? "ativo"}
                     </Text>
                     {unread > 0 ? (
@@ -128,9 +126,7 @@ export default function ConversationsScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="message-circle" size={40} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                Nenhuma conversa ainda
-              </Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Nenhuma conversa ainda</Text>
             </View>
           }
         />
@@ -142,8 +138,8 @@ export default function ConversationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, gap: 4 },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  count: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  title: { fontSize: typography.size.pageTitle, fontFamily: typography.family.bold, letterSpacing: -0.5 },
+  count: { fontSize: typography.size.label, fontFamily: typography.family.regular },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -161,11 +157,11 @@ const styles = StyleSheet.create({
   },
   info: { flex: 1, gap: 4 },
   topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  name: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
-  bold: { fontFamily: "Inter_700Bold" },
-  time: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  name: { flex: 1, fontSize: 15, fontFamily: typography.family.medium },
+  bold: { fontFamily: typography.family.bold },
+  time: { fontSize: 12, fontFamily: typography.family.regular },
   bottomRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  preview: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
+  preview: { flex: 1, fontSize: typography.size.label, fontFamily: typography.family.regular },
   badge: {
     minWidth: 20,
     height: 20,
@@ -174,7 +170,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  badgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  badgeText: { fontSize: 11, fontFamily: typography.family.semibold, color: "#fff" },
   empty: { alignItems: "center", gap: 10, paddingTop: 80 },
-  emptyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  emptyText: { fontSize: 15, fontFamily: typography.family.regular },
 });
