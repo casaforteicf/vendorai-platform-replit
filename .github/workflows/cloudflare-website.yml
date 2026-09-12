@@ -51,6 +51,9 @@ jobs:
         run: |
           test -f artifacts/website/dist/public/index.html
           test -f artifacts/website/dist/public/_worker.js
+          test -f artifacts/website/dist/public/llms.txt
+          grep -q "User-agent: OAI-SearchBot" artifacts/website/dist/public/robots.txt
+          find artifacts/website/dist/public -maxdepth 1 -type f -regextype posix-extended -regex '.*/[0-9a-f]{64}\.txt' | grep -q .
 
       - name: Ensure Cloudflare Pages project
         run: pnpm dlx wrangler@3.90.0 pages project create vendorai-website --production-branch main || true
@@ -144,3 +147,7 @@ jobs:
 
           echo "Website domains are attached but not active yet"
           exit 1
+
+      - name: Notify IndexNow with final sitemap URLs
+        continue-on-error: true
+        run: node artifacts/website/scripts/submit-indexnow.mjs
