@@ -1,16 +1,16 @@
-/* Keep the primary action in the Leads header readable even if a page/theme
-   override changes the generic primary button colors. */
+/* Keep the primary action in the Leads header readable while respecting the
+   single VendorAI Brand System source of truth. */
 [data-testid="button-novo-lead"] {
   min-width: 8.5rem;
-  background: #202a78 !important;
-  border-color: #202a78 !important;
+  background: var(--vendor-primary) !important;
+  border-color: var(--vendor-primary) !important;
   color: #ffffff !important;
   opacity: 1 !important;
 }
 
 [data-testid="button-novo-lead"]:hover {
-  background: #192263 !important;
-  border-color: #192263 !important;
+  background: var(--vendor-primary-strong) !important;
+  border-color: var(--vendor-primary-strong) !important;
   color: #ffffff !important;
 }
 
@@ -58,13 +58,11 @@
     font-size: 9.5px;
   }
 
-  /* Give the first column a visible left gutter so it can never be clipped. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(1),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) {
     padding-left: 0.72rem !important;
   }
 
-  /* Short labels keep the center of the table compact. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5) {
     font-size: 0;
   }
@@ -92,8 +90,6 @@
     letter-spacing: 0.04em;
   }
 
-  /* Force the two right-side long headers to use their own cells instead of
-     spilling over Churn Risk and Ações. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8) {
     font-size: 0;
     text-align: right;
@@ -134,8 +130,6 @@
     padding-right: 0.38rem !important;
   }
 
-  /* 10 columns. Total = 100%. Reserve enough room for the final three columns
-     while keeping Responsável immediately after Negócios / processos. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(1),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 13.5%; }
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(2),
@@ -167,7 +161,6 @@
     padding-left: 0.18rem;
   }
 
-  /* Text columns can wrap, but cannot cross into adjacent cells. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3),
@@ -188,7 +181,6 @@
     flex-wrap: wrap;
   }
 
-  /* Data in the compact numeric/action columns stays on one line. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5),
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8),
@@ -197,7 +189,6 @@
     white-space: nowrap;
   }
 
-  /* Deals/process badges wrap only inside column 6. */
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) > *,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) button,
   .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) [class*="max-w-"] {
