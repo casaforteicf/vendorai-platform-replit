@@ -82,6 +82,9 @@ installVisitorTelemetry();
 
 document.documentElement.dataset.vendoraiBuild = "asset-versioning-20260910";
 
+// O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
+// obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
+// que o Clear-Site-Data de recuperação não seja reenviado em toda navegação.
 const recoveryUrl = new URL(window.location.href);
 if (recoveryUrl.searchParams.has("__vendorai_refresh")) {
   recoveryUrl.searchParams.delete("__vendorai_refresh");
@@ -105,6 +108,7 @@ if (Object.keys(onboardingContext).length > 0) {
       capturedAt: new Date().toISOString(),
     }));
   } catch {
+    // O handoff de autenticação continua mesmo se o storage estiver indisponível.
   }
 }
 
