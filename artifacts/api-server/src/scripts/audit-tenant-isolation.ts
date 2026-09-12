@@ -71,6 +71,7 @@ for (const filePath of walk(root)) {
   lines.forEach((line, index) => {
     const previousLine = lines[index - 1] ?? "";
     const guardWindow = lines.slice(index + 1, index + 3).join(" ");
+    const socialGuardWindow = lines.slice(index + 1, index + 6).join(" ");
     const routeWindow = lines.slice(index, index + 24).join(" ");
     // These marketing/site middlewares read the route tenant only to compare it
     // immediately against the authenticated tenant before touching tenant data.
@@ -126,14 +127,15 @@ for (const filePath of walk(root)) {
       previousLine.includes('router.post("/tenants/:tenantId/meta-growth/engagements/ingest"') &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /agentConfigsTable\.tenantId,\s*tenantId/.test(routeWindow) &&
-      /config\?\.webhookSecret\s*!==\s*secret/.test(routeWindow);
+      /config(?:\?\.|\.)webhookSecret\s*!==\s*secret/.test(routeWindow);
     // The identity-role PATCH only changes the current tenant's social connection after
     // the same authenticated tenant/Super Admin guard used by the rest of this router.
+    // Provider validation can sit between tenant extraction and the guard, so inspect five lines.
     const guardedSocialIdentityRoleTenant =
       relativeFile === "routes/social-integrations.ts" &&
       previousLine.includes('router.patch("/tenants/:tenantId/social-connections/:provider", authenticate') &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
-      /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(guardWindow);
+      /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(socialGuardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
