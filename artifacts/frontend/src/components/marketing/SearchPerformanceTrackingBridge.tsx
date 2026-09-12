@@ -110,6 +110,22 @@ function ensureMount(): HTMLElement | null {
   return mount;
 }
 
+async function fetchConnectionStatus(tenantId: string): Promise<ConnectionStatus> {
+  const response = await fetch(`/api/tenants/${tenantId}/search-console-connection`, { headers: authHeaders() });
+  if (!response.ok) throw new Error("Não foi possível consultar a conexão com o Google Search Console.");
+  return response.json() as Promise<ConnectionStatus>;
+}
+
+async function requestSitemapSync(tenantId: string) {
+  const response = await fetch(`/api/tenants/${tenantId}/search-console-connection/verify`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error("Não foi possível enviar o sitemap ao Google agora.");
+  const result = await response.json() as { verified?: boolean };
+  if (!result.verified) throw new Error("O Google ainda não confirmou a propriedade. Tente novamente em alguns instantes.");
+}
+
 function PerformanceCard() {
   const [tenantId, setTenantId] = useState(() => currentTenantId());
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
@@ -118,7 +134,7 @@ function PerformanceCard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (resolvedTenantId = tenantId) => {
+  const load = useCallback(async (resolvedTenantId = tenantId, autoRepairSitemap = true) => {
     if (!resolvedTenantId) {
       setLoading(false);
       setError("Não foi possível identificar o tenant atual.");
@@ -127,9 +143,17 @@ function PerformanceCard() {
     setLoading(true);
     setError(null);
     try {
-      const statusResponse = await fetch(`/api/tenants/${resolvedTenantId}/search-console-connection`, { headers: authHeaders() });
-      if (!statusResponse.ok) throw new Error("Não foi possível consultar a conexão com o Google Search Console.");
-      const status = await statusResponse.json() as ConnectionStatus;
+      let status = await fetchConnectionStatus(resolvedTenantId);
+
+      if (autoRepairSitemap && status.connected && status.verified && !status.sitemapSubmittedAt) {
+        try {
+          await requestSitemapSync(resolvedTenantId);
+          status = await fetchConnectionStatus(resolvedTenantId);
+        } catch (repairError) {
+          setError(repairError instanceof Error ? repairError.message : "Sitemap pendente de envio ao Google.");
+        }
+      }
+
       setConnection(status);
       if (!status.connected || !status.verified) {
         setData(null);
@@ -171,13 +195,8 @@ function PerformanceCard() {
     setActionLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/search-console-connection/verify`, { method: "POST", headers: authHeaders() });
-      if (!response.ok) throw new Error("Não foi possível validar a propriedade agora.");
-      const result = await response.json() as { verified?: boolean };
-      if (!result.verified) {
-        setError("O Google ainda não confirmou a propriedade. Aguarde alguns instantes e tente novamente.");
-      }
-      await load(tenantId);
+      await requestSitemapSync(tenantId);
+      await load(tenantId, false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao validar Search Console.");
     } finally {
@@ -231,7 +250,24 @@ function PerformanceCard() {
         ) : (
           <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Search className="h-4 w-4" />Ainda não há dados orgânicos para este período.</div>
         )}
-        {connection?.verified && connection.sitemapSubmittedAt && <p className="mt-3 text-[11px] text-muted-foreground">Sitemap enviado ao Google · {formatDate(connection.sitemapSubmittedAt)}</p>}
+
+        {connection?.verified && connection.sitemapSubmittedAt && (
+          <p className="mt-3 text-[11px] text-muted-foreground">Sitemap confirmado no fluxo do Google · {formatDate(connection.sitemapSubmittedAt)}</p>
+        )}
+
+        {connection?.verified && !connection.sitemapSubmittedAt && (
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-medium">Sitemap ainda não confirmado.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">O VendorAI tenta corrigir isso automaticamente. Se continuar pendente, use o reenvio manual.</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={verify} disabled={actionLoading || loading}>
+              {actionLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+              Reenviar sitemap
+            </Button>
+          </div>
+        )}
+
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </div>
     </section>
