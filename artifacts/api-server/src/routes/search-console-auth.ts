@@ -1,6 +1,7 @@
 import baseRouter, { searchConsoleCallbackRouter } from "./search-console-auth-core.js";
 import aiVisibilityRouter from "./ai-visibility.js";
 import aiVisibilityIntelligenceRouter from "./ai-visibility-intelligence.js";
+import aiVisibilityDimensionsRouter from "./ai-visibility-dimensions.js";
 import { authenticate } from "../middlewares/auth.js";
 import { aiVisibilityAuditMiddleware } from "../lib/ai-visibility-audit.js";
 
@@ -10,6 +11,7 @@ import { aiVisibilityAuditMiddleware } from "../lib/ai-visibility-audit.js";
 // fazendo a validacao de tenant individualmente, como no Search Console.
 baseRouter.use("/tenants/:tenantId/ai-visibility", authenticate, aiVisibilityAuditMiddleware);
 baseRouter.use(aiVisibilityRouter);
+baseRouter.use(aiVisibilityDimensionsRouter);
 baseRouter.use(aiVisibilityIntelligenceRouter);
 
 export { searchConsoleCallbackRouter };
