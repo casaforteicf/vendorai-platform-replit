@@ -27,6 +27,17 @@ router.get("/tenants/:tenantId/meta-growth/overview", authenticate, async (req, 
   }
 });
 
+router.post("/tenants/:tenantId/meta-growth/atualizar", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    return res.json(await getMetaGrowthOverview(tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "meta-growth: erro ao atualizar indicadores");
+    return res.status(500).json({ error: "Não foi possível atualizar os indicadores da Meta." });
+  }
+});
+
 router.get("/tenants/:tenantId/content-performance/posts", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
