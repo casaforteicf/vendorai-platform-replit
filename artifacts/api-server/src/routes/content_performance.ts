@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agentConfigsTable, db } from "@workspace/db";
+import { adCampaignsTable, agentConfigsTable, db } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -39,6 +39,10 @@ const metaCustomAudienceKey = z.enum([
   "instagram_dm_30d",
   "instagram_comments_30d",
 ]);
+
+const applyCustomAudienceBody = z.object({
+  campaignId: z.string().min(1),
+});
 
 router.post("/tenants/:tenantId/meta-growth/engagements/ingest", async (req, res) => {
   const tenantId = String(req.params.tenantId);
@@ -100,6 +104,76 @@ router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/sync", authent
     logger.warn({ err, tenantId, audienceKey: parsed.data }, "meta-growth: falha ao sincronizar Custom Audience");
     return res.status(422).json({ error: message });
   }
+});
+
+router.post("/tenants/:tenantId/meta-growth/custom-audiences/:key/apply-to-campaign", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const key = metaCustomAudienceKey.safeParse(String(req.params.key));
+  const body = applyCustomAudienceBody.safeParse(req.body);
+  if (!key.success || !body.success) return res.status(422).json({ error: "Audiência ou campanha inválida." });
+
+  const audienceResult = await db.execute(sql`
+    SELECT audience_key, label, external_audience_id, status
+      FROM meta_custom_audiences
+     WHERE tenant_id = ${tenantId}
+       AND audience_key = ${key.data}
+     LIMIT 1
+  `);
+  const audience = audienceResult.rows?.[0] as {
+    audience_key?: string;
+    label?: string;
+    external_audience_id?: string | null;
+    status?: string;
+  } | undefined;
+
+  if (!audience?.external_audience_id || audience.status !== "synced") {
+    return res.status(409).json({ error: "Sincronize esta Custom Audience com a Meta antes de usá-la em uma campanha." });
+  }
+
+  const [campaign] = await db
+    .select({
+      id: adCampaignsTable.id,
+      plataforma: adCampaignsTable.plataforma,
+      externalCampaignId: adCampaignsTable.externalCampaignId,
+      segmentacao: adCampaignsTable.segmentacao,
+    })
+    .from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, body.data.campaignId), eq(adCampaignsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+  if (campaign.plataforma !== "meta") return res.status(422).json({ error: "Custom Audience da Meta só pode ser aplicada a campanha Meta." });
+  if (campaign.externalCampaignId) return res.status(409).json({ error: "A campanha já foi publicada. Crie ou use um rascunho Meta para trocar a audiência." });
+
+  const current = (campaign.segmentacao ?? {}) as Record<string, unknown>;
+  const rawExisting = Array.isArray(current["metaCustomAudiences"])
+    ? current["metaCustomAudiences"] as Array<Record<string, unknown>>
+    : [];
+  const nextAudience = {
+    key: key.data,
+    label: audience.label ?? key.data,
+    externalAudienceId: audience.external_audience_id,
+    appliedAt: new Date().toISOString(),
+  };
+  const metaCustomAudiences = [
+    ...rawExisting.filter((item) => item["key"] !== key.data),
+    nextAudience,
+  ];
+
+  await db
+    .update(adCampaignsTable)
+    .set({ segmentacao: { ...current, metaCustomAudiences } as any, updatedAt: new Date() })
+    .where(and(eq(adCampaignsTable.id, campaign.id), eq(adCampaignsTable.tenantId, tenantId)));
+
+  return res.json({
+    ok: true,
+    campaignId: campaign.id,
+    audience: nextAudience,
+    campaignActivated: false,
+    spendActivated: false,
+  });
 });
 
 router.get("/tenants/:tenantId/meta-growth/overview", authenticate, async (req, res) => {
