@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AudioLines, Check, FileText, Film, Image as ImageIcon, Loader2, Search } from "lucide-react";
+import { AudioLines, Check, CheckSquare, FileText, Film, Image as ImageIcon, Loader2, Search, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -109,6 +109,26 @@ export function MediaAssetPicker({
   }
 
   const chosen = assets.filter((asset) => selected.includes(asset.id));
+  const visibleIds = visible.map((asset) => asset.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+  const visibleSelectionLimit = Math.min(maxSelection, visibleIds.length);
+
+  function toggleAllVisible() {
+    if (maxSelection <= 1 || visibleIds.length === 0) return;
+    setSelected((current) => {
+      if (allVisibleSelected) {
+        const visibleSet = new Set(visibleIds);
+        return current.filter((id) => !visibleSet.has(id));
+      }
+      const next = [...current];
+      for (const id of visibleIds) {
+        if (next.includes(id)) continue;
+        if (next.length >= maxSelection) break;
+        next.push(id);
+      }
+      return next;
+    });
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -117,9 +137,17 @@ export function MediaAssetPicker({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome, tipo ou origem..." className="pl-9" />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome, tipo ou origem..." className="pl-9" />
+            </div>
+            {maxSelection > 1 && visible.length > 0 && (
+              <Button type="button" variant="outline" onClick={toggleAllVisible} className="shrink-0">
+                {allVisibleSelected ? <CheckSquare className="mr-2 h-4 w-4" /> : <Square className="mr-2 h-4 w-4" />}
+                {allVisibleSelected ? "Desmarcar todos" : `Selecionar todos (${visibleSelectionLimit})`}
+              </Button>
+            )}
           </div>
 
           {loading ? (
@@ -149,7 +177,7 @@ export function MediaAssetPicker({
           )}
 
           <div className="flex items-center justify-between gap-3 border-t pt-4">
-            <p className="text-xs text-muted-foreground">{chosen.length} de {maxSelection} selecionada(s)</p>
+            <p className="text-xs text-muted-foreground">{chosen.length} selecionada(s){maxSelection > 1 ? ` · limite ${maxSelection}` : ""}</p>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
               <Button type="button" disabled={chosen.length === 0} onClick={() => { onConfirm(chosen); onOpenChange(false); }}>{confirmLabel}</Button>
