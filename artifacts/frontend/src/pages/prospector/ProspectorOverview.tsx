@@ -158,6 +158,12 @@ export default function ProspectorOverview({ onNavigate }: Props) {
     },
   ];
 
+  const openQueue = () => onNavigate({ mode: "empresas", tab: "fila" });
+  const metricButtonClass =
+    "rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  const metricCardClass =
+    "h-full cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md";
+
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       {queueQuery.isLoading ? (
@@ -168,56 +174,81 @@ export default function ProspectorOverview({ onNavigate }: Props) {
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">Na fila</p>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="mt-2 text-2xl font-bold">{queueQuery.data?.total ?? stats.leads.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">oportunidades abertas</p>
-            </CardContent>
-          </Card>
-          <Card className="border-emerald-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-emerald-700">Quentes</p>
-                <Flame className="h-4 w-4 text-emerald-600" />
-              </div>
-              <p className="mt-2 text-2xl font-bold text-emerald-700">{stats.hot.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">score ≥ 80</p>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-amber-800">Em aquecimento</p>
-                <TrendingUp className="h-4 w-4 text-amber-700" />
-              </div>
-              <p className="mt-2 text-2xl font-bold text-amber-800">{stats.warm.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">score 50–79</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">Analisando</p>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="mt-2 text-2xl font-bold">{stats.pending.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">enriquecimento em curso</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">Potencial</p>
-                <Target className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="mt-2 text-xl font-bold">{money(stats.potential) ?? "—"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">estimativa recuperável/mês</p>
-            </CardContent>
-          </Card>
+          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades na fila">
+            <Card className={metricCardClass}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">Na fila</p>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-2xl font-bold">{queueQuery.data?.total ?? stats.leads.length}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>oportunidades abertas</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </div>
+              </CardContent>
+            </Card>
+          </button>
+          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades quentes">
+            <Card className={`${metricCardClass} border-emerald-200`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-emerald-700">Quentes</p>
+                  <Flame className="h-4 w-4 text-emerald-600" />
+                </div>
+                <p className="mt-2 text-2xl font-bold text-emerald-700">{stats.hot.length}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>score ≥ 80</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </div>
+              </CardContent>
+            </Card>
+          </button>
+          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades em aquecimento">
+            <Card className={`${metricCardClass} border-amber-200`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-amber-800">Em aquecimento</p>
+                  <TrendingUp className="h-4 w-4 text-amber-700" />
+                </div>
+                <p className="mt-2 text-2xl font-bold text-amber-800">{stats.warm.length}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>score 50–79</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </div>
+              </CardContent>
+            </Card>
+          </button>
+          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir oportunidades em análise">
+            <Card className={metricCardClass}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">Analisando</p>
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-2xl font-bold">{stats.pending.length}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>enriquecimento em curso</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </div>
+              </CardContent>
+            </Card>
+          </button>
+          <button type="button" onClick={openQueue} className={metricButtonClass} aria-label="Abrir detalhes do potencial da fila">
+            <Card className={metricCardClass}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">Potencial</p>
+                  <Target className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-xl font-bold">{money(stats.potential) ?? "—"}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>estimativa recuperável/mês</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </div>
+              </CardContent>
+            </Card>
+          </button>
         </div>
       )}
 
@@ -301,7 +332,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
                 })}
               </div>
             )}
-            <Button variant="outline" className="mt-4 w-full" onClick={() => onNavigate({ mode: "empresas", tab: "fila" })}>
+            <Button variant="outline" className="mt-4 w-full" onClick={openQueue}>
               Ver fila completa <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
