@@ -17,10 +17,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
-      - name: Wait for exact commit on edge
+      - name: Wait for exact commit on edge when website changed
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          changed=$(curl -fsS \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}" \
+            | jq -r '.files[]?.filename')
+
+          if ! grep -q '^artifacts/website/' <<<"$changed"; then
+            echo "No website artifact changed in this commit; validating current production edge."
+            exit 0
+          fi
+
           for attempt in $(seq 1 48); do
             deployed=$(curl -fsS -H 'Cache-Control: no-cache' "https://appvendorai.com/deployment-version.txt?sha=${GITHUB_SHA}&attempt=${attempt}" 2>/dev/null | tr -d '\r\n' || true)
             echo "Edge version: ${deployed:-pending} (expected ${GITHUB_SHA})"
