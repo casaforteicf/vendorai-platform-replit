@@ -16,9 +16,11 @@ type Props = {
   musicAssetId: string;
   effectAssetId: string;
   jingleAssetId: string;
+  voiceoverAssetId?: string;
   onMusicChange: (id: string) => void;
   onEffectChange: (id: string) => void;
   onJingleChange: (id: string) => void;
+  onVoiceoverChange?: (id: string) => void;
 };
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -47,9 +49,11 @@ export default function ProfessionalAudioLibrary({
   musicAssetId,
   effectAssetId,
   jingleAssetId,
+  voiceoverAssetId = "",
   onMusicChange,
   onEffectChange,
   onJingleChange,
+  onVoiceoverChange,
 }: Props) {
   const [tab, setTab] = useState<Tab>("music");
   const [query, setQuery] = useState("");
@@ -68,6 +72,7 @@ export default function ProfessionalAudioLibrary({
   const selectedIdFor = (kind: ProfessionalAudioKind) => {
     if (kind === "music") return musicAssetId;
     if (kind === "sound_effect") return effectAssetId;
+    if (kind === "voiceover") return voiceoverAssetId;
     if (kind === "jingle") return jingleAssetId;
     return "";
   };
@@ -76,6 +81,7 @@ export default function ProfessionalAudioLibrary({
     const kind = audioKind(asset);
     if (kind === "music") onMusicChange(musicAssetId === asset.id ? "" : asset.id);
     if (kind === "sound_effect") onEffectChange(effectAssetId === asset.id ? "" : asset.id);
+    if (kind === "voiceover" && onVoiceoverChange) onVoiceoverChange(voiceoverAssetId === asset.id ? "" : asset.id);
     if (kind === "jingle") onJingleChange(jingleAssetId === asset.id ? "" : asset.id);
   };
 
@@ -104,7 +110,7 @@ export default function ProfessionalAudioLibrary({
         <div className="grid gap-3 lg:grid-cols-2">
           {filtered.slice(0, 40).map((asset) => {
             const kind = audioKind(asset);
-            const selectable = kind === "music" || kind === "sound_effect" || kind === "jingle";
+            const selectable = kind === "music" || kind === "sound_effect" || kind === "jingle" || (kind === "voiceover" && Boolean(onVoiceoverChange));
             const selected = selectedIdFor(kind) === asset.id;
             return (
               <div key={asset.id} className={cn("rounded-xl border p-3 transition", selected ? "border-primary/45 bg-primary/5" : "border-border bg-background/40")}> 
