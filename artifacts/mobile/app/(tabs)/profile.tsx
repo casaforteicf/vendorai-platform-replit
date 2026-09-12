@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { typography } from "@/constants/typography";
 
 interface RowProps {
   icon: string;
@@ -33,9 +34,7 @@ function Row({ icon, label, value, onPress, destructive }: RowProps) {
         <Feather name={icon as any} size={16} color={destructive ? colors.destructive : colors.primary} />
       </View>
       <Text style={[styles.rowLabel, { color }]}>{label}</Text>
-      {value ? (
-        <Text style={[styles.rowValue, { color: colors.mutedForeground }]}>{value}</Text>
-      ) : null}
+      {value ? <Text style={[styles.rowValue, { color: colors.mutedForeground }]}>{value}</Text> : null}
       {onPress ? <Feather name="chevron-right" size={16} color={colors.mutedForeground} /> : null}
     </View>
   );
@@ -88,9 +87,7 @@ export default function ProfileScreen() {
 
       <View style={styles.avatarSection}>
         <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-          <Text style={styles.avatarText}>
-            {user?.name?.charAt(0).toUpperCase() ?? "?"}
-          </Text>
+          <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase() ?? "?"}</Text>
         </View>
         <Text style={[styles.name, { color: colors.foreground }]}>{user?.name}</Text>
         <View style={[styles.roleBadge, { backgroundColor: colors.primary + "22" }]}>
@@ -112,12 +109,7 @@ export default function ProfileScreen() {
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
-        <Row
-          icon="log-out"
-          label="Sair da conta"
-          onPress={handleLogout}
-          destructive
-        />
+        <Row icon="log-out" label="Sair da conta" onPress={handleLogout} destructive />
       </View>
 
       <Text style={[styles.version, { color: colors.mutedForeground }]}>VendorAI Mobile v1.0</Text>
@@ -128,7 +120,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 8 },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  title: { fontSize: typography.size.pageTitle, fontFamily: typography.family.bold, letterSpacing: -0.5 },
   avatarSection: { alignItems: "center", paddingVertical: 24, gap: 10 },
   avatar: {
     width: 80,
@@ -137,10 +129,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 36, fontFamily: "Inter_700Bold", color: "#fff" },
-  name: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  avatarText: { fontSize: 36, fontFamily: typography.family.bold, color: "#fff" },
+  name: { fontSize: typography.size.sectionTitle, fontFamily: typography.family.bold },
   roleBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
-  roleText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  roleText: { fontSize: typography.size.label, fontFamily: typography.family.semibold },
   section: {
     marginHorizontal: 20,
     borderRadius: 14,
@@ -162,7 +154,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  rowLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
-  rowValue: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  version: { textAlign: "center", marginTop: 32, fontSize: 12, fontFamily: "Inter_400Regular" },
+  rowLabel: { flex: 1, fontSize: 15, fontFamily: typography.family.medium },
+  rowValue: { fontSize: typography.size.label, fontFamily: typography.family.regular },
+  version: { textAlign: "center", marginTop: 32, fontSize: 12, fontFamily: typography.family.regular },
 });
