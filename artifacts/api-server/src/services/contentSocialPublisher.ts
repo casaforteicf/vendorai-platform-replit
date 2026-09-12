@@ -32,6 +32,10 @@ import {
   assertMediaAudioRightsForUsage,
   MediaRightsEnforcementError,
 } from "./media-rights-enforcement.js";
+import {
+  assertMediaPublishReady,
+  CreativeQualityGateBlockedError,
+} from "./media-publish-quality-gate.js";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -235,6 +239,21 @@ export async function publishContentGenerationToInstagram(params: {
     result: gen.result,
     variation,
   });
+
+  const variationRecord = variation as unknown as Record<string, unknown>;
+  const qualityMediaUrls = [
+    ...(Array.isArray(variationRecord.imageUrls) ? variationRecord.imageUrls : []),
+    variationRecord.imageUrl,
+    variationRecord.videoUrl,
+  ].filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+  try {
+    await assertMediaPublishReady({ tenantId: params.tenantId, mediaUrls: qualityMediaUrls });
+  } catch (error) {
+    if (error instanceof CreativeQualityGateBlockedError) {
+      throw new SocialPublicationError(error.message, error.status);
+    }
+    throw error;
+  }
 
   const { accessToken, accountId } = await getPublishingCredentials(params.tenantId);
   let postId: string;
