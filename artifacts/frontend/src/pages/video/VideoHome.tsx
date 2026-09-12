@@ -6,6 +6,7 @@ import {
   Clapperboard,
   LayoutGrid,
   Mic2,
+  Palette,
   Settings2,
   ShoppingBag,
   Sparkles,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const GraphicDesignDirectorPanel = lazy(() => import("@/components/video/GraphicDesignDirectorPanel"));
 const ProfessionalCreationModelPanel = lazy(() => import("@/components/video/ProfessionalCreationModelPanel"));
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
@@ -43,39 +45,58 @@ function LoadingPanel({ label }: { label: string }) {
 export default function VideoHome() {
   const [, navigate] = useLocation();
   const planExecution = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "media-calendar";
-  const [showProfessionalModel, setShowProfessionalModel] = useState(true);
+  const [showGraphicDesign, setShowGraphicDesign] = useState(true);
+  const [showProfessionalModel, setShowProfessionalModel] = useState(false);
   const [showDubleStudio, setShowDubleStudio] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showBrandKit, setShowBrandKit] = useState(false);
 
   return (
     <div className="space-y-6 pb-28 sm:pb-10">
-      <header className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
+      <header className="overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.09] via-card to-card p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Clapperboard className="h-5 w-5" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/12 text-violet-600 dark:text-violet-300">
+              <Palette className="h-5 w-5" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo Studio Profissional</h1>
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">Direção → produção → QA</span>
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Creative Studio Profissional</h1>
+                <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-300">Design → layout → produção → QA</span>
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
                 {planExecution
-                  ? "A direção do Plano de Mídia foi carregada. Escolha o modelo criativo, aprove o roteiro, vincule mídias reais e produza com controle de qualidade."
-                  : "Crie como um estúdio: escolha a lógica da peça, defina o briefing, aprove o roteiro, monte o storyboard, selecione áudio, renderize e valide o arquivo final."}
+                  ? "A direção do Plano de Mídia foi carregada. Primeiro defina a direção de arte e o layout; depois avance para roteiro, mídia, Dublê, áudio e produção."
+                  : "O design vem primeiro: direção de arte, grid, tipografia, hierarquia, paleta e safe area. Depois a peça ganha roteiro, movimento, Dublê, áudio e versões por canal."}
               </p>
             </div>
           </div>
-          <Button onClick={() => setShowProfessionalModel((value) => !value)} className="w-full rounded-xl lg:w-auto">
-            <Sparkles className="mr-2 h-4 w-4" />{showProfessionalModel ? "Recolher criação" : "Criar vídeo profissional"}
+          <Button onClick={() => setShowGraphicDesign((value) => !value)} className="w-full rounded-xl lg:w-auto">
+            <Sparkles className="mr-2 h-4 w-4" />{showGraphicDesign ? "Recolher Design Director" : "Criar direção visual"}
           </Button>
         </div>
       </header>
 
+      {showGraphicDesign && (
+        <Suspense fallback={<LoadingPanel label="Carregando Graphic Design Director…" />}>
+          <GraphicDesignDirectorPanel />
+        </Suspense>
+      )}
+
+      <section className="rounded-2xl border border-border bg-card">
+        <button type="button" onClick={() => setShowProfessionalModel((value) => !value)} className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Clapperboard className="h-5 w-5" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">Produção profissional após o design</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Briefing, roteiro aprovado, storyboard, mídias reais, áudio, preflight, render e QA final.</p>
+          </div>
+          <span className="hidden rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-xs text-primary sm:inline">Etapa seguinte</span>
+          <ArrowRight className={`h-4 w-4 text-muted-foreground transition-transform ${showProfessionalModel ? "rotate-90" : ""}`} />
+        </button>
+      </section>
+
       {showProfessionalModel && (
-        <Suspense fallback={<LoadingPanel label="Carregando modelo profissional de criação…" />}>
+        <Suspense fallback={<LoadingPanel label="Carregando produção profissional…" />}>
           <ProfessionalCreationModelPanel />
         </Suspense>
       )}
