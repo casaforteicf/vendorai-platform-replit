@@ -14,6 +14,7 @@ type BrollAsset = {
   id: string;
   storage_url: string;
   type: "image" | "video";
+  role: string | null;
   source: string | null;
   original_filename: string | null;
   metadata: Record<string, unknown>;
@@ -90,12 +91,16 @@ function assetSearchText(asset: BrollAsset): string {
   const metadata = record(asset.metadata);
   const searchable = [
     asset.original_filename ?? "",
+    asset.role ?? "",
     metadata["title"],
     metadata["description"],
     metadata["alt"],
     metadata["category"],
     metadata["tags"],
     metadata["keywords"],
+    metadata["productName"],
+    metadata["campaignName"],
+    metadata["aiRole"],
   ];
   return searchable
     .map((value) => Array.isArray(value) ? value.join(" ") : String(value ?? ""))
@@ -110,7 +115,9 @@ function scoreAsset(asset: BrollAsset, contextTokens: string[], preferOwnMedia: 
   const assetTokens = new Set(tokenize(assetSearchText(asset)));
   const overlap = contextTokens.reduce((count, token) => count + (assetTokens.has(token) ? 1 : 0), 0);
   const own = asset.source === "upload" || asset.source === "imported";
-  const score = overlap * 100 + (preferOwnMedia && own ? 25 : 0);
+  const generatedPenalty = asset.source === "generated" ? 75 : 0;
+  const brollRoleBonus = asset.role === "broll" ? 20 : 0;
+  const score = overlap * 100 + (preferOwnMedia && own ? 35 : 0) + brollRoleBonus - generatedPenalty;
   return { score, overlap, own };
 }
 
@@ -219,20 +226,23 @@ export async function applyBrandBroll(input: {
     };
   }
 
+  // O Studio profissional usa toda a Biblioteca do tenant como fonte de B-roll.
+  // Assets explicitamente marcados como broll ainda recebem bônus, mas uploads/importações
+  // reais também podem ser escolhidos por contexto. Assets gerados por IA são penalizados.
   const assetResult = await pool.query(
-    `SELECT id, storage_url, type, source, original_filename, metadata, created_at
+    `SELECT id, storage_url, type, role, source, original_filename, metadata, created_at
        FROM media_assets
       WHERE tenant_id = $1
-        AND role = 'broll'
         AND type IN ('image', 'video')
       ORDER BY created_at DESC
-      LIMIT 40`,
+      LIMIT 250`,
     [input.tenantId],
   );
   const candidates: BrollAsset[] = assetResult.rows.map((row) => ({
     id: String(row.id),
     storage_url: String(row.storage_url ?? ""),
     type: row.type === "image" ? "image" : "video",
+    role: row.role ? String(row.role) : null,
     source: row.source ? String(row.source) : null,
     original_filename: row.original_filename ? String(row.original_filename) : null,
     metadata: record(row.metadata),
@@ -299,7 +309,7 @@ export async function applyBrandBroll(input: {
         applied: false,
         assetIds: [],
         insertions: [],
-        warning: "Nenhum B-roll configurado pôde ser carregado",
+        warning: "Nenhuma mídia coerente da Biblioteca pôde ser carregada para B-roll",
         cleanup: async () => {
           await Promise.all(tempPaths.map((path) => unlink(path).catch(() => undefined)));
         },
