@@ -27,6 +27,14 @@ const PT = {
   ],
   namingTitle: "Uso correto da marca",
   naming: "A grafia oficial é VendorAI. Para diferenciar esta plataforma de outros produtos ou projetos com nomes semelhantes, use appvendorai.com como domínio de referência. Quando necessário, cite também a empresa operadora e o CNPJ informados nesta página.",
+  citationTitle: "Como citar e linkar o VendorAI",
+  citationIntro: "Para matérias, páginas de parceiros, diretórios, comparativos e conteúdos editoriais, prefira uma descrição factual e um link direto para a página mais relacionada ao assunto.",
+  shortLabel: "Descrição curta sugerida",
+  shortCitation: "VendorAI é uma plataforma brasileira de CRM, vendas, marketing e agentes de IA que conecta a operação comercial do primeiro contato ao pós-venda e à próxima oportunidade de receita.",
+  linkLabel: "Link institucional principal",
+  linkText: "VendorAI — CRM, vendas e marketing com IA",
+  productLinksLabel: "Links temáticos recomendados",
+  citationNote: "Use links quando forem editorialmente relevantes. Não é necessário alterar atributos editoriais ou políticas de publicação para citar o VendorAI.",
   assetsTitle: "Ativos oficiais",
   assetsText: "Para capas, matérias, apresentações e diretórios, use os arquivos publicados no domínio oficial.",
   contactTitle: "Contato editorial e institucional",
@@ -63,6 +71,14 @@ const ES = {
   ],
   namingTitle: "Uso correcto de la marca",
   naming: "La grafía oficial es VendorAI. Para diferenciar esta plataforma de otros productos o proyectos con nombres similares, utiliza appvendorai.com como dominio de referencia. Cuando sea necesario, cita también la empresa operadora y el CNPJ informados en esta página.",
+  citationTitle: "Cómo citar y enlazar VendorAI",
+  citationIntro: "Para artículos, páginas de socios, directorios, comparativas y contenidos editoriales, utiliza una descripción factual y un enlace directo a la página más relacionada con el tema.",
+  shortLabel: "Descripción breve sugerida",
+  shortCitation: "VendorAI es una plataforma brasileña de CRM, ventas, marketing y agentes de IA que conecta la operación comercial desde el primer contacto hasta la posventa y la próxima oportunidad de ingresos.",
+  linkLabel: "Enlace institucional principal",
+  linkText: "VendorAI — CRM, ventas y marketing con IA",
+  productLinksLabel: "Enlaces temáticos recomendados",
+  citationNote: "Utiliza enlaces cuando sean editorialmente relevantes. No es necesario cambiar las políticas editoriales de la publicación para citar VendorAI.",
   assetsTitle: "Activos oficiales",
   assetsText: "Para portadas, artículos, presentaciones y directorios, utiliza los archivos publicados en el dominio oficial.",
   contactTitle: "Contacto editorial e institucional",
@@ -72,6 +88,15 @@ const ES = {
   og: "Imagen oficial para compartir",
   icon: "Ícono oficial",
 } as const;
+
+const citationLinks = [
+  ["VendorAI", "https://appvendorai.com/"],
+  ["CRM com IA", "https://appvendorai.com/produtos/crm"],
+  ["Agentes de IA", "https://appvendorai.com/produtos/agentes-ia"],
+  ["Prospecção B2B com IA", "https://appvendorai.com/produtos/prospeccao"],
+  ["Revenue Intelligence", "https://appvendorai.com/solucoes/revenue-intelligence"],
+  ["CRM + WhatsApp", "https://appvendorai.com/solucoes/crm-whatsapp"],
+] as const;
 
 export default function Imprensa() {
   const { isSpanish } = usePublicCountry();
@@ -127,7 +152,38 @@ export default function Imprensa() {
         </div>
       </section>
 
-      <section className="border-y border-slate-200 bg-[#fffaf5] px-4 py-16">
+      <section className="border-y border-slate-200 bg-slate-950 px-4 py-16 text-white">
+        <div className="container mx-auto max-w-5xl">
+          <p className="text-sm font-bold uppercase tracking-[0.16em] text-orange-400">Authority Kit</p>
+          <h2 className="mt-3 text-3xl font-bold">{copy.citationTitle}</h2>
+          <p className="mt-4 max-w-3xl leading-7 text-slate-300">{copy.citationIntro}</p>
+
+          <div className="mt-8 grid gap-5 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6">
+              <h3 className="font-bold text-white">{copy.shortLabel}</h3>
+              <p className="mt-3 leading-7 text-slate-300">{copy.shortCitation}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6">
+              <h3 className="font-bold text-white">{copy.linkLabel}</h3>
+              <a href="https://appvendorai.com/" className="mt-3 block font-semibold text-orange-400 hover:text-orange-300">{copy.linkText}</a>
+              <code className="mt-4 block overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-300">https://appvendorai.com/</code>
+            </div>
+          </div>
+
+          <h3 className="mt-10 text-xl font-bold">{copy.productLinksLabel}</h3>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {citationLinks.map(([label, href]) => (
+              <a key={href} href={href} className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-4 transition hover:border-orange-500">
+                <span className="block font-semibold text-white">{label}</span>
+                <span className="mt-1 block break-all text-xs text-slate-400">{href}</span>
+              </a>
+            ))}
+          </div>
+          <p className="mt-6 text-sm leading-6 text-slate-400">{copy.citationNote}</p>
+        </div>
+      </section>
+
+      <section className="border-b border-slate-200 bg-[#fffaf5] px-4 py-16">
         <div className="container mx-auto max-w-5xl">
           <h2 className="text-3xl font-bold text-slate-950">{copy.assetsTitle}</h2>
           <p className="mt-4 max-w-3xl text-slate-600">{copy.assetsText}</p>
