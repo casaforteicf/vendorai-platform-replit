@@ -54,7 +54,8 @@ function asRecord(value: unknown): Record<string, unknown> {
 /**
  * Publica usando o fluxo Meta já existente (sempre PAUSED) e, antes de qualquer
  * ativação, substitui interesses amplos pela Custom Audience selecionada.
- * Se a troca de targeting falhar, a campanha permanece pausada na Meta.
+ * Se a troca de targeting falhar, a campanha permanece pausada na Meta e o
+ * chamador recebe um resultado parcial estruturado para atualizar a UI.
  */
 export async function publishMetaCampaignWithCustomAudience(input: {
   tenantId: string;
@@ -121,13 +122,26 @@ export async function publishMetaCampaignWithCustomAudience(input: {
       audienceLabel: input.audienceLabel,
       externalAudienceId: input.externalAudienceId,
       targetingMode: "custom_audience" as const,
+      targetingApplied: true,
+      partialFailure: false,
+      warning: null,
       campaignActivated: false,
       spendActivated: false,
     };
   } catch (error) {
+    const warning = `A campanha foi publicada PAUSADA, mas a audiência não pôde ser aplicada. Nenhum gasto foi ativado. ${error instanceof Error ? error.message : "Revise a audiência na Meta."}`;
     logger.error({ error, tenantId: input.tenantId, campaignId: input.campaignId, adSetId: result.adSetId }, "meta remarketing: campanha publicada pausada, mas Custom Audience não foi aplicada");
-    throw new Error(
-      `A campanha foi publicada PAUSADA, mas a audiência não pôde ser aplicada. Nenhum gasto foi ativado. ${error instanceof Error ? error.message : "Revise a audiência na Meta."}`,
-    );
+    return {
+      ...result,
+      audienceKey: input.audienceKey,
+      audienceLabel: input.audienceLabel,
+      externalAudienceId: input.externalAudienceId,
+      targetingMode: "custom_audience" as const,
+      targetingApplied: false,
+      partialFailure: true,
+      warning,
+      campaignActivated: false,
+      spendActivated: false,
+    };
   }
 }
