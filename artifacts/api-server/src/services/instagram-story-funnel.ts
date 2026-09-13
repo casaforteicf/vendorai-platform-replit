@@ -6,6 +6,99 @@ function num(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+type StoryAction = {
+  action: "replicar" | "reforcar_cta" | "testar_abertura" | "ajustar_qualificacao" | "revisar_comercial" | "manter";
+  label: string;
+  reason: string;
+  confidence: "baixa" | "media" | "alta";
+  route: "/marketing" | "/conversations" | "/deals" | "/ads";
+  paidMediaCandidate: boolean;
+};
+
+function storyAction(story: {
+  reach: number;
+  views: number;
+  replies: number;
+  linkClicks: number;
+  dms: number;
+  leads: number;
+  opportunities: number;
+  sales: number;
+  revenue: number;
+}): StoryAction {
+  const interactions = story.replies + story.linkClicks;
+  const confidence: StoryAction["confidence"] =
+    story.sales > 0 || story.leads >= 3 || story.dms >= 5 || story.views >= 1000
+      ? "alta"
+      : story.leads > 0 || story.dms >= 2 || story.views >= 300
+        ? "media"
+        : "baixa";
+
+  if (story.sales > 0 || story.revenue > 0) {
+    return {
+      action: "replicar",
+      label: "Replicar e considerar mídia paga",
+      reason: `Este Story já gerou ${story.sales} venda(s) e R$ ${story.revenue.toFixed(2)} em receita atribuída. Preserve a ideia central e teste uma nova versão antes de ampliar distribuição.`,
+      confidence,
+      route: "/ads",
+      paidMediaCandidate: true,
+    };
+  }
+
+  if (story.leads > 0 && story.opportunities === 0) {
+    return {
+      action: "revisar_comercial",
+      label: "Revisar abordagem comercial",
+      reason: `O Story gerou ${story.leads} lead(s), mas ainda não virou oportunidade. O gargalo está depois da captura, não no alcance.`,
+      confidence,
+      route: "/deals",
+      paidMediaCandidate: false,
+    };
+  }
+
+  if (story.dms > 0 && story.leads === 0) {
+    return {
+      action: "ajustar_qualificacao",
+      label: "Ajustar qualificação das DMs",
+      reason: `Existem ${story.dms} DM(s) atribuídas sem lead criado. Revise pergunta inicial, intenção e passagem da conversa para o CRM.`,
+      confidence,
+      route: "/conversations",
+      paidMediaCandidate: false,
+    };
+  }
+
+  if (interactions >= 3 && story.dms === 0) {
+    return {
+      action: "reforcar_cta",
+      label: "Reforçar CTA para DM",
+      reason: `O Story gerou ${interactions} interação(ões), mas nenhuma DM atribuída. O conteúdo chama atenção; o próximo passo precisa ficar mais explícito.`,
+      confidence,
+      route: "/marketing",
+      paidMediaCandidate: false,
+    };
+  }
+
+  if (story.views >= 300 && interactions === 0) {
+    return {
+      action: "testar_abertura",
+      label: "Testar nova abertura",
+      reason: `O Story teve ${story.views} views sem respostas ou cliques. Teste gancho, primeira tela e promessa antes de aumentar frequência.`,
+      confidence,
+      route: "/marketing",
+      paidMediaCandidate: false,
+    };
+  }
+
+  return {
+    action: "manter",
+    label: "Manter e coletar mais dados",
+    reason: "Ainda não há evidência suficiente para uma mudança forte. Mantenha a linha atual e acumule mais sinais de interação e conversão.",
+    confidence,
+    route: "/marketing",
+    paidMediaCandidate: false,
+  };
+}
+
 export async function getInstagramStoryFunnel(tenantId: string) {
   const [totalsResult, topStoriesResult] = await Promise.all([
     db.execute(sql`
@@ -143,18 +236,8 @@ export async function getInstagramStoryFunnel(tenantId: string) {
   };
 
   const interactions = totals.replies + totals.linkClicks;
-  return {
-    periodDays: 30,
-    attribution: "instagram_story_media_id",
-    totals,
-    rates: {
-      interactionPerReach: totals.reach > 0 ? (interactions / totals.reach) * 100 : null,
-      dmPerInteraction: interactions > 0 ? (totals.dms / interactions) * 100 : null,
-      leadPerDm: totals.dms > 0 ? (totals.leads / totals.dms) * 100 : null,
-      opportunityPerLead: totals.leads > 0 ? (totals.opportunities / totals.leads) * 100 : null,
-      salePerOpportunity: totals.opportunities > 0 ? (totals.sales / totals.opportunities) * 100 : null,
-    },
-    topStories: (topStoriesResult.rows ?? []).map((row: any) => ({
+  const topStories = (topStoriesResult.rows ?? []).map((row: any) => {
+    const story = {
       mediaId: row.instagram_media_id,
       theme: row.theme ?? null,
       caption: row.caption_ou_texto ?? null,
@@ -168,7 +251,27 @@ export async function getInstagramStoryFunnel(tenantId: string) {
       opportunities: num(row.opportunities),
       sales: num(row.sales),
       revenue: num(row.revenue),
-    })),
+    };
+    return { ...story, nextAction: storyAction(story) };
+  });
+
+  return {
+    periodDays: 30,
+    attribution: "instagram_story_media_id",
+    totals,
+    rates: {
+      interactionPerReach: totals.reach > 0 ? (interactions / totals.reach) * 100 : null,
+      dmPerInteraction: interactions > 0 ? (totals.dms / interactions) * 100 : null,
+      leadPerDm: totals.dms > 0 ? (totals.leads / totals.dms) * 100 : null,
+      opportunityPerLead: totals.leads > 0 ? (totals.opportunities / totals.leads) * 100 : null,
+      salePerOpportunity: totals.opportunities > 0 ? (totals.sales / totals.opportunities) * 100 : null,
+    },
+    topStories,
+    safety: {
+      automaticPublishing: false,
+      automaticPaidMedia: false,
+      recommendationsOnly: true,
+    },
     generatedAt: new Date().toISOString(),
   };
 }
