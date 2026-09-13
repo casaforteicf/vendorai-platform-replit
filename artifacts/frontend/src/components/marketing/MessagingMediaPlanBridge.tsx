@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentAutopilotMediaPlanBanner";
 import { OrganicCalendarPublisher } from "@/components/marketing/OrganicCalendarPublisher";
 import { FollowerGrowthMission } from "@/components/marketing/FollowerGrowthMission";
+import { FollowerWinnerEngine } from "@/components/marketing/FollowerWinnerEngine";
 import { MetaGrowthHub } from "@/components/marketing/MetaGrowthHub";
 import { InstagramGrowthPanel } from "@/components/marketing/InstagramGrowthPanel";
 import { InstagramStoryFunnel } from "@/components/marketing/InstagramStoryFunnel";
@@ -119,7 +120,7 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
   const route = pathname.split("?")[0];
 
   if (route === "/content" && params.get("tab") === "resultados") {
-    return <div className="space-y-4 px-4 pt-4 md:px-6"><FollowerGrowthMission /><MetaGrowthHub /><InstagramGrowthPanel /><InstagramStoryFunnel /><MetaCustomAudienceSync /><MetaAudiencePerformance /></div>;
+    return <div className="space-y-4 px-4 pt-4 md:px-6"><FollowerGrowthMission /><FollowerWinnerEngine /><MetaGrowthHub /><InstagramGrowthPanel /><InstagramStoryFunnel /><MetaCustomAudienceSync /><MetaAudiencePerformance /></div>;
   }
 
   if (route === "/ads") {
