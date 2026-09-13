@@ -43,7 +43,7 @@ const ArquiteturaIntentLp = lazy(() => import("@/pages/lp/ArquiteturaIntentLpV2"
 const AutopecasIntentLp = lazy(() => import("@/pages/lp/AutopecasIntentLp"));
 const MateriaisConstrucaoIntentLp = lazy(() => import("@/pages/lp/MateriaisConstrucaoIntentLp"));
 const AlimentosIntentLp = lazy(() => import("@/pages/lp/AlimentosIntentLp"));
-const MaquinasInsumosIntentLp = lazy(() => import("@/pages/lp/MaquinasInsumosIntentLp"));
+const MaquinasInsumosIntentLp = lazy(() => import("@/pages/lp/MaquinasInsumosIntentLpV2"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
 const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
 const PromptHubConceptSection = lazy(() => import("@/components/PromptHubConceptSection"));
