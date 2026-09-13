@@ -1,4 +1,5 @@
 import { getSearchConsoleConnectionByTenantId, refreshSearchConsoleToken } from "./search-console-oauth.js";
+import { getSearchConsoleIndexation } from "./search-console-indexation.js";
 import { getVisitorIntelligence } from "./visitorIntelligence.js";
 import { logger } from "../lib/logger.js";
 
@@ -230,6 +231,10 @@ function buildOpportunities(topQueries: SearchAnalyticsRow[], topPages: SearchAn
 export async function getSearchConsoleInsights(tenantId: string, requestedDays = 28) {
   const days = clampDays(requestedDays);
   const connection = await ensureActiveConnection(tenantId);
+  const indexationPromise = getSearchConsoleIndexation(tenantId).catch((error) => {
+    logger.warn({ error, tenantId }, "Search Console insights: monitor de indexação indisponível");
+    return null;
+  });
 
   // Search Console pode ter atraso de processamento. Encerrar em D-1 evita
   // comparar o período atual com um dia corrente ainda incompleto.
@@ -313,6 +318,8 @@ export async function getSearchConsoleInsights(tenantId: string, requestedDays =
     logger.warn({ error, tenantId }, "Search Console insights: Visitor Intelligence indisponível");
   }
 
+  const indexation = await indexationPromise;
+
   return {
     generatedAt: new Date().toISOString(),
     period: {
@@ -359,6 +366,7 @@ export async function getSearchConsoleInsights(tenantId: string, requestedDays =
       ...metric(row),
     })),
     opportunities: buildOpportunities(topQueries, topPages),
+    indexation,
     visitorIntelligence,
   };
 }
