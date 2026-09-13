@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { SearchIndexationTrackingCard } from "./SearchIndexationTrackingCard";
 import { SeoAuthorityTrackingCard } from "./SeoAuthorityTrackingCard";
 
 const MOUNT_ID = "vendorai-seo-authority-tracking";
@@ -68,5 +69,11 @@ export function SeoAuthorityTrackingBridge() {
     };
   }, []);
 
-  return mount ? createPortal(<SeoAuthorityTrackingCard />, mount) : null;
+  return mount ? createPortal(
+    <div className="space-y-4">
+      <SearchIndexationTrackingCard />
+      <SeoAuthorityTrackingCard />
+    </div>,
+    mount,
+  ) : null;
 }
