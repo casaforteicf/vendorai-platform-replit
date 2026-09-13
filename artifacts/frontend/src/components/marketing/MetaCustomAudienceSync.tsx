@@ -33,9 +33,14 @@ function n(value: number | null | undefined) {
 
 function statusLabel(status: string | undefined) {
   if (status === "synced") return "Sincronizada";
+  if (status === "reconciled_empty") return "Reconciliada e vazia";
   if (status === "error") return "Erro";
   if (status === "no_matchable_contacts") return "Sem contatos utilizáveis";
   return "Não sincronizada";
+}
+
+function isReconciled(status: string | undefined) {
+  return status === "synced" || status === "reconciled_empty";
 }
 
 export function MetaCustomAudienceSync() {
@@ -111,7 +116,7 @@ export function MetaCustomAudienceSync() {
             <div className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /><CardTitle className="text-base">Custom Audiences na Meta</CardTitle></div>
             <p className="mt-1 text-xs text-muted-foreground">Envia somente contatos com consentimento publicitário e identificadores utilizáveis. E-mail/telefone são hashados antes do envio.</p>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4" />Nunca ativa campanha ou orçamento</div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4" />Reconciliação diária · nunca ativa campanha ou orçamento</div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -119,22 +124,27 @@ export function MetaCustomAudienceSync() {
           {(data?.supportedKeys ?? []).map((supported) => {
             const row = byKey.get(supported.key);
             const busy = syncing === supported.key;
+            const reconciled = isReconciled(row?.status);
             return (
               <div key={supported.key} className="rounded-md border p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">{supported.label}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {row ? `${n(row.eligible_count)} lead(s) elegíveis · ${n(row.synced_count)} identificador(es) enviados` : "Ainda não sincronizada"}
+                      {row?.status === "reconciled_empty"
+                        ? "Nenhum contato consentido e elegível no momento; a lista externa foi esvaziada."
+                        : row
+                          ? `${n(row.eligible_count)} lead(s) elegíveis · ${n(row.synced_count)} identificador(es) enviados`
+                          : "Ainda não sincronizada"}
                     </p>
                   </div>
-                  <Badge variant={row?.status === "synced" ? "default" : "outline"}>{statusLabel(row?.status)}</Badge>
+                  <Badge variant={reconciled ? "default" : "outline"}>{statusLabel(row?.status)}</Badge>
                 </div>
                 {row?.last_synced_at ? <p className="mt-2 text-[11px] text-muted-foreground">Última sincronização: {new Date(row.last_synced_at).toLocaleString("pt-BR")}</p> : null}
                 {row?.last_error ? <p className="mt-2 text-xs text-destructive">{row.last_error}</p> : null}
                 <Button size="sm" variant="outline" className="mt-3" onClick={() => void sync(supported.key)} disabled={Boolean(syncing)}>
-                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : row?.status === "synced" ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  {row?.status === "synced" ? "Atualizar audiência" : "Sincronizar na Meta"}
+                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : reconciled ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  {reconciled ? "Atualizar audiência" : "Sincronizar na Meta"}
                 </Button>
               </div>
             );

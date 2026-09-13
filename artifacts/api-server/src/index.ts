@@ -4,6 +4,7 @@ import { getServerRuntimeSnapshot, startServerRuntimeSentinel } from "./lib/dev-
 import { getMainGovernanceSnapshot, startMainGovernanceGuard } from "./lib/dev-agent-main-governance.js";
 import { authenticate, requireRole } from "./middlewares/auth.js";
 import { startScheduler } from "./jobs/scheduler.js";
+import { startMetaCustomAudienceReconcileScheduler } from "./jobs/metaCustomAudienceReconcile.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
 import { runTrialJourney } from "./jobs/trialJourney.js";
@@ -105,6 +106,7 @@ async function start() {
 
     logger.info({ port }, "Server listening");
     startScheduler(logger);
+    startMetaCustomAudienceReconcileScheduler(logger);
     startMediaVideoBatchRunner(logger);
     startMediaVideoGenerateRunner(logger);
     startProductionSentinel(logger);
