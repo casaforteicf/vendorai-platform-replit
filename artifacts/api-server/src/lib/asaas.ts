@@ -293,7 +293,6 @@ export async function ensureAsaasPaymentWebhook(
       "PAYMENT_CONFIRMED",
       "PAYMENT_OVERDUE",
       "PAYMENT_DELETED",
-      "PAYMENT_CANCELLED",
     ],
   }, apiKey);
 
