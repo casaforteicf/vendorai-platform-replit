@@ -15,18 +15,17 @@ const segments = [
   { slug:"imobiliarias-corretores", name:"Imobiliárias e Corretores", dor:"Como parar de perder leads imobiliários antes da visita | VendorAI", marketing:"Marketing para Imobiliárias com Meta, Google e IA | VendorAI", crm:"CRM com IA para Imobiliárias e Corretores | VendorAI", description:"VendorAI organiza leads, preferência de imóvel, corretores, visitas, propostas, WhatsApp, follow-up e inteligência comercial para imobiliárias." },
   { slug:"construtora-residencial", name:"Construtoras Residenciais", dor:"Como evitar perda de leads e orçamentos em construtoras | VendorAI", marketing:"Marketing para Construtoras com Meta, Google e IA | VendorAI", crm:"CRM com IA para Construtoras Residenciais | VendorAI", description:"VendorAI conecta marketing, WhatsApp, qualificação, visitas, orçamentos, follow-up, agentes de IA e Revenue Scout para construtoras residenciais." },
   { slug:"esquadrias-portas-janelas", name:"Esquadrias, Portas e Janelas", dor:"Como evitar perda de orçamentos em empresas de esquadrias | VendorAI", marketing:"Marketing para Esquadrias com Meta, Google e IA | VendorAI", crm:"CRM com IA para Esquadrias, Portas e Janelas | VendorAI", description:"VendorAI conecta marketing, WhatsApp, projetos, medições, orçamentos, arquitetos, construtoras, follow-up e Revenue Scout para empresas de esquadrias." },
+  { slug:"piscinas", name:"Piscinas e Lazer Residencial", dor:"Como evitar perda de orçamentos em empresas de piscinas | VendorAI", marketing:"Marketing para Piscinas com Meta, Google e IA | VendorAI", crm:"CRM com IA para Empresas de Piscinas e Lazer | VendorAI", description:"VendorAI conecta marketing, WhatsApp, visitas técnicas, projetos, orçamentos, instalação, manutenção, pós-venda e Revenue Scout para empresas de piscinas." },
 ];
 
 if (!fs.existsSync(manifestPath) || !fs.existsSync(sitemapPath)) throw new Error("SEO outputs missing before intent LP sync");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 manifest.routes ??= [];
 const byPath = new Map(manifest.routes.map((route) => [route.pathname, route]));
-
 for (const segment of segments) {
   for (const intent of ["dor","marketing","crm"]) {
     const pathname = `/lp/${segment.slug}/${intent}`;
-    const route = { pathname, title: segment[intent], description: segment.description, type:"intent-lp", name:`${segment.name} — ${intent}`, priority:intent === "crm" ? 0.9 : intent === "marketing" ? 0.87 : 0.86 };
-    byPath.set(pathname, route);
+    byPath.set(pathname, { pathname, title: segment[intent], description: segment.description, type:"intent-lp", name:`${segment.name} — ${intent}`, priority:intent === "crm" ? 0.9 : intent === "marketing" ? 0.87 : 0.86 });
   }
 }
 manifest.routes = [...byPath.values()];
