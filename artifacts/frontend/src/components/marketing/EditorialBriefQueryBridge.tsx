@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { installEditorialPublicationAttribution } from "@/lib/editorialPublicationAttribution";
+import { EditorialPerformanceBridge } from "./EditorialPerformanceBridge";
 
 function nativeSetValue(element: HTMLTextAreaElement | HTMLInputElement, value: string) {
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -67,5 +68,5 @@ export function EditorialBriefQueryBridge() {
     };
   }, []);
 
-  return null;
+  return <EditorialPerformanceBridge />;
 }
