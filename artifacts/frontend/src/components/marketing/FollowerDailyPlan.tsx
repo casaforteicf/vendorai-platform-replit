@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CalendarDays, CheckCircle2, Loader2, MessageCircle, Play, Sparkles, Target, Video } from "lucide-react";
+import { CalendarDays, Loader2, MessageCircle, Play, Sparkles, Target, Video } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type GrowthOverview = {
