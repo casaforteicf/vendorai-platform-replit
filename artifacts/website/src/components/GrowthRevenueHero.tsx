@@ -13,45 +13,45 @@ import {
 import { usePublicCountry } from "@/lib/publicCountry";
 
 const PT = {
-  eyebrow: "Revenue OS com IA para empresas que querem crescer",
-  title: "Marketing, vendas e atendimento trabalhando como um só sistema.",
-  accent: "Mais demanda. Mais conversão. Mais receita.",
+  eyebrow: "Ferramentas conectadas ao resultado do seu negócio",
+  title: "Seu negócio não precisa de mais ferramentas.",
+  accent: "Precisa que elas trabalhem juntas.",
   description:
-    "O VendorAI transforma dados, canais e equipes em um ciclo comercial contínuo: cria campanhas, encontra oportunidades, atende, vende, acompanha e indica a próxima melhor ação.",
-  primary: "Testar 5 dias grátis",
-  secondary: "Explorar a plataforma",
-  proof: "Sem limite de usuários · implantação autoguiada · suporte em português",
-  enginesIntro: "Um sistema, três motores de crescimento",
+    "O VendorAI conecta marketing, prospecção, atendimento, CRM, follow-up e inteligência em uma única operação: encontra oportunidades, cria a próxima ação, acompanha a execução e mede o que virou resultado.",
+  primary: "Ver funcionando no meu negócio",
+  secondary: "Conhecer a operação conectada",
+  proof: "5 dias grátis · sem limite de usuários · suporte em português",
+  enginesIntro: "Uma operação conectada, do primeiro sinal à próxima venda",
   engines: [
-    { icon: Megaphone, title: "Atrair", text: "Ads, conteúdo, social, sites e landing pages." },
-    { icon: Radar, title: "Encontrar", text: "Prospecta, enriquece e prioriza novas oportunidades." },
-    { icon: Target, title: "Converter e expandir", text: "CRM, agentes de IA, follow-up e Revenue Intelligence." },
+    { icon: Radar, title: "Encontrar e atrair", text: "Oportunidades, visitantes, conteúdo, social, campanhas, sites e LPs." },
+    { icon: Target, title: "Converter e recuperar", text: "CRM, atendimento, agentes de IA, pipeline, follow-up e reativação." },
+    { icon: Megaphone, title: "Reter e escalar", text: "Pós-venda, Revenue Scout, inteligência e decisões baseadas em resultado." },
   ],
   previewLabel: "VendorAI em operação",
-  previewTitle: "Da visita ao fechamento, tudo conectado",
-  previewText: "Veja pipeline, contexto comercial e próxima ação em uma única experiência.",
-  previewLink: "Conhecer o CRM",
+  previewTitle: "Do sinal à execução. Da execução ao resultado.",
+  previewText: "Veja contexto comercial, pipeline e próxima ação trabalhando juntos — sem depender de ferramentas isoladas.",
+  previewLink: "Ver a operação conectada",
 };
 
 const ES = {
-  eyebrow: "Revenue OS con IA para empresas que quieren crecer",
-  title: "Marketing, ventas y atención trabajando como un solo sistema.",
-  accent: "Más demanda. Más conversión. Más ingresos.",
+  eyebrow: "Herramientas conectadas al resultado de tu negocio",
+  title: "Tu negocio no necesita más herramientas.",
+  accent: "Necesita que trabajen juntas.",
   description:
-    "VendorAI transforma datos, canales y equipos en un ciclo comercial continuo: crea campañas, encuentra oportunidades, atiende, vende, acompaña e indica la próxima mejor acción.",
-  primary: "Probar 5 días gratis",
-  secondary: "Explorar la plataforma",
-  proof: "Sin límite de usuarios · implementación autoguiada · soporte en español",
-  enginesIntro: "Un sistema, tres motores de crecimiento",
+    "VendorAI conecta marketing, prospección, atención, CRM, seguimiento e inteligencia en una sola operación: encuentra oportunidades, crea la próxima acción, acompaña la ejecución y mide lo que se convierte en resultado.",
+  primary: "Verlo funcionando en mi negocio",
+  secondary: "Conocer la operación conectada",
+  proof: "5 días gratis · sin límite de usuarios · soporte en español",
+  enginesIntro: "Una operación conectada, desde la primera señal hasta la próxima venta",
   engines: [
-    { icon: Megaphone, title: "Atraer", text: "Ads, contenido, social, sitios y landing pages." },
-    { icon: Radar, title: "Encontrar", text: "Prospecta, enriquece y prioriza nuevas oportunidades." },
-    { icon: Target, title: "Convertir y expandir", text: "CRM, agentes de IA, follow-up y Revenue Intelligence." },
+    { icon: Radar, title: "Encontrar y atraer", text: "Oportunidades, visitantes, contenido, social, campañas, sitios y LPs." },
+    { icon: Target, title: "Convertir y recuperar", text: "CRM, atención, agentes de IA, pipeline, seguimiento y reactivación." },
+    { icon: Megaphone, title: "Retener y escalar", text: "Posventa, Revenue Scout, inteligencia y decisiones basadas en resultados." },
   ],
   previewLabel: "VendorAI en operación",
-  previewTitle: "De la visita al cierre, todo conectado",
-  previewText: "Vea pipeline, contexto comercial y próxima acción en una única experiencia.",
-  previewLink: "Conocer el CRM",
+  previewTitle: "De la señal a la ejecución. De la ejecución al resultado.",
+  previewText: "Vea contexto comercial, pipeline y próxima acción trabajando juntos, sin depender de herramientas aisladas.",
+  previewLink: "Ver la operación conectada",
 };
 
 const MEDIA = "/media/vendorai-official";
@@ -87,7 +87,7 @@ export default function GrowthRevenueHero() {
               {copy.primary}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
-            <Link href="/produtos" className="vendor-cta-secondary inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-7 font-semibold text-slate-800">
+            <Link href="/lp/ferramentas-conectadas" className="vendor-cta-secondary inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-7 font-semibold text-slate-800">
               {copy.secondary}
             </Link>
           </div>
@@ -151,7 +151,7 @@ export default function GrowthRevenueHero() {
 
             <div className="flex flex-col gap-4 border-t border-slate-200/70 bg-white/95 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="max-w-xl text-sm leading-6 text-slate-600">{copy.previewText}</p>
-              <Link href="/produtos/crm" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-700 hover:text-orange-600">
+              <Link href="/lp/ferramentas-conectadas" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-700 hover:text-orange-600">
                 {copy.previewLink} <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -159,11 +159,11 @@ export default function GrowthRevenueHero() {
 
           <div className="vendor-floating-stat vendor-floating-stat-left hidden lg:flex">
             <BarChart3 className="h-4 w-4 text-orange-600" />
-            <div><strong>Revenue Intelligence</strong><span>Próxima melhor ação</span></div>
+            <div><strong>Inteligência de resultado</strong><span>Próxima melhor ação</span></div>
           </div>
           <div className="vendor-floating-stat vendor-floating-stat-right hidden xl:flex">
             <UsersRound className="h-4 w-4 text-emerald-600" />
-            <div><strong>CRM + IA</strong><span>Contexto em tempo real</span></div>
+            <div><strong>Operação conectada</strong><span>Contexto em tempo real</span></div>
           </div>
         </div>
       </div>
