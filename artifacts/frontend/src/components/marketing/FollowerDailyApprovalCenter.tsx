@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCheck, CheckCircle2, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { FollowerExecutionCenter } from "@/components/marketing/FollowerExecutionCenter";
 
 type Approval = {
   id: string;
@@ -87,23 +88,26 @@ export function FollowerDailyApprovalCenter() {
   if (loading) return <Card><CardContent className="flex items-center gap-2 py-5 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Montando aprovações do dia…</CardContent></Card>;
 
   return (
-    <Card className="border-sky-500/25">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-sky-600" /><CardTitle className="text-base">Aprovação da rotina de hoje</CardTitle></div><p className="mt-1 text-xs text-muted-foreground">Reúne apenas peças prontas. Aprovar não publica nem ativa mídia: libera a próxima etapa do fluxo.</p></div>
-          <div className="flex gap-2"><Badge variant="outline">{pending.length} pendentes</Badge><Badge>{approved.length} aprovados</Badge></div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {error ? <p className="rounded-md border border-destructive/30 p-2 text-xs text-destructive">{error}</p> : null}
-        {pending.length > 1 ? <div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy} onClick={() => void decide(pending.map((item) => item.id), "approved")}><CheckCheck className="mr-1.5 h-4 w-4" />Aprovar tudo</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => void decide(pending.map((item) => item.id), "rejected")}><XCircle className="mr-1.5 h-4 w-4" />Rejeitar tudo</Button></div> : null}
-        {!items.length ? <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma peça pronta aguardando aprovação.</div> : items.map((item) => (
-          <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
-            <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{item.title}</p><Badge variant={item.status === "approved" ? "default" : "outline"}>{item.status === "approved" ? "Aprovado" : item.status === "rejected" ? "Rejeitado" : "Pendente"}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{item.actionType === "paid" ? "Teste pago" : item.actionType === "replicate" ? "Replicação" : "Conteúdo"}</p></div>
-            {item.status === "pending" ? <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => void decide([item.id], "approved")}><CheckCircle2 className="mr-1.5 h-4 w-4" />Aprovar</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => void decide([item.id], "rejected")}><XCircle className="mr-1.5 h-4 w-4" />Rejeitar</Button></div> : null}
+    <div className="space-y-4">
+      <Card className="border-sky-500/25">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-sky-600" /><CardTitle className="text-base">Aprovação da rotina de hoje</CardTitle></div><p className="mt-1 text-xs text-muted-foreground">Reúne apenas peças prontas. Aprovar não publica nem ativa mídia: libera a próxima etapa do fluxo.</p></div>
+            <div className="flex gap-2"><Badge variant="outline">{pending.length} pendentes</Badge><Badge>{approved.length} aprovados</Badge></div>
           </div>
-        ))}
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {error ? <p className="rounded-md border border-destructive/30 p-2 text-xs text-destructive">{error}</p> : null}
+          {pending.length > 1 ? <div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy} onClick={() => void decide(pending.map((item) => item.id), "approved")}><CheckCheck className="mr-1.5 h-4 w-4" />Aprovar tudo</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => void decide(pending.map((item) => item.id), "rejected")}><XCircle className="mr-1.5 h-4 w-4" />Rejeitar tudo</Button></div> : null}
+          {!items.length ? <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma peça pronta aguardando aprovação.</div> : items.map((item) => (
+            <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
+              <div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{item.title}</p><Badge variant={item.status === "approved" ? "default" : "outline"}>{item.status === "approved" ? "Aprovado" : item.status === "rejected" ? "Rejeitado" : "Pendente"}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{item.actionType === "paid" ? "Teste pago" : item.actionType === "replicate" ? "Replicação" : "Conteúdo"}</p></div>
+              {item.status === "pending" ? <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => void decide([item.id], "approved")}><CheckCircle2 className="mr-1.5 h-4 w-4" />Aprovar</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => void decide([item.id], "rejected")}><XCircle className="mr-1.5 h-4 w-4" />Rejeitar</Button></div> : null}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      <FollowerExecutionCenter />
+    </div>
   );
 }
