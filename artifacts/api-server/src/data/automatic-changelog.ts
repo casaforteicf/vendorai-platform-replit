@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-1412",
+    "titulo": "índice persistente de inteligência visual",
+    "descricao": "adiciona **Media Intelligence Index** ao fluxo do Graphic Design Director; indexa fotos e vídeos da Biblioteca com sinais determinísticos de pixels e metadados existentes; persiste o resultado em `metadata.mediaIntelligence`, estrutura já consumida pelo `media-retrieval-director`; registra dimensões/orientação, grid de atividade, luminância, contraste, detalhe, ponto focal, espaço livre, paleta dominante, qualidade visual, crops 9:16/4:5/1:1/16:9 e tags pesquisáveis;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-13T00:31:36.000Z",
+    "pullRequest": 1412
+  },
+  {
     "id": "pr-1329",
     "titulo": "Site público: adicionar conceito visual do Prompt Hub",
     "descricao": "adiciona na home uma seção dedicada ao conceito do **Prompt Hub visual** explica o fluxo **Biblioteca de Mídias → controles simples → prompt técnico automático → geração → reutilização** mostra visualmente preservação de identidade, luz principal, contraste, rim light e fundo apresenta os destinos integrados: **site, campanhas e vídeo**",
