@@ -18,6 +18,12 @@ import { listMetaCustomAudiences, syncMetaCustomAudience } from "../services/met
 import { publishMetaCampaignWithCustomAudience } from "../services/meta-custom-audience-campaign.js";
 import { getMetaAudiencePerformance } from "../services/meta-audience-performance.js";
 import { approveMetaAudienceAction } from "../services/meta-audience-action-approval.js";
+import {
+  listFollowerGrowthQueue,
+  listFollowerGrowthQueueHistory,
+  syncFollowerGrowthQueue,
+  updateFollowerGrowthQueueItem,
+} from "../services/follower-growth-queue.js";
 
 const router: IRouter = Router();
 
@@ -47,6 +53,24 @@ const applyCustomAudienceBody = z.object({ campaignId: z.string().min(1) });
 const approveAudienceActionBody = z.object({
   campaignId: z.string().min(1),
   action: z.enum(["manter", "reduzir", "pausar", "testar_criativo", "escalar"]),
+});
+
+const followerQueueSyncBody = z.object({
+  items: z.array(z.object({
+    externalKey: z.string().min(1),
+    title: z.string().min(1),
+    theme: z.string().optional().nullable(),
+    priority: z.enum(["alta", "media"]),
+    pack: z.record(z.string(), z.unknown()),
+    dueAt: z.string().datetime().optional().nullable(),
+  })).max(20),
+});
+
+const followerQueuePatchBody = z.object({
+  status: z.enum(["todo", "doing", "done"]).optional(),
+  priority: z.enum(["alta", "media"]).optional(),
+  assigneeUserId: z.string().min(1).optional().nullable(),
+  dueAt: z.string().datetime().optional().nullable(),
 });
 
 async function loadSyncedAudience(tenantId: string, key: string) {
@@ -234,6 +258,57 @@ router.post("/tenants/:tenantId/content-performance/insights/atualizar", authent
     if (err instanceof PerformanceError) return res.status(422).json({ error: err.message });
     logger.error({ err, tenantId }, "content-performance: erro ao atualizar aprendizados");
     return res.status(500).json({ error: "Erro inesperado." });
+  }
+});
+
+router.get("/tenants/:tenantId/follower-growth/production-queue", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try { return res.json(await listFollowerGrowthQueue(tenantId)); }
+  catch (err) {
+    logger.error({ err, tenantId }, "follower-growth: erro ao carregar fila");
+    return res.status(500).json({ error: "Não foi possível carregar a fila de produção." });
+  }
+});
+
+router.post("/tenants/:tenantId/follower-growth/production-queue/sync", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = followerQueueSyncBody.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const actorUserId = (req as any).user?.sub ?? (req as any).user?.id ?? null;
+  try { return res.json(await syncFollowerGrowthQueue(tenantId, actorUserId, parsed.data.items)); }
+  catch (err) {
+    logger.error({ err, tenantId }, "follower-growth: erro ao sincronizar fila");
+    return res.status(500).json({ error: "Não foi possível sincronizar a fila de produção." });
+  }
+});
+
+router.patch("/tenants/:tenantId/follower-growth/production-queue/:itemId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const itemId = String(req.params.itemId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = followerQueuePatchBody.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const actorUserId = (req as any).user?.sub ?? (req as any).user?.id ?? null;
+  try {
+    const item = await updateFollowerGrowthQueueItem(tenantId, itemId, actorUserId, parsed.data);
+    if (!item) return res.status(404).json({ error: "Item da fila não encontrado." });
+    return res.json(item);
+  } catch (err) {
+    logger.error({ err, tenantId, itemId }, "follower-growth: erro ao atualizar fila");
+    return res.status(500).json({ error: "Não foi possível atualizar o item da fila." });
+  }
+});
+
+router.get("/tenants/:tenantId/follower-growth/production-queue/history", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const itemId = typeof req.query.itemId === "string" ? req.query.itemId : undefined;
+  try { return res.json(await listFollowerGrowthQueueHistory(tenantId, itemId)); }
+  catch (err) {
+    logger.error({ err, tenantId, itemId }, "follower-growth: erro ao carregar histórico");
+    return res.status(500).json({ error: "Não foi possível carregar o histórico da fila." });
   }
 });
 
