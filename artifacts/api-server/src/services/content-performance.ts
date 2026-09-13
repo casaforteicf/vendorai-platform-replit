@@ -12,14 +12,13 @@ import {
   contentPerformanceInsightsTable,
   agentConfigsTable,
   instagramConnectionsTable,
-  type PostMetricas,
   type PerformanceAprendizados,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger.js";
 import { buildPaidMediaLearningPromptBlock } from "./paidMediaLearning.js";
+import { collectInstagramInsights } from "./instagram-insight-collector.js";
 
-const GRAPH_BASE = "https://graph.instagram.com/v26.0";
 const MIN_AGE_BEFORE_METRICS_HOURS = 24;
 const MIN_POSTS_FOR_ANALYSIS = 4;
 
@@ -51,31 +50,6 @@ export async function listPublishedPosts(tenantId: string) {
     .from(contentPublishedPostsTable)
     .where(eq(contentPublishedPostsTable.tenantId, tenantId))
     .orderBy(contentPublishedPostsTable.publishedAt);
-}
-
-async function fetchMediaMetrics(mediaId: string, accessToken: string, contentType: string): Promise<PostMetricas> {
-  const metricSet = contentType === "stories" ? "reach,replies" : "reach,likes,comments,saved,shares";
-  const url = new URL(`${GRAPH_BASE}/${mediaId}/insights`);
-  url.searchParams.set("metric", metricSet);
-  url.searchParams.set("access_token", accessToken);
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const text = await res.text();
-    throw new PerformanceError(`Instagram não retornou métricas pra esse post (${res.status}): ${text.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as { data?: { name: string; values: { value: number }[] }[] };
-  const metricas: PostMetricas = {};
-  for (const m of data.data ?? []) {
-    const value = m.values?.[0]?.value;
-    if (typeof value !== "number") continue;
-    if (m.name === "reach") metricas.reach = value;
-    if (m.name === "likes") metricas.likes = value;
-    if (m.name === "comments") metricas.comments = value;
-    if (m.name === "saved") metricas.saved = value;
-    if (m.name === "shares") metricas.shares = value;
-  }
-  return metricas;
 }
 
 export async function refreshPendingMetrics(tenantId: string): Promise<{ atualizados: number; erros: number }> {
@@ -122,7 +96,7 @@ export async function refreshPendingMetrics(tenantId: string): Promise<{ atualiz
   let erros = 0;
   for (const post of posts) {
     try {
-      const metricas = await fetchMediaMetrics(post.instagramMediaId, token, post.contentType);
+      const metricas = await collectInstagramInsights(post.instagramMediaId, token, post.contentType);
       await db
         .update(contentPublishedPostsTable)
         .set({ metricas, ultimaColetaEm: new Date(), ultimoErroMetricas: null })
@@ -195,13 +169,13 @@ export async function refreshPerformanceInsights(tenantId: string) {
   const resumo = comMetricas
     .map((p) => {
       const m = p.metricas!;
-      const engajamento = (m.likes ?? 0) + (m.comments ?? 0) * 2 + (m.saved ?? 0) * 3 + (m.shares ?? 0) * 3;
+      const engajamento = (m.likes ?? 0) + (m.comments ?? 0) * 2 + (m.saved ?? 0) * 3 + (m.shares ?? 0) * 3 + (m.replies ?? 0) * 3 + (m.linkClicks ?? 0) * 4;
       const calendar = p.contentGenerationId ? calendarByGeneration.get(p.contentGenerationId) : undefined;
       const campaignName = calendar?.pilar?.split(" · ")[0]?.trim();
       const attribution = calendar
         ? ` Plano ${calendar.mediaPlanId ?? "?"}; campanha ${campaignName || "?"}; ação ${calendar.id}; canal ${calendar.canal}; formato planejado ${calendar.tipo}; tema planejado "${calendar.temaSugerido}".`
         : " Sem atribuição a item do Plano de Mídia.";
-      return `Tema "${p.theme ?? "?"}" (${p.contentType}): alcance ${m.reach ?? "?"}, curtidas ${m.likes ?? "?"}, comentários ${m.comments ?? "?"}, salvos ${m.saved ?? "?"}, compartilhamentos ${m.shares ?? "?"} — score engajamento ~${engajamento}.${attribution} Legenda: ${(p.captionOuTexto ?? "").slice(0, 200)}`;
+      return `Tema "${p.theme ?? "?"}" (${p.contentType}): alcance ${m.reach ?? "?"}, views ${m.views ?? m.plays ?? "?"}, curtidas ${m.likes ?? "?"}, comentários ${m.comments ?? "?"}, salvos ${m.saved ?? "?"}, compartilhamentos ${m.shares ?? "?"}, respostas ${m.replies ?? "?"}, cliques em link ${m.linkClicks ?? "?"} — score engajamento ~${engajamento}.${attribution} Legenda: ${(p.captionOuTexto ?? "").slice(0, 200)}`;
     })
     .join("\n\n");
 
