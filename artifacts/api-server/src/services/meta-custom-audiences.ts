@@ -124,8 +124,7 @@ async function loadEligibleIdentifiers(tenantId: string, key: MetaCustomAudience
       isNull(leadsTable.naoLeadTipo),
     ));
 
-  const emailHashes = new Set<string>();
-  const phoneHashes = new Set<string>();
+  const memberRows = new Map<string, [string, string]>();
   let consented = 0;
   let audienceMatched = 0;
 
@@ -139,16 +138,19 @@ async function loadEligibleIdentifiers(tenantId: string, key: MetaCustomAudience
 
     const email = normalizeEmail(lead.email);
     const phone = normalizePhone(lead.telefone);
-    if (email) emailHashes.add(sha256(email));
-    if (phone) phoneHashes.add(sha256(phone));
+    const emailHash = email ? sha256(email) : "";
+    const phoneHash = phone ? sha256(phone) : "";
+    if (!emailHash && !phoneHash) continue;
+    memberRows.set(`${emailHash}|${phoneHash}`, [emailHash, phoneHash]);
   }
 
+  const rows = [...memberRows.values()];
   return {
     consented,
     audienceMatched,
-    emailHashes: [...emailHashes],
-    phoneHashes: [...phoneHashes],
-    matchableIdentifiers: emailHashes.size + phoneHashes.size,
+    rows,
+    matchableContacts: rows.length,
+    matchableIdentifiers: rows.reduce((total, [email, phone]) => total + (email ? 1 : 0) + (phone ? 1 : 0), 0),
   };
 }
 
@@ -220,25 +222,34 @@ async function ensureExternalAudience(tenantId: string, key: MetaCustomAudienceK
   return id;
 }
 
-async function uploadHashes(audienceId: string, accessToken: string, schema: "EMAIL" | "PHONE", hashes: string[]) {
+async function replaceAudienceMembership(
+  audienceId: string,
+  accessToken: string,
+  rows: Array<[string, string]>,
+) {
   const chunkSize = 1000;
   const sessionId = Date.now();
-  let uploaded = 0;
-  for (let start = 0; start < hashes.length; start += chunkSize) {
-    const chunk = hashes.slice(start, start + chunkSize);
-    const batchSeq = Math.floor(start / chunkSize);
-    await metaPost(`${audienceId}/users`, accessToken, {
-      payload: JSON.stringify({ schema: [schema], data: chunk.map((value) => [value]) }),
+  const totalBatches = Math.max(1, Math.ceil(rows.length / chunkSize));
+
+  for (let batchSeq = 0; batchSeq < totalBatches; batchSeq += 1) {
+    const start = batchSeq * chunkSize;
+    const chunk = rows.slice(start, start + chunkSize);
+    const isLastBatch = batchSeq === totalBatches - 1;
+    await metaPost(`${audienceId}/usersreplace`, accessToken, {
+      payload: JSON.stringify({
+        schema: ["EMAIL", "PHONE"],
+        data: chunk,
+      }),
       session: JSON.stringify({
         session_id: sessionId,
         batch_seq: batchSeq,
-        last_batch: start + chunkSize >= hashes.length,
-        estimated_num_total: hashes.length,
+        last_batch_flag: isLastBatch,
+        estimated_num_total: rows.length,
       }),
     });
-    uploaded += chunk.length;
   }
-  return uploaded;
+
+  return rows.reduce((total, [email, phone]) => total + (email ? 1 : 0) + (phone ? 1 : 0), 0);
 }
 
 type AudienceListRow = {
@@ -270,43 +281,18 @@ export async function syncMetaCustomAudience(tenantId: string, key: MetaCustomAu
   if (!(key in AUDIENCES)) throw new Error("Audiência Meta não suportada.");
 
   const identifiers = await loadEligibleIdentifiers(tenantId, key);
-  if (identifiers.matchableIdentifiers === 0) {
-    await persistAudience({
-      tenantId,
-      key,
-      externalAudienceId: (await getStoredAudience(tenantId, key))?.external_audience_id ?? null,
-      status: "no_matchable_contacts",
-      eligibleCount: identifiers.audienceMatched,
-      syncedCount: 0,
-      lastError: null,
-    });
-    return {
-      key,
-      status: "no_matchable_contacts",
-      eligibleLeads: identifiers.audienceMatched,
-      consentedLeads: identifiers.consented,
-      uploadedIdentifiers: 0,
-      message: "Há audiência interna, mas nenhum contato consentido possui e-mail ou telefone com código de país utilizável para Customer List.",
-    };
-  }
-
   const conn = await getActiveConnection(tenantId);
   let externalAudienceId: string | null = null;
   try {
     externalAudienceId = await ensureExternalAudience(tenantId, key);
-    const emailCount = identifiers.emailHashes.length
-      ? await uploadHashes(externalAudienceId, conn.accessToken, "EMAIL", identifiers.emailHashes)
-      : 0;
-    const phoneCount = identifiers.phoneHashes.length
-      ? await uploadHashes(externalAudienceId, conn.accessToken, "PHONE", identifiers.phoneHashes)
-      : 0;
-    const uploaded = emailCount + phoneCount;
+    const uploaded = await replaceAudienceMembership(externalAudienceId, conn.accessToken, identifiers.rows);
 
+    const status = identifiers.matchableContacts === 0 ? "reconciled_empty" : "synced";
     await persistAudience({
       tenantId,
       key,
       externalAudienceId,
-      status: "synced",
+      status,
       eligibleCount: identifiers.audienceMatched,
       syncedCount: uploaded,
       lastError: null,
@@ -315,16 +301,22 @@ export async function syncMetaCustomAudience(tenantId: string, key: MetaCustomAu
 
     return {
       key,
-      status: "synced",
+      status,
       externalAudienceId,
       eligibleLeads: identifiers.audienceMatched,
       consentedLeads: identifiers.consented,
+      matchableContacts: identifiers.matchableContacts,
       uploadedIdentifiers: uploaded,
+      membershipReconciled: true,
+      removedStaleMemberships: true,
       campaignActivated: false,
       spendActivated: false,
+      message: identifiers.matchableContacts === 0
+        ? "A lista externa foi reconciliada sem contatos elegíveis; consentimentos revogados ou expirados não permanecem na audiência sincronizada."
+        : "A lista externa foi substituída pela audiência consentida atual; membros revogados, expirados ou inelegíveis deixam de permanecer na Customer List.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha desconhecida ao sincronizar Custom Audience.";
+    const message = error instanceof Error ? error.message : "Falha desconhecida ao reconciliar Custom Audience.";
     await persistAudience({
       tenantId,
       key,
