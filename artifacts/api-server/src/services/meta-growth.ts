@@ -13,6 +13,7 @@ import {
   META_GRAPH_BASE,
   normalizeMetaAdAccountId,
 } from "./meta-ads-oauth.js";
+import { getInstagramStoryFunnel } from "./instagram-story-funnel.js";
 
 const IG_GRAPH_BASE = "https://graph.instagram.com/v26.0";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -197,7 +198,7 @@ function buildAlerts(params: {
 
 export async function getMetaGrowthOverview(tenantId: string) {
   const cutoff = new Date(Date.now() - THIRTY_DAYS_MS);
-  const [instagram, metaAds, recentLeads, recentPosts] = await Promise.all([
+  const [instagram, metaAds, recentLeads, recentPosts, storyFunnel] = await Promise.all([
     getInstagramConnectionByTenantId(tenantId),
     getMetaAdsConnectionByTenantId(tenantId),
     db
@@ -208,6 +209,10 @@ export async function getMetaGrowthOverview(tenantId: string) {
       .select()
       .from(contentPublishedPostsTable)
       .where(and(eq(contentPublishedPostsTable.tenantId, tenantId), gte(contentPublishedPostsTable.publishedAt, cutoff))),
+    getInstagramStoryFunnel(tenantId).catch((error) => {
+      logger.warn({ error, tenantId }, "Meta Growth: funil de Stories indisponível");
+      return null;
+    }),
   ]);
 
   const instagramConnected = Boolean(instagram?.pageAccessToken && !instagram.disconnectedAt);
@@ -307,12 +312,14 @@ export async function getMetaGrowthOverview(tenantId: string) {
     paidLeads30d: paidMetaLeadIds.length || paidLeadsFromAds,
     organicLeads30d: organicMetaLeadIds.length,
     topContent,
+    storyFunnel,
     alerts,
     refreshedAt: new Date().toISOString(),
     dataQuality: {
       followerDeltas: followersDelta7d != null || followersDelta30d != null ? "historical_snapshots" : "collecting_daily_snapshots",
       contentFollowerAttribution: "not_available_from_current_history",
       paidLeadsSource: paidMetaLeadIds.length ? "crm" : paidLeadsFromAds != null ? "meta_ads" : "unavailable",
+      storyFunnelAttribution: storyFunnel ? "media_id_to_crm" : "unavailable",
     },
   };
 }
