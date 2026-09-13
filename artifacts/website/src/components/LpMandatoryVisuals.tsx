@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 
-type VisualSet = { title: string; first: string; second: string; firstAlt: string; secondAlt: string };
+type VisualSet = { title: string; first: string; second: string; firstAlt: string; secondAlt: string; third?: string; thirdAlt?: string };
 
 const VISUALS: Record<string, VisualSet> = {
   "/lp/academias-studios": { title:"Academias e Studios", first:"/lp-images/academias-contexto-1.svg", second:"/lp-images/academias-contexto-2.svg", firstAlt:"Academia, treino e experiência do aluno", secondAlt:"Aula experimental, matrícula e retenção" },
@@ -13,6 +13,12 @@ const VISUALS: Record<string, VisualSet> = {
   "/lp/esquadrias-portas-janelas": { title:"Esquadrias, Portas e Janelas", first:"/lp-images/esquadrias-contexto-1.svg", second:"/lp-images/esquadrias-contexto-2.svg", firstAlt:"Esquadrias, portas e janelas em projeto residencial", secondAlt:"Medição, orçamento e follow-up de esquadrias" },
   "/lp/piscinas": { title:"Piscinas e Lazer Residencial", first:"/lp-images/piscinas-contexto-1.svg", second:"/lp-images/piscinas-contexto-2.svg", firstAlt:"Piscina integrada a residência e área de lazer", secondAlt:"Projeto, proposta, instalação e pós-venda de piscinas" },
   "/lp/arquitetura-interiores": { title:"Arquitetura e Design de Interiores", first:"/lp-images/arquitetura-contexto-1.svg", second:"/lp-images/arquitetura-contexto-2.svg", firstAlt:"Projeto de arquitetura e interiores", secondAlt:"Briefing, proposta, aprovação e follow-up de projeto" },
+  "/lp/distribuidora-autopecas": { title:"Distribuidoras de Autopeças", first:"/lp-images/autopecas-contexto-1.svg", second:"/lp-images/autopecas-contexto-2.svg", firstAlt:"Estoque e operação comercial de autopeças", secondAlt:"Cotação, follow-up, pedido e recompra" },
+  "/lp/distribuidora-materiais-construcao": { title:"Distribuidoras de Materiais de Construção", first:"/lp-images/materiais-construcao-contexto-1.svg", second:"/lp-images/materiais-construcao-contexto-2.svg", firstAlt:"Distribuição de materiais por linha e região", secondAlt:"Orçamento, mix, pedido e recompra" },
+  "/lp/distribuidora-alimentos-bebidas": { title:"Distribuidoras de Alimentos", first:"/lp-images/alimentos-contexto-1.svg", second:"/lp-images/alimentos-contexto-2.svg", firstAlt:"Carteira e distribuição de alimentos", secondAlt:"Pedido, frequência, mix e reativação" },
+  "/lp/maquinas-insumos": { title:"Máquinas, Equipamentos e Insumos", first:"/lp-images/maquinas-insumos-contexto-1.svg", second:"/lp-images/maquinas-insumos-contexto-2.svg", firstAlt:"Máquinas e equipamentos em operação comercial", secondAlt:"Venda técnica, proposta e pós-venda" },
+  "/lp/seguros": { title:"Corretoras de Seguros", first:"/lp-images/seguros-contexto-1.svg", second:"/lp-images/seguros-contexto-2.svg", firstAlt:"Proteção, renovação e relacionamento com segurados", secondAlt:"Cotação, proposta e renovação", third:"/lp-images/seguros-vendorai.svg", thirdAlt:"Visual VendorAI para corretoras de seguros" },
+  "/lp/farmacias": { title:"Farmácias e Drogarias", first:"/lp-images/farmacia-contexto-1.svg", second:"/lp-images/farmacia-contexto-2.svg", firstAlt:"Atendimento, recorrência e relacionamento em farmácia", secondAlt:"Recompra e fidelização em farmácia", third:"/lp-images/farmacia-vendorai.svg", thirdAlt:"Visual VendorAI para farmácias e drogarias" },
 };
 
 export default function LpMandatoryVisuals(){
@@ -43,16 +49,20 @@ export default function LpMandatoryVisuals(){
   },[location,config]);
 
   if(!config || !target) return null;
+  const images = [
+    {src:config.first, alt:config.firstAlt},
+    {src:config.second, alt:config.secondAlt},
+    ...(config.third ? [{src:config.third, alt:config.thirdAlt ?? `Visual VendorAI para ${config.title}`}] : []),
+  ];
   return createPortal(
     <section className="bg-[#f7f7f5] px-4 py-10 sm:px-6 sm:py-14" aria-label={`Imagens de ${config.title}`}>
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex items-end justify-between gap-4">
-          <div><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Contexto visual do nicho</p><h2 className="mt-2 text-2xl font-black sm:text-3xl">{config.title} em contexto real de operação</h2></div>
-          <span className="hidden rounded-full bg-slate-900 px-4 py-2 text-[11px] font-black uppercase tracking-[.12em] text-white sm:inline-flex">Imagens locais • sempre disponíveis</span>
+          <div><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Contexto visual do nicho</p><h2 className="mt-2 text-2xl font-black sm:text-3xl">{config.title} em contexto de operação</h2></div>
+          <span className="hidden rounded-full bg-slate-900 px-4 py-2 text-[11px] font-black uppercase tracking-[.12em] text-white sm:inline-flex">Imagens locais • padrão obrigatório</span>
         </div>
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-slate-200"><img src={config.first} alt={config.firstAlt} className="h-[300px] w-full object-cover sm:h-[420px]" loading="eager"/></div>
-          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-slate-200"><img src={config.second} alt={config.secondAlt} className="h-[300px] w-full object-cover sm:h-[420px]" loading="eager"/></div>
+        <div className={`grid gap-5 ${images.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+          {images.map((image)=><div key={image.src} className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-slate-200"><img src={image.src} alt={image.alt} className="h-[300px] w-full object-cover sm:h-[420px]" loading="eager"/></div>)}
         </div>
       </div>
     </section>,
