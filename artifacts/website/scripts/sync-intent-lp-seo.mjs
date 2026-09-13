@@ -1,0 +1,49 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const outDir = path.resolve(here, "../dist/public");
+const manifestPath = path.join(outDir, "seo-manifest.json");
+const sitemapPath = path.join(outDir, "sitemap.xml");
+const baseUrl = "https://appvendorai.com";
+
+const segments = [
+  { slug:"academias-studios", name:"Academias e Studios", dor:"CRM para Academia: reduza perdas de leads e matrículas | VendorAI", marketing:"Marketing para Academias com IA, Meta e Google | VendorAI", crm:"CRM com IA para Academias e Studios | VendorAI", description:"VendorAI conecta marketing, WhatsApp, CRM, agenda, follow-up, retenção e reativação para academias e studios." },
+  { slug:"concessionarias-lojas-veiculos", name:"Concessionárias e Lojas de Veículos", dor:"Como evitar perda de leads em concessionárias | VendorAI", marketing:"Marketing para Concessionárias com IA e CRM | VendorAI", crm:"CRM com IA para Concessionárias e Lojas de Veículos | VendorAI", description:"VendorAI organiza leads, veículo de interesse, troca, financiamento, test-drive, proposta, vendedor e follow-up em concessionárias." },
+  { slug:"clinicas-odontologicas-esteticas", name:"Clínicas Odontológicas e Estéticas", dor:"Reduza no-show e orçamentos esquecidos em clínicas | VendorAI", marketing:"Marketing para Clínicas Odontológicas e Estéticas | VendorAI", crm:"CRM com IA para Clínicas Odontológicas e Estéticas | VendorAI", description:"VendorAI conecta campanhas, WhatsApp, agenda, avaliação, orçamento, follow-up, Revenue Scout e reativação para clínicas." },
+  { slug:"imobiliarias-corretores", name:"Imobiliárias e Corretores", dor:"Como parar de perder leads imobiliários antes da visita | VendorAI", marketing:"Marketing para Imobiliárias com Meta, Google e IA | VendorAI", crm:"CRM com IA para Imobiliárias e Corretores | VendorAI", description:"VendorAI organiza leads, preferência de imóvel, corretores, visitas, propostas, WhatsApp, follow-up e inteligência comercial para imobiliárias." },
+  { slug:"construtora-residencial", name:"Construtoras Residenciais", dor:"Como evitar perda de leads e orçamentos em construtoras | VendorAI", marketing:"Marketing para Construtoras com Meta, Google e IA | VendorAI", crm:"CRM com IA para Construtoras Residenciais | VendorAI", description:"VendorAI conecta marketing, WhatsApp, qualificação, visitas, orçamentos, follow-up, agentes de IA e Revenue Scout para construtoras residenciais." },
+];
+
+if (!fs.existsSync(manifestPath) || !fs.existsSync(sitemapPath)) throw new Error("SEO outputs missing before intent LP sync");
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+manifest.routes ??= [];
+const byPath = new Map(manifest.routes.map((route) => [route.pathname, route]));
+
+for (const segment of segments) {
+  for (const intent of ["dor","marketing","crm"]) {
+    const pathname = `/lp/${segment.slug}/${intent}`;
+    const route = { pathname, title: segment[intent], description: segment.description, type:"intent-lp", name:`${segment.name} — ${intent}`, priority:intent === "crm" ? 0.9 : intent === "marketing" ? 0.87 : 0.86 };
+    byPath.set(pathname, route);
+  }
+}
+manifest.routes = [...byPath.values()];
+manifest.intentLpSegments = segments;
+fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+let sitemap = fs.readFileSync(sitemapPath, "utf8");
+const today = new Date().toISOString().slice(0,10);
+const xmlEscape = (value) => String(value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const additions = [];
+for (const segment of segments) {
+  for (const intent of ["dor","marketing","crm"]) {
+    const loc = `${baseUrl}/lp/${segment.slug}/${intent}`;
+    if (sitemap.includes(`<loc>${loc}</loc>`)) continue;
+    const priority = intent === "crm" ? 0.9 : intent === "marketing" ? 0.87 : 0.86;
+    additions.push(`  <url>\n    <loc>${xmlEscape(loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>${priority}</priority>\n    <xhtml:link rel="alternate" hreflang="pt-BR" href="${xmlEscape(loc)}" />\n    <xhtml:link rel="alternate" hreflang="x-default" href="${xmlEscape(loc)}" />\n  </url>`);
+  }
+}
+if (additions.length) sitemap = sitemap.replace("</urlset>", `${additions.join("\n")}\n</urlset>`);
+fs.writeFileSync(sitemapPath, sitemap);
+console.log(`[seo] synced ${segments.length * 3} intent LP routes`);
