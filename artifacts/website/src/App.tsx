@@ -33,6 +33,7 @@ const BlogPost = lazy(() => import("@/pages/blog/BlogPostRoute"));
 const UnifiedLpRouter = lazy(() => import("@/pages/lp/UnifiedLpRouter"));
 const IntentVerticalLp = lazy(() => import("@/pages/lp/IntentVerticalLp"));
 const AcademiasIntentLp = lazy(() => import("@/pages/lp/AcademiasIntentLp"));
+const VeiculosIntentLp = lazy(() => import("@/pages/lp/VeiculosIntentLp"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
 const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
 const PromptHubConceptSection = lazy(() => import("@/components/PromptHubConceptSection"));
@@ -166,6 +167,7 @@ function Router() {
         <Route path="/parceiros" component={ParceirosPage} />
         <Route path="/segmentos/:slug" component={MacrosegmentHub} />
         <Route path="/lp/academias-studios/:intent" component={AcademiasIntentLp} />
+        <Route path="/lp/concessionarias-lojas-veiculos/:intent" component={VeiculosIntentLp} />
         <Route path="/lp/:slug/:intent" component={IntentVerticalLp} />
         <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
