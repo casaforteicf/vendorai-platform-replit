@@ -37,6 +37,7 @@ const VeiculosIntentLp = lazy(() => import("@/pages/lp/VeiculosIntentLp"));
 const ClinicasOdontoEsteticaIntentLp = lazy(() => import("@/pages/lp/ClinicasOdontoEsteticaIntentLp"));
 const ImobiliariasIntentLp = lazy(() => import("@/pages/lp/ImobiliariasIntentLp"));
 const ConstrutorasIntentLp = lazy(() => import("@/pages/lp/ConstrutorasIntentLp"));
+const EsquadriasIntentLp = lazy(() => import("@/pages/lp/EsquadriasIntentLp"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
 const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
 const PromptHubConceptSection = lazy(() => import("@/components/PromptHubConceptSection"));
@@ -120,6 +121,7 @@ function Router() {
       <Route path="/lp/clinicas-odontologicas-esteticas/:intent" component={ClinicasOdontoEsteticaIntentLp} />
       <Route path="/lp/imobiliarias-corretores/:intent" component={ImobiliariasIntentLp} />
       <Route path="/lp/construtora-residencial/:intent" component={ConstrutorasIntentLp} />
+      <Route path="/lp/esquadrias-portas-janelas/:intent" component={EsquadriasIntentLp} />
       <Route path="/lp/:slug/:intent" component={IntentVerticalLp} />
       <Route path="/lp/:slug" component={UnifiedLpRouter} />
       <Route>
