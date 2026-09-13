@@ -19,6 +19,8 @@ import { MediaDeleteSelectionBridge } from "./components/media/MediaDeleteSelect
 import { MediaLibraryWorkflowBridge } from "./components/media/MediaLibraryWorkflowBridge";
 import { MediaIntelligenceIndexBridge } from "./components/media/MediaIntelligenceIndexBridge";
 import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGeneratorQueueUxBridge";
+import { VendorAiEditorialPlannerBridge } from "./components/marketing/VendorAiEditorialPlannerBridge";
+import { EditorialBriefQueryBridge } from "./components/marketing/EditorialBriefQueryBridge";
 import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
 import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/MediaPlanProductionCompatibilityBridge";
 import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/MediaPlanProjectKindCompatibilityBridge";
@@ -83,9 +85,6 @@ installVisitorTelemetry();
 
 document.documentElement.dataset.vendoraiBuild = "asset-versioning-20260910";
 
-// O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
-// obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
-// que o Clear-Site-Data de recuperação não seja reenviado em toda navegação.
 const recoveryUrl = new URL(window.location.href);
 if (recoveryUrl.searchParams.has("__vendorai_refresh")) {
   recoveryUrl.searchParams.delete("__vendorai_refresh");
@@ -115,9 +114,7 @@ if (Object.keys(onboardingContext).length > 0) {
 
 if (handoffToken) {
   localStorage.setItem("vendorai_token", handoffToken);
-  if (handoffDemoExpiresAt) {
-    localStorage.setItem("vendorai_demo_expires_at", handoffDemoExpiresAt);
-  }
+  if (handoffDemoExpiresAt) localStorage.setItem("vendorai_demo_expires_at", handoffDemoExpiresAt);
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
 
@@ -136,16 +133,11 @@ function CanonicalMarketingRouteBridge() {
       window.history.replaceState(window.history.state, "", target);
       window.dispatchEvent(new PopStateEvent("popstate"));
     };
-
     canonicalize();
     window.addEventListener("popstate", canonicalize);
     const timer = window.setInterval(canonicalize, 250);
-    return () => {
-      window.removeEventListener("popstate", canonicalize);
-      window.clearInterval(timer);
-    };
+    return () => { window.removeEventListener("popstate", canonicalize); window.clearInterval(timer); };
   }, []);
-
   return null;
 }
 
@@ -178,6 +170,8 @@ createRoot(document.getElementById("root")!).render(
           <MediaAiBaseWorkspaceNav />
           <MediaDeleteSelectionBridge />
           <ContentGeneratorQueueUxBridge />
+          <VendorAiEditorialPlannerBridge />
+          <EditorialBriefQueryBridge />
           <ContentPlanVisualCompletionBridge />
           <MediaPlanProductionCompatibilityBridge />
           <MediaPlanProjectKindCompatibilityBridge />
