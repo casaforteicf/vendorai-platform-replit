@@ -6,6 +6,7 @@ import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import MediaCenter from "@/pages/MediaCenter";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
+import GrowthLab from "@/pages/GrowthLab";
 import VideoAvatarCapturePage from "@/pages/video/VideoAvatarCapturePage";
 import VideoAvatarCaptureTenantGate from "@/pages/video/VideoAvatarCaptureTenantGate";
 import VideoAvatarCaptureViewportGuard from "@/pages/video/VideoAvatarCaptureViewportGuard";
@@ -19,8 +20,9 @@ export default function NotFound() {
   const isMediaCenter = normalizedPath === "/midias";
   const isConversations = normalizedPath === "/conversas";
   const isAiMetrics = normalizedPath === "/metricas-ia";
+  const isGrowthLab = normalizedPath === "/growth-lab";
   const isDubleCapture = normalizedPath === "/content-studio/video/avatar/captura";
-  const isProtectedAlias = isMediaCenter || isConversations || isAiMetrics || isDubleCapture;
+  const isProtectedAlias = isMediaCenter || isConversations || isAiMetrics || isGrowthLab || isDubleCapture;
 
   useEffect(() => {
     if (isProtectedAlias && !isLoading && !token) {
@@ -47,7 +49,7 @@ export default function NotFound() {
 
     return (
       <SidebarLayout>
-        {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : <Analytics />}
+        {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLab />}
       </SidebarLayout>
     );
   }
