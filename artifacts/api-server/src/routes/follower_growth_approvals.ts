@@ -23,17 +23,25 @@ const batchSchema = z.object({
   status: z.enum(["approved", "rejected"]),
 });
 
+const executionSchema = z.object({
+  executionStatus: z.enum(["released", "running", "done"]),
+});
+
+const selectToday = (tenantId: string) => db.execute(sql`
+  SELECT id, approval_date AS "approvalDate", action_type AS "actionType", source_id AS "sourceId",
+         title, status, payload, decided_by_user_id AS "decidedByUserId", decided_at AS "decidedAt",
+         execution_status AS "executionStatus", execution_started_at AS "executionStartedAt",
+         executed_at AS "executedAt", executed_by_user_id AS "executedByUserId",
+         created_at AS "createdAt", updated_at AS "updatedAt"
+    FROM follower_growth_daily_approvals
+   WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE
+   ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at ASC
+`);
+
 router.get("/tenants/:tenantId/follower-growth/approvals", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
-  const result = await db.execute(sql`
-    SELECT id, approval_date AS "approvalDate", action_type AS "actionType", source_id AS "sourceId",
-           title, status, payload, decided_by_user_id AS "decidedByUserId", decided_at AS "decidedAt",
-           created_at AS "createdAt", updated_at AS "updatedAt"
-      FROM follower_growth_daily_approvals
-     WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE
-     ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at ASC
-  `);
+  const result = await selectToday(tenantId);
   return res.json(result.rows ?? []);
 });
 
@@ -50,13 +58,7 @@ router.post("/tenants/:tenantId/follower-growth/approvals/sync", async (req, res
         title = EXCLUDED.title, payload = EXCLUDED.payload, updated_at = now()
     `);
   }
-  const result = await db.execute(sql`
-    SELECT id, approval_date AS "approvalDate", action_type AS "actionType", source_id AS "sourceId",
-           title, status, payload, decided_by_user_id AS "decidedByUserId", decided_at AS "decidedAt"
-      FROM follower_growth_daily_approvals
-     WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE
-     ORDER BY created_at ASC
-  `);
+  const result = await selectToday(tenantId);
   return res.json(result.rows ?? []);
 });
 
@@ -68,17 +70,35 @@ router.post("/tenants/:tenantId/follower-growth/approvals/batch", async (req, re
   const actorUserId = req.user?.sub ?? req.user?.id ?? null;
   await db.execute(sql`
     UPDATE follower_growth_daily_approvals
-       SET status = ${parsed.data.status}, decided_by_user_id = ${actorUserId}, decided_at = now(), updated_at = now()
+       SET status = ${parsed.data.status}, decided_by_user_id = ${actorUserId}, decided_at = now(),
+           execution_status = CASE WHEN ${parsed.data.status} = 'approved' THEN 'released' ELSE execution_status END,
+           updated_at = now()
      WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE
        AND id = ANY(${parsed.data.ids}::text[])
   `);
-  const result = await db.execute(sql`
-    SELECT id, action_type AS "actionType", source_id AS "sourceId", title, status, payload,
-           decided_by_user_id AS "decidedByUserId", decided_at AS "decidedAt"
-      FROM follower_growth_daily_approvals
-     WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE
-     ORDER BY created_at ASC
+  const result = await selectToday(tenantId);
+  return res.json(result.rows ?? []);
+});
+
+router.patch("/tenants/:tenantId/follower-growth/approvals/:id/execution", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const id = String(req.params.id);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = executionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const actorUserId = req.user?.sub ?? req.user?.id ?? null;
+  const updated = await db.execute(sql`
+    UPDATE follower_growth_daily_approvals
+       SET execution_status = ${parsed.data.executionStatus},
+           execution_started_at = CASE WHEN ${parsed.data.executionStatus} = 'running' THEN COALESCE(execution_started_at, now()) ELSE execution_started_at END,
+           executed_at = CASE WHEN ${parsed.data.executionStatus} = 'done' THEN now() ELSE executed_at END,
+           executed_by_user_id = CASE WHEN ${parsed.data.executionStatus} = 'done' THEN ${actorUserId} ELSE executed_by_user_id END,
+           updated_at = now()
+     WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE AND id = ${id} AND status = 'approved'
+     RETURNING id
   `);
+  if (!updated.rows?.length) return res.status(409).json({ error: "A ação precisa estar aprovada antes de ser executada." });
+  const result = await selectToday(tenantId);
   return res.json(result.rows ?? []);
 });
 
