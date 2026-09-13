@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Link2, Loader2, Play, Rocket, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Link2, Loader2, Play, RefreshCw, Rocket, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type ExecutionItem = {
@@ -13,11 +13,13 @@ type ExecutionItem = {
   status: "pending" | "approved" | "rejected";
   executionStatus?: "released" | "running" | "done";
   executedAt?: string | null;
-  executionEvidenceType?: "social_publication" | "campaign" | null;
+  executionEvidenceType?: "social_publication" | "publication" | "campaign" | null;
   executionEvidenceId?: string | null;
   executionEvidenceLabel?: string | null;
   payload?: Record<string, unknown>;
 };
+
+type AutoEvidenceResult = { linked?: Array<{ approvalId: string; evidenceType: string; evidenceId: string }>; ambiguous?: string[]; checked?: number };
 
 function executionLabel(status?: ExecutionItem["executionStatus"]) {
   if (status === "running") return "Em execução";
@@ -31,14 +33,35 @@ export function FollowerExecutionCenter() {
   const [items, setItems] = useState<ExecutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [evidenceDraft, setEvidenceDraft] = useState<Record<string, string>>({});
+  const [autoMessage, setAutoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  async function scanAutoEvidence() {
+    if (!tenantId || !token || scanning) return;
+    setScanning(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/follower-growth/approvals/auto-evidence`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json().catch(() => ({})) as AutoEvidenceResult & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Não foi possível procurar evidências automáticas.");
+      const linked = result.linked?.length ?? 0;
+      const ambiguous = result.ambiguous?.length ?? 0;
+      setAutoMessage(linked > 0 ? `${linked} evidência(s) vinculada(s) automaticamente.` : ambiguous > 0 ? `${ambiguous} ação(ões) têm mais de um candidato; vínculo automático foi evitado.` : null);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function load(options: { scan?: boolean } = { scan: true }) {
     if (!tenantId || !token) return;
     setLoading(true);
     setError(null);
     try {
+      if (options.scan !== false) await scanAutoEvidence();
       const response = await fetch(`/api/tenants/${tenantId}/follower-growth/approvals`, { headers: { Authorization: `Bearer ${token}` } });
       const payload = await response.json() as ExecutionItem[] & { error?: string };
       if (!response.ok) throw new Error((payload as any).error || "Não foi possível carregar a execução do dia.");
@@ -94,11 +117,21 @@ export function FollowerExecutionCenter() {
       });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Não foi possível validar a evidência.");
-      await load();
+      await load({ scan: false });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao validar evidência.");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function refreshEvidence() {
+    setError(null);
+    try {
+      await scanAutoEvidence();
+      await load({ scan: false });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao procurar evidências.");
     }
   }
 
@@ -121,18 +154,19 @@ export function FollowerExecutionCenter() {
     <Card className="border-indigo-500/25">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="flex items-center gap-2"><Rocket className="h-5 w-5 text-indigo-600" /><CardTitle className="text-base">Central de Execução do Dia</CardTitle></div><p className="mt-1 text-xs text-muted-foreground">Mostra somente ações aprovadas e exige evidência real antes da conclusão.</p></div>
-          <div className="flex flex-wrap gap-2"><Badge variant="outline">{summary.released} liberadas</Badge><Badge variant="outline">{summary.running} em execução</Badge><Badge>{summary.done} concluídas</Badge></div>
+          <div><div className="flex items-center gap-2"><Rocket className="h-5 w-5 text-indigo-600" /><CardTitle className="text-base">Central de Execução do Dia</CardTitle></div><p className="mt-1 text-xs text-muted-foreground">Mostra somente ações aprovadas e procura evidência real automaticamente antes da conclusão.</p></div>
+          <div className="flex flex-wrap gap-2"><Badge variant="outline">{summary.released} liberadas</Badge><Badge variant="outline">{summary.running} em execução</Badge><Badge>{summary.done} concluídas</Badge><Button size="sm" variant="outline" disabled={scanning} onClick={() => void refreshEvidence()}><RefreshCw className={`mr-1.5 h-4 w-4 ${scanning ? "animate-spin" : ""}`} />Atualizar evidências</Button></div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {error ? <p className="rounded-md border border-destructive/30 p-2 text-xs text-destructive">{error}</p> : null}
+        {autoMessage ? <p className="rounded-md border border-emerald-500/25 bg-emerald-500/5 p-2 text-xs">{autoMessage}</p> : null}
         {!items.length ? <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma ação aprovada para executar hoje.</div> : items.map((item) => {
           const status = item.executionStatus ?? "released";
           const hasEvidence = Boolean(item.executionEvidenceId);
-          return <div key={item.id} className="rounded-lg border p-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{item.title}</p><Badge variant="outline">{item.actionType === "paid" ? "Mídia" : item.actionType === "replicate" ? "Replicação" : "Conteúdo"}</Badge><Badge variant={status === "done" ? "default" : "outline"}>{executionLabel(status)}</Badge>{hasEvidence ? <Badge className="gap-1"><Link2 className="h-3 w-3" />Evidência validada</Badge> : null}</div>{hasEvidence ? <p className="mt-1 text-[11px] text-muted-foreground">{item.executionEvidenceLabel} · {item.executionEvidenceId}</p> : null}{status === "done" && item.executedAt ? <p className="mt-1 text-[11px] text-muted-foreground">Concluído em {new Date(item.executedAt).toLocaleString("pt-BR")}</p> : null}</div><div className="flex flex-wrap gap-2">{status === "released" ? <Button size="sm" disabled={busyId === item.id} onClick={() => void setExecution(item, "running")}><Play className="mr-1.5 h-4 w-4" />Iniciar execução</Button> : null}{status === "running" ? <><Button size="sm" variant="outline" onClick={() => openAction(item)}>Abrir novamente</Button><Button size="sm" disabled={busyId === item.id || !hasEvidence} onClick={() => void setExecution(item, "done")}><CheckCircle2 className="mr-1.5 h-4 w-4" />Concluir com evidência</Button></> : null}{status === "done" ? <div className="flex items-center gap-1 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" />Execução comprovada</div> : null}</div></div>{status === "running" && !hasEvidence ? <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3"><input className="h-9 min-w-[260px] rounded-md border bg-background px-3 text-xs" placeholder={item.actionType === "paid" ? "ID da campanha criada/executada" : "ID da publicação criada/executada"} value={evidenceDraft[item.id] ?? ""} onChange={(event) => setEvidenceDraft((current) => ({ ...current, [item.id]: event.target.value }))} /><Button size="sm" variant="outline" disabled={busyId === item.id} onClick={() => void linkEvidence(item)}><Link2 className="mr-1.5 h-4 w-4" />Validar evidência</Button></div> : null}</div>;
+          return <div key={item.id} className="rounded-lg border p-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{item.title}</p><Badge variant="outline">{item.actionType === "paid" ? "Mídia" : item.actionType === "replicate" ? "Replicação" : "Conteúdo"}</Badge><Badge variant={status === "done" ? "default" : "outline"}>{executionLabel(status)}</Badge>{hasEvidence ? <Badge className="gap-1"><Link2 className="h-3 w-3" />Evidência validada</Badge> : null}</div>{hasEvidence ? <p className="mt-1 text-[11px] text-muted-foreground">{item.executionEvidenceLabel} · {item.executionEvidenceId}</p> : null}{status === "done" && item.executedAt ? <p className="mt-1 text-[11px] text-muted-foreground">Concluído em {new Date(item.executedAt).toLocaleString("pt-BR")}</p> : null}</div><div className="flex flex-wrap gap-2">{status === "released" ? <Button size="sm" disabled={busyId === item.id} onClick={() => void setExecution(item, "running")}><Play className="mr-1.5 h-4 w-4" />Iniciar execução</Button> : null}{status === "running" ? <><Button size="sm" variant="outline" onClick={() => openAction(item)}>Abrir novamente</Button><Button size="sm" disabled={busyId === item.id || !hasEvidence} onClick={() => void setExecution(item, "done")}><CheckCircle2 className="mr-1.5 h-4 w-4" />Concluir com evidência</Button></> : null}{status === "done" ? <div className="flex items-center gap-1 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" />Execução comprovada</div> : null}</div></div>{status === "running" && !hasEvidence ? <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3"><span className="text-[11px] text-muted-foreground">A detecção automática evita vínculos quando encontra mais de um candidato.</span><input className="h-9 min-w-[260px] rounded-md border bg-background px-3 text-xs" placeholder={item.actionType === "paid" ? "ID da campanha (fallback)" : "ID da publicação (fallback)"} value={evidenceDraft[item.id] ?? ""} onChange={(event) => setEvidenceDraft((current) => ({ ...current, [item.id]: event.target.value }))} /><Button size="sm" variant="outline" disabled={busyId === item.id} onClick={() => void linkEvidence(item)}><Link2 className="mr-1.5 h-4 w-4" />Validar manualmente</Button></div> : null}</div>;
         })}
-        <p className="text-[11px] text-muted-foreground">Uma ação só pode ser concluída depois que o backend confirmar que a publicação ou campanha informada realmente pertence ao tenant.</p>
+        <p className="text-[11px] text-muted-foreground">A detecção automática só vincula quando há um único candidato criado depois do início da ação. Em caso de dúvida, mantém a ação sem vínculo para evitar atribuição incorreta.</p>
       </CardContent>
     </Card>
   );
