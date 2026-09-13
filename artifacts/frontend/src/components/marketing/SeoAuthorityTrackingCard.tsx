@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Link2, Loader2, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowRight, ExternalLink, Link2, Loader2, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -133,6 +133,36 @@ function compactTarget(url: string) {
   }
 }
 
+function priorityFor(item: BacklinkOpportunity) {
+  const value = `${item.priorityCluster ?? ""} ${item.targetUrl}`.toLowerCase();
+  if (value.includes("crm") || value.includes("revenue") || value.includes("whatsapp") || value.includes("marca vendorai")) return "Alta";
+  if (value.includes("segment") || value.includes("blog") || value.includes("follow-up")) return "Média";
+  return "Normal";
+}
+
+function nextActionFor(status: BacklinkStatus) {
+  if (status === "identified") return "Validar fonte e iniciar contato";
+  if (status === "contacted") return "Fazer follow-up e buscar confirmação";
+  if (status === "negotiating") return "Concluir publicação e registrar URL";
+  if (status === "won") return "Monitorar permanência do link";
+  return "Sem ação — oportunidade descartada";
+}
+
+function nextStatusFor(status: BacklinkStatus): BacklinkStatus | null {
+  if (status === "identified") return "contacted";
+  if (status === "contacted") return "negotiating";
+  if (status === "negotiating") return "won";
+  return null;
+}
+
+function statusWeight(status: BacklinkStatus) {
+  if (status === "negotiating") return 0;
+  if (status === "contacted") return 1;
+  if (status === "identified") return 2;
+  if (status === "won") return 3;
+  return 4;
+}
+
 export function SeoAuthorityTrackingCard() {
   const [tenantId] = useState(() => currentTenantId());
   const [data, setData] = useState<BacklinkResponse | null>(null);
@@ -260,16 +290,25 @@ export function SeoAuthorityTrackingCard() {
     }
   };
 
-  const opportunities = data?.opportunities ?? [];
+  const opportunities = useMemo(
+    () => [...(data?.opportunities ?? [])].sort((a, b) => {
+      const byStatus = statusWeight(a.status) - statusWeight(b.status);
+      if (byStatus !== 0) return byStatus;
+      const priorityRank = { Alta: 0, Média: 1, Normal: 2 } as const;
+      return priorityRank[priorityFor(a)] - priorityRank[priorityFor(b)];
+    }),
+    [data],
+  );
   const published = data?.summary.byStatus.won ?? 0;
   const inProgress = (data?.summary.byStatus.contacted ?? 0) + (data?.summary.byStatus.negotiating ?? 0);
+  const pendingActions = (data?.summary.byStatus.identified ?? 0) + inProgress;
 
   return (
     <section className="rounded-xl border bg-card shadow-sm" aria-label="Autoridade e backlinks">
       <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" />Autoridade · backlinks</div>
-          <p className="mt-1 text-xs text-muted-foreground">Acompanhe fontes relevantes que fortalecem marca, produto e páginas comerciais. Evite diretórios de baixa qualidade e links artificiais.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Acompanhe fontes relevantes e execute a próxima ação até transformar oportunidade em link publicado. Evite diretórios de baixa qualidade e links artificiais.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading || !!busy}>
@@ -286,8 +325,9 @@ export function SeoAuthorityTrackingCard() {
       </div>
 
       <div className="space-y-4 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Fontes mapeadas</p><p className="mt-1 text-xl font-semibold">{data?.summary.total ?? 0}</p></div>
+          <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Ações pendentes</p><p className="mt-1 text-xl font-semibold">{pendingActions}</p></div>
           <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Em andamento</p><p className="mt-1 text-xl font-semibold">{inProgress}</p></div>
           <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Links publicados</p><p className="mt-1 text-xl font-semibold">{published}</p></div>
           <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Domínios únicos</p><p className="mt-1 text-xl font-semibold">{uniqueDomains}</p></div>
@@ -318,46 +358,61 @@ export function SeoAuthorityTrackingCard() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[1120px] text-sm">
               <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Fonte</th>
+                  <th className="px-3 py-2 font-medium">Prioridade</th>
                   <th className="px-3 py-2 font-medium">Objetivo</th>
                   <th className="px-3 py-2 font-medium">Página-alvo</th>
                   <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Próxima ação</th>
                   <th className="px-3 py-2 font-medium">Publicação</th>
                   <th className="px-3 py-2 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {opportunities.map((item) => (
-                  <tr key={item.id} className="align-top">
-                    <td className="px-3 py-3">
-                      <div className="font-medium">{item.sourceDomain}</div>
-                      {item.sourceUrl && <a className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline" href={item.sourceUrl} target="_blank" rel="noreferrer">Abrir fonte <ExternalLink className="h-3 w-3" /></a>}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">{item.priorityCluster || "—"}</td>
-                    <td className="px-3 py-3 text-xs"><span title={item.targetUrl}>{compactTarget(item.targetUrl)}</span></td>
-                    <td className="px-3 py-3">
-                      <select
-                        className="h-8 rounded-md border bg-background px-2 text-xs"
-                        value={item.status}
-                        disabled={busy === item.id}
-                        onChange={(event) => void updateStatus(item, event.target.value as BacklinkStatus)}
-                      >
-                        {(Object.keys(STATUS_LABELS) as BacklinkStatus[]).map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-3 text-xs">
-                      {item.liveUrl ? <a className="inline-flex items-center gap-1 text-primary hover:underline" href={item.liveUrl} target="_blank" rel="noreferrer">Ver link <ExternalLink className="h-3 w-3" /></a> : item.status === "won" ? "Confirmada" : "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove(item.id)} disabled={busy === item.id} aria-label={`Remover ${item.sourceDomain}`}>
-                        {busy === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {opportunities.map((item) => {
+                  const nextStatus = nextStatusFor(item.status);
+                  return (
+                    <tr key={item.id} className="align-top">
+                      <td className="px-3 py-3">
+                        <div className="font-medium">{item.sourceDomain}</div>
+                        {item.sourceUrl && <a className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline" href={item.sourceUrl} target="_blank" rel="noreferrer">Abrir fonte <ExternalLink className="h-3 w-3" /></a>}
+                      </td>
+                      <td className="px-3 py-3"><span className="rounded-full border px-2 py-1 text-[11px] font-medium">{priorityFor(item)}</span></td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground">{item.priorityCluster || "—"}</td>
+                      <td className="px-3 py-3 text-xs"><span title={item.targetUrl}>{compactTarget(item.targetUrl)}</span></td>
+                      <td className="px-3 py-3">
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-xs"
+                          value={item.status}
+                          disabled={busy === item.id}
+                          onChange={(event) => void updateStatus(item, event.target.value as BacklinkStatus)}
+                        >
+                          {(Object.keys(STATUS_LABELS) as BacklinkStatus[]).map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground">{nextActionFor(item.status)}</td>
+                      <td className="px-3 py-3 text-xs">
+                        {item.liveUrl ? <a className="inline-flex items-center gap-1 text-primary hover:underline" href={item.liveUrl} target="_blank" rel="noreferrer">Ver link <ExternalLink className="h-3 w-3" /></a> : item.status === "won" ? "Confirmada" : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          {nextStatus && (
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => void updateStatus(item, nextStatus)} disabled={busy === item.id}>
+                              {busy === item.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="mr-1.5 h-3.5 w-3.5" />}
+                              Avançar
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove(item.id)} disabled={busy === item.id} aria-label={`Remover ${item.sourceDomain}`}>
+                            {busy === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
