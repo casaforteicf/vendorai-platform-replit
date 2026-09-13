@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FollowerProductionQueue } from "@/components/marketing/FollowerProductionQueue";
 import { FollowerLaunchMonitor } from "@/components/marketing/FollowerLaunchMonitor";
 import { FollowerAttributionPanel } from "@/components/marketing/FollowerAttributionPanel";
+import { FollowerDecisionEngine } from "@/components/marketing/FollowerDecisionEngine";
 
 type Metrics = {
   reach?: number;
@@ -153,6 +154,7 @@ export function FollowerContentPack() {
 
   return (
     <div className="space-y-4">
+      <FollowerDecisionEngine />
       <Card className="border-violet-500/25">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
