@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { installEditorialPublicationAttribution } from "@/lib/editorialPublicationAttribution";
 
 function nativeSetValue(element: HTMLTextAreaElement | HTMLInputElement, value: string) {
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -41,6 +42,7 @@ function findBriefField(): HTMLTextAreaElement | HTMLInputElement | null {
 
 export function EditorialBriefQueryBridge() {
   useEffect(() => {
+    installEditorialPublicationAttribution();
     let appliedFor = "";
     const apply = () => {
       const brief = currentEditorialBrief();
