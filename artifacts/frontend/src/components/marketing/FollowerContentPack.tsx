@@ -6,6 +6,7 @@ import { Copy, Loader2, Sparkles, Video } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { FollowerProductionQueue } from "@/components/marketing/FollowerProductionQueue";
+import { FollowerLaunchMonitor } from "@/components/marketing/FollowerLaunchMonitor";
 
 type Metrics = {
   reach?: number;
@@ -183,6 +184,7 @@ export function FollowerContentPack() {
         </CardContent>
       </Card>
       <FollowerProductionQueue packs={packs} theme={theme} />
+      <FollowerLaunchMonitor />
     </div>
   );
 }
