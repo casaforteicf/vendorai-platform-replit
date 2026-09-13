@@ -15,6 +15,7 @@ import {
 import { MARKETING_VERTICALS } from "@workspace/vendor-brain/marketing-verticals";
 import publicVerticalSlugs from "@/data/publicVerticalSlugs.json";
 import { findWrittenSegment, type IntentKey } from "./intentLpOverrides";
+import { findAdditionalIntentSegment } from "./intentLpAdditional";
 
 const publicSlugOverrides = publicVerticalSlugs as Record<string, string>;
 type Intent = IntentKey;
@@ -40,6 +41,10 @@ const INTENT_META: Record<Intent, { label: string; kicker: string; icon: typeof 
   crm: { label: "CRM / Alta intenção", kicker: "CRM com IA aplicado ao seu processo real", icon: Bot },
 };
 
+function findCustomSegment(slug: string) {
+  return findWrittenSegment(slug) ?? findAdditionalIntentSegment(slug);
+}
+
 function findOfficialProfile(slug: string) {
   return MARKETING_VERTICALS.find((profile) => {
     const publicSlug = publicSlugOverrides[profile.id] ?? profile.slug;
@@ -48,20 +53,20 @@ function findOfficialProfile(slug: string) {
 }
 
 function resolveViewProfile(slug: string): ViewProfile | null {
-  const written = findWrittenSegment(slug);
-  if (written) {
+  const custom = findCustomSegment(slug);
+  if (custom) {
     return {
-      slug: written.slug,
-      publicSlug: written.slug,
-      name: written.name,
-      audience: written.audience,
-      decisionMakers: written.decisionMakers,
-      corePain: written.corePain,
-      promise: written.promise,
-      priorityAgents: written.priorityAgents,
-      kpis: written.kpis,
-      painMap: written.intents.dor.bullets.slice(0, 4),
-      creativeAngles: written.intents.marketing.bullets.slice(0, 3),
+      slug: custom.slug,
+      publicSlug: custom.slug,
+      name: custom.name,
+      audience: custom.audience,
+      decisionMakers: custom.decisionMakers,
+      corePain: custom.corePain,
+      promise: custom.promise,
+      priorityAgents: custom.priorityAgents,
+      kpis: custom.kpis,
+      painMap: custom.intents.dor.bullets.slice(0, 4),
+      creativeAngles: custom.intents.marketing.bullets.slice(0, 3),
     };
   }
 
@@ -159,8 +164,8 @@ export default function IntentVerticalLp() {
   const intent = (params.intent ?? "") as Intent;
   const profile = resolveViewProfile(rawSlug);
   const meta = INTENT_META[intent];
-  const written = findWrittenSegment(rawSlug);
-  const copy = written?.intents[intent] ?? (profile && meta ? genericCopy(profile, intent) : null);
+  const custom = findCustomSegment(rawSlug);
+  const copy = custom?.intents[intent] ?? (profile && meta ? genericCopy(profile, intent) : null);
 
   useEffect(() => {
     if (!profile || !copy || !meta) return;
