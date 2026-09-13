@@ -16,7 +16,6 @@ const VISUALS: Record<string, VisualSet> = {
   "/lp/distribuidora-autopecas": { title:"Distribuidoras de Autopeças", first:"/lp-images/autopecas-contexto-1.svg", second:"/lp-images/autopecas-contexto-2.svg", firstAlt:"Estoque e operação comercial de autopeças", secondAlt:"Cotação, follow-up, pedido e recompra" },
   "/lp/distribuidora-materiais-construcao": { title:"Distribuidoras de Materiais de Construção", first:"/lp-images/materiais-construcao-contexto-1.svg", second:"/lp-images/materiais-construcao-contexto-2.svg", firstAlt:"Distribuição de materiais por linha e região", secondAlt:"Orçamento, mix, pedido e recompra" },
   "/lp/distribuidora-alimentos-bebidas": { title:"Distribuidoras de Alimentos", first:"/lp-images/alimentos-contexto-1.svg", second:"/lp-images/alimentos-contexto-2.svg", firstAlt:"Carteira e distribuição de alimentos", secondAlt:"Pedido, frequência, mix e reativação" },
-  "/lp/maquinas-insumos": { title:"Máquinas, Equipamentos e Insumos", first:"/lp-images/maquinas-insumos-contexto-1.svg", second:"/lp-images/maquinas-insumos-contexto-2.svg", firstAlt:"Máquinas e equipamentos em operação comercial", secondAlt:"Venda técnica, proposta e pós-venda" },
 };
 
 export default function LpMandatoryVisuals(){
