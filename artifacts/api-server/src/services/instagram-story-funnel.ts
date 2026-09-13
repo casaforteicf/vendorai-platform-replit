@@ -1,4 +1,5 @@
-import { db, sql } from "@workspace/db";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 function num(value: unknown) {
   const parsed = Number(value ?? 0);
