@@ -7,6 +7,10 @@ const manifestPath = path.resolve(here, "../dist/public/seo-manifest.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 
 const overrides = new Map([
+  ["/produtos/crm", "CRM com IA para Vendas, Pipeline e Follow-up | VendorAI"],
+  ["/solucoes/crm-whatsapp", "CRM para WhatsApp: Leads e Follow-up | VendorAI"],
+  ["/lp/industria-materiais-construcao", "CRM para Indústria de Materiais de Construção | VendorAI"],
+  ["/lp/distribuidora-materiais-construcao", "CRM para Distribuidoras de Materiais de Construção | VendorAI"],
   ["/solucoes/reativar-clientes", "Reativação de Clientes com IA | VendorAI"],
   ["/solucoes/revenue-intelligence", "Revenue Intelligence com IA | VendorAI"],
   ["/comparar/crm-com-ia-vs-crm-tradicional", "CRM com IA vs Tradicional | VendorAI"],
