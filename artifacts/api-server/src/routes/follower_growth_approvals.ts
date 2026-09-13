@@ -32,6 +32,8 @@ const selectToday = (tenantId: string) => db.execute(sql`
          title, status, payload, decided_by_user_id AS "decidedByUserId", decided_at AS "decidedAt",
          execution_status AS "executionStatus", execution_started_at AS "executionStartedAt",
          executed_at AS "executedAt", executed_by_user_id AS "executedByUserId",
+         execution_evidence_type AS "executionEvidenceType", execution_evidence_id AS "executionEvidenceId",
+         execution_evidence_label AS "executionEvidenceLabel", execution_evidence_at AS "executionEvidenceAt",
          created_at AS "createdAt", updated_at AS "updatedAt"
     FROM follower_growth_daily_approvals
    WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE
@@ -86,6 +88,17 @@ router.patch("/tenants/:tenantId/follower-growth/approvals/:id/execution", async
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = executionSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (parsed.data.executionStatus === "done") {
+    const evidence = await db.execute(sql`
+      SELECT execution_evidence_id
+        FROM follower_growth_daily_approvals
+       WHERE tenant_id = ${tenantId} AND approval_date = CURRENT_DATE AND id = ${id} AND status = 'approved'
+       LIMIT 1
+    `);
+    if (!evidence.rows?.[0]?.execution_evidence_id) {
+      return res.status(409).json({ error: "Vincule uma publicação ou campanha real antes de concluir esta ação." });
+    }
+  }
   const actorUserId = req.user?.sub ?? req.user?.id ?? null;
   const updated = await db.execute(sql`
     UPDATE follower_growth_daily_approvals
