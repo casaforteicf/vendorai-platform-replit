@@ -9,10 +9,13 @@ import { contentGenerationsTable } from "./content_generations";
 
 export interface PostMetricas {
   reach?: number;
+  views?: number;
   likes?: number;
   comments?: number;
   saved?: number;
   shares?: number;
+  replies?: number;
+  linkClicks?: number;
   plays?: number;
 }
 
