@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, FlaskConical, Plus, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FlaskConical, Plus, RefreshCw, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type CapabilityStatus = "available" | "partial" | "missing";
@@ -7,6 +7,7 @@ type Capability = { id: string; name: string; module: string; status: Capability
 type PromiseItem = { id: string; promise: string; capabilities: string[]; lp: string; source?: string };
 type ApiPromise = { id: string; promise: string; lpName: string; source: string; capabilityIds: string[] };
 type ApiBacklog = { id: string; capabilityId: string; capabilityName: string; module: string; affectedPromises: number; priorityScore: number };
+type ScanResult = { scannedSites: number; extracted: number; created: number; skipped: number; backlogUpdated: number };
 
 const CAPABILITIES: Capability[] = [
   { id: "crm", name: "CRM e pipeline", module: "CRM", status: "available", keywords: ["crm", "pipeline", "oportunidade", "lead"] },
@@ -44,6 +45,8 @@ export default function GrowthLabConnected() {
   const [newPromise, setNewPromise] = useState("");
   const [newLp, setNewLp] = useState("Nova promessa");
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState("");
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }), [token]);
@@ -70,6 +73,27 @@ export default function GrowthLabConnected() {
   }
 
   useEffect(() => { void load(); }, [tenantId, token]);
+
+  async function scanSites() {
+    if (!tenantId || !token) return;
+    setScanning(true);
+    setError("");
+    setScanResult(null);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/growth-lab/scan-sites`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) throw new Error("Não foi possível varrer as LPs deste tenant.");
+      const result = await response.json() as ScanResult;
+      setScanResult(result);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao varrer LPs.");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   async function addPromise() {
     const text = newPromise.trim();
@@ -110,8 +134,26 @@ export default function GrowthLabConnected() {
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="rounded-2xl border bg-background p-5 shadow-sm">
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"><FlaskConical className="h-3.5 w-3.5" /> Growth Lab</div>
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><h1 className="text-2xl font-bold md:text-3xl">Promessa comercial só entra na LP se o produto sustentar.</h1><p className="mt-2 text-sm text-muted-foreground">Promessas e lacunas persistidas por tenant na base central.</p></div><div className="rounded-xl border bg-muted/30 p-4"><div className="text-xs uppercase text-muted-foreground">Cobertura média</div><div className="text-3xl font-bold">{overallCoverage}%</div></div></div>
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Promessa comercial só entra na LP se o produto sustentar.</h1>
+              <p className="mt-2 text-sm text-muted-foreground">Promessas e lacunas persistidas por tenant na base central.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <button onClick={scanSites} disabled={scanning || !tenantId} className="inline-flex items-center justify-center gap-2 rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
+                {scanning ? "Varrendo LPs..." : "Varrer LPs automaticamente"}
+              </button>
+              <div className="rounded-xl border bg-muted/30 p-4"><div className="text-xs uppercase text-muted-foreground">Cobertura média</div><div className="text-3xl font-bold">{overallCoverage}%</div></div>
+            </div>
+          </div>
         </div>
+
+        {scanResult && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+            Varredura concluída: <strong>{scanResult.scannedSites}</strong> site(s)/LP(s), <strong>{scanResult.extracted}</strong> promessa(s) detectadas, <strong>{scanResult.created}</strong> nova(s) registrada(s), <strong>{scanResult.skipped}</strong> duplicada(s) ignorada(s) e <strong>{scanResult.backlogUpdated}</strong> lacuna(s) atualizadas.
+          </div>
+        )}
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
@@ -136,8 +178,8 @@ export default function GrowthLabConnected() {
           </div>
 
           <div className="rounded-xl border bg-background p-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h2 className="font-semibold">Registro de Promessas</h2><p className="text-sm text-muted-foreground">Catálogo + registros persistidos do tenant.</p></div><div className="relative md:w-72"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar promessa ou LP" className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm"/></div></div>
-            <div className="mt-5 space-y-3">{filtered.map(item => { const pct = coverage(item.capabilities); return <div key={item.id} className="rounded-xl border p-4"><div className="flex justify-between gap-3"><div><div className="text-xs uppercase text-muted-foreground">{item.lp}</div><div className="mt-1 font-semibold">{item.promise}</div></div><div className={`h-fit rounded-full px-3 py-1 text-xs font-semibold ${pct === 100 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{pct === 100 ? "Pode anunciar" : "Completar produto"}</div></div><div className="mt-4 flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${pct}%` }} /></div><div className="w-12 text-right text-sm font-semibold">{pct}%</div></div></div>; })}</div>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h2 className="font-semibold">Registro de Promessas</h2><p className="text-sm text-muted-foreground">Catálogo + registros persistidos do tenant + varredura automática das LPs.</p></div><div className="relative md:w-72"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar promessa ou LP" className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm"/></div></div>
+            <div className="mt-5 space-y-3">{filtered.map(item => { const pct = coverage(item.capabilities); return <div key={item.id} className="rounded-xl border p-4"><div className="flex justify-between gap-3"><div><div className="text-xs uppercase text-muted-foreground">{item.lp}</div><div className="mt-1 font-semibold">{item.promise}</div><div className="mt-1 text-[11px] text-muted-foreground">{item.source === "site_generator_scan" ? "Detectada automaticamente" : item.source === "manual" ? "Manual" : "Catálogo"}</div></div><div className={`h-fit rounded-full px-3 py-1 text-xs font-semibold ${pct === 100 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{pct === 100 ? "Pode anunciar" : "Completar produto"}</div></div><div className="mt-4 flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${pct}%` }} /></div><div className="w-12 text-right text-sm font-semibold">{pct}%</div></div></div>; })}</div>
           </div>
         </div>
       </div>
