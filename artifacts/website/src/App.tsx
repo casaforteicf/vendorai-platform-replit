@@ -31,6 +31,7 @@ const ParceirosPage = lazy(() => import("@/pages/site/ParceirosPage"));
 const BlogList = lazy(() => import("@/pages/blog/BlogListRoute"));
 const BlogPost = lazy(() => import("@/pages/blog/BlogPostRoute"));
 const UnifiedLpRouter = lazy(() => import("@/pages/lp/UnifiedLpRouter"));
+const IntentVerticalLp = lazy(() => import("@/pages/lp/IntentVerticalLp"));
 const MacrosegmentHub = lazy(() => import("@/pages/lp/MacrosegmentHub"));
 const RevenueMagicCalculator = lazy(() => import("@/components/RevenueMagicCalculator"));
 const PromptHubConceptSection = lazy(() => import("@/components/PromptHubConceptSection"));
@@ -163,6 +164,7 @@ function Router() {
         <Route path="/verticais/:slug" component={VerticalPage} />
         <Route path="/parceiros" component={ParceirosPage} />
         <Route path="/segmentos/:slug" component={MacrosegmentHub} />
+        <Route path="/lp/:slug/:intent" component={IntentVerticalLp} />
         <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
         <Route>
