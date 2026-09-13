@@ -77,19 +77,33 @@ export async function getInstagramStoryFunnel(tenantId: string) {
         SELECT
           s.instagram_media_id,
           COUNT(*) FILTER (WHERE e.event_type = 'dm') AS dms,
-          COUNT(DISTINCT e.lead_id) FILTER (WHERE e.lead_id IS NOT NULL) AS leads,
-          COUNT(DISTINCT d.id) AS opportunities,
-          COUNT(DISTINCT d.id) FILTER (WHERE d.etapa = 'ganho') AS sales,
-          COALESCE(SUM(DISTINCT CASE WHEN d.etapa = 'ganho' THEN d.valor::numeric ELSE NULL END), 0) AS revenue
+          COUNT(DISTINCT e.lead_id) FILTER (WHERE e.lead_id IS NOT NULL) AS leads
         FROM story_posts s
         LEFT JOIN meta_engagement_events e
           ON e.tenant_id = ${tenantId}
          AND e.media_id = s.instagram_media_id
          AND e.created_at >= now() - interval '30 days'
-        LEFT JOIN deals d
-          ON d.tenant_id = ${tenantId}
-         AND d.lead_id = e.lead_id
         GROUP BY s.instagram_media_id
+      ),
+      story_leads AS (
+        SELECT DISTINCT e.media_id AS instagram_media_id, e.lead_id
+        FROM meta_engagement_events e
+        INNER JOIN story_posts s ON s.instagram_media_id = e.media_id
+        WHERE e.tenant_id = ${tenantId}
+          AND e.created_at >= now() - interval '30 days'
+          AND e.lead_id IS NOT NULL
+      ),
+      story_deals AS (
+        SELECT
+          sl.instagram_media_id,
+          COUNT(DISTINCT d.id) AS opportunities,
+          COUNT(DISTINCT d.id) FILTER (WHERE d.etapa = 'ganho') AS sales,
+          COALESCE(SUM(d.valor::numeric) FILTER (WHERE d.etapa = 'ganho'), 0) AS revenue
+        FROM story_leads sl
+        INNER JOIN deals d
+          ON d.tenant_id = ${tenantId}
+         AND d.lead_id = sl.lead_id
+        GROUP BY sl.instagram_media_id
       )
       SELECT
         s.instagram_media_id,
@@ -102,12 +116,13 @@ export async function getInstagramStoryFunnel(tenantId: string) {
         s.link_clicks,
         COALESCE(es.dms, 0) AS dms,
         COALESCE(es.leads, 0) AS leads,
-        COALESCE(es.opportunities, 0) AS opportunities,
-        COALESCE(es.sales, 0) AS sales,
-        COALESCE(es.revenue, 0) AS revenue
+        COALESCE(sd.opportunities, 0) AS opportunities,
+        COALESCE(sd.sales, 0) AS sales,
+        COALESCE(sd.revenue, 0) AS revenue
       FROM story_posts s
       LEFT JOIN event_stats es USING (instagram_media_id)
-      ORDER BY COALESCE(es.sales, 0) DESC, COALESCE(es.leads, 0) DESC, (s.replies + s.link_clicks) DESC, s.views DESC
+      LEFT JOIN story_deals sd USING (instagram_media_id)
+      ORDER BY COALESCE(sd.sales, 0) DESC, COALESCE(es.leads, 0) DESC, (s.replies + s.link_clicks) DESC, s.views DESC
       LIMIT 5
     `),
   ]);
