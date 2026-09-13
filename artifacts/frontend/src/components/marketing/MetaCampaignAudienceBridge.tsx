@@ -54,6 +54,18 @@ type PerformanceRow = {
 
 type PerformanceResponse = { rows: PerformanceRow[] };
 
+type PublishResponse = {
+  error?: string;
+  partialFailure?: boolean;
+  targetingApplied?: boolean;
+  warning?: string | null;
+  campaignId?: string;
+  campaignExternalId?: string;
+  adSetId?: string;
+  campaignActivated?: boolean;
+  spendActivated?: boolean;
+};
+
 type ApprovalResponse = {
   error?: string;
   action?: string;
@@ -150,16 +162,30 @@ export function MetaCampaignAudienceBridge() {
         headers: authHeaders(token),
         body: JSON.stringify({ campaignId }),
       });
-      const payload = await response.json().catch(() => ({})) as { error?: string };
+      const payload = await response.json().catch(() => ({})) as PublishResponse;
       if (!response.ok) throw new Error(payload.error || "Não foi possível publicar o remarketing.");
       return payload;
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      toast({ title: "Remarketing publicado pausado", description: "A Custom Audience substituiu os interesses amplos. Nenhum gasto foi ativado; use Ativar no card da campanha quando quiser começar." });
+      qc.invalidateQueries({ queryKey: ["meta-audience-performance", tenantId] });
       setCampaignId("");
+
+      if (payload.partialFailure || payload.targetingApplied === false) {
+        toast({
+          title: "Campanha publicada pausada; audiência pendente",
+          description: payload.warning || "A campanha já existe na Meta e continua pausada, mas a Custom Audience não foi aplicada. Nenhum gasto foi ativado. Revise a campanha antes de ativar.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({ title: "Remarketing publicado pausado", description: "A Custom Audience substituiu os interesses amplos. Nenhum gasto foi ativado; use Ativar no card da campanha quando quiser começar." });
     },
-    onError: (error: Error) => toast({ title: "Não foi possível preparar o remarketing", description: error.message, variant: "destructive" }),
+    onError: (error: Error) => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Não foi possível preparar o remarketing", description: error.message, variant: "destructive" });
+    },
   });
 
   const approve = useMutation({
