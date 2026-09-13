@@ -17,8 +17,6 @@ const VISUALS: Record<string, VisualSet> = {
   "/lp/distribuidora-materiais-construcao": { title:"Distribuidoras de Materiais de Construção", first:"/lp-images/materiais-construcao-contexto-1.svg", second:"/lp-images/materiais-construcao-contexto-2.svg", firstAlt:"Distribuição de materiais por linha e região", secondAlt:"Orçamento, mix, pedido e recompra" },
   "/lp/distribuidora-alimentos-bebidas": { title:"Distribuidoras de Alimentos", first:"/lp-images/alimentos-contexto-1.svg", second:"/lp-images/alimentos-contexto-2.svg", firstAlt:"Carteira e distribuição de alimentos", secondAlt:"Pedido, frequência, mix e reativação" },
   "/lp/maquinas-insumos": { title:"Máquinas, Equipamentos e Insumos", first:"/lp-images/maquinas-insumos-contexto-1.svg", second:"/lp-images/maquinas-insumos-contexto-2.svg", firstAlt:"Máquinas e equipamentos em operação comercial", secondAlt:"Venda técnica, proposta e pós-venda" },
-  "/lp/seguros": { title:"Corretoras de Seguros", first:"/lp-images/seguros-contexto-1.svg", second:"/lp-images/seguros-contexto-2.svg", firstAlt:"Proteção, renovação e relacionamento com segurados", secondAlt:"Cotação, proposta e renovação", third:"/lp-images/seguros-vendorai.svg", thirdAlt:"Visual VendorAI para corretoras de seguros" },
-  "/lp/farmacias": { title:"Farmácias e Drogarias", first:"/lp-images/farmacia-contexto-1.svg", second:"/lp-images/farmacia-contexto-2.svg", firstAlt:"Atendimento, recorrência e relacionamento em farmácia", secondAlt:"Recompra e fidelização em farmácia", third:"/lp-images/farmacia-vendorai.svg", thirdAlt:"Visual VendorAI para farmácias e drogarias" },
 };
 
 export default function LpMandatoryVisuals(){
