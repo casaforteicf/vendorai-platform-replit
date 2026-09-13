@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { FollowerProductionQueue } from "@/components/marketing/FollowerProductionQueue";
 import { FollowerLaunchMonitor } from "@/components/marketing/FollowerLaunchMonitor";
+import { FollowerAttributionPanel } from "@/components/marketing/FollowerAttributionPanel";
 
 type Metrics = {
   reach?: number;
@@ -185,6 +186,7 @@ export function FollowerContentPack() {
       </Card>
       <FollowerProductionQueue packs={packs} theme={theme} />
       <FollowerLaunchMonitor />
+      <FollowerAttributionPanel />
     </div>
   );
 }
