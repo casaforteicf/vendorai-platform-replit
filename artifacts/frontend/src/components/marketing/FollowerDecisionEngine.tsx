@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight, Loader2, Megaphone, Repeat2, ShieldAlert, TrendingUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { FollowerAssistedExecution } from "@/components/marketing/FollowerAssistedExecution";
 
 type MetaGrowth = {
   followersDelta7d?: number | null;
@@ -107,25 +108,28 @@ export function FollowerDecisionEngine() {
 
   const Icon = result.decision === "paid" ? Megaphone : result.decision === "replicate" ? Repeat2 : result.decision === "hold" ? ShieldAlert : TrendingUp;
   return (
-    <Card className="border-cyan-500/25">
-      <CardHeader className="pb-3"><div className="flex items-center gap-2"><Icon className="h-5 w-5 text-cyan-600" /><CardTitle className="text-base">Decisão de crescimento de hoje</CardTitle><Badge variant="outline">{result.decision}</Badge></div></CardHeader>
-      <CardContent className="space-y-4">
-        <div><p className="text-lg font-semibold">{result.title}</p><p className="mt-1 text-sm text-muted-foreground">{result.reason}</p></div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5 text-xs">
-          <Metric label="Seguidores 7d" value={`${result.followers7d >= 0 ? "+" : ""}${result.followers7d}`} />
-          <Metric label="Seguidores 30d" value={`${result.followers30d >= 0 ? "+" : ""}${result.followers30d}`} />
-          <Metric label="Visitas ao perfil" value={String(result.visits)} />
-          <Metric label="Leads orgânicos" value={String(result.leads)} />
-          <Metric label="Custo misto/seguidor" value={result.cpf == null ? "—" : `R$ ${result.cpf.toFixed(2)}`} />
-        </div>
-        <div className="rounded-lg bg-muted/40 p-3 text-sm"><span className="font-medium">Próxima ação:</span> {result.action}</div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => window.location.assign(result.decision === "paid" ? "/content?tab=campanhas&objective=followers&from=follower-decision" : "/content?tab=gerador&objective=followers&from=follower-decision")}>Executar próxima ação<ArrowRight className="ml-2 h-4 w-4" /></Button>
-          <Button variant="outline" onClick={() => window.location.assign("/content?tab=resultados")}>Ver resultados</Button>
-        </div>
-        <p className="text-[11px] text-muted-foreground">A decisão usa sinais disponíveis do tenant e não ativa publicação nem mídia paga automaticamente.</p>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card className="border-cyan-500/25">
+        <CardHeader className="pb-3"><div className="flex items-center gap-2"><Icon className="h-5 w-5 text-cyan-600" /><CardTitle className="text-base">Decisão de crescimento de hoje</CardTitle><Badge variant="outline">{result.decision}</Badge></div></CardHeader>
+        <CardContent className="space-y-4">
+          <div><p className="text-lg font-semibold">{result.title}</p><p className="mt-1 text-sm text-muted-foreground">{result.reason}</p></div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5 text-xs">
+            <Metric label="Seguidores 7d" value={`${result.followers7d >= 0 ? "+" : ""}${result.followers7d}`} />
+            <Metric label="Seguidores 30d" value={`${result.followers30d >= 0 ? "+" : ""}${result.followers30d}`} />
+            <Metric label="Visitas ao perfil" value={String(result.visits)} />
+            <Metric label="Leads orgânicos" value={String(result.leads)} />
+            <Metric label="Custo misto/seguidor" value={result.cpf == null ? "—" : `R$ ${result.cpf.toFixed(2)}`} />
+          </div>
+          <div className="rounded-lg bg-muted/40 p-3 text-sm"><span className="font-medium">Próxima ação:</span> {result.action}</div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => window.location.assign(result.decision === "paid" ? "/content?tab=campanhas&objective=followers&from=follower-decision" : "/content?tab=gerador&objective=followers&from=follower-decision")}>Executar próxima ação<ArrowRight className="ml-2 h-4 w-4" /></Button>
+            <Button variant="outline" onClick={() => window.location.assign("/content?tab=resultados")}>Ver resultados</Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">A decisão usa sinais disponíveis do tenant e não ativa publicação nem mídia paga automaticamente.</p>
+        </CardContent>
+      </Card>
+      <FollowerAssistedExecution decision={result.decision} />
+    </div>
   );
 }
 
