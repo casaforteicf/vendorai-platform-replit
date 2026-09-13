@@ -6,8 +6,12 @@ on:
     branches: [main]
     paths:
       - "artifacts/frontend/**"
+      - "artifacts/api-server/**"
+      - "lib/db/**"
+      - "lib/api-zod/**"
       - "lib/api-client-react/**"
       - "lib/vendor-brain/**"
+      - "backend/Dockerfile"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
@@ -26,10 +30,12 @@ jobs:
   deploy:
     name: Build and deploy VendorAI
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -46,7 +52,66 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Gate frontend on production API
+        shell: bash
+        env:
+          API_HEALTH_URL: https://app.appvendorai.com/api/auth/healthz
+          BEFORE_SHA: ${{ github.event.before }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          api_changed=false
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "${BEFORE_SHA:-}" ] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            if git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" | grep -Eq '^(artifacts/api-server/|lib/db/|lib/api-zod/|lib/vendor-brain/|backend/Dockerfile$)'; then
+              api_changed=true
+            fi
+          fi
+
+          echo "API changed in this release: $api_changed"
+          echo "Waiting for production API: $API_HEALTH_URL"
+
+          for attempt in {1..30}; do
+            headers="$(mktemp)"
+            body="$(mktemp)"
+
+            if curl --silent --show-error --fail \
+              --connect-timeout 5 --max-time 15 \
+              -D "$headers" -o "$body" "$API_HEALTH_URL"; then
+              status="$(jq -r '.status // empty' "$body" 2>/dev/null || true)"
+              revision="$(awk 'BEGIN{IGNORECASE=1} /^X-VendorAI-Revision:/ {gsub("\r", "", $2); print $2}' "$headers" | tail -1)"
+
+              echo "Attempt $attempt: status=${status:-missing} revision=${revision:-missing}"
+
+              if [ "$status" = "ok" ]; then
+                if [ "$api_changed" = "false" ]; then
+                  echo "Production API is healthy. Frontend release may proceed."
+                  exit 0
+                fi
+
+                if [ "$revision" = "$EXPECTED_REVISION" ]; then
+                  echo "Production API is healthy and matches release $EXPECTED_REVISION."
+                  exit 0
+                fi
+              fi
+            else
+              echo "Attempt $attempt: production API is not healthy yet."
+            fi
+
+            rm -f "$headers" "$body"
+            sleep 10
+          done
+
+          if [ "$api_changed" = "true" ]; then
+            echo "Frontend deploy blocked: production API did not become healthy on revision $EXPECTED_REVISION."
+          else
+            echo "Frontend deploy blocked: production API is unhealthy."
+          fi
+          exit 1
+
       - name: Build frontend
+        env:
+          VENDOR_BUILD_ID: ${{ github.sha }}
         run: pnpm --filter @workspace/frontend build
 
       - name: Verify Cloudflare Pages bundle
