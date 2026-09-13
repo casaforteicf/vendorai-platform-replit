@@ -90,12 +90,40 @@ const clusters = [
   },
 ];
 
+const unknownToGoogle = new Set([
+  "/segmentos/distributors",
+  "/blog/crm-integrado-com-whatsapp-o-que-e-e-como-funciona",
+  "/segmentos/retail",
+  "/solucoes/agentes-ia-vendas",
+  "/produtos/prospeccao",
+  "/segmentos/clinics",
+  "/segmentos/industries",
+  "/produtos/marketing",
+  "/segmentos/dealerships",
+  "/solucoes/revenue-intelligence",
+  "/solucoes/automatizar-follow-up",
+  "/produtos/revenue-scout",
+  "/comparar/crm-com-ia-vs-crm-tradicional",
+  "/solucoes/crm-whatsapp",
+  "/solucoes/aumentar-recompra",
+  "/produtos/crm",
+  "/comparar/crm-whatsapp-vs-planilha",
+  "/solucoes/priorizar-oportunidades",
+  "/solucoes/reativar-clientes",
+  "/solucoes/next-best-action-vendas",
+  "/lp/industria-materiais-construcao",
+]);
+
 const existingPages = new Set();
+const labelsByPath = new Map();
 for (const cluster of clusters) {
   cluster.pages = cluster.pages
     .filter(([pathname]) => routeByPath.has(pathname))
     .map(([href, label]) => ({ href, label }));
-  for (const page of cluster.pages) existingPages.add(page.href);
+  for (const page of cluster.pages) {
+    existingPages.add(page.href);
+    labelsByPath.set(page.href, page.label);
+  }
 }
 
 const home = routeByPath.get("/");
@@ -104,7 +132,12 @@ if (home?.staticHtml) {
     .map((cluster) => ({ href: routeByPath.has(cluster.hub) ? cluster.hub : cluster.pages[0]?.href, label: cluster.title }))
     .filter((item) => item.href);
 
+  const discoveryLinks = [...unknownToGoogle]
+    .filter((href) => routeByPath.has(href))
+    .map((href) => ({ href, label: labelsByPath.get(href) || href.split("/").filter(Boolean).at(-1).replaceAll("-", " ") }));
+
   home.staticHtml += `<section data-vendorai-indexing-priority-map="home"><h2>Encontre a solução certa para vender mais com IA</h2><p>Explore produtos, soluções, segmentos, guias e páginas especializadas do VendorAI.</p>${nav(hubLinks, "Mapa de soluções VendorAI")}</section>`;
+  home.staticHtml += `<section data-vendorai-google-discovery="priority"><h2>Soluções e conteúdos prioritários</h2><p>Acesse diretamente os principais recursos do VendorAI para CRM, vendas, WhatsApp, prospecção, marketing e inteligência comercial.</p>${nav(discoveryLinks, "Páginas prioritárias do VendorAI")}</section>`;
 }
 
 for (const cluster of clusters) {
@@ -168,6 +201,11 @@ if (missingTrackedRoutes.length) {
   throw new Error(`[indexing-priority-map] tracked routes missing from SEO manifest: ${missingTrackedRoutes.join(", ")}`);
 }
 
+const missingUnknownRoutes = [...unknownToGoogle].filter((pathname) => !routeByPath.has(pathname));
+if (missingUnknownRoutes.length) {
+  throw new Error(`[indexing-priority-map] Google-unknown routes missing from SEO manifest: ${missingUnknownRoutes.join(", ")}`);
+}
+
 manifest.generatedAt = new Date().toISOString();
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-console.log(`[indexing-priority-map] reinforced ${existingPages.size} priority pages across ${clusters.length} clusters`);
+console.log(`[indexing-priority-map] reinforced ${existingPages.size} priority pages across ${clusters.length} clusters; ${unknownToGoogle.size} Google-unknown routes linked directly from home`);
