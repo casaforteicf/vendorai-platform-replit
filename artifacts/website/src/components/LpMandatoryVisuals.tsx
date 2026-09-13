@@ -19,7 +19,6 @@ const VISUALS: Record<string, VisualSet> = {
   "/lp/maquinas-insumos": { title:"Máquinas, Equipamentos e Insumos", first:"/lp-images/maquinas-insumos-contexto-1.svg", second:"/lp-images/maquinas-insumos-contexto-2.svg", firstAlt:"Máquinas e equipamentos em operação comercial", secondAlt:"Venda técnica, proposta e pós-venda" },
   "/lp/seguros": { title:"Corretoras de Seguros", first:"/lp-images/seguros-contexto-1.svg", second:"/lp-images/seguros-contexto-2.svg", firstAlt:"Proteção, renovação e relacionamento com segurados", secondAlt:"Cotação, proposta e renovação", third:"/lp-images/seguros-vendorai.svg", thirdAlt:"Visual VendorAI para corretoras de seguros" },
   "/lp/farmacias": { title:"Farmácias e Drogarias", first:"/lp-images/farmacia-contexto-1.svg", second:"/lp-images/farmacia-contexto-2.svg", firstAlt:"Atendimento, recorrência e relacionamento em farmácia", secondAlt:"Recompra e fidelização em farmácia", third:"/lp-images/farmacia-vendorai.svg", thirdAlt:"Visual VendorAI para farmácias e drogarias" },
-  "/lp/marcenarias-moveis-planejados": { title:"Marcenarias e Móveis Planejados", first:"/lp-images/marcenarias-contexto-1.svg", second:"/lp-images/marcenarias-contexto-2.svg", firstAlt:"MDF, ferragens e acabamentos para marcenaria", secondAlt:"Carteira, mix e especificação para móveis planejados", third:"/lp-images/marcenarias-vendorai.svg", thirdAlt:"Visual VendorAI para marcenarias e móveis planejados" },
 };
 
 export default function LpMandatoryVisuals(){
