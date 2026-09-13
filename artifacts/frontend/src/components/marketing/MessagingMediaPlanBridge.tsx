@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentAutopilotMediaPlanBanner";
 import { OrganicCalendarPublisher } from "@/components/marketing/OrganicCalendarPublisher";
 import { MetaGrowthHub } from "@/components/marketing/MetaGrowthHub";
+import { InstagramGrowthPanel } from "@/components/marketing/InstagramGrowthPanel";
 import { MetaCustomAudienceSync } from "@/components/marketing/MetaCustomAudienceSync";
 import { MetaCampaignAudienceBridge } from "@/components/marketing/MetaCampaignAudienceBridge";
 import { MetaAudiencePerformance } from "@/components/marketing/MetaAudiencePerformance";
@@ -116,7 +117,7 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
   const route = pathname.split("?")[0];
 
   if (route === "/content" && params.get("tab") === "resultados") {
-    return <div className="space-y-4 px-4 pt-4 md:px-6"><MetaGrowthHub /><MetaCustomAudienceSync /><MetaAudiencePerformance /></div>;
+    return <div className="space-y-4 px-4 pt-4 md:px-6"><MetaGrowthHub /><InstagramGrowthPanel /><MetaCustomAudienceSync /><MetaAudiencePerformance /></div>;
   }
 
   if (route === "/ads") {
