@@ -6,7 +6,7 @@ import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import MediaCenter from "@/pages/MediaCenter";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
-import GrowthLab from "@/pages/GrowthLab";
+import GrowthLabConnected from "@/pages/GrowthLabConnected";
 import VideoAvatarCapturePage from "@/pages/video/VideoAvatarCapturePage";
 import VideoAvatarCaptureTenantGate from "@/pages/video/VideoAvatarCaptureTenantGate";
 import VideoAvatarCaptureViewportGuard from "@/pages/video/VideoAvatarCaptureViewportGuard";
@@ -49,7 +49,7 @@ export default function NotFound() {
 
     return (
       <SidebarLayout>
-        {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLab />}
+        {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLabConnected />}
       </SidebarLayout>
     );
   }
