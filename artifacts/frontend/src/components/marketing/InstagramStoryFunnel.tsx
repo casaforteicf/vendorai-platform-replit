@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Eye, MessageCircle, MousePointerClick, ShoppingCart, Target, Users } from "lucide-react";
+import { ArrowRight, Bot, Eye, MessageCircle, MousePointerClick, ShieldCheck, ShoppingCart, Target, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type StoryFunnel = {
@@ -40,7 +41,20 @@ type StoryFunnel = {
     opportunities: number;
     sales: number;
     revenue: number;
+    nextAction?: {
+      action: string;
+      label: string;
+      reason: string;
+      confidence: "baixa" | "media" | "alta";
+      route: string;
+      paidMediaCandidate: boolean;
+    };
   }>;
+  safety?: {
+    automaticPublishing: boolean;
+    automaticPaidMedia: boolean;
+    recommendationsOnly: boolean;
+  };
 };
 
 type Overview = { storyFunnel?: StoryFunnel | null };
@@ -88,7 +102,12 @@ export function InstagramStoryFunnel() {
             <CardTitle className="text-base">Funil dos Stories</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">30 dias · interação do Story separada da conversão realmente atribuída ao CRM.</p>
           </div>
-          <Badge variant="outline">Atribuição por media_id</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">Atribuição por media_id</Badge>
+            {data?.safety?.recommendationsOnly && (
+              <Badge variant="outline" className="gap-1"><ShieldCheck className="h-3 w-3" />Sem ação automática</Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -119,22 +138,44 @@ export function InstagramStoryFunnel() {
                 <div className="border-b px-3 py-2 text-sm font-semibold">Stories com melhor sinal comercial</div>
                 <div className="divide-y">
                   {data.topStories.slice(0, 5).map((story) => (
-                    <div key={story.mediaId} className="grid gap-2 px-3 py-3 md:grid-cols-[1fr_auto] md:items-center">
-                      <div>
-                        <p className="text-sm font-medium">{story.theme || story.caption?.slice(0, 80) || "Story publicado"}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{n(story.views)} views · {n(story.replies)} respostas · {n(story.linkClicks)} cliques · {n(story.dms)} DMs</p>
+                    <div key={story.mediaId} className="space-y-3 px-3 py-3">
+                      <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+                        <div>
+                          <p className="text-sm font-medium">{story.theme || story.caption?.slice(0, 80) || "Story publicado"}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{n(story.views)} views · {n(story.replies)} respostas · {n(story.linkClicks)} cliques · {n(story.dms)} DMs</p>
+                        </div>
+                        <div className="text-left md:text-right">
+                          <p className="text-sm font-semibold">{story.leads} leads · {story.sales} vendas</p>
+                          <p className="text-xs text-muted-foreground">{money(story.revenue)}</p>
+                        </div>
                       </div>
-                      <div className="text-left md:text-right">
-                        <p className="text-sm font-semibold">{story.leads} leads · {story.sales} vendas</p>
-                        <p className="text-xs text-muted-foreground">{money(story.revenue)}</p>
-                      </div>
+
+                      {story.nextAction && (
+                        <div className="rounded-md border bg-muted/30 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Bot className="h-4 w-4" />
+                            <span className="text-sm font-semibold">Próxima ação da IA: {story.nextAction.label}</span>
+                            <Badge variant="secondary">confiança {story.nextAction.confidence}</Badge>
+                            {story.nextAction.paidMediaCandidate && <Badge variant="outline">candidato a anúncio</Badge>}
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">{story.nextAction.reason}</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-3"
+                            onClick={() => { window.location.href = story.nextAction?.route || "/marketing"; }}
+                          >
+                            Revisar ação
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <p className="text-[11px] text-muted-foreground">Clique ou resposta só entra como interação. Lead, oportunidade e venda só entram quando o evento do Instagram está ligado ao mesmo Story e ao CRM.</p>
+            <p className="text-[11px] text-muted-foreground">Clique ou resposta só entra como interação. Lead, oportunidade e venda só entram quando o evento do Instagram está ligado ao mesmo Story e ao CRM. As recomendações não publicam conteúdo nem ativam mídia automaticamente.</p>
           </>
         )}
       </CardContent>
