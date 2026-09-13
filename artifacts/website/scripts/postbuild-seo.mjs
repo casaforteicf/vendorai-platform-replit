@@ -196,12 +196,52 @@ for (const [slug, agent] of Object.entries(agents)) {
   };
 }
 
+const intentLpSegments = [
+  {
+    slug: "academias-studios",
+    name: "Academias e Studios",
+    dorTitle: "CRM para Academia: reduza perdas de leads e matrículas | VendorAI",
+    marketingTitle: "Marketing para Academias com IA, Meta e Google | VendorAI",
+    crmTitle: "CRM com IA para Academias e Studios | VendorAI",
+    description: "VendorAI conecta marketing, WhatsApp, CRM, agenda, follow-up, retenção e reativação para academias e studios.",
+  },
+  {
+    slug: "concessionarias-lojas-veiculos",
+    name: "Concessionárias e Lojas de Veículos",
+    dorTitle: "Como evitar perda de leads em concessionárias | VendorAI",
+    marketingTitle: "Marketing para Concessionárias com IA e CRM | VendorAI",
+    crmTitle: "CRM com IA para Concessionárias e Lojas de Veículos | VendorAI",
+    description: "VendorAI organiza leads, veículo de interesse, troca, financiamento, test-drive, proposta, vendedor e follow-up em concessionárias.",
+  },
+  {
+    slug: "clinicas-odontologicas-esteticas",
+    name: "Clínicas Odontológicas e Estéticas",
+    dorTitle: "Reduza no-show e orçamentos esquecidos em clínicas | VendorAI",
+    marketingTitle: "Marketing para Clínicas Odontológicas e Estéticas | VendorAI",
+    crmTitle: "CRM com IA para Clínicas Odontológicas e Estéticas | VendorAI",
+    description: "VendorAI conecta campanhas, WhatsApp, agenda, avaliação, orçamento, follow-up, Revenue Scout e reativação para clínicas.",
+  },
+  {
+    slug: "imobiliarias-corretores",
+    name: "Imobiliárias e Corretores",
+    dorTitle: "Como parar de perder leads imobiliários antes da visita | VendorAI",
+    marketingTitle: "Marketing para Imobiliárias com Meta, Google e IA | VendorAI",
+    crmTitle: "CRM com IA para Imobiliárias e Corretores | VendorAI",
+    description: "VendorAI organiza leads, preferência de imóvel, corretores, visitas, propostas, WhatsApp, follow-up e inteligência comercial para imobiliárias.",
+  },
+];
+
 const routes = [];
 for (const [pathname, meta] of Object.entries(staticPages)) routes.push({ pathname, ...meta, priority: pathname === "/" ? 1 : 0.75 });
 for (const [slug, product] of Object.entries(products)) routes.push({ pathname: `/produtos/${slug}`, title: product.seoTitle, description: product.seoDescription, type: "product", name: product.title, price: product.price, priority: 0.9 });
 for (const [slug, feature] of Object.entries(featurePages)) routes.push({ pathname: `/funcionalidades/${slug}`, title: feature.seoTitle, description: feature.seoDescription, type: "feature", name: feature.title, priority: 0.78 });
 for (const [slug, agent] of Object.entries(agentPages)) routes.push({ pathname: `/agentes/${slug}`, title: agent.seoTitle, description: agent.seoDescription, type: "agent", name: agent.title, priority: 0.82 });
 for (const [slug, vertical] of Object.entries(verticals)) routes.push({ pathname: `/lp/${slug}`, title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`, description: vertical.description, type: "vertical", name: vertical.title, priority: 0.8 });
+for (const segment of intentLpSegments) {
+  routes.push({ pathname: `/lp/${segment.slug}/dor`, title: segment.dorTitle, description: segment.description, type: "intent-lp", name: `${segment.name} — Dor`, priority: 0.86 });
+  routes.push({ pathname: `/lp/${segment.slug}/marketing`, title: segment.marketingTitle, description: segment.description, type: "intent-lp", name: `${segment.name} — Marketing`, priority: 0.87 });
+  routes.push({ pathname: `/lp/${segment.slug}/crm`, title: segment.crmTitle, description: segment.description, type: "intent-lp", name: `${segment.name} — CRM`, priority: 0.9 });
+}
 for (const macrosegment of macrosegments) routes.push({ pathname: `/segmentos/${macrosegment}`, title: `VendorAI para ${humanize(macrosegment)} — Soluções por Segmento`, description: `Veja soluções VendorAI para empresas de ${humanize(macrosegment)} com CRM, marketing, prospecção, atendimento e inteligência de receita.`, type: "segment", name: humanize(macrosegment), priority: 0.72 });
 
 const manifest = {
@@ -213,6 +253,7 @@ const manifest = {
   features: featurePages,
   agents: agentPages,
   verticals,
+  intentLpSegments,
   macrosegments: [...macrosegments],
   routes,
 };
@@ -245,4 +286,4 @@ fs.writeFileSync(path.join(outDir, "sitemap.xml"), sitemap);
 const robots = `User-agent: *\nAllow: /\n\nDisallow: /login\nDisallow: /app\nDisallow: /admin\nDisallow: /crm\nDisallow: /tenants\nDisallow: /settings\nDisallow: /api\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
 fs.writeFileSync(path.join(outDir, "robots.txt"), robots);
 
-console.log(`[seo] generated ${routes.length} route records, ${Object.keys(products).length} products, ${Object.keys(verticals).length} verticals`);
+console.log(`[seo] generated ${routes.length} route records, ${Object.keys(products).length} products, ${Object.keys(verticals).length} verticals, ${intentLpSegments.length * 3} intent LPs`);
