@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, FlaskConical, Plus, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FlaskConical, Plus, RefreshCw, Search, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type CapabilityStatus = "available" | "partial" | "missing";
@@ -8,6 +8,19 @@ type PromiseItem = { id: string; promise: string; capabilities: string[]; lp: st
 type ApiPromise = { id: string; promise: string; lpName: string; source: string; capabilityIds: string[] };
 type ApiBacklog = { id: string; capabilityId: string; capabilityName: string; module: string; affectedPromises: number; priorityScore: number };
 type ScanResult = { scannedSites: number; extracted: number; created: number; skipped: number; backlogUpdated: number };
+type MissionSuggestion = {
+  id: string;
+  capabilityId: string;
+  capabilityName: string;
+  module: string;
+  affectedPromises: number;
+  priorityScore: number;
+  priorityBand: "critical" | "high" | "medium" | "low";
+  currentStatus: string;
+  recommendation: "start_experiment" | "prepare_spec";
+  mission: { title: string; objective: string; actions: string[]; kpis: string[]; successCriteria: string[] };
+  experiment: { cohort: string; durationDays: number; baseline: string; primaryMetric: string; guardrail: string };
+};
 
 const CAPABILITIES: Capability[] = [
   { id: "crm", name: "CRM e pipeline", module: "CRM", status: "available", keywords: ["crm", "pipeline", "oportunidade", "lead"] },
@@ -41,6 +54,7 @@ export default function GrowthLabConnected() {
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const [serverPromises, setServerPromises] = useState<PromiseItem[]>([]);
   const [backlog, setBacklog] = useState<ApiBacklog[]>([]);
+  const [missions, setMissions] = useState<MissionSuggestion[]>([]);
   const [query, setQuery] = useState("");
   const [newPromise, setNewPromise] = useState("");
   const [newLp, setNewLp] = useState("Nova promessa");
@@ -58,14 +72,17 @@ export default function GrowthLabConnected() {
   async function load() {
     if (!tenantId || !token) return;
     try {
-      const [pRes, bRes] = await Promise.all([
+      const [pRes, bRes, mRes] = await Promise.all([
         fetch(`/api/tenants/${tenantId}/growth-lab/promises`, { headers }),
         fetch(`/api/tenants/${tenantId}/growth-lab/backlog`, { headers }),
+        fetch(`/api/tenants/${tenantId}/growth-lab/mission-suggestions`, { headers }),
       ]);
-      if (!pRes.ok || !bRes.ok) throw new Error("Não foi possível carregar o Growth Lab.");
+      if (!pRes.ok || !bRes.ok || !mRes.ok) throw new Error("Não foi possível carregar o Growth Lab.");
       const pJson = await pRes.json() as ApiPromise[];
+      const mJson = await mRes.json() as { suggestions?: MissionSuggestion[] };
       setServerPromises(pJson.map(item => ({ id: item.id, promise: item.promise, capabilities: item.capabilityIds ?? [], lp: item.lpName, source: item.source })));
       setBacklog(await bRes.json() as ApiBacklog[]);
+      setMissions(Array.isArray(mJson.suggestions) ? mJson.suggestions : []);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar o Growth Lab.");
@@ -137,7 +154,7 @@ export default function GrowthLabConnected() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h1 className="text-2xl font-bold md:text-3xl">Promessa comercial só entra na LP se o produto sustentar.</h1>
-              <p className="mt-2 text-sm text-muted-foreground">Promessas e lacunas persistidas por tenant na base central.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Promessas, lacunas, missões e experimentos derivados dos dados reais do tenant.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <button onClick={scanSites} disabled={scanning || !tenantId} className="inline-flex items-center justify-center gap-2 rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50">
@@ -157,11 +174,37 @@ export default function GrowthLabConnected() {
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <div className="rounded-xl border bg-background p-4"><div className="text-2xl font-bold">{promises.length}</div><div className="text-sm text-muted-foreground">promessas</div></div>
           <div className="rounded-xl border bg-background p-4"><CheckCircle2 className="mb-2 h-5 w-5"/><div className="text-2xl font-bold">{promises.filter(p => coverage(p.capabilities) === 100).length}</div><div className="text-sm text-muted-foreground">podem anunciar</div></div>
           <div className="rounded-xl border bg-background p-4"><AlertTriangle className="mb-2 h-5 w-5"/><div className="text-2xl font-bold">{promises.filter(p => coverage(p.capabilities) > 0 && coverage(p.capabilities) < 100).length}</div><div className="text-sm text-muted-foreground">com lacunas</div></div>
           <div className="rounded-xl border bg-background p-4"><ClipboardList className="mb-2 h-5 w-5"/><div className="text-2xl font-bold">{backlog.length}</div><div className="text-sm text-muted-foreground">backlog central</div></div>
+          <div className="rounded-xl border bg-background p-4"><Target className="mb-2 h-5 w-5"/><div className="text-2xl font-bold">{missions.length}</div><div className="text-sm text-muted-foreground">missões sugeridas</div></div>
+        </div>
+
+        <div className="rounded-xl border bg-background p-5">
+          <div className="flex items-end justify-between gap-4">
+            <div><h2 className="font-semibold">Missões e Experimentos sugeridos</h2><p className="text-sm text-muted-foreground">Gerados automaticamente a partir das lacunas abertas e das promessas afetadas.</p></div>
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            {missions.map(item => (
+              <div key={item.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div><div className="text-xs uppercase text-muted-foreground">{item.module} · {item.affectedPromises} promessa(s)</div><h3 className="mt-1 font-semibold">{item.mission.title}</h3></div>
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">P{item.priorityScore}</span>
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground">{item.mission.objective}</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg bg-muted/40 p-3"><div className="text-xs font-semibold uppercase text-muted-foreground">Próxima ação</div><div className="mt-1 text-sm">{item.mission.actions[0]}</div></div>
+                  <div className="rounded-lg bg-muted/40 p-3"><div className="text-xs font-semibold uppercase text-muted-foreground">Experimento</div><div className="mt-1 text-sm">{item.experiment.cohort} · {item.experiment.durationDays} dias</div></div>
+                  <div className="rounded-lg bg-muted/40 p-3"><div className="text-xs font-semibold uppercase text-muted-foreground">Métrica principal</div><div className="mt-1 text-sm">{item.experiment.primaryMetric}</div></div>
+                  <div className="rounded-lg bg-muted/40 p-3"><div className="text-xs font-semibold uppercase text-muted-foreground">Guardrail</div><div className="mt-1 text-sm">{item.experiment.guardrail}</div></div>
+                </div>
+                <div className="mt-3 text-xs font-medium text-muted-foreground">Recomendação: {item.recommendation === "start_experiment" ? "iniciar experimento" : "preparar especificação"}</div>
+              </div>
+            ))}
+            {!missions.length && <div className="text-sm text-muted-foreground">Nenhuma missão sugerida enquanto não houver lacunas abertas.</div>}
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
