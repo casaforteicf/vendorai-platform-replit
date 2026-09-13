@@ -4,6 +4,7 @@ import visitorIntelligenceRouter from "./visitor_intelligence.js";
 import growthLabRouter from "./growth_lab.js";
 import followerGrowthApprovalsRouter from "./follower_growth_approvals.js";
 import followerGrowthExecutionEvidenceRouter from "./follower_growth_execution_evidence.js";
+import followerGrowthAutoEvidenceRouter from "./follower_growth_auto_evidence.js";
 
 const router: IRouter = Router();
 
@@ -11,6 +12,7 @@ router.use(visitorIntelligenceRouter);
 router.use(growthLabRouter);
 router.use(followerGrowthApprovalsRouter);
 router.use(followerGrowthExecutionEvidenceRouter);
+router.use(followerGrowthAutoEvidenceRouter);
 router.use(launchCommandCenterCoreRouter);
 
 export default router;
