@@ -12,7 +12,6 @@ import {
   dealsTable,
   leadsTable,
 } from "@workspace/db";
-import { count, gte, sql } from "drizzle-orm";
 import type { GeneratedSiteContent } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import express from "express";
@@ -227,7 +226,7 @@ router.post("/tenants/:tenantId/site-config/generate", async (req, res) => {
   const tomLabel: Record<string, string> = {
     profissional: "Profissional e confiável — use linguagem formal, transmita segurança",
     amigavel: "Amigável e próximo — use 'você', tom caloroso e acolhedor",
-    urgente: "Urgente e direto — use gatilhos de escassez, linguagem imperativa",
+    urgente: "Urgente e direto — use linguagem objetiva sem inventar escassez, prazo ou disponibilidade",
     premium: "Premium e sofisticado — elegante, minimalista, palavras de alto valor percebido",
     descontraido: "Descontraído e criativo — informal, bem-humorado, use expressões do dia a dia",
   };
@@ -240,11 +239,13 @@ router.post("/tenants/:tenantId/site-config/generate", async (req, res) => {
     : "";
 
   const systemPrompt = `Você é um especialista sênior em copywriting persuasivo e web design para pequenas e médias empresas brasileiras.
-Seu objetivo é gerar conteúdo de alta qualidade que CONVERTE — textos que vendem, não apenas descrevem.
+Seu objetivo é gerar conteúdo de alta qualidade que CONVERTE, sem inventar fatos, métricas, clientes, depoimentos, certificações, prazos, descontos, garantias ou resultados.
 Regras obrigatórias:
 - Headlines: impactantes, focadas no benefício/resultado do cliente, não no produto
-- Depoimentos: realistas, com nome completo, cidade/empresa, detalhes específicos
-- Diferenciais: concretos, mensuráveis quando possível (ex: "Entrega em 24h" não "Entrega rápida")
+- Prova social: nunca invente nomes, empresas, cidades, avaliações ou depoimentos; se não houver prova fornecida, use uma lista vazia
+- Diferenciais: use somente informações fornecidas; não transforme adjetivos em números ou promessas não verificadas
+- Escassez e urgência: somente quando explicitamente informadas nos dados de entrada
+- Imagens: não gere URLs, bancos de stock ou palavras-chave de busca; a mídia será escolhida pela biblioteca do tenant
 - Responda APENAS com JSON válido, sem explicações, sem markdown, sem comentários`;
 
   const userPrompt = `Gere um JSON completo para o site ${isEcommerce ? "e-commerce" : "landing page"} da empresa abaixo.
@@ -271,7 +272,7 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
   },
   "sobre": {
     "titulo": "Sobre a ${empresa}",
-    "texto": "texto sobre a empresa em 3-4 frases envolventes, destacando história e proposta de valor"
+    "texto": "texto sobre a empresa em 3-4 frases envolventes, usando somente fatos fornecidos"
   },
   "servicos": [
     {"titulo": "nome do serviço/produto", "descricao": "descrição curta 1-2 frases", "emoji": "emoji relevante"},
@@ -279,16 +280,12 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
     {"titulo": "...", "descricao": "...", "emoji": "..."}
   ],
   "diferenciais": [
-    {"titulo": "diferencial 1", "texto": "explicação do diferencial em 1 frase", "icone": "emoji"},
+    {"titulo": "diferencial 1", "texto": "explicação baseada nos dados fornecidos", "icone": "emoji"},
     {"titulo": "diferencial 2", "texto": "...", "icone": "emoji"},
     {"titulo": "diferencial 3", "texto": "...", "icone": "emoji"},
     {"titulo": "diferencial 4", "texto": "...", "icone": "emoji"}
   ],
-  "depoimentos": [
-    {"nome": "Nome Sobrenome", "cargo": "cargo ou contexto", "empresa": "empresa ou cidade", "texto": "depoimento realista e convincente", "estrelas": 5},
-    {"nome": "...", "cargo": "...", "empresa": "...", "texto": "...", "estrelas": 5},
-    {"nome": "...", "cargo": "...", "empresa": "...", "texto": "...", "estrelas": 5}
-  ],
+  "depoimentos": [],
   "faq": [
     {"pergunta": "pergunta frequente 1", "resposta": "resposta clara e objetiva"},
     {"pergunta": "...", "resposta": "..."},
@@ -307,11 +304,10 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
   ${isEcommerce ? `"ecommerce": {
     "titulo": "título da seção loja",
     "descricao": "texto convidando a explorar os produtos",
-    "frete": "informação sobre frete (ex: Frete grátis acima de R$ 150)",
-    "pagamento": "formas de pagamento aceitas",
-    "garantia": "política de garantia/troca"
+    "frete": "use somente informação de frete fornecida; caso contrário deixe vazio",
+    "pagamento": "use somente formas de pagamento fornecidas; caso contrário deixe vazio",
+    "garantia": "use somente política fornecida; caso contrário deixe vazio"
   },` : ""}
-  "imageKeyword": "2-3 palavras em inglês para busca de imagem de fundo relevante ao negócio",
   "slogan": "slogan curto e marcante para o rodapé"
 }`;
 
@@ -335,15 +331,13 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
     return;
   }
 
-  // Hero image via Unsplash Source (keyword from AI)
-  const keyword = encodeURIComponent(generated.imageKeyword ?? vertical);
-  const heroImageUrl = `https://images.unsplash.com/1600x900/?${keyword}&auto=format&fit=crop&q=80`;
-
-  // Upsert site_config
+  // Never invent or fetch stock media. Preserve an existing tenant-selected hero;
+  // new sites start without a hero until Media Library / explicit site media supplies one.
   const existingRows = await db
-    .select({ id: siteConfigTable.id })
+    .select({ id: siteConfigTable.id, heroImageUrl: siteConfigTable.heroImageUrl })
     .from(siteConfigTable)
     .where(eq(siteConfigTable.tenantId, tenantId));
+  const heroImageUrl = existingRows[0]?.heroImageUrl ?? null;
 
   let siteConfig;
   if (existingRows.length > 0) {

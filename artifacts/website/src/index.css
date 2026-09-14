@@ -246,13 +246,6 @@ main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5) 
   z-index: 1;
 }
 
-/* External segment photography remains contextual, but gets one consistent treatment. */
-main img[src*="images.unsplash.com"],
-main img[src*="images.pexels.com"] {
-  object-fit: cover;
-  filter: saturate(0.88) contrast(1.03);
-}
-
 /* Add warmer depth to selected cards and conversion surfaces. */
 main [class*="shadow-"][class*="rounded-"] {
   transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease;
