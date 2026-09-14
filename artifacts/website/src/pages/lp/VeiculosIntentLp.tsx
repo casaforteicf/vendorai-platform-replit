@@ -4,9 +4,16 @@ import { ArrowRight, BarChart3, CarFront, Check, ChevronDown, CircleDollarSign, 
 
 type Intent = "dor" | "marketing" | "crm";
 
-const PHOTO = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1600&q=82";
+type Theme = {
+  badge:string; title:string; subtitle:string; section:string; image:string;
+  cards: ReadonlyArray<readonly [string,string,any]>;
+  indicators: string[];
+};
 
-const THEMES = {
+const HERO_PHOTO = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1600&q=82";
+const CONTEXT_PHOTO = "https://images.unsplash.com/photo-1562141961-3c2d9a1f3c5b?auto=format&fit=crop&w=1600&q=82";
+
+const THEMES: Record<Intent,Theme> = {
   dor: {
     badge: "Dor / Descoberta",
     title: "Quantos leads sua loja recebe e perde antes do test-drive?",
@@ -21,7 +28,7 @@ const THEMES = {
       ["Test-drive sem follow-up", "A visita acontece, mas a negociação esfria depois.", Gauge],
       ["Propostas esquecidas", "Negociações de alto valor ficam sem prazo e responsável.", CircleDollarSign],
     ],
-    metrics: [["18","leads sem retorno"],["7","test-drives pendentes"],["11","propostas paradas"],["9","trocas a avaliar"]],
+    indicators:["Leads sem próxima ação","Test-drives pendentes","Propostas paradas","Trocas a avaliar"],
   },
   marketing: {
     badge: "Marketing / Crescimento",
@@ -37,7 +44,7 @@ const THEMES = {
       ["Origem até venda", "Acompanhe campanha, lead, test-drive, proposta e fechamento.", BarChart3],
       ["Estoque com prioridade", "Direcione campanhas para veículos, linhas e condições que precisam girar.", CarFront],
     ],
-    metrics: [["428","leads"],["96","test-drives"],["41","vendas"],["5,2x","ROAS"]],
+    indicators:["Origem do lead","Campanha e veículo","Test-drive atribuído","Venda por origem"],
   },
   crm: {
     badge: "CRM / Alta intenção",
@@ -53,9 +60,9 @@ const THEMES = {
       ["WhatsApp integrado", "Conversa, histórico e contexto comercial no mesmo lugar.", MessageCircle],
       ["Inteligência comercial", "Veja leads quentes, propostas paradas, fontes e desempenho por vendedor.", ShieldCheck],
     ],
-    metrics: [["34","novos leads"],["21","qualificados"],["13","test-drives"],["8","negociações"]],
+    indicators:["Leads por vendedor","Próxima ação","Test-drives agendados","Negociações abertas"],
   },
-} as const;
+};
 
 const FAQ = [
   ["Serve para concessionárias e lojas de seminovos?", "Sim. A estrutura funciona para veículos novos, seminovos e operações independentes."],
@@ -79,10 +86,12 @@ export default function VeiculosIntentLp() {
   }, [theme]);
 
   return <div className="min-h-screen bg-[#f7f7f5] text-slate-950">
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07101b]/95 text-white backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"><Link href="/" className="text-xl font-black">Vendor<span className="text-orange-500">AI</span></Link><nav className="hidden gap-6 text-xs font-bold text-slate-300 md:flex"><a href="#desafios">Desafios</a><a href="#sistema">Sistema</a><a href="#faq">FAQ</a></nav><a href="/demo?vertical=veiculos&intent=trial-5-dias" className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black">Testar 5 dias grátis</a></div></header>
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07101b]/95 text-white backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"><Link href="/" className="text-xl font-black">Vendor<span className="text-orange-500">AI</span></Link><nav className="hidden gap-6 text-xs font-bold text-slate-300 md:flex"><a href="#contexto">Operação</a><a href="#desafios">Desafios</a><a href="#sistema">Sistema</a><a href="#faq">FAQ</a></nav><a href="/demo?vertical=veiculos&intent=trial-5-dias" className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black">Testar 5 dias grátis</a></div></header>
 
     <main>
-      <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="absolute inset-0"><img src={PHOTO} alt="Veículo em destaque" className="h-full w-full object-cover opacity-45"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b] via-[#07101b]/92 to-[#07101b]/35"/></div><div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[1fr_.8fr] lg:py-24"><div><span className="inline-flex rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300">{theme.badge}</span><p className="mt-5 text-xs font-black tracking-[.22em] text-orange-400">CONCESSIONÁRIAS E LOJAS DE VEÍCULOS</p><h1 className="mt-4 max-w-4xl text-5xl font-black leading-[.98] tracking-tight sm:text-6xl">{theme.title}</h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><a href="/demo?vertical=veiculos&intent=trial-5-dias" className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 py-3.5 text-sm font-black">Testar 5 dias grátis<ArrowRight className="h-4 w-4"/></a><a href="/demo?vertical=veiculos" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-6 py-3.5 text-sm font-black">Ver demonstração</a></div></div><div className="hidden lg:block"><div className="rounded-[28px] border border-white/10 bg-black/25 p-6 backdrop-blur"><div className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Lead de alto valor</div><div className="mt-4 grid grid-cols-2 gap-3">{theme.metrics.map(([v,l]) => <div key={l} className="rounded-2xl bg-white/10 p-4"><div className="text-3xl font-black">{v}</div><div className="mt-1 text-xs text-slate-300">{l}</div></div>)}</div></div></div></div></section>
+      <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="absolute inset-0"><img src={HERO_PHOTO} alt="Veículo em destaque em operação de concessionária" className="h-full w-full object-cover opacity-45" loading="eager"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b] via-[#07101b]/92 to-[#07101b]/35"/></div><div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[1fr_.8fr] lg:py-24"><div><span className="inline-flex rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300">{theme.badge}</span><p className="mt-5 text-xs font-black tracking-[.22em] text-orange-400">CONCESSIONÁRIAS E LOJAS DE VEÍCULOS</p><h1 className="mt-4 max-w-4xl text-5xl font-black leading-[.98] tracking-tight sm:text-6xl">{theme.title}</h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><a href="/demo?vertical=veiculos&intent=trial-5-dias" className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 py-3.5 text-sm font-black">Testar 5 dias grátis<ArrowRight className="h-4 w-4"/></a><a href="/demo?vertical=veiculos" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-6 py-3.5 text-sm font-black">Ver demonstração</a></div></div><div className="hidden lg:block"><div className="rounded-[28px] border border-white/10 bg-black/25 p-6 backdrop-blur"><div className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Visão operacional</div><div className="mt-4 grid grid-cols-2 gap-3">{theme.indicators.map(label => <div key={label} className="rounded-2xl bg-white/10 p-4"><div className="text-sm font-black">{label}</div><div className="mt-2 text-[11px] text-slate-300">Acompanhável no fluxo comercial</div></div>)}</div></div></div></div></section>
+
+      <section id="contexto" className="px-4 pt-10 sm:px-6 sm:pt-14"><div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[1.15fr_.85fr]"><div className="overflow-hidden rounded-[30px] bg-white shadow-sm ring-1 ring-slate-200"><img src={CONTEXT_PHOTO} alt="Atendimento comercial em concessionária e loja de veículos" className="h-[340px] w-full object-cover sm:h-[430px]" loading="lazy"/></div><div className="flex flex-col justify-center rounded-[30px] bg-[#111827] p-8 text-white"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-400">Operação real</p><h2 className="mt-3 text-3xl font-black">Veículo, cliente, troca, financiamento e timing precisam andar juntos.</h2><p className="mt-4 text-sm leading-6 text-slate-300">A segunda imagem contextualiza o atendimento comercial antes de mostrar o VendorAI, deixando a página mais visual e menos parecida com um painel técnico isolado.</p></div></div></section>
 
       <section id="desafios" className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mx-auto mb-10 max-w-3xl text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Processo comercial</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">{theme.section}</h2></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{theme.cards.map(([title,text,Icon]) => <div key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500 text-white"><Icon className="h-5 w-5"/></div><h3 className="font-black">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{text}</p></div>)}</div></div></section>
 
@@ -90,7 +99,7 @@ export default function VeiculosIntentLp() {
 
       <section className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mb-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Jornada</p><h2 className="mt-3 text-3xl font-black">Anúncio → Lead → WhatsApp → Test-drive → Proposta → Venda</h2></div><div className="grid gap-3 md:grid-cols-6">{["Anúncio","Lead","WhatsApp","Test-drive","Proposta","Venda"].map((step,i)=><div key={step} className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm"><div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-xs font-black text-orange-600">{i+1}</div><div className="text-sm font-black">{step}</div></div>)}</div></div></section>
 
-      <section className="bg-[#07101b] px-4 py-16 text-white sm:px-6"><div className="mx-auto max-w-7xl"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{theme.metrics.map(([v,l]) => <div key={l} className="rounded-2xl border border-white/10 bg-white/[.04] p-6 text-center"><div className="text-3xl font-black text-orange-400">{v}</div><div className="mt-2 text-sm font-bold text-slate-300">{l}</div></div>)}</div></div></section>
+      <section className="bg-[#07101b] px-4 py-16 text-white sm:px-6"><div className="mx-auto max-w-7xl"><p className="text-center text-xs font-black uppercase tracking-[.2em] text-orange-400">Indicadores operacionais</p><div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{theme.indicators.map(label => <div key={label} className="rounded-2xl border border-white/10 bg-white/[.04] p-6 text-center"><div className="text-lg font-black text-orange-400">{label}</div><div className="mt-2 text-sm font-bold text-slate-300">Visível e acompanhável no VendorAI</div></div>)}</div></div></section>
 
       <section id="faq" className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-5xl"><div className="mb-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Dúvidas?</p><h2 className="mt-3 text-3xl font-black">Perguntas frequentes</h2></div><div className="grid gap-3 md:grid-cols-2">{FAQ.map(([q,a]) => <details key={q} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-black"><span>{q}</span><ChevronDown className="h-4 w-4 transition group-open:rotate-180"/></summary><p className="mt-3 text-sm leading-6 text-slate-500">{a}</p></details>)}</div></div></section>
 
