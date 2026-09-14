@@ -12,6 +12,7 @@ import {
   PerformanceError,
 } from "../services/content-performance.js";
 import { getMetaGrowthOverview } from "../services/meta-growth.js";
+import { getInstagramGrowthBrainSnapshot } from "../services/instagram-growth-brain.js";
 import { ingestMetaEngagement } from "../services/meta-engagement-crm.js";
 import { getMetaRemarketingOverview } from "../services/meta-remarketing.js";
 import { listMetaCustomAudiences, syncMetaCustomAudience } from "../services/meta-custom-audiences.js";
@@ -190,6 +191,17 @@ router.get("/tenants/:tenantId/meta-growth/overview", authenticate, async (req, 
   catch (err) {
     logger.error({ err, tenantId }, "meta-growth: erro ao carregar overview");
     return res.status(500).json({ error: "Não foi possível carregar os indicadores da Meta." });
+  }
+});
+
+router.get("/tenants/:tenantId/meta-growth/instagram-brain", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    return res.json(await getInstagramGrowthBrainSnapshot(tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "instagram growth brain: erro ao carregar snapshot");
+    return res.status(500).json({ error: "Não foi possível carregar a inteligência de crescimento do Instagram." });
   }
 });
 
