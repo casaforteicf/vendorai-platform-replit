@@ -75,8 +75,8 @@ export { resolveMarketingAgentPlan, getMarketingContextDescription } from './mar
 export type { MarketingAgentRuntimeContext, MarketingAgentPlan } from './marketing-agent'
 export { MarketingPageContextSource, toMarketingAgentRuntimeContext } from './marketing-context'
 export type { MarketingPageContext } from './marketing-context'
-export { resolveMarketingRuntime, resolveMarketingSignalDecision } from './marketing-runtime'
-export type { MarketingCampaignContextInput, MarketingRuntimeResolution, MarketingSignalDecision } from './marketing-runtime'
+export { resolveMarketingRuntime, resolveMarketingSignalDecision, resolveMarketingDataIntelligence } from './marketing-runtime'
+export type { MarketingCampaignContextInput, MarketingRuntimeResolution, MarketingSignalDecision, MarketingDataIntelligenceResolution } from './marketing-runtime'
 export { inferMarketingSurface, buildMarketingAgentUiCard } from './marketing-agent-ui'
 export type { MarketingSurface, MarketingAgentUiCard } from './marketing-agent-ui'
 export { getChannelAdaptation, getChannelAdaptations } from './channel-adapters'
@@ -92,6 +92,16 @@ export type {
   WindsorRow,
   MarketingPriority,
 } from './marketing-data-standard'
+export { buildInstagramGrowthIntelligence } from './instagram-growth'
+export type {
+  InstagramGrowthDecision,
+  InstagramGrowthGoal,
+  InstagramGrowthMetrics,
+  InstagramGrowthAction,
+  InstagramGrowthIntelligence,
+} from './instagram-growth'
+export { buildInstagramPlannerDirective } from './instagram-planner-bridge'
+export type { InstagramPlannerContentMix, InstagramPlannerDirective } from './instagram-planner-bridge'
 
 // Creative / Web
 export { calculateDesignQaScore, validateCreativeBrief } from './creative-design'
