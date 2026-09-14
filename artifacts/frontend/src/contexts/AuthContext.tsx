@@ -215,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRawUser(meData);
       persistCachedUser(meData);
       const isPasswordRoute = location === "/trocar-senha" || location.endsWith("/trocar-senha");
-      if (meData.forcePasswordReset && !isPasswordRoute && passwordRedirectedUserRef.current !== meData.id) {
+      if (meData.forcePasswordReset && !isPasswordRoute) {
         passwordRedirectedUserRef.current = meData.id;
         setLocation("/trocar-senha", { replace: true });
       } else if (!meData.forcePasswordReset) {
