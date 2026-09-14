@@ -1,6 +1,12 @@
 import { resolveMarketingAgentPlan, type MarketingAgentRuntimeContext } from './marketing-agent';
 import { validateCreativeBrief, type CreativeBrief } from './creative-design';
 import { routeSignal, type BusinessSignal, type RoutedOpportunity } from './intelligence-routing';
+import {
+  deriveMarketingPriorities,
+  type MarketingAutomationMode,
+  type MarketingPriority,
+  type NormalizedMarketingRecord,
+} from './marketing-data-standard';
 
 export interface MarketingCampaignContextInput {
   tenantId: string;
@@ -83,5 +89,33 @@ export function resolveMarketingSignalDecision(signal: BusinessSignal): Marketin
     signal,
     opportunity,
     shouldNotifyMarketingAgent: opportunity?.target === 'marketing',
+  };
+}
+
+export interface MarketingDataIntelligenceResolution {
+  tenantId: string;
+  automationMode: MarketingAutomationMode;
+  priorities: MarketingPriority[];
+  recordCount: number;
+}
+
+/**
+ * Canonical bridge from normalized Windsor/native marketing data into Tad.
+ * Keeps provider-specific schemas outside the agent/runtime and enforces that
+ * every record belongs to the requested tenant before intelligence is derived.
+ */
+export function resolveMarketingDataIntelligence(input: {
+  tenantId: string;
+  records: NormalizedMarketingRecord[];
+  automationMode?: MarketingAutomationMode;
+}): MarketingDataIntelligenceResolution {
+  const records = input.records.filter((record) => record.provenance.tenantId === input.tenantId);
+  const automationMode = input.automationMode ?? 'RECOMMEND';
+
+  return {
+    tenantId: input.tenantId,
+    automationMode,
+    priorities: deriveMarketingPriorities(records, automationMode),
+    recordCount: records.length,
   };
 }
