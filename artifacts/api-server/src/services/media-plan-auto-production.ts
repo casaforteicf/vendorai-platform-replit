@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   agentConfigsTable,
   businessProfilesTable,
@@ -15,6 +15,7 @@ import {
   generateLinkedInContent,
   generateReelsScript,
   generateStoriesContent,
+  generateYouTubeScript,
 } from "../lib/content-generation.js";
 import { logger } from "../lib/logger.js";
 import { buildReferencePatternsPromptBlock } from "./content-reference-creators.js";
@@ -29,7 +30,8 @@ const PLAN_LIMITS: Record<string, number> = {
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const PRODUCTION_LEAD_HOURS = Math.max(1, Number(process.env["MARKETING_PRODUCTION_LEAD_HOURS"] || 24));
 const MAX_ITEMS_PER_TICK = 8;
-const AUTO_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post", "reels"]);
+const VIDEO_AUTO_TYPES = new Set(["reels", "tiktok", "youtube_short", "youtube_video"]);
+const AUTO_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post", ...VIDEO_AUTO_TYPES]);
 
 type Campaign = {
   id: string;
@@ -96,7 +98,11 @@ function shouldProduce(dateIso: string, settings: PlanContent["publicacaoOrganic
 
 function providerSupported(canal: string) {
   const channel = normalize(canal);
-  return channel.includes("instagram") || channel.includes("facebook") || channel.includes("linkedin");
+  return channel.includes("instagram")
+    || channel.includes("facebook")
+    || channel.includes("linkedin")
+    || channel.includes("tiktok")
+    || channel.includes("youtube");
 }
 
 function campaignForItem(content: PlanContent, pilar: string) {
@@ -187,8 +193,12 @@ async function generateDraft(input: {
   } else if (input.tipo === "linkedin_post") {
     storedType = "linkedin";
     generated = await generateLinkedInContent(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
-  } else if (input.tipo === "reels") {
-    storedType = "reels";
+  } else if (input.tipo === "youtube_video") {
+    storedType = "youtube";
+    aspectRatio = "16:9";
+    generated = await generateYouTubeScript(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
+  } else if (VIDEO_AUTO_TYPES.has(input.tipo)) {
+    storedType = input.tipo === "youtube_short" ? "youtube" : "reels";
     contentFormat = "reels";
     aspectRatio = "9:16";
     generated = await generateReelsScript(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
@@ -237,7 +247,8 @@ async function generateDraft(input: {
         calendarItemId: input.calendarItemId,
         producedBy: "backend-worker",
         producedAt: new Date().toISOString(),
-        status: input.tipo === "reels" ? "script_ready" : "draft_ready",
+        status: VIDEO_AUTO_TYPES.has(input.tipo) ? "script_ready" : "draft_ready",
+        contentType: input.tipo,
       },
     } as any,
     tokensUsed: generated.tokensUsed,
@@ -251,11 +262,12 @@ async function generateDraft(input: {
   return saved;
 }
 
-async function startReelVideo(input: {
+async function startAutomatedVideo(input: {
   tenantId: string;
   generationId: string;
   calendarItemId: string;
   theme: string;
+  tipo: string;
   campaign: Campaign;
   result: GenerationResultRecord;
 }) {
@@ -273,6 +285,7 @@ async function startReelVideo(input: {
     typeof variation.cta === "string" ? `CTA: ${variation.cta}` : "",
   ].filter(Boolean).join("\n\n");
 
+  const longVideo = input.tipo === "youtube_video";
   const job = await createVendorAiMediaGenerationJob({
     tenantId: input.tenantId,
     userId: null,
@@ -280,27 +293,30 @@ async function startReelVideo(input: {
     operation: "video_generate",
     context: {
       prompt: prompt.slice(0, 4000),
-      style: "dynamic social media reel, energetic camera language, punchy modern composition",
-      aspectRatio: "portrait",
-      duration: 16,
+      style: longVideo
+        ? "cinematic, premium, photorealistic, polished commercial production"
+        : "dynamic social media reel, energetic camera language, punchy modern composition",
+      aspectRatio: longVideo ? "landscape" : "portrait",
+      duration: longVideo ? 30 : 16,
       generationMode: "ai_only",
       mediaInputs: [],
       effects: {
-        preset: "social",
-        intensity: "medium",
-        transition: "whip",
-        motion: "punch",
-        color: "vibrant",
-        grain: false,
+        preset: longVideo ? "cinematic" : "social",
+        intensity: longVideo ? "soft" : "medium",
+        transition: longVideo ? "smooth" : "whip",
+        motion: longVideo ? "ken_burns" : "punch",
+        color: longVideo ? "cinematic" : "vibrant",
+        grain: longVideo,
         vignette: false,
         sharpen: true,
-        beatSync: true,
-        bpm: 128,
-        sfx: "whoosh",
+        beatSync: !longVideo,
+        bpm: longVideo ? 105 : 128,
+        sfx: longVideo ? "none" : "whoosh",
       },
       source: "media-plan",
       calendarItemId: input.calendarItemId,
       contentGenerationId: input.generationId,
+      contentType: input.tipo,
       materializationStatus: "processing",
       executorKind: "video",
     },
@@ -317,6 +333,7 @@ async function startReelVideo(input: {
       automation: {
         ...((next.automation && typeof next.automation === "object" && !Array.isArray(next.automation)) ? next.automation as Record<string, unknown> : {}),
         status: "video_processing",
+        contentType: input.tipo,
         projectId: job.projectId,
         jobId: job.jobId,
         updatedAt: new Date().toISOString(),
@@ -390,12 +407,13 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
         eq(contentCalendarItemsTable.contentGenerationId, claim),
       ));
 
-      if (row.tipo === "reels") {
-        await startReelVideo({
+      if (VIDEO_AUTO_TYPES.has(row.tipo)) {
+        await startAutomatedVideo({
           tenantId: row.tenantId,
           generationId: generation.id,
           calendarItemId: row.id,
           theme: row.temaSugerido,
+          tipo: row.tipo,
           campaign,
           result: generation.result as GenerationResultRecord,
         });
@@ -420,6 +438,7 @@ export async function reconcileAutomatedReelVideos() {
   const rows = await db.select({
     id: contentCalendarItemsTable.id,
     tenantId: contentCalendarItemsTable.tenantId,
+    tipo: contentCalendarItemsTable.tipo,
     generationId: contentCalendarItemsTable.contentGenerationId,
     result: contentGenerationsTable.result,
   }).from(contentCalendarItemsTable)
@@ -429,11 +448,11 @@ export async function reconcileAutomatedReelVideos() {
     ))
     .where(and(
       eq(contentCalendarItemsTable.status, "gerado"),
-      eq(contentCalendarItemsTable.tipo, "reels"),
+      inArray(contentCalendarItemsTable.tipo, [...VIDEO_AUTO_TYPES]),
       isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
     ))
-    .limit(20);
+    .limit(30);
 
   let reconciled = 0;
   for (const row of rows) {
@@ -465,6 +484,7 @@ export async function reconcileAutomatedReelVideos() {
           automation: {
             ...automation,
             status: "video_ready",
+            contentType: row.tipo,
             videoUrl,
             videoAssetId: typeof output.videoAssetId === "string" ? output.videoAssetId : null,
             updatedAt: new Date().toISOString(),
@@ -472,7 +492,7 @@ export async function reconcileAutomatedReelVideos() {
         } as any,
       }).where(and(eq(contentGenerationsTable.id, row.generationId), eq(contentGenerationsTable.tenantId, row.tenantId)));
       reconciled += 1;
-      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId }, "Reel automático recebeu o vídeo final");
+      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "Vídeo automático do Plano de Mídia recebeu o arquivo final");
     } else if (job.status === "error") {
       await db.update(contentGenerationsTable).set({
         result: {
@@ -480,6 +500,7 @@ export async function reconcileAutomatedReelVideos() {
           automation: {
             ...automation,
             status: "video_failed",
+            contentType: row.tipo,
             error: job.error ?? "Falha no Media Engine",
             updatedAt: new Date().toISOString(),
           },

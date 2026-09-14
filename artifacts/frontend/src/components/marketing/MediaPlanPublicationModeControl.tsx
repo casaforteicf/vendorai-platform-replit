@@ -180,7 +180,7 @@ export function MediaPlanPublicationModeControl() {
       toast({
         title: settings.modo === "automatico" ? "Publicação automática ativada" : "Revisão antes de publicar ativada",
         description: settings.modo === "automatico"
-          ? "Quando a peça estiver pronta, ela seguirá o calendário aprovado e será publicada sem precisar deixar o VendorAI aberto."
+          ? "Quando a peça estiver pronta, ela seguirá o calendário aprovado nos canais conectados sem precisar deixar o VendorAI aberto."
           : "A IA continuará preparando as peças, mas você fará a aprovação final antes da publicação.",
       });
     } catch (error) {
@@ -200,11 +200,11 @@ export function MediaPlanPublicationModeControl() {
             <div className="flex items-center gap-2 flex-wrap">
               <Send className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">7. Publicação</p>
-              <Badge variant="outline" className="text-[10px]">Instagram · Facebook · LinkedIn</Badge>
+              <Badge variant="outline" className="text-[10px]">Instagram · Facebook · LinkedIn · TikTok · YouTube</Badge>
               {plan.conteudo.statusPlanejamento === "aprovado" && <Badge className="bg-emerald-600 text-[10px]">Plano aprovado</Badge>}
             </div>
             <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-              Esta escolha só define o que acontece depois que o conteúdo estiver produzido e pronto. Aprovar o planejamento não publica nada sozinho.
+              Esta escolha define o que acontece depois que o conteúdo estiver produzido e pronto. No automático, o VendorAI publica nos canais conectados seguindo data e horário do calendário.
             </p>
           </div>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -212,7 +212,7 @@ export function MediaPlanPublicationModeControl() {
 
         <div className="rounded-lg border bg-background px-3 py-2.5 text-xs">
           <span className="text-muted-foreground">Sequência</span>
-          <p className="mt-0.5 font-medium">Plano aprovado → Produção → Peça pronta → Revisão opcional → Publicação</p>
+          <p className="mt-0.5 font-medium">Plano aprovado → Produção → Peça pronta → Revisão opcional → Publicação multicanal</p>
         </div>
 
         <div className="grid gap-2 md:grid-cols-2">
@@ -231,7 +231,7 @@ export function MediaPlanPublicationModeControl() {
             className={`rounded-xl border p-3 text-left transition-colors ${settings.modo === "automatico" ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
           >
             <div className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4" /> Publicar automaticamente</div>
-            <p className="mt-1 text-xs text-muted-foreground">A IA prepara o conteúdo conforme o calendário e publica automaticamente quando a peça estiver pronta.</p>
+            <p className="mt-1 text-xs text-muted-foreground">A IA prepara cada formato e publica automaticamente em todos os canais conectados previstos no planejamento.</p>
           </button>
         </div>
 
@@ -239,7 +239,7 @@ export function MediaPlanPublicationModeControl() {
           <div className="space-y-3 rounded-xl border bg-background p-3">
             <div>
               <p className="text-xs font-medium">Horário padrão de publicação</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Cada item pode ter horário próprio no calendário. Este horário é usado quando nenhum horário específico tiver sido definido.</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Cada item pode ter horário próprio no calendário. Este horário é usado quando nenhum horário específico tiver sido definido. Canais desconectados ou sem autorização não são publicados até a conexão ser regularizada.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-end">
               <div>

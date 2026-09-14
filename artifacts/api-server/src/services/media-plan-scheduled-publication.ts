@@ -15,7 +15,7 @@ const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/
 const DEFAULT_PUBLISH_TIME = process.env["MARKETING_DEFAULT_PUBLISH_TIME"] || "10:00";
 const MAX_DUE_ITEMS_PER_TICK = 50;
 
-const AUTO_TYPES = ["feed", "stories", "reels", "carrossel", "linkedin_post"] as const;
+const AUTO_TYPES = ["feed", "stories", "reels", "carrossel", "linkedin_post", "tiktok", "youtube_short", "youtube_video"] as const;
 const AUTO_TYPE_SET = new Set<string>(AUTO_TYPES);
 
 type OrganicPublicationSettings = {
@@ -25,6 +25,7 @@ type OrganicPublicationSettings = {
 };
 
 type GenerationVariation = Record<string, unknown>;
+type AutoProvider = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube";
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
@@ -94,8 +95,10 @@ function variationData(result: unknown, variationIdx: number | null): { text: st
   return { text, mediaUrls, videoUrls };
 }
 
-function providerFor(item: { canal: string; tipo: string }): "instagram" | "facebook" | "linkedin" | null {
+function providerFor(item: { canal: string; tipo: string }): AutoProvider | null {
   const channel = normalize(item.canal);
+  if (item.tipo === "tiktok" || channel.includes("tiktok")) return "tiktok";
+  if (item.tipo === "youtube_short" || item.tipo === "youtube_video" || channel.includes("youtube")) return "youtube";
   if (item.tipo === "linkedin_post" || channel.includes("linkedin")) return "linkedin";
   if (channel.includes("facebook")) return "facebook";
   if (channel.includes("instagram")) return "instagram";
@@ -134,13 +137,16 @@ async function createScheduledPublication(input: {
   const text = preview.text || item.temaSugerido;
   const isReel = item.tipo === "reels";
   const isStory = item.tipo === "stories";
+  const isVideoOnlyProvider = provider === "tiktok" || provider === "youtube";
   const primaryVideo = preview.videoUrls[0];
   const primaryMedia = primaryVideo || preview.mediaUrls[0];
 
   if ((provider === "instagram" || provider === "facebook") && !primaryMedia) {
     throw new Error("scheduled_publication_missing_media");
   }
-  if (isReel && !primaryVideo) throw new Error("scheduled_reel_missing_video");
+  if ((isReel || isVideoOnlyProvider) && !primaryVideo) {
+    throw new Error(isVideoOnlyProvider ? "scheduled_video_missing_final_media" : "scheduled_reel_missing_video");
+  }
 
   let publication;
   if (provider === "instagram") {
@@ -159,11 +165,17 @@ async function createScheduledPublication(input: {
       contentType: isReel ? "reel" : isStory ? "story" : item.tipo === "carrossel" ? "carousel" : preview.mediaUrls.length ? "image" : "post",
       mediaKind: isReel || (isStory && Boolean(primaryVideo)) ? "video" : isStory ? "image" : undefined,
     });
-  } else {
+  } else if (provider === "linkedin") {
     publication = await createSocialPublication(tenantId, "linkedin", {
       text,
       mediaUrl: preview.mediaUrls[0],
       contentType: preview.mediaUrls.length ? "image" : "post",
+    });
+  } else {
+    publication = await createSocialPublication(tenantId, provider, {
+      text,
+      mediaUrl: primaryVideo,
+      contentType: item.tipo === "youtube_video" ? "video" : "short",
     });
   }
 
