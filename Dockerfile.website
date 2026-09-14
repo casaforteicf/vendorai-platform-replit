@@ -1,0 +1,18 @@
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /app
+RUN npm install -g pnpm@10.26.1
+
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @workspace/website build
+
+FROM node:24-bookworm-slim AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production
+RUN npm install -g pnpm@10.26.1
+
+COPY --from=build /app /app
+
+CMD ["sh", "-c", "pnpm --filter @workspace/website exec vite preview --config vite.config.ts --host 0.0.0.0 --port ${PORT:-4173}"]
