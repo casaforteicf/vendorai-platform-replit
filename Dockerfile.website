@@ -4,7 +4,7 @@ WORKDIR /app
 RUN npm install -g pnpm@10.26.1
 
 COPY . .
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 RUN pnpm --filter @workspace/website build
 
 FROM node:24-bookworm-slim AS runtime
