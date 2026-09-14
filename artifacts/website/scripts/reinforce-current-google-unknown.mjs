@@ -11,15 +11,13 @@ const routeByPath = new Map((manifest.routes || []).map((route) => [route.pathna
 const targets = [
   ["/blog", "Blog VendorAI"],
   ["/segmentos/distributors", "VendorAI para distribuidoras"],
+  ["/segmentos/industries", "VendorAI para indústrias"],
   ["/funcionalidades", "Funcionalidades de CRM e IA"],
-  ["/produtos", "Produtos VendorAI"],
   ["/solucoes", "Soluções VendorAI"],
   ["/comparar/crm-com-ia-vs-crm-tradicional", "CRM com IA vs. CRM tradicional"],
   ["/produtos/prospeccao", "Prospecção com IA"],
   ["/solucoes/agentes-ia-vendas", "Agentes de IA para vendas"],
-  ["/produtos/crm", "CRM com IA"],
   ["/solucoes/revenue-intelligence", "Revenue Intelligence"],
-  ["/solucoes/automatizar-follow-up", "Follow-up automático com IA"],
 ];
 
 function esc(value = "") {
@@ -46,7 +44,7 @@ const hubs = ["/", "/produtos", "/solucoes", "/blog", "/funcionalidades"]
 const targetLinks = targets.map(([href, label]) => [href, label]);
 for (const hub of hubs) {
   if (hub.staticHtml.includes('data-vendorai-google-unknown-current="hub"')) continue;
-  hub.staticHtml += `<section data-vendorai-google-unknown-current="hub"><h2>Páginas estratégicas do VendorAI</h2><p>Explore conteúdos, produtos e soluções prioritários para CRM, prospecção, automação, inteligência de receita e vendas com IA.</p>${nav(targetLinks, "Páginas estratégicas do VendorAI")}</section>`;
+  hub.staticHtml += `<section data-vendorai-google-unknown-current="hub"><h2>Páginas estratégicas do VendorAI</h2><p>Explore conteúdos, produtos e soluções prioritários para CRM, prospecção, automação, inteligência de receita, distribuidoras, indústrias e vendas com IA.</p>${nav(targetLinks, "Páginas estratégicas do VendorAI")}</section>`;
 }
 
 for (const [pathname, label] of targets) {
@@ -60,7 +58,7 @@ for (const [pathname, label] of targets) {
     ["/blog", "Blog e guias"],
     ...targets.filter(([href]) => href !== pathname).slice(0, 5),
   ];
-  route.staticHtml += `<section data-vendorai-google-unknown-current="route"><h3>Continue explorando o VendorAI</h3><p>${esc(label)} faz parte do ecossistema comercial do VendorAI. Veja também os principais hubs e conteúdos relacionados.</p>${nav(related, "Conteúdos relacionados")}</section>`;
+  route.staticHtml += `<section data-vendorai-google-unknown-current="route"><h3>Continue explorando o VendorAI</h3><p>${esc(label)} faz parte do ecossistema comercial do VendorAI. Veja também os principais hubs e conteúdos relacionados para aprofundar CRM, vendas, prospecção e inteligência comercial.</p>${nav(related, "Conteúdos relacionados")}</section>`;
 }
 
 manifest.generatedAt = new Date().toISOString();
