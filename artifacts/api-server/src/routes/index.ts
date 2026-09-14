@@ -224,11 +224,24 @@ router.use(trialJourneyRouter);
 router.use(blockPartnerFromCRM);
 router.use(blockSuspendedTenants);
 
-// Onboarding gate — skip /onboarding/* and /auth/* paths; block unfinished tenants
+// Onboarding gate — keep only the wizard and the exact business-profile calls
+// required by step 1 reachable before onboarding is complete.
 router.use(async (req, res, next) => {
   const tenantId = req.user?.tenantId;
   if (!tenantId) return next(); // super_admin or partner — skip
-  if (req.path.startsWith("/onboarding") || req.path.startsWith("/auth")) return next();
+
+  const onboardingBusinessProfilePath =
+    (req.method === "GET" && /^\/tenants\/[A-Za-z0-9-]+\/business-profile$/.test(req.path)) ||
+    (req.method === "POST" && req.path === "/business-profiles") ||
+    (req.method === "PATCH" && /^\/business-profiles\/[A-Za-z0-9-]+$/.test(req.path));
+
+  if (
+    req.path.startsWith("/onboarding") ||
+    req.path.startsWith("/auth") ||
+    onboardingBusinessProfilePath
+  ) {
+    return next();
+  }
 
   const [tenant] = await db
     .select({
