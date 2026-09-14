@@ -81,6 +81,17 @@ export { inferMarketingSurface, buildMarketingAgentUiCard } from './marketing-ag
 export type { MarketingSurface, MarketingAgentUiCard } from './marketing-agent-ui'
 export { getChannelAdaptation, getChannelAdaptations } from './channel-adapters'
 export type { ChannelAdaptation, ChannelCampaignInput } from './channel-adapters'
+export { normalizeWindsorMarketingRow, deriveMarketingPriorities } from './marketing-data-standard'
+export type {
+  MarketingAutomationMode,
+  MarketingConnector,
+  MarketingMetricProvenance,
+  NormalizedMarketingRecord,
+  MarketingDataQuery,
+  MarketingDataProvider,
+  WindsorRow,
+  MarketingPriority,
+} from './marketing-data-standard'
 
 // Creative / Web
 export { calculateDesignQaScore, validateCreativeBrief } from './creative-design'
