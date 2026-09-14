@@ -59,6 +59,20 @@ function decodeTokenEmail(token: string): string | null {
   }
 }
 
+function decodeTokenClaims(token: string): { sub: string; tenantId: string; platformRole: string } | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const claims = JSON.parse(atob(padded));
+    if (typeof claims.sub !== "string" || typeof claims.tenantId !== "string" || typeof claims.platformRole !== "string") return null;
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
 function isDemoToken(token: string): boolean {
   return decodeTokenEmail(token) === DEMO_EMAIL;
 }
@@ -85,12 +99,16 @@ function readCachedUser(token: string | null): User | null {
 
     const cached = JSON.parse(raw) as User;
     const tokenEmail = decodeTokenEmail(token);
-    if (tokenEmail && cached?.email && cached.email !== tokenEmail) {
+    const claims = decodeTokenClaims(token);
+    // A previous session can belong to another tenant even if the email matches.
+    // Never mount tenant-scoped screens using an identity from a different JWT.
+    if (!claims || cached?.id !== claims.sub || cached?.tenantId !== claims.tenantId ||
+        cached?.platformRole !== claims.platformRole || cached?.email !== tokenEmail) {
       localStorage.removeItem(USER_CACHE_KEY);
       return null;
     }
 
-    return cached ?? null;
+    return cached;
   } catch {
     localStorage.removeItem(USER_CACHE_KEY);
     return null;
@@ -179,7 +197,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useGetMe({
     query: {
       enabled: !!token,
-      queryKey: getGetMeQueryKey(),
+      // Isolate /auth/me data for each JWT; a previous account must never
+       // overwrite the user who just logged in.
+       queryKey: [...getGetMeQueryKey(), token?.split(".")[2] ?? "anonymous"],
       staleTime: 60_000,
       refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
