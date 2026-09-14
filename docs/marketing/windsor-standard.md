@@ -23,6 +23,29 @@ Prioridade de conectores:
 
 Outros conectores podem ser adicionados usando o mesmo contrato.
 
+## Instagram: objetivo principal é crescimento
+
+Para Instagram, o Windsor é a camada analítica principal do canal. A meta padrão permanente é crescer audiência qualificada antes de otimizar conversão comercial.
+
+Ordem oficial de otimização:
+
+`Alcance em descoberta -> Retenção -> Engajamento -> Conversão em seguidores -> Conversão comercial`
+
+O sistema deve analisar o perfil antes de criar qualquer planejamento e gerar um `Instagram Growth Intelligence` com:
+
+- seguidores atuais quando disponíveis
+- novos seguidores no período
+- alcance e visualizações
+- retenção/skip rate
+- taxa de interação
+- visitas ao perfil e cliques
+- conversão estimada de alcance em seguidores
+- consistência de publicação
+- score de crescimento de 0 a 100
+- ações prioritárias SCALE, REPEAT, IMPROVE, REPLACE ou PAUSE
+
+O Planejador deve consumir essas decisões. Ele não deve gerar um calendário genérico sem considerar o histórico e os resultados do perfil.
+
 ## Contrato normalizado
 
 Todos os conectores devem mapear, quando disponíveis, para os seguintes grupos:
@@ -55,6 +78,8 @@ Exemplo:
 
 `Reel com 111 views e skip rate de 96,2% -> abertura fraca -> recomendar novo hook e nova versão do criativo.`
 
+No Instagram, o Tad deve preservar a prioridade de crescimento definida pelo Windsor e transformar as recomendações em tarefas do Planejador, Conteúdo e Campanhas.
+
 ## Estados de automação
 
 Toda decisão de marketing deve respeitar o estado configurado pelo tenant:
@@ -82,6 +107,8 @@ A Visão Geral deve priorizar a cadeia:
 
 `Investimento -> Alcance -> Tráfego -> Leads -> Oportunidades -> Vendas -> Receita`
 
+Para Instagram, deve haver ainda um bloco destacado de crescimento com score, seguidores, alcance, retenção, conversão em seguidores e `O que o Windsor recomenda hoje`.
+
 E exibir abaixo `O que o Tad encontrou hoje` com poucas decisões prioritárias.
 
 ## Regras multi-tenant
@@ -101,13 +128,15 @@ E exibir abaixo `O que o Tad encontrou hoje` com poucas decisões prioritárias.
 
 ## Tenant piloto
 
-O tenant VendorAI deve ser o primeiro piloto. A conta Instagram já conectada deve servir como teste inicial de leitura, análise de conteúdo, retenção e recomendações do Tad. Após validação, repetir o padrão nos demais conectores e então liberar a configuração aos outros tenants.
+O tenant VendorAI deve ser o primeiro piloto. A conta Instagram já conectada deve servir como teste inicial de leitura, análise de conteúdo, retenção, crescimento e recomendações do Tad. Após validação, repetir o padrão nos demais conectores e então liberar a configuração aos outros tenants.
 
 ## Critérios de pronto
 
 - Windsor configurável por tenant.
 - Conectores mapeados para contrato único.
 - Marketing Agent/Tad consome o contrato normalizado.
+- Instagram gera inteligência de crescimento antes do planejamento.
+- Planejador consome prioridades de crescimento do Instagram.
 - Dashboard não precisa conhecer campos específicos de cada provedor.
 - Integrações nativas continuam funcionando.
 - Nenhum dado cruza tenants.
