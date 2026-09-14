@@ -17,6 +17,8 @@ const VISUALS: Record<string, VisualSet> = {
   "/lp/distribuidora-alimentos-bebidas": { title:"Distribuidoras de Alimentos", first:"/lp-images/alimentos-contexto-1.svg", second:"/lp-images/alimentos-contexto-2.svg", firstAlt:"Carteira e distribuição de alimentos", secondAlt:"Pedido, frequência, mix e reativação" },
 };
 
+// SEO discovery links intentionally live in the public LP shell so every niche page
+// has direct paths to the strongest commercial and educational sections of VendorAI.
 const SEO_LINKS = [
   ["CRM com IA", "/produtos/crm"],
   ["CRM integrado ao WhatsApp", "/solucoes/crm-whatsapp"],
