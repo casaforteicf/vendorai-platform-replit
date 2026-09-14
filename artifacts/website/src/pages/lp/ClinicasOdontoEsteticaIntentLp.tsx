@@ -20,14 +20,10 @@ type Theme = {
 
 const THEMES: Record<Intent, Theme> = {
   dor: {
-    badge: "Dor / Descoberta",
-    title: "Sua clínica pode estar perdendo pacientes",
-    accent: "antes e depois da avaliação.",
+    badge: "Dor / Descoberta", title: "Sua clínica pode estar perdendo pacientes", accent: "antes e depois da avaliação.",
     subtitle: "No-show, orçamento sem retorno, agenda ociosa, paciente que some e oportunidade de reativação não deveriam depender da memória da equipe.",
-    photo: "https://images.unsplash.com/photo-1588776814546-daab30f310ce?auto=format&fit=crop&w=1600&q=82",
-    photoAlt: "Dentistas atendendo paciente em clínica odontológica",
-    visual: "/lp-images/clinicas-dor-vendorai.svg",
-    sectionTitle: "Onde a receita costuma escapar",
+    photo: "/lp-images/clinicas-contexto.svg", photoAlt: "Contexto visual da jornada comercial de uma clínica acompanhado pelo VendorAI",
+    visual: "/lp-images/clinicas-dor-vendorai.svg", sectionTitle: "Onde a receita costuma escapar",
     cards: [
       { title: "No-show e cancelamentos", text: "A consulta some da agenda, mas não vira uma sequência inteligente de recuperação.", icon: CalendarCheck },
       { title: "Orçamento sem follow-up", text: "Avaliação feita e proposta enviada, mas ninguém sabe qual é a próxima ação ideal.", icon: MessageCircle },
@@ -41,14 +37,10 @@ const THEMES: Record<Intent, Theme> = {
     kpis: ["No-show", "Tempo sem retorno", "Orçamentos abertos", "Agenda ociosa", "Reativações", "Pacientes em risco"],
   },
   marketing: {
-    badge: "Marketing / Crescimento",
-    title: "Transforme campanhas em avaliações",
-    accent: "e avaliações em tratamentos.",
+    badge: "Marketing / Crescimento", title: "Transforme campanhas em avaliações", accent: "e avaliações em tratamentos.",
     subtitle: "Conteúdo, Meta, Google, landing pages, Visitor Intelligence, WhatsApp e CRM conectados para acompanhar cada campanha até o resultado comercial.",
-    photo: "https://images.unsplash.com/photo-1588776814546-daab30f310ce?auto=format&fit=crop&w=1600&q=82&sat=-10",
-    photoAlt: "Atendimento clínico usado em campanhas de aquisição",
-    visual: "/lp-images/clinicas-marketing-vendorai.svg",
-    sectionTitle: "Marketing conectado ao que acontece na clínica",
+    photo: "/lp-images/clinicas-contexto-2.svg", photoAlt: "Contexto visual de marketing e atendimento para clínicas",
+    visual: "/lp-images/clinicas-marketing-vendorai.svg", sectionTitle: "Marketing conectado ao que acontece na clínica",
     cards: [
       { title: "Campanhas por procedimento", text: "Implantes, estética, ortodontia, harmonização, depilação, laser e outros serviços podem ter jornadas próprias.", icon: Megaphone },
       { title: "Landing Pages específicas", text: "Uma página para cada intenção, procedimento, região, campanha ou oferta relevante.", icon: Target },
@@ -62,14 +54,10 @@ const THEMES: Record<Intent, Theme> = {
     kpis: ["Origem do lead", "Custo por lead", "Avaliações", "Orçamentos", "Fechamentos", "Conversão por campanha"],
   },
   crm: {
-    badge: "CRM / Alta intenção",
-    title: "CRM com IA para Clínicas",
-    accent: "Odontológicas e Estéticas.",
+    badge: "CRM / Alta intenção", title: "CRM com IA para Clínicas", accent: "Odontológicas e Estéticas.",
     subtitle: "Pipeline, WhatsApp, agenda, responsáveis, próximas ações, agentes de IA, Revenue Scout e inteligência comercial em um único fluxo.",
-    photo: "https://images.unsplash.com/photo-1588776814546-daab30f310ce?auto=format&fit=crop&w=1600&q=82&contrast=8",
-    photoAlt: "Equipe clínica atendendo paciente com jornada organizada",
-    visual: "/lp-images/clinicas-crm-vendorai.svg",
-    sectionTitle: "Um CRM que entende a jornada do paciente",
+    photo: "/lp-images/clinicas-crm-vendorai.svg", photoAlt: "Visual do CRM VendorAI aplicado a clínicas odontológicas e estéticas",
+    visual: "/lp-images/clinicas-crm-vendorai.svg", sectionTitle: "Um CRM que entende a jornada do paciente",
     cards: [
       { title: "Pipeline por procedimento", text: "Lead, avaliação, orçamento, follow-up, procedimento, retorno e reativação com contexto completo.", icon: Users },
       { title: "Responsável e prazo", text: "Cada oportunidade pode ter responsável, próxima ação e prazo definidos para evitar contatos esquecidos.", icon: UserCheck },
@@ -113,7 +101,7 @@ export default function ClinicasOdontoEsteticaIntentLp() {
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07101b]/95 text-white backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"><Link href="/" className="text-xl font-black">Vendor<span className="text-orange-500">AI</span></Link><nav className="hidden gap-6 text-xs font-bold text-slate-300 md:flex"><a href="#cenario">Cenário</a><a href="#funcoes">Funções</a><a href="#jornada">Jornada</a><a href="#faq">FAQ</a></nav><a href="/demo?vertical=clinicas-odontologicas-esteticas&intent=trial-5-dias" className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black">Testar 5 dias grátis</a></div></header>
 
     <main>
-      <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(249,115,22,.16),transparent_30%)]"/><div className="relative mx-auto grid max-w-7xl lg:grid-cols-2"><div className="flex flex-col justify-center px-4 py-16 sm:px-6 sm:py-20 lg:pr-12"><span className="w-fit rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300">{theme.badge}</span><p className="mt-5 text-xs font-black uppercase tracking-[.22em] text-orange-400">CLÍNICAS ODONTOLÓGICAS E ESTÉTICAS</p><h1 className="mt-4 text-5xl font-black leading-[.98] tracking-tight sm:text-6xl">{theme.title}<br/><span className="text-orange-500">{theme.accent}</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><CTA/><CTA secondary/></div></div><div className="relative min-h-[430px] overflow-hidden lg:min-h-[650px]"><img src={theme.photo} alt={theme.photoAlt} className="absolute inset-0 h-full w-full object-cover" loading="eager"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b]/50 via-transparent to-transparent lg:from-[#07101b]/30"/><div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/15 bg-[#07101b]/80 p-4 backdrop-blur-md"><p className="text-xs font-black uppercase tracking-[.16em] text-orange-400">O que o VendorAI acompanha</p><p className="mt-2 text-sm text-slate-200">Origem → contato → avaliação → orçamento → próxima ação → fechamento → retorno</p></div></div></div></section>
+      <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(249,115,22,.16),transparent_30%)]"/><div className="relative mx-auto grid max-w-7xl lg:grid-cols-2"><div className="flex flex-col justify-center px-4 py-16 sm:px-6 sm:py-20 lg:pr-12"><span className="w-fit rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300">{theme.badge}</span><p className="mt-5 text-xs font-black uppercase tracking-[.22em] text-orange-400">CLÍNICAS ODONTOLÓGICAS E ESTÉTICAS</p><h1 className="mt-4 text-5xl font-black leading-[.98] tracking-tight sm:text-6xl">{theme.title}<br/><span className="text-orange-500">{theme.accent}</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><CTA/><CTA secondary/></div></div><div className="relative min-h-[430px] overflow-hidden bg-white/[0.03] lg:min-h-[650px]"><img src={theme.photo} alt={theme.photoAlt} className="absolute inset-0 h-full w-full object-contain p-6 sm:p-10" loading="eager"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b]/30 via-transparent to-transparent"/></div></div></section>
 
       <section id="cenario" className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mx-auto mb-10 max-w-3xl text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Aplicação real no nicho</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">{theme.sectionTitle}</h2></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{theme.cards.map(({title,text,icon:Icon}) => <div key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500 text-white"><Icon className="h-5 w-5"/></div><h3 className="font-black">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{text}</p></div>)}</div></div></section>
 
