@@ -11,11 +11,11 @@ type Props = {
 };
 
 const MONTHLY_FEATURES = [
-  "5 dias iniciais grátis — seu período atual continua normalmente",
-  "R$ 497 pelos primeiros 30 dias pagos",
-  "R$ 990/mês nos 5 meses seguintes",
-  "R$ 1.490/mês depois disso",
+  "Os 5 dias grátis atuais continuam ativos",
+  "1º mês pago por R$ 497,00",
+  "A partir do 2º mês: R$ 990,00/mês",
   "Todos os módulos Growth e usuários ilimitados",
+  "Acesso contínuo, sem precisar renovar blocos manualmente",
   "Sem fidelidade: cancele quando quiser",
 ];
 
@@ -49,6 +49,10 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assinatura contínua</p>
             <h3 className="mt-2 text-2xl font-bold">Growth mensal</h3>
             <p className="mt-2 text-sm text-muted-foreground">Acesso completo sem precisar renovar blocos manualmente.</p>
+            <div className="mt-4">
+              <div className="text-3xl font-bold">R$ 497 <span className="text-sm font-medium text-muted-foreground">no 1º mês pago</span></div>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">Depois, R$ 990/mês</p>
+            </div>
             <ul className="mt-5 flex-1 space-y-3 border-t pt-5">
               {MONTHLY_FEATURES.map((item) => (
                 <li key={item} className="flex gap-2.5 text-sm leading-5">
@@ -59,7 +63,7 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
             </ul>
             <Button className="mt-6 w-full" disabled={submitting} onClick={() => onSelect("subscription")}>
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Escolher Growth mensal
+              Continuar com plano mensal
             </Button>
           </CardContent>
         </Card>
@@ -80,14 +84,14 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
             </ul>
             <Button variant="outline" className="mt-6 w-full" disabled={submitting} onClick={() => onSelect("periods")}>
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Escolher uso por períodos
+              Usar por períodos
             </Button>
           </CardContent>
         </Card>
       </div>
 
       <div className="rounded-xl border bg-muted/30 px-4 py-3 text-center text-xs leading-5 text-muted-foreground">
-        Seus dados permanecem na conta mesmo quando não houver um período pago ativo. Novas automações ficam pausadas até a próxima ativação.
+        Nenhuma cobrança será feita durante os 5 dias grátis. Seus dados permanecem na conta e, no modo por períodos, novas automações ficam pausadas quando não houver um período ativo.
       </div>
 
       <div className="flex justify-center">
