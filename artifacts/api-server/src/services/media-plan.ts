@@ -23,6 +23,10 @@ import {
   logDataForSeoCost,
 } from "../lib/dataforseoClient.js";
 import { logger } from "../lib/logger.js";
+import {
+  getInstagramGrowthBrainSnapshot,
+  instagramGrowthContextForPlanner,
+} from "./instagram-growth-brain.js";
 
 const SYSTEM_PROMPT = `Você é um estrategista de marketing digital especializado em pequenas e médias empresas brasileiras.
 Recebe o perfil de um negócio (segmento, público-alvo, diferenciais, concorrentes, canais já usados) e, quando disponíveis,
@@ -31,6 +35,10 @@ dados reais de busca (volume de pesquisa de termos do negócio e quem aparece no
 Monte um plano de mídia realista e acionável -- nada de "publique todo dia em todas as redes", seja específico ao segmento
 e ao tamanho real do negócio (não assuma orçamento de grande empresa). Priorize 2-4 canais no máximo, com motivo claro
 pra cada um baseado no perfil recebido.
+
+Quando houver um bloco de inteligência INSTAGRAM no contexto, trate-o como evidência operacional prioritária: o objetivo
+primário do Instagram é crescer audiência qualificada, e o plano deve respeitar as recomendações de alcance, retenção,
+engajamento, conversão em seguidores e consistência derivadas dos dados reais.
 
 Use obrigatoriamente a ferramenta submit_media_plan para entregar o plano final. Preencha todas as propriedades da ferramenta.
 Em prioridade, use somente alta, media ou baixa. percentualOrcamento representa exclusivamente PARTICIPAÇÃO DA VERBA DE MÍDIA PAGA:
@@ -228,8 +236,6 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
       .limit(20),
   ]);
 
-  // Só existe erro de dados quando o tenant realmente não existe. Um tenant
-  // válido nunca deve receber 422 apenas porque o cadastro antigo está parcial.
   if (!profile && !tenant) return null;
 
   const razaoSocial =
@@ -428,8 +434,6 @@ export async function generateMediaPlan(
 ): Promise<{ plan: typeof mediaPlansTable.$inferSelect }> {
   const profile = await resolveMediaPlanProfile(tenantId);
   if (!profile) {
-    // 422 fica reservado ao único caso realmente corrigível pelo cliente:
-    // tenant inexistente/sem qualquer fonte persistida de perfil.
     throw new MediaPlanError(
       "Não foi possível localizar os dados deste negócio. Atualize a página e entre novamente antes de gerar o plano.",
     );
@@ -473,8 +477,19 @@ export async function generateMediaPlan(
     }
   }
 
+  let instagramGrowthContext = "";
+  try {
+    const instagramGrowth = await getInstagramGrowthBrainSnapshot(tenantId);
+    if (instagramGrowth.native.instagramConnected) {
+      instagramGrowthContext = instagramGrowthContextForPlanner(instagramGrowth);
+    }
+  } catch (err) {
+    logger.warn({ err, tenantId }, "media-plan: Instagram Growth Brain indisponível; plano seguirá sem bloquear o usuário");
+  }
+
   const contextoTexto = [
     buildProfileContext(profile),
+    instagramGrowthContext ? `\n${instagramGrowthContext}` : "",
     keywordsRelevantes.length > 0
       ? `\nVolume de busca real (Google, últimos dados disponíveis) pros termos do negócio:\n${keywordsRelevantes
           .map((k) => `- "${k.termo}": ${k.volumeBusca ?? "?"} buscas/mês`)
@@ -503,10 +518,14 @@ export async function generateMediaPlan(
       "media-plan: IA indisponível ou inválida; usando plano determinístico persistível",
     );
     conteudo = buildFallbackMediaPlan(profile, keywordsRelevantes, concorrentesEncontrados);
+    if (instagramGrowthContext) {
+      conteudo.acoesImediatas = [
+        "Instagram: priorizar crescimento de audiência qualificada conforme diagnóstico atual do Growth Brain.",
+        ...(conteudo.acoesImediatas ?? []),
+      ].slice(0, 5);
+    }
   }
 
-  // Mesmo no caminho da IA, anexa os dados reais de busca fora do payload do
-  // modelo. O fallback já nasce com esses dados, mas a atribuição é idempotente.
   conteudo.keywordsRelevantes = keywordsRelevantes;
   conteudo.concorrentesEncontrados = concorrentesEncontrados;
 
@@ -521,6 +540,7 @@ export async function generateMediaPlan(
         profileSnapshot: contextoTexto,
         generationMode,
         fallbackReason,
+        instagramGrowthUsed: Boolean(instagramGrowthContext),
       },
       custoUsd: custoTotal.toFixed(4),
       geradoPor,
@@ -532,7 +552,7 @@ export async function generateMediaPlan(
   }
 
   logger.info(
-    { tenantId, planId: plan.id, generationMode },
+    { tenantId, planId: plan.id, generationMode, instagramGrowthUsed: Boolean(instagramGrowthContext) },
     "media-plan: plano gerado e persistido",
   );
 
