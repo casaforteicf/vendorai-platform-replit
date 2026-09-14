@@ -9,12 +9,15 @@ import {
   notificationsTable,
   plansTable,
   tenantsTable,
+  usersTable,
 } from "@workspace/db";
+import { sendTrialUpgradeRequestedAlert } from "../lib/trial-upgrade-alert.js";
 import { ensureVendorAiLaunchSubscription } from "../lib/vendorai-subscription-lifecycle.js";
 import { brazilMonthKey } from "../services/accessLicense.js";
 
 const router: IRouter = Router();
 const DAY_MS = 24 * 60 * 60 * 1000;
+const COMMERCIAL_ALERT_MARKER = "[commercial_alert_sent]";
 
 type TrialPlanMode = "subscription" | "periods";
 
@@ -48,6 +51,8 @@ async function getVendorTrialLead(trialTenantId: string, email?: string) {
       id: leadsTable.id,
       nome: leadsTable.nome,
       empresa: leadsTable.empresa,
+      email: leadsTable.email,
+      telefone: leadsTable.telefone,
       discoveryData: leadsTable.discoveryData,
       proximaAcao: leadsTable.proximaAcao,
     })
@@ -60,6 +65,49 @@ async function getVendorTrialLead(trialTenantId: string, email?: string) {
     .limit(1);
 
   return { vendoraiId: vendorai.id, lead: lead ?? null };
+}
+
+async function getCommercialRecipients(vendoraiId: string): Promise<string[]> {
+  const rows = await db
+    .select({ email: usersTable.email })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.tenantId, vendoraiId),
+      eq(usersTable.active, true),
+      or(
+        eq(usersTable.role, "admin"),
+        eq(usersTable.platformRole, "tenant_admin"),
+        eq(usersTable.platformRole, "super_admin"),
+      ),
+    ));
+
+  return rows.map((row) => row.email).filter(Boolean);
+}
+
+async function sendCommercialAlert(input: {
+  vendoraiId: string;
+  trialTenantId: string;
+  trialName: string;
+  lead: {
+    nome: string;
+    empresa: string | null;
+    email: string | null;
+    telefone: string | null;
+  };
+  score: number;
+  requestedAt?: Date;
+}) {
+  const recipients = await getCommercialRecipients(input.vendoraiId);
+  return sendTrialUpgradeRequestedAlert({
+    to: recipients,
+    leadName: input.lead.nome,
+    companyName: input.lead.empresa || input.trialName,
+    email: input.lead.email,
+    phone: input.lead.telefone,
+    activationScore: input.score,
+    trialTenantId: input.trialTenantId,
+    requestedAt: input.requestedAt,
+  });
 }
 
 router.get("/trial/status", async (req, res) => {
@@ -279,37 +327,78 @@ router.post("/trial/request-upgrade", async (req, res) => {
   const { vendoraiId, lead } = await getVendorTrialLead(tenantId, req.user?.email);
   if (!vendoraiId || !lead) return res.status(404).json({ error: "Lead comercial do trial não encontrado." });
 
-  const [existing] = await db
-    .select({ id: leadEventsTable.id, createdAt: leadEventsTable.createdAt })
-    .from(leadEventsTable)
-    .where(and(eq(leadEventsTable.leadId, lead.id), eq(leadEventsTable.tipo, "trial_upgrade_requested")))
-    .orderBy(desc(leadEventsTable.createdAt))
-    .limit(1);
-  if (existing) {
-    return res.json({ ok: true, alreadyRequested: true, requestedAt: existing.createdAt });
-  }
-
   const discovery = asRecord(lead.discoveryData);
   const journey = asRecord(discovery["trialJourney"]);
   const score = Number(journey["score"] ?? 0);
 
-  await db.insert(leadEventsTable).values({
+  const [existing] = await db
+    .select({
+      id: leadEventsTable.id,
+      createdAt: leadEventsTable.createdAt,
+      descricao: leadEventsTable.descricao,
+    })
+    .from(leadEventsTable)
+    .where(and(eq(leadEventsTable.leadId, lead.id), eq(leadEventsTable.tipo, "trial_upgrade_requested")))
+    .orderBy(desc(leadEventsTable.createdAt))
+    .limit(1);
+
+  if (existing) {
+    let commercialAlertSent = existing.descricao.includes(COMMERCIAL_ALERT_MARKER);
+    if (!commercialAlertSent) {
+      try {
+        commercialAlertSent = await sendCommercialAlert({
+          vendoraiId,
+          trialTenantId: tenant.id,
+          trialName: tenant.name,
+          lead,
+          score,
+          requestedAt: existing.createdAt,
+        });
+        if (commercialAlertSent) {
+          await db.update(leadEventsTable)
+            .set({ descricao: `${existing.descricao} ${COMMERCIAL_ALERT_MARKER}` })
+            .where(eq(leadEventsTable.id, existing.id));
+        }
+      } catch (err) {
+        req.log?.warn({ err, leadId: lead.id, tenantId }, "trial-upgrade: falha ao reenviar alerta comercial");
+      }
+    }
+
+    return res.json({
+      ok: true,
+      alreadyRequested: true,
+      requestedAt: existing.createdAt,
+      commercialAlertSent,
+    });
+  }
+
+  const requestedAt = new Date();
+  const baseDescription = `Cliente solicitou continuidade do trial. Activation Score ${score}/100.`;
+  const [upgradeEvent] = await db.insert(leadEventsTable).values({
     leadId: lead.id,
     tipo: "trial_upgrade_requested",
-    descricao: `Cliente solicitou continuidade do trial. Activation Score ${score}/100.`,
+    descricao: baseDescription,
     scoreBoost: 30,
-    notifiedAt: new Date(),
-  });
+    notifiedAt: requestedAt,
+  }).returning({ id: leadEventsTable.id });
+
+  const contactParts = [lead.email, lead.telefone].filter(Boolean).join(" · ") || "contato não informado";
   await db.insert(notificationsTable).values({
     tenantId: vendoraiId,
     type: "warning",
     category: "trial_upgrade_requested",
     title: `Trial pediu continuidade — ${lead.empresa || tenant.name}`,
-    message: `O cliente solicitou continuidade pelo próprio painel. Activation Score ${score}/100. Priorizar contato, plano e fechamento preservando o tenant ${tenant.id}.`,
+    message: `${lead.nome} solicitou continuidade pelo próprio painel. Contato: ${contactParts}. Activation Score ${score}/100. Priorizar contato, plano e fechamento preservando o tenant ${tenant.id}.`,
   });
   await db.update(leadsTable).set({
-    proximaAcao: "Cliente solicitou continuidade do trial: entrar em contato para plano/fechamento e preservar o tenant atual.",
-    updatedAt: new Date(),
+    proximaAcao: "Cliente solicitou continuidade do trial: entrar em contato agora para plano/fechamento e preservar o tenant atual.",
+    status: "qualificado",
+    discoveryData: {
+      ...discovery,
+      trialUpgradePriority: true,
+      trialUpgradeRequestedAt: requestedAt.toISOString(),
+    },
+    updatedAt: requestedAt,
   }).where(eq(leadsTable.id, lead.id));
 
   const [deal] = await db
@@ -319,10 +408,29 @@ router.post("/trial/request-upgrade", async (req, res) => {
     .orderBy(desc(dealsTable.createdAt))
     .limit(1);
   if (deal && Number(deal.probabilidade ?? 0) < 90) {
-    await db.update(dealsTable).set({ probabilidade: 90, updatedAt: new Date() }).where(eq(dealsTable.id, deal.id));
+    await db.update(dealsTable).set({ probabilidade: 90, updatedAt: requestedAt }).where(eq(dealsTable.id, deal.id));
   }
 
-  return res.json({ ok: true, alreadyRequested: false });
+  let commercialAlertSent = false;
+  try {
+    commercialAlertSent = await sendCommercialAlert({
+      vendoraiId,
+      trialTenantId: tenant.id,
+      trialName: tenant.name,
+      lead,
+      score,
+      requestedAt,
+    });
+    if (commercialAlertSent && upgradeEvent) {
+      await db.update(leadEventsTable)
+        .set({ descricao: `${baseDescription} ${COMMERCIAL_ALERT_MARKER}` })
+        .where(eq(leadEventsTable.id, upgradeEvent.id));
+    }
+  } catch (err) {
+    req.log?.warn({ err, leadId: lead.id, tenantId }, "trial-upgrade: falha ao enviar alerta comercial");
+  }
+
+  return res.json({ ok: true, alreadyRequested: false, commercialAlertSent });
 });
 
 export default router;
