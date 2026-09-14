@@ -571,9 +571,20 @@ router.post("/auth/demo-login", async (req, res) => {
         slug: "demo",
         status: "active",
         isDemo: true,
+        onboardingConcluido: true,
+        integracoesConcluido: true,
         demoExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
         planId: null,
       })
+      .returning();
+  }
+
+  // Older demo tenants predate onboarding flags. Repair only the dedicated
+  // shared demo tenant so its public preview can reach CRM endpoints.
+  if (tenant.isDemo && (!tenant.onboardingConcluido || !tenant.integracoesConcluido)) {
+    [tenant] = await db.update(tenantsTable)
+      .set({ onboardingConcluido: true, integracoesConcluido: true })
+      .where(and(eq(tenantsTable.id, tenant.id), eq(tenantsTable.isDemo, true)))
       .returning();
   }
 
