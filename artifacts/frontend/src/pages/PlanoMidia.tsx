@@ -12,10 +12,12 @@ import {
   ClipboardCheck,
   FileText,
   History,
+  Instagram,
   Loader2,
   RefreshCw,
   Sparkles,
   Target,
+  TrendingUp,
 } from "lucide-react";
 import "./PlanoMidia.responsive.css";
 
@@ -68,8 +70,32 @@ type MediaPlan = {
   } | null;
 };
 
-type CalendarItem = { id: string; mediaPlanId?: string | null };
+type InstagramGrowthBrain = {
+  source: "windsor+native" | "native";
+  primaryObjective: "grow_audience";
+  generatedAt: string;
+  native: {
+    instagramConnected: boolean;
+    followers: number | null;
+    followersDelta7d: number | null;
+    followersDelta30d: number | null;
+    reach30d: number | null;
+    profileVisits30d: number | null;
+  };
+  intelligence: {
+    growthScore: number;
+    status: "critical" | "building" | "growing" | "strong";
+    metrics: {
+      averageSkipRate: number | null;
+      engagementRate: number | null;
+      followerConversionRate: number | null;
+      publishedContentCount: number;
+    };
+  } | null;
+  plannerDirectives: string[];
+};
 
+type CalendarItem = { id: string; mediaPlanId?: string | null };
 type QuickOption = { label: string; value: string };
 
 const CHANNELS = [
@@ -151,6 +177,10 @@ function normalizeConfig(source?: Partial<PlanningConfig> | null): PlanningConfi
   };
 }
 
+function percent(value: number | null | undefined, digits = 1) {
+  return value == null ? "—" : `${(value * 100).toFixed(digits)}%`;
+}
+
 function QuickChoices({ options, onChoose }: { options: QuickOption[]; onChoose: (value: string) => void }) {
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -181,6 +211,8 @@ export default function PlanoMidia() {
   const [approving, setApproving] = useState(false);
   const [creatingCampaigns, setCreatingCampaigns] = useState(false);
   const [campaignsGenerated, setCampaignsGenerated] = useState(false);
+  const [growthBrain, setGrowthBrain] = useState<InstagramGrowthBrain | null>(null);
+  const [growthLoading, setGrowthLoading] = useState(false);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -206,6 +238,20 @@ export default function PlanoMidia() {
     }
   }
 
+  async function loadGrowthBrain() {
+    if (!tenantId) return;
+    setGrowthLoading(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/meta-growth/instagram-brain`, { headers: authHeaders() });
+      if (!response.ok) throw new Error("Instagram Growth Brain indisponível");
+      setGrowthBrain(await response.json() as InstagramGrowthBrain);
+    } catch {
+      setGrowthBrain(null);
+    } finally {
+      setGrowthLoading(false);
+    }
+  }
+
   async function loadPreviousPlan() {
     if (!tenantId) return;
     setLoading(true);
@@ -225,7 +271,7 @@ export default function PlanoMidia() {
   }
 
   useEffect(() => {
-    void loadPreviousPlan();
+    void Promise.all([loadPreviousPlan(), loadGrowthBrain()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
@@ -296,7 +342,8 @@ export default function PlanoMidia() {
       setPreviousPlan(data);
       setShowingPrevious(false);
       setCampaignsGenerated(false);
-      toast({ title: "Proposta de planejamento pronta", description: "A IA usou as informações que você acabou de preencher. Revise antes de aprovar." });
+      void loadGrowthBrain();
+      toast({ title: "Plano baseado nos dados atuais pronto", description: "A IA considerou o perfil do negócio e a inteligência disponível do Instagram antes de montar a proposta." });
     } catch (error) {
       toast({ title: "Não foi possível gerar a proposta", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
     } finally {
@@ -317,10 +364,7 @@ export default function PlanoMidia() {
       const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patch: { campanhas: plan.conteudo.campanhas ?? [] },
-          aprovar: true,
-        }),
+        body: JSON.stringify({ patch: { campanhas: plan.conteudo.campanhas ?? [] }, aprovar: true }),
       });
       const data = (await response.json()) as MediaPlan & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao aprovar o planejamento.");
@@ -367,6 +411,9 @@ export default function PlanoMidia() {
     return <div className="flex min-h-[240px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>;
   }
 
+  const growthScore = growthBrain?.intelligence?.growthScore ?? null;
+  const growthStatus = growthBrain?.intelligence?.status ?? null;
+
   return (
     <div className="space-y-5">
       <Card className="border-primary/30 bg-primary/[0.02]">
@@ -387,6 +434,50 @@ export default function PlanoMidia() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-orange-300/50 bg-orange-50/30 dark:bg-orange-950/10">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base"><Instagram className="h-4 w-4" />Instagram Growth Brain</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">Windsor + dados nativos + CRM orientando o Planejador para crescimento de audiência.</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={loadGrowthBrain} disabled={growthLoading}>
+              {growthLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Atualizar análise
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {growthLoading && !growthBrain ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Analisando o perfil do Instagram…</div>
+          ) : !growthBrain ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Conecte o Instagram para ativar a análise de crescimento. O Planejador continua funcionando com os demais dados do tenant.</div>
+          ) : (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+                <div className="rounded-xl border bg-background p-3"><p className="text-[10px] uppercase text-muted-foreground">Growth Score</p><p className="mt-1 text-xl font-bold">{growthScore ?? "—"}/100</p><Badge variant="outline" className="mt-1 text-[10px]">{growthStatus ?? "coletando"}</Badge></div>
+                <div className="rounded-xl border bg-background p-3"><p className="text-[10px] uppercase text-muted-foreground">Seguidores</p><p className="mt-1 text-xl font-bold">{growthBrain.native.followers ?? "—"}</p><p className="text-[10px] text-muted-foreground">meta: crescer</p></div>
+                <div className="rounded-xl border bg-background p-3"><p className="text-[10px] uppercase text-muted-foreground">Crescimento 7d</p><p className="mt-1 text-xl font-bold">{growthBrain.native.followersDelta7d == null ? "—" : `${growthBrain.native.followersDelta7d >= 0 ? "+" : ""}${growthBrain.native.followersDelta7d}`}</p></div>
+                <div className="rounded-xl border bg-background p-3"><p className="text-[10px] uppercase text-muted-foreground">Alcance 30d</p><p className="mt-1 text-xl font-bold">{growthBrain.native.reach30d ?? "—"}</p></div>
+                <div className="rounded-xl border bg-background p-3"><p className="text-[10px] uppercase text-muted-foreground">Skip médio</p><p className="mt-1 text-xl font-bold">{percent(growthBrain.intelligence?.metrics.averageSkipRate)}</p></div>
+                <div className="rounded-xl border bg-background p-3"><p className="text-[10px] uppercase text-muted-foreground">Alcance → seguidor</p><p className="mt-1 text-xl font-bold">{percent(growthBrain.intelligence?.metrics.followerConversionRate, 2)}</p></div>
+              </div>
+
+              <div className="rounded-xl border bg-background p-4">
+                <div className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">O Windsor recomenda agora</p><Badge variant="outline" className="text-[10px]">{growthBrain.source}</Badge></div>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  {growthBrain.plannerDirectives.slice(0, 3).map((directive, index) => (
+                    <div key={`${index}-${directive}`} className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">Prioridade {index + 1}</p>
+                      <p className="mt-1 text-xs leading-5">{directive}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -477,7 +568,7 @@ export default function PlanoMidia() {
           <div className="flex justify-end border-t pt-4">
             <Button onClick={generateProposal} disabled={generating}>
               {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              Gerar proposta com IA
+              Gerar plano com base nos dados atuais
             </Button>
           </div>
         </CardContent>
@@ -489,7 +580,7 @@ export default function PlanoMidia() {
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary" />2. Proposta da IA</CardTitle>
-                <p className="mt-1 text-xs text-muted-foreground">{showingPrevious ? "Você está vendo o planejamento anterior." : "Proposta criada a partir das informações preenchidas acima."}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{showingPrevious ? "Você está vendo o planejamento anterior." : "Proposta criada a partir das informações preenchidas acima e dos dados atuais disponíveis."}</p>
               </div>
               <Badge className={approved ? "bg-emerald-600" : ""}>{approved ? "Planejamento aprovado" : "Aguardando aprovação"}</Badge>
             </div>
@@ -553,7 +644,7 @@ export default function PlanoMidia() {
                       {approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Aprovar planejamento
                     </Button>
                   ) : <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1 h-3.5 w-3.5" />Direção aprovada</Badge>}
-                  <Button variant="outline" onClick={generateProposal} disabled={generating}><RefreshCw className="mr-2 h-4 w-4" />Gerar novamente com os campos atuais</Button>
+                  <Button variant="outline" onClick={generateProposal} disabled={generating}><RefreshCw className="mr-2 h-4 w-4" />Gerar novamente com os dados atuais</Button>
                 </div>
               </div>
             )}
