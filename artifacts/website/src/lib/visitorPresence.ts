@@ -3,6 +3,7 @@ import { getBehaviorSessionId, getLaunchAttribution } from "./launchAttribution"
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const PRESENCE_INTERVAL_MS = 30_000;
 const VISITOR_KEY = "vendorai_public_visitor_id_v1";
+const EDITORIAL_THESIS_KEY = "vendorai_public_editorial_thesis_v1";
 const NAVIGATION_EVENT = "vendorai:navigation";
 const HISTORY_PATCH_MARKER = "__vendoraiHistoryNavigationPatched";
 
@@ -24,6 +25,20 @@ function currentPath() {
   return `${window.location.pathname}${window.location.search}`;
 }
 
+function editorialThesis() {
+  const query = new URLSearchParams(window.location.search);
+  const current = query.get("vendorai_tese")?.trim();
+  if (current) {
+    try { window.sessionStorage.setItem(EDITORIAL_THESIS_KEY, current); } catch {}
+    return current;
+  }
+  try {
+    return window.sessionStorage.getItem(EDITORIAL_THESIS_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function eventPayload(
   eventType: "engagement" | "page_view",
   path: string,
@@ -31,6 +46,7 @@ function eventPayload(
   metadata: Record<string, string | number | boolean | null> = {},
 ) {
   const attribution = getLaunchAttribution();
+  const thesis = editorialThesis();
   return JSON.stringify({
     anonymousSessionId: getBehaviorSessionId(),
     eventType,
@@ -49,6 +65,9 @@ function eventPayload(
       utmSource: attribution.utmSource ?? null,
       utmMedium: attribution.utmMedium ?? null,
       utmCampaign: attribution.utmCampaign ?? null,
+      utmContent: attribution.utmContent ?? null,
+      editorialId: attribution.utmContent ?? null,
+      editorialThesis: thesis,
       ...metadata,
     },
   });
