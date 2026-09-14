@@ -7,6 +7,7 @@ import {
   assertMediaPublishReady,
   CreativeQualityGateBlockedError,
 } from "./media-publish-quality-gate.js";
+import { resolveSocialPublicationStrategy } from "./social-publication-strategy.js";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -62,12 +63,30 @@ export async function publishAnySocialPublication(tenantId: string, publicationI
   if (!publication) throw new Error("publication_not_found");
 
   const { mediaUrls, mediaAssetIds, metadata } = publicationMediaRefs(publication);
+  const strategy = resolveSocialPublicationStrategy(publication.provider);
+  const publishAttemptAt = new Date().toISOString();
+  const executionMetadata = {
+    ...metadata,
+    publisherExecutionMode: strategy.executionMode,
+    publisherTransport: strategy.transport,
+    analyticsProvider: strategy.analyticsMode,
+    publishAttemptAt,
+  };
+
+  await db.update(socialPublicationsTable).set({
+    metadata: executionMetadata,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(socialPublicationsTable.id, publication.id),
+    eq(socialPublicationsTable.tenantId, tenantId),
+  ));
+
   try {
     const readiness = await assertMediaPublishReady({ tenantId, mediaUrls, mediaAssetIds });
     if (readiness.matchedAssetIds.length > 0) {
       await db.update(socialPublicationsTable).set({
         metadata: {
-          ...metadata,
+          ...executionMetadata,
           creativeQualityCheckedAt: readiness.checkedAt,
           creativeQualityAssetIds: readiness.matchedAssetIds,
           creativeQualityApprovedAssetIds: readiness.approvedAssetIds,
@@ -84,7 +103,7 @@ export async function publishAnySocialPublication(tenantId: string, publicationI
       await db.update(socialPublicationsTable).set({
         status: "failed",
         metadata: {
-          ...metadata,
+          ...executionMetadata,
           lastError: error.code,
           creativeQualityBlockedAt: blockedAt,
           creativeQualityBlockedAssets: error.blockedAssets,
