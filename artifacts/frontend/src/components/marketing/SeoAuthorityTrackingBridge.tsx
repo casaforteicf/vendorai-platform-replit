@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { SeoCommandCenterCard } from "./SeoCommandCenterCard";
 import { SearchIndexationTrackingCard } from "./SearchIndexationTrackingCard";
 import { SeoAuthorityTrackingCard } from "./SeoAuthorityTrackingCard";
 
@@ -71,6 +72,7 @@ export function SeoAuthorityTrackingBridge() {
 
   return mount ? createPortal(
     <div className="space-y-4">
+      <SeoCommandCenterCard />
       <SearchIndexationTrackingCard />
       <SeoAuthorityTrackingCard />
     </div>,
