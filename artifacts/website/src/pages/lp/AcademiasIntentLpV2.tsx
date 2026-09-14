@@ -28,7 +28,7 @@ const THEMES: Record<Intent, Theme> = {
       {title:"Pouca clareza de resultado",text:"A gestão demora para descobrir onde a receita está escapando.",icon:BarChart3},
     ],
     journey:["Lead","Qualificação","Aula experimental","Follow-up","Matrícula","Retenção"],
-    metrics:[{value:"+67%",label:"mais matrículas"},{value:"-38%",label:"menos cancelamentos"},{value:"+52%",label:"mais retenção"},{value:"3x",label:"mais eficiência no follow-up"}],
+    metrics:[{value:"Leads",label:"respondidos e priorizados"},{value:"Aulas",label:"experimentais acompanhadas"},{value:"Risco",label:"sinais de cancelamento monitorados"},{value:"Reativação",label:"ex-alunos em cadência"}],
     imageCaption:"Do primeiro contato à matrícula, tudo conectado.",
   },
   marketing:{
@@ -46,7 +46,7 @@ const THEMES: Record<Intent, Theme> = {
       {title:"Medição até matrícula",text:"Acompanhe campanha, lead, agendamento, aula e matrícula.",icon:BarChart3},
     ],
     journey:["Anúncio","Landing Page","Lead","WhatsApp","Aula experimental","Matrícula"],
-    metrics:[{value:"+120%",label:"engajamento"},{value:"+68%",label:"geração de leads"},{value:"+54%",label:"matrículas"},{value:"-45%",label:"custo por lead"}],
+    metrics:[{value:"Origem",label:"campanha e canal preservados"},{value:"Leads",label:"qualificados por intenção"},{value:"Aulas",label:"agendadas e acompanhadas"},{value:"Matrículas",label:"atribuídas à jornada"}],
     imageCaption:"Do anúncio à matrícula, o resultado fica mensurável.",
   },
   crm:{
@@ -64,7 +64,7 @@ const THEMES: Record<Intent, Theme> = {
       {title:"Visitor Intelligence",text:"Entenda origem, campanha e interesse antes do contato comercial.",icon:Search},
     ],
     journey:["Lead","Qualificação","Aula","Matrícula","Retenção","Renovação"],
-    metrics:[{value:"-60%",label:"tempo de gestão"},{value:"+45%",label:"produtividade"},{value:"+52%",label:"retenção"},{value:"+70%",label:"visibilidade da operação"}],
+    metrics:[{value:"Pipeline",label:"etapas e responsáveis visíveis"},{value:"Agenda",label:"próximas ações organizadas"},{value:"Follow-up",label:"cadências acompanhadas"},{value:"Retenção",label:"sinais e reativação monitorados"}],
     imageCaption:"Mais controle, menos operação manual e uma equipe mais produtiva.",
   },
 };
