@@ -13,6 +13,7 @@
     "./marketing-agent": "./src/marketing-agent.ts",
     "./marketing-runtime": "./src/marketing-runtime.ts",
     "./marketing-agent-ui": "./src/marketing-agent-ui.ts",
+    "./marketing-data-standard": "./src/marketing-data-standard.ts",
     "./channel-adapters": "./src/channel-adapters.ts",
     "./channel-publication": "./src/channel-publication.ts",
     "./creative-design": "./src/creative-design.ts",
