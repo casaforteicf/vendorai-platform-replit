@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import OnboardingPlanStep, { type TrialPlanMode } from "./OnboardingPlanStep";
 import {
   Loader2,
   CheckCircle2,
@@ -30,13 +31,12 @@ import {
   Star,
   Telescope,
   Check,
-  Upload,
   X,
   ImageIcon,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
-type WizardStep = 1 | 2 | 3 | "done";
+type WizardStep = 1 | 2 | 3 | "plan" | "done";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const AGENT_CARDS = [
@@ -49,7 +49,6 @@ const AGENT_CARDS = [
   { key: "followup",       labelKey: "onboarding.agent.label.afterSales", descKey: "onboarding.agent.afterSales", Icon: Star },
   { key: "onboarding",     labelKey: "onboarding.agent.label.prospector", descKey: "onboarding.agent.prospector", Icon: Telescope },
 ] as const;
-
 
 const TOM_OPTIONS = [
   { value: "profissional", labelKey: "onboarding.tone.professional" },
@@ -103,6 +102,7 @@ export default function Onboarding() {
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [isTrial, setIsTrial] = useState(false);
 
   // Step 1 state
   const [s1NomeEmpresa, setS1NomeEmpresa] = useState("");
@@ -124,21 +124,33 @@ export default function Onboarding() {
 
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
 
-
   // ── Load progress on mount ──────────────────────────────────────────────────
   useEffect(() => {
     if (!user?.tenantId) return;
     (async () => {
       try {
         const data = await apiGet("/api/onboarding") as { stepAtual?: number; concluido?: boolean };
+        let trialActive = false;
+        try {
+          const trial = await apiGet("/api/trial/status") as { isTrial?: boolean };
+          trialActive = trial.isTrial === true;
+        } catch {
+          // Compatibilidade com ambientes ainda sem a rota de jornada de trial.
+        }
+        setIsTrial(trialActive);
+
         if (data.concluido) {
           window.location.replace("/dashboard");
           return;
         }
         const s = data.stepAtual ?? 1;
         if (s >= 4) {
-          await apiPatch("/api/onboarding/step/4", {});
-          setStep("done");
+          if (trialActive) {
+            setStep("plan");
+          } else {
+            await apiPatch("/api/onboarding/step/4", {});
+            setStep("done");
+          }
           return;
         }
         setStep(Math.min(Math.max(s, 1), 3) as WizardStep);
@@ -149,7 +161,6 @@ export default function Onboarding() {
       }
     })();
   }, [user?.tenantId, setLocation]);
-
 
   // ── Logo upload ─────────────────────────────────────────────────────────────
   async function handleLogoUpload(file: File) {
@@ -287,10 +298,30 @@ export default function Onboarding() {
         nomePerfil: s3NomePerfil.trim() || undefined,
         tom: s3Tom || undefined,
       });
+      if (isTrial) {
+        setStep("plan");
+      } else {
+        await apiPatch("/api/onboarding/step/4", {});
+        setStep("done");
+      }
+    } catch (err) {
+      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePlanSelection(mode: TrialPlanMode) {
+    setSubmitting(true);
+    try {
+      await apiPost("/api/trial/select-plan", { mode });
       await apiPatch("/api/onboarding/step/4", {});
       setStep("done");
     } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
+      toast({
+        title: String(err instanceof Error ? err.message : "Não foi possível selecionar o plano."),
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -315,8 +346,8 @@ export default function Onboarding() {
   }
 
   // ── Progress bar ─────────────────────────────────────────────────────────────
-  const stepNum = step === "done" ? 3 : Math.min(step as number, 3);
-  const progressPct = step === "done" ? 100 : ((stepNum - 1) / 3) * 100;
+  const stepNum = step === "done" || step === "plan" ? 3 : Math.min(step as number, 3);
+  const progressPct = step === "done" || step === "plan" ? 100 : ((stepNum - 1) / 3) * 100;
 
   const STEP_LABELS = [
     t("onboarding.progress.company"),
@@ -338,11 +369,13 @@ export default function Onboarding() {
       <header className="border-b bg-card px-6 py-3 flex items-center justify-between shrink-0">
         <TenantBrand pendingName={s1NomeEmpresa} pendingLogoUrl={s1Logo} />
         <div className="flex items-center gap-4">
-          {step !== "done" && (
+          {step === "plan" ? (
+            <span className="text-sm font-medium text-primary">Escolha seu plano</span>
+          ) : step !== "done" ? (
             <span className="text-sm text-muted-foreground">
               {t("onboarding.header.step", { current: stepNum, total: 3 })}
             </span>
-          )}
+          ) : null}
           <button
             type="button"
             onClick={() => { logout(); setLocation("/"); }}
@@ -364,7 +397,7 @@ export default function Onboarding() {
       )}
 
       {/* ── Step indicators ── */}
-      {step !== "done" && (
+      {step !== "done" && step !== "plan" && (
         <div className="flex justify-center gap-0 pt-6 pb-2">
           {STEP_LABELS.map((label, i) => {
             const idx = i + 1;
@@ -407,7 +440,7 @@ export default function Onboarding() {
 
       {/* ── Content ── */}
       <main className="flex-1 flex flex-col items-center py-8 px-4">
-        <div className="w-full max-w-lg space-y-6">
+        <div className={`w-full space-y-6 ${step === "plan" ? "max-w-4xl" : "max-w-lg"}`}>
 
           {/* ═══════════════════════════════════════════════════════
               STEP 1 — EMPRESA
@@ -670,6 +703,17 @@ export default function Onboarding() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════
+              PLAN — ESCOLHA COMERCIAL DO TRIAL
+          ═══════════════════════════════════════════════════════ */}
+          {step === "plan" && (
+            <OnboardingPlanStep
+              submitting={submitting}
+              onBack={() => setStep(3)}
+              onSelect={handlePlanSelection}
+            />
           )}
 
           {/* ═══════════════════════════════════════════════════════
