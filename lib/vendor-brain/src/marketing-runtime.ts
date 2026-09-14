@@ -7,6 +7,7 @@ import {
   type MarketingPriority,
   type NormalizedMarketingRecord,
 } from './marketing-data-standard';
+import { buildInstagramGrowthIntelligence, type InstagramGrowthIntelligence } from './instagram-growth';
 
 export interface MarketingCampaignContextInput {
   tenantId: string;
@@ -97,12 +98,15 @@ export interface MarketingDataIntelligenceResolution {
   automationMode: MarketingAutomationMode;
   priorities: MarketingPriority[];
   recordCount: number;
+  instagramGrowth?: InstagramGrowthIntelligence;
 }
 
 /**
  * Canonical bridge from normalized Windsor/native marketing data into Tad.
  * Keeps provider-specific schemas outside the agent/runtime and enforces that
  * every record belongs to the requested tenant before intelligence is derived.
+ * Instagram has a permanent growth-first objective: reach -> retention ->
+ * engagement -> follower conversion -> commercial conversion.
  */
 export function resolveMarketingDataIntelligence(input: {
   tenantId: string;
@@ -111,11 +115,15 @@ export function resolveMarketingDataIntelligence(input: {
 }): MarketingDataIntelligenceResolution {
   const records = input.records.filter((record) => record.provenance.tenantId === input.tenantId);
   const automationMode = input.automationMode ?? 'RECOMMEND';
+  const instagramRecords = records.filter((record) => record.provenance.connector === 'instagram');
 
   return {
     tenantId: input.tenantId,
     automationMode,
     priorities: deriveMarketingPriorities(records, automationMode),
     recordCount: records.length,
+    instagramGrowth: instagramRecords.length
+      ? buildInstagramGrowthIntelligence({ records: instagramRecords, automationMode })
+      : undefined,
   };
 }
