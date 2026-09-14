@@ -3,7 +3,6 @@ import {
   ArrowRight,
   BarChart3,
   Bot,
-  CheckCircle2,
   MessageCircle,
   Radar,
   RefreshCcw,
