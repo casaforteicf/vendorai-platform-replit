@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -11,9 +11,11 @@ import {
   usersTable,
 } from "@workspace/db";
 import { sendTrialJourneyEmail } from "../lib/trial-email.js";
+import { sendTrialUpgradeRequestedAlert } from "../lib/trial-upgrade-alert.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_TRIALS_PER_RUN = 300;
+const COMMERCIAL_ALERT_MARKER = "[commercial_alert_sent]";
 
 export type TrialActivationSnapshot = {
   score: number;
@@ -180,6 +182,20 @@ export async function runTrialJourney(log: Logger): Promise<void> {
     return;
   }
 
+  const commercialUsers = await db
+    .select({ email: usersTable.email })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.tenantId, vendorai.id),
+      eq(usersTable.active, true),
+      or(
+        eq(usersTable.role, "admin"),
+        eq(usersTable.platformRole, "tenant_admin"),
+        eq(usersTable.platformRole, "super_admin"),
+      ),
+    ));
+  const commercialRecipients = commercialUsers.map((user) => user.email).filter(Boolean);
+
   const trials = await db
     .select({
       id: tenantsTable.id,
@@ -202,6 +218,7 @@ export async function runTrialJourney(log: Logger): Promise<void> {
   let scored = 0;
   let journeyMessages = 0;
   let highIntentAlerts = 0;
+  let upgradeAlerts = 0;
 
   for (const trial of trials) {
     if (!trial.demoExpiresAt) continue;
@@ -211,6 +228,8 @@ export async function runTrialJourney(log: Logger): Promise<void> {
           id: leadsTable.id,
           nome: leadsTable.nome,
           empresa: leadsTable.empresa,
+          email: leadsTable.email,
+          telefone: leadsTable.telefone,
           discoveryData: leadsTable.discoveryData,
           proximaAcao: leadsTable.proximaAcao,
         })
@@ -269,6 +288,62 @@ export async function runTrialJourney(log: Logger): Promise<void> {
         }
       }
       scored++;
+
+      // Recupera também pedidos feitos antes da correção de e-mail. Enquanto a
+      // continuidade estiver solicitada, esse sinal comercial explícito vence
+      // qualquer score comportamental posterior.
+      const [upgradeEvent] = await db
+        .select({
+          id: leadEventsTable.id,
+          descricao: leadEventsTable.descricao,
+          createdAt: leadEventsTable.createdAt,
+        })
+        .from(leadEventsTable)
+        .where(and(
+          eq(leadEventsTable.leadId, salesLead.id),
+          eq(leadEventsTable.tipo, "trial_upgrade_requested"),
+        ))
+        .orderBy(desc(leadEventsTable.createdAt))
+        .limit(1);
+
+      if (upgradeEvent) {
+        await db.update(leadsTable).set({
+          proximaAcao: "Cliente solicitou continuidade do trial: entrar em contato agora para plano/fechamento e preservar o tenant atual.",
+          status: "qualificado",
+          discoveryData: {
+            ...discovery,
+            trialJourney: snapshot,
+            trialUpgradePriority: true,
+            trialUpgradeRequestedAt: upgradeEvent.createdAt.toISOString(),
+          },
+          updatedAt: now,
+        }).where(eq(leadsTable.id, salesLead.id));
+
+        if (commercialDeal && Number(commercialDeal.probabilidade ?? 0) < 90) {
+          await db.update(dealsTable)
+            .set({ probabilidade: 90, updatedAt: now })
+            .where(eq(dealsTable.id, commercialDeal.id));
+        }
+
+        if (!upgradeEvent.descricao.includes(COMMERCIAL_ALERT_MARKER)) {
+          const sent = await sendTrialUpgradeRequestedAlert({
+            to: commercialRecipients,
+            leadName: salesLead.nome,
+            companyName: salesLead.empresa || trial.name,
+            email: salesLead.email,
+            phone: salesLead.telefone,
+            activationScore: score,
+            trialTenantId: trial.id,
+            requestedAt: upgradeEvent.createdAt,
+          });
+          if (sent) {
+            await db.update(leadEventsTable)
+              .set({ descricao: `${upgradeEvent.descricao} ${COMMERCIAL_ALERT_MARKER}` })
+              .where(eq(leadEventsTable.id, upgradeEvent.id));
+            upgradeAlerts++;
+          }
+        }
+      }
 
       const dayEventType = `trial_day_${snapshot.day}_journey`;
       if (!(await eventExists(salesLead.id, dayEventType))) {
@@ -337,7 +412,7 @@ export async function runTrialJourney(log: Logger): Promise<void> {
     }
   }
 
-  if (scored > 0 || journeyMessages > 0 || highIntentAlerts > 0) {
-    log.info({ scored, journeyMessages, highIntentAlerts }, "trial-journey: complete");
+  if (scored > 0 || journeyMessages > 0 || highIntentAlerts > 0 || upgradeAlerts > 0) {
+    log.info({ scored, journeyMessages, highIntentAlerts, upgradeAlerts }, "trial-journey: complete");
   }
 }
