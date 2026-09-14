@@ -1,20 +1,16 @@
 import { Link, useParams } from "wouter";
 import { useEffect } from "react";
-import { ArrowRight, Bot, Building2, CalendarCheck, Check, ChevronDown, Home, MapPin, Megaphone, MessageCircle, Radar, Search, Target, UserCheck, Users, Workflow } from "lucide-react";
+import { ArrowRight, Bot, Building2, CalendarCheck, Check, ChevronDown, Home, Megaphone, MessageCircle, Radar, Search, Target, UserCheck, Users, Workflow } from "lucide-react";
 
 type Intent = "dor" | "marketing" | "crm";
 type Theme = { badge:string; title:string; accent:string; subtitle:string; photo:string; photoAlt:string; visual:string; sectionTitle:string; cards:Array<{title:string;text:string;icon:typeof Target}>; flow:string[]; productModules:string[]; kpis:string[] };
 
 const THEMES: Record<Intent, Theme> = {
   dor: {
-    badge:"Dor / Descoberta",
-    title:"Quantos compradores sua imobiliária perde",
-    accent:"antes mesmo da visita?",
+    badge:"Dor / Descoberta", title:"Quantos compradores sua imobiliária perde", accent:"antes mesmo da visita?",
     subtitle:"Leads de portais, Meta, Google e WhatsApp podem esfriar entre o primeiro contato, a seleção de imóveis, a visita e a proposta. O VendorAI organiza sinais, prioridade e próxima ação.",
-    photo:"https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1600&q=84",
-    photoAlt:"Corretora apresentando imóvel a cliente",
-    visual:"/lp-images/imobiliarias-dor-vendorai.svg",
-    sectionTitle:"Onde oportunidades imobiliárias costumam se perder",
+    photo:"/lp-images/imobiliarias-contexto-1.svg", photoAlt:"Contexto visual da jornada de um comprador acompanhado pelo VendorAI",
+    visual:"/lp-images/imobiliarias-dor-vendorai.svg", sectionTitle:"Onde oportunidades imobiliárias costumam se perder",
     cards:[
       {title:"Lead sem resposta rápida",text:"Contatos de portais, anúncios e WhatsApp esfriam quando ninguém assume a próxima ação.",icon:MessageCircle},
       {title:"Preferências sem contexto",text:"Faixa de preço, bairro, tipo, dormitórios, financiamento e urgência ficam espalhados em conversas.",icon:Search},
@@ -28,14 +24,10 @@ const THEMES: Record<Intent, Theme> = {
     kpis:["Tempo de resposta","Leads sem retorno","Visitas sem follow-up","Propostas abertas","Reativações","Conversão por corretor"],
   },
   marketing: {
-    badge:"Marketing / Crescimento",
-    title:"Transforme anúncios de imóveis",
-    accent:"em visitas e propostas.",
+    badge:"Marketing / Crescimento", title:"Transforme anúncios de imóveis", accent:"em visitas e propostas.",
     subtitle:"Planejamento, criativos, Meta, Google, landing pages, Visitor Intelligence, WhatsApp e CRM conectados para acompanhar a campanha até a oportunidade comercial.",
-    photo:"https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=84",
-    photoAlt:"Residência contemporânea usada em campanha imobiliária",
-    visual:"/lp-images/imobiliarias-marketing-vendorai.svg",
-    sectionTitle:"Marketing imobiliário conectado ao que acontece depois do clique",
+    photo:"/lp-images/imobiliarias-contexto-2.svg", photoAlt:"Contexto visual de marketing imobiliário conectado ao comercial",
+    visual:"/lp-images/imobiliarias-marketing-vendorai.svg", sectionTitle:"Marketing imobiliário conectado ao que acontece depois do clique",
     cards:[
       {title:"Campanhas por imóvel e região",text:"Trabalhe empreendimento, bairro, alto padrão, primeiro imóvel, investimento, aluguel ou lançamento com mensagens próprias.",icon:Megaphone},
       {title:"Meta para descoberta",text:"Criativos visuais atraem interesse e conduzem para LP ou WhatsApp com contexto preservado.",icon:Target},
@@ -49,14 +41,10 @@ const THEMES: Record<Intent, Theme> = {
     kpis:["Origem do lead","Leads por imóvel","Visitas","Propostas","Conversão por campanha","Custo por oportunidade"],
   },
   crm: {
-    badge:"CRM / Alta intenção",
-    title:"CRM com IA para",
-    accent:"Imobiliárias e Corretores.",
+    badge:"CRM / Alta intenção", title:"CRM com IA para", accent:"Imobiliárias e Corretores.",
     subtitle:"Organize leads, imóveis, corretores, visitas, propostas, WhatsApp, follow-up e inteligência comercial em um único fluxo com contexto completo.",
-    photo:"https://images.unsplash.com/photo-1560520653-9e0e4c89eb11?auto=format&fit=crop&w=1600&q=84",
-    photoAlt:"Corretor atendendo cliente em operação imobiliária",
-    visual:"/lp-images/imobiliarias-crm-vendorai.svg",
-    sectionTitle:"Um CRM que entende a jornada imobiliária",
+    photo:"/lp-images/imobiliarias-crm-vendorai.svg", photoAlt:"Visual do CRM VendorAI aplicado a imobiliárias e corretores",
+    visual:"/lp-images/imobiliarias-crm-vendorai.svg", sectionTitle:"Um CRM que entende a jornada imobiliária",
     cards:[
       {title:"Qualificação imobiliária",text:"Compra ou locação, região, tipo, faixa de preço, dormitórios, financiamento, timing e preferências ficam estruturados.",icon:Users},
       {title:"Matching com contexto",text:"O corretor recebe a oportunidade sabendo o que o cliente procura e quais imóveis fazem sentido.",icon:Building2},
@@ -90,7 +78,7 @@ export default function ImobiliariasIntentLp(){
  return <div className="min-h-screen bg-[#f7f7f5] text-slate-950">
   <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07101b]/95 text-white backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"><Link href="/" className="text-xl font-black">Vendor<span className="text-orange-500">AI</span></Link><nav className="hidden gap-6 text-xs font-bold text-slate-300 md:flex"><a href="#cenario">Cenário</a><a href="#funcoes">Funções</a><a href="#jornada">Jornada</a><a href="#faq">FAQ</a></nav><a href="/demo?vertical=imobiliarias-corretores&intent=trial-5-dias" className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black">Testar 5 dias grátis</a></div></header>
   <main>
-   <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="relative mx-auto grid max-w-7xl lg:grid-cols-2"><div className="flex flex-col justify-center px-4 py-16 sm:px-6 sm:py-20 lg:pr-12"><span className="w-fit rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300">{theme.badge}</span><p className="mt-5 text-xs font-black uppercase tracking-[.22em] text-orange-400">IMOBILIÁRIAS E CORRETORES</p><h1 className="mt-4 text-5xl font-black leading-[.98] tracking-tight sm:text-6xl">{theme.title}<br/><span className="text-orange-500">{theme.accent}</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><CTA/><CTA secondary/></div></div><div className="relative min-h-[430px] overflow-hidden lg:min-h-[650px]"><img src={theme.photo} alt={theme.photoAlt} className="absolute inset-0 h-full w-full object-cover" loading="eager"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b]/45 via-transparent to-transparent"/><div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/15 bg-[#07101b]/80 p-4 backdrop-blur-md"><p className="text-xs font-black uppercase tracking-[.16em] text-orange-400">Jornada acompanhada</p><p className="mt-2 text-sm text-slate-200">Origem → interesse → corretor → visita → proposta → próxima ação → fechamento</p></div></div></div></section>
+   <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="relative mx-auto grid max-w-7xl lg:grid-cols-2"><div className="flex flex-col justify-center px-4 py-16 sm:px-6 sm:py-20 lg:pr-12"><span className="w-fit rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300">{theme.badge}</span><p className="mt-5 text-xs font-black uppercase tracking-[.22em] text-orange-400">IMOBILIÁRIAS E CORRETORES</p><h1 className="mt-4 text-5xl font-black leading-[.98] tracking-tight sm:text-6xl">{theme.title}<br/><span className="text-orange-500">{theme.accent}</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><CTA/><CTA secondary/></div></div><div className="relative min-h-[430px] overflow-hidden bg-white/[0.03] lg:min-h-[650px]"><img src={theme.photo} alt={theme.photoAlt} className="absolute inset-0 h-full w-full object-contain p-6 sm:p-10" loading="eager"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b]/30 via-transparent to-transparent"/></div></div></section>
    <section id="cenario" className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mx-auto mb-10 max-w-3xl text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Aplicação real no nicho</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">{theme.sectionTitle}</h2></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{theme.cards.map(({title,text,icon:Icon})=><div key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500 text-white"><Icon className="h-5 w-5"/></div><h3 className="font-black">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{text}</p></div>)}</div></div></section>
    <section id="funcoes" className="border-y border-slate-200 bg-white px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[.9fr_1.1fr]"><div><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">VendorAI aplicado ao objetivo desta página</p><h2 className="mt-3 text-3xl font-black">Funções certas para esta intenção.</h2><p className="mt-4 text-sm leading-6 text-slate-500">Cada versão destaca somente o conjunto do sistema que ajuda aquele visitante a tomar uma decisão.</p><div className="mt-6 flex flex-wrap gap-2">{theme.productModules.map(item=><span key={item} className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700">{item}</span>)}</div></div><div className="rounded-[30px] bg-[#07101b] p-3 shadow-2xl"><img src={theme.visual} alt={`Visual do VendorAI para ${theme.badge}`} className="w-full rounded-[22px]"/><p className="px-3 pb-2 pt-3 text-center text-[11px] font-bold uppercase tracking-[.14em] text-slate-400">Exemplo visual da operação dentro do VendorAI</p></div></div></section>
    <section id="jornada" className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mb-8 text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Jornada comercial</p><h2 className="mt-3 text-3xl font-black">Do primeiro interesse ao fechamento</h2></div><div className="grid gap-3 md:grid-cols-7">{theme.flow.map((step,index)=><div key={step} className="relative rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm"><div className="mx-auto mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-xs font-black text-orange-600">{index+1}</div><div className="text-xs font-black">{step}</div>{index<theme.flow.length-1&&<span className="absolute -right-2 top-1/2 hidden -translate-y-1/2 text-orange-300 md:block">→</span>}</div>)}</div><div className="mt-10 rounded-[28px] bg-[#07101b] p-7 text-white"><p className="text-xs font-black uppercase tracking-[.18em] text-orange-400">Indicadores a acompanhar</p><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{theme.kpis.map(kpi=><div key={kpi} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-4"><Check className="h-4 w-4 text-orange-400"/><span className="text-sm font-bold">{kpi}</span></div>)}</div></div></div></section>
