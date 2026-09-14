@@ -73,7 +73,8 @@ export function setupApiClient() {
     const response = await originalFetch(requestInput, requestInit);
     if (
       response.status === 403 &&
-      !window.location.pathname.startsWith("/onboarding")
+      !window.location.pathname.startsWith("/onboarding") &&
+      window.location.pathname !== "/trocar-senha"
     ) {
       try {
         const body = await response.clone().json();

@@ -74,7 +74,8 @@ export default function ForcePasswordChange() {
         toast({ title: data.error ?? copy.changeError, variant: "destructive" });
         return;
       }
-      qc.setQueryData(getGetMeQueryKey(), (current: any) =>
+      const meQueryKey = [...getGetMeQueryKey(), token?.split(".")[2] ?? "anonymous"];
+      qc.setQueryData(meQueryKey, (current: any) =>
         current ? { ...current, forcePasswordReset: false } : current,
       );
       toast({ title: copy.success });
