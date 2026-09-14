@@ -85,7 +85,7 @@ export default function WorkCenterHome() {
   const deferredSearch = useDeferredValue(search);
   const [stageFilter, setStageFilter] = useState("ativos");
   const [ownerFilter, setOwnerFilter] = useState("todos");
-  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("todos");
+  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>(() => new URLSearchParams(window.location.search).get("attention") === "vencidos" ? "vencidos" : "todos");
 
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const userById = useMemo(() => new Map(users.map((person) => [person.id, person.name || person.email || person.id])), [users]);
@@ -159,7 +159,12 @@ export default function WorkCenterHome() {
 
   const now = Date.now();
   const activeQueue = queue.filter((item) => !terminalStageKeys.has(item.stage));
-  const overdue = activeQueue.filter((item) => item.nextActivity?.dataVencimento && new Date(item.nextActivity.dataVencimento).getTime() < now).length;
+  const overdueActivities = activities.filter((activity) =>
+    ["pendente", "planejado"].includes(activity.status)
+    && activity.dataVencimento
+    && new Date(activity.dataVencimento).getTime() < now
+  ).sort((a, b) => new Date(a.dataVencimento!).getTime() - new Date(b.dataVencimento!).getTime());
+  const overdue = overdueActivities.length;
   const unassigned = activeQueue.filter((item) => !item.ownerId).length;
   const mine = activeQueue.filter((item) => item.ownerId === user?.id).length;
   const missingNextActivity = activeQueue.filter((item) => !item.nextActivity).length;
@@ -281,6 +286,24 @@ export default function WorkCenterHome() {
       </CardHeader>
       <CardContent>
         {loading ? <div className="flex min-h-56 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" aria-label="Carregando fila" /></div> :
+        attentionFilter === "vencidos" ? (
+          overdueActivities.length === 0
+            ? <div className="min-h-56 rounded-xl border border-dashed p-10 text-center text-muted-foreground">Nenhuma atividade vencida encontrada.</div>
+            : <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">{overdueActivities.map((activity) => {
+              const deal = deals.find((item) => item.id === activity.dealId);
+              const leadId = activity.leadId || deal?.leadId;
+              return <div key={activity.id} className="rounded-xl border bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><h2 className="truncate font-semibold">{activity.titulo}</h2><p className="truncate text-sm text-muted-foreground">{leadById.get(leadId ?? "")?.nome ?? deal?.titulo ?? "Atividade sem atendimento vinculado"}</p></div>
+                  <Badge variant="destructive">Vencida</Badge>
+                </div>
+                <p className="mt-3 text-sm text-destructive">Prazo · {formatDeadline(activity.dataVencimento!)}</p>
+                {leadId
+                  ? <button type="button" className="mt-3 text-sm font-medium text-primary hover:underline" onClick={() => navigate("/trabalho/" + leadId + (deal ? "?dealId=" + deal.id + "&from=work-center" : "?from=work-center"))}>Abrir atendimento →</button>
+                  : <p className="mt-3 text-xs text-muted-foreground">Sem atendimento vinculado para abrir.</p>}
+              </div>;
+            })}</div>
+        ) :
         visibleQueue.length === 0 ? <div className="min-h-56 rounded-xl border border-dashed p-10 text-center text-muted-foreground">Nenhum item corresponde aos filtros atuais.</div> :
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">{visibleQueue.map((item) => {
           const isTerminal = terminalStageKeys.has(item.stage);
