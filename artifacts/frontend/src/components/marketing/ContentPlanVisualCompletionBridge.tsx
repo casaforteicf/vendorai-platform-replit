@@ -5,6 +5,8 @@ import { ImagePlus, Loader2 } from "lucide-react";
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const HOST_ATTR = "data-vendorai-content-visual-completion";
+const RETRYABLE_IMAGE_STATUSES = new Set([429, 502, 503, 504]);
+const MAX_IMAGE_ATTEMPTS = 3;
 
 const CALENDAR_VISUAL_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post"]);
 const GENERATOR_VISUAL_TYPES = new Set(["feed", "stories", "linkedin"]);
@@ -78,6 +80,10 @@ function desiredImageCount(calendarType: string, requested?: unknown): number {
   return Math.max(1, Math.min(calendarType === "stories" ? 1 : 4, Math.trunc(parsed)));
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 async function regenerateVisual(
   fetcher: typeof window.fetch,
   tenantId: string,
@@ -85,20 +91,37 @@ async function regenerateVisual(
   imageCount: number,
   referenceImageUrl?: string,
 ): Promise<string[]> {
-  const response = await fetcher(`/api/tenants/${tenantId}/content/${contentId}/variations/0/regenerate-image`, {
-    method: "POST",
-    headers: authHeaders(true),
-    body: JSON.stringify({
-      imageCount,
-      ...(referenceImageUrl ? { referenceImageUrl } : {}),
-      observations: "Criativo visual do Plano de Mídia. Preserve produto, marca e contexto do briefing; produza imagem profissional pronta para publicação, sem texto inventado nem marca d'água.",
-    }),
-  });
-  const payload = await response.json().catch(() => ({})) as { imageUrls?: string[]; error?: string };
-  if (!response.ok || !Array.isArray(payload.imageUrls) || payload.imageUrls.length === 0) {
-    throw new Error(payload.error || "A geração visual não retornou imagem.");
+  let lastError = "A geração visual não retornou imagem.";
+
+  for (let attempt = 1; attempt <= MAX_IMAGE_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetcher(`/api/tenants/${tenantId}/content/${contentId}/variations/0/regenerate-image`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          imageCount,
+          ...(referenceImageUrl ? { referenceImageUrl } : {}),
+          observations: "Criativo visual do Plano de Mídia. Preserve produto, marca e contexto do briefing; produza imagem profissional pronta para publicação, sem texto inventado nem marca d'água.",
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as { imageUrls?: string[]; error?: string };
+      if (response.ok && Array.isArray(payload.imageUrls) && payload.imageUrls.length > 0) {
+        return payload.imageUrls;
+      }
+
+      lastError = payload.error || `A geração visual falhou (HTTP ${response.status}).`;
+      if (!RETRYABLE_IMAGE_STATUSES.has(response.status) || attempt === MAX_IMAGE_ATTEMPTS) {
+        break;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "Falha de rede ao gerar imagem.";
+      if (attempt === MAX_IMAGE_ATTEMPTS) break;
+    }
+
+    await sleep(700 * (2 ** (attempt - 1)));
   }
-  return payload.imageUrls;
+
+  throw new Error(lastError);
 }
 
 function patchGenerationPayload(payload: ContentGeneration, imageUrls: string[]): ContentGeneration {
@@ -167,7 +190,11 @@ export function ContentPlanVisualCompletionBridge() {
       const generationById = new Map((historyPayload.items ?? []).map((entry) => [entry.id, entry]));
       const next = (Array.isArray(calendarPayload) ? calendarPayload : []).filter((item) => {
         if (item.status !== "gerado" || !item.contentGenerationId || !CALENDAR_VISUAL_TYPES.has(item.tipo)) return false;
-        return !generationHasVisual(generationById.get(item.contentGenerationId), item.variationIdx ?? 0);
+        const generation = generationById.get(item.contentGenerationId);
+        // O endpoint de histórico é resumido. Ausência no recorte não significa imagem ausente.
+        // Só sinalizamos pendência quando a geração está realmente presente e sem visual.
+        if (!generation) return false;
+        return !generationHasVisual(generation, item.variationIdx ?? 0);
       });
       setIncomplete(next);
     } catch {
@@ -307,7 +334,7 @@ export function ContentPlanVisualCompletionBridge() {
 
     if (failed > 0) {
       setLastError(
-        `${failed} de ${incomplete.length} peça(s) não receberam imagem. ${firstError} Você pode tentar novamente; somente as imagens ainda faltantes serão processadas.`,
+        `${failed} de ${incomplete.length} peça(s) permaneceram sem imagem após as tentativas automáticas. ${firstError} Os textos e as imagens concluídas foram preservados.`,
       );
     }
   }, [incomplete, loadIncomplete, repairing, tenantId]);
@@ -326,7 +353,7 @@ export function ContentPlanVisualCompletionBridge() {
       >
         {repairing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
         {repairing
-          ? `Gerando ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} falha(s)` : ""}`
+          ? `Gerando ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} pendente(s)` : ""}`
           : `Gerar imagens faltantes (${incomplete.length})`}
       </button>
       {lastError ? (
