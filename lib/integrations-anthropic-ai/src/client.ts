@@ -10,12 +10,19 @@ const directApiKey = process.env.ANTHROPIC_API_KEY;
 const legacyApiKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
 const legacyBaseUrl = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
 
-if (!directApiKey && !legacyApiKey) {
-  throw new Error(
-    "ANTHROPIC_API_KEY (ou, como legado, AI_INTEGRATIONS_ANTHROPIC_API_KEY) precisa estar definida.",
+export const isAnthropicConfigured = Boolean(directApiKey || legacyApiKey);
+
+if (!isAnthropicConfigured) {
+  // Anthropic é uma integração opcional. Não derruba a API inteira no boot
+  // quando a chave não estiver provisionada; apenas chamadas que realmente
+  // dependerem do provider falharão e poderão usar os fallbacks já existentes.
+  console.warn(
+    "[Anthropic] API key não configurada — recursos exclusivos da Anthropic ficam indisponíveis até o segredo ser provisionado.",
   );
 }
 
 export const anthropic = directApiKey
   ? new Anthropic({ apiKey: directApiKey })
-  : new Anthropic({ apiKey: legacyApiKey!, baseURL: legacyBaseUrl });
+  : legacyApiKey
+    ? new Anthropic({ apiKey: legacyApiKey, baseURL: legacyBaseUrl })
+    : new Anthropic({ apiKey: "anthropic-not-configured" });
