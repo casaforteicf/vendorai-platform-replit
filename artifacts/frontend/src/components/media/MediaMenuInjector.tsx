@@ -281,6 +281,44 @@ function ensureCampaignGuidance() {
   }
 }
 
+function ensureContentApprovalGate() {
+  const reviewLabel = Array.from(document.querySelectorAll<HTMLElement>("span,div"))
+    .find((node) => normalizedText(node.textContent ?? "") === "Plano em revisão");
+  const existingGate = document.querySelector<HTMLElement>(`[${GUIDANCE_ATTR}="content-approval"]`);
+
+  if (!reviewLabel) {
+    existingGate?.remove();
+    return;
+  }
+
+  const productionHeading = Array.from(document.querySelectorAll<HTMLElement>("p,div"))
+    .find((node) => normalizedText(node.textContent ?? "") === "Produção automática do planejamento");
+  const productionCard = closestCard(productionHeading ?? null);
+  const queueRoot = productionCard?.parentElement as HTMLElement | null;
+  if (!queueRoot) return;
+
+  hideForCampaign(queueRoot, "content-awaiting-approval");
+  if (existingGate) return;
+
+  const gate = document.createElement("div");
+  gate.setAttribute(GUIDANCE_ATTR, "content-approval");
+  gate.className = "mx-4 mt-5 rounded-xl border border-primary/20 bg-primary/[0.02] p-5 md:mx-6";
+  gate.innerHTML = `
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-primary">Próximo passo</p>
+        <p class="mt-1 text-base font-semibold">Aprovar planejamento</p>
+        <p class="mt-1 text-sm text-muted-foreground">Revise e aprove o planejamento antes de liberar a produção dos conteúdos e criativos desta campanha.</p>
+      </div>
+      <button type="button" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90">Ir para Planejamento</button>
+    </div>`;
+  gate.querySelector("button")?.addEventListener("click", () => {
+    window.history.pushState({}, "", "/content?tab=planejamento");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  queueRoot.insertAdjacentElement("beforebegin", gate);
+}
+
 function cleanupCampaignWorkspace() {
   restoreCampaignCleanup();
 
@@ -297,8 +335,6 @@ function cleanupCampaignWorkspace() {
     return;
   }
 
-  // A barra superior de Ferramentas duplica a navegação lateral do Marketing.
-  // Ela deve permanecer oculta em todas as abas em que era renderizada.
   document.querySelectorAll<HTMLElement>("span").forEach((label) => {
     if (normalizedText(label.textContent ?? "") === "Ferramentas:") {
       const row = label.parentElement;
@@ -306,12 +342,13 @@ function cleanupCampaignWorkspace() {
     }
   });
 
-  // Conteúdos & Criativos só precisa da limpeza da barra geral. A orientação
-  // específica de campanha continua restrita à aba Campanhas.
   if (tab === "conteudos") {
-    removeCampaignGuidance();
+    document.querySelectorAll<HTMLElement>(`[${GUIDANCE_ATTR}="sequence"], [${GUIDANCE_ATTR}="delete"]`).forEach((node) => node.remove());
+    ensureContentApprovalGate();
     return;
   }
+
+  document.querySelector<HTMLElement>(`[${GUIDANCE_ATTR}="content-approval"]`)?.remove();
 
   if (!params.get("campaignId")) {
     removeCampaignGuidance();
