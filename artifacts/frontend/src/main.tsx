@@ -19,6 +19,7 @@ import { MediaDeleteSelectionBridge } from "./components/media/MediaDeleteSelect
 import { MediaLibraryWorkflowBridge } from "./components/media/MediaLibraryWorkflowBridge";
 import { MediaIntelligenceIndexBridge } from "./components/media/MediaIntelligenceIndexBridge";
 import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGeneratorQueueUxBridge";
+import { PlanningReviewBridge } from "./components/marketing/PlanningReviewBridge";
 import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
 import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/MediaPlanProductionCompatibilityBridge";
 import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/MediaPlanProjectKindCompatibilityBridge";
@@ -178,6 +179,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaAiBaseWorkspaceNav />
           <MediaDeleteSelectionBridge />
           <ContentGeneratorQueueUxBridge />
+          <PlanningReviewBridge />
           <ContentPlanVisualCompletionBridge />
           <MediaPlanProductionCompatibilityBridge />
           <MediaPlanProjectKindCompatibilityBridge />
