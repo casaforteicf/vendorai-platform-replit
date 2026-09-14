@@ -1,16 +1,22 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import {
+  accessLicensesTable,
   db,
   dealsTable,
   leadEventsTable,
   leadsTable,
   notificationsTable,
+  plansTable,
   tenantsTable,
 } from "@workspace/db";
+import { ensureVendorAiLaunchSubscription } from "../lib/vendorai-subscription-lifecycle.js";
+import { brazilMonthKey } from "../services/accessLicense.js";
 
 const router: IRouter = Router();
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+type TrialPlanMode = "subscription" | "periods";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -114,6 +120,146 @@ router.get("/trial/status", async (req, res) => {
     },
     upgradeRequested: Boolean(upgradeEvent),
     upgradeRequestedAt: upgradeEvent?.createdAt?.toISOString() ?? null,
+  });
+});
+
+/**
+ * Escolha comercial self-service exibida imediatamente após o primeiro agente.
+ * O trial já está ativo; esta chamada apenas registra como o cliente quer
+ * continuar quando o período gratuito terminar, preservando o mesmo tenant.
+ */
+router.post("/trial/select-plan", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.status(400).json({ error: "Tenant não identificado." });
+
+  const mode = String(req.body?.mode ?? "") as TrialPlanMode;
+  if (mode !== "subscription" && mode !== "periods") {
+    return res.status(422).json({ error: "Modalidade de plano inválida." });
+  }
+
+  const [tenant] = await db
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      isDemo: tenantsTable.isDemo,
+      provisioningMethod: tenantsTable.provisioningMethod,
+      demoExpiresAt: tenantsTable.demoExpiresAt,
+      createdAt: tenantsTable.createdAt,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  if (!tenant || !isTrialTenant(tenant)) {
+    return res.status(400).json({ error: "Esta conta não é um trial elegível." });
+  }
+
+  const [growthPlan] = await db
+    .select({ id: plansTable.id, slug: plansTable.slug })
+    .from(plansTable)
+    .where(and(eq(plansTable.slug, "growth"), eq(plansTable.isActive, true)))
+    .limit(1);
+  if (!growthPlan) {
+    return res.status(409).json({ error: "Plano Growth indisponível no momento." });
+  }
+
+  const { vendoraiId, lead } = await getVendorTrialLead(tenantId, req.user?.email);
+  if (!vendoraiId || !lead) {
+    return res.status(404).json({ error: "Cadastro comercial do trial não encontrado." });
+  }
+
+  const [deal] = await db
+    .select({ id: dealsTable.id })
+    .from(dealsTable)
+    .where(and(eq(dealsTable.tenantId, vendoraiId), eq(dealsTable.leadId, lead.id)))
+    .orderBy(desc(dealsTable.createdAt))
+    .limit(1);
+  if (!deal) return res.status(404).json({ error: "Oportunidade comercial do trial não encontrada." });
+
+  const now = new Date();
+  const accessEndsAt = tenant.demoExpiresAt ?? new Date(tenant.createdAt.getTime() + 5 * DAY_MS);
+
+  if (mode === "subscription") {
+    await db.update(dealsTable).set({
+      planoContratado: "growth",
+      probabilidade: 95,
+      updatedAt: now,
+    }).where(eq(dealsTable.id, deal.id));
+
+    await ensureVendorAiLaunchSubscription({
+      tenantId,
+      dealId: deal.id,
+      planSlug: "growth",
+      trialStartedAt: tenant.createdAt,
+    });
+  } else {
+    // Growth por períodos não deve virar assinatura contínua pelo job de
+    // lifecycle. O acesso pago posterior é controlado por access_licenses.
+    await db.update(dealsTable).set({
+      planoContratado: null,
+      probabilidade: 95,
+      updatedAt: now,
+    }).where(eq(dealsTable.id, deal.id));
+
+    await db.insert(accessLicensesTable).values({
+      tenantId,
+      mode: "prepaid",
+      status: "active",
+      accessEndsAt,
+      freeBenefitMonth: brazilMonthKey(now),
+      freeActivatedAt: tenant.createdAt,
+      freeEndsAt: accessEndsAt,
+    }).onConflictDoUpdate({
+      target: accessLicensesTable.tenantId,
+      set: {
+        mode: "prepaid",
+        status: "active",
+        accessEndsAt,
+        freeBenefitMonth: brazilMonthKey(now),
+        freeActivatedAt: tenant.createdAt,
+        freeEndsAt: accessEndsAt,
+        reminderStage: 0,
+        reminderSentAt: null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  await db.update(tenantsTable).set({
+    planId: growthPlan.id,
+    billingCycle: "monthly",
+    updatedAt: now,
+  }).where(eq(tenantsTable.id, tenantId));
+
+  const currentDiscovery = asRecord(lead.discoveryData);
+  await db.update(leadsTable).set({
+    discoveryData: {
+      ...currentDiscovery,
+      selectedAccessMode: mode,
+      selectedPlanSlug: "growth",
+      planSelectedAt: now.toISOString(),
+    },
+    proximaAcao: mode === "subscription"
+      ? "Cliente escolheu Growth mensal no onboarding. Acompanhar ativação e primeira cobrança após o trial."
+      : "Cliente escolheu Growth por períodos no onboarding. Acompanhar uso e oferta de novos blocos quando necessário.",
+    updatedAt: now,
+  }).where(eq(leadsTable.id, lead.id));
+
+  await db.insert(leadEventsTable).values({
+    leadId: lead.id,
+    tipo: "trial_plan_selected",
+    descricao: mode === "subscription"
+      ? "Cliente escolheu Growth mensal no onboarding."
+      : "Cliente escolheu Growth por períodos no onboarding.",
+    scoreBoost: 20,
+    notifiedAt: now,
+  });
+
+  return res.json({
+    ok: true,
+    mode,
+    planSlug: "growth",
+    accessEndsAt: accessEndsAt.toISOString(),
   });
 });
 
