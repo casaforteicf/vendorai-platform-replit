@@ -306,11 +306,11 @@ function ensureContentApprovalGate() {
   gate.innerHTML = `
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p class="text-xs font-semibold uppercase tracking-wide text-primary">Próximo passo</p>
-        <p class="mt-1 text-base font-semibold">Aprovar planejamento</p>
-        <p class="mt-1 text-sm text-muted-foreground">Revise e aprove o planejamento antes de liberar a produção dos conteúdos e criativos desta campanha.</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-primary">Ação necessária</p>
+        <p class="mt-1 text-base font-semibold">Planejamento ainda não aprovado</p>
+        <p class="mt-1 text-sm text-muted-foreground">Esta etapa depende da aprovação da Etapa 1 — Planejamento. Depois da aprovação, a IA inicia automaticamente a produção dos conteúdos e criativos do plano.</p>
       </div>
-      <button type="button" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90">Ir para Planejamento</button>
+      <button type="button" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90">Revisar Planejamento</button>
     </div>`;
   gate.querySelector("button")?.addEventListener("click", () => {
     window.history.pushState({}, "", "/content?tab=planejamento");
