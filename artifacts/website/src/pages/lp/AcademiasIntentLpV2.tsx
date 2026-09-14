@@ -16,7 +16,7 @@ const THEMES: Record<Intent, Theme> = {
   dor:{
     badge:"Dor / Descoberta", eyebrow:"PARA ACADEMIAS E STUDIOS", title:"Mais alunos. Mais resultado.", accent:"Menos perda.",
     subtitle:"Capture mais leads, converta aulas experimentais em matrículas, reduza cancelamentos e reative alunos com IA e acompanhamento estruturado.",
-    heroImage:"https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=1600&q=82",
+    heroImage:"/lp-images/academias-contexto-1.svg",
     productImage:"/lp/academias/vendorai-pipeline.svg", productAlt:"Pipeline de alunos do VendorAI para academias",
     sectionTitle:"Os vazamentos que reduzem suas matrículas",
     cards:[
@@ -34,7 +34,7 @@ const THEMES: Record<Intent, Theme> = {
   marketing:{
     badge:"Marketing / Crescimento", eyebrow:"PARA ACADEMIAS E STUDIOS", title:"Atraia mais alunos com", accent:"marketing inteligente.",
     subtitle:"Planejamento, conteúdo, Meta, Google, landing pages, WhatsApp e CRM conectados para transformar campanha em aula experimental e matrícula.",
-    heroImage:"https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1600&q=82",
+    heroImage:"/lp-images/academias-contexto-2.svg",
     productImage:"/lp/academias/vendorai-marketing.svg", productAlt:"Painel de marketing e campanhas do VendorAI para academias",
     sectionTitle:"Campanhas que realmente funcionam",
     cards:[
@@ -52,7 +52,7 @@ const THEMES: Record<Intent, Theme> = {
   crm:{
     badge:"CRM / Alta intenção", eyebrow:"PARA ACADEMIAS E STUDIOS", title:"Gestão completa da sua academia", accent:"em um só lugar.",
     subtitle:"CRM, WhatsApp, agenda, follow-up, IA, reativação, relatórios e inteligência para organizar a operação comercial sem depender de planilhas e memória.",
-    heroImage:"https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&w=1600&q=82",
+    heroImage:"/lp/academias/vendorai-crm.svg",
     productImage:"/lp/academias/vendorai-crm.svg", productAlt:"Dashboard CRM do VendorAI para academias e studios",
     sectionTitle:"Tudo que sua academia precisa, em um só sistema",
     cards:[
@@ -90,7 +90,7 @@ export default function AcademiasIntentLpV2(){
   return <div className="min-h-screen bg-[#f7f7f5] text-slate-950 antialiased">
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07101b]/95 text-white backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"><Link href="/" className="text-xl font-black">Vendor<span className="text-orange-500">AI</span></Link><nav className="hidden gap-6 text-xs font-bold text-slate-300 md:flex"><a href="#desafios">Desafios</a><a href="#solucao">Solução</a><a href="#jornada">Jornada</a><a href="#faq">FAQ</a></nav><a href="/demo?vertical=academias-studios&intent=trial-5-dias" className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black">Testar 5 dias grátis</a></div></header>
     <main>
-      <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="absolute inset-0"><img src={theme.heroImage} alt="Academia e treino" className="h-full w-full object-cover opacity-55" loading="eager"/><div className="absolute inset-0 bg-gradient-to-r from-[#07101b] via-[#07101b]/90 to-[#07101b]/25"/></div><div className="relative mx-auto grid min-h-[640px] max-w-7xl items-center gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[1.02fr_.98fr]"><div><div className="inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-black/25 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300"><Dumbbell className="h-3.5 w-3.5"/>{theme.badge}</div><p className="mt-6 text-xs font-black tracking-[.22em] text-orange-400">{theme.eyebrow}</p><h1 className="mt-4 text-5xl font-black leading-[.96] tracking-tight sm:text-6xl lg:text-7xl">{theme.title}<br/><span className="text-orange-500">{theme.accent}</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><Cta/><Cta secondary/></div><div className="mt-6 flex flex-wrap gap-4 text-[11px] font-semibold text-slate-300"><span>✓ Sem cartão de crédito</span><span>✓ Configuração rápida</span><span>✓ Suporte em português</span></div></div><div className="hidden lg:block"><img src={theme.productImage} alt={theme.productAlt} className="w-full rounded-[30px] border border-white/10 shadow-2xl"/></div></div></section>
+      <section className="relative overflow-hidden bg-[#07101b] text-white"><div className="relative mx-auto grid min-h-[640px] max-w-7xl items-center gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[1.02fr_.98fr]"><div><div className="inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-black/25 px-3 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-orange-300"><Dumbbell className="h-3.5 w-3.5"/>{theme.badge}</div><p className="mt-6 text-xs font-black tracking-[.22em] text-orange-400">{theme.eyebrow}</p><h1 className="mt-4 text-5xl font-black leading-[.96] tracking-tight sm:text-6xl lg:text-7xl">{theme.title}<br/><span className="text-orange-500">{theme.accent}</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">{theme.subtitle}</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><Cta/><Cta secondary/></div><div className="mt-6 flex flex-wrap gap-4 text-[11px] font-semibold text-slate-300"><span>✓ Sem cartão de crédito</span><span>✓ Configuração rápida</span><span>✓ Suporte em português</span></div></div><div className="rounded-[30px] bg-white/[0.04] p-5"><img src={theme.heroImage} alt="Contexto visual para academia e gestão comercial" className="w-full object-contain" loading="eager"/></div></div></section>
 
       <section id="desafios" className="px-4 py-16 sm:px-6 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mx-auto mb-10 max-w-3xl text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">O desafio é real</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">{theme.sectionTitle}</h2></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{theme.cards.map(({title,text,icon:Icon})=><div key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500 text-white"><Icon className="h-5 w-5"/></div><h3 className="font-black">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{text}</p></div>)}</div></div></section>
 
