@@ -436,8 +436,10 @@ function OnboardingRoute() {
 
   useEffect(() => {
     if (!isTenantAdmin || tenantLoading || !tenant) return;
-    if (tenant.setupCompletedAt) {
-      setLocation("/");
+    // Either completion marker grants access to the app. Keep this in sync with
+    // ProtectedRoute so a partially migrated tenant cannot bounce indefinitely.
+    if (tenant.onboardingConcluido || tenant.setupCompletedAt) {
+      setLocation("/dashboard", { replace: true });
     }
   }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
 

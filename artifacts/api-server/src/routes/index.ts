@@ -231,11 +231,14 @@ router.use(async (req, res, next) => {
   if (req.path.startsWith("/onboarding") || req.path.startsWith("/auth")) return next();
 
   const [tenant] = await db
-    .select({ onboardingConcluido: tenantsTable.onboardingConcluido })
+    .select({
+      onboardingConcluido: tenantsTable.onboardingConcluido,
+      setupCompletedAt: tenantsTable.setupCompletedAt,
+    })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId));
 
-  if (!tenant?.onboardingConcluido) {
+  if (!tenant?.onboardingConcluido && !tenant?.setupCompletedAt) {
     res.status(403).json({ error: "ONBOARDING_REQUIRED", redirectTo: "/onboarding" });
     return;
   }
