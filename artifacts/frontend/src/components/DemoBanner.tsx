@@ -1,4 +1,4 @@
-import { Clock, ArrowRight, AlertTriangle, Sparkles, CreditCard, RefreshCw, ShieldCheck } from "lucide-react";
+import { Clock, ArrowRight, AlertTriangle, Sparkles, CreditCard, RefreshCw, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -51,6 +51,7 @@ export function DemoBanner() {
   const [trial, setTrial] = useState<TrialStatus | null>(null);
   const [renewal, setRenewal] = useState<RenewalState | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const [checkingPayment, setCheckingPayment] = useState(false);
 
   useEffect(() => {
@@ -109,9 +110,17 @@ export function DemoBanner() {
   async function requestUpgrade() {
     if (!isTrial || trial?.upgradeRequested || requesting) return;
     setRequesting(true);
+    setRequestError(null);
     try {
       const res = await fetch("/api/trial/request-upgrade", { method: "POST", headers: authHeaders() });
-      if (res.ok) setTrial((current) => current ? { ...current, upgradeRequested: true } : current);
+      const body = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) {
+        setRequestError(body?.error || "Não foi possível enviar agora. Tente novamente.");
+        return;
+      }
+      setTrial((current) => current ? { ...current, upgradeRequested: true } : current);
+    } catch {
+      setRequestError("Falha de conexão. Tente novamente.");
     } finally {
       setRequesting(false);
     }
@@ -153,7 +162,7 @@ export function DemoBanner() {
   const score = trial?.score ?? 0;
 
   return (
-    <div className={`px-4 py-2.5 flex items-center justify-between gap-4 border-b ${
+    <div className={`px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 border-b ${
       isUrgent
         ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
         : "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/40"
@@ -166,7 +175,7 @@ export function DemoBanner() {
         ) : (
           <Clock className="w-4 h-4 shrink-0" />
         )}
-        <span className="font-medium whitespace-nowrap">
+        <span className="font-medium shrink-0">
           {isTrial
             ? `Dia ${trial.day ?? 1}/5 · Activation ${score}/100`
             : daysLeft === 0
@@ -177,7 +186,9 @@ export function DemoBanner() {
         </span>
         {isTrial && (
           <span className="hidden md:inline opacity-85 truncate">
-            {daysLeft === 0 ? "Trial encerrando." : `${daysLeft} dia(s) restante(s).`} {trial.nextAction}
+            {trial.upgradeRequested
+              ? "Pedido recebido. O comercial foi avisado e a conta será preservada para a continuidade."
+              : `${daysLeft === 0 ? "Trial encerrando." : `${daysLeft} dia(s) restante(s).`} ${trial.nextAction || ""}`}
           </span>
         )}
         {!isTrial && (
@@ -185,26 +196,40 @@ export function DemoBanner() {
         )}
       </div>
 
-      {isTrial ? (
-        <Button
-          size="sm"
-          variant="outline"
-          className={`shrink-0 h-8 text-xs ${
-            isUrgent
-              ? "text-red-800 border-red-300 hover:bg-red-100 dark:text-red-300 dark:border-red-800 dark:hover:bg-red-950"
-              : "text-amber-800 border-amber-300 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-800 dark:hover:bg-amber-950"
-          }`}
-          onClick={requestUpgrade}
-          disabled={requesting || trial.upgradeRequested}
-        >
-          {trial.upgradeRequested ? "Continuidade solicitada" : requesting ? "Enviando..." : "Quero continuar"}
-          {!trial.upgradeRequested && <ArrowRight className="w-3 h-3 ml-1" />}
-        </Button>
-      ) : (
-        <Button size="sm" variant="outline" className="shrink-0 h-8 text-xs" asChild>
-          <a href="/demo/contact-sales">Falar com vendas<ArrowRight className="w-3 h-3 ml-1" /></a>
-        </Button>
-      )}
+      <div className="w-full sm:w-auto shrink-0">
+        {isTrial ? (
+          <Button
+            size="sm"
+            variant={trial.upgradeRequested ? "default" : "outline"}
+            className={`w-full sm:w-auto shrink-0 h-9 text-xs font-semibold ${
+              trial.upgradeRequested
+                ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-600 disabled:opacity-100 disabled:cursor-default"
+                : isUrgent
+                  ? "bg-red-600 text-white border-red-600 hover:bg-red-700 dark:bg-red-600 dark:text-white dark:border-red-600"
+                  : "bg-orange-600 text-white border-orange-600 hover:bg-orange-700 dark:bg-orange-600 dark:text-white dark:border-orange-600"
+            }`}
+            onClick={requestUpgrade}
+            disabled={requesting || trial.upgradeRequested}
+          >
+            {trial.upgradeRequested ? (
+              <><CheckCircle2 className="w-4 h-4 mr-1.5" />Solicitação enviada</>
+            ) : requesting ? (
+              "Enviando..."
+            ) : (
+              <>Quero continuar<ArrowRight className="w-3 h-3 ml-1" /></>
+            )}
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" className="w-full sm:w-auto shrink-0 h-9 text-xs" asChild>
+            <a href="/demo/contact-sales">Falar com vendas<ArrowRight className="w-3 h-3 ml-1" /></a>
+          </Button>
+        )}
+        {requestError && (
+          <p className="mt-1 text-xs font-medium text-red-700 dark:text-red-300" role="alert">
+            {requestError}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
