@@ -171,7 +171,9 @@ export function normalizeWindsorMarketingRow(input: {
       profileLinkTaps: toNumber(row.profile_links_taps),
       sessions: toNumber(row.sessions),
       leads: toNumber(row.leads),
-      follows: toNumber(row.media_follows ?? row.follower_count),
+      // media_follows represents follows attributed to a content item. Profile-level
+      // follower_count is a stock value and must never be summed as newly gained followers.
+      follows: toNumber(row.media_follows),
     },
     commerce: {
       opportunities: toNumber(row.opportunities),
