@@ -653,7 +653,11 @@ router.post("/auth/login", async (req, res) => {
   }
 
   if (user.platformRole === "tenant_admin" && !user.forcePasswordReset) {
-    await markTenantFirstLogin(user.tenantId);
+    try {
+      await markTenantFirstLogin(user.tenantId);
+    } catch (err) {
+      req.log?.error({ err, tenantId: user.tenantId }, "auth: failed to record tenant first login");
+    }
   }
 
   let partnerId: string | undefined;
@@ -916,7 +920,11 @@ protectedRouter.post("/auth/change-password", async (req, res) => {
     .where(eq(usersTable.id, existing.id));
 
   if (existing.forcePasswordReset && existing.platformRole === "tenant_admin") {
-    await markTenantFirstLogin(existing.tenantId);
+    try {
+      await markTenantFirstLogin(existing.tenantId);
+    } catch (err) {
+      req.log?.error({ err, tenantId: existing.tenantId }, "auth: failed to record tenant first login after password change");
+    }
   }
 
   res.json({ ok: true });
