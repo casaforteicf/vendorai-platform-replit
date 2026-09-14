@@ -147,6 +147,15 @@ function compactRecord(input: Record<string, unknown>): Record<string, unknown> 
   return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== ""));
 }
 
+function accountExistsResponse(res: import("express").Response): void {
+  res.status(409).json({
+    code: "ACCOUNT_EXISTS",
+    error: "Este e-mail já possui uma conta VendorAI. Entre na sua conta ou recupere sua senha.",
+    loginUrl: "/login",
+    forgotPasswordUrl: "/esqueci-senha",
+  });
+}
+
 router.post("/auth/demo-signup", async (req, res) => {
   const parsed = demoSignupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -187,35 +196,67 @@ router.post("/auth/demo-signup", async (req, res) => {
   } = parsed.data;
   const countryProfile = getTenantCountryProfile(countryCode);
 
+  // Evita criar um tenant que depois ficaria órfão quando o e-mail já existe.
+  const [existingUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+  if (existingUser) {
+    accountExistsResponse(res);
+    return;
+  }
+
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
   const demoExpiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
-
   const hashed = await bcrypt.hash(senha, 12);
 
   try {
-    const [tenant] = await db
-      .insert(tenantsTable)
-      .values({
-        name: nomeEmpresa,
-        slug,
-        status: "active",
-        isDemo: true,
-        demoExpiresAt,
-        planId: null,
-        provisioningMethod: "trial",
-        countryCode,
-        defaultLocale: countryProfile.defaultLocale,
-        timezone: countryProfile.timezone,
-        defaultCurrency: countryProfile.defaultCurrency,
-        supportedCurrencies: [countryProfile.defaultCurrency],
-        taxIdentifierType: countryProfile.taxIdentifierType,
-        codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
-      })
-      .returning();
+    // Tenant e usuário precisam nascer ou falhar juntos. Isso elimina tenants
+    // órfãos em conflito de e-mail, erro de banco ou corrida entre cadastros.
+    const { tenant, user } = await db.transaction(async (tx) => {
+      const [tenant] = await tx
+        .insert(tenantsTable)
+        .values({
+          name: nomeEmpresa,
+          slug,
+          status: "active",
+          isDemo: true,
+          demoExpiresAt,
+          planId: null,
+          provisioningMethod: "trial",
+          countryCode,
+          defaultLocale: countryProfile.defaultLocale,
+          timezone: countryProfile.timezone,
+          defaultCurrency: countryProfile.defaultCurrency,
+          supportedCurrencies: [countryProfile.defaultCurrency],
+          taxIdentifierType: countryProfile.taxIdentifierType,
+          codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
+        })
+        .returning();
 
-    // Registra a indicação de lojista no Praça.ai — fire-and-forget, nunca
-    // trava nem falha o cadastro se o Praça.ai estiver fora do ar.
+      if (!tenant) throw new Error("TRIAL_TENANT_NOT_CREATED");
+
+      const [user] = await tx
+        .insert(usersTable)
+        .values({
+          tenantId: tenant.id,
+          name: nomePessoa,
+          email,
+          password: hashed,
+          role: "admin",
+          platformRole: "tenant_admin",
+          telefone: telefone ?? null,
+        })
+        .returning(PUBLIC_FIELDS);
+
+      if (!user) throw new Error("TRIAL_USER_NOT_CREATED");
+      return { tenant, user };
+    });
+
+    // Side effects externos só acontecem depois que tenant + usuário foram
+    // confirmados no banco.
     if (codigoIndicacaoPraca) {
       const pracaBaseUrl = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
       fetch(`${pracaBaseUrl}/embaixadores/indicar`, {
@@ -231,19 +272,6 @@ router.post("/auth/demo-signup", async (req, res) => {
     // A Demo deve nascer limpa para o usuário conhecer o produto com os próprios
     // dados. A fixture seedDemoData continua disponível internamente, mas não é
     // executada automaticamente no cadastro de trial.
-
-    const [user] = await db
-      .insert(usersTable)
-      .values({
-        tenantId: tenant.id,
-        name: nomePessoa,
-        email,
-        password: hashed,
-        role: "admin",
-        platformRole: "tenant_admin",
-        telefone: telefone ?? null,
-      })
-      .returning(PUBLIC_FIELDS);
 
     // ── Pipeline: promover o MESMO lead aquecido ao iniciar o trial ──
     try {
@@ -417,7 +445,19 @@ router.post("/auth/demo-signup", async (req, res) => {
     });
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "Email ou slug do tenant já existe" });
+      const [existingUserAfterRace] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, email))
+        .limit(1);
+      if (existingUserAfterRace) {
+        accountExistsResponse(res);
+        return;
+      }
+      res.status(409).json({
+        code: "TRIAL_CONFLICT",
+        error: "Não foi possível criar seu teste agora. Tente novamente.",
+      });
       return;
     }
     throw err;
