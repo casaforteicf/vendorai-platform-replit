@@ -184,7 +184,7 @@ main .bg-blue-400\/10 {
   background-color: rgb(251 146 60 / 0.12) !important;
 }
 
-/* Homepage: richer orange hero glow without removing the existing blue depth. */
+/* Homepage: warmer orange depth and the approved clean hero visual. */
 main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type::after {
   content: "";
   position: absolute;
@@ -200,7 +200,22 @@ main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type >
   z-index: 1;
 }
 
-/* Marketing section: use real campaign creatives already produced by VendorAI as visual proof. */
+/* Replace the overloaded timeline card in the hero with the approved visual direction. */
+main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type > .container > div.relative:last-child > div.relative {
+  min-height: 500px;
+  background-image: url('/images/vendorai-hero-approved.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-color: rgb(255 255 255 / 0.12) !important;
+  box-shadow: 0 40px 120px rgb(0 0 0 / 0.42);
+}
+
+main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type > .container > div.relative:last-child > div.relative > * {
+  display: none !important;
+}
+
+/* Marketing section: one clear visual instead of a collage of competing creatives. */
 main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5) {
   position: relative;
   isolation: isolate;
@@ -212,20 +227,16 @@ main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5):
   position: absolute;
   top: 2rem;
   right: -4rem;
-  width: min(46vw, 660px);
+  width: min(48vw, 700px);
   height: 82%;
   border-radius: 2rem 0 0 2rem;
-  opacity: 0.16;
-  filter: saturate(0.92) contrast(1.04);
+  opacity: 0.24;
   background-image:
-    linear-gradient(90deg, #020617 0%, rgb(2 6 23 / 0.40) 24%, transparent 64%),
-    url('/ad-creatives/construcao-feed.png'),
-    url('/ad-creatives/auto-pecas-feed.png'),
-    url('/ad-creatives/salao-feed.png');
+    linear-gradient(90deg, #020617 0%, rgb(2 6 23 / 0.28) 26%, transparent 72%),
+    url('/images/vendorai-hero-approved.webp');
   background-repeat: no-repeat;
-  background-size: 100% 100%, 46% auto, 46% auto, 46% auto;
-  background-position: center, 2% 8%, 98% 45%, 4% 91%;
-  transform: rotate(-2deg);
+  background-size: 100% 100%, cover;
+  background-position: center, center;
   pointer-events: none;
   z-index: -1;
 }
@@ -233,6 +244,13 @@ main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5):
 main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5) > .container {
   position: relative;
   z-index: 1;
+}
+
+/* External segment photography remains contextual, but gets one consistent treatment. */
+main img[src*="images.unsplash.com"],
+main img[src*="images.pexels.com"] {
+  object-fit: cover;
+  filter: saturate(0.88) contrast(1.03);
 }
 
 /* Add warmer depth to selected cards and conversion surfaces. */
@@ -245,10 +263,14 @@ main [class*="rounded-"][class*="border"]:hover {
 }
 
 @media (max-width: 900px) {
+  main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type > .container > div.relative:last-child > div.relative {
+    min-height: 420px;
+  }
+
   main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5)::before {
     right: -7rem;
     width: 72vw;
-    opacity: 0.09;
+    opacity: 0.12;
   }
 }
 
@@ -280,13 +302,17 @@ main [class*="rounded-"][class*="border"]:hover {
     overflow-wrap: break-word;
   }
 
+  main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type > .container > div.relative:last-child > div.relative {
+    min-height: 300px;
+    background-position: 62% center;
+  }
+
   main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5)::before {
     top: auto;
     right: -8rem;
     bottom: 1rem;
     width: 100vw;
     height: 42%;
-    opacity: 0.07;
-    background-size: 100% 100%, 48% auto, 48% auto, 48% auto;
+    opacity: 0.08;
   }
 }
