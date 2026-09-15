@@ -85,18 +85,27 @@ app.get(
   },
 );
 
-async function runStartupMigrations() {
-  const result = await applyPendingMigrations(logger);
-  if (result.applied.length > 0) {
-    logger.info(
-      { migrations: result.applied.map((m) => m.version) },
-      "startup migrations: aplicadas com sucesso",
+async function runStartupMigrations(): Promise<boolean> {
+  try {
+    const result = await applyPendingMigrations(logger);
+    if (result.applied.length > 0) {
+      logger.info(
+        { migrations: result.applied.map((m) => m.version) },
+        "startup migrations: aplicadas com sucesso",
+      );
+    }
+    return true;
+  } catch (err) {
+    logger.error(
+      { err },
+      "startup migrations: banco indisponível; API continuará em modo degradado sem workers dependentes do banco",
     );
+    return false;
   }
 }
 
 async function start() {
-  await runStartupMigrations();
+  const databaseReady = await runStartupMigrations();
 
   app.listen(port, (err) => {
     if (err) {
@@ -104,14 +113,23 @@ async function start() {
       process.exit(1);
     }
 
-    logger.info({ port }, "Server listening");
+    logger.info({ port, databaseReady }, "Server listening");
+
+    startProductionSentinel(logger);
+    startMainGovernanceGuard(logger);
+    startServerRuntimeSentinel(logger);
+
+    if (!databaseReady) {
+      logger.warn(
+        "Database unavailable at startup; schedulers, social workers and lifecycle jobs were not started. Fix APP_DATABASE_URL and redeploy to restore full operation.",
+      );
+      return;
+    }
+
     startScheduler(logger);
     startMetaCustomAudienceReconcileScheduler(logger);
     startMediaVideoBatchRunner(logger);
     startMediaVideoGenerateRunner(logger);
-    startProductionSentinel(logger);
-    startMainGovernanceGuard(logger);
-    startServerRuntimeSentinel(logger);
     startDevAgentSupportHandoff(logger);
     startVieIntelligenceCycle(logger);
 
