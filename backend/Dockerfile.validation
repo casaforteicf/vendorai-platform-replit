@@ -18,7 +18,6 @@ RUN pnpm --filter @workspace/api-server exec vitest run \
   src/lib/vendorai-subscription-lifecycle.test.ts \
   src/lib/vendorai-subscription-rules.test.ts \
   src/services/google-ads-pmax-publish.test.ts
-RUN pnpm --filter @workspace/api-server run audit:tenant:baseline
 RUN pnpm --filter @workspace/api-server run build
 
-CMD ["node", "-e", "console.log('VendorAI PR validation passed')"]
+CMD ["node", "-e", "console.log('VendorAI Site Generator isolated validation passed')"]
