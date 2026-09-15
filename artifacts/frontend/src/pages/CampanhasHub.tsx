@@ -116,6 +116,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showActionReason, setShowActionReason] = useState(false);
 
   async function load() {
     if (!tenantId) return;
@@ -219,6 +220,35 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     return { title: "Acompanhe os resultados", description: "A campanha está em execução e os resultados já podem ser acompanhados.", action: "Ver resultados" };
   }, [summary]);
 
+  const actionGuidance = useMemo(() => {
+    if (summary.failed > 0) {
+      return {
+        reason: "Esta ação foi recomendada porque existem materiais que não foram concluídos. O sistema tentará novamente somente esses itens e preservará tudo que já está pronto.",
+        timing: "O tempo depende do tipo de material e será atualizado durante o processamento.",
+        canLeave: true,
+      };
+    }
+    if (summary.ready > 0 || summary.total === 0) {
+      return {
+        reason: "Esta é a primeira etapa incompleta da campanha. Preparar agora evita publicar anúncios, mensagens ou páginas sem os materiais necessários.",
+        timing: "O tempo depende da quantidade e do formato dos materiais e será atualizado após iniciar.",
+        canLeave: true,
+      };
+    }
+    if (summary.production > 0) {
+      return {
+        reason: "Os materiais já foram produzidos. A revisão é necessária para conferir texto, imagem, canal e oferta antes da publicação.",
+        timing: "A revisão não possui tempo obrigatório: você pode revisar e aprovar em etapas.",
+        canLeave: false,
+      };
+    }
+    return {
+      reason: "A preparação terminou e a campanha já pode ser acompanhada pelos resultados e contatos gerados.",
+      timing: "Os resultados serão atualizados conforme os canais enviarem novos dados.",
+      canLeave: true,
+    };
+  }, [summary]);
+
   const normalizedChannels = selectedCampaign?.canais.map((channel) => normalize(channel.canal)) ?? [];
   const hasChannel = (terms: string[]) => normalizedChannels.some((channel) => terms.some((term) => channel.includes(term)));
   const hasContent = hasChannel(["instagram", "facebook", "linkedin", "tiktok", "youtube", "blog"]);
@@ -285,8 +315,29 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
       <Card className="border-primary/30 bg-primary/[0.03]">
         <CardContent className="p-4 md:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div><p className="text-xs font-medium uppercase tracking-wide text-primary">Próximo passo</p><p className="mt-1 text-lg font-semibold">{nextStep.title}</p><p className="mt-1 text-sm text-muted-foreground">{nextStep.description}</p></div>
-            <Button onClick={handlePrimaryAction}>{nextStep.action}<ArrowRight className="ml-2 h-4 w-4" /></Button>
+            <div className="max-w-3xl">
+              <p className="text-xs font-medium uppercase tracking-wide text-primary">O que fazer agora</p>
+              <p className="mt-1 text-lg font-semibold">{nextStep.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{nextStep.description}</p>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                <p><strong className="text-foreground">Tempo:</strong> {actionGuidance.timing}</p>
+                {actionGuidance.canLeave && <p><strong className="text-foreground">Pode sair da tela:</strong> o processamento continuará e o progresso ficará salvo.</p>}
+              </div>
+              <button
+                type="button"
+                className="mt-3 text-xs font-medium text-primary underline-offset-4 hover:underline"
+                onClick={() => setShowActionReason((current) => !current)}
+                aria-expanded={showActionReason}
+              >
+                {showActionReason ? "Ocultar explicação" : "Por que esta ação?"}
+              </button>
+              {showActionReason && (
+                <div className="mt-2 rounded-lg border bg-background/80 p-3 text-xs leading-5 text-muted-foreground">
+                  {actionGuidance.reason}
+                </div>
+              )}
+            </div>
+            <Button className="shrink-0" onClick={handlePrimaryAction}>{nextStep.action}<ArrowRight className="ml-2 h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>
