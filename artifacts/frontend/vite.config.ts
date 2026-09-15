@@ -16,10 +16,10 @@ const buildId = (process.env.VENDOR_BUILD_ID || process.env.GITHUB_SHA || "local
   .replace(/[^a-zA-Z0-9_-]/g, "")
   .slice(0, 12) || "local";
 
-// O produtor original do Plano de Mídia ainda assume que toda a fila cabe na
-// franquia. Este transform limita cada rodada ao saldo realmente disponível e
-// usa um snapshot de fila+saldo para retomar automaticamente depois que um
-// pacote extra for pago, sem repetir indefinidamente a mesma rodada com falha.
+// Proteção do produtor do Plano de Mídia. A produção é sempre deliberada:
+// nunca inicia por effect/abertura de tela, passa pelo gate de permissão do
+// backend, processa somente itens aprovados sem geração e no máximo 10 por clique.
+// A franquia disponível continua sendo respeitada como uma barreira adicional.
 const mediaPlanAvailableQuotaPlugin = {
   name: "media-plan-available-quota",
   enforce: "pre" as const,
@@ -69,14 +69,14 @@ const mediaPlanAvailableQuotaPlugin = {
     contents = replaceExact(
       contents,
       `    const queue = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");\n    if (queue.length === 0) return;`,
-      `    const eligible = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");\n    const queue = eligible.slice(0, Math.max(0, availableGenerations));\n    if (queue.length === 0) return;`,
-      "partial queue",
+      `    const eligible = missing.filter((item) => item.status === "aprovado" && !item.contentGenerationId);\n    const authorizationResponse = await fetch(\`/api/tenants/\${tenantId}/content-calendar/\${plan.id}/autorizar-producao-lote\`, {\n      method: "POST",\n      headers: authHeaders(true),\n      body: JSON.stringify({}),\n    });\n    const authorizationPayload = await authorizationResponse.json().catch(() => ({})) as { authorized?: boolean; itemIds?: string[]; items?: number; error?: string };\n    if (!authorizationResponse.ok || !authorizationPayload.authorized) {\n      setResults([{\n        itemId: "authorization",\n        status: "failed",\n        kind: "permission",\n        label: "Produção não autorizada",\n        detail: authorizationPayload.error ?? "Somente Administradores ou usuários com permissão explícita de Marketing podem iniciar produção com IA.",\n      }]);\n      return;\n    }\n    const authorizedIds = new Set(authorizationPayload.itemIds ?? []);\n    const maxAllowed = Math.max(0, Math.min(10, availableGenerations, authorizationPayload.items ?? 10));\n    const queue = eligible.filter((item) => authorizedIds.has(item.id)).slice(0, maxAllowed);\n    if (queue.length === 0) return;`,
+      "permission gate and safe batch",
     );
     contents = replaceExact(
       contents,
       `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, new Date().toISOString());`,
-      `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, \`\${missing.length}:\${availableGenerations}\`);`,
-      "quota snapshot",
+      `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, \`manual:\${queue.length}:\${availableGenerations}\`);`,
+      "manual snapshot",
     );
     contents = replaceExact(
       contents,
@@ -87,25 +87,19 @@ const mediaPlanAvailableQuotaPlugin = {
     contents = replaceExact(
       contents,
       `  }, [load, materializeOne, missing, plan, running]);`,
-      `  }, [availableGenerations, load, materializeOne, missing, plan, running]);`,
+      `  }, [availableGenerations, load, materializeOne, missing, plan, running, tenantId]);`,
       "runAll deps",
     );
     contents = replaceExact(
       contents,
-      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;`,
-      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || availableGenerations <= 0 || running || startingRef.current) return;\n    const snapshot = \`\${missing.length}:\${availableGenerations}\`;\n    let alreadyStarted = false;\n    try { alreadyStarted = sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`) === snapshot; } catch {}\n    if (alreadyStarted) return;`,
-      "auto resume guard",
-    );
-    contents = replaceExact(
-      contents,
-      `  }, [missing.length, onPlanQueue, plan, runAll, running]);`,
-      `  }, [availableGenerations, missing.length, onPlanQueue, plan, runAll, running]);`,
-      "auto resume deps",
+      `  useEffect(() => {\n    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;\n    const timer = window.setTimeout(() => { void runAll(); }, 1200);\n    return () => window.clearTimeout(timer);\n  }, [missing.length, onPlanQueue, plan, runAll, running]);`,
+      `  // Segurança de custo: produção nunca inicia ao abrir a tela ou por efeito.\n  // Somente um clique explícito no botão de produção pode chamar runAll().`,
+      "disable auto start",
     );
     contents = replaceExact(
       contents,
       `<Play className="h-3.5 w-3.5" /> Produzir plano completo ({missing.length})`,
-      `<Play className="h-3.5 w-3.5" /> Produzir agora ({Math.min(missing.length, availableGenerations)})`,
+      `<Play className="h-3.5 w-3.5" /> Produzir lote ({Math.min(missing.filter((item) => item.status === "aprovado" && !item.contentGenerationId).length, 10, availableGenerations)})`,
       "button label",
     );
 
