@@ -753,12 +753,16 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   function openExecutor(item: CalendarItem) {
     const currentPlan = planRef.current;
-    if (!currentPlan || currentPlan.conteudo.statusPlanejamento !== "aprovado") {
-      toast({ title: "Aprove o Plano de Mídia antes da produção", variant: "destructive" });
+    // Revisar/abrir uma ação que já foi aprovada ou gerada não deve depender do
+    // status global do plano. Um novo lote pode estar em revisão enquanto os
+    // materiais dos lotes anteriores continuam disponíveis para conferência.
+    // Itens novos continuam protegidos pelo status individual "planejado".
+    if (!currentPlan) {
+      toast({ title: "Plano de Mídia não encontrado", variant: "destructive" });
       return;
     }
     if (!["aprovado", "gerado"].includes(item.status)) {
-      toast({ title: "Esta ação não está disponível para produção", variant: "destructive" });
+      toast({ title: "Esta ação ainda precisa ser aprovada no lote atual", variant: "destructive" });
       return;
     }
     const campaign = campaignForItem(currentPlan, item);
@@ -903,7 +907,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline" className="gap-1"><Layers3 className="h-3 w-3" />Conteúdos do plano</Badge>
-                <Badge className={planApproved ? "bg-emerald-600" : ""}>{planApproved ? "Plano aprovado" : "Plano em revisão"}</Badge>
+                <Badge className={planApproved ? "bg-emerald-600" : ""}>{planApproved ? "Plano aprovado" : "Novo lote em revisão"}</Badge>
                 <span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span>
               </div>
               <p className="mt-2 text-sm font-semibold">Produção automática do planejamento</p>
@@ -1044,7 +1048,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                   {["aprovado", "gerado"].includes(item.status) && (
                     <Button type="button" size="sm" variant={item.contentGenerationId ? "ghost" : "outline"} className="h-7 text-xs" disabled={actionBusy === item.id} onClick={() => openExecutor(item)}>
                       {actionBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Play className="h-3 w-3 mr-1" />}
-                      {isDirect ? (item.contentGenerationId ? "Nova versão" : "Gerar automático") : "Abrir executor"}
+                      {isDirect ? (item.contentGenerationId ? "Nova versão" : "Gerar automático") : (item.contentGenerationId ? "Ver / revisar" : "Abrir executor")}
                     </Button>
                   )}
                   {item.status === "planejado" && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><CircleDashed className="h-3 w-3" />aprovar no plano</span>}
