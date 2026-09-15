@@ -21,7 +21,8 @@ type ContentUsage = {
   monthlyLimit?: number;
   baseRemaining?: number;
   extraRemaining?: number;
-  availableGenerations?: number;
+  availableGenerations?: number | null;
+  generationUnlimited?: boolean;
   canPurchaseGenerations?: boolean;
   generationPackSize?: number;
   generationPackPrice?: number;
@@ -32,6 +33,7 @@ type QuotaState = {
   used: number;
   limit: number;
   available: number;
+  unlimited: boolean;
   extraRemaining: number;
   packSize: number;
   packPrice: number;
@@ -133,7 +135,7 @@ export function MediaPlanAutoProductionBridge() {
         if (!approved) {
           if (!cancelled) {
             setAllowOriginalBridge(true);
-            setQuota({ approved: false, pending: 0, used: 0, limit: 200, available: 0, extraRemaining: 0, packSize: 200, packPrice: 99 });
+            setQuota({ approved: false, pending: 0, used: 0, limit: 200, available: 0, unlimited: false, extraRemaining: 0, packSize: 200, packPrice: 99 });
           }
           return;
         }
@@ -158,13 +160,15 @@ export function MediaPlanAutoProductionBridge() {
         const used = Math.max(0, Number(usage.monthlyUsed ?? 0));
         const limit = Math.max(0, Number(usage.monthlyLimit ?? 200));
         const fallbackAvailable = Math.max(0, limit - used);
-        const available = Math.max(0, Number(usage.availableGenerations ?? fallbackAvailable));
+        const unlimited = usage.generationUnlimited === true;
+        const available = unlimited ? Number.MAX_SAFE_INTEGER : Math.max(0, Number(usage.availableGenerations ?? fallbackAvailable));
         const nextQuota: QuotaState = {
           approved: true,
           pending,
           used,
           limit,
           available,
+          unlimited,
           extraRemaining: Math.max(0, Number(usage.extraRemaining ?? 0)),
           packSize: Math.max(1, Number(usage.generationPackSize ?? 200)),
           packPrice: Math.max(0, Number(usage.generationPackPrice ?? 99)),
@@ -230,6 +234,7 @@ export function MediaPlanAutoProductionBridge() {
   const showPurchase = Boolean(
     quota?.approved &&
     quota.pending > 0 &&
+    !quota.unlimited &&
     quota.available === 0,
   );
 
