@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 
-const SUMMARY_ATTR = "data-vendorai-simple-production-summary";
-const DETAILS_ATTR = "data-vendorai-production-details";
-const HIDDEN_ATTR = "data-vendorai-production-secondary-hidden";
-const STYLE_ID = "vendorai-production-clarity-style";
+const ROOT_ATTR = "data-vendorai-review-workspace";
+const HIDDEN_ATTR = "data-vendorai-review-hidden";
+const ROW_ATTR = "data-vendorai-review-row";
+const CHECK_ATTR = "data-vendorai-review-check";
+const DRAWER_ATTR = "data-vendorai-review-drawer";
+const STYLE_ID = "vendorai-review-workspace-style";
 
 function textOf(element: Element | null) {
   return element?.textContent?.replace(/\s+/g, " ").trim() ?? "";
@@ -13,9 +15,9 @@ function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
-function findExact(selector: string, values: string[]) {
+function findExact(selector: string, values: string[], root: ParentNode = document) {
   const normalizedValues = values.map(normalize);
-  return Array.from(document.querySelectorAll<HTMLElement>(selector)).find((element) =>
+  return Array.from(root.querySelectorAll<HTMLElement>(selector)).find((element) =>
     normalizedValues.includes(normalize(textOf(element))),
   ) ?? null;
 }
@@ -30,10 +32,29 @@ function closestBorderedCard(element: HTMLElement | null) {
   return null;
 }
 
+function nativeButton(label: string, root: ParentNode = document) {
+  return Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+    normalize(textOf(button)) === normalize(label) && button.offsetParent !== null,
+  ) ?? null;
+}
+
 function findProductionOverview() {
-  const title = findExact("p,div", ["Produção automática do planejamento", "Produção do Plano de Mídia"]);
-  if (!title) return null;
-  return closestBorderedCard(title);
+  const title = findExact("p,div", ["Produção automática do planejamento", "Produção do Plano de Mídia", "Conteúdos do plano"]);
+  return title ? closestBorderedCard(title) : null;
+}
+
+function numberNearLabel(root: HTMLElement, labels: string[]) {
+  const normalizedLabels = labels.map(normalize);
+  const label = Array.from(root.querySelectorAll<HTMLElement>("p,span,div")).find((element) =>
+    normalizedLabels.includes(normalize(textOf(element))),
+  );
+  if (!label) return 0;
+  const card = closestBorderedCard(label) ?? label.parentElement;
+  if (!card) return 0;
+  const numeric = Array.from(card.querySelectorAll<HTMLElement>("p,span,div"))
+    .map(textOf)
+    .find((value) => /^\d+$/.test(value));
+  return numeric ? Number(numeric) : 0;
 }
 
 function ensureStyle() {
@@ -42,159 +63,261 @@ function ensureStyle() {
   style.id = STYLE_ID;
   style.textContent = `
     [${HIDDEN_ATTR}="true"] { display: none !important; }
-    [${SUMMARY_ATTR}] { margin-top: .25rem; }
-    [${SUMMARY_ATTR}] .vendorai-simple-metric {
-      min-width: 0;
-      border: 1px solid hsl(var(--border));
-      border-radius: .75rem;
-      background: hsl(var(--background));
-      padding: .85rem 1rem;
-    }
-    [${SUMMARY_ATTR}] .vendorai-simple-metric-label {
-      font-size: .7rem;
-      line-height: 1rem;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      color: hsl(var(--muted-foreground));
-    }
-    [${SUMMARY_ATTR}] .vendorai-simple-metric-value {
-      margin-top: .2rem;
-      font-size: 1.35rem;
-      line-height: 1.75rem;
-      font-weight: 700;
-      color: hsl(var(--foreground));
-    }
-    [${SUMMARY_ATTR}] .vendorai-simple-metric-help {
-      margin-top: .15rem;
-      font-size: .7rem;
-      color: hsl(var(--muted-foreground));
-    }
-    [${DETAILS_ATTR}] summary { list-style: none; cursor: pointer; }
-    [${DETAILS_ATTR}] summary::-webkit-details-marker { display: none; }
+    [${ROOT_ATTR}] { margin: .25rem 0 .75rem; }
+    .vendorai-review-shell { border:1px solid hsl(var(--border)); border-radius:16px; background:hsl(var(--background)); overflow:hidden; }
+    .vendorai-review-context { display:grid; grid-template-columns:minmax(0,1.7fr) auto minmax(220px,.8fr); gap:14px; align-items:center; padding:14px 16px; border-bottom:1px solid hsl(var(--border)); }
+    .vendorai-review-label { font-size:11px; color:hsl(var(--muted-foreground)); margin-bottom:4px; }
+    .vendorai-review-select { min-height:46px; border:1px solid hsl(var(--border)); border-radius:10px; padding:8px 12px; background:hsl(var(--background)); }
+    .vendorai-review-select strong { display:block; font-size:13px; }
+    .vendorai-review-select span { display:block; margin-top:2px; font-size:11px; color:hsl(var(--muted-foreground)); }
+    .vendorai-review-secondary { min-height:40px; border:1px solid hsl(var(--border)); border-radius:10px; background:hsl(var(--background)); padding:0 14px; font-size:12px; font-weight:600; cursor:pointer; }
+    .vendorai-review-journey { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; padding:16px; border-bottom:1px solid hsl(var(--border)); }
+    .vendorai-journey-step { position:relative; min-width:0; }
+    .vendorai-journey-head { display:flex; align-items:center; gap:7px; font-size:12px; font-weight:700; }
+    .vendorai-journey-dot { width:20px; height:20px; display:grid; place-items:center; border-radius:999px; border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:11px; }
+    .vendorai-journey-step.done .vendorai-journey-dot { background:#059669; border-color:#059669; color:white; }
+    .vendorai-journey-step.active .vendorai-journey-dot { border:3px solid #f97316; }
+    .vendorai-journey-help { margin:5px 0 0 27px; font-size:10px; color:hsl(var(--muted-foreground)); }
+    .vendorai-review-metrics { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; padding:14px 16px; }
+    .vendorai-review-metric { border:1px solid hsl(var(--border)); border-radius:12px; padding:11px 12px; background:hsl(var(--background)); }
+    .vendorai-review-metric.active { border-color:#fed7aa; background:#fff7ed; }
+    .vendorai-review-metric.attn { border-color:#fecaca; background:#fff7f7; }
+    .vendorai-review-metric p:first-child { font-size:10px; color:hsl(var(--muted-foreground)); text-transform:uppercase; letter-spacing:.04em; }
+    .vendorai-review-metric strong { display:block; margin-top:3px; font-size:20px; line-height:1; }
+    .vendorai-review-alert { margin:0 16px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px; padding:10px 12px; font-size:12px; }
+    .vendorai-review-alert strong { color:#c2410c; }
+    .vendorai-review-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 0; }
+    .vendorai-filter { min-height:32px; border:1px solid hsl(var(--border)); border-radius:999px; background:hsl(var(--background)); padding:0 12px; font-size:11px; cursor:pointer; }
+    .vendorai-filter.active { background:#f97316; color:white; border-color:#f97316; }
+    .vendorai-review-spacer { flex:1; }
+    .vendorai-batch { min-height:34px; border:1px solid hsl(var(--border)); border-radius:9px; background:hsl(var(--background)); padding:0 12px; font-size:11px; font-weight:600; cursor:pointer; }
+    [${ROW_ATTR}] { position:relative; transition:.15s ease; padding-left:44px !important; }
+    [${ROW_ATTR}].vendorai-review-selected { border-color:#fdba74 !important; box-shadow:0 0 0 1px rgba(249,115,22,.18); }
+    [${CHECK_ATTR}] { position:absolute; left:14px; top:18px; width:16px; height:16px; accent-color:#f97316; }
+    [${ROW_ATTR}] button { white-space:nowrap; }
+    .vendorai-open-preview { border-color:hsl(var(--border)) !important; background:hsl(var(--background)) !important; }
+    [${DRAWER_ATTR}] { position:fixed; z-index:80; right:14px; top:74px; bottom:14px; width:min(390px,calc(100vw - 28px)); background:hsl(var(--background)); border:1px solid hsl(var(--border)); border-radius:16px; box-shadow:0 18px 55px rgba(15,23,42,.18); overflow:auto; }
+    .vendorai-drawer-head { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:hsl(var(--background)); border-bottom:1px solid hsl(var(--border)); }
+    .vendorai-drawer-body { padding:14px 16px 18px; }
+    .vendorai-drawer-preview { border:1px solid hsl(var(--border)); border-radius:14px; overflow:hidden; background:hsl(var(--muted)/.25); min-height:180px; display:grid; place-items:center; }
+    .vendorai-drawer-preview img { width:100%; max-height:420px; object-fit:cover; }
+    .vendorai-drawer-copy { margin-top:12px; white-space:pre-wrap; font-size:12px; line-height:1.55; }
+    .vendorai-drawer-meta { margin-top:12px; display:grid; gap:7px; font-size:11px; }
+    .vendorai-drawer-meta div { display:grid; grid-template-columns:92px 1fr; gap:8px; }
+    .vendorai-drawer-meta span:first-child { color:hsl(var(--muted-foreground)); }
+    .vendorai-drawer-actions { margin-top:16px; display:grid; gap:8px; }
+    .vendorai-drawer-primary { min-height:42px; border:0; border-radius:10px; background:#f97316; color:white; font-weight:700; cursor:pointer; }
+    .vendorai-drawer-secondary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .vendorai-drawer-secondary { min-height:38px; border:1px solid hsl(var(--border)); border-radius:9px; background:hsl(var(--background)); font-size:11px; font-weight:600; cursor:pointer; }
+    @media (max-width:1100px) { .vendorai-review-metrics { grid-template-columns:repeat(3,1fr); } .vendorai-review-context{grid-template-columns:1fr auto;} .vendorai-review-context > :last-child{grid-column:1/-1;} }
+    @media (max-width:760px) { .vendorai-review-journey{grid-template-columns:1fr 1fr;} .vendorai-review-metrics{grid-template-columns:1fr 1fr;} .vendorai-review-context{grid-template-columns:1fr;} .vendorai-drawer-secondary-grid{grid-template-columns:1fr;} }
   `;
   document.head.appendChild(style);
 }
 
-function hideSecondary(element: HTMLElement | null) {
-  if (!element) return;
-  element.setAttribute(HIDDEN_ATTR, "true");
+function hide(element: HTMLElement | null) {
+  if (element) element.setAttribute(HIDDEN_ATTR, "true");
 }
 
-function restoreSecondary() {
+function restore() {
   document.querySelectorAll<HTMLElement>(`[${HIDDEN_ATTR}]`).forEach((element) => element.removeAttribute(HIDDEN_ATTR));
-  document.querySelectorAll<HTMLElement>(`[${SUMMARY_ATTR}], [${DETAILS_ATTR}]`).forEach((element) => element.remove());
+  document.querySelectorAll<HTMLElement>(`[${ROOT_ATTR}], [${DRAWER_ATTR}]`).forEach((element) => element.remove());
+  document.querySelectorAll<HTMLElement>(`[${ROW_ATTR}]`).forEach((element) => {
+    element.removeAttribute(ROW_ATTR);
+    element.classList.remove("vendorai-review-selected");
+    element.querySelector<HTMLInputElement>(`[${CHECK_ATTR}]`)?.remove();
+  });
   document.getElementById(STYLE_ID)?.remove();
 }
 
-function numberNearLabel(root: HTMLElement, labels: string[]) {
-  const label = Array.from(root.querySelectorAll<HTMLElement>("p,span,div")).find((element) =>
-    labels.map(normalize).includes(normalize(textOf(element))),
-  );
-  if (!label) return 0;
-  const card = closestBorderedCard(label) ?? label.parentElement;
-  if (!card) return 0;
-  const numeric = Array.from(card.querySelectorAll<HTMLElement>("p,span,div")).map(textOf).find((value) => /^\d+$/.test(value));
-  return numeric ? Number(numeric) : 0;
-}
-
-function findMetricGrid(root: HTMLElement) {
-  const ready = Array.from(root.querySelectorAll<HTMLElement>("p,span,div")).find((element) => {
-    const text = normalize(textOf(element));
-    return text === "prontos" || text === "prontos para gerar";
+function findRows(overview: HTMLElement) {
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter((button) => {
+    const label = normalize(textOf(button));
+    return ["revisar", "fechar", "aprovar", "nova versao", "gerar automatico", "abrir executor"].includes(label);
   });
-  if (!ready) return null;
-  let current = ready.parentElement;
-  while (current && current !== root) {
-    const text = normalize(textOf(current));
-    if (text.includes("em revisao") && text.includes("publicados") && current.children.length >= 3) return current;
-    current = current.parentElement;
-  }
-  return null;
+  const rows: HTMLElement[] = [];
+  buttons.forEach((button) => {
+    const card = closestBorderedCard(button);
+    if (card && card !== overview && !overview.contains(card) && !rows.includes(card)) rows.push(card);
+  });
+  return rows;
 }
 
-function createSummary(root: HTMLElement) {
-  const ready = numberNearLabel(root, ["Prontos", "Prontos para gerar"]);
-  const review = numberNearLabel(root, ["Em revisão"]);
-  const approved = numberNearLabel(root, ["Aprovados"]);
-  const published = numberNearLabel(root, ["Publicados"]);
-  const pending = numberNearLabel(root, ["Outros", "Pendentes"]);
-
-  const summary = document.createElement("div");
-  summary.setAttribute(SUMMARY_ATTR, "true");
-  summary.className = "grid grid-cols-1 gap-2 sm:grid-cols-3";
-  summary.innerHTML = `
-    <div class="vendorai-simple-metric">
-      <p class="vendorai-simple-metric-label">Para produzir</p>
-      <p class="vendorai-simple-metric-value">${ready + pending}</p>
-      <p class="vendorai-simple-metric-help">A IA ainda precisa preparar estas peças.</p>
-    </div>
-    <div class="vendorai-simple-metric">
-      <p class="vendorai-simple-metric-label">Para revisar</p>
-      <p class="vendorai-simple-metric-value">${review}</p>
-      <p class="vendorai-simple-metric-help">Conteúdos prontos aguardando sua decisão.</p>
-    </div>
-    <div class="vendorai-simple-metric">
-      <p class="vendorai-simple-metric-label">Concluídos</p>
-      <p class="vendorai-simple-metric-value">${approved + published}</p>
-      <p class="vendorai-simple-metric-help">Aprovados ou já publicados.</p>
-    </div>`;
-  return summary;
+function rowStatus(row: HTMLElement) {
+  const value = normalize(textOf(row));
+  if (value.includes("com erro") || value.includes("falha")) return "erro";
+  if (value.includes("conteudo aprovado") || value.includes("aprovado")) return "aprovado";
+  if (value.includes("em revisao")) return "revisao";
+  if (value.includes("em producao")) return "produzindo";
+  if (value.includes("pronto para produzir")) return "produzir";
+  if (value.includes("publicado")) return "publicado";
+  return "outro";
 }
 
-function findFailureNotice() {
-  return Array.from(document.querySelectorAll<HTMLElement>("div,p,span")).find((element) => {
-    const text = normalize(textOf(element));
-    return text.includes("material(is) com falha") || text.includes("producao protegida:");
-  }) ?? null;
-}
+function createDrawer(row: HTMLElement) {
+  document.querySelector<HTMLElement>(`[${DRAWER_ATTR}]`)?.remove();
+  const drawer = document.createElement("aside");
+  drawer.setAttribute(DRAWER_ATTR, "true");
+  const title = Array.from(row.querySelectorAll<HTMLElement>("p")).map(textOf).find((value) => value.length > 8) ?? "Conteúdo gerado";
+  const badges = Array.from(row.querySelectorAll<HTMLElement>("span")).map(textOf).filter(Boolean).slice(0, 6);
+  const metaLine = Array.from(row.querySelectorAll<HTMLElement>("p")).map(textOf).find((value) => value.includes(" · ")) ?? "";
+  const previewText = Array.from(row.querySelectorAll<HTMLElement>("p")).map(textOf).filter((value) => value.length > 20 && value !== title).join("\n\n");
+  const image = row.querySelector<HTMLImageElement>("img");
+  const refText = badges.find((value) => /\d+ ref\./i.test(value)) ?? "Referências do plano";
 
-function nativeButton(label: string) {
-  return Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-    normalize(textOf(button)) === normalize(label) && button.offsetParent !== null,
-  ) ?? null;
-}
-
-function createDetails(root: HTMLElement, failureText: string, usageText: string) {
-  const details = document.createElement("details");
-  details.setAttribute(DETAILS_ATTR, "true");
-  details.className = "rounded-xl border bg-muted/10 px-4 py-3";
-  details.innerHTML = `
-    <summary class="flex items-center justify-between gap-3 text-sm font-medium text-foreground">
-      <span>Opções e detalhes</span>
-      <span class="text-xs font-normal text-muted-foreground">Biblioteca, consumo e problemas técnicos</span>
-    </summary>
-    <div class="mt-3 border-t pt-3 space-y-3">
-      <div class="flex flex-wrap gap-2">
-        <a href="/midias" class="inline-flex min-h-9 items-center justify-center rounded-md border bg-background px-3 text-xs font-medium hover:bg-muted">Biblioteca de Mídias</a>
-        <button type="button" data-vendorai-create-outside class="inline-flex min-h-9 items-center justify-center rounded-md border bg-background px-3 text-xs font-medium hover:bg-muted">Criar fora do plano</button>
-        <button type="button" data-vendorai-refresh-production class="inline-flex min-h-9 items-center justify-center rounded-md border bg-background px-3 text-xs font-medium hover:bg-muted">Atualizar dados</button>
+  drawer.innerHTML = `
+    <div class="vendorai-drawer-head"><strong>Prévia do conteúdo</strong><button type="button" data-close style="border:0;background:transparent;font-size:22px;cursor:pointer">×</button></div>
+    <div class="vendorai-drawer-body">
+      <div class="vendorai-drawer-preview">${image ? `<img src="${image.src}" alt="Prévia do conteúdo" />` : `<div style="padding:30px;text-align:center;color:hsl(var(--muted-foreground));font-size:12px">Abra a prévia para carregar o visual completo.</div>`}</div>
+      <h3 style="margin-top:12px;font-size:14px;font-weight:700">${title}</h3>
+      <div class="vendorai-drawer-meta">
+        <div><span>Campanha</span><strong>${metaLine.split(" · ")[0] || "Campanha atual"}</strong></div>
+        <div><span>Canal / Formato</span><strong>${badges.slice(0,2).join(" · ") || "Conteúdo"}</strong></div>
+        <div><span>Status</span><strong>${badges.find((value) => /revis|aprov|produ|public|erro/i.test(value)) || "Em revisão"}</strong></div>
+        <div><span>Referências</span><strong>${refText}</strong></div>
       </div>
-      ${usageText ? `<p class="text-xs text-muted-foreground">${usageText}</p>` : ""}
-      ${failureText ? `<div class="rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs text-amber-800"><strong>Problemas técnicos:</strong> ${failureText}</div>` : ""}
+      ${previewText ? `<div class="vendorai-drawer-copy">${previewText}</div>` : ""}
+      <div class="vendorai-drawer-actions">
+        <button type="button" class="vendorai-drawer-primary" data-approve>Aprovar conteúdo</button>
+        <div class="vendorai-drawer-secondary-grid">
+          <button type="button" class="vendorai-drawer-secondary" data-edit>Editar conteúdo</button>
+          <button type="button" class="vendorai-drawer-secondary" data-brief>Editar briefing</button>
+          <button type="button" class="vendorai-drawer-secondary" data-regenerate>Gerar novamente</button>
+        </div>
+      </div>
     </div>`;
 
-  details.querySelector<HTMLButtonElement>("[data-vendorai-create-outside]")?.addEventListener("click", () => {
-    const original = document.querySelector<HTMLButtonElement>('[data-vendorai-original-create-outside="true"]');
-    if (original) original.click();
-    else {
-      window.history.pushState({}, "", "/content?tab=gerador&mode=avulso");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    }
+  drawer.querySelector<HTMLButtonElement>("[data-close]")?.addEventListener("click", () => drawer.remove());
+  drawer.querySelector<HTMLButtonElement>("[data-approve]")?.addEventListener("click", () => nativeButton("Aprovar", row)?.click());
+  drawer.querySelector<HTMLButtonElement>("[data-edit]")?.addEventListener("click", () => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", "gerador");
+    params.set("mode", "avulso");
+    window.history.pushState({}, "", `/content?${params.toString()}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   });
-
-  details.querySelector<HTMLButtonElement>("[data-vendorai-refresh-production]")?.addEventListener("click", () => {
-    document.querySelector<HTMLButtonElement>('[data-vendorai-original-refresh="true"]')?.click();
+  drawer.querySelector<HTMLButtonElement>("[data-brief]")?.addEventListener("click", () => {
+    window.history.pushState({}, "", "/content?tab=planejamento");
+    window.dispatchEvent(new PopStateEvent("popstate"));
   });
-
-  return details;
+  drawer.querySelector<HTMLButtonElement>("[data-regenerate]")?.addEventListener("click", () => {
+    (nativeButton("Nova versão", row) ?? nativeButton("Gerar automático", row) ?? nativeButton("Abrir executor", row))?.click();
+  });
+  document.body.appendChild(drawer);
 }
 
-function simplifyApprovedProduction() {
+function enhanceRows(overview: HTMLElement) {
+  const rows = findRows(overview);
+  rows.forEach((row, index) => {
+    row.setAttribute(ROW_ATTR, String(index));
+    if (!row.querySelector(`[${CHECK_ATTR}]`)) {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.setAttribute(CHECK_ATTR, "true");
+      checkbox.addEventListener("change", () => row.classList.toggle("vendorai-review-selected", checkbox.checked));
+      row.prepend(checkbox);
+    }
+
+    const review = nativeButton("Revisar", row) ?? nativeButton("Fechar", row);
+    if (review) {
+      review.classList.add("vendorai-open-preview");
+      if (normalize(textOf(review)) === "revisar") review.childNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) node.textContent = "Abrir prévia";
+      });
+      if (!review.dataset.vendoraiDrawerBound) {
+        review.dataset.vendoraiDrawerBound = "true";
+        review.addEventListener("click", () => window.setTimeout(() => createDrawer(row), 80));
+      }
+    }
+
+    const approve = nativeButton("Aprovar", row);
+    if (approve) approve.classList.add("vendorai-review-approve");
+  });
+  return rows;
+}
+
+function createWorkspace(overview: HTMLElement, rows: HTMLElement[]) {
+  const ready = numberNearLabel(overview, ["Prontos", "Prontos para gerar"]);
+  const review = numberNearLabel(overview, ["Em revisão"]);
+  const approved = numberNearLabel(overview, ["Aprovados"]);
+  const published = numberNearLabel(overview, ["Publicados"]);
+  const pending = numberNearLabel(overview, ["Outros", "Pendentes"]);
+  const attention = rows.filter((row) => rowStatus(row) === "erro").length;
+  const producing = rows.filter((row) => rowStatus(row) === "produzindo").length;
+  const campaignLine = rows.map((row) => Array.from(row.querySelectorAll<HTMLElement>("p")).map(textOf).find((value) => value.includes(" · "))).find(Boolean) ?? "Campanha atual";
+  const campaign = campaignLine.split(" · ")[0] || "Campanha atual";
+
+  const root = document.createElement("section");
+  root.setAttribute(ROOT_ATTR, "true");
+  root.innerHTML = `
+    <div class="vendorai-review-shell">
+      <div class="vendorai-review-context">
+        <div><div class="vendorai-review-label">Campanha</div><div class="vendorai-review-select"><strong>${campaign}</strong><span>Produção, revisão e aprovação dos conteúdos do plano.</span></div></div>
+        <button class="vendorai-review-secondary" type="button" data-avulso>+ Conteúdo avulso</button>
+        <div><div class="vendorai-review-label">Período</div><div class="vendorai-review-select"><strong>Plano atual</strong><span>Conteúdos organizados por data sugerida.</span></div></div>
+      </div>
+      <div class="vendorai-review-journey">
+        <div class="vendorai-journey-step done"><div class="vendorai-journey-head"><span class="vendorai-journey-dot">✓</span>Planejamento</div><div class="vendorai-journey-help">Briefing e estratégia</div></div>
+        <div class="vendorai-journey-step done"><div class="vendorai-journey-head"><span class="vendorai-journey-dot">✓</span>Produção</div><div class="vendorai-journey-help">IA produz os conteúdos</div></div>
+        <div class="vendorai-journey-step active"><div class="vendorai-journey-head"><span class="vendorai-journey-dot"></span>Revisão</div><div class="vendorai-journey-help">Você revisa e aprova</div></div>
+        <div class="vendorai-journey-step"><div class="vendorai-journey-head"><span class="vendorai-journey-dot"></span>Publicação</div><div class="vendorai-journey-help">Publicação nos canais</div></div>
+        <div class="vendorai-journey-step"><div class="vendorai-journey-head"><span class="vendorai-journey-dot"></span>Resultados</div><div class="vendorai-journey-help">Acompanhe os resultados</div></div>
+      </div>
+      <div class="vendorai-review-metrics">
+        <div class="vendorai-review-metric"><p>A produzir</p><strong>${ready + pending}</strong></div>
+        <div class="vendorai-review-metric"><p>Produzindo</p><strong>${producing}</strong></div>
+        <div class="vendorai-review-metric active"><p>Para revisar</p><strong>${review}</strong></div>
+        <div class="vendorai-review-metric"><p>Aprovados</p><strong>${approved}</strong></div>
+        <div class="vendorai-review-metric"><p>Publicados</p><strong>${published}</strong></div>
+        <div class="vendorai-review-metric attn"><p>Atenção</p><strong>${attention}</strong></div>
+      </div>
+      ${attention > 0 ? `<div class="vendorai-review-alert"><div><strong>${attention} conteúdo(s) precisam de atenção</strong><div style="margin-top:2px;color:hsl(var(--muted-foreground))">Revise as pendências ou tente corrigir novamente.</div></div><button type="button" class="vendorai-review-secondary" data-retry>Corrigir automaticamente</button></div>` : ""}
+    </div>
+    <div class="vendorai-review-toolbar">
+      <button type="button" class="vendorai-filter active" data-filter="todos">Todos (${rows.length})</button>
+      <button type="button" class="vendorai-filter" data-filter="revisao">Para revisar (${review})</button>
+      <button type="button" class="vendorai-filter" data-filter="aprovado">Aprovados (${approved})</button>
+      <button type="button" class="vendorai-filter" data-filter="erro">Com erro (${attention})</button>
+      <span class="vendorai-review-spacer"></span>
+      <button type="button" class="vendorai-batch" data-select-all>Selecionar todos</button>
+      <button type="button" class="vendorai-batch" data-approve-selected>Aprovar selecionados</button>
+    </div>`;
+
+  root.querySelector<HTMLButtonElement>("[data-avulso]")?.addEventListener("click", () => {
+    (nativeButton("Criação avulsa") ?? nativeButton("Criar fora do plano"))?.click();
+  });
+  root.querySelector<HTMLButtonElement>("[data-retry]")?.addEventListener("click", () => {
+    const retry = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) => normalize(textOf(button)).includes("tentar novamente") || normalize(textOf(button)).includes("produzir plano completo"));
+    retry?.click();
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      root.querySelectorAll(".vendorai-filter").forEach((entry) => entry.classList.remove("active"));
+      button.classList.add("active");
+      const filter = button.dataset.filter ?? "todos";
+      rows.forEach((row) => { row.style.display = filter === "todos" || rowStatus(row) === filter ? "" : "none"; });
+    });
+  });
+  root.querySelector<HTMLButtonElement>("[data-select-all]")?.addEventListener("click", () => {
+    const checks = rows.filter((row) => row.style.display !== "none").map((row) => row.querySelector<HTMLInputElement>(`[${CHECK_ATTR}]`)).filter(Boolean) as HTMLInputElement[];
+    const shouldCheck = checks.some((check) => !check.checked);
+    checks.forEach((check) => { check.checked = shouldCheck; check.dispatchEvent(new Event("change")); });
+  });
+  root.querySelector<HTMLButtonElement>("[data-approve-selected]")?.addEventListener("click", () => {
+    rows.forEach((row) => {
+      const check = row.querySelector<HTMLInputElement>(`[${CHECK_ATTR}]`);
+      if (check?.checked) nativeButton("Aprovar", row)?.click();
+    });
+  });
+  return root;
+}
+
+function applyReviewWorkspace() {
   const params = new URLSearchParams(window.location.search);
   const onContent = window.location.pathname === "/content" && params.get("tab") === "conteudos";
   const approved = Boolean(findExact("span,div", ["Plano aprovado"]));
   if (!onContent || !approved) {
-    restoreSecondary();
+    restore();
     return;
   }
 
@@ -202,69 +325,30 @@ function simplifyApprovedProduction() {
   if (!overview) return;
   ensureStyle();
 
-  const title = findExact("p", ["Produção automática do planejamento", "Produção do Plano de Mídia"]);
-  if (title) title.textContent = "Conteúdos do plano";
+  const title = findExact("p", ["Produção automática do planejamento", "Produção do Plano de Mídia", "Conteúdos do plano"], overview);
+  if (title) title.textContent = "Conteúdos & Criativos";
   const intro = title?.parentElement?.querySelectorAll<HTMLParagraphElement>("p")[1];
-  if (intro) intro.textContent = "A IA prepara o que falta. Sua principal tarefa aqui é revisar e aprovar o que estiver pronto.";
+  if (intro) intro.textContent = "A IA produz os materiais do planejamento e traz tudo aqui para você revisar, aprovar, editar ou gerar novamente.";
 
-  const flow = overview.querySelector<HTMLElement>('[data-vendorai-content-flow-help]');
-  if (flow) flow.innerHTML = "<span>1. Produzir</span><span>2. Revisar</span><span>3. Publicar</span>";
-
-  const metricGrid = findMetricGrid(overview);
-  if (metricGrid) hideSecondary(metricGrid);
-
-  let summary = overview.querySelector<HTMLElement>(`[${SUMMARY_ATTR}]`);
-  const freshSummary = createSummary(overview);
-  if (!summary) {
-    const anchor = flow?.parentElement ?? title?.parentElement ?? overview.firstElementChild;
-    anchor?.insertAdjacentElement("afterend", freshSummary);
-    summary = freshSummary;
-  } else if (summary.innerHTML !== freshSummary.innerHTML) {
-    summary.replaceWith(freshSummary);
-    summary = freshSummary;
+  const rows = enhanceRows(overview);
+  let workspace = document.querySelector<HTMLElement>(`[${ROOT_ATTR}]`);
+  const fresh = createWorkspace(overview, rows);
+  if (!workspace) {
+    overview.insertAdjacentElement("beforebegin", fresh);
+    workspace = fresh;
+  } else if (workspace.innerHTML !== fresh.innerHTML) {
+    workspace.replaceWith(fresh);
+    workspace = fresh;
   }
 
-  const referenceTitle = findExact("p", ["Referências reais do negócio"]);
-  const referenceBlock = referenceTitle ? closestBorderedCard(referenceTitle) : null;
-  if (referenceBlock) hideSecondary(referenceBlock);
+  hide(overview);
 
-  const allTextRows = Array.from(overview.querySelectorAll<HTMLElement>("div,p"));
-  const usageRow = allTextRows.find((element) => {
-    const text = normalize(textOf(element));
-    return text.includes("geracoes usadas no periodo") || text.includes("geracoes usadas no período");
+  const failureNotice = Array.from(document.querySelectorAll<HTMLElement>("div,p,span")).find((element) => {
+    const value = normalize(textOf(element));
+    return value.includes("material(is) com falha") || value.includes("producao protegida:");
   }) ?? null;
-  const usageText = usageRow ? textOf(usageRow) : "";
-  if (usageRow) hideSecondary(usageRow);
-
-  const createOutside = nativeButton("Criar fora do plano") ?? nativeButton("Criação avulsa");
-  if (createOutside) {
-    createOutside.setAttribute("data-vendorai-original-create-outside", "true");
-    hideSecondary(createOutside);
-  }
-  const refresh = nativeButton("Atualizar");
-  if (refresh) {
-    refresh.setAttribute("data-vendorai-original-refresh", "true");
-    hideSecondary(refresh);
-  }
-
-  const failureNotice = findFailureNotice();
-  const failureText = failureNotice ? textOf(failureNotice) : "";
   const failureCard = failureNotice ? closestBorderedCard(failureNotice) ?? failureNotice : null;
-  if (failureCard && !overview.contains(failureCard)) hideSecondary(failureCard);
-
-  document.querySelectorAll<HTMLElement>("span").forEach((span) => {
-    if (/^\d+\s+falha\(s\)$/i.test(textOf(span))) hideSecondary(span);
-  });
-
-  let details = overview.querySelector<HTMLElement>(`[${DETAILS_ATTR}]`);
-  const freshDetails = createDetails(overview, failureText, usageText);
-  if (!details) {
-    overview.appendChild(freshDetails);
-  } else if (details.innerHTML !== freshDetails.innerHTML) {
-    const wasOpen = (details as HTMLDetailsElement).open;
-    freshDetails.open = wasOpen;
-    details.replaceWith(freshDetails);
-  }
+  if (failureCard && !failureCard.hasAttribute(ROOT_ATTR)) hide(failureCard);
 }
 
 export function ContentProductionClarityBridge() {
@@ -272,23 +356,20 @@ export function ContentProductionClarityBridge() {
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(simplifyApprovedProduction);
+      frame = window.requestAnimationFrame(applyReviewWorkspace);
     };
-
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     window.addEventListener("popstate", schedule);
-    const timer = window.setInterval(schedule, 900);
-
+    const timer = window.setInterval(schedule, 1000);
     return () => {
       observer.disconnect();
       window.removeEventListener("popstate", schedule);
       window.clearInterval(timer);
       window.cancelAnimationFrame(frame);
-      restoreSecondary();
+      restore();
     };
   }, []);
-
   return null;
 }
