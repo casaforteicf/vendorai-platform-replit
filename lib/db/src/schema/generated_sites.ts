@@ -77,6 +77,16 @@ export interface SiteGeneratorConfig {
   qaReviewedAt?: string;
   qaApprovedAt?: string | null;
   qaSource?: "generation" | "refine" | "manual" | "publish-gate" | "marketing-agent";
+
+  // Site Generator 2.0 — plano persistido junto ao site para refinamento estável.
+  generatorVersion?: "2.0";
+  generationMode?: "single-initial-version";
+  refinementMode?: "chat-on-current-version";
+  motionLevel?: "auto" | "none" | "subtle" | "dynamic" | "cinematic";
+  resolvedMotionLevel?: "none" | "subtle" | "dynamic" | "cinematic";
+  componentIds?: string[];
+  seoAutoEnabled?: boolean;
+  preserveUnaffectedSections?: boolean;
 }
 
 export interface SiteSeoChecklist {
