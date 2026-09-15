@@ -20,6 +20,7 @@
     "./font-catalog": "./src/font-catalog.ts",
     "./graphic-design-director": "./src/graphic-design-director.ts",
     "./media-retrieval-director": "./src/media-retrieval-director.ts",
+    "./site-section-refinement": "./src/site-section-refinement.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
     "./revenue-scout-bridge": "./src/revenue-scout-bridge.ts",
     "./business-observer": "./src/business-observer.ts",
