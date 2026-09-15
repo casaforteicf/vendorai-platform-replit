@@ -118,6 +118,7 @@ const approveBatchBodySchema = z.object({
 });
 
 router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/aprovar-lote", async (req, res) => {
+  // tenant-audit: reviewed guarded by canAccess and plan tenant ownership check below
   const tenantId = String(req.params.tenantId);
   const mediaPlanId = String(req.params.mediaPlanId);
   if (!canAccess(req, tenantId)) {
