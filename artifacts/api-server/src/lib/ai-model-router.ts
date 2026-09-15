@@ -23,8 +23,21 @@ function configured(name: string, fallback: string): string {
   return process.env[name]?.trim() || fallback;
 }
 
-export function aiRouterV2Enabled(): boolean {
-  return process.env["VENDORAI_AI_ROUTER_V2"]?.trim().toLowerCase() === "true";
+function enabledTenantIds(): Set<string> {
+  return new Set(
+    (process.env["VENDORAI_AI_ROUTER_TENANTS"] ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+export function aiRouterV2Enabled(tenantId?: string): boolean {
+  if (process.env["VENDORAI_AI_ROUTER_V2"]?.trim().toLowerCase() !== "true") return false;
+
+  const allowlist = enabledTenantIds();
+  // An empty allowlist is intentionally fail-closed.
+  return Boolean(tenantId && (allowlist.has(tenantId) || allowlist.has("*")));
 }
 
 export function textTierForFeature(feature: AiFeature): VendorAITextTier {
@@ -45,6 +58,7 @@ export function modelForTextTier(tier: VendorAITextTier): string {
 
 export function resolveTextModel(params: {
   feature: AiFeature;
+  tenantId?: string;
   requestedModel?: string;
   legacyDefault?: string;
 }): string {
@@ -52,7 +66,7 @@ export function resolveTextModel(params: {
   if (params.requestedModel?.trim()) return params.requestedModel.trim();
 
   // Safe rollout: production behavior remains unchanged until the flag is enabled.
-  if (!aiRouterV2Enabled()) return params.legacyDefault ?? "gpt-4o-mini";
+  if (!aiRouterV2Enabled(params.tenantId)) return params.legacyDefault ?? "gpt-4o-mini";
 
   return modelForTextTier(textTierForFeature(params.feature));
 }
