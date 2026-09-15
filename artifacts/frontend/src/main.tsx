@@ -5,6 +5,7 @@ import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import { BudgetImportAutofill } from "./components/BudgetImportAutofill";
+import { AiBudgetUsageIndicator } from "./components/AiBudgetUsageIndicator";
 import { GrowthLabMenuInjector } from "./components/GrowthLabMenuInjector";
 import { MediaMenuInjector } from "./components/media/MediaMenuInjector";
 import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
@@ -166,6 +167,7 @@ createRoot(document.getElementById("root")!).render(
           <VideoRouteThemeSync />
           <CanonicalMarketingRouteBridge />
           <App />
+          <AiBudgetUsageIndicator />
           <GrowthLabMenuInjector />
           <UnifiedAssistantLauncher />
           <JarvisVoiceReplayControl />
