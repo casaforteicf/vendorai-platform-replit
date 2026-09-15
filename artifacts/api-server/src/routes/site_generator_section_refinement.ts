@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import { buildTargetedRefinementInstruction, resolveSectionRefinement } from "@workspace/vendor-brain/site-section-refinement";
 import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
+import siteGeneratorSearchDiscoveryRouter from "./site_generator_search_discovery.js";
 import siteGeneratorVersionsRouter from "./site_generator_versions.js";
 import siteGenerator2RuntimeRouter from "./site_generator_2_runtime.js";
 
@@ -63,7 +64,9 @@ function restorePreservedSections(originalHtml: string, candidateHtml: string, p
 
 const router: IRouter = Router();
 
-// Snapshot before mutations, then apply the 2.0 creative/runtime pipeline.
+// Search discovery observes only successful publish responses. Versioning and
+// the 2.0 runtime still execute before the legacy generator/refinement routes.
+router.use(siteGeneratorSearchDiscoveryRouter);
 router.use(siteGeneratorVersionsRouter);
 router.use(siteGenerator2RuntimeRouter);
 
