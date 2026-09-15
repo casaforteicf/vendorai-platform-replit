@@ -16,6 +16,13 @@ const BATCH_SIZE = 10;
 const PERFORMANCE_INTERVAL_MS = 6 * 60 * 60_000;
 const PERFORMANCE_POST_AGE_MS = 24 * 60 * 60_000;
 const PERFORMANCE_TENANT_BATCH = 20;
+
+// Safety-first: automatic AI materialization from approved media plans is OFF
+// unless production explicitly opts in. This prevents a failed provider call
+// from being retried by the social worker every minute and consuming API credit.
+const AUTO_MEDIA_PLAN_PRODUCTION_ENABLED =
+  process.env["MARKETING_AUTO_PRODUCTION_ENABLED"] === "true";
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let lastPerformanceRunAt = 0;
@@ -74,9 +81,12 @@ export async function processPendingSocialPublications() {
   if (running) return;
   running = true;
   try {
-    await produceUpcomingMediaPlanOrganicContent().catch((error) => {
-      logger.warn({ error }, "Worker social não conseguiu produzir conteúdos próximos do Plano de Mídia");
-    });
+    if (AUTO_MEDIA_PLAN_PRODUCTION_ENABLED) {
+      await produceUpcomingMediaPlanOrganicContent().catch((error) => {
+        logger.warn({ error }, "Worker social não conseguiu produzir conteúdos próximos do Plano de Mídia");
+      });
+    }
+
     await reconcileAutomatedReelVideos().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu reconciliar vídeos automáticos do Plano de Mídia");
     });
@@ -122,6 +132,7 @@ export function startSocialPublicationWorker() {
       staleAfterMs: STALE_AFTER_MS,
       performanceIntervalMs: PERFORMANCE_INTERVAL_MS,
       performancePostAgeMs: PERFORMANCE_POST_AGE_MS,
+      autoMediaPlanProductionEnabled: AUTO_MEDIA_PLAN_PRODUCTION_ENABLED,
     },
     "Worker de publicações sociais iniciado",
   );
