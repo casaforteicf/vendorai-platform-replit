@@ -15,6 +15,7 @@ import {
 } from "@workspace/db";
 import type { AiFeature } from "@workspace/db";
 import { sendAiFailureAlert } from "./email.js";
+import { isModernReasoningModel, reasoningEffortForFeature, resolveTextModel } from "./ai-model-router.js";
 
 // ── Cost models (USD per 1M tokens) ───────────────────────────────────────────
 const COST_PER_1M: Record<string, { input: number; output: number }> = {
@@ -22,6 +23,10 @@ const COST_PER_1M: Record<string, { input: number; output: number }> = {
   "gpt-4o":             { input: 2.50,  output: 10.00 },
   "gpt-4.1":            { input: 2.00,  output: 8.00 },
   "gpt-4.1-mini":       { input: 0.40,  output: 1.60 },
+  "gpt-6-astra":         { input: 10.00, output: 50.00 },
+  "gpt-5.6-sol":         { input: 4.00,  output: 20.00 },
+  "gpt-5.6-terra":       { input: 2.00,  output: 12.00 },
+  "gpt-5.6-luna":        { input: 0.20,  output: 1.20 },
   "claude-sonnet-4-6":  { input: 3.00,  output: 15.00 },
   "claude-3-5-sonnet":  { input: 3.00,  output: 15.00 },
   "whisper-1":          { input: 0,     output: 0 },  // priced per minute, not token
@@ -397,7 +402,7 @@ export async function callOpenAI(
     log?: Logger;
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
-  const model = options.model ?? "gpt-4o-mini";
+  const model = resolveTextModel({ feature, requestedModel: options.model, legacyDefault: "gpt-4o-mini" });
   const log = options.log;
   const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, messages);
 
@@ -420,11 +425,19 @@ export async function callOpenAI(
   let success = false;
   let errorMessage: string | undefined;
   try {
+    const modernReasoningModel = isModernReasoningModel(model);
     completion = await openai.chat.completions.create({
-      model: model!,
+      model,
       messages: localizedMessages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 600,
+      ...(modernReasoningModel
+        ? {
+            reasoning_effort: reasoningEffortForFeature(feature),
+            max_completion_tokens: options.maxTokens ?? 600,
+          }
+        : {
+            temperature: options.temperature ?? 0.7,
+            max_tokens: options.maxTokens ?? 600,
+          }),
       ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
     } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
     success = true;
