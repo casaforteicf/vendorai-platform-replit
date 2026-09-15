@@ -362,7 +362,6 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
       eq(contentCalendarItemsTable.status, "aprovado"),
       isNull(contentCalendarItemsTable.contentGenerationId),
       sql`${mediaPlansTable.conteudo}->>'statusPlanejamento' = 'aprovado'`,
-      sql`${mediaPlansTable.conteudo}->'publicacaoOrganica'->>'modo' = 'automatico'`,
     ))
     .orderBy(asc(contentCalendarItemsTable.dataAgendada))
     .limit(MAX_ITEMS_PER_TICK * 4);
