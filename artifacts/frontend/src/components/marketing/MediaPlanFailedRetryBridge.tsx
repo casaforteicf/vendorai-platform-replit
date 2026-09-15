@@ -5,6 +5,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const HOST_ATTR = "data-vendorai-plan-production";
+const AUTO_RECOVERY_KEY = "vendorai_media_plan_auto_recovery_v1";
 const VIDEO_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
 const AD_TYPES = new Set(["meta_ad", "search_ad", "display_ad", "performance_max"]);
 const SITE_TYPES = new Set(["landing_page", "site"]);
@@ -324,30 +325,64 @@ export function MediaPlanFailedRetryBridge() {
     }
   }, [generate, patchCalendar, patchProject, plan, projectByItem, tid]);
 
-  const retryAll = useCallback(async () => {
-    if (running || failedItems.length === 0) return;
+  const retryBatch = useCallback(async (items: CalendarItem[]) => {
+    if (running || items.length === 0) return;
     setRunning(true);
-    setProgress({ done: 0, total: failedItems.length, failed: 0 });
+    setProgress({ done: 0, total: items.length, failed: 0 });
     let nextIndex = 0;
     let done = 0;
     let failed = 0;
     const worker = async () => {
       while (true) {
         const index = nextIndex++;
-        if (index >= failedItems.length) return;
+        if (index >= items.length) return;
         try {
-          await retryOne(failedItems[index]!);
+          await retryOne(items[index]!);
         } catch {
           failed += 1;
         }
         done += 1;
-        setProgress({ done, total: failedItems.length, failed });
+        setProgress({ done, total: items.length, failed });
       }
     };
     await Promise.all([worker(), worker()]);
     setRunning(false);
     await load();
-  }, [failedItems, load, retryOne, running]);
+  }, [load, retryOne, running]);
+
+  const retryAll = useCallback(async () => {
+    await retryBatch(failedItems);
+  }, [failedItems, retryBatch]);
+
+  useEffect(() => {
+    if (!plan || running || failedItems.length === 0) return;
+
+    const recoverable = failedItems.filter((item) => {
+      const project = projectByItem.get(item.id);
+      const detail = normalize(String(project?.context?.executorDetail ?? project?.context?.lastError ?? ""));
+      return detail.includes("object storage")
+        && (detail.includes("nao esta disponivel") || detail.includes("não está disponível"));
+    });
+    if (recoverable.length === 0) return;
+
+    let attempted: string[] = [];
+    try {
+      attempted = JSON.parse(sessionStorage.getItem(AUTO_RECOVERY_KEY) ?? "[]") as string[];
+    } catch {
+      attempted = [];
+    }
+    const attemptedSet = new Set(attempted);
+    const eligible = recoverable.filter((item) => !attemptedSet.has(`${plan.id}:${item.id}`));
+    if (eligible.length === 0) return;
+
+    eligible.forEach((item) => attemptedSet.add(`${plan.id}:${item.id}`));
+    sessionStorage.setItem(AUTO_RECOVERY_KEY, JSON.stringify(Array.from(attemptedSet).slice(-500)));
+
+    const timer = window.setTimeout(() => {
+      void retryBatch(eligible);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [failedItems, plan, projectByItem, retryBatch, running]);
 
   if (!host || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || failedItems.length === 0) return null;
 
