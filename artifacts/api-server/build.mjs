@@ -23,10 +23,10 @@ const workspaceVendorBrainPlugin = {
   },
 };
 
-// Hotfix restrito ao gerador de sites: a variável local `desc` colide com
-// `desc()` do Drizzle apenas no caminho de e-commerce. O transform é guardado
-// e falha o build se o trecho esperado mudar, evitando correções silenciosas
-// ou aplicação em arquivos não relacionados.
+// Hotfix restrito ao gerador de sites: além da colisão local de `desc`, força
+// toda geração de site a passar pelo AI Gateway. Isso impede que o gerador
+// contorne o hard-cap mensal do tenant ou faça fallback de billing diretamente
+// entre chaves globais dos provedores.
 const siteGeneratorDescCollisionHotfixPlugin = {
   name: "site-generator-desc-collision-hotfix",
   setup(build) {
@@ -61,6 +61,86 @@ const siteGeneratorDescCollisionHotfixPlugin = {
         }
         contents = contents.replace(from, to);
       }
+
+      const gatewayImportAnchor = 'import { getOpenAIForTenant } from "../lib/agent-engine.js";';
+      if (!contents.includes('from "../lib/ai-gateway.js"')) {
+        const first = contents.indexOf(gatewayImportAnchor);
+        if (first < 0 || contents.indexOf(gatewayImportAnchor, first + gatewayImportAnchor.length) >= 0) {
+          throw new Error("SiteGenerator AI cost guard failed (gateway import anchor)");
+        }
+        contents = contents.replace(
+          gatewayImportAnchor,
+          `${gatewayImportAnchor}\nimport { AiGatewayError, callAnthropic as gatewayCallAnthropic, callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";`,
+        );
+      }
+
+      const callAiRegex = /async function callAI\([\s\S]*?\n}\n\nrouter\.get\("\/tenants\/:tenantId\/site-generator\/latest"/;
+      const callAiMatch = contents.match(callAiRegex);
+      if (!callAiMatch) throw new Error("SiteGenerator AI cost guard failed (callAI function)");
+      contents = contents.replace(
+        callAiRegex,
+        `async function callAI(\n  messages: AiMessage[],\n  tenantId: string,\n  log: { info: (obj: object, msg: string) => void },\n  systemPrompt = SITE_GENERATOR_SYSTEM_PROMPT,\n): Promise<{ content: string; provider: string; model: string }> {\n  const stopOnBudgetOrBilling = (error: unknown) =>\n    error instanceof AiGatewayError && (error.status === 402 || error.status === 429);\n\n  try {\n    log.info({ provider: "anthropic", model: "claude-sonnet-4-6" }, "Calling Anthropic via AI Gateway for site generation");\n    const result = await gatewayCallAnthropic(tenantId, "site_generator", messages, {\n      model: "claude-sonnet-4-6",\n      maxTokens: 32000,\n      system: systemPrompt,\n      log: log as any,\n    });\n    return { content: result.content, provider: "anthropic", model: "claude-sonnet-4-6" };\n  } catch (error) {\n    if (stopOnBudgetOrBilling(error)) throw error;\n    log.info({ err: error, provider: "anthropic" }, "Anthropic indisponível sem erro financeiro — tentando OpenAI pelo Gateway");\n  }\n\n  const openaiMessages = [\n    { role: "system" as const, content: systemPrompt },\n    ...messages.map((message) => ({ role: message.role, content: message.content })),\n  ];\n\n  try {\n    const result = await gatewayCallOpenAI(tenantId, "site_generator", openaiMessages, {\n      model: "gpt-5.6-terra",\n      maxTokens: 32000,\n      log: log as any,\n    });\n    return { content: result.content, provider: "openai", model: "gpt-5.6-terra" };\n  } catch (error) {\n    if (stopOnBudgetOrBilling(error)) throw error;\n    log.info({ err: error, provider: "openai" }, "gpt-5.6-terra indisponível sem erro financeiro — tentando gpt-4o-mini pelo Gateway");\n  }\n\n  try {\n    const result = await gatewayCallOpenAI(tenantId, "site_generator", openaiMessages, {\n      model: "gpt-4o-mini",\n      maxTokens: 16000,\n      log: log as any,\n    });\n    return { content: result.content, provider: "openai", model: "gpt-4o-mini" };\n  } catch (error) {\n    if (stopOnBudgetOrBilling(error)) throw error;\n    log.info({ err: error, provider: "openai" }, "Nenhum provedor operacional disponível para o gerador de sites");\n    throw new Error("Geração temporariamente indisponível. Tente novamente em alguns minutos.");\n  }\n}\n\nrouter.get("/tenants/:tenantId/site-generator/latest"`,
+      );
+
+      return { contents, loader: "ts" };
+    });
+  },
+};
+
+// Guard central de custo. Corrige a medição Anthropic em streaming, não soma
+// falhas como gasto, bloqueia tenants sem franquia configurada e proíbe fallback
+// para outro provedor quando a origem do 429 é billing/crédito.
+const aiCostSafetyPlugin = {
+  name: "ai-cost-safety",
+  setup(build) {
+    const target = path.resolve(artifactDir, "src/lib/ai-gateway.ts");
+    build.onLoad({ filter: /ai-gateway\.ts$/ }, async (args) => {
+      if (path.resolve(args.path) !== target) return null;
+      let contents = await readFile(args.path, "utf8");
+
+      const replaceExact = (from, to, label) => {
+        const first = contents.indexOf(from);
+        if (first < 0 || contents.indexOf(from, first + from.length) >= 0) {
+          throw new Error(`AI cost safety guard failed (${label})`);
+        }
+        contents = contents.replace(from, to);
+      };
+
+      replaceExact(
+        `  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);\n\n  // 5b. Platform-subsidized mode: tenant has no plan and no credits but the`,
+        `  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);\n\n  // Segurança financeira: chave compartilhada nunca opera sem uma franquia\n  // mensal do plano ou saldo extra comprado pelo tenant.\n  if (quotaUsd === null && creditsUsd <= 0) {\n    return {\n      ok: false,\n      reason: "Limite mensal de IA não configurado para este tenant. Selecione um plano ou compre créditos antes de usar a IA compartilhada.",\n      httpStatus: 402,\n      details: { quotaUsd: null, creditsUsd: 0, spentThisMonthUsd: 0, dailySpendUsd: dailySpend },\n    };\n  }\n\n  // 5b. Platform-subsidized mode: tenant has no plan and no credits but the`,
+        "block unconfigured tenant",
+      );
+
+      replaceExact(
+        `        eq(aiUsageLogsTable.tenantId, tenantId as string),\n        gte(aiUsageLogsTable.createdAt, startOfMonth),`,
+        `        eq(aiUsageLogsTable.tenantId, tenantId as string),\n        eq(aiUsageLogsTable.success, true),\n        eq(aiUsageLogsTable.usedByok, false),\n        gte(aiUsageLogsTable.createdAt, startOfMonth),`,
+        "monthly successful shared usage only",
+      );
+
+      replaceExact(
+        `    if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsdEst);`,
+        `    // Falha do provedor não é gasto confirmado e não entra no teto diário.`,
+        "failed OpenAI daily spend",
+      );
+
+      replaceExact(
+        `    // 429 quota exceeded → attempt Anthropic fallback if key available\n    if (err?.status === 429 && process.env["ANTHROPIC_API_KEY"]) {`,
+        `    // 429 transitório pode usar fallback. Billing/crédito nunca troca de provedor,\n    // evitando drenar o segundo saldo quando o primeiro está esgotado.\n    const billingOrCreditError = /no credits|credit balance|billing|insufficient_quota|credit_balance_exhausted|quota exhausted/i.test(errorMessage ?? "");\n    if (err?.status === 429 && !billingOrCreditError && process.env["ANTHROPIC_API_KEY"]) {`,
+        "no billing fallback",
+      );
+
+      replaceExact(
+        `      if (event.type === "message_delta" && (event.delta as any)?.usage) {\n        outputTokens = (event.delta as any).usage.output_tokens ?? outputTokens;\n      }`,
+        `      if (event.type === "message_delta" && (event as any)?.usage) {\n        outputTokens = (event as any).usage.output_tokens ?? outputTokens;\n      }`,
+        "Anthropic streamed output usage",
+      );
+
+      replaceExact(
+        `  // 7. Update daily spend\n  if (!key.usedByok) {\n    await incrementDailySpend(tenantId, costUsd);\n  }\n\n  if (!success) {`,
+        `  // 7. Update daily spend somente para chamada concluída com a chave compartilhada.\n  if (success && !key.usedByok) {\n    await incrementDailySpend(tenantId, costUsd);\n  }\n\n  if (!success) {`,
+        "Anthropic successful spend only",
+      );
 
       return { contents, loader: "ts" };
     });
@@ -296,6 +376,7 @@ async function buildAll() {
     sourcemap: "linked",
     plugins: [
       siteGeneratorDescCollisionHotfixPlugin,
+      aiCostSafetyPlugin,
       asaasMyAccountUrlHotfixPlugin,
       contentGenerationAllowancePlugin,
       workspaceVendorBrainPlugin,
