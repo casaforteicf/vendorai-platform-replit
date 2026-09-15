@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import { buildTargetedRefinementInstruction, resolveSectionRefinement } from "@workspace/vendor-brain/site-section-refinement";
 import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
+import siteGenerator2RuntimeRouter from "./site_generator_2_runtime.js";
 
 function cleanText(value: string): string {
   return value
@@ -61,6 +62,10 @@ function restorePreservedSections(originalHtml: string, candidateHtml: string, p
 
 const router: IRouter = Router();
 
+// Runtime 2.0 runs first: creative direction, automatic media, component/motion
+// contracts, deterministic SEO/runtime injection and publication QA gate.
+router.use(siteGenerator2RuntimeRouter);
+
 router.use(async (req, res, next) => {
   const match = req.method === "POST"
     ? req.path.match(/^\/tenants\/([^/]+)\/site-generator\/([^/]+)\/refine$/)
@@ -117,7 +122,7 @@ router.use(async (req, res, next) => {
     const currentConfig = (site.config ?? {}) as Record<string, any>;
     const nextConfig = {
       ...currentConfig,
-      siteGeneratorVersion: "2.0",
+      generatorVersion: "2.0",
       lastSectionRefinement: {
         targetSectionKey: resolution.targetSectionKey,
         targetSectionTitle: resolution.targetSectionTitle,
