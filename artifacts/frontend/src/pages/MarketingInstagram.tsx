@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   Instagram,
   Library,
   Settings2,
@@ -35,6 +36,15 @@ type InstagramConnection = {
   username?: string | null;
   tokenExpiresAt?: string | null;
   connectedAt?: string | null;
+};
+
+type WebsiteConnectionResponse = {
+  connection?: {
+    siteUrl?: string | null;
+    status?: string;
+    platformLabel?: string;
+    source?: string;
+  } | null;
 };
 
 type CalendarItem = {
@@ -99,6 +109,20 @@ export default function MarketingInstagram() {
     refetchInterval: 60_000,
   });
 
+  const { data: websiteConnection, isLoading: websiteLoading } = useQuery<WebsiteConnectionResponse>({
+    queryKey: ["instagram-conversion-destination", tenantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/content-autopilot/website-connection`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    enabled: !!tenantId,
+    refetchInterval: 60_000,
+  });
+
   const { data: calendar = [] } = useQuery<CalendarItem[]>({
     queryKey: ["instagram-content-calendar", tenantId],
     queryFn: async () => {
@@ -113,8 +137,6 @@ export default function MarketingInstagram() {
     enabled: !!tenantId,
   });
 
-  // Só Feed tem miniatura confiável pra prévia (Reels ainda não gera capa
-  // própria, só a URL do vídeo — ver InstagramGridPreview.tsx).
   const draftOptions: DraftOption[] = (library?.items ?? [])
     .filter((item) => item.type === "feed")
     .map((item) => {
@@ -144,6 +166,7 @@ export default function MarketingInstagram() {
   const inReview = instagramCalendar.filter((item) => item.status === "gerado").length;
   const approved = instagramCalendar.filter((item) => item.status === "aprovado").length;
   const connected = Boolean(connection?.connected && connection?.publishReady !== false);
+  const conversionUrl = websiteConnection?.connection?.siteUrl ?? null;
 
   const connectionReason = connection?.reason === "token_expired"
     ? "Token expirado"
@@ -211,6 +234,51 @@ export default function MarketingInstagram() {
             >
               <Settings2 className="h-3.5 w-3.5" />
               Corrigir conexão
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className={conversionUrl ? "border-blue-200 bg-blue-50/40" : "border-amber-300 bg-amber-50/50"}>
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            {conversionUrl ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            )}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">Destino de conversão</p>
+                <Badge variant={conversionUrl ? "secondary" : "outline"}>
+                  {websiteLoading ? "Verificando" : conversionUrl ? "Configurado" : "Atenção"}
+                </Badge>
+              </div>
+              <p className="mt-1 break-all text-sm text-muted-foreground">
+                {websiteLoading
+                  ? "Localizando o site oficial deste tenant."
+                  : conversionUrl
+                    ? `Publicações sem URL própria recebem automaticamente: ${conversionUrl}`
+                    : "Nenhum site oficial foi encontrado para este tenant. Cadastre o site antes de depender do Instagram para gerar tráfego."}
+              </p>
+            </div>
+          </div>
+          {conversionUrl ? (
+            <a href={conversionUrl} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm" className="w-full shrink-0 gap-1.5 sm:w-auto">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir destino
+              </Button>
+            </a>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full shrink-0 gap-1.5 sm:w-auto"
+              onClick={() => setLocation("/configuracoes")}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              Configurar site
             </Button>
           )}
         </CardContent>
