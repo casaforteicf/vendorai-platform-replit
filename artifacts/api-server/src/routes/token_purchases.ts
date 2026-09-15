@@ -91,7 +91,10 @@ async function createFixedAiCreditPack(tenantId: string) {
       value: AI_CREDIT_PACK_PRICE_BRL,
       dueDate: dueDateStr,
       description: `VendorAI — +${AI_CREDIT_PACK_CREDITS.toLocaleString("pt-BR")} créditos de IA`,
-      externalReference: `ai_credit_pack:${tenantId}:${purchase.id}`,
+      // Reutiliza o fluxo de webhook já idempotente: pagamento confirmado marca
+      // a compra como paga e credita o tenant. O trigger do banco espelha esse
+      // saldo em ai_credits_usd para o hard-cap financeiro do AI Gateway.
+      externalReference: `token_topup:${tenantId}:${purchase.id}`,
     });
 
     await db
@@ -124,6 +127,7 @@ router.get(
   "/tenants/:tenantId/ai-budget",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
+    // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
     const tenantId = String(req.params["tenantId"]);
     const budget = await getTenantAiBudget(tenantId);
     if (!budget) {
@@ -141,6 +145,7 @@ router.post(
   requireSameTenanOrSuperAdmin(),
   requireBillingAdmin,
   async (req, res) => {
+    // tenant-audit: reviewed protected by same-tenant guard plus billing-admin role
     const tenantId = String(req.params["tenantId"]);
     try {
       const purchase = await createFixedAiCreditPack(tenantId);
