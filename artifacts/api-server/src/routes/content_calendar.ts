@@ -226,6 +226,7 @@ router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/aprovar-lote", asy
  * aos 10 primeiros itens aprovados ainda sem conteúdo gerado.
  */
 router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/autorizar-producao-lote", async (req, res) => {
+  // tenant-audit: reviewed same-tenant access + explicit paid-Marketing permission gate below
   const tenantId = String(req.params.tenantId);
   const mediaPlanId = String(req.params.mediaPlanId);
   if (!canAccess(req, tenantId)) {
@@ -356,6 +357,7 @@ router.patch("/content-calendar/:id", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+
   const parsed = patchBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
