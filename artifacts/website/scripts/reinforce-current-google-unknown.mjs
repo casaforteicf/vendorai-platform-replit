@@ -10,7 +10,6 @@ const routeByPath = new Map((manifest.routes || []).map((route) => [route.pathna
 
 const targets = [
   ["/segmentos/distributors", "VendorAI para distribuidoras"],
-  ["/solucoes", "Soluções VendorAI"],
 ];
 
 function esc(value = "") {
@@ -37,7 +36,7 @@ const hubs = ["/", "/produtos", "/solucoes", "/blog", "/funcionalidades"]
 const targetLinks = targets.map(([href, label]) => [href, label]);
 for (const hub of hubs) {
   if (hub.staticHtml.includes('data-vendorai-google-unknown-current="hub"')) continue;
-  hub.staticHtml += `<section data-vendorai-google-unknown-current="hub"><h2>Páginas estratégicas do VendorAI</h2><p>Explore as páginas prioritárias de soluções comerciais e CRM com IA para distribuição, vendas B2B e automação.</p>${nav(targetLinks, "Páginas estratégicas do VendorAI")}</section>`;
+  hub.staticHtml += `<section data-vendorai-google-unknown-current="hub"><h2>VendorAI para distribuidoras</h2><p>Conheça como o VendorAI apoia distribuidoras com CRM, prospecção B2B, automação comercial, follow-up e inteligência de vendas.</p>${nav(targetLinks, "VendorAI para distribuidoras")}</section>`;
 }
 
 for (const [pathname, label] of targets) {
@@ -47,13 +46,17 @@ for (const [pathname, label] of targets) {
     ["/", "VendorAI"],
     ["/produtos", "Produtos"],
     ["/solucoes", "Soluções"],
-    ["/funcionalidades", "Funcionalidades"],
+    ["/produtos/crm", "CRM com IA"],
+    ["/produtos/prospeccao", "Prospecção com IA"],
+    ["/produtos/revenue-scout", "Revenue Scout"],
+    ["/solucoes/prospeccao-b2b-ia", "Prospecção B2B com IA"],
+    ["/solucoes/automatizar-follow-up", "Follow-up automático"],
+    ["/segmentos/industries", "VendorAI para indústrias"],
     ["/blog", "Blog e guias"],
-    ...targets.filter(([href]) => href !== pathname),
   ];
-  route.staticHtml += `<section data-vendorai-google-unknown-current="route"><h3>Continue explorando o VendorAI</h3><p>${esc(label)} faz parte do ecossistema comercial do VendorAI. Veja também os principais hubs e páginas diretamente relacionadas para aprofundar CRM, automação, vendas B2B e inteligência comercial.</p>${nav(related, "Conteúdos relacionados")}</section>`;
+  route.staticHtml += `<section data-vendorai-google-unknown-current="route"><h2>CRM e automação para distribuidoras</h2><p>${esc(label)} conecta prospecção B2B, CRM, follow-up, inteligência comercial e automação de vendas em um único fluxo. Explore também produtos, soluções e conteúdos relacionados para equipes de distribuição e vendas externas.</p>${nav(related, "Conteúdos relacionados para distribuidoras")}</section>`;
 }
 
 manifest.generatedAt = new Date().toISOString();
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-console.log(`[google-unknown-current] reinforced ${targets.length} current Google-unknown routes across ${hubs.length} hubs`);
+console.log(`[google-unknown-current] reinforced ${targets.length} current Google-unknown route across ${hubs.length} hubs`);
