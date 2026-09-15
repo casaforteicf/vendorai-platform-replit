@@ -2,7 +2,9 @@ import { pool } from "@workspace/db";
 
 export const CONTENT_GENERATION_BASE_LIMIT = 200;
 export const GENERATION_PACK_SIZE = 200;
-export const GENERATION_PACK_PRICE_BRL = 99;
+// Pacote comercial unificado: R$ 499 adiciona créditos de IA e também amplia
+// a franquia de gerações de conteúdo. O saldo financeiro é controlado pelo AI Gateway.
+export const GENERATION_PACK_PRICE_BRL = 499;
 
 const CYCLE_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -39,7 +41,6 @@ async function paidPackCount(client: { query: Function }, tenantId: string): Pro
        FROM token_purchases
       WHERE tenant_id = $1
         AND status = 'paid'
-        AND credits = 0
         AND valor = $2::numeric`,
     [tenantId, GENERATION_PACK_PRICE_BRL],
   );
