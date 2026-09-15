@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, ShoppingCart, Sparkles } from "lucide-react";
+import "./marketing/MarketingResponsiveFocusBridge";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
@@ -140,17 +141,21 @@ export function AiBudgetUsageIndicator() {
   if (!budget) return null;
 
   const percent = Math.max(0, Math.min(100, budget.percentUsed));
+  const mobileContainer = expanded
+    ? "left-3 right-3 w-auto rounded-xl sm:left-4 sm:right-auto sm:w-[min(390px,calc(100vw-2rem))]"
+    : "right-4 h-12 w-12 rounded-full sm:left-4 sm:right-auto sm:h-auto sm:w-[min(390px,calc(100vw-2rem))] sm:rounded-xl";
 
   return (
-    <div className={`fixed bottom-4 left-4 z-[125] w-[min(390px,calc(100vw-2rem))] rounded-xl border shadow-lg ${tone}`}>
+    <div className={`fixed bottom-4 z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center gap-3 px-3 py-2 text-left"
+        className={`flex items-center text-left ${expanded ? "w-full gap-3 px-3 py-2" : "h-12 w-12 justify-center p-0 sm:h-auto sm:w-full sm:justify-start sm:gap-3 sm:px-3 sm:py-2"}`}
         aria-expanded={expanded}
+        aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
       >
         <span className="rounded-full bg-black/5 p-1.5"><Sparkles className="h-4 w-4" /></span>
-        <span className="min-w-0 flex-1">
+        <span className={`${expanded ? "block" : "hidden sm:block"} min-w-0 flex-1`}>
           <span className="flex items-center justify-between gap-3 text-xs font-semibold">
             <span>Consumo de IA · {percent.toFixed(0)}%</span>
             <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
@@ -159,7 +164,7 @@ export function AiBudgetUsageIndicator() {
             <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
           </span>
         </span>
-        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="hidden h-4 w-4 sm:block" />}
       </button>
 
       {expanded ? (
