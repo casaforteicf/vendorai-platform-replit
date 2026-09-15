@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -85,7 +86,7 @@ export default function MarketingInstagram() {
   const [, setLocation] = useLocation();
   const tenantId = user?.tenantId ?? "";
 
-  const { data: library } = useQuery<{ items: ContentLibraryItem[] }>({
+  const { data: library, isError: libraryError } = useQuery<{ items: ContentLibraryItem[] }>({
     queryKey: ["content-library", tenantId],
     queryFn: async () => {
       const res = await fetch(`/api/tenants/${tenantId}/content/library`, { headers: authHeaders() });
@@ -95,7 +96,11 @@ export default function MarketingInstagram() {
     enabled: !!tenantId,
   });
 
-  const { data: connection, isLoading: connectionLoading } = useQuery<InstagramConnection>({
+  const {
+    data: connection,
+    isLoading: connectionLoading,
+    isError: connectionError,
+  } = useQuery<InstagramConnection>({
     queryKey: ["instagram-connection", tenantId],
     queryFn: async () => {
       const res = await fetch(`/api/tenants/${tenantId}/instagram-connection`, {
@@ -109,7 +114,11 @@ export default function MarketingInstagram() {
     refetchInterval: 60_000,
   });
 
-  const { data: websiteConnection, isLoading: websiteLoading } = useQuery<WebsiteConnectionResponse>({
+  const {
+    data: websiteConnection,
+    isLoading: websiteLoading,
+    isError: websiteError,
+  } = useQuery<WebsiteConnectionResponse>({
     queryKey: ["instagram-conversion-destination", tenantId],
     queryFn: async () => {
       const res = await fetch(`/api/tenants/${tenantId}/content-autopilot/website-connection`, {
@@ -123,7 +132,10 @@ export default function MarketingInstagram() {
     refetchInterval: 60_000,
   });
 
-  const { data: calendar = [] } = useQuery<CalendarItem[]>({
+  const {
+    data: calendar = [],
+    isError: calendarError,
+  } = useQuery<CalendarItem[]>({
     queryKey: ["instagram-content-calendar", tenantId],
     queryFn: async () => {
       const res = await fetch(`/api/tenants/${tenantId}/content-calendar`, {
@@ -165,8 +177,8 @@ export default function MarketingInstagram() {
 
   const inReview = instagramCalendar.filter((item) => item.status === "gerado").length;
   const approved = instagramCalendar.filter((item) => item.status === "aprovado").length;
-  const connected = Boolean(connection?.connected && connection?.publishReady !== false);
-  const conversionUrl = websiteConnection?.connection?.siteUrl ?? null;
+  const connected = !connectionError && Boolean(connection?.connected && connection?.publishReady !== false);
+  const conversionUrl = websiteError ? null : websiteConnection?.connection?.siteUrl ?? null;
 
   const connectionReason = connection?.reason === "token_expired"
     ? "Token expirado"
@@ -178,6 +190,76 @@ export default function MarketingInstagram() {
           ? "Permissão de publicação incompleta"
           : "Conta não conectada";
 
+  const nextAction = connectionError
+    ? {
+        title: "Verificar serviço do Instagram",
+        description: "O VendorAI não conseguiu consultar a integração agora. Não trate isso como conta desconectada até a API responder novamente.",
+        button: "Abrir integrações",
+        href: "/configuracoes?tab=integracoes",
+        tone: "warning" as const,
+      }
+    : !connected
+      ? {
+          title: "Conectar o Instagram",
+          description: "Conecte a conta profissional para liberar publicação, fila e acompanhamento automático.",
+          button: "Conectar Instagram",
+          href: "/configuracoes?tab=integracoes",
+          tone: "warning" as const,
+        }
+      : websiteError
+        ? {
+            title: "Verificar destino de conversão",
+            description: "A conexão do Instagram está pronta, mas o site oficial não pôde ser consultado agora.",
+            button: "Abrir configurações",
+            href: "/configuracoes",
+            tone: "warning" as const,
+          }
+        : !conversionUrl
+          ? {
+              title: "Configurar destino de conversão",
+              description: "Defina o site oficial do tenant para que o conteúdo gere tráfego para um destino real.",
+              button: "Configurar destino",
+              href: "/configuracoes",
+              tone: "warning" as const,
+            }
+          : calendarError
+            ? {
+                title: "Verificar calendário",
+                description: "Instagram e destino estão prontos, mas a fila de publicações não pôde ser carregada agora.",
+                button: "Abrir Gerador",
+                href: "/content",
+                tone: "warning" as const,
+              }
+            : inReview > 0
+              ? {
+                  title: `Revisar ${inReview} conteúdo${inReview === 1 ? "" : "s"}`,
+                  description: "Há conteúdo gerado aguardando sua revisão antes de seguir para publicação.",
+                  button: "Revisar agora",
+                  href: "/content",
+                  tone: "attention" as const,
+                }
+              : upcoming.length === 0
+                ? {
+                    title: "Criar a próxima publicação",
+                    description: "A operação está conectada, mas não há publicação prevista para os próximos 7 dias.",
+                    button: "Gerar conteúdo",
+                    href: "/content",
+                    tone: "attention" as const,
+                  }
+                : {
+                    title: "Operação pronta",
+                    description: `${upcoming.length} publicaç${upcoming.length === 1 ? "ão" : "ões"} prevista${upcoming.length === 1 ? "" : "s"} para os próximos 7 dias.`,
+                    button: "Ver fila",
+                    href: "/content",
+                    tone: "ready" as const,
+                  };
+
+  const nextActionClass = nextAction.tone === "ready"
+    ? "border-emerald-200 bg-emerald-50/40"
+    : nextAction.tone === "attention"
+      ? "border-blue-200 bg-blue-50/40"
+      : "border-amber-300 bg-amber-50/50";
+
   return (
     <div className="mx-auto w-full max-w-4xl space-y-4 px-3 pb-28 pt-4 sm:px-4 md:p-6 md:pb-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -187,7 +269,7 @@ export default function MarketingInstagram() {
             Instagram
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Central de operação do canal: acompanhe conexão, fila de publicações, grade real e recomendações da IA. A criação continua no Gerador de Conteúdo.
+            Conecte o canal, defina o destino, gere o conteúdo, revise e acompanhe a fila. Esta tela mostra o que está pronto e qual é o próximo passo.
           </p>
         </div>
         <Button
@@ -201,10 +283,57 @@ export default function MarketingInstagram() {
         </Button>
       </div>
 
-      <Card className={connected ? "border-emerald-200" : "border-amber-200"}>
+      <Card className={nextActionClass}>
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            {connected ? (
+            {nextAction.tone === "ready" ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            ) : nextAction.tone === "attention" ? (
+              <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            )}
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Próximo passo</p>
+              <p className="mt-0.5 font-semibold">{nextAction.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{nextAction.description}</p>
+            </div>
+          </div>
+          <Button size="sm" className="w-full shrink-0 gap-1.5 sm:w-auto" onClick={() => setLocation(nextAction.href)}>
+            {nextAction.button}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className={`rounded-lg border p-3 ${connectionError ? "border-amber-200" : connected ? "border-emerald-200" : ""}`}>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {connected && !connectionError ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+            1. Canal
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{connectionError ? "Não foi possível verificar" : connected ? "Instagram conectado" : "Conexão pendente"}</p>
+        </div>
+        <div className={`rounded-lg border p-3 ${websiteError ? "border-amber-200" : conversionUrl ? "border-emerald-200" : ""}`}>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {conversionUrl && !websiteError ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+            2. Conversão
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{websiteError ? "Não foi possível verificar" : conversionUrl ? "Destino configurado" : "Destino pendente"}</p>
+        </div>
+        <div className={`rounded-lg border p-3 ${calendarError ? "border-amber-200" : upcoming.length > 0 ? "border-emerald-200" : ""}`}>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {!calendarError && upcoming.length > 0 ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Clock3 className="h-4 w-4 text-muted-foreground" />}
+            3. Conteúdo
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{calendarError ? "Fila indisponível" : upcoming.length > 0 ? "Fila programada" : "Sem publicação próxima"}</p>
+        </div>
+      </div>
+
+      <Card className={connectionError ? "border-amber-300" : connected ? "border-emerald-200" : "border-amber-200"}>
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            {connected && !connectionError ? (
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
             ) : (
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
@@ -212,16 +341,18 @@ export default function MarketingInstagram() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold">Conexão do Instagram</p>
-                <Badge variant={connected ? "secondary" : "outline"}>
-                  {connectionLoading ? "Verificando" : connected ? "Conectado" : "Atenção"}
+                <Badge variant={connected && !connectionError ? "secondary" : "outline"}>
+                  {connectionLoading ? "Verificando" : connectionError ? "Indisponível" : connected ? "Conectado" : "Atenção"}
                 </Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {connectionLoading
                   ? "Validando a conexão e as permissões de publicação."
-                  : connected
-                    ? `${connection?.username ? `@${connection.username} · ` : ""}publicação disponível${connection?.tokenExpiresAt ? ` · token válido até ${new Date(connection.tokenExpiresAt).toLocaleDateString("pt-BR")}` : ""}.`
-                    : `${connectionReason}. Corrija a integração antes de depender de publicação automática.`}
+                  : connectionError
+                    ? "Não foi possível consultar a integração agora. Tente novamente quando o serviço estiver disponível."
+                    : connected
+                      ? `${connection?.username ? `@${connection.username} · ` : ""}publicação disponível${connection?.tokenExpiresAt ? ` · token válido até ${new Date(connection.tokenExpiresAt).toLocaleDateString("pt-BR")}` : ""}.`
+                      : `${connectionReason}. Corrija a integração antes de depender de publicação automática.`}
               </p>
             </div>
           </div>
@@ -233,16 +364,16 @@ export default function MarketingInstagram() {
               onClick={() => setLocation("/configuracoes?tab=integracoes")}
             >
               <Settings2 className="h-3.5 w-3.5" />
-              Corrigir conexão
+              {connectionError ? "Abrir integrações" : "Corrigir conexão"}
             </Button>
           )}
         </CardContent>
       </Card>
 
-      <Card className={conversionUrl ? "border-blue-200 bg-blue-50/40" : "border-amber-300 bg-amber-50/50"}>
+      <Card className={websiteError ? "border-amber-300 bg-amber-50/50" : conversionUrl ? "border-blue-200 bg-blue-50/40" : "border-amber-300 bg-amber-50/50"}>
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            {conversionUrl ? (
+            {conversionUrl && !websiteError ? (
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
             ) : (
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
@@ -250,20 +381,22 @@ export default function MarketingInstagram() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold">Destino de conversão</p>
-                <Badge variant={conversionUrl ? "secondary" : "outline"}>
-                  {websiteLoading ? "Verificando" : conversionUrl ? "Configurado" : "Atenção"}
+                <Badge variant={conversionUrl && !websiteError ? "secondary" : "outline"}>
+                  {websiteLoading ? "Verificando" : websiteError ? "Indisponível" : conversionUrl ? "Configurado" : "Atenção"}
                 </Badge>
               </div>
               <p className="mt-1 break-all text-sm text-muted-foreground">
                 {websiteLoading
                   ? "Localizando o site oficial deste tenant."
-                  : conversionUrl
-                    ? `Publicações sem URL própria recebem automaticamente: ${conversionUrl}`
-                    : "Nenhum site oficial foi encontrado para este tenant. Cadastre o site antes de depender do Instagram para gerar tráfego."}
+                  : websiteError
+                    ? "Não foi possível consultar o site oficial agora. Isso não significa que o tenant esteja sem site configurado."
+                    : conversionUrl
+                      ? `Publicações sem URL própria recebem automaticamente: ${conversionUrl}`
+                      : "Nenhum site oficial foi encontrado para este tenant. Cadastre o site antes de depender do Instagram para gerar tráfego."}
               </p>
             </div>
           </div>
-          {conversionUrl ? (
+          {conversionUrl && !websiteError ? (
             <a href={conversionUrl} target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="w-full shrink-0 gap-1.5 sm:w-auto">
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -278,7 +411,7 @@ export default function MarketingInstagram() {
               onClick={() => setLocation("/configuracoes")}
             >
               <Settings2 className="h-3.5 w-3.5" />
-              Configurar site
+              {websiteError ? "Abrir configurações" : "Configurar site"}
             </Button>
           )}
         </CardContent>
@@ -288,25 +421,25 @@ export default function MarketingInstagram() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarDays className="h-4 w-4" /> Próx. 7 dias</div>
-            <p className="mt-2 text-2xl font-semibold">{upcoming.length}</p>
+            <p className="mt-2 text-2xl font-semibold">{calendarError ? "—" : upcoming.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 className="h-4 w-4" /> Em revisão</div>
-            <p className="mt-2 text-2xl font-semibold">{inReview}</p>
+            <p className="mt-2 text-2xl font-semibold">{calendarError ? "—" : inReview}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><CheckCircle2 className="h-4 w-4" /> Aprovados</div>
-            <p className="mt-2 text-2xl font-semibold">{approved}</p>
+            <p className="mt-2 text-2xl font-semibold">{calendarError ? "—" : approved}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><Library className="h-4 w-4" /> Biblioteca Feed</div>
-            <p className="mt-2 text-2xl font-semibold">{draftOptions.length}</p>
+            <p className="mt-2 text-2xl font-semibold">{libraryError ? "—" : draftOptions.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -318,13 +451,28 @@ export default function MarketingInstagram() {
             Próximas publicações
           </CardTitle>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Fila do Planejamento de Mídia para o Instagram. Produção e revisão continuam centralizadas no Gerador de Conteúdo.
+            Fila do Planejamento de Mídia para o Instagram. Abra qualquer item para revisar ou produzir no Gerador de Conteúdo.
           </p>
         </CardHeader>
         <CardContent className="space-y-2">
-          {upcoming.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              Nenhuma publicação do Instagram prevista para os próximos 7 dias.
+          {calendarError ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium">Não foi possível carregar a fila agora.</p>
+                <p className="mt-1 text-xs text-muted-foreground">O sistema não vai mostrar zero publicações quando a API estiver indisponível.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/content")}>Abrir Gerador</Button>
+            </div>
+          ) : upcoming.length === 0 ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium">Nenhuma publicação prevista para os próximos 7 dias.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Crie o próximo conteúdo e mantenha a operação ativa.</p>
+              </div>
+              <Button size="sm" className="gap-1.5" onClick={() => setLocation("/content")}>
+                <Sparkles className="h-3.5 w-3.5" />
+                Criar publicação
+              </Button>
             </div>
           ) : (
             upcoming.slice(0, 6).map((item) => (
@@ -360,7 +508,7 @@ export default function MarketingInstagram() {
 
       <Card className="bg-muted/20">
         <CardContent className="p-4 text-xs leading-relaxed text-muted-foreground">
-          Métricas de alcance, impressões, seguidores e engajamento só devem aparecer aqui quando houver dados reais de Instagram Insights autorizados pela conta. Esta tela não inventa indicadores quando a API não os disponibiliza.
+          Métricas de alcance, impressões, seguidores e engajamento só aparecem quando houver dados reais de Instagram Insights autorizados pela conta. O VendorAI não preenche indicadores com valores estimados.
         </CardContent>
       </Card>
     </div>
