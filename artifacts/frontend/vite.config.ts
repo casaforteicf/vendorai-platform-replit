@@ -25,6 +25,18 @@ const mediaPlanAvailableQuotaPlugin = {
   enforce: "pre" as const,
   transform(code: string, id: string) {
     const normalizedId = id.split("?")[0]?.replace(/\\/g, "/") ?? id;
+
+    // O controle novo chama o produtor legado por botão. Aceite o rótulo novo
+    // "Produzir lote" e mantenha compatibilidade com rótulos anteriores.
+    if (normalizedId.endsWith("/src/components/marketing/MediaPlanBatchControl.tsx")) {
+      const from = `.find((button) => normalizedText(button.textContent ?? "").startsWith("Produzir plano completo"));`;
+      const to = `.find((button) => ["Produzir lote", "Produzir plano completo", "Produzir agora"]\n      .some((prefix) => normalizedText(button.textContent ?? "").startsWith(prefix)));`;
+      if (!code.includes(from)) {
+        throw new Error("MediaPlan batch-control transform guard failed (production button)");
+      }
+      return { code: code.replace(from, to), map: null };
+    }
+
     if (!normalizedId.endsWith("/src/components/marketing/MediaPlanAutoProductionBridge.tsx")) return null;
 
     const replaceExact = (value: string, from: string, to: string, label: string) => {
