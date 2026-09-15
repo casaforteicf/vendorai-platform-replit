@@ -16,9 +16,107 @@ const buildId = (process.env.VENDOR_BUILD_ID || process.env.GITHUB_SHA || "local
   .replace(/[^a-zA-Z0-9_-]/g, "")
   .slice(0, 12) || "local";
 
+// O produtor original do Plano de Mídia ainda assume que toda a fila cabe na
+// franquia. Este transform limita cada rodada ao saldo realmente disponível e
+// usa um snapshot de fila+saldo para retomar automaticamente depois que um
+// pacote extra for pago, sem repetir indefinidamente a mesma rodada com falha.
+const mediaPlanAvailableQuotaPlugin = {
+  name: "media-plan-available-quota",
+  enforce: "pre" as const,
+  transform(code: string, id: string) {
+    const normalizedId = id.split("?")[0]?.replace(/\\/g, "/") ?? id;
+    if (!normalizedId.endsWith("/src/components/marketing/MediaPlanAutoProductionBridge.tsx")) return null;
+
+    const replaceExact = (value: string, from: string, to: string, label: string) => {
+      const first = value.indexOf(from);
+      if (first < 0 || value.indexOf(from, first + from.length) >= 0) {
+        throw new Error(`MediaPlan quota transform guard failed (${label})`);
+      }
+      return value.replace(from, to);
+    };
+
+    let contents = code;
+    contents = replaceExact(
+      contents,
+      `  const [results, setResults] = useState<ProductionResult[]>([]);\n  const startingRef = useRef(false);`,
+      `  const [results, setResults] = useState<ProductionResult[]>([]);\n  const [availableGenerations, setAvailableGenerations] = useState(0);\n  const startingRef = useRef(false);`,
+      "available state",
+    );
+    contents = replaceExact(
+      contents,
+      `      const [planRes, calendarRes, projectsRes, imageRes, videoRes] = await Promise.all([\n        fetch(\`/api/tenants/\${tenantId}/media-plan\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/content-calendar\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/media/projects?limit=200\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/media/assets?type=image&limit=150\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/media/assets?type=video&limit=150\`, { headers: authHeaders(), cache: "no-store" }),\n      ]);`,
+      `      const [planRes, calendarRes, projectsRes, imageRes, videoRes, usageRes] = await Promise.all([\n        fetch(\`/api/tenants/\${tenantId}/media-plan\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/content-calendar\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/media/projects?limit=200\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/media/assets?type=image&limit=150\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/media/assets?type=video&limit=150\`, { headers: authHeaders(), cache: "no-store" }),\n        fetch(\`/api/tenants/\${tenantId}/content\`, { headers: authHeaders(), cache: "no-store" }),\n      ]);`,
+      "load usage",
+    );
+    contents = replaceExact(
+      contents,
+      `      if (projectsRes.ok) {\n        const data = await projectsRes.json() as { projects?: MediaProject[] };\n        setProjects(data.projects ?? []);\n      }\n      const nextAssets: MediaAsset[] = [];`,
+      `      if (projectsRes.ok) {\n        const data = await projectsRes.json() as { projects?: MediaProject[] };\n        setProjects(data.projects ?? []);\n      }\n      if (usageRes.ok) {\n        const usage = await usageRes.json() as { availableGenerations?: number; monthlyUsed?: number; monthlyLimit?: number; extraRemaining?: number };\n        const fallback = Math.max(0, Number(usage.monthlyLimit ?? 0) - Number(usage.monthlyUsed ?? 0));\n        setAvailableGenerations(Math.max(0, Math.floor(Number(usage.availableGenerations ?? fallback))));\n      }\n      const nextAssets: MediaAsset[] = [];`,
+      "apply usage",
+    );
+    contents = replaceExact(
+      contents,
+      `    const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };\n    if (!response.ok || !payload.id) throw new Error(payload.error ?? "O gerador não criou o rascunho.");`,
+      `    const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };\n    if (!response.ok || !payload.id) {\n      if (response.status === 402) throw new Error("quota_exhausted:" + (payload.error ?? "Franquia de gerações esgotada."));\n      throw new Error(payload.error ?? "O gerador não criou o rascunho.");\n    }`,
+      "quota error marker",
+    );
+    contents = replaceExact(
+      contents,
+      `    } catch (error) {\n      await updateProject(project, {\n        materializationStatus: "failed",\n        executorKind: item.tipo,\n        executorDetail: error instanceof Error ? error.message : "Falha na produção",\n      }).catch(() => null);\n      throw error;\n    }`,
+      `    } catch (error) {\n      const quotaExhausted = error instanceof Error && error.message.startsWith("quota_exhausted:");\n      await updateProject(project, {\n        materializationStatus: quotaExhausted ? "planned" : "failed",\n        executorKind: item.tipo,\n        executorDetail: quotaExhausted ? "Aguardando novas gerações" : error instanceof Error ? error.message : "Falha na produção",\n      }).catch(() => null);\n      throw error;\n    }`,
+      "pending on quota exhaustion",
+    );
+    contents = replaceExact(
+      contents,
+      `    const queue = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");\n    if (queue.length === 0) return;`,
+      `    const eligible = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");\n    const queue = eligible.slice(0, Math.max(0, availableGenerations));\n    if (queue.length === 0) return;`,
+      "partial queue",
+    );
+    contents = replaceExact(
+      contents,
+      `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, new Date().toISOString());`,
+      `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, \`\${missing.length}:\${availableGenerations}\`);`,
+      "quota snapshot",
+    );
+    contents = replaceExact(
+      contents,
+      `        } catch (error) {\n          failed += 1;\n          output.push({ itemId: item.id, status: "failed", kind: item.tipo, label: item.temaSugerido, detail: error instanceof Error ? error.message : "Falha na produção" });\n        }\n        done += 1;`,
+      `        } catch (error) {\n          if (error instanceof Error && error.message.startsWith("quota_exhausted:")) {\n            setAvailableGenerations(0);\n            return;\n          }\n          failed += 1;\n          output.push({ itemId: item.id, status: "failed", kind: item.tipo, label: item.temaSugerido, detail: error instanceof Error ? error.message : "Falha na produção" });\n        }\n        done += 1;`,
+      "stop worker at quota",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [load, materializeOne, missing, plan, running]);`,
+      `  }, [availableGenerations, load, materializeOne, missing, plan, running]);`,
+      "runAll deps",
+    );
+    contents = replaceExact(
+      contents,
+      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;`,
+      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || availableGenerations <= 0 || running || startingRef.current) return;\n    const snapshot = \`\${missing.length}:\${availableGenerations}\`;\n    let alreadyStarted = false;\n    try { alreadyStarted = sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`) === snapshot; } catch {}\n    if (alreadyStarted) return;`,
+      "auto resume guard",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [missing.length, onPlanQueue, plan, runAll, running]);`,
+      `  }, [availableGenerations, missing.length, onPlanQueue, plan, runAll, running]);`,
+      "auto resume deps",
+    );
+    contents = replaceExact(
+      contents,
+      `<Play className="h-3.5 w-3.5" /> Produzir plano completo ({missing.length})`,
+      `<Play className="h-3.5 w-3.5" /> Produzir agora ({Math.min(missing.length, availableGenerations)})`,
+      "button label",
+    );
+
+    return { code: contents, map: null };
+  },
+};
+
 export default defineConfig({
   base: basePath,
   plugins: [
+    mediaPlanAvailableQuotaPlugin,
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
