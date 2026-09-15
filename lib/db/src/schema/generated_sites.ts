@@ -47,6 +47,18 @@ export interface SiteCommerceOffer {
   renewalMode?: "catalog" | "fixed";
 }
 
+export interface SiteGeneratorQaScorecard {
+  design: number;
+  seo: number;
+  mobile: number;
+  performance: number;
+  accessibility: number;
+  conversion: number;
+  approved: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
 export interface SiteGeneratorConfig {
   type: "landing" | "ecommerce" | "institutional" | "product";
   name: string;
@@ -87,6 +99,10 @@ export interface SiteGeneratorConfig {
   componentIds?: string[];
   seoAutoEnabled?: boolean;
   preserveUnaffectedSections?: boolean;
+  pageSpec?: Record<string, unknown>;
+  creativeDirector?: Record<string, unknown>;
+  qaScorecard?: SiteGeneratorQaScorecard;
+  mediaAutoSelected?: { imageCount: number; videoCount: number };
 }
 
 export interface SiteSeoChecklist {
