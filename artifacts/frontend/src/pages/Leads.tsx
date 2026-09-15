@@ -1000,10 +1000,10 @@ export default function Leads() {
               )}
             </div>
 
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block max-h-[calc(100dvh-22rem)] min-h-[320px] overflow-auto overscroll-contain">
               <TooltipProvider delayDuration={300}>
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]">
                     <TableRow>
                       <TableHead>Nome</TableHead>
                       <TableHead>Empresa</TableHead>
