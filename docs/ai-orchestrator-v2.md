@@ -23,6 +23,7 @@ The router is disabled by default. Enable only in a non-production environment o
 
 ```env
 VENDORAI_AI_ROUTER_V2=true
+VENDORAI_AI_ROUTER_TENANTS=<tenant-id-interno>
 VENDORAI_MODEL_ASTRA=gpt-6-astra
 VENDORAI_MODEL_SOL=gpt-5.6-sol
 VENDORAI_MODEL_TERRA=gpt-5.6-terra
@@ -30,6 +31,8 @@ VENDORAI_MODEL_LUNA=gpt-5.6-luna
 VENDORAI_IMAGE_MODEL_PREMIUM=gpt-image-2
 VENDORAI_IMAGE_MODEL_FAST=gpt-image-1-mini
 ```
+
+The router fails closed when the tenant allowlist is empty. Use a comma-separated list of tenant IDs; `*` is reserved for a deliberately approved global rollout.
 
 Explicit model choices made by existing callers always win. Disabling `VENDORAI_AI_ROUTER_V2` immediately restores the legacy `gpt-4o-mini` default without a deployment rollback.
 
