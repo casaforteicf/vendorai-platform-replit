@@ -224,7 +224,9 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
       eq(contentGenerationsTable.tenantId, contentCalendarItemsTable.tenantId),
     ))
     .where(and(
-      eq(contentCalendarItemsTable.status, "gerado"),
+      // "gerado" = peça pronta para revisão. Só "aprovado" + geração vinculada
+      // representa aprovação editorial final para publicação.
+      eq(contentCalendarItemsTable.status, "aprovado"),
       isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
       inArray(contentCalendarItemsTable.tipo, [...AUTO_TYPES]),
@@ -253,7 +255,8 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
     }).where(and(
       eq(contentCalendarItemsTable.id, row.id),
       eq(contentCalendarItemsTable.tenantId, row.tenantId),
-      eq(contentCalendarItemsTable.status, "gerado"),
+      eq(contentCalendarItemsTable.status, "aprovado"),
+      isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
     )).returning({ id: contentCalendarItemsTable.id });
     if (!claimed) continue;
