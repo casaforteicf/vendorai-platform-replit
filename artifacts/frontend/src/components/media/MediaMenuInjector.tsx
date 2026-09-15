@@ -196,7 +196,7 @@ function inferSequenceStage(workspace: HTMLElement) {
   if (text.includes("Finalizada")) return 5;
   if (text.includes("Acompanhar resultados")) return 4;
   if (text.includes("Pronta para iniciar") || text.includes("Iniciar campanha")) return 3;
-  if (text.includes("Revisar campanha") || text.includes("Acompanhar produção")) return 2;
+  if (text.includes("Revisar campanha") || text.includes("Acompanhar produção") || text.includes("Revise os materiais produzidos")) return 2;
   return 1;
 }
 
