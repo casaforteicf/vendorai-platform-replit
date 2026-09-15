@@ -19,12 +19,12 @@ function normalize(value: string): string {
 
 export function resolveMotionPreference(message: string): MotionLevel | null {
   const text = normalize(message);
-  const motionIntent = /animacao|movimento|motion|efeito|cinematic|dinamic|sutil|parallax|transicao/.test(text);
+  const motionIntent = /animacao|movimento|motion|efeito|cinematic|cinematograf|dinamic|suti|parallax|transicao/.test(text);
   if (!motionIntent) return null;
   if (/sem animacao|sem movimento|desativ.*animacao|tir.*animacao|remov.*animacao/.test(text)) return "none";
   if (/cinematic|cinematograf|imersiv/.test(text)) return "cinematic";
   if (/dinamic|mais movimento|mais animacao|parallax|storytelling/.test(text)) return "dynamic";
-  if (/sutil|discret|leve|menos movimento|menos animacao/.test(text)) return "subtle";
+  if (/suti|discret|leve|menos movimento|menos animacao/.test(text)) return "subtle";
   if (/automatic|ia escolhe|ia decidir|recomendad/.test(text)) return "auto";
   return null;
 }
