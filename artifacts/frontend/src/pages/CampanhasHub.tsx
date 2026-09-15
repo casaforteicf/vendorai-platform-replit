@@ -116,6 +116,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showBriefing, setShowBriefing] = useState(false);
 
   async function load() {
     if (!tenantId) return;
@@ -131,9 +132,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
       const nextPlan = await planResponse.json() as MediaPlan | null;
       const nextCalendar = await calendarResponse.json() as CalendarItem[];
       if (!nextPlan) throw new Error("Planejamento não encontrado.");
-      if (mediaPlanId && nextPlan.id !== mediaPlanId) {
-        throw new Error("Este planejamento não é mais o planejamento atual. Volte ao Planejamento para abrir a versão vigente.");
-      }
+      if (mediaPlanId && nextPlan.id !== mediaPlanId) throw new Error("Este planejamento não é mais o planejamento atual. Volte ao Planejamento para abrir a versão vigente.");
       setPlan(nextPlan);
       setCalendar(nextCalendar.filter((item) => item.mediaPlanId === nextPlan.id));
     } catch (err) {
@@ -191,15 +190,9 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   }, [summary]);
 
   const nextStep = useMemo(() => {
-    if (summary.total === 0) {
-      return { title: "Organizar a campanha", description: "Ainda não há ações preparadas para esta campanha.", action: "Abrir Conteúdos & Criativos" };
-    }
-    if (summary.ready > 0) {
-      return { title: `Preparar ${summary.ready} ${summary.ready === 1 ? "ação" : "ações"}`, description: "O planejamento está pronto. Agora prepare os materiais antes de publicar ou enviar.", action: "Preparar materiais" };
-    }
-    if (summary.production > 0) {
-      return { title: "Acompanhar produção", description: `${summary.production} ${summary.production === 1 ? "ação está" : "ações estão"} sendo produzida${summary.production === 1 ? "" : "s"}.`, action: "Acompanhar produção" };
-    }
+    if (summary.total === 0) return { title: "Organizar a campanha", description: "Ainda não há ações preparadas para esta campanha.", action: "Abrir Conteúdos & Criativos" };
+    if (summary.ready > 0) return { title: `Preparar ${summary.ready} ${summary.ready === 1 ? "ação" : "ações"}`, description: "O planejamento está pronto. Prepare os materiais para seguir.", action: "Preparar materiais" };
+    if (summary.production > 0) return { title: "Acompanhar produção", description: `${summary.production} ${summary.production === 1 ? "ação está" : "ações estão"} em produção.`, action: "Acompanhar produção" };
     return { title: "Acompanhar resultados", description: "As ações desta campanha já foram publicadas ou concluídas.", action: "Ver resultados" };
   }, [summary]);
 
@@ -223,9 +216,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     setLocation("/content?tab=resultados");
   }
 
-  if (loading) {
-    return <div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando campanha…</div>;
-  }
+  if (loading) return <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando campanha…</div>;
 
   if (error || !plan || !selectedCampaign) {
     return (
@@ -233,69 +224,74 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
         <CardContent className="py-6">
           <p className="font-medium text-amber-900">Não foi possível abrir esta campanha.</p>
           <p className="mt-1 text-sm text-amber-800">{error ?? "Nenhuma campanha foi gerada para este planejamento."}</p>
-          <Button className="mt-4" variant="outline" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="mr-1 h-4 w-4" />Todas as campanhas</Button>
+          <Button className="mt-4" variant="outline" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="mr-1 h-4 w-4" />Campanhas</Button>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button size="sm" variant="ghost" onClick={() => setLocation(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}&view=lista`)}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Todas as campanhas</Button>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="mr-1 h-3.5 w-3.5" />Atualizar</Button>
+    <div data-vendorai-campaign-workspace-v2="true" className="space-y-3 md:space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <Button size="sm" variant="ghost" onClick={() => setLocation(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}&view=lista`)}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Campanhas</Button>
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="mr-1 h-3.5 w-3.5" /><span className="hidden sm:inline">Atualizar</span></Button>
           <Button size="sm" variant="ghost" onClick={() => setLocation("/content?tab=planejamento")}>Planejamento</Button>
         </div>
       </div>
 
-      <Card className="border-primary/25">
+      <Card className="border-primary/20">
         <CardContent className="p-4 md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{campaignStatus}</Badge><span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span></div>
-              <h2 className="mt-2 text-xl font-semibold">{selectedCampaign.nome}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{selectedCampaign.objetivo}</p>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{campaignStatus}</Badge><span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span><Badge variant="secondary" className="max-w-full truncate">KPI: {selectedCampaign.kpiPrincipal}</Badge></div>
+              <h2 className="mt-2 break-words text-xl font-semibold leading-tight md:text-2xl">{selectedCampaign.nome}</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">{selectedCampaign.objetivo}</p>
             </div>
-            <Badge variant="outline">KPI: {selectedCampaign.kpiPrincipal}</Badge>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Público</p><p className="mt-1 text-sm font-medium">{selectedCampaign.publico}</p>{selectedCampaign.regiao && <p className="mt-0.5 text-xs text-muted-foreground">{selectedCampaign.regiao}</p>}</div>
-            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Produto</p><p className="mt-1 text-sm font-medium">{selectedCampaign.produtoServico}</p></div>
-            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Oferta</p><p className="mt-1 text-sm font-medium">{selectedCampaign.oferta}</p></div>
-            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 text-sm font-medium line-clamp-3">{selectedCampaign.mensagemCentral}</p></div>
+          <button type="button" onClick={() => setShowBriefing((current) => !current)} className="mt-3 inline-flex min-h-9 items-center rounded-md border px-3 text-xs font-medium text-muted-foreground hover:bg-muted/40">
+            {showBriefing ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}{showBriefing ? "Ocultar briefing" : "Ver briefing da campanha"}
+          </button>
+
+          {showBriefing && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-lg bg-muted/35 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Público</p><p className="mt-1 text-xs font-medium">{selectedCampaign.publico}</p>{selectedCampaign.regiao && <p className="mt-0.5 text-[11px] text-muted-foreground">{selectedCampaign.regiao}</p>}</div>
+              <div className="rounded-lg bg-muted/35 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Produto</p><p className="mt-1 text-xs font-medium">{selectedCampaign.produtoServico}</p></div>
+              <div className="rounded-lg bg-muted/35 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Oferta</p><p className="mt-1 text-xs font-medium">{selectedCampaign.oferta}</p></div>
+              <div className="rounded-lg bg-muted/35 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 line-clamp-3 text-xs font-medium">{selectedCampaign.mensagemCentral}</p></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/25 bg-primary/[0.03]">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Próximo passo</p><p className="mt-1 text-base font-semibold">{nextStep.title}</p><p className="mt-0.5 text-xs text-muted-foreground">{nextStep.description}</p></div>
+            <Button size="sm" onClick={handlePrimaryAction}>{nextStep.action}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="border-primary/30 bg-primary/[0.03]">
-        <CardContent className="p-4 md:p-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div><p className="text-xs font-medium uppercase tracking-wide text-primary">Próximo passo</p><p className="mt-1 text-lg font-semibold">{nextStep.title}</p><p className="mt-1 text-sm text-muted-foreground">{nextStep.description}</p></div>
-            <Button onClick={handlePrimaryAction}>{nextStep.action}<ArrowRight className="ml-2 h-4 w-4" /></Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">A preparar</p><p className="mt-1 text-2xl font-semibold">{summary.ready}</p><p className="text-xs text-muted-foreground">aguardando preparação</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{summary.production}</p><p className="text-xs text-muted-foreground">sendo produzidas</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Concluídas</p><p className="mt-1 text-2xl font-semibold">{summary.published}</p><p className="text-xs text-muted-foreground">publicadas ou finalizadas</p></CardContent></Card>
+      <div className="grid grid-cols-3 gap-2">
+        <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">A preparar</p><p className="mt-1 text-xl font-semibold">{summary.ready}</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">Produção</p><p className="mt-1 text-xl font-semibold">{summary.production}</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">Publicadas</p><p className="mt-1 text-xl font-semibold">{summary.published}</p></CardContent></Card>
       </div>
 
       <Card>
         <CardContent className="p-4 md:p-5">
-          <div className="mb-4"><p className="font-semibold">Canais da campanha</p><p className="mt-1 text-xs text-muted-foreground">As {summary.total} ações ficam agrupadas para você não precisar percorrer uma lista enorme.</p></div>
+          <div className="mb-3"><p className="font-semibold">Canais da campanha</p><p className="mt-0.5 text-xs text-muted-foreground">{summary.total} ações agrupadas por canal.</p></div>
           {channelSummary.length === 0 ? <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nenhuma ação foi gerada ainda.</div> : (
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {channelSummary.map((channel) => {
                 const progress = channel.total > 0 ? Math.round((channel.published / channel.total) * 100) : 0;
                 return (
                   <div key={channel.canal} className="rounded-xl border p-3">
-                    <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">{channel.canal}</p><p className="mt-0.5 text-xs text-muted-foreground">{channel.total} {channel.total === 1 ? "ação" : "ações"}</p></div><Badge variant="outline">{progress}%</Badge></div>
-                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
-                    <div className="mt-2 flex gap-3 text-[11px] text-muted-foreground"><span>{channel.ready} a preparar</span><span>{channel.production} em andamento</span><span>{channel.published} concluídas</span></div>
+                    <div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{channel.canal}</p><p className="text-[11px] text-muted-foreground">{channel.total} {channel.total === 1 ? "ação" : "ações"}</p></div><Badge variant="outline">{progress}%</Badge></div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
+                    <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[10px] text-muted-foreground"><span>{channel.ready}<br/>preparar</span><span>{channel.production}<br/>produção</span><span>{channel.published}<br/>concluídas</span></div>
                   </div>
                 );
               })}
@@ -307,12 +303,12 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
       <Card>
         <CardContent className="p-4 md:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div><p className="font-semibold">Ferramentas desta campanha</p><p className="mt-1 text-xs text-muted-foreground">Abra apenas o que precisa agora. O contexto da campanha é mantido automaticamente.</p></div>
+            <div><p className="font-semibold">Ferramentas da campanha</p><p className="mt-0.5 text-xs text-muted-foreground">Abra só o que precisa agora.</p></div>
             <div className="flex flex-wrap gap-2">
-              {hasContent && <Button size="sm" onClick={() => setLocation(executionUrl("conteudos"))}><Images className="mr-1 h-3.5 w-3.5" />Conteúdos & Criativos</Button>}
+              {hasContent && <Button size="sm" onClick={() => setLocation(executionUrl("conteudos"))}><Images className="mr-1 h-3.5 w-3.5" />Conteúdos</Button>}
               {hasAds && <Button size="sm" variant="outline" onClick={() => setLocation(`/ads?from=media-plan&mediaPlanId=${encodeURIComponent(plan.id)}&campaignId=${encodeURIComponent(selectedCampaign.id)}`)}><Megaphone className="mr-1 h-3.5 w-3.5" />Anúncios</Button>}
               {hasOwned && <Button size="sm" variant="outline" onClick={() => setLocation(executionUrl("campanhas", { view: "lp" }))}><Globe2 className="mr-1 h-3.5 w-3.5" />Sites & LPs</Button>}
-              {hasMessaging && <Button size="sm" variant="outline" onClick={() => setLocation(executionUrl("campanhas", { view: "organicas" }))}><MessageCircle className="mr-1 h-3.5 w-3.5" />WhatsApp / E-mail</Button>}
+              {hasMessaging && <Button size="sm" variant="outline" onClick={() => setLocation(executionUrl("campanhas", { view: "organicas" }))}><MessageCircle className="mr-1 h-3.5 w-3.5" />Mensagens</Button>}
             </div>
           </div>
         </CardContent>
@@ -321,8 +317,8 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
       <Card>
         <CardContent className="p-4 md:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><p className="font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Detalhes das ações</p><p className="mt-1 text-xs text-muted-foreground">Abra somente quando precisar consultar cada ação individual.</p></div>
-            <Button size="sm" variant="outline" onClick={() => setShowDetails((current) => !current)}>{showDetails ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}{showDetails ? "Ocultar detalhes" : `Ver detalhes (${summary.total})`}</Button>
+            <div><p className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-primary" />Detalhes das ações</p><p className="mt-0.5 text-xs text-muted-foreground">Abra somente se precisar revisar itens individualmente.</p></div>
+            <Button size="sm" variant="outline" onClick={() => setShowDetails((current) => !current)}>{showDetails ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}{showDetails ? "Ocultar" : `Ver ${summary.total}`}</Button>
           </div>
 
           {showDetails && (
@@ -333,12 +329,12 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
                     {selectedItems.slice(0, 20).map((item) => (
                       <div key={item.id} className="flex items-center gap-3 p-3">
                         <div className="shrink-0">{statusIcon(item.status)}</div>
-                        <div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><span className="text-xs font-medium uppercase text-primary">{item.canal}</span><span className="text-[11px] text-muted-foreground">{item.tipo}</span></div><p className="mt-0.5 truncate text-sm font-medium">{item.temaSugerido}</p></div>
+                        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-medium uppercase text-primary">{item.canal}</span><span className="text-[11px] text-muted-foreground">{item.tipo}</span></div><p className="mt-0.5 truncate text-sm font-medium">{item.temaSugerido}</p></div>
                         <div className="shrink-0 text-right"><p className="text-xs font-medium">{statusLabel(item.status)}</p><p className="text-[10px] text-muted-foreground">{new Date(item.dataAgendada).toLocaleDateString("pt-BR")}</p></div>
                       </div>
                     ))}
                   </div>
-                  {selectedItems.length > 20 && <p className="mt-2 text-xs text-muted-foreground">Mostrando 20 de {selectedItems.length} ações. Abra a produção completa para consultar todas.</p>}
+                  {selectedItems.length > 20 && <p className="mt-2 text-xs text-muted-foreground">Mostrando 20 de {selectedItems.length} ações.</p>}
                   <Button className="mt-3" size="sm" variant="outline" onClick={() => setLocation(executionUrl("conteudos"))}>Abrir produção completa <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
                 </>
               )}
@@ -368,21 +364,17 @@ export default function CampanhasHub() {
   if (showProspecting) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><ColdProspectingCampaignPlanner /><ColdProspectingPilotValidation /></div>;
   if (showVisitors) return <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><VisitorIntelligence /></div>;
   if (showPraca) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><PracaVariedades /></div>;
-  if (showPlannedExecution) return <div className="p-4 md:p-6 max-w-7xl mx-auto"><CampaignExecutionWorkspace mediaPlanId={mediaPlanId} campaignId={campaignId} /></div>;
+  if (showPlannedExecution) return <div className="p-3 md:p-5 max-w-7xl mx-auto"><CampaignExecutionWorkspace mediaPlanId={mediaPlanId} campaignId={campaignId} /></div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-2"><Megaphone className="h-6 w-6 text-primary" /><h1 className="text-xl font-semibold">Campanhas</h1></div>
-      <p className="text-sm text-muted-foreground max-w-3xl">Crie ou acompanhe campanhas. Quando uma campanha nasce do Planejamento, toda a execução fica concentrada aqui.</p>
+    <div className="p-3 md:p-5 space-y-4 max-w-7xl mx-auto">
+      <div><div className="flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" /><h1 className="text-xl font-semibold">Campanhas</h1></div><p className="mt-1 text-sm text-muted-foreground max-w-3xl">Crie, acompanhe e execute campanhas sem misturar planejamento, produção e resultado.</p></div>
 
-      <Card className="overflow-hidden border-primary/30 bg-gradient-to-r from-primary/[0.08] via-background to-background shadow-sm">
-        <CardContent className="p-4 md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 rounded-xl border border-primary/25 bg-primary/10 p-2.5 text-primary"><BrainCircuit className="h-5 w-5" /></div>
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">Agente de Marketing</h2><span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"><Sparkles className="h-3 w-3" /> Contextual</span><span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground"><ShieldCheck className="h-3 w-3" /> Autonomia controlada</span></div><p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Acompanha objetivo, público, produto, canal e regras do tenant durante a execução.</p></div>
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=visitantes")}><Eye className="mr-1 h-3.5 w-3.5" /> Visitantes</Button><Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=planejamento")}>Novo planejamento</Button><Button size="sm" onClick={() => setLocation("/content?tab=campanhas&view=prospeccao")}>Prospecção <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></div>
+      <Card className="overflow-hidden border-primary/25 bg-primary/[0.03]">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3"><div className="rounded-xl border border-primary/20 bg-primary/10 p-2 text-primary"><BrainCircuit className="h-4 w-4" /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">Agente de Marketing</h2><span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"><Sparkles className="h-3 w-3" />Contextual</span><span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground"><ShieldCheck className="h-3 w-3" />Controlado</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">Mantém objetivo, público, produto, canal e regras durante a execução.</p></div></div>
+            <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=visitantes")}><Eye className="mr-1 h-3.5 w-3.5" />Visitantes</Button><Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=planejamento")}>Novo planejamento</Button><Button size="sm" onClick={() => setLocation("/content?tab=campanhas&view=prospeccao")}>Prospecção <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></div>
           </div>
         </CardContent>
       </Card>
@@ -390,12 +382,12 @@ export default function CampanhasHub() {
       <LaunchCommandCenter />
       <AssistedMarketingManager />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=prospeccao")} className="cursor-pointer border-primary/30 bg-primary/[0.03] transition-colors hover:border-primary/60 hover:bg-primary/[0.06]"><CardContent className="pt-6 space-y-3 h-full flex flex-col"><div className="flex items-center gap-2"><Radar className="h-5 w-5 text-primary" /><h2 className="font-semibold">Prospecção inteligente</h2></div><p className="text-sm text-muted-foreground">Encontre empresas por nicho e região e transforme sinais públicos em abordagem personalizada.</p><Button className="w-full mt-auto">Abrir prospecção <ArrowRight className="h-4 w-4 ml-1" /></Button></CardContent></Card>
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=organicas")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"><CardContent className="pt-6 space-y-3 h-full flex flex-col"><div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-primary" /><h2 className="font-semibold">Campanha orgânica</h2></div><p className="text-sm text-muted-foreground">WhatsApp, e-mail ou Instagram para uma ação avulsa.</p><Button variant="secondary" className="w-full mt-auto">Criar orgânica <ArrowRight className="h-4 w-4 ml-1" /></Button></CardContent></Card>
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/ads")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"><CardContent className="pt-6 space-y-3 h-full flex flex-col"><div className="flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" /><h2 className="font-semibold">Anúncio avulso</h2></div><p className="text-sm text-muted-foreground">Crie Meta ou Google Ads sem precisar iniciar um planejamento completo.</p><Button variant="secondary" className="w-full mt-auto">Criar anúncio <ArrowRight className="h-4 w-4 ml-1" /></Button></CardContent></Card>
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=praca")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"><CardContent className="pt-6 space-y-3 h-full flex flex-col"><div className="flex items-center gap-2"><Store className="h-5 w-5 text-primary" /><h2 className="font-semibold">Praça.ai</h2></div><p className="text-sm text-muted-foreground">Conteúdo e ofertas do Praça.ai.</p><Button variant="secondary" className="w-full mt-auto">Gerenciar Praça.ai <ArrowRight className="h-4 w-4 ml-1" /></Button></CardContent></Card>
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=mercados")} className="cursor-pointer border-primary/20 bg-primary/[0.02] transition-colors hover:border-primary/50 hover:bg-primary/[0.05]"><CardContent className="pt-6 space-y-3 h-full flex flex-col"><div className="flex items-center gap-2"><Layers3 className="h-5 w-5 text-primary" /><h2 className="font-semibold">Mercados & LPs</h2></div><p className="text-sm text-muted-foreground">Arquitetura comercial por segmento e vertical.</p><Button className="w-full mt-auto">Abrir mercados <ArrowRight className="h-4 w-4 ml-1" /></Button></CardContent></Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=prospeccao")} className="cursor-pointer border-primary/30 bg-primary/[0.03] transition hover:border-primary/60"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Radar className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Prospecção inteligente</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Encontre empresas por nicho e região.</p><Button size="sm" className="mt-3 w-full">Abrir <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=organicas")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Campanha orgânica</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">WhatsApp, e-mail ou Instagram.</p><Button size="sm" variant="secondary" className="mt-3 w-full">Criar <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/ads")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Megaphone className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Anúncio avulso</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Meta ou Google Ads.</p><Button size="sm" variant="secondary" className="mt-3 w-full">Criar <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=praca")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Store className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Praça.ai</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Conteúdo e ofertas do Praça.ai.</p><Button size="sm" variant="secondary" className="mt-3 w-full">Gerenciar <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=mercados")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Mercados & LPs</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Arquitetura comercial por segmento.</p><Button size="sm" className="mt-3 w-full">Abrir <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
       </div>
     </div>
   );

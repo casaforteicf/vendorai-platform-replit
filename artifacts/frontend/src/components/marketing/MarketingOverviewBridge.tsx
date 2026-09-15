@@ -5,17 +5,13 @@ import {
   ArrowRight,
   BarChart3,
   CalendarDays,
-  CheckCircle2,
   CircleDashed,
-  Clock3,
   Images,
   LayoutDashboard,
   Loader2,
   Megaphone,
   Radio,
-  Send,
   Sparkles,
-  Target,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +22,10 @@ const HIDDEN_ATTR = "data-vendorai-marketing-overview-hidden";
 const TOKEN_KEY = "vendorai_token";
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
+const STYLE_ID = "vendorai-marketing-unified-design";
+const ROOT_ATTR = "data-vendorai-marketing-root";
+const TABS_ATTR = "data-vendorai-marketing-tabs";
+const TOOLS_ATTR = "data-vendorai-marketing-tools";
 
 type CampaignChannel = {
   canal: string;
@@ -91,6 +91,10 @@ function locationSnapshot() {
   return `${window.location.pathname}${window.location.search}`;
 }
 
+function isMarketingPath(location: string) {
+  return location.split("?")[0] === "/content";
+}
+
 function isOverviewPath(location: string) {
   const [path, query = ""] = location.split("?");
   if (path !== "/content") return false;
@@ -127,9 +131,7 @@ function navigate(target: string) {
 function hideOriginalChildren(panel: HTMLElement, portal: HTMLElement) {
   Array.from(panel.children).forEach((child) => {
     if (!(child instanceof HTMLElement) || child === portal) return;
-    if (!child.hasAttribute(HIDDEN_ATTR)) {
-      child.setAttribute(HIDDEN_ATTR, child.style.display || "__empty__");
-    }
+    if (!child.hasAttribute(HIDDEN_ATTR)) child.setAttribute(HIDDEN_ATTR, child.style.display || "__empty__");
     child.style.display = "none";
   });
 }
@@ -155,6 +157,128 @@ function campaignStatus(planApproved: boolean, items: CalendarItem[]) {
   return { label: "Planejada", tone: "outline" as const };
 }
 
+function ensureUnifiedMarketingStyle() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = `
+    body[data-vendorai-marketing-shell="true"] { overflow-x:hidden; }
+    body[data-vendorai-marketing-shell="true"] [${ROOT_ATTR}] { min-width:0; }
+    body[data-vendorai-marketing-shell="true"] [${ROOT_ATTR}] > div:first-child { max-width:1480px; margin-inline:auto; }
+    body[data-vendorai-marketing-shell="true"] [${TABS_ATTR}] {
+      display:flex !important;
+      flex-wrap:nowrap !important;
+      align-items:center;
+      gap:6px;
+      width:100%;
+      min-width:0;
+      overflow-x:auto;
+      overflow-y:hidden;
+      scrollbar-width:none;
+      padding:4px;
+      border:1px solid hsl(var(--border));
+      border-radius:14px;
+      background:hsl(var(--background));
+    }
+    body[data-vendorai-marketing-shell="true"] [${TABS_ATTR}]::-webkit-scrollbar { display:none; }
+    body[data-vendorai-marketing-shell="true"] [${TABS_ATTR}] > [role="tab"] {
+      flex:0 0 auto;
+      min-height:40px;
+      white-space:nowrap;
+      border-radius:10px;
+      padding-inline:14px;
+      font-size:12px;
+      font-weight:600;
+      color:hsl(var(--muted-foreground));
+    }
+    body[data-vendorai-marketing-shell="true"] [${TABS_ATTR}] > [role="tab"][data-state="active"] {
+      background:hsl(var(--accent));
+      color:hsl(var(--foreground));
+      box-shadow:none;
+    }
+    body[data-vendorai-marketing-shell="true"] [${TOOLS_ATTR}] { margin-top:10px !important; padding-top:10px !important; }
+    body[data-vendorai-marketing-shell="true"] [role="tabpanel"] { min-width:0; }
+    body[data-vendorai-marketing-shell="true"] [role="tabpanel"] > * { min-width:0; }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-card { border-radius:16px; }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-overview-grid { display:grid; gap:12px; grid-template-columns:repeat(4,minmax(0,1fr)); }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-grid { display:grid; gap:12px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-card { min-width:0; }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-card h3 { overflow-wrap:anywhere; }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-meta-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-bottom-links { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+
+    @media (max-width: 1023px) {
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-grid { grid-template-columns:1fr; }
+    }
+
+    @media (max-width: 767px) {
+      body[data-vendorai-marketing-shell="true"] [${ROOT_ATTR}] > div:first-child { padding-left:12px !important; padding-right:12px !important; padding-top:14px !important; }
+      body[data-vendorai-marketing-shell="true"] [${ROOT_ATTR}] h1 { font-size:22px !important; line-height:1.15 !important; }
+      body[data-vendorai-marketing-shell="true"] [${ROOT_ATTR}] h1 + p { margin-top:4px; font-size:12px !important; line-height:1.45; }
+      body[data-vendorai-marketing-shell="true"] [${TABS_ATTR}] {
+        margin-top:12px;
+        padding:3px 2px 6px;
+        border:0;
+        border-radius:0;
+        background:transparent;
+        scroll-snap-type:x proximity;
+      }
+      body[data-vendorai-marketing-shell="true"] [${TABS_ATTR}] > [role="tab"] {
+        scroll-snap-align:start;
+        min-height:38px;
+        padding-inline:12px;
+        border:1px solid hsl(var(--border));
+        background:hsl(var(--background));
+      }
+      body[data-vendorai-marketing-shell="true"] [${TOOLS_ATTR}] { display:none !important; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-overview-grid > * { min-height:86px; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-grid { gap:10px; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-meta-row { grid-template-columns:1fr; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-bottom-links { grid-template-columns:1fr; gap:8px; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-bottom-links > button { min-height:64px; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-hero-actions { display:grid !important; grid-template-columns:1fr 1fr; width:100%; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-hero-actions > button { width:100%; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-head { display:grid !important; grid-template-columns:1fr; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-head > button { width:100%; }
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-campaign-title { font-size:18px !important; line-height:1.2 !important; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-guidance="sequence"] { overflow-x:auto; scroll-snap-type:x proximity; padding-bottom:4px; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-guidance="sequence"] > * { min-width:210px; scroll-snap-align:start; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-clarity="production-details"] button[data-vendorai-campaign-production-toggle] { padding:12px; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-production-metrics] { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-production-metrics] > div { padding:10px 8px; text-align:center; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-review-workspace] { margin-top:8px; }
+      body[data-vendorai-marketing-shell="true"] [data-vendorai-review-drawer] { top:8px !important; right:8px !important; bottom:8px !important; left:8px !important; width:auto !important; max-width:none !important; border-radius:16px !important; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function markMarketingShell(active: boolean) {
+  ensureUnifiedMarketingStyle();
+  document.body.dataset.vendoraiMarketingShell = active ? "true" : "false";
+  if (!active) return;
+
+  const headings = Array.from(document.querySelectorAll<HTMLElement>("h1"));
+  const marketingHeading = headings.find((heading) => normalize(heading.textContent ?? "") === "marketing");
+  const root = marketingHeading?.closest<HTMLElement>("div.min-w-0") ?? marketingHeading?.parentElement?.parentElement ?? null;
+  root?.setAttribute(ROOT_ATTR, "true");
+
+  const tabLists = Array.from(document.querySelectorAll<HTMLElement>('[role="tablist"]'));
+  const mainTabs = tabLists.find((tabList) => {
+    const text = normalize(tabList.textContent ?? "");
+    return text.includes("visao geral") && text.includes("planejamento") && text.includes("campanhas") && text.includes("conteudos");
+  });
+  mainTabs?.setAttribute(TABS_ATTR, "true");
+
+  if (root) {
+    const candidates = Array.from(root.querySelectorAll<HTMLElement>("div"));
+    const tools = candidates.find((node) => normalize(node.textContent ?? "").startsWith("ferramentas:"));
+    tools?.setAttribute(TOOLS_ATTR, "true");
+  }
+}
+
 export function MarketingOverviewBridge() {
   const [location, setLocation] = useState(locationSnapshot);
   const [host, setHost] = useState<HTMLElement | null>(null);
@@ -165,6 +289,7 @@ export function MarketingOverviewBridge() {
   const [error, setError] = useState<string | null>(null);
   const { tenantId, token } = readSession();
   const visible = isOverviewPath(location);
+  const marketingVisible = isMarketingPath(location);
 
   useEffect(() => {
     const update = () => setLocation(locationSnapshot());
@@ -175,6 +300,13 @@ export function MarketingOverviewBridge() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    markMarketingShell(marketingVisible);
+    if (!marketingVisible) return;
+    const timer = window.setInterval(() => markMarketingShell(true), 400);
+    return () => window.clearInterval(timer);
+  }, [marketingVisible, location]);
 
   useEffect(() => {
     if (!visible) {
@@ -290,98 +422,86 @@ export function MarketingOverviewBridge() {
 
   return createPortal(
     <div className="space-y-4">
-      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/[0.06] via-background to-background">
-        <CardContent className="p-5 md:p-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+      <Card className="vendor-marketing-card overflow-hidden border-primary/20 bg-gradient-to-br from-primary/[0.05] via-background to-background">
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
-              <div className="mb-2 flex items-center gap-2 text-primary">
-                <LayoutDashboard className="h-5 w-5" />
-                <span className="text-xs font-semibold uppercase tracking-[0.14em]">Visão geral do Marketing</span>
+              <div className="mb-1.5 flex items-center gap-2 text-primary">
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.13em]">Visão geral do Marketing</span>
               </div>
-              <h2 className="text-2xl font-bold tracking-tight">Sua central para planejar, executar e acompanhar todas as campanhas</h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Esta tela mostra o Marketing como um todo. O planejamento gera uma ou mais campanhas; depois você abre cada campanha individualmente para preparar conteúdos, publicar, rastrear contatos e acompanhar resultados.
-              </p>
+              <h2 className="text-xl font-bold tracking-tight md:text-2xl">Planeje, execute e acompanhe suas campanhas em um único fluxo</h2>
+              <p className="mt-1.5 text-sm leading-5 text-muted-foreground">Veja o que está acontecendo agora, escolha uma campanha e avance para a próxima ação sem percorrer telas enormes.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="vendor-marketing-hero-actions flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => navigate("/content?tab=planejamento")}><CalendarDays className="mr-2 h-4 w-4" />Planejamento</Button>
               <Button onClick={() => navigate("/content?tab=campanhas")}><Megaphone className="mr-2 h-4 w-4" />Campanhas</Button>
             </div>
-          </div>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              { icon: Target, title: "1. Planejar", text: "Defina objetivo, público, oferta, canais e orçamento." },
-              { icon: Megaphone, title: "2. Executar", text: "Transforme o plano em campanhas independentes." },
-              { icon: Images, title: "3. Criar e publicar", text: "Produza peças, anúncios, páginas, vídeos e mensagens." },
-              { icon: BarChart3, title: "4. Medir e melhorar", text: "Acompanhe origem, CRM, resultados e próximos ciclos." },
-            ].map(({ icon: Icon, title, text }) => (
-              <div key={title} className="rounded-xl border bg-background/85 p-3">
-                <div className="flex items-center gap-2"><Icon className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">{title}</p></div>
-                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{text}</p>
-              </div>
-            ))}
           </div>
         </CardContent>
       </Card>
 
       {loading && !plan ? (
-        <Card><CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando campanhas…</CardContent></Card>
+        <Card><CardContent className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando campanhas…</CardContent></Card>
       ) : error ? (
-        <Card className="border-amber-300 bg-amber-50/50"><CardContent className="flex items-start gap-3 py-5 text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">Não foi possível carregar a visão geral.</p><p className="mt-1 text-sm">{error}</p><Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>Tentar novamente</Button></div></CardContent></Card>
+        <Card className="border-amber-300 bg-amber-50/50"><CardContent className="flex items-start gap-3 py-4 text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">Não foi possível carregar a visão geral.</p><p className="mt-1 text-sm">{error}</p><Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>Tentar novamente</Button></div></CardContent></Card>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Campanhas no ciclo atual</p><p className="mt-1 text-2xl font-semibold">{summary.campaigns}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Canais planejados</p><p className="mt-1 text-2xl font-semibold">{summary.channels}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Peças em produção</p><p className="mt-1 text-2xl font-semibold">{summary.production}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Publicações concluídas</p><p className="mt-1 text-2xl font-semibold">{summary.published}</p></CardContent></Card>
+          <div className="vendor-marketing-overview-grid">
+            {[
+              ["Campanhas", summary.campaigns],
+              ["Canais", summary.channels],
+              ["Em produção", summary.production],
+              ["Publicadas", summary.published],
+            ].map(([label, value]) => (
+              <Card key={String(label)} className="vendor-marketing-card"><CardContent className="p-3.5"><p className="text-[11px] text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></CardContent></Card>
+            ))}
           </div>
 
-          <Card>
-            <CardContent className="p-5 md:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <Card className="vendor-marketing-card">
+            <CardContent className="p-4 md:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><p className="text-base font-semibold">Campanhas geradas</p>{campaigns.length > 0 && <Badge variant="secondary">{campaigns.length}</Badge>}</div>
-                  <p className="mt-1 text-sm text-muted-foreground">Escolha a campanha que quer trabalhar. Cada uma abre no seu próprio espaço de execução.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Abra uma campanha para trabalhar nela sem misturar as demais.</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => navigate("/content?tab=planejamento")}><CalendarDays className="mr-1.5 h-3.5 w-3.5" />Revisar planejamento</Button>
               </div>
 
               {campaignRows.length === 0 ? (
-                <div className="mt-5 rounded-xl border border-dashed p-7 text-center">
+                <div className="mt-4 rounded-xl border border-dashed p-6 text-center">
                   <CircleDashed className="mx-auto h-8 w-8 text-muted-foreground/60" />
                   <p className="mt-3 font-semibold">Ainda não há campanhas geradas</p>
-                  <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">Comece pelo Planejamento. A IA prepara a estratégia e cria as campanhas que aparecerão aqui para você escolher e executar.</p>
+                  <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">Comece pelo Planejamento para a IA preparar a estratégia e as campanhas.</p>
                   <Button className="mt-4" onClick={() => navigate("/content?tab=planejamento")}>Começar planejamento<ArrowRight className="ml-2 h-4 w-4" /></Button>
                 </div>
               ) : (
-                <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                <div className="vendor-marketing-campaign-grid mt-4">
                   {campaignRows.map(({ campaign, items: campaignItems, published, production, ready, status }) => (
-                    <div key={campaign.id} className="group rounded-xl border bg-background p-4 transition hover:border-primary/50 hover:shadow-sm">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div key={campaign.id} className="vendor-marketing-campaign-card rounded-xl border bg-background p-4 transition hover:border-primary/45 hover:shadow-sm">
+                      <div className="vendor-marketing-campaign-head flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant={status.tone}>{status.label}</Badge>
                             {campaign.kpiPrincipal && <span className="text-[11px] text-muted-foreground">KPI: {campaign.kpiPrincipal}</span>}
                           </div>
-                          <h3 className="mt-2 truncate text-base font-semibold">{campaign.nome}</h3>
+                          <h3 className="vendor-marketing-campaign-title mt-2 text-base font-semibold">{campaign.nome}</h3>
                           <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{campaign.objetivo}</p>
                         </div>
                         <Button size="sm" onClick={() => openCampaign(campaign.id)}>Abrir campanha<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
                       </div>
 
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                        <div className="rounded-lg border bg-muted/10 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Produto / serviço</p><p className="mt-1 line-clamp-2 text-xs font-medium">{campaign.produtoServico}</p></div>
-                        <div className="rounded-lg border bg-muted/10 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Público</p><p className="mt-1 line-clamp-2 text-xs font-medium">{campaign.publico}</p>{campaign.regiao && <p className="mt-0.5 text-[11px] text-muted-foreground">{campaign.regiao}</p>}</div>
+                      <div className="vendor-marketing-meta-row mt-3">
+                        <div className="rounded-lg bg-muted/35 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Produto / serviço</p><p className="mt-1 line-clamp-2 text-xs font-medium">{campaign.produtoServico}</p></div>
+                        <div className="rounded-lg bg-muted/35 p-2.5"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Público</p><p className="mt-1 line-clamp-2 text-xs font-medium">{campaign.publico}</p>{campaign.regiao && <p className="mt-0.5 text-[11px] text-muted-foreground">{campaign.regiao}</p>}</div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-1.5">
-                        {campaign.canais.slice(0, 6).map((channel) => <Badge key={`${campaign.id}-${channel.canal}`} variant="outline" className="text-[10px]">{channel.canal}</Badge>)}
-                        {campaign.canais.length > 6 && <Badge variant="secondary" className="text-[10px]">+{campaign.canais.length - 6}</Badge>}
+                        {campaign.canais.slice(0, 5).map((channel) => <Badge key={`${campaign.id}-${channel.canal}`} variant="outline" className="text-[10px]">{channel.canal}</Badge>)}
+                        {campaign.canais.length > 5 && <Badge variant="secondary" className="text-[10px]">+{campaign.canais.length - 5}</Badge>}
                       </div>
 
-                      <div className="mt-4 grid grid-cols-4 gap-2 border-t pt-3 text-center">
+                      <div className="mt-3 grid grid-cols-4 gap-2 border-t pt-3 text-center">
                         <div><p className="text-base font-semibold">{campaignItems.length}</p><p className="text-[10px] text-muted-foreground">ações</p></div>
                         <div><p className="text-base font-semibold">{ready}</p><p className="text-[10px] text-muted-foreground">a preparar</p></div>
                         <div><p className="text-base font-semibold">{production}</p><p className="text-[10px] text-muted-foreground">produção</p></div>
@@ -394,15 +514,15 @@ export function MarketingOverviewBridge() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="vendor-marketing-bottom-links">
             <button type="button" onClick={() => navigate("/content?tab=conteudos")} className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/40">
-              <div className="flex items-center gap-2"><Images className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Conteúdos & Criativos</p></div><p className="mt-1 text-xs text-muted-foreground">Fila de produção, peças, vídeos, sites e aprovações.</p>
+              <div className="flex items-center gap-2"><Images className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Conteúdos & Criativos</p></div><p className="mt-1 text-xs text-muted-foreground">Produção, revisão e aprovações.</p>
             </button>
             <button type="button" onClick={() => navigate("/content?tab=rastreamento")} className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/40">
               <div className="flex items-center gap-2"><Radio className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Rastreamento</p></div><p className="mt-1 text-xs text-muted-foreground">Origem dos contatos e jornada até o CRM.</p>
             </button>
             <button type="button" onClick={() => navigate("/content?tab=resultados")} className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/40">
-              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Resultados</p></div><p className="mt-1 text-xs text-muted-foreground">Performance das campanhas e aprendizado do próximo ciclo.</p>
+              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Resultados</p></div><p className="mt-1 text-xs text-muted-foreground">Performance e aprendizado do próximo ciclo.</p>
             </button>
           </div>
         </>
