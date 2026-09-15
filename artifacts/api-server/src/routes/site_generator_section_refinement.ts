@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import { buildTargetedRefinementInstruction, resolveSectionRefinement } from "@workspace/vendor-brain/site-section-refinement";
 import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
+import siteGeneratorVersionsRouter from "./site_generator_versions.js";
 import siteGenerator2RuntimeRouter from "./site_generator_2_runtime.js";
 
 function cleanText(value: string): string {
@@ -62,8 +63,8 @@ function restorePreservedSections(originalHtml: string, candidateHtml: string, p
 
 const router: IRouter = Router();
 
-// Runtime 2.0 runs first: creative direction, automatic media, component/motion
-// contracts, deterministic SEO/runtime injection and publication QA gate.
+// Snapshot before mutations, then apply the 2.0 creative/runtime pipeline.
+router.use(siteGeneratorVersionsRouter);
 router.use(siteGenerator2RuntimeRouter);
 
 router.use(async (req, res, next) => {
