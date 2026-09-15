@@ -147,7 +147,7 @@ export function resolveSiteDirectorProfile(input: {
 }): SiteDirectorProfile {
   const haystack = normalizeText([input.sector, input.tone, input.objective, input.visualDirection]);
   const premium = /premium|luxo|sofistic|arquitet|design|imobili|constr|interiores/.test(haystack);
-  const technical = /técnic|tecnic|industrial|engenh|saas|software|automação|automacao|b2b/.test(haystack);
+  const technical = /técnic|tecnic|industrial|engenh|saas|software|automação|automacao|b2b|crm|vendas|comercial/.test(haystack);
   const commercial = input.surface === 'ecommerce' || /varejo|loja|farmácia|farmacia|supermercado|promo|venda/.test(haystack);
   const cinematic = /cinemat|imersiv|impact|editorial|story/.test(haystack) && input.hasRealMedia;
 
@@ -229,11 +229,24 @@ function pickVariant(kind: SiteSectionKind, surface: WebSurface, director: SiteD
   })[0] ?? candidates[0] ?? null;
 }
 
-function sectionKindsForSurface(surface: WebSurface): SiteSectionKind[] {
+function sectionKindsForSurface(input: {
+  surface: WebSurface;
+  director: SiteDirectorProfile;
+  hasRealMedia: boolean;
+}): SiteSectionKind[] {
+  const { surface, director, hasRealMedia } = input;
   if (surface === 'ecommerce') return ['header', 'hero', 'products', 'benefits', 'comparison', 'faq', 'cta', 'footer'];
-  if (surface === 'product') return ['header', 'hero', 'gallery', 'benefits', 'comparison', 'faq', 'cta', 'footer'];
-  if (surface === 'landing') return ['header', 'hero', 'problem', 'solution', 'benefits', 'proof', 'faq', 'form', 'cta', 'footer'];
-  return ['header', 'hero', 'services', 'gallery', 'benefits', 'proof', 'process', 'faq', 'form', 'cta', 'footer'];
+  if (surface === 'product') return ['header', 'hero', ...(hasRealMedia ? ['gallery' as const] : []), 'benefits', 'comparison', 'faq', 'cta', 'footer'];
+  if (surface === 'landing') {
+    if (director.style === 'technical') {
+      return ['header', 'hero', 'problem', 'solution', 'process', ...(hasRealMedia ? ['gallery' as const] : []), 'benefits', 'faq', 'form', 'cta', 'footer'];
+    }
+    if (director.style === 'premium' || director.style === 'cinematic') {
+      return ['header', 'hero', 'problem', ...(hasRealMedia ? ['gallery' as const] : []), 'solution', 'process', 'benefits', 'faq', 'form', 'cta', 'footer'];
+    }
+    return ['header', 'hero', 'problem', 'solution', 'process', 'benefits', ...(hasRealMedia ? ['gallery' as const] : []), 'faq', 'form', 'cta', 'footer'];
+  }
+  return ['header', 'hero', 'services', ...(hasRealMedia ? ['gallery' as const] : []), 'benefits', 'process', 'faq', 'form', 'cta', 'footer'];
 }
 
 function motionForVariant(variant: SiteComponentVariant, level: Exclude<MotionLevel, 'auto'>): SiteMotionPreset {
@@ -261,7 +274,8 @@ export function buildSitePageSpec(input: {
   mediaRefs?: string[];
 }): SitePageSpec {
   const director = resolveSiteDirectorProfile(input);
-  const sections = sectionKindsForSurface(input.surface)
+  const hasRealMedia = Boolean(input.hasRealMedia || input.mediaRefs?.length);
+  const sections = sectionKindsForSurface({ surface: input.surface, director, hasRealMedia })
     .map((kind, index) => {
       const variant = pickVariant(kind, input.surface, director);
       if (!variant) return null;
@@ -290,21 +304,41 @@ export function buildSitePageSpec(input: {
 }
 
 export function buildSiteGenerator2Prompt(spec: SitePageSpec): string {
+  const realMediaCount = spec.mediaRefs.length;
   return [
-    'SITE GENERATOR 2.0 — EXECUÇÃO ESTRUTURADA OBRIGATÓRIA',
+    'SITE GENERATOR 2.0 — CONTRATO CRIATIVO CANÔNICO E OBRIGATÓRIO',
+    'ATENÇÃO: este contrato SUBSTITUI qualquer estrutura legada rígida que apareça depois no prompt. Se houver uma instrução posterior dizendo “nesta ordem exata”, “NÚMEROS & CONQUISTAS”, “grid 2x3” ou sequência fixa de cards, trate-a apenas como referência histórica e NÃO como obrigação.',
     `Direção criativa: ${spec.director.style}; densidade: ${spec.director.density}; tipografia: ${spec.director.typographyMood}; movimento: ${spec.director.motionLevel}.`,
-    `Hero: ${spec.director.heroStrategy}; mídia: ${spec.director.imageStrategy}.`,
+    `Hero: ${spec.director.heroStrategy}; mídia: ${spec.director.imageStrategy}; mídias reais disponíveis: ${realMediaCount}.`,
+    'OBJETIVO PRINCIPAL: criar uma página que demonstre o produto/serviço e conduza à conversão, não uma coleção de blocos genéricos.',
+    'A composição deve nascer do contexto real do negócio, do público, da oferta e das mídias disponíveis. Não reproduza automaticamente hero + 3 cards + 3 cards + números + CTA.',
     'Use UMA única versão inicial. Não gere alternativas, variações A/B ou múltiplas opções.',
     'Após a primeira versão, qualquer evolução ocorre pelo chat sobre o mesmo site.',
     'Cada seção deve incluir data-vendor-section="KIND" e data-vendor-component="COMPONENT_ID".',
     'Cada seção deve incluir data-motion="PRESET" conforme o plano abaixo.',
     ...spec.sections.map((section) => `- ${section.kind}: ${section.componentId} | motion=${section.motion}`),
-    'Não invente estatísticas, depoimentos, logos de clientes, garantias, certificações, preços, prêmios ou números. Se não houver prova real, substitua a seção por benefícios, processo ou conteúdo factual.',
-    'Use primeiro as mídias reais recebidas. Mídia artificial é apenas fallback quando não existir material oficial.',
+    'REGRAS ANTI-TEMPLATE:',
+    '- Não use mais de duas seções consecutivas baseadas em cards. Alterne composição editorial, mídia real, split layout, timeline, comparação, demonstração e formulário conforme fizer sentido.',
+    '- Não crie uma seção de números só para preencher espaço. Números entram SOMENTE quando vierem explicitamente dos dados reais do tenant/produto.',
+    '- Não invente estatísticas, depoimentos, logos de clientes, garantias, certificações, preços, prêmios, “anos de mercado”, “clientes atendidos” ou percentuais.',
+    '- Se não houver prova real, NÃO renderize proof/números. Substitua por demonstração do fluxo, processo, comparação factual, integração real ou benefício operacional.',
+    '- Para SaaS/CRM/automação, priorize mostrar como o sistema funciona na prática: entrada do lead → contexto → próximo passo → acompanhamento → decisão. Use screenshots/mídias reais quando existirem.',
+    '- Benefícios devem ser operacionais e concretos. Evite frases vagas como “mais eficiência”, “mais resultados” ou “transforme seu negócio” sem explicar o mecanismo.',
+    '- Cada seção precisa responder uma pergunta distinta do visitante. Não repita a mesma ideia com títulos diferentes.',
+    '- O CTA deve evoluir com a intenção: entender/visualizar primeiro, agendar/falar/comprar depois. Não repita o mesmo botão sem contexto em todas as seções.',
+    'MÍDIA E PRODUTO REAL:',
+    '- Use primeiro as mídias reais recebidas e dê a elas função narrativa. Não deixe screenshots/fotos reais como pequenos enfeites se podem demonstrar o produto.',
+    '- Quando houver mídia real, pelo menos uma seção além do hero deve usá-la para explicar produto, fluxo, aplicação, resultado ou contexto de uso.',
+    '- Mídia artificial é apenas fallback quando não existir material oficial. Nunca invente screenshots de produto como se fossem telas reais.',
+    'COPY E CONVERSÃO:',
+    '- Escreva para o problema específico do público, com linguagem concreta e comercial. Menos slogans institucionais; mais mecanismo, consequência, operação e próximo passo.',
+    '- A primeira dobra precisa dizer claramente o que muda para o cliente e o que ele pode fazer agora.',
+    '- Dê prioridade a prova demonstrável do produto, integrações reais, processo e uso. Prova social só existe se houver dados reais fornecidos.',
     'Não escreva JavaScript de animação específico por seção. O runtime oficial VendorAI lê data-motion e aplica movimentos testados.',
     'Mobile 360px/390px é obrigatório; sem overflow horizontal e sem controles que quebrem texto verticalmente.',
     'Respeite prefers-reduced-motion. Não use animação que impeça leitura, clique, navegação ou Core Web Vitals.',
     'Preview/rascunho é noindex. Publicação final é indexável apenas após o gate de qualidade.',
+    'ANTES DE RESPONDER, faça uma autocrítica: se a página puder trocar de logo e servir para qualquer CRM/empresa sem grandes mudanças, ela ainda está genérica e deve ser refeita antes da resposta final.',
   ].join('\n');
 }
 
@@ -331,6 +365,7 @@ export function scoreSiteGenerator2Html(input: {
   const componentMarkers = (html.match(/data-vendor-component=/gi) ?? []).length;
   const motionMarkers = (html.match(/data-motion=/gi) ?? []).length;
   const images = html.match(/<img\b[^>]*>/gi) ?? [];
+  const videos = html.match(/<(video|iframe)\b[^>]*>/gi) ?? [];
   const imagesWithAlt = images.filter((tag) => /\balt=["'][^"']+["']/i.test(tag)).length;
   const imageAltRatio = images.length ? imagesWithAlt / images.length : 1;
   const hasReducedMotion = /prefers-reduced-motion/i.test(html);
@@ -342,20 +377,29 @@ export function scoreSiteGenerator2Html(input: {
   const hasHorizontalRisk = /width\s*:\s*100vw/i.test(html) || /word-break\s*:\s*break-all/i.test(html) || /writing-mode\s*:\s*(vertical|sideways)/i.test(html);
   const excessiveAnimation = (html.match(/animation\s*:/gi) ?? []).length > 24;
   const hasPrimaryCta = /whatsapp|solicitar|agendar|comprar|falar|contato|orçamento|orcamento/i.test(text);
-  const usesFakeProofLanguage = /\b\d{2,}\+\s*(clientes|projetos|anos)|mais de \d+ (clientes|projetos)|milhares de clientes/i.test(text);
+  const usesFakeProofLanguage = /\b\d{2,}\+\s*(clientes|projetos|anos)|mais de \d+ (clientes|projetos)|milhares de clientes|\b100%\b.*(resultado|garantia|satisfa|demonstra)/i.test(text);
   const hasNoindex = /name=["']robots["'][^>]+noindex/i.test(html) || /content=["'][^"']*noindex/i.test(html);
+  const realMediaRendered = images.length + videos.length;
+  const requiredMediaCount = Math.max(0, input.requiredMediaCount ?? 0);
+  const cardClassCount = (html.match(/class=["'][^"']*\bcard\b[^"']*["']/gi) ?? []).length;
+  const repeatedGridSignals = (html.match(/grid-template-columns/gi) ?? []).length;
+  const looksLikeCardWall = cardClassCount >= 10 || (cardClassCount >= 6 && repeatedGridSignals >= 4);
 
   if (!hasViewport) blockers.push('viewport ausente');
   if (hasHorizontalRisk) blockers.push('risco de overflow/quebra horizontal');
   if (excessiveAnimation) blockers.push('animação excessiva');
   if (usesFakeProofLanguage) blockers.push('possível prova social/número inventado');
+  if (requiredMediaCount > 0 && realMediaRendered === 0) blockers.push('mídia real disponível não foi demonstrada');
   if (input.published && hasNoindex) blockers.push('site publicado permanece noindex');
   if (!input.published && !hasNoindex) warnings.push('preview deveria permanecer noindex');
   if (!hasReducedMotion && motionMarkers > 0) warnings.push('prefers-reduced-motion não identificado');
   if (imageAltRatio < 0.9) warnings.push('imagens sem alt suficiente');
   if (componentMarkers < Math.min(3, sectionCount)) warnings.push('parte das seções não está vinculada à biblioteca 2.0');
+  if (looksLikeCardWall) warnings.push('composição excessivamente baseada em cards; revisar diversidade visual');
+  if (requiredMediaCount > 0 && realMediaRendered < Math.min(2, requiredMediaCount)) warnings.push('pouca demonstração das mídias reais disponíveis');
 
-  const design = Math.max(0, Math.min(100, 72 + Math.min(sectionCount, 8) * 3 + (componentMarkers >= Math.min(sectionCount, 5) ? 8 : 0) - blockers.length * 12));
+  const designPenalty = blockers.length * 12 + (looksLikeCardWall ? 10 : 0);
+  const design = Math.max(0, Math.min(100, 72 + Math.min(sectionCount, 8) * 3 + (componentMarkers >= Math.min(sectionCount, 5) ? 8 : 0) - designPenalty));
   const seo = Math.max(0, Math.min(100, input.seoScore ?? ((hasTitle ? 18 : 0) + (hasDescription ? 18 : 0) + (hasCanonical ? 18 : 0) + (hasSchema ? 18 : 0) + (hasH1 ? 18 : 0) + Math.round(imageAltRatio * 10))));
   const mobile = Math.max(0, Math.min(100, (hasViewport ? 45 : 10) + (/\@media[^{}]*(max-width|min-width)/i.test(html) ? 45 : 25) + (hasHorizontalRisk ? -30 : 10)));
   const performance = Math.max(0, Math.min(100, 94 - (excessiveAnimation ? 28 : 0) - (!hasLazyImages ? 12 : 0) - Math.max(0, images.length - 18)));
@@ -363,5 +407,6 @@ export function scoreSiteGenerator2Html(input: {
   const conversion = Math.max(0, Math.min(100, hasPrimaryCta ? 94 : 62));
   const approved = blockers.length === 0 && design >= 90 && seo >= 90 && mobile >= 90 && performance >= 85 && accessibility >= 90;
 
+  void lower;
   return { design, seo, mobile, performance, accessibility, conversion, approved, blockers, warnings };
 }

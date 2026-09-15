@@ -324,7 +324,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
     return `<video src="${url}" controls preload="metadata" style="width:100%;border-radius:var(--radius);display:block" playsinline></video>`;
   }
   const videosBlock = videos.length > 0
-    ? `\nVÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\n${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\n")}\nDecida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", depoimento em vídeo) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
+    ? `\nVÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\n${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\n")}\nDecida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", demonstração operacional) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
     : "";
   const servicosBlock = servicos
     ? `\nServiços/produtos principais: ${servicos}`
@@ -374,51 +374,53 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
     : `LOGO: use inicial do nome em círculo colorido (var(--primary)) + nome ao lado`;
 
   const structureByType: Record<string, string> = {
-    landing: `ESTRUTURA DA LANDING PAGE (nesta ordem exata):
-1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda (inicial do nome em círculo colorido + nome)"}, nav âncoras à direita, botão CTA no canto, hamburger mobile
-2. HERO — título impactante (H1${headline ? `: use exatamente ou uma variação muito próxima de "${headline}"` : ", problema que o cliente já sente"}), subtítulo com a promessa, 2 botões (primário + secundário outline)${images.length > 0 ? `, imagem real da empresa como elemento visual (use a Foto 1 do briefing)` : ", elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)"}
-3. DORES — seção escura/contrastante com 3-4 cards de dores reais do mercado (ícones SVG inline simples, título curto + descrição)
-4. SOLUÇÃO — como o negócio resolve cada dor, 3 pilares com ícone SVG + título + parágrafo
-5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
-6. NÚMEROS & CONQUISTAS — seção com 3-4 estatísticas marcantes plausíveis para o setor de "${sector || name}" (ex: "500+ clientes atendidos", "10 anos de experiência") — sem inventar nomes de pessoas reais
-7. CTA FINAL — seção de fundo escuro/gradiente, headline forte, subtítulo, botão grande com wa.me/${waNumber}
-8. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, links de âncora${igHandle ? `, ícone do Instagram com link para ${igUrl} (use EXATAMENTE este HTML: ${igHtml})` : ""}, copyright`,
+    landing: `DIREÇÃO ADAPTATIVA DA LANDING PAGE — use o PageSpec 2.0 como fonte principal da ordem e composição; os itens abaixo são objetivos de conteúdo, NÃO uma sequência rígida:
+- HEADER funcional — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda (inicial do nome em círculo colorido + nome)"}, navegação apenas para seções que realmente existirem, CTA coerente e hamburger mobile.
+- HERO específico — título impactante (H1${headline ? `: use exatamente ou uma variação muito próxima de "${headline}"` : ", problema/transformação que o cliente já reconhece"}), subtítulo concreto e CTA(s) de acordo com a intenção.${images.length > 0 ? ` Use a Foto 1 apenas se ela realmente demonstrar o produto/serviço; caso contrário reserve-a para uma seção em que tenha função narrativa.` : " Sem mídia real, use composição tipográfica/SVG/CSS que não finja ser screenshot real."}
+- PROBLEMA — mostre 2-4 tensões reais do público. NÃO é obrigatório usar cards; prefira narrativa, comparação, split ou timeline quando isso contar melhor a história.
+- COMO FUNCIONA / SOLUÇÃO — demonstre o mecanismo operacional do produto/serviço. Para SaaS/CRM, explique o fluxo real (entrada → contexto → próximo passo → acompanhamento → decisão). Use screenshots/mídias reais como protagonistas quando disponíveis.
+- BENEFÍCIOS OPERACIONAIS — benefícios específicos ligados a mecanismos reais. Evite grid 2x3 automático e evite slogans vagos.
+- PROVA / CREDIBILIDADE — renderize SOMENTE se existirem dados reais fornecidos (depoimentos, logos, métricas, casos, certificações, números). Se não houver, omita e use processo, integrações, comparação factual ou demonstração do produto.
+- CONVERSÃO — CTA final com contexto e, quando fizer sentido, formulário/WhatsApp/agendamento.
+- FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, links reais${igHandle ? `, Instagram ${igUrl} (HTML exato: ${igHtml})` : ""}, copyright.
+REGRA DE RITMO: não use mais de duas seções consecutivas baseadas em cards; alterne mídia real, composição editorial, processo, comparação, demonstração e espaços de respiro.`,
 
-    ecommerce: `ESTRUTURA DO E-COMMERCE (nesta ordem exata):
-1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav, ícone de carrinho com badge contador, hamburger mobile
-2. HERO — headline de oferta, subtítulo, botão "Ver produtos", badge de frete/desconto
-3. GRID DE PRODUTOS — cards modernos para cada produto listado no briefing:
+    ecommerce: `DIREÇÃO ADAPTATIVA DO E-COMMERCE — preserve as funções de compra, mas adapte ordem e composição ao catálogo e à oferta real:
+- HEADER funcional — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, navegação, carrinho com badge e hamburger mobile.
+- HERO de oferta — headline e CTA baseados somente em oferta/frete/desconto realmente informados; não invente promoção.
+- PRODUTOS — use EXATAMENTE o catálogo fornecido e dê prioridade visual aos itens em destaque.
    ${hasRealImages
-     ? "• USE as imagens reais fornecidas (campo 'imagem'): <img src=\"URL\" alt=\"nome\" loading=\"lazy\" style=\"width:100%;height:220px;object-fit:cover\"> — NÃO use placeholders quando a URL estiver disponível; use placeholder (gradiente CSS + ícone SVG) apenas quando não houver URL"
-     : "• imagem placeholder: gradiente colorido com ícone SVG central"}
-   • nome do produto, descrição curta, preço em destaque
-   • badge de ⭐DESTAQUE para produtos marcados; badge "Esgotado" quando fora de estoque (cursor não-pointer, botão desabilitado)
-   • botão "Comprar pelo WhatsApp" (link wa.me/${waNumber} com mensagem pré-preenchida incluindo nome do produto e preço)
-4. BENEFÍCIOS — 3 ícones com texto: entrega, pagamento, suporte
-5. GARANTIAS & DIFERENCIAIS — 3-4 cards de garantias (ex: satisfação garantida, entrega rápida) — sem inventar nomes de clientes
-6. CTA FINAL — urgência, botão WhatsApp wa.me/${waNumber}
-7. CARRINHO LATERAL (drawer) — ativado por JS ao clicar nos produtos, lista itens, total, botão finalizar via WhatsApp com resumo do pedido
-8. FOOTER${igHandle ? ` — inclua link do Instagram (HTML exato: ${igHtml})` : ""}`,
+     ? "• USE as imagens reais fornecidas (campo 'imagem') e não as substitua por placeholders quando estiverem disponíveis."
+     : "• Sem imagem real, use fallback CSS/SVG claramente decorativo; não invente fotografia de produto."}
+   • nome, descrição real disponível, preço real, estoque real quando informado e CTA de compra.
+   • botão "Comprar pelo WhatsApp" (wa.me/${waNumber}) pode incluir nome e preço reais do produto.
+- BENEFÍCIOS / CONFIANÇA — entrega, pagamento, suporte, troca, garantia ou prazo SOMENTE quando essas condições forem realmente fornecidas. Nunca invente “satisfação garantida”, frete grátis ou entrega rápida.
+- COMPARAÇÃO/FAQ — somente quando ajudar decisão e houver conteúdo factual.
+- CARRINHO — drawer funcional com itens, total e finalização via WhatsApp quando este for o canal configurado.
+- CTA e FOOTER${igHandle ? ` com Instagram real (${igHtml})` : ""}.
+REGRA DE RITMO: não transforme o e-commerce inteiro em uma parede de cards; destaque produto, categoria, prova real e ação de compra com hierarquia clara.`,
 
-    institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
-1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav âncoras, botão CTA, hamburger mobile
-2. HERO — headline sobre a empresa${headline ? ` (H1: use exatamente ou uma variação muito próxima de "${headline}")` : ""}, subtítulo com proposta de valor, 2 botões${images.length > 0 ? `, imagem real da empresa (use a Foto 1 do briefing)` : ", elemento visual"}
-3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)${images.length > 1 ? " + galeria das fotos reais fornecidas" : ""}
-4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta (baseados nos serviços informados no briefing)
-5. PROCESSO — timeline ou steps numerados explicando como funciona
-6. DIFERENCIAIS — grid 2×3 ou 3×2 de vantagens competitivas reais do negócio com ícone SVG e texto
-7. NÚMEROS & CONQUISTAS — estatísticas do negócio em formato visual (sem inventar nomes de pessoas)
-8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais, botão WhatsApp wa.me/${waNumber}
-9. FOOTER${igHandle ? ` — inclua link do Instagram (HTML exato: ${igHtml})` : ""}`,
+    institutional: `DIREÇÃO ADAPTATIVA DO SITE INSTITUCIONAL — adapte a narrativa ao negócio e ao PageSpec 2.0; não siga uma sequência fixa:
+- HEADER funcional — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, navegação para seções existentes e CTA.
+- HERO — proposta de valor específica${headline ? ` (H1: use exatamente ou uma variação muito próxima de "${headline}")` : ""}, com mídia real quando ela agregar prova/contexto.
+- SOBRE — história, missão, posicionamento ou contexto REAL. Não invente anos de mercado, número de clientes, obras, projetos ou equipe.
+- SERVIÇOS — mostre os serviços informados no briefing. Não é obrigatório usar grid; use editorial/split/processo quando melhor.
+- PROCESSO — explique como a empresa trabalha, se houver informação suficiente; caso contrário, não invente etapas internas.
+- DIFERENCIAIS — vantagens que possam ser sustentadas pelo briefing.
+- PROVA / PORTFÓLIO — use fotos, casos, certificações, depoimentos, números e logos SOMENTE se reais e fornecidos. Sem evidência, omita esta seção e dê mais espaço ao processo/serviços/mídia real.
+- CONTATO — formulário e canais reais disponíveis.
+- FOOTER${igHandle ? ` — Instagram real (${igHtml})` : ""}.
+REGRA DE RITMO: varie composição entre texto, mídia, serviço, processo e conversão; evite sequência de grids genéricos.`,
 
-    product: `ESTRUTURA DA LANDING PAGE DE PRODUTO (nesta ordem exata) — foco 100% no produto em destaque, NÃO na empresa como um todo:
-1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda"}, botão CTA no canto (sem menu extenso — é uma página de conversão de um único produto)
-2. HERO DO PRODUTO — nome do produto como H1, benefício principal como subtítulo, preço em destaque, imagem real do produto (use a fornecida no briefing) como elemento visual principal, botão CTA grande "Comprar pelo WhatsApp" (wa.me/${waNumber} com mensagem pré-preenchida citando o nome do produto)
-3. ESPECIFICAÇÕES — tabela ou grid com as especificações reais do produto fornecidas no briefing (coleção, cor, dimensões, rendimento por pacote, etc. — use exatamente os dados informados, nunca invente números)
-4. POR QUE ESCOLHER — 3-4 diferenciais do produto (qualidade, durabilidade, facilidade de instalação, adequação ao setor "${sector || name}")
-5. COMO COMPRAR — passo a passo simples de como adquirir, terminando em CTA de WhatsApp
-6. CTA FINAL — urgência, botão grande wa.me/${waNumber} com mensagem citando o produto
-7. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, copyright${igHandle ? `, ícone do Instagram (HTML exato: ${igHtml})` : ""}`,
+    product: `DIREÇÃO ADAPTATIVA DA LANDING PAGE DE PRODUTO — foco 100% no produto em destaque, sem estrutura rígida e sem inventar escassez:
+- HEADER compacto — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, CTA principal.
+- HERO DO PRODUTO — nome como H1, benefício real, preço real, imagem real fornecida como elemento protagonista e CTA de compra/contato.
+- ESPECIFICAÇÕES — use exatamente as especificações reais fornecidas; nunca complete campos ausentes com números imaginados.
+- DEMONSTRAÇÃO / APLICAÇÃO — quando houver mídia real, mostre uso, ambiente, detalhe, vídeo ou galeria com função de decisão.
+- POR QUE ESCOLHER — diferenciais sustentáveis pelo briefing, sem garantias ou promessas inventadas.
+- COMO COMPRAR — passos reais do canal configurado.
+- CTA FINAL — direto e coerente com o produto; só use urgência/escassez quando houver condição real explicitamente informada.
+- FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}${igHandle ? `, Instagram real (${igHtml})` : ""}.`,
   };
 
   void logoInstruction;
@@ -452,7 +454,7 @@ Antes de gerar o HTML, monte mentalmente um plano de design compacto específico
 2. TIPOGRAFIA — escolha DENTRE OS PARES ABAIXO (são os únicos com URL do Google Fonts verificada — não invente outro par) o que melhor caracteriza ESTE negócio, não apenas o "tom" genérico:
 ${Object.entries(FONT_PAIRS).map(([key, f]) => `   - "${key}": display ${f.display} + corpo ${f.body}`).join("\n")}
    Tom sugerido pelo cliente: "${tone}" — mas escolha o par que melhor serve o SETOR e a PERSONALIDADE do negócio, não só o tom em isolado. Justifique mentalmente a escolha antes de seguir.
-3. ASSINATURA — qual é o UM elemento visual memorável desse site, específico pro mundo desse negócio (não genérico)? Pode ser a forma do hero, um padrão decorativo, um jeito particular de mostrar números, etc. Gaste sua ousadia nesse UM lugar; mantenha o resto disciplinado.
+3. ASSINATURA — qual é o UM elemento visual memorável desse site, específico pro mundo desse negócio (não genérico)? Pode ser a forma do hero, um padrão decorativo, uma maneira particular de demonstrar o fluxo/produto ou uma composição de mídia real. Gaste sua ousadia nesse UM lugar; mantenha o resto disciplinado.
 
 CALIBRAGEM — evite os 3 padrões que já viraram "cara de site feito por IA" (a menos que o briefing peça explicitamente um deles):
 (a) fundo creme quase-branco + serifada de alto contraste + acento terracota/laranja-queimado;
@@ -500,7 +502,7 @@ BOTÕES (raio segue --radius do SEU plano -- NÃO force pílula/100px se o plano
   .btn-outline → background: transparent; color: var(--text); border: 2px solid var(--border); padding: 12px 26px; border-radius: var(--radius); font-weight: 600; cursor: pointer; transition: all 0.2s;
   .btn-outline:hover → border-color: var(--primary); color: var(--primary);
 
-CARDS:
+CARDS (use somente quando o conteúdo realmente pedir agrupamento; não transforme a página inteira em cards):
   background: var(--bg) do SEU plano (ou uma variação sutil dele); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; transition: all 0.25s;
   :hover → border-color: rgba(var(--primary-rgb), 0.3); box-shadow: var(--shadow); transform: translateY(-3px);
   Accent top line (opcional, só se fizer sentido no seu plano): border-top: 3px solid var(--primary);
@@ -535,13 +537,14 @@ COPY — OBRIGATÓRIO:
 - Método SPIN: Situação (dor reconhecida) → Problema (implicações) → Implicação (custo de não resolver) → Necessidade (sua solução)
 - Hero headline: fala do problema/transformação, não do produto. Ex: "Chega de perder cliente por falta de resposta" em vez de "Sistema de atendimento"
 - Todas as seções com copy REAL específica para "${name}" no setor "${sector || "este mercado"}" — ZERO Lorem ipsum
-- Não invente pessoas reais, nomes de clientes, depoimentos fictícios ou equipes imaginárias
-- CTA: verbo de ação + benefício. Ex: "Quero mais clientes", "Começar agora grátis", "Falar com especialista"
+- Não invente pessoas reais, nomes de clientes, depoimentos fictícios, equipes imaginárias, métricas, garantias ou condições comerciais
+- CTA: verbo de ação + benefício real. Ex: "Entender como funciona", "Agendar demonstração", "Falar com especialista"
 
 QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
 ✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos decorativos: gradientes CSS, SVGs inline, iniciais em círculo
 ✓ TODAS as fotos anexadas no briefing devem aparecer de forma visível no HTML final, cada URL pelo menos uma vez; não omita nenhuma
+✓ Quando houver screenshots/fotos/vídeos reais, use pelo menos uma mídia além do hero para DEMONSTRAR produto, processo, aplicação ou contexto — não trate todo material real como decoração
 ✓ VÍDEO (quando fornecido no briefing): use o HTML pronto exatamente como está — não decorativo, é conteúdo real do cliente
 ✓ GALERIA DE FOTOS (quando presente): use SOMENTE as URLs reais fornecidas no briefing, com tags <img>, alt descritivo, loading="lazy", aspect-ratio e object-fit — nunca invente URLs; sem fotos fornecidas, use SVG/CSS decorativo sem fingir que é uma galeria real
 ✓ 100% responsivo — mobile impecável
@@ -555,8 +558,11 @@ REVISÃO FINAL OBRIGATÓRIA ANTES DE RESPONDER:
 ✓ Verifique que nenhum elemento visível depende de cor herdada sem contraste, opacity 0, visibility hidden, display none ou font-size 0.
 ✓ Verifique que toda imagem tem URL fornecida e dimensões estáveis; não use placeholder remoto, URL inventada ou imagem sem tratamento de erro.
 ✓ Verifique visualmente que TODAS as ${images.length} fotos anexadas estão presentes quando houver anexos.
+✓ Verifique que nenhum número, depoimento, logo de cliente, garantia, certificação, prazo, desconto ou promessa foi criado sem fonte real no briefing.
+✓ Verifique que não há mais de duas seções consecutivas com o mesmo padrão de cards; se houver, recomponha uma delas como split, timeline, mídia real, comparação, demonstração ou seção editorial.
 ✓ Verifique que o HTML fecha corretamente e que o mesmo documento funciona no preview e como arquivo baixado, sem scripts/estilos que dependam do editor.
 ✓ Verifique visualmente as larguras 360px, 768px e 1440px: sem overflow horizontal, cartões gigantes, áreas vazias desproporcionais, links/botões nativos ou títulos que estouram a tela.
+✓ Faça o teste de genericidade: se trocar o logo e a página ainda servir praticamente igual para qualquer empresa do setor, reescreva headline, mecanismo, benefícios e demonstração antes de responder.
 
 RETORNE APENAS o código HTML completo, sem explicações, sem markdown, sem blocos de código.
 Comece diretamente com <!DOCTYPE html>`;
