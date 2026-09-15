@@ -37,10 +37,11 @@ function asPageSpec(value: unknown): SitePageSpec | null {
 }
 
 async function resolveAutomaticMedia(tenantId: string, config: SiteGeneratorConfig) {
-  const currentImages = Array.isArray(config.images) ? config.images.filter(Boolean) : [];
-  const currentVideos = Array.isArray(config.videos) ? config.videos.filter(Boolean) : [];
-  const targetImages = 10;
-  const targetVideos = 3;
+  const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
+  const currentImages = unique(Array.isArray(config.images) ? config.images : []);
+  const currentVideos = unique(Array.isArray(config.videos) ? config.videos : []);
+  const targetImages = 4;
+  const targetVideos = 1;
 
   if (currentImages.length >= targetImages && currentVideos.length >= targetVideos) {
     return {
@@ -64,16 +65,65 @@ async function resolveAutomaticMedia(tenantId: string, config: SiteGeneratorConf
     .orderBy(desc(mediaAssetsTable.createdAt))
     .limit(80);
 
-  const approvedRank = (asset: typeof assets[number]) => {
-    const metadata = asset.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {};
+  const context = [
+    config.name,
+    config.sector,
+    config.headline,
+    config.desc,
+    config.servicos,
+    typeof config.creativeRuntimeContext === "string" ? config.creativeRuntimeContext : "",
+  ].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
+  const stopwords = new Set(["para", "com", "uma", "das", "dos", "que", "site", "empresa", "cliente", "clientes", "vendorai"]);
+  const contextTokens = new Set(
+    context
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 4 && !stopwords.has(token)),
+  );
+
+  const describe = (asset: typeof assets[number]) => {
+    const metadata = asset.metadata && typeof asset.metadata === "object"
+      ? asset.metadata as Record<string, unknown>
+      : {};
     const usage = String(metadata.aiUsage ?? metadata.ai_usage ?? metadata.usage ?? "").toLowerCase();
-    const role = String(asset.role ?? "").toLowerCase();
-    return (usage === "approved" ? 50 : 0)
-      + (/product|reference|source|broll/.test(role) ? 20 : 0)
-      + (asset.type === "image" ? 5 : 0);
+    const role = String(asset.role ?? metadata.role ?? "").toLowerCase();
+    const searchable = [role, JSON.stringify(metadata)]
+      .join(" ")
+      .toLocaleLowerCase("pt-BR")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const relevant = [...contextTokens].some((token) => searchable.includes(token));
+    const approved = usage === "approved" || metadata.siteApproved === true || metadata.site_approved === true;
+    const genericPerson = /portrait|avatar|talking.?head|presenter|influencer|pessoa|retrato/.test(searchable);
+    const productDemo = /product.?demo|screen.?record|dashboard|workflow|platform.?demo|sistema|interface|produto/.test(searchable);
+    const fingerprint = String(
+      metadata.contentHash ?? metadata.content_hash ?? metadata.subjectId ?? metadata.subject_id
+      ?? metadata.topic ?? metadata.caption ?? asset.storageUrl,
+    ).toLowerCase();
+    return { approved, relevant, genericPerson, productDemo, fingerprint, role };
   };
 
-  const ranked = [...assets].sort((a, b) => approvedRank(b) - approvedRank(a));
+  const seen = new Set<string>();
+  const eligible = assets.filter((asset) => {
+    const info = describe(asset);
+    if (!info.approved || !info.relevant || info.genericPerson) return false;
+    if (asset.type === "video" && !info.productDemo) return false;
+    if (seen.has(info.fingerprint)) return false;
+    seen.add(info.fingerprint);
+    return true;
+  });
+
+  const ranked = [...eligible].sort((a, b) => {
+    const score = (asset: typeof assets[number]) => {
+      const info = describe(asset);
+      return (info.productDemo ? 30 : 0)
+        + (/product|reference|source|screenshot|interface/.test(info.role) ? 20 : 0)
+        + (asset.type === "image" ? 5 : 0);
+    };
+    return score(b) - score(a);
+  });
+
   const pickedImages = ranked
     .filter((asset) => asset.type === "image")
     .map((asset) => publicMediaUrl(asset.storageUrl))
@@ -86,8 +136,8 @@ async function resolveAutomaticMedia(tenantId: string, config: SiteGeneratorConf
     .slice(0, Math.max(0, targetVideos - currentVideos.length));
 
   return {
-    images: [...currentImages, ...pickedImages],
-    videos: [...currentVideos, ...pickedVideos],
+    images: unique([...currentImages, ...pickedImages]),
+    videos: unique([...currentVideos, ...pickedVideos]),
     auto: { imageCount: pickedImages.length, videoCount: pickedVideos.length },
   };
 }
