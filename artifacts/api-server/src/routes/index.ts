@@ -115,6 +115,7 @@ import pracaExecutiveRouter from "./praca_executive";
 import pracaReconciliationRouter from "./praca_reconciliation";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
+import siteGeneratorSectionRefinementRouter from "./site_generator_section_refinement";
 import leadProposalsRouter from "./lead_proposals";
 import productPresentationsRouter from "./product_presentations";
 import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
@@ -469,6 +470,7 @@ router.use(pracaAvaliacoesRouter);
 router.use(restauranteRouter);
 
 // Site Generator Hub
+router.use(siteGeneratorSectionRefinementRouter);
 router.use(siteGeneratorRouter);
 
 // Tenant Domains Hub
