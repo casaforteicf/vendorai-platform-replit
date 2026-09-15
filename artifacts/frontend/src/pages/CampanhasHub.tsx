@@ -166,6 +166,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     ready: selectedItems.filter((item) => item.status === "aprovado" || item.status === "planejado").length,
     production: selectedItems.filter((item) => item.status === "gerado").length,
     published: selectedItems.filter((item) => item.status === "publicado").length,
+    failed: selectedItems.filter((item) => ["falha", "erro", "failed"].includes(normalize(item.status))).length,
   }), [selectedItems]);
 
   const channelSummary = useMemo(() => {
@@ -192,15 +193,30 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
 
   const nextStep = useMemo(() => {
     if (summary.total === 0) {
-      return { title: "Organizar a campanha", description: "Ainda não há ações preparadas para esta campanha.", action: "Abrir Conteúdos & Criativos" };
+      return { title: "Prepare os materiais da campanha", description: "O planejamento está pronto. O sistema organizará a produção para você.", action: "Continuar preparação" };
+    }
+    if (summary.failed > 0) {
+      return {
+        title: `${summary.failed} ${summary.failed === 1 ? "material precisa" : "materiais precisam"} de atenção`,
+        description: "Ao continuar, o sistema tenta novamente somente o que falhou e preserva o que já foi produzido.",
+        action: "Corrigir e continuar",
+      };
     }
     if (summary.ready > 0) {
-      return { title: `Preparar ${summary.ready} ${summary.ready === 1 ? "ação" : "ações"}`, description: "O planejamento está pronto. Agora prepare os materiais antes de publicar ou enviar.", action: "Preparar materiais" };
+      return {
+        title: "Continue a preparação da campanha",
+        description: `${summary.ready} ${summary.ready === 1 ? "material aguarda" : "materiais aguardam"} preparação. O sistema respeitará o limite disponível automaticamente.`,
+        action: "Continuar preparação",
+      };
     }
     if (summary.production > 0) {
-      return { title: "Acompanhar produção", description: `${summary.production} ${summary.production === 1 ? "ação está" : "ações estão"} sendo produzida${summary.production === 1 ? "" : "s"}.`, action: "Acompanhar produção" };
+      return {
+        title: "Revise os materiais produzidos",
+        description: `${summary.production} ${summary.production === 1 ? "material está pronto" : "materiais estão prontos"} para conferência.`,
+        action: "Revisar materiais",
+      };
     }
-    return { title: "Acompanhar resultados", description: "As ações desta campanha já foram publicadas ou concluídas.", action: "Ver resultados" };
+    return { title: "Acompanhe os resultados", description: "A campanha está em execução e os resultados já podem ser acompanhados.", action: "Ver resultados" };
   }, [summary]);
 
   const normalizedChannels = selectedCampaign?.canais.map((channel) => normalize(channel.canal)) ?? [];
@@ -243,10 +259,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button size="sm" variant="ghost" onClick={() => setLocation(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}&view=lista`)}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Todas as campanhas</Button>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="mr-1 h-3.5 w-3.5" />Atualizar</Button>
-          <Button size="sm" variant="ghost" onClick={() => setLocation("/content?tab=planejamento")}>Planejamento</Button>
-        </div>
+        <span className="text-xs text-muted-foreground">As alterações são atualizadas automaticamente.</span>
       </div>
 
       <Card className="border-primary/25">
@@ -278,11 +291,23 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">A preparar</p><p className="mt-1 text-2xl font-semibold">{summary.ready}</p><p className="text-xs text-muted-foreground">aguardando preparação</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{summary.production}</p><p className="text-xs text-muted-foreground">sendo produzidas</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Concluídas</p><p className="mt-1 text-2xl font-semibold">{summary.published}</p><p className="text-xs text-muted-foreground">publicadas ou finalizadas</p></CardContent></Card>
-      </div>
+      <Card>
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Progresso da campanha</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {summary.published} concluídos · {summary.production} produzidos · {summary.ready} aguardando
+                {summary.failed > 0 ? ` · ${summary.failed} com atenção` : ""}
+              </p>
+            </div>
+            <Badge variant="outline">{summary.total > 0 ? Math.round((summary.published / summary.total) * 100) : 0}% concluído</Badge>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${summary.total > 0 ? Math.round((summary.published / summary.total) * 100) : 0}%` }} />
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-4 md:p-5">
