@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
+import agentExecutionDepth from "@/data/agentExecutionDepth.json";
 
 type VisualSet = { title: string; first: string; second: string; firstAlt: string; secondAlt: string; third?: string; thirdAlt?: string };
+type AgentDepth = { title:string; intro:string; executions:string[]; workflow:string[]; autonomy:string; example:string };
 
 const VISUALS: Record<string, VisualSet> = {
   "/lp/academias-studios": { title:"Academias e Studios", first:"/lp-images/academias-contexto-1.svg", second:"/lp-images/academias-contexto-2.svg", firstAlt:"Academia, treino e experiência do aluno", secondAlt:"Aula experimental, matrícula e retenção" },
@@ -17,8 +19,6 @@ const VISUALS: Record<string, VisualSet> = {
   "/lp/distribuidora-alimentos-bebidas": { title:"Distribuidoras de Alimentos", first:"/lp-images/alimentos-contexto-1.svg", second:"/lp-images/alimentos-contexto-2.svg", firstAlt:"Carteira e distribuição de alimentos", secondAlt:"Pedido, frequência, mix e reativação" },
 };
 
-// SEO discovery links intentionally live in the public LP shell so every niche page
-// has direct paths to the strongest commercial and educational sections of VendorAI.
 const SEO_LINKS = [
   ["CRM com IA", "/produtos/crm"],
   ["CRM integrado ao WhatsApp", "/solucoes/crm-whatsapp"],
@@ -34,12 +34,15 @@ export default function LpMandatoryVisuals(){
   const [location] = useLocation();
   const [target,setTarget] = useState<HTMLElement|null>(null);
   const isLp = location.startsWith("/lp/");
+  const isAgent = location === "/agentes-virtuais-inteligentes" || location.startsWith("/agentes-virtuais-inteligentes/");
+  const shouldMount = isLp || isAgent;
   const key = Object.keys(VISUALS).find(prefix => location.startsWith(prefix));
   const config = key ? VISUALS[key] : null;
+  const agentConfig = isAgent ? (agentExecutionDepth.pages as Record<string,AgentDepth>)[location.replace(/\/$/,"")] : null;
 
   useEffect(()=>{
     setTarget(null);
-    if(!isLp) return;
+    if(!shouldMount) return;
     let host: HTMLElement | null = null;
     let observer: MutationObserver | null = null;
     const mount = () => {
@@ -56,9 +59,9 @@ export default function LpMandatoryVisuals(){
       observer.observe(document.body,{childList:true,subtree:true});
     }
     return ()=>{ observer?.disconnect(); host?.remove(); };
-  },[location,isLp]);
+  },[location,shouldMount]);
 
-  if(!isLp || !target) return null;
+  if(!shouldMount || !target) return null;
   const images = config ? [
     {src:config.first, alt:config.firstAlt},
     {src:config.second, alt:config.secondAlt},
@@ -67,6 +70,44 @@ export default function LpMandatoryVisuals(){
 
   return createPortal(
     <>
+      {agentConfig && (
+        <section className="border-y border-slate-200 bg-white px-4 py-14 sm:px-6 sm:py-20" aria-label="Execução prática do agente VendorAI">
+          <div className="mx-auto max-w-7xl">
+            <div className="max-w-4xl">
+              <p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Execução real • contexto • controle</p>
+              <h2 className="mt-3 text-3xl font-black leading-tight text-slate-950 sm:text-4xl">{agentConfig.title}</h2>
+              <p className="mt-5 text-base leading-8 text-slate-600 sm:text-lg">{agentConfig.intro}</p>
+            </div>
+            <div className="mt-10 grid gap-6 lg:grid-cols-2">
+              <article className="rounded-[28px] border border-slate-200 bg-[#fffaf5] p-7">
+                <h3 className="text-xl font-black text-slate-950">O que este agente executa</h3>
+                <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-700">
+                  {agentConfig.executions.map(item=><li key={item} className="flex gap-3"><span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-orange-500"/><span>{item}</span></li>)}
+                </ul>
+              </article>
+              <article className="rounded-[28px] border border-slate-200 bg-white p-7 shadow-sm">
+                <h3 className="text-xl font-black text-slate-950">Como trabalha dentro do VendorAI</h3>
+                <div className="mt-5 space-y-4 text-sm leading-7 text-slate-600">
+                  {agentConfig.workflow.map((item,index)=><p key={item}><strong className="text-slate-900">{index+1}.</strong> {item}</p>)}
+                </div>
+              </article>
+            </div>
+            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              <article className="rounded-[28px] bg-slate-950 p-7 text-white">
+                <p className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Autonomia com governança</p>
+                <h3 className="mt-3 text-xl font-black">A empresa continua no controle.</h3>
+                <p className="mt-4 text-sm leading-7 text-slate-300">{agentConfig.autonomy}</p>
+              </article>
+              <article className="rounded-[28px] border border-orange-200 bg-orange-50 p-7">
+                <p className="text-xs font-black uppercase tracking-[.18em] text-orange-700">Exemplo operacional</p>
+                <h3 className="mt-3 text-xl font-black text-slate-950">Como isso acontece na prática</h3>
+                <p className="mt-4 text-sm leading-7 text-slate-700">{agentConfig.example}</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      )}
+
       {config && (
         <section className="bg-[#f7f7f5] px-4 py-10 sm:px-6 sm:py-14" aria-label={`Imagens de ${config.title}`}>
           <div className="mx-auto max-w-7xl">
@@ -81,20 +122,22 @@ export default function LpMandatoryVisuals(){
         </section>
       )}
 
-      <section className="border-y border-slate-200 bg-white px-4 py-10 sm:px-6" aria-label="Explore soluções VendorAI relacionadas">
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_1.85fr] lg:items-center">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Continue explorando</p>
-              <h2 className="mt-2 text-2xl font-black text-slate-950">Veja como as soluções do VendorAI se conectam.</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">A landing page mostra uma aplicação específica. Para entender o fluxo completo, explore CRM, WhatsApp, agentes de IA, follow-up e inteligência de receita. Esses módulos trabalham juntos para organizar atendimento, oportunidades, próxima ação, reativação e crescimento comercial.</p>
+      {isLp && (
+        <section className="border-y border-slate-200 bg-white px-4 py-10 sm:px-6" aria-label="Explore soluções VendorAI relacionadas">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-6 lg:grid-cols-[1.15fr_1.85fr] lg:items-center">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Continue explorando</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">Veja como as soluções do VendorAI se conectam.</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">A landing page mostra uma aplicação específica. Para entender o fluxo completo, explore CRM, WhatsApp, agentes de IA, follow-up e inteligência de receita. Esses módulos trabalham juntos para organizar atendimento, oportunidades, próxima ação, reativação e crescimento comercial.</p>
+              </div>
+              <nav className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Links internos estratégicos">
+                {SEO_LINKS.map(([label,href])=><a key={href} href={href} className="rounded-2xl border border-slate-200 bg-[#fffaf5] px-4 py-4 text-sm font-black text-slate-800 transition hover:border-orange-300 hover:text-orange-600">{label}</a>)}
+              </nav>
             </div>
-            <nav className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Links internos estratégicos">
-              {SEO_LINKS.map(([label,href])=><a key={href} href={href} className="rounded-2xl border border-slate-200 bg-[#fffaf5] px-4 py-4 text-sm font-black text-slate-800 transition hover:border-orange-300 hover:text-orange-600">{label}</a>)}
-            </nav>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </>,
     target,
   );
