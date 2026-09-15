@@ -12,10 +12,11 @@ import { MarketingContextSelector, type MarketingContextValue } from "@/componen
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SCRIPT_TABS = [
-  { id: "workflow", label: "Fluxo",      ph: "Ex: vendas B2B, nutrição, moda..." },
-  { id: "trends",  label: "Tendências", ph: "Ex: fitness, finanças pessoais..." },
-  { id: "hooks",   label: "Ganchos",    ph: "Ex: marketing digital, emagrecimento..." },
-  { id: "script",  label: "Script",     ph: "Ex: Como dobrar suas vendas em 30 dias" },
+  { id: "workflow",    label: "Fluxo",            ph: "Ex: vendas B2B, nutrição, moda..." },
+  { id: "trends",     label: "Tendências",       ph: "Ex: fitness, finanças pessoais..." },
+  { id: "hooks",      label: "Ganchos",          ph: "Ex: marketing digital, emagrecimento..." },
+  { id: "script",     label: "Script",           ph: "Ex: Como dobrar suas vendas em 30 dias" },
+  { id: "impact_reel", label: "Reel de Impacto", ph: "Ex: mostre a IA respondendo um lead e termine com CTA DEMO" },
 ] as const;
 type ScriptTabId = (typeof SCRIPT_TABS)[number]["id"];
 
@@ -253,12 +254,15 @@ export default function ContentStudio() {
     setScriptLoading(true);
     setScriptResult("");
     try {
+      const impactInstruction = scriptTab === "impact_reel"
+        ? `Crie um REEL DE IMPACTO em 9:16, com 15 a 30 segundos e 5 a 7 cenas, sobre: ${scriptInput.trim()}. Estrutura obrigatória: GANCHO forte nos primeiros 3 segundos; DEMONSTRAÇÃO visual do produto, serviço ou processo funcionando; BENEFÍCIO/RESULTADO claro sem inventar números ou provas; CTA final pedindo comentário com UMA palavra-chave curta em MAIÚSCULAS. Se o usuário não informar a palavra-chave, escolha uma palavra contextual. Primeiro prove visualmente, depois venda. Entregue: TÍTULO, OBJETIVO, PALAVRA-CHAVE, GANCHO, cenas com TEXTO NA TELA + NARRAÇÃO/LEGENDA + VISUAL, BENEFÍCIO, CTA, LEGENDA DO POST e 5 HASHTAGS.`
+        : scriptInput.trim();
       const res = await fetch(`/api/tenants/${tenantId}/content-studio/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({
-          tab: scriptTab,
-          input: `${scriptInput.trim()} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`,
+          tab: scriptTab === "impact_reel" ? "script" : scriptTab,
+          input: `${impactInstruction} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`,
           marketingContext,
         }),
       });
@@ -502,6 +506,13 @@ export default function ContentStudio() {
                 ))}
               </div>
 
+              {scriptTab === "impact_reel" && (
+                <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.07] px-3 py-2.5">
+                  <p className="text-xs font-semibold text-cyan-300">Gancho → Demonstração → Benefício → CTA por comentário</p>
+                  <p className="mt-1 text-xs text-gray-400">Descreva o que quer mostrar. O VendorAI cria um Reel 9:16 de 15–30s e escolhe uma palavra-chave de CTA se você não informar uma.</p>
+                </div>
+              )}
+
               <textarea
                 placeholder={currentScriptTab.ph}
                 value={scriptInput}
@@ -522,7 +533,7 @@ export default function ContentStudio() {
                 )}
               >
                 {scriptLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {scriptLoading ? "Gerando..." : "Gerar Script"}
+                {scriptLoading ? "Gerando..." : scriptTab === "impact_reel" ? "Gerar Reel de Impacto" : "Gerar Script"}
               </button>
             </section>
 
