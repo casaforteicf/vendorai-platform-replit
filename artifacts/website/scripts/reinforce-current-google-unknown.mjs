@@ -9,10 +9,8 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const routeByPath = new Map((manifest.routes || []).map((route) => [route.pathname, route]));
 
 const targets = [
-  ["/blog", "Blog VendorAI"],
   ["/segmentos/distributors", "VendorAI para distribuidoras"],
-  ["/segmentos/industries", "VendorAI para indústrias"],
-  ["/produtos/prospeccao", "Prospecção com IA"],
+  ["/solucoes", "Soluções VendorAI"],
 ];
 
 function esc(value = "") {
@@ -39,7 +37,7 @@ const hubs = ["/", "/produtos", "/solucoes", "/blog", "/funcionalidades"]
 const targetLinks = targets.map(([href, label]) => [href, label]);
 for (const hub of hubs) {
   if (hub.staticHtml.includes('data-vendorai-google-unknown-current="hub"')) continue;
-  hub.staticHtml += `<section data-vendorai-google-unknown-current="hub"><h2>Páginas estratégicas do VendorAI</h2><p>Explore conteúdos e soluções prioritárias para prospecção B2B, distribuidoras, indústrias e crescimento comercial com IA.</p>${nav(targetLinks, "Páginas estratégicas do VendorAI")}</section>`;
+  hub.staticHtml += `<section data-vendorai-google-unknown-current="hub"><h2>Páginas estratégicas do VendorAI</h2><p>Explore as páginas prioritárias de soluções comerciais e CRM com IA para distribuição, vendas B2B e automação.</p>${nav(targetLinks, "Páginas estratégicas do VendorAI")}</section>`;
 }
 
 for (const [pathname, label] of targets) {
@@ -53,7 +51,7 @@ for (const [pathname, label] of targets) {
     ["/blog", "Blog e guias"],
     ...targets.filter(([href]) => href !== pathname),
   ];
-  route.staticHtml += `<section data-vendorai-google-unknown-current="route"><h3>Continue explorando o VendorAI</h3><p>${esc(label)} faz parte do ecossistema comercial do VendorAI. Veja também os principais hubs e páginas diretamente relacionadas para aprofundar prospecção, vendas B2B e inteligência comercial.</p>${nav(related, "Conteúdos relacionados")}</section>`;
+  route.staticHtml += `<section data-vendorai-google-unknown-current="route"><h3>Continue explorando o VendorAI</h3><p>${esc(label)} faz parte do ecossistema comercial do VendorAI. Veja também os principais hubs e páginas diretamente relacionadas para aprofundar CRM, automação, vendas B2B e inteligência comercial.</p>${nav(related, "Conteúdos relacionados")}</section>`;
 }
 
 manifest.generatedAt = new Date().toISOString();
