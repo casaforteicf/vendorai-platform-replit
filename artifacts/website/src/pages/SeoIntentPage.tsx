@@ -21,7 +21,7 @@ type LocaleCopy = {
 
 type GrowthPage = {
   path: string;
-  kind: "solution" | "comparison";
+  kind: "solution" | "comparison" | "agent";
   cluster: string;
   priority: number;
   intent: string;
@@ -37,6 +37,7 @@ const LABELS = {
   pt: {
     backSolutions: "Ver soluções por problema",
     backComparisons: "Ver todas as comparações",
+    backAgents: "Ver Agentes Virtuais Inteligentes",
     problem: "O problema que esta busca normalmente revela",
     how: "Como o VendorAI trata tecnicamente",
     comparison: "Diferenças que importam na operação",
@@ -53,6 +54,7 @@ const LABELS = {
   es: {
     backSolutions: "Ver soluciones por problema",
     backComparisons: "Ver todas las comparaciones",
+    backAgents: "Ver Agentes Virtuales Inteligentes",
     problem: "El problema que esta búsqueda suele revelar",
     how: "Cómo lo aborda técnicamente VendorAI",
     comparison: "Diferencias que importan en la operación",
@@ -94,8 +96,8 @@ export default function SeoIntentPage() {
 
   const copy = isSpanish ? page.es : page.pt;
   const howTitle = page.kind === "comparison" ? labels.comparison : labels.how;
-  const hubHref = page.kind === "comparison" ? "/comparar" : "/solucoes";
-  const hubLabel = page.kind === "comparison" ? labels.backComparisons : labels.backSolutions;
+  const hubHref = page.kind === "comparison" ? "/comparar" : page.kind === "agent" ? "/agentes-virtuais-inteligentes" : "/solucoes";
+  const hubLabel = page.kind === "comparison" ? labels.backComparisons : page.kind === "agent" ? labels.backAgents : labels.backSolutions;
   const relatedPages = pages
     .filter((entry) => entry.path !== page.path && entry.kind === page.kind)
     .sort((a, b) => Number(b.cluster === page.cluster) - Number(a.cluster === page.cluster) || b.priority - a.priority)
@@ -105,9 +107,11 @@ export default function SeoIntentPage() {
     <div className="bg-white text-slate-900">
       <section className="border-b border-slate-200 bg-gradient-to-b from-orange-50/70 via-white to-white py-16 md:py-24">
         <div className="container mx-auto max-w-6xl px-4">
-          <Link href={hubHref} className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-orange-600">
-            ← {hubLabel}
-          </Link>
+          {page.path !== hubHref && (
+            <Link href={hubHref} className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-orange-600">
+              ← {hubLabel}
+            </Link>
+          )}
           <div className="grid gap-10 lg:grid-cols-[1.25fr_.75fr] lg:items-center">
             <div>
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-orange-700">
@@ -172,7 +176,7 @@ export default function SeoIntentPage() {
         <div className="container mx-auto max-w-6xl px-4">
           <div className="mb-7 flex items-end justify-between gap-4">
             <h2 className="text-3xl font-black tracking-tight text-slate-950">{labels.relatedGuides}</h2>
-            <Link href={hubHref} className="hidden items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700 sm:inline-flex">{hubLabel}<ArrowRight className="h-4 w-4" /></Link>
+            {page.path !== hubHref && <Link href={hubHref} className="hidden items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700 sm:inline-flex">{hubLabel}<ArrowRight className="h-4 w-4" /></Link>}
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {relatedPages.map((related) => {
