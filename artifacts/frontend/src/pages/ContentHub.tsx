@@ -14,10 +14,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  AlertCircle,
   ArrowLeft,
+  ArrowRight,
   BarChart3,
   CalendarDays,
+  Check,
   CheckCircle2,
+  Circle,
+  Clock3,
   ExternalLink,
   Film,
   Globe2,
@@ -230,7 +235,7 @@ export default function ContentHub() {
   }
 
   useEffect(() => {
-    if (!mediaPlanSource || !tenantId) {
+    if ((!mediaPlanSource && activeTab !== "visao-geral") || !tenantId) {
       setPlannerPlan(null);
       setPlannerError(null);
       return;
@@ -247,7 +252,7 @@ export default function ContentHub() {
       .then((plan) => {
         if (cancelled) return;
         if (!plan) throw new Error("Nenhum planejamento de mídia foi encontrado.");
-        if (requestedMediaPlanId && plan.id !== requestedMediaPlanId) {
+        if (mediaPlanSource && requestedMediaPlanId && plan.id !== requestedMediaPlanId) {
           throw new Error("Este link aponta para uma versão anterior do planejamento. Abra o Planejamento atual para continuar.");
         }
         setPlannerPlan(plan);
@@ -261,7 +266,7 @@ export default function ContentHub() {
       .finally(() => { if (!cancelled) setPlannerLoading(false); });
 
     return () => { cancelled = true; };
-  }, [mediaPlanSource, requestedMediaPlanId, tenantId]);
+  }, [activeTab, mediaPlanSource, requestedMediaPlanId, tenantId]);
 
   useEffect(() => {
     if (!mediaPlanSource || !tenantId || !plannerPlan || !selectedPlannerCampaign) return;
@@ -320,12 +325,28 @@ export default function ContentHub() {
     return () => observer.disconnect();
   }, []);
 
-  const steps = [
-    { n: 1, title: "Planejamento", text: "Defina objetivo, público, oferta, canais, período e orçamento.", tab: "planejamento" as const },
-    { n: 2, title: "Campanhas", text: "Execute prospecção, anúncios, LPs, mensagens e demais ações.", tab: "campanhas" as const },
-    { n: 3, title: "Conteúdos & Criativos", text: "Produza as peças que alimentam as campanhas e canais.", tab: "conteudos" as const },
-    { n: 4, title: "Resultados", text: "Acompanhe o que funcionou e use os dados para melhorar a próxima ação.", tab: "resultados" as const },
+  const overviewStatus = plannerPlan?.conteudo.statusPlanejamento;
+  const currentJourneyStep = !plannerPlan
+    ? 1
+    : overviewStatus === "gerado" || overviewStatus === "em_revisao"
+      ? 2
+      : 3;
+
+  const journeySteps = [
+    { n: 1, title: "Planejar", text: "Definir objetivo, público, oferta, canais, período e orçamento.", tab: "planejamento" as const },
+    { n: 2, title: "Aprovar", text: "Revisar a estratégia preparada pela IA e liberar a execução.", tab: "planejamento" as const },
+    { n: 3, title: "Preparar", text: "Criar campanhas, conteúdos, anúncios, páginas e mensagens.", tab: "campanhas" as const },
+    { n: 4, title: "Revisar", text: "Conferir as peças, pedir ajustes ou aprovar para publicação.", tab: "conteudos" as const },
+    { n: 5, title: "Publicar", text: "Agendar ou publicar nos canais conectados.", tab: "conteudos" as const },
+    { n: 6, title: "Acompanhar", text: "Identificar a origem dos contatos e acompanhar a jornada no CRM.", tab: "rastreamento" as const },
+    { n: 7, title: "Melhorar", text: "Analisar resultados e usar os aprendizados no próximo ciclo.", tab: "resultados" as const },
   ];
+
+  const overviewAction = currentJourneyStep === 1
+    ? { title: "Crie o planejamento de marketing", description: "Defina o objetivo, o público, a oferta, os canais, o período e o orçamento para a IA preparar a estratégia.", label: "Começar planejamento", tab: "planejamento" as const }
+    : currentJourneyStep === 2
+      ? { title: "Revise e aprove o planejamento", description: "A execução só será liberada depois da sua aprovação. Confira a estratégia e solicite ajustes se necessário.", label: "Revisar e aprovar", tab: "planejamento" as const }
+      : { title: "Prepare as campanhas e os conteúdos", description: `O planejamento está aprovado. Organize a execução das ${plannerCampaigns.length || "suas"} campanhas e produza as peças necessárias.`, label: "Continuar execução", tab: "campanhas" as const };
 
   return (
     <div ref={rootRef} className="min-w-0">
@@ -358,44 +379,107 @@ export default function ContentHub() {
           )}
 
           <TabsContent value="visao-geral" className="mt-5">
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Fluxo do Marketing</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {steps.map((step) => (
-                      <button
-                        key={step.n}
-                        type="button"
-                        onClick={() => handleTabChange(step.tab)}
-                        className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/50 hover:bg-muted/30"
-                      >
-                        <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{step.n}</div>
-                        <p className="font-semibold">{step.title}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.text}</p>
-                      </button>
-                    ))}
+            {plannerLoading ? (
+              <Card><CardContent className="py-8 flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando a situação do marketing…</CardContent></Card>
+            ) : (
+              <div className="space-y-4">
+                {plannerError && (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div><p className="font-semibold">Não foi possível carregar a situação atual.</p><p className="text-sm">{plannerError}</p></div>
                   </div>
-                </CardContent>
-              </Card>
+                )}
 
-              <Card>
-                <CardContent className="py-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-semibold">Tudo começa no Planejamento e termina em Resultados.</p>
-                      <p className="text-sm text-muted-foreground">Rastreamento acompanha visitas, origem, cidade, jornada e recorrência sem ficar preso a uma campanha específica.</p>
+                <Card className="border-primary/25 bg-primary/[0.03]">
+                  <CardContent className="p-5 md:p-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="max-w-3xl">
+                        <div className="mb-2 flex items-center gap-2">
+                          <Badge>Etapa {currentJourneyStep} de 7</Badge>
+                          <span className="text-xs text-muted-foreground">Próxima ação</span>
+                        </div>
+                        <h2 className="text-xl font-bold tracking-tight">{overviewAction.title}</h2>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{overviewAction.description}</p>
+                      </div>
+                      <Button size="lg" className="shrink-0" onClick={() => handleTabChange(overviewAction.tab)}>
+                        {overviewAction.label}<ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" onClick={() => handleTabChange("rastreamento")}><Radio className="h-4 w-4 mr-2"/>Abrir Rastreamento</Button>
-                      <Button onClick={() => handleTabChange("planejamento")}><Target className="h-4 w-4 mr-2"/>Começar pelo Planejamento</Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <CardTitle className="text-base">Sua jornada de marketing</CardTitle>
+                      <p className="text-xs text-muted-foreground">Veja onde você está e o que acontece depois.</p>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
+                      {journeySteps.map((step) => {
+                        const completed = step.n < currentJourneyStep;
+                        const current = step.n === currentJourneyStep;
+                        return (
+                          <button
+                            key={step.n}
+                            type="button"
+                            onClick={() => handleTabChange(step.tab)}
+                            className={`rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                              current ? "border-primary bg-primary/5" : completed ? "border-emerald-200 bg-emerald-50/60" : "bg-background hover:border-primary/40"
+                            }`}
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Etapa {step.n}</span>
+                              {completed ? <Check className="h-4 w-4 text-emerald-600" /> : current ? <Clock3 className="h-4 w-4 text-primary" /> : <Circle className="h-4 w-4 text-muted-foreground/40" />}
+                            </div>
+                            <p className="text-sm font-semibold">{step.title}</p>
+                            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.text}</p>
+                            <p className={`mt-3 text-[10px] font-semibold ${
+                              current ? "text-primary" : completed ? "text-emerald-700" : "text-muted-foreground"
+                            }`}>{completed ? "Concluída" : current ? "Agora" : "Próxima"}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground">Planejamento</p>
+                      <p className="mt-1 font-semibold">{!plannerPlan ? "Ainda não iniciado" : plannerApproved ? "Aprovado" : "Aguardando aprovação"}</p>
+                      <Button variant="link" className="mt-1 h-auto p-0 text-xs" onClick={() => handleTabChange("planejamento")}>Abrir planejamento</Button>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground">Campanhas planejadas</p>
+                      <p className="mt-1 font-semibold">{plannerPlan ? `${plannerCampaigns.length} campanha${plannerCampaigns.length === 1 ? "" : "s"}` : "Dependem do planejamento"}</p>
+                      <Button variant="link" className="mt-1 h-auto p-0 text-xs" onClick={() => handleTabChange("campanhas")}>Abrir campanhas</Button>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground">Conteúdos e aprovações</p>
+                      <p className="mt-1 font-semibold">{plannerApproved ? "Prontos para preparar" : "Aguardando planejamento"}</p>
+                      <Button variant="link" className="mt-1 h-auto p-0 text-xs" onClick={() => handleTabChange("conteudos")}>Ver fila de produção</Button>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground">Resultados e origem</p>
+                      <p className="mt-1 font-semibold">Acompanhar dados reais</p>
+                      <div className="mt-1 flex gap-3">
+                        <Button variant="link" className="h-auto p-0 text-xs" onClick={() => handleTabChange("resultados")}>Resultados</Button>
+                        <Button variant="link" className="h-auto p-0 text-xs" onClick={() => handleTabChange("rastreamento")}>Rastreamento</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="planejamento" className="-mx-4 md:-mx-6">
