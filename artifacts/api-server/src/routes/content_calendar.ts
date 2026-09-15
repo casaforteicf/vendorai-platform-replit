@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   contentCalendarItemsTable,
   mediaPlansTable,
+  usersTable,
   CONTENT_CALENDAR_STATUS,
   CONTENT_CALENDAR_TIPOS,
 } from "@workspace/db";
@@ -15,6 +16,36 @@ const CALENDAR_BATCH_SIZE = 10;
 
 function canAccess(req: import("express").Request, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+/**
+ * A aprovação/produção de um lote pode gerar custo real de IA. Por isso essa
+ * autorização é mais estrita do que o acesso de leitura ao módulo.
+ *
+ * Libera somente:
+ * - Super Admin;
+ * - Tenant Admin;
+ * - função Administrador;
+ * - usuário do tenant com permissão EXPLÍCITA do módulo `content` (Marketing).
+ *
+ * Não aplicamos aqui os defaults legados por função: para liberar gasto de IA a
+ * permissão de Marketing precisa estar gravada explicitamente quando o usuário
+ * não é administrador.
+ */
+async function canReleaseMarketingBatch(req: import("express").Request, tenantId: string): Promise<boolean> {
+  const user = req.user;
+  if (!user) return false;
+  if (user.platformRole === "super_admin") return true;
+  if (user.tenantId !== tenantId) return false;
+  if (user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+
+  const [row] = await db
+    .select({ permissions: usersTable.permissions })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, user.id), eq(usersTable.tenantId, tenantId)))
+    .limit(1);
+
+  return Array.isArray(row?.permissions) && row.permissions.includes("content");
 }
 
 function weeksForPeriod(periodoDias: number): number {
@@ -125,6 +156,13 @@ router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/aprovar-lote", asy
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+  if (!(await canReleaseMarketingBatch(req, tenantId))) {
+    res.status(403).json({
+      error: "Somente Administradores, Super Admins ou usuários com permissão explícita de Marketing podem aprovar um lote.",
+      code: "MARKETING_BATCH_PERMISSION_REQUIRED",
+    });
+    return;
+  }
 
   const parsed = approveBatchBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
@@ -180,6 +218,64 @@ router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/aprovar-lote", asy
     .returning();
 
   res.json({ approved: items.length, items });
+});
+
+/**
+ * Gate sem consumo de IA. O frontend precisa passar por aqui imediatamente
+ * antes de iniciar a materialização de um lote. A resposta limita a produção
+ * aos 10 primeiros itens aprovados ainda sem conteúdo gerado.
+ */
+router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/autorizar-producao-lote", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const mediaPlanId = String(req.params.mediaPlanId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (!(await canReleaseMarketingBatch(req, tenantId))) {
+    res.status(403).json({
+      authorized: false,
+      error: "Somente Administradores, Super Admins ou usuários com permissão explícita de Marketing podem iniciar produção com IA.",
+      code: "MARKETING_BATCH_PERMISSION_REQUIRED",
+    });
+    return;
+  }
+
+  const [plan] = await db
+    .select({ id: mediaPlansTable.id, tenantId: mediaPlansTable.tenantId, conteudo: mediaPlansTable.conteudo })
+    .from(mediaPlansTable)
+    .where(eq(mediaPlansTable.id, mediaPlanId))
+    .limit(1);
+
+  if (!plan || plan.tenantId !== tenantId) {
+    res.status(404).json({ authorized: false, error: "Plano de mídia não encontrado" });
+    return;
+  }
+  if (plan.conteudo.statusPlanejamento !== "aprovado") {
+    res.status(422).json({ authorized: false, error: "O Plano de Mídia precisa estar aprovado antes da produção." });
+    return;
+  }
+
+  const items = await db
+    .select({ id: contentCalendarItemsTable.id })
+    .from(contentCalendarItemsTable)
+    .where(
+      and(
+        eq(contentCalendarItemsTable.tenantId, tenantId),
+        eq(contentCalendarItemsTable.mediaPlanId, mediaPlanId),
+        eq(contentCalendarItemsTable.status, "aprovado"),
+        isNull(contentCalendarItemsTable.contentGenerationId),
+      ),
+    )
+    .orderBy(asc(contentCalendarItemsTable.dataAgendada), asc(contentCalendarItemsTable.createdAt))
+    .limit(CALENDAR_BATCH_SIZE);
+
+  res.json({
+    authorized: true,
+    items: items.length,
+    itemIds: items.map((item) => item.id),
+    batchSize: CALENDAR_BATCH_SIZE,
+  });
 });
 
 router.get("/tenants/:tenantId/content-calendar", async (req, res) => {
@@ -265,6 +361,20 @@ router.patch("/content-calendar/:id", async (req, res) => {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
+
+  // Evita que um usuário sem autorização contorne o gate de lote marcando um
+  // item diretamente como aprovado/gerado pelo endpoint genérico de PATCH.
+  const touchesPaidLifecycle = parsed.data.status === "aprovado"
+    || parsed.data.status === "gerado"
+    || (parsed.data.contentGenerationId !== undefined && parsed.data.contentGenerationId !== null);
+  if (touchesPaidLifecycle && !(await canReleaseMarketingBatch(req, existing.tenantId))) {
+    res.status(403).json({
+      error: "Permissão de Marketing necessária para liberar ou registrar produção deste lote.",
+      code: "MARKETING_BATCH_PERMISSION_REQUIRED",
+    });
+    return;
+  }
+
   const [updated] = await db
     .update(contentCalendarItemsTable)
     .set({ ...parsed.data, updatedAt: new Date() })
