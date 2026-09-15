@@ -62,8 +62,8 @@ const mediaPlanAvailableQuotaPlugin = {
     );
     contents = replaceExact(
       contents,
-      `      sessionStorage.setItem(\`${AUTO_KEY_PREFIX}\${plan.id}\`, new Date().toISOString());`,
-      `      sessionStorage.setItem(\`${AUTO_KEY_PREFIX}\${plan.id}\`, \`${missing.length}:\${availableGenerations}\`);`,
+      `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, new Date().toISOString());`,
+      `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, \`\${missing.length}:\${availableGenerations}\`);`,
       "quota snapshot",
     );
     contents = replaceExact(
@@ -74,8 +74,8 @@ const mediaPlanAvailableQuotaPlugin = {
     );
     contents = replaceExact(
       contents,
-      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;`,
-      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || availableGenerations <= 0 || running || startingRef.current) return;\n    const snapshot = \`${missing.length}:\${availableGenerations}\`;\n    let alreadyStarted = false;\n    try { alreadyStarted = sessionStorage.getItem(\`${AUTO_KEY_PREFIX}\${plan.id}\`) === snapshot; } catch {}\n    if (alreadyStarted) return;`,
+      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;`,
+      `    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || availableGenerations <= 0 || running || startingRef.current) return;\n    const snapshot = \`\${missing.length}:\${availableGenerations}\`;\n    let alreadyStarted = false;\n    try { alreadyStarted = sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`) === snapshot; } catch {}\n    if (alreadyStarted) return;`,
       "auto resume guard",
     );
     contents = replaceExact(
