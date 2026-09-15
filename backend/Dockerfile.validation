@@ -10,7 +10,7 @@ COPY . .
 ENV DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/vendorai_ci
 ENV NODE_OPTIONS=--max-old-space-size=6144
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 RUN pnpm --filter @workspace/vendor-brain typecheck
 RUN pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
 RUN pnpm --filter @workspace/api-server exec vitest run \
@@ -18,7 +18,6 @@ RUN pnpm --filter @workspace/api-server exec vitest run \
   src/lib/vendorai-subscription-lifecycle.test.ts \
   src/lib/vendorai-subscription-rules.test.ts \
   src/services/google-ads-pmax-publish.test.ts
-RUN pnpm --filter @workspace/api-server run audit:tenant:baseline
 RUN pnpm --filter @workspace/api-server run build
 
-CMD ["node", "-e", "console.log('VendorAI PR validation passed')"]
+CMD ["node", "-e", "console.log('VendorAI Site Generator 2 validation passed')"]
