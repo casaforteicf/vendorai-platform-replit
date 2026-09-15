@@ -70,6 +70,7 @@ for (const filePath of walk(root)) {
 
   lines.forEach((line, index) => {
     const previousLine = lines[index - 1] ?? "";
+    const previousWindow = lines.slice(Math.max(0, index - 5), index).join(" ");
     const guardWindow = lines.slice(index + 1, index + 3).join(" ");
     const socialGuardWindow = lines.slice(index + 1, index + 6).join(" ");
     const routeWindow = lines.slice(index, index + 24).join(" ");
@@ -136,6 +137,21 @@ for (const filePath of walk(root)) {
       previousLine.includes('router.patch("/tenants/:tenantId/social-connections/:provider", authenticate') &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /if\s*\(!canAccess\(req,\s*tenantId\)\)\s*return\s+res\.status\(403\)/.test(socialGuardWindow);
+    // Generation-pack purchase routes are protected by the shared same-tenant/Super Admin
+    // middleware before their handlers run. Keep this exception limited to the two new
+    // generation-pack endpoints so existing token-purchase findings remain unchanged.
+    const guardedGenerationPackTenant =
+      relativeFile === "routes/token_purchases.ts" &&
+      previousWindow.includes("/tenants/:tenantId/generation-pack-purchases") &&
+      previousWindow.includes("requireSameTenanOrSuperAdmin()") &&
+      /const\s+tenantId\s*=\s*String\(req\.params\[["']tenantId["']\]\)/.test(line);
+    // The Site Generator QA route reads the route tenant and immediately applies the
+    // same-tenant/Super Admin canAccess guard before any tenant-scoped query.
+    const guardedSiteGeneratorQaTenant =
+      relativeFile === "routes/site_generator_2_runtime.ts" &&
+      previousLine.includes('router.get("/tenants/:tenantId/site-generator/:siteId/qa"') &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!canAccess\(req,\s*tenantId\)\)/.test(guardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
@@ -147,7 +163,9 @@ for (const filePath of walk(root)) {
       guardedOfficialMetricsTenant ||
       guardedMetaGrowthAuthenticatedTenant ||
       guardedMetaGrowthWebhookTenant ||
-      guardedSocialIdentityRoleTenant
+      guardedSocialIdentityRoleTenant ||
+      guardedGenerationPackTenant ||
+      guardedSiteGeneratorQaTenant
     ) {
       return;
     }
