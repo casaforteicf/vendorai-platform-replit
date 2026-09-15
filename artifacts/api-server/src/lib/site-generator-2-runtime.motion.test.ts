@@ -30,7 +30,7 @@ describe("Site Generator 2 tech motion pack", () => {
   it("routes product demos, flows and CTAs to specialized motion", () => {
     expect(source).toContain('if (kind === "hero")');
     expect(source).toContain('if (kind === "process")');
-    expect(source).toContain('return "workflow-sequence"');
+    expect(source).toContain('level === "subtle" ? "stagger-cards" : "workflow-sequence"');
     expect(source).toContain('return "demo-video-frame"');
     expect(source).toContain('return level === "subtle" ? "image-reveal" : "interface-reveal"');
     expect(source).toContain('if (kind === "cta") return "cta-glow"');
