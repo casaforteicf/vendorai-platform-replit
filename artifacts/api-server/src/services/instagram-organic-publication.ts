@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db, instagramConnectionsTable, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveWebsiteConnection } from "./websiteConnector.js";
 
 const META_GRAPH_VERSION = "v26.0";
 
@@ -8,6 +9,7 @@ type InstagramPublicationInput = {
   text?: string;
   mediaUrl?: string;
   mediaUrls?: string[];
+  destinationUrl?: string | null;
   contentType?: "post" | "image" | "video" | "short" | "carousel" | "story" | "reel";
 };
 
@@ -19,6 +21,31 @@ function graphBase(connection: InstagramConnection) {
   return connection.pageId && connection.accountId && connection.pageId !== connection.accountId
     ? `https://graph.facebook.com/${META_GRAPH_VERSION}`
     : `https://graph.instagram.com/${META_GRAPH_VERSION}`;
+}
+
+function hasHttpUrl(text: string) {
+  return /https?:\/\/\S+/i.test(text);
+}
+
+async function buildInstagramCaption(tenantId: string, input: InstagramPublicationInput) {
+  const baseText = (input.text ?? "").trim();
+  if (hasHttpUrl(baseText)) return baseText.slice(0, 2200) || null;
+
+  let destinationUrl = (input.destinationUrl ?? "").trim();
+  if (!destinationUrl) {
+    try {
+      const website = await resolveWebsiteConnection(tenantId);
+      destinationUrl = website.siteUrl ?? "";
+    } catch (error) {
+      logger.warn({ error, tenantId }, "Não foi possível resolver o site oficial do tenant para o CTA do Instagram");
+    }
+  }
+
+  if (!destinationUrl) return baseText.slice(0, 2200) || null;
+
+  const cta = `Saiba mais: ${destinationUrl}`;
+  const separator = baseText ? "\n\n" : "";
+  return `${baseText}${separator}${cta}`.slice(0, 2200);
 }
 
 async function graphPost(base: string, path: string, params: Record<string, string>) {
@@ -122,15 +149,21 @@ export async function createInstagramOrganicPublication(tenantId: string, input:
   const primary = input.mediaUrl || mediaUrls[0];
   if (!primary && !input.text) throw new Error("text_or_media_required");
 
+  const caption = await buildInstagramCaption(tenantId, input);
   const [created] = await db.insert(socialPublicationsTable).values({
     tenantId,
     provider: "instagram",
     connectionId: null,
-    text: input.text,
+    text: caption ?? undefined,
     mediaUrl: primary,
     contentType: input.contentType || (mediaUrls.length > 1 ? "carousel" : "post"),
     status: "queued",
-    metadata: { mediaUrls, instagramConnectionId: connection.id },
+    metadata: {
+      mediaUrls,
+      instagramConnectionId: connection.id,
+      destinationUrl: input.destinationUrl ?? null,
+      conversionLinkApplied: Boolean(caption && !hasHttpUrl(input.text ?? "") && hasHttpUrl(caption)),
+    },
   }).returning();
   return created;
 }
@@ -165,8 +198,11 @@ export async function publishInstagramOrganicPublication(tenantId: string, publi
       text: publication.text || undefined,
       mediaUrl: publication.mediaUrl || undefined,
       mediaUrls,
+      destinationUrl: typeof metadata.destinationUrl === "string" ? metadata.destinationUrl : null,
       contentType: publication.contentType as InstagramPublicationInput["contentType"],
     };
+    input.text = (await buildInstagramCaption(tenantId, input)) ?? undefined;
+
     const containerId = publication.contentType === "carousel" || mediaUrls.length > 1
       ? await createCarouselContainer(connection, input, mediaUrls)
       : await createSingleContainer(connection, input, mediaUrls[0]);
@@ -174,9 +210,10 @@ export async function publishInstagramOrganicPublication(tenantId: string, publi
 
     const [updated] = await db.update(socialPublicationsTable).set({
       externalId,
+      text: input.text,
       status: "published",
       publishedAt: new Date(),
-      metadata: { ...metadata, mediaUrls, containerId },
+      metadata: { ...metadata, mediaUrls, containerId, conversionLinkVerified: Boolean(input.text && hasHttpUrl(input.text)) },
       updatedAt: new Date(),
     }).where(eq(socialPublicationsTable.id, publication.id)).returning();
     return updated;
