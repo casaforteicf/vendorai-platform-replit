@@ -8,13 +8,16 @@ const outDir = path.resolve(siteRoot, "dist/public");
 const manifestPath = path.resolve(outDir, "seo-manifest.json");
 const wave1Path = path.resolve(siteRoot, "src/data/seoGrowthMatrix.json");
 const wave2Path = path.resolve(siteRoot, "src/data/seoGrowthMatrixWave2.json");
+const wave3Path = path.resolve(siteRoot, "src/data/seoGrowthMatrixWave3Agents.json");
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const wave1 = JSON.parse(fs.readFileSync(wave1Path, "utf8"));
 const wave2 = JSON.parse(fs.readFileSync(wave2Path, "utf8"));
+const wave3 = JSON.parse(fs.readFileSync(wave3Path, "utf8"));
 const wave1Pages = wave1.pages || [];
 const wave2Pages = wave2.pages || [];
-const pages = [...wave1Pages, ...wave2Pages];
+const wave3Pages = wave3.pages || [];
+const pages = [...wave1Pages, ...wave2Pages, ...wave3Pages];
 
 if (wave1Pages.length !== 11) {
   throw new Error(`[seo-growth] expected exactly 11 wave-1 pages, found ${wave1Pages.length}`);
@@ -22,8 +25,11 @@ if (wave1Pages.length !== 11) {
 if (wave2Pages.length !== 16) {
   throw new Error(`[seo-growth] expected exactly 16 wave-2 pages, found ${wave2Pages.length}`);
 }
-if (pages.length !== 27) {
-  throw new Error(`[seo-growth] expected exactly 27 commercial-intent pages, found ${pages.length}`);
+if (wave3Pages.length !== 10) {
+  throw new Error(`[seo-growth] expected exactly 10 wave-3 agent pages, found ${wave3Pages.length}`);
+}
+if (pages.length !== 37) {
+  throw new Error(`[seo-growth] expected exactly 37 commercial-intent pages, found ${pages.length}`);
 }
 
 const paths = pages.map((page) => page.path);
@@ -107,12 +113,14 @@ for (const hub of hubs) {
 }
 
 manifest.growthPages = pages;
-manifest.growthWaves = { wave1: wave1Pages.length, wave2: wave2Pages.length, total: pages.length };
+manifest.agentGrowthPages = wave3Pages;
+manifest.growthWaves = { wave1: wave1Pages.length, wave2: wave2Pages.length, wave3Agents: wave3Pages.length, total: pages.length };
 manifest.growthHubs = hubs;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
 const deploymentVersion = process.env.GITHUB_SHA || "local";
 fs.writeFileSync(path.resolve(outDir, "deployment-version.txt"), `${deploymentVersion}\n`);
 
-console.log(`[seo-growth] appended ${pages.length} commercial-intent pages (${wave1Pages.length} wave 1 + ${wave2Pages.length} wave 2), visible FAQ data and ${hubs.length} hubs`);
+console.log(`[seo-growth] appended ${pages.length} commercial-intent pages (${wave1Pages.length} wave 1 + ${wave2Pages.length} wave 2 + ${wave3Pages.length} agent pages), visible FAQ data and ${hubs.length} hubs`);
+console.log(`[seo-agents] added ${wave3Pages.length} intelligent-agent landing pages`);
 console.log(`[deploy] version ${deploymentVersion}`);
