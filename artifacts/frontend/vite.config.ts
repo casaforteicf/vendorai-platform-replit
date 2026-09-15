@@ -56,6 +56,18 @@ const mediaPlanAvailableQuotaPlugin = {
     );
     contents = replaceExact(
       contents,
+      `    const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };\n    if (!response.ok || !payload.id) throw new Error(payload.error ?? "O gerador não criou o rascunho.");`,
+      `    const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };\n    if (!response.ok || !payload.id) {\n      if (response.status === 402) throw new Error("quota_exhausted:" + (payload.error ?? "Franquia de gerações esgotada."));\n      throw new Error(payload.error ?? "O gerador não criou o rascunho.");\n    }`,
+      "quota error marker",
+    );
+    contents = replaceExact(
+      contents,
+      `    } catch (error) {\n      await updateProject(project, {\n        materializationStatus: "failed",\n        executorKind: item.tipo,\n        executorDetail: error instanceof Error ? error.message : "Falha na produção",\n      }).catch(() => null);\n      throw error;\n    }`,
+      `    } catch (error) {\n      const quotaExhausted = error instanceof Error && error.message.startsWith("quota_exhausted:");\n      await updateProject(project, {\n        materializationStatus: quotaExhausted ? "planned" : "failed",\n        executorKind: item.tipo,\n        executorDetail: quotaExhausted ? "Aguardando novas gerações" : error instanceof Error ? error.message : "Falha na produção",\n      }).catch(() => null);\n      throw error;\n    }`,
+      "pending on quota exhaustion",
+    );
+    contents = replaceExact(
+      contents,
       `    const queue = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");\n    if (queue.length === 0) return;`,
       `    const eligible = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");\n    const queue = eligible.slice(0, Math.max(0, availableGenerations));\n    if (queue.length === 0) return;`,
       "partial queue",
@@ -65,6 +77,12 @@ const mediaPlanAvailableQuotaPlugin = {
       `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, new Date().toISOString());`,
       `      sessionStorage.setItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`, \`\${missing.length}:\${availableGenerations}\`);`,
       "quota snapshot",
+    );
+    contents = replaceExact(
+      contents,
+      `        } catch (error) {\n          failed += 1;\n          output.push({ itemId: item.id, status: "failed", kind: item.tipo, label: item.temaSugerido, detail: error instanceof Error ? error.message : "Falha na produção" });\n        }\n        done += 1;`,
+      `        } catch (error) {\n          if (error instanceof Error && error.message.startsWith("quota_exhausted:")) {\n            setAvailableGenerations(0);\n            return;\n          }\n          failed += 1;\n          output.push({ itemId: item.id, status: "failed", kind: item.tipo, label: item.temaSugerido, detail: error instanceof Error ? error.message : "Falha na produção" });\n        }\n        done += 1;`,
+      "stop worker at quota",
     );
     contents = replaceExact(
       contents,
