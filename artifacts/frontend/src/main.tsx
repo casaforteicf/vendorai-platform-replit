@@ -20,6 +20,7 @@ import { MediaLibraryWorkflowBridge } from "./components/media/MediaLibraryWorkf
 import { MediaIntelligenceIndexBridge } from "./components/media/MediaIntelligenceIndexBridge";
 import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGeneratorQueueUxBridge";
 import { MarketingOverviewBridge } from "./components/marketing/MarketingOverviewBridge";
+import { CampaignWorkspaceClarityBridge } from "./components/marketing/CampaignWorkspaceClarityBridge";
 import { PlanningReviewBridge } from "./components/marketing/PlanningReviewBridge";
 import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
 import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/MediaPlanProductionCompatibilityBridge";
@@ -181,6 +182,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaDeleteSelectionBridge />
           <ContentGeneratorQueueUxBridge />
           <MarketingOverviewBridge />
+          <CampaignWorkspaceClarityBridge />
           <PlanningReviewBridge />
           <ContentPlanVisualCompletionBridge />
           <MediaPlanProductionCompatibilityBridge />
