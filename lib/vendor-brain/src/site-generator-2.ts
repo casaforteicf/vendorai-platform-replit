@@ -330,6 +330,15 @@ export function buildSiteGenerator2Prompt(spec: SitePageSpec): string {
     '- Use primeiro as mídias reais recebidas e dê a elas função narrativa. Não deixe screenshots/fotos reais como pequenos enfeites se podem demonstrar o produto.',
     '- Quando houver mídia real, pelo menos uma seção além do hero deve usá-la para explicar produto, fluxo, aplicação, resultado ou contexto de uso.',
     '- Mídia artificial é apenas fallback quando não existir material oficial. Nunca invente screenshots de produto como se fossem telas reais.',
+    '- Não repita a mesma pessoa, cena, imagem ou vídeo em seções diferentes. Uma mídia não pode ser usada como enchimento para completar grade.',
+    '- Nunca apresente vídeo de pessoa falando ou cena genérica de escritório como demonstração de Vendor Site, Autopilot, painel, relatório ou outra função do sistema.',
+    '- Se não existir screenshot ou gravação real da função descrita, use composição tipográfica, diagrama de fluxo ou ícones; não atribua função falsa a uma mídia desconexa.',
+    '- Tecnologia, painel e relatórios devem ser demonstrados com interface real, captura de tela aprovada ou visualização de dados coerente — nunca com retrato genérico.',
+    '- Preserve o enquadramento: logos e screenshots usam object-fit: contain; fotos podem usar cover somente quando rosto, produto e assunto principal permanecem inteiros.',
+    'LAYOUT E ACABAMENTO:',
+    '- Grades devem refletir exatamente a quantidade de itens: 4 itens = 2x2 centralizado; 5 ou 6 itens = composição balanceada sem lacunas; nunca deixe espaço visual de card inexistente.',
+    '- Não corte títulos, rostos, produtos, logos ou controles. Valide primeiro e último viewport, desktop e mobile.',
+    '- O logo completo precisa permanecer visível e com contraste suficiente no cabeçalho e no rodapé.',
     'COPY E CONVERSÃO:',
     '- Escreva para o problema específico do público, com linguagem concreta e comercial. Menos slogans institucionais; mais mecanismo, consequência, operação e próximo passo.',
     '- A primeira dobra precisa dizer claramente o que muda para o cliente e o que ele pode fazer agora.',
@@ -384,6 +393,13 @@ export function scoreSiteGenerator2Html(input: {
   const cardClassCount = (html.match(/class=["'][^"']*\bcard\b[^"']*["']/gi) ?? []).length;
   const repeatedGridSignals = (html.match(/grid-template-columns/gi) ?? []).length;
   const looksLikeCardWall = cardClassCount >= 10 || (cardClassCount >= 6 && repeatedGridSignals >= 4);
+  const mediaSources = [...html.matchAll(/<(?:img|video)\b[^>]+(?:src|poster)=["']([^"']+)["']/gi)]
+    .map((match) => match[1])
+    .filter(Boolean);
+  const duplicateMediaCount = mediaSources.length - new Set(mediaSources).size;
+  const hasDisconnectedDemoLabels = videos.length > 0
+    && /vendor site|autopilot|painel de resultados|relat[oó]rios/i.test(text)
+    && !/dashboard|screenshot|captura de tela|interface|fluxo do sistema/i.test(text);
 
   if (!hasViewport) blockers.push('viewport ausente');
   if (hasHorizontalRisk) blockers.push('risco de overflow/quebra horizontal');
@@ -391,6 +407,8 @@ export function scoreSiteGenerator2Html(input: {
   if (usesFakeProofLanguage) blockers.push('possível prova social/número inventado');
   if (requiredMediaCount > 0 && realMediaRendered === 0) blockers.push('mídia real disponível não foi demonstrada');
   if (input.published && hasNoindex) blockers.push('site publicado permanece noindex');
+  if (duplicateMediaCount > 0 && mediaSources.length >= 3) blockers.push('mídia repetida em múltiplas seções');
+  if (hasDisconnectedDemoLabels) blockers.push('vídeos não demonstram as funções anunciadas');
   if (!input.published && !hasNoindex) warnings.push('preview deveria permanecer noindex');
   if (!hasReducedMotion && motionMarkers > 0) warnings.push('prefers-reduced-motion não identificado');
   if (imageAltRatio < 0.9) warnings.push('imagens sem alt suficiente');
