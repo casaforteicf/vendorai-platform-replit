@@ -23,7 +23,7 @@ import { PlanningReviewBridge } from "./components/marketing/PlanningReviewBridg
 import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
 import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/MediaPlanProductionCompatibilityBridge";
 import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/MediaPlanProjectKindCompatibilityBridge";
-import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanAutoProductionBridge";
+import { MediaPlanAutoProductionBridge } from "./components/marketing/QuotaSafeMediaPlanAutoProductionBridge";
 import { MediaPlanFailedRetryBridge } from "./components/marketing/MediaPlanFailedRetryBridge";
 import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
 import { MediaPlanLandingPageStrategy } from "./components/marketing/MediaPlanLandingPageStrategy";
