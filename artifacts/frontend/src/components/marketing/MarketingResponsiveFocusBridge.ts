@@ -2,6 +2,8 @@ const NAV_HOST_ATTR = "data-vendorai-marketing-mobile-nav";
 const HIDDEN_ATTR = "data-vendorai-marketing-focus-hidden";
 const STYLE_ID = "vendorai-marketing-focus-style";
 const HEADER_ATTR = "data-vendorai-marketing-mobile-header";
+const PLANNING_ATTR = "data-vendorai-planning-focus";
+const PLANNING_TOGGLE_ATTR = "data-vendorai-planning-briefing-toggle";
 
 const TAB_OPTIONS = [
   ["visao-geral", "Visão Geral"],
@@ -30,6 +32,14 @@ function activeTab() {
   if (tab === "gerador") return "conteudos";
   if (tab === "variedades") return "campanhas";
   return TAB_OPTIONS.some(([value]) => value === tab) ? tab : "visao-geral";
+}
+
+function isPlanningTab() {
+  return isMarketingRoute() && activeTab() === "planejamento";
+}
+
+function isOverviewTab() {
+  return isMarketingRoute() && activeTab() === "visao-geral";
 }
 
 function findMarketingTabList() {
@@ -70,8 +80,52 @@ function ensureStyle() {
       margin-inline:auto;
     }
 
-    [data-vendorai-campaign-workspace-v2="true"] > * {
+    [data-vendorai-campaign-workspace-v2="true"] > *,
+    [${PLANNING_ATTR}="true"] * {
       min-width:0;
+    }
+
+    [${PLANNING_ATTR}="true"] {
+      max-width:1180px;
+      margin-inline:auto;
+    }
+
+    [${PLANNING_ATTR}="true"] > .space-y-5,
+    [${PLANNING_ATTR}="true"] .space-y-5 {
+      gap:14px;
+    }
+
+    [${PLANNING_ATTR}="true"] [data-vendorai-planning-previous] {
+      border-style:solid !important;
+      background:hsl(var(--muted) / .18);
+    }
+
+    [${PLANNING_TOGGLE_ATTR}] {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      width:100%;
+      min-height:46px;
+      margin-bottom:10px;
+      padding:10px 12px;
+      border:1px solid hsl(var(--border));
+      border-radius:12px;
+      background:hsl(var(--background));
+      color:hsl(var(--foreground));
+      font-size:13px;
+      font-weight:700;
+      text-align:left;
+    }
+
+    [${PLANNING_TOGGLE_ATTR}] span:last-child {
+      color:hsl(var(--muted-foreground));
+      font-size:11px;
+      font-weight:500;
+    }
+
+    body[data-vendorai-marketing-shell="true"] .vendor-marketing-bottom-links {
+      display:none !important;
     }
 
     @media (max-width: 767px) {
@@ -119,6 +173,45 @@ function ensureStyle() {
 
       body[data-vendorai-marketing-shell="true"] [role="tabpanel"] {
         padding-top:0 !important;
+      }
+
+      body[data-vendorai-marketing-shell="true"] .vendor-marketing-overview-hero-mobile-hidden {
+        display:none !important;
+      }
+
+      [${PLANNING_ATTR}="true"] .grid.md\\:grid-cols-2,
+      [${PLANNING_ATTR}="true"] .grid.lg\\:grid-cols-2 {
+        grid-template-columns:minmax(0,1fr) !important;
+      }
+
+      [${PLANNING_ATTR}="true"] .mt-2.flex.flex-wrap {
+        flex-wrap:nowrap !important;
+        overflow-x:auto;
+        overflow-y:hidden;
+        padding-bottom:3px;
+        scrollbar-width:none;
+      }
+
+      [${PLANNING_ATTR}="true"] .mt-2.flex.flex-wrap::-webkit-scrollbar {
+        display:none;
+      }
+
+      [${PLANNING_ATTR}="true"] .mt-2.flex.flex-wrap > * {
+        flex:0 0 auto;
+      }
+
+      [${PLANNING_ATTR}="true"] textarea {
+        min-height:72px !important;
+      }
+
+      [${PLANNING_ATTR}="true"] [data-vendorai-planning-info-card] [class*="CardContent"],
+      [${PLANNING_ATTR}="true"] [data-vendorai-planning-proposal-card] [class*="CardContent"] {
+        padding-left:12px !important;
+        padding-right:12px !important;
+      }
+
+      [${PLANNING_ATTR}="true"] [data-vendorai-planning-proposal-card] .rounded-xl.border.bg-background {
+        padding:12px !important;
       }
 
       [data-vendorai-campaign-workspace-v2="true"] {
@@ -216,14 +309,36 @@ function ensureMobileNavigation() {
   if (select && select.value !== activeTab()) select.value = activeTab();
 }
 
+function closestCard(node: HTMLElement | null) {
+  let current = node;
+  while (current && current !== document.body) {
+    const className = typeof current.className === "string" ? current.className : "";
+    if (className.includes("border") && (className.includes("rounded") || className.includes("shadow"))) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function hideNode(node: HTMLElement | null) {
+  if (!node) return;
+  if (!node.hasAttribute(HIDDEN_ATTR)) node.setAttribute(HIDDEN_ATTR, node.style.display || "__empty__");
+  node.style.display = "none";
+}
+
+function showNode(node: HTMLElement | null) {
+  if (!node) return;
+  const previous = node.getAttribute(HIDDEN_ATTR);
+  if (previous === null) return;
+  node.style.display = previous === "__empty__" ? "" : previous;
+  node.removeAttribute(HIDDEN_ATTR);
+}
+
 function hideCardByHeading(workspace: HTMLElement, heading: string) {
   const target = Array.from(workspace.children).find((node) => {
     if (!(node instanceof HTMLElement)) return false;
     return normalize(node.textContent ?? "").startsWith(normalize(heading));
   }) as HTMLElement | undefined;
-  if (!target) return;
-  if (!target.hasAttribute(HIDDEN_ATTR)) target.setAttribute(HIDDEN_ATTR, target.style.display || "__empty__");
-  target.style.display = "none";
+  hideNode(target ?? null);
 }
 
 function simplifyCampaignWorkspace() {
@@ -241,19 +356,85 @@ function simplifyCampaignWorkspace() {
   buttons.forEach((button, index) => {
     if (index === 0) return;
     const label = normalize(button.textContent ?? "");
-    if (label.includes("atualizar") || label === "planejamento") {
-      if (!button.hasAttribute(HIDDEN_ATTR)) button.setAttribute(HIDDEN_ATTR, button.style.display || "__empty__");
-      button.style.display = "none";
-    }
+    if (label.includes("atualizar") || label === "planejamento") hideNode(button);
   });
+}
+
+function markOverview() {
+  if (!isOverviewTab()) return;
+  const heroText = Array.from(document.querySelectorAll<HTMLElement>("h2,p")).find((node) =>
+    normalize(node.textContent ?? "").includes("planeje, execute e acompanhe suas campanhas"),
+  );
+  const heroCard = closestCard(heroText ?? null);
+  heroCard?.classList.add("vendor-marketing-overview-hero-mobile-hidden");
+}
+
+function planningRoot() {
+  const heading = Array.from(document.querySelectorAll<HTMLElement>("div,p,h2,h3")).find((node) =>
+    normalize(node.textContent ?? "") === "1. informacoes do planejamento",
+  );
+  const infoCard = closestCard(heading ?? null);
+  if (!infoCard) return null;
+  const root = infoCard.parentElement;
+  if (root) root.setAttribute(PLANNING_ATTR, "true");
+  infoCard.setAttribute("data-vendorai-planning-info-card", "true");
+  return { root, infoCard };
+}
+
+function simplifyPlanning() {
+  if (!isPlanningTab()) return;
+  const context = planningRoot();
+  if (!context?.root) return;
+  const { root, infoCard } = context;
+
+  const explainer = Array.from(root.querySelectorAll<HTMLElement>("p,div")).find((node) =>
+    normalize(node.textContent ?? "") === "planejamento = decisao, nao execucao",
+  );
+  hideNode(closestCard(explainer ?? null));
+
+  const previousLabel = Array.from(root.querySelectorAll<HTMLElement>("p,div")).find((node) =>
+    normalize(node.textContent ?? "") === "existe um planejamento anterior",
+  );
+  closestCard(previousLabel ?? null)?.setAttribute("data-vendorai-planning-previous", "true");
+
+  const proposalTitle = Array.from(root.querySelectorAll<HTMLElement>("div,p,h2,h3")).find((node) =>
+    normalize(node.textContent ?? "") === "2. proposta da ia",
+  );
+  const proposalCard = closestCard(proposalTitle ?? null);
+  proposalCard?.setAttribute("data-vendorai-planning-proposal-card", "true");
+
+  let toggle = root.querySelector<HTMLButtonElement>(`[${PLANNING_TOGGLE_ATTR}]`);
+  if (!proposalCard) {
+    toggle?.remove();
+    showNode(infoCard);
+    return;
+  }
+
+  if (!toggle) {
+    toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.setAttribute(PLANNING_TOGGLE_ATTR, "true");
+    toggle.dataset.expanded = "false";
+    toggle.innerHTML = `<span>Briefing do planejamento</span><span>Editar informações</span>`;
+    toggle.addEventListener("click", () => {
+      const expanded = toggle?.dataset.expanded === "true";
+      if (!toggle) return;
+      toggle.dataset.expanded = expanded ? "false" : "true";
+      toggle.innerHTML = expanded
+        ? `<span>Briefing do planejamento</span><span>Editar informações</span>`
+        : `<span>Briefing do planejamento</span><span>Ocultar edição</span>`;
+      if (expanded) hideNode(infoCard); else showNode(infoCard);
+    });
+    proposalCard.insertAdjacentElement("beforebegin", toggle);
+  }
+
+  if (toggle.dataset.expanded !== "true") hideNode(infoCard);
 }
 
 function restoreFocusHidden() {
   document.querySelectorAll<HTMLElement>(`[${HIDDEN_ATTR}]`).forEach((node) => {
     if (node.getAttribute("role") === "tablist") return;
-    const previous = node.getAttribute(HIDDEN_ATTR);
-    node.style.display = previous === "__empty__" ? "" : (previous ?? "");
-    node.removeAttribute(HIDDEN_ATTR);
+    showNode(node);
   });
 }
 
@@ -271,6 +452,8 @@ function sync() {
       return;
     }
     ensureMobileNavigation();
+    markOverview();
+    simplifyPlanning();
     simplifyCampaignWorkspace();
   });
 }
