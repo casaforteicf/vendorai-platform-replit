@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import agentExecutionDepth from "@/data/agentExecutionDepth.json";
+import { getProductDeepDiveContent } from "@/data/productDeepDiveContent";
 
 type VisualSet = { title: string; first: string; second: string; firstAlt: string; secondAlt: string; third?: string; thirdAlt?: string };
 type AgentDepth = { title:string; intro:string; executions:string[]; workflow:string[]; autonomy:string; example:string };
@@ -33,12 +34,15 @@ const SEO_LINKS = [
 export default function LpMandatoryVisuals(){
   const [location] = useLocation();
   const [target,setTarget] = useState<HTMLElement|null>(null);
-  const isLp = location.startsWith("/lp/");
-  const isAgent = location === "/agentes-virtuais-inteligentes" || location.startsWith("/agentes-virtuais-inteligentes/");
-  const shouldMount = isLp || isAgent;
-  const key = Object.keys(VISUALS).find(prefix => location.startsWith(prefix));
+  const cleanLocation = location.split("?")[0].replace(/\/$/,"") || "/";
+  const isLp = cleanLocation.startsWith("/lp/");
+  const isAgent = cleanLocation === "/agentes-virtuais-inteligentes" || cleanLocation.startsWith("/agentes-virtuais-inteligentes/");
+  const productSlug = cleanLocation.startsWith("/produtos/") ? cleanLocation.replace("/produtos/","") : "";
+  const productDeepDive = productSlug ? getProductDeepDiveContent(productSlug) : null;
+  const shouldMount = isLp || isAgent || Boolean(productDeepDive);
+  const key = Object.keys(VISUALS).find(prefix => cleanLocation.startsWith(prefix));
   const config = key ? VISUALS[key] : null;
-  const agentConfig = isAgent ? (agentExecutionDepth.pages as Record<string,AgentDepth>)[location.replace(/\/$/,"")] : null;
+  const agentConfig = isAgent ? (agentExecutionDepth.pages as Record<string,AgentDepth>)[cleanLocation] : null;
 
   useEffect(()=>{
     setTarget(null);
@@ -59,7 +63,7 @@ export default function LpMandatoryVisuals(){
       observer.observe(document.body,{childList:true,subtree:true});
     }
     return ()=>{ observer?.disconnect(); host?.remove(); };
-  },[location,shouldMount]);
+  },[cleanLocation,shouldMount]);
 
   if(!shouldMount || !target) return null;
   const images = config ? [
@@ -70,6 +74,51 @@ export default function LpMandatoryVisuals(){
 
   return createPortal(
     <>
+      {productDeepDive && (
+        <section className="border-y border-slate-200 bg-white px-4 py-14 sm:px-6 sm:py-20" aria-label="Detalhamento da solução VendorAI">
+          <div className="mx-auto max-w-7xl">
+            <div className="max-w-5xl">
+              <p className="text-xs font-black uppercase tracking-[.2em] text-orange-600">Dor → execução → benefício → resultado</p>
+              <h2 className="mt-3 text-3xl font-black leading-tight text-slate-950 sm:text-5xl">{productDeepDive.headline}</h2>
+              <p className="mt-6 text-base leading-8 text-slate-600 sm:text-lg">{productDeepDive.intro}</p>
+              <div className="mt-6 rounded-[24px] border border-orange-200 bg-orange-50 p-6">
+                <p className="text-xs font-black uppercase tracking-[.18em] text-orange-700">Por que esta função existe</p>
+                <p className="mt-3 text-sm leading-7 text-slate-700 sm:text-base">{productDeepDive.why}</p>
+              </div>
+            </div>
+
+            <div className="mt-10 rounded-[28px] bg-slate-950 p-7 text-white sm:p-9">
+              <p className="text-xs font-black uppercase tracking-[.18em] text-orange-300">Jornada completa</p>
+              <h3 className="mt-3 text-2xl font-black">Como o trabalho acontece dentro do VendorAI</h3>
+              <div className="mt-7 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {productDeepDive.journey.map((item,index)=><div key={item} className="rounded-2xl border border-white/10 bg-white/5 p-5"><span className="text-sm font-black text-orange-300">{String(index+1).padStart(2,"0")}</span><p className="mt-2 text-sm leading-6 text-slate-200">{item}</p></div>)}
+              </div>
+            </div>
+
+            <div className="mt-10 space-y-10">
+              {productDeepDive.sections.map(section=><article key={section.title}>
+                <div className="max-w-4xl"><h3 className="text-2xl font-black text-slate-950 sm:text-3xl">{section.title}</h3><p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">{section.intro}</p></div>
+                <div className="mt-6 grid gap-5 lg:grid-cols-2">
+                  {section.items.map(item=><div key={item.title} className="rounded-[28px] border border-slate-200 bg-[#fbfcfe] p-6 shadow-sm">
+                    <h4 className="text-lg font-black text-slate-950">{item.title}</h4>
+                    <div className="mt-5 space-y-4 text-sm leading-6">
+                      <div><p className="font-black text-rose-700">Dor que resolve</p><p className="mt-1 text-slate-600">{item.pain}</p></div>
+                      <div><p className="font-black text-blue-700">O que o VendorAI executa</p><p className="mt-1 text-slate-600">{item.execution}</p></div>
+                      <div><p className="font-black text-emerald-700">Benefício gerado</p><p className="mt-1 text-slate-600">{item.benefit}</p></div>
+                    </div>
+                  </div>)}
+                </div>
+              </article>)}
+            </div>
+
+            <div className="mt-10 rounded-[28px] border border-emerald-200 bg-emerald-50 p-7 sm:p-9">
+              <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Resultado esperado</p>
+              <p className="mt-3 text-lg font-semibold leading-8 text-slate-800">{productDeepDive.outcome}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {agentConfig && (
         <section className="border-y border-slate-200 bg-white px-4 py-14 sm:px-6 sm:py-20" aria-label="Execução prática do agente VendorAI">
           <div className="mx-auto max-w-7xl">
