@@ -231,6 +231,33 @@ function createSequence(stage: number) {
   return wrapper;
 }
 
+function hideCampaignTechnicalControls(workspace: HTMLElement) {
+  const technicalPrefixes = [
+    "Produzir agora",
+    "Produzindo",
+    "Produção real",
+    "Reprocessar falhas",
+    "Refazendo",
+    "Atualizar",
+    "Planejamento",
+    "Excluir campanha",
+  ];
+
+  workspace.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+    const label = normalizedText(button.textContent ?? "");
+    if (technicalPrefixes.some((prefix) => label.startsWith(prefix))) {
+      hideForCampaign(button, "campaign-technical-control");
+    }
+  });
+
+  workspace.querySelectorAll<HTMLElement>("div,span").forEach((node) => {
+    const label = normalizedText(node.textContent ?? "");
+    if (!label.startsWith("Produção protegida:")) return;
+    const card = closestCard(node);
+    if (card) hideForCampaign(card, "campaign-technical-warning");
+  });
+}
+
 function ensureCampaignGuidance() {
   const params = new URLSearchParams(window.location.search);
   const isOpenCampaign = window.location.pathname === "/content"
@@ -257,6 +284,8 @@ function ensureCampaignGuidance() {
   const workspace = toolbar?.parentElement;
   if (!toolbar || !workspace) return;
 
+  hideCampaignTechnicalControls(workspace);
+
   const stage = inferSequenceStage(workspace);
   let sequence = workspace.querySelector<HTMLElement>(`:scope > [${GUIDANCE_ATTR}="sequence"]`);
   if (!sequence) {
@@ -268,17 +297,6 @@ function ensureCampaignGuidance() {
   }
   if (sequence) sequence.dataset.stage = String(stage);
 
-  if (!workspace.querySelector<HTMLElement>(`[${GUIDANCE_ATTR}="delete"]`)) {
-    const controls = Array.from(toolbar.querySelectorAll<HTMLElement>("div")).find((node) => node.querySelector("button"));
-    const target = controls ?? toolbar;
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.setAttribute(GUIDANCE_ATTR, "delete");
-    deleteButton.className = "inline-flex h-8 items-center justify-center rounded-md border border-destructive/30 px-3 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:opacity-50";
-    deleteButton.textContent = "Excluir campanha";
-    deleteButton.addEventListener("click", () => void deleteCurrentCampaign(deleteButton));
-    target.appendChild(deleteButton);
-  }
 }
 
 function ensureContentApprovalGate() {
