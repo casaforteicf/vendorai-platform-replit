@@ -1,0 +1,12 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+RUN corepack enable
+COPY . .
+RUN pnpm install --no-frozen-lockfile
+RUN node --experimental-strip-types --check artifacts/api-server/src/lib/ai-model-router.ts
+RUN node --experimental-strip-types --check artifacts/api-server/src/lib/ai-gateway.ts
+RUN node --experimental-strip-types --check artifacts/api-server/src/lib/ai-model-router.test.ts
+RUN pnpm --filter @workspace/api-server exec vitest run src/lib/ai-model-router.test.ts
+
+CMD ["node", "-e", "setInterval(() => {}, 2147483647)"]
