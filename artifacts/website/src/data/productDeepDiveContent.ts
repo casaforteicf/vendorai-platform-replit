@@ -18,147 +18,81 @@ const deepDive: Record<string, ProductDeepDiveContent> = {
     headline: "Marketing que não termina na publicação: planeja, produz, distribui e mede até a venda",
     intro: "O Marketing IA do VendorAI existe para resolver um problema comum: empresas publicam, impulsionam e anunciam, mas não conseguem ligar o trabalho de marketing à geração real de oportunidades e receita. Por isso o módulo conecta planejamento, produção de conteúdo, criativos, canais, campanhas e CRM na mesma jornada.",
     why: "A função central não é apenas produzir posts. É transformar objetivo comercial em plano de comunicação executável e acompanhar se esse plano realmente gerou conversa, lead, oportunidade e venda.",
-    journey: [
-      "Definir objetivo comercial, público, oferta, canal e resultado esperado.",
-      "Transformar o objetivo em temas, campanhas, calendário e formatos por canal.",
-      "Produzir textos, imagens, vídeos e peças coerentes com marca e oferta.",
-      "Publicar ou preparar conteúdos e campanhas nos canais conectados.",
-      "Acompanhar origem do lead, interação, oportunidade e resultado no CRM.",
-      "Usar o desempenho para ajustar os próximos conteúdos e campanhas."
-    ],
-    sections: [
-      {
-        title: "Instagram e redes sociais",
-        intro: "A presença social precisa ter objetivo, frequência, formato e mensagem — não apenas volume de postagem.",
-        items: [
-          { title: "Planejamento por objetivo", pain: "A empresa publica sem saber se quer alcance, relacionamento, geração de lead ou venda.", execution: "O VendorAI organiza campanha, tema, público, CTA e canal antes de iniciar a produção.", benefit: "Cada conteúdo nasce ligado a um objetivo mensurável e deixa de ser uma postagem isolada." },
-          { title: "Consistência de comunicação", pain: "O perfil muda de linguagem, visual e foco a cada publicação.", execution: "O sistema usa contexto da empresa, posicionamento, produtos, campanhas e biblioteca de mídia para manter continuidade.", benefit: "Marca mais reconhecível e menos retrabalho para revisar cada conteúdo." },
-          { title: "Ligação com vendas", pain: "Curtidas e visualizações não mostram o que realmente virou oportunidade.", execution: "Quando canais e CRM estão conectados, origem e campanha podem acompanhar o lead dentro da jornada comercial.", benefit: "Marketing passa a ser avaliado por avanço comercial, e não somente por métricas de vaidade." }
-        ]
-      }
-    ],
+    journey: ["Definir objetivo comercial, público, oferta, canal e resultado esperado.","Transformar o objetivo em temas, campanhas, calendário e formatos por canal.","Produzir textos, imagens, vídeos e peças coerentes com marca e oferta.","Publicar ou preparar conteúdos e campanhas nos canais conectados.","Acompanhar origem do lead, interação, oportunidade e resultado no CRM.","Usar o desempenho para ajustar os próximos conteúdos e campanhas."],
+    sections: [{title:"Instagram e redes sociais",intro:"A presença social precisa ter objetivo, frequência, formato e mensagem — não apenas volume de postagem.",items:[{title:"Planejamento por objetivo",pain:"A empresa publica sem saber se quer alcance, relacionamento, geração de lead ou venda.",execution:"O VendorAI organiza campanha, tema, público, CTA e canal antes de iniciar a produção.",benefit:"Cada conteúdo nasce ligado a um objetivo mensurável e deixa de ser uma postagem isolada."},{title:"Consistência de comunicação",pain:"O perfil muda de linguagem, visual e foco a cada publicação.",execution:"O sistema usa contexto da empresa, posicionamento, produtos, campanhas e biblioteca de mídia para manter continuidade.",benefit:"Marca mais reconhecível e menos retrabalho para revisar cada conteúdo."},{title:"Ligação com vendas",pain:"Curtidas e visualizações não mostram o que realmente virou oportunidade.",execution:"Quando canais e CRM estão conectados, origem e campanha acompanham o lead dentro da jornada comercial.",benefit:"Marketing passa a ser avaliado por avanço comercial, e não somente por métricas de vaidade."}]}],
     outcome: "O resultado esperado é uma operação de marketing contínua: planejamento orienta produção, produção alimenta canais, canais geram sinais e leads, e o CRM devolve o que realmente funcionou."
   },
   "content-planner": {
     headline: "Planejador de Mídias e Conteúdo: saber o que publicar, por que publicar e o que fazer depois",
     intro: "O Content Planner foi criado para substituir o improviso. Ele transforma metas de negócio em calendário de mídia e conteúdo, organizando temas, campanhas, canais, frequência, formatos e responsáveis antes da criação começar.",
     why: "Sem planejamento, a equipe tende a produzir conteúdo repetitivo, publicar apenas quando sobra tempo e perder conexão entre Instagram, campanhas, lançamentos, datas comerciais e objetivos de vendas.",
-    journey: [
-      "Ler contexto da empresa, segmento, ofertas e objetivos comerciais.",
-      "Definir campanha ou linha editorial e o papel de cada canal.",
-      "Distribuir temas no calendário conforme frequência e prioridade.",
-      "Definir o formato de cada entrega: post, carrossel, vídeo, story, anúncio ou peça de apoio.",
-      "Encaminhar cada item para produção no Content Studio ou Creative Studio.",
-      "Acompanhar execução e ajustar o plano conforme resultado e campanhas ativas."
-    ],
-    sections: [
-      {
-        title: "Por que o planejador existe",
-        intro: "A dor não é falta de ideias. É falta de uma sequência coerente que conecte conteúdo com objetivo comercial.",
-        items: [
-          { title: "Calendário editorial", pain: "Postagens acontecem de forma irregular e sem visão das próximas semanas.", execution: "Organiza data, canal, tema, objetivo e campanha em uma visão única.", benefit: "A equipe sabe antecipadamente o que precisa produzir e publicar." },
-          { title: "Planejamento multicanal", pain: "A mesma peça é repetida em todos os canais, sem respeitar comportamento e formato de cada rede.", execution: "O plano distribui temas e formatos conforme Instagram, TikTok, Facebook, LinkedIn e demais canais habilitados.", benefit: "A mensagem permanece consistente, mas o formato se adapta ao canal." },
-          { title: "Campanhas coordenadas", pain: "Anúncio, conteúdo orgânico, LP e abordagem comercial funcionam separados.", execution: "O planejador organiza as entregas dentro da mesma campanha e objetivo.", benefit: "Cada ponto de contato reforça a mesma oferta e aumenta coerência da jornada." },
-          { title: "Produção automática a partir do plano", pain: "Planejar não adianta se alguém precisar recriar todo o briefing na etapa seguinte.", execution: "O item planejado leva contexto, objetivo e canal para os módulos de produção.", benefit: "Menos retrabalho entre planejamento, texto, imagem e vídeo." }
-        ]
-      }
-    ],
+    journey: ["Ler contexto da empresa, segmento, ofertas e objetivos comerciais.","Definir campanha ou linha editorial e o papel de cada canal.","Distribuir temas no calendário conforme frequência e prioridade.","Definir o formato de cada entrega: post, carrossel, vídeo, story, anúncio ou peça de apoio.","Encaminhar cada item para produção no Content Studio ou Creative Studio.","Acompanhar execução e ajustar o plano conforme resultado e campanhas ativas."],
+    sections: [{title:"Por que o planejador existe",intro:"A dor não é falta de ideias. É falta de uma sequência coerente que conecte conteúdo com objetivo comercial.",items:[{title:"Calendário editorial",pain:"Postagens acontecem de forma irregular e sem visão das próximas semanas.",execution:"Organiza data, canal, tema, objetivo e campanha em uma visão única.",benefit:"A equipe sabe antecipadamente o que precisa produzir e publicar."},{title:"Planejamento multicanal",pain:"A mesma peça é repetida em todos os canais, sem respeitar comportamento e formato de cada rede.",execution:"O plano distribui temas e formatos conforme Instagram, TikTok, Facebook, LinkedIn e demais canais habilitados.",benefit:"A mensagem permanece consistente, mas o formato se adapta ao canal."},{title:"Campanhas coordenadas",pain:"Anúncio, conteúdo orgânico, LP e abordagem comercial funcionam separados.",execution:"O planejador organiza as entregas dentro da mesma campanha e objetivo.",benefit:"Cada ponto de contato reforça a mesma oferta e aumenta coerência da jornada."},{title:"Produção automática a partir do plano",pain:"Planejar não adianta se alguém precisar recriar todo o briefing na etapa seguinte.",execution:"O item planejado leva contexto, objetivo e canal para os módulos de produção.",benefit:"Menos retrabalho entre planejamento, texto, imagem e vídeo."}]}],
     outcome: "O benefício principal é previsibilidade: a empresa deixa de perguntar 'o que vamos postar hoje?' e passa a operar uma agenda de comunicação ligada às metas comerciais."
   },
   "content-studio": {
     headline: "Geração de conteúdo para Instagram e outros canais com contexto da empresa",
     intro: "O Content Studio transforma um plano, uma campanha ou uma ideia em conteúdo publicável. Ele produz texto, legenda, copy, roteiro e estrutura de peças sem começar do zero a cada publicação.",
     why: "Gerar texto com IA é simples; gerar conteúdo coerente com produto, público, objetivo, marca, campanha e próxima ação é o que evita posts genéricos que parecem iguais aos de qualquer concorrente.",
-    journey: [
-      "Receber tema e objetivo vindos do planejamento ou de uma solicitação direta.",
-      "Considerar contexto da empresa, oferta, público e posicionamento.",
-      "Escolher canal e formato adequado.",
-      "Gerar texto principal, legenda, CTA, hashtags quando aplicáveis e roteiro para vídeo/carrossel.",
-      "Encaminhar o briefing visual ao Creative Studio e usar mídia já disponível na biblioteca.",
-      "Guardar a peça na operação de conteúdo para publicação, revisão ou campanha."
-    ],
-    sections: [
-      {
-        title: "O que o gerador de conteúdo resolve",
-        intro: "A produção precisa ganhar velocidade sem perder relevância e intenção comercial.",
-        items: [
-          { title: "Posts e legendas", pain: "A equipe perde tempo pensando em texto e acaba repetindo mensagens.", execution: "Gera variações de copy considerando tema, objetivo, produto e linguagem da marca.", benefit: "Mais velocidade e maior consistência entre publicações." },
-          { title: "Carrosséis", pain: "O conteúdo fica raso porque não existe estrutura para desenvolver uma ideia em etapas.", execution: "Organiza gancho, sequência de slides, argumento e chamada final.", benefit: "Conteúdo educativo e comercial com começo, desenvolvimento e CTA." },
-          { title: "Roteiros de vídeo", pain: "Vídeos são adiados porque ninguém sabe o que falar ou como estruturar a gravação.", execution: "Cria roteiro com abertura, desenvolvimento, prova, oferta e fechamento conforme duração e canal.", benefit: "A produção audiovisual começa com mensagem pronta, reduzindo tempo de preparação." },
-          { title: "Conteúdo conectado à campanha", pain: "O post fala de uma coisa enquanto anúncio e landing page vendem outra.", execution: "O conteúdo pode partir do mesmo objetivo e oferta definidos no planejamento.", benefit: "Mais coerência entre conteúdo orgânico, tráfego pago e abordagem comercial." }
-        ]
-      }
-    ],
+    journey: ["Receber tema e objetivo vindos do planejamento ou de uma solicitação direta.","Considerar contexto da empresa, oferta, público e posicionamento.","Escolher canal e formato adequado.","Gerar texto principal, legenda, CTA, hashtags quando aplicáveis e roteiro para vídeo/carrossel.","Encaminhar o briefing visual ao Creative Studio e usar mídia já disponível na biblioteca.","Guardar a peça na operação de conteúdo para publicação, revisão ou campanha."],
+    sections: [{title:"O que o gerador de conteúdo resolve",intro:"A produção precisa ganhar velocidade sem perder relevância e intenção comercial.",items:[{title:"Posts e legendas",pain:"A equipe perde tempo pensando em texto e acaba repetindo mensagens.",execution:"Gera variações de copy considerando tema, objetivo, produto e linguagem da marca.",benefit:"Mais velocidade e maior consistência entre publicações."},{title:"Carrosséis",pain:"O conteúdo fica raso porque não existe estrutura para desenvolver uma ideia em etapas.",execution:"Organiza gancho, sequência de slides, argumento e chamada final.",benefit:"Conteúdo educativo e comercial com começo, desenvolvimento e CTA."},{title:"Roteiros de vídeo",pain:"Vídeos são adiados porque ninguém sabe o que falar ou como estruturar a gravação.",execution:"Cria roteiro com abertura, desenvolvimento, prova, oferta e fechamento conforme duração e canal.",benefit:"A produção audiovisual começa com mensagem pronta, reduzindo tempo de preparação."},{title:"Conteúdo conectado à campanha",pain:"O post fala de uma coisa enquanto anúncio e landing page vendem outra.",execution:"O conteúdo parte do mesmo objetivo e oferta definidos no planejamento.",benefit:"Mais coerência entre conteúdo orgânico, tráfego pago e abordagem comercial."}]}],
     outcome: "O resultado esperado é aumentar a capacidade de produção sem transformar o perfil em conteúdo genérico: mais peças, mais formatos e maior conexão com campanha e venda."
   },
   "creative-studio": {
     headline: "Fotos, vídeos, voz e Dublê Digital: produção criativa sem depender de uma gravação nova para cada peça",
     intro: "O Creative Studio é a camada visual e audiovisual do VendorAI. Ele transforma briefing e conteúdo em imagens, vídeos, voz, dublagem, mockups e materiais para campanhas. Dentro dessa jornada, o Dublê Digital permite criar uma identidade audiovisual autorizada para novas produções.",
     why: "A dor é operacional: boas ideias param porque faltam foto, vídeo, locução, edição ou disponibilidade da pessoa que deveria aparecer. O Creative Studio reduz essa dependência e organiza a produção em um único fluxo.",
-    journey: [
-      "Receber roteiro, briefing ou objetivo vindo do Content Planner/Studio.",
-      "Selecionar imagens e materiais existentes na biblioteca ou gerar novos ativos.",
-      "Criar peça visual, mockup, imagem de produto ou composição para campanha.",
-      "Gerar vídeo com roteiro, cenas, voz, música e formato adequado ao canal.",
-      "Quando autorizado, usar Dublê Digital para produzir uma apresentação com identidade audiovisual cadastrada.",
-      "Validar qualidade e salvar o resultado na biblioteca para reutilização em campanhas."
-    ],
-    sections: [
-      {
-        title: "Geração e edição de fotos",
-        intro: "A empresa precisa transformar produto, serviço e mensagem em imagens utilizáveis nos canais de venda.",
-        items: [
-          { title: "Imagem de campanha", pain: "Toda publicação depende de designer ou banco de imagens genérico.", execution: "O módulo gera e compõe imagens orientadas pelo briefing da campanha e pelos ativos disponíveis.", benefit: "Produção visual mais rápida e mais próxima da oferta real." },
-          { title: "Variações e formatos", pain: "Uma mesma arte precisa ser refeita manualmente para diferentes canais.", execution: "A peça pode ser adaptada para diferentes proporções e necessidades de campanha.", benefit: "Menos retrabalho e maior aproveitamento do material criado." },
-          { title: "Biblioteca como banco de mídia", pain: "Fotos, logos, produtos e criativos ficam espalhados em pastas e conversas.", execution: "Ativos podem ser reutilizados pela produção para novos conteúdos e campanhas.", benefit: "O sistema passa a trabalhar com o patrimônio visual da empresa, e não começar do zero." }
-        ]
-      },
-      {
-        title: "Vídeos com texto, voz, áudio e acabamento",
-        intro: "Vídeo exige mais do que gerar cenas. Precisa de roteiro, locução, ritmo e elementos que façam sentido para o canal.",
-        items: [
-          { title: "Roteiro para produção", pain: "A equipe sabe que precisa fazer Reels e vídeos, mas não tem estrutura narrativa.", execution: "O roteiro define gancho, fala, cenas e CTA antes da geração.", benefit: "Vídeos mais objetivos e menos tempo perdido em tentativas." },
-          { title: "Locução e voz", pain: "O vídeo é produzido sem áudio adequado ou depende de gravação manual para cada versão.", execution: "A produção pode trabalhar com voz e locução dentro do fluxo audiovisual.", benefit: "Mais formatos de vídeo e maior consistência na entrega." },
-          { title: "Música e trilha", pain: "A peça fica visualmente pronta, mas sem acabamento audiovisual.", execution: "Áudio e trilha podem compor o material final conforme objetivo e formato.", benefit: "Conteúdo mais completo para redes sociais e campanhas." }
-        ]
-      },
-      {
-        title: "Dublê Digital autorizado",
-        intro: "O Dublê Digital existe para permitir que uma pessoa autorizada participe de novas produções sem precisar gravar cada conteúdo do zero.",
-        items: [
-          { title: "Captura guiada", pain: "A criação de um avatar costuma falhar porque as referências de foto, áudio e vídeo são insuficientes ou inconsistentes.", execution: "O VendorAI guia captura de fotos, voz e vídeo, inclusive por fluxo móvel, e registra a identidade audiovisual autorizada.", benefit: "Base mais completa para gerar conteúdos posteriores com maior consistência." },
-          { title: "Fidelity Score", pain: "É difícil saber se o material de referência está bom antes de iniciar a produção.", execution: "O sistema avalia cobertura e qualidade observável de enquadramento, expressão, olhar, boca, gestos, postura e naturalidade.", benefit: "Ajuda a identificar o que precisa ser melhorado antes de gerar novas peças." },
-          { title: "Produção com identidade audiovisual", pain: "Executivos, vendedores e especialistas não conseguem gravar toda semana.", execution: "Depois de autorizado e validado, o Dublê Digital pode ser usado em produções de vídeo dentro das regras do sistema.", benefit: "Escala presença em conteúdo sem exigir nova sessão de gravação para cada roteiro." },
-          { title: "Controle de qualidade", pain: "Um vídeo pode sair com baixa naturalidade ou problemas de sincronia.", execution: "O fluxo possui análise de fidelidade e quality gate audiovisual para revisar qualidade observável da produção.", benefit: "Reduz a chance de aprovar material inconsistente com a referência cadastrada." }
-        ]
-      }
-    ],
-    outcome: "O ganho não é somente 'gerar uma imagem'. É criar uma fábrica de mídia conectada ao planejamento e à mensagem comercial, com ativos reaproveitáveis e produção audiovisual escalável."
+    journey: ["Receber roteiro, briefing ou objetivo vindo do Content Planner/Studio.","Selecionar imagens e materiais existentes na biblioteca ou gerar novos ativos.","Criar peça visual, mockup, imagem de produto ou composição para campanha.","Gerar vídeo com roteiro, cenas, voz, música e formato adequado ao canal.","Quando autorizado, usar Dublê Digital para produzir uma apresentação com identidade audiovisual cadastrada.","Validar qualidade e salvar o resultado na biblioteca para reutilização em campanhas."],
+    sections: [{title:"Geração e edição de fotos",intro:"A empresa precisa transformar produto, serviço e mensagem em imagens utilizáveis nos canais de venda.",items:[{title:"Imagem de campanha",pain:"Toda publicação depende de designer ou banco de imagens genérico.",execution:"O módulo gera e compõe imagens orientadas pelo briefing da campanha e pelos ativos disponíveis.",benefit:"Produção visual mais rápida e mais próxima da oferta real."},{title:"Biblioteca como banco de mídia",pain:"Fotos, logos, produtos e criativos ficam espalhados em pastas e conversas.",execution:"Ativos podem ser reutilizados pela produção para novos conteúdos e campanhas.",benefit:"O sistema passa a trabalhar com o patrimônio visual da empresa, e não começar do zero."}]},{title:"Vídeos e Dublê Digital",intro:"Vídeo precisa de roteiro, voz, identidade e controle de qualidade, não apenas cenas soltas.",items:[{title:"Roteiro, locução e trilha",pain:"A equipe adia vídeos por falta de estrutura, voz ou acabamento.",execution:"O fluxo prepara roteiro, locução, trilha e composição final conforme canal e objetivo.",benefit:"Produção audiovisual mais completa e previsível."},{title:"Captura guiada do Dublê",pain:"Referências ruins geram baixa consistência.",execution:"O VendorAI guia captura de fotos, áudio e vídeo e registra a identidade audiovisual autorizada.",benefit:"Melhor base para novas produções."},{title:"Fidelity Score e quality gate",pain:"É difícil saber se a referência e o resultado estão bons.",execution:"O sistema avalia cobertura visual observável e qualidade da produção antes da aprovação.",benefit:"Mais controle e menos material inconsistente."}]}],
+    outcome: "O ganho não é somente gerar uma imagem. É criar uma fábrica de mídia conectada ao planejamento, à marca e à jornada comercial."
   },
   ads: {
     headline: "Anúncios conectados ao restante do marketing e ao CRM",
     intro: "Vendor Ads existe para evitar que mídia paga seja uma ilha. Campanha precisa nascer de uma oferta e de um planejamento, usar criativos coerentes e depois ser avaliada pelo que acontece com os leads gerados.",
     why: "CPL isolado não mostra qualidade. Uma campanha barata pode gerar leads que nunca avançam, enquanto outra aparentemente mais cara pode produzir mais oportunidades e receita.",
-    journey: [
-      "Partir de objetivo, oferta, público e campanha definidos.",
-      "Usar conteúdo e criativos produzidos no ecossistema de marketing.",
-      "Preparar campanha e canais de mídia conectados.",
-      "Acompanhar geração de leads e origem.",
-      "Cruzar resultado de mídia com avanço no CRM.",
-      "Otimizar mensagens e criativos usando resultado comercial como referência."
-    ],
-    sections: [
-      {
-        title: "Da mídia ao resultado",
-        intro: "O objetivo é aproximar investimento de marketing da receita gerada.",
-        items: [
-          { title: "Campanha coerente", pain: "Anúncios são criados sem relação clara com conteúdo, LP e abordagem do vendedor.", execution: "Campanha, criativo e conteúdo partem da mesma oferta e objetivo.", benefit: "Menos ruptura na jornada do usuário." },
-          { title: "Origem do lead", pain: "Depois que o lead entra, ninguém sabe exatamente de qual campanha veio.", execution: "Quando integrações e rastreamento estão ativos, origem acompanha o lead no CRM.", benefit: "Permite comparar campanhas pela qualidade do negócio gerado." },
-          { title: "Otimização por receita", pain: "A equipe pausa ou escala campanhas olhando somente clique e CPL.", execution: "O desempenho pode ser lido em conjunto com oportunidade, conversão e receita por origem.", benefit: "Orçamento tende a ser direcionado para campanhas que contribuem com resultado comercial." }
-        ]
-      }
-    ],
-    outcome: "O objetivo final é reduzir a distância entre 'anunciar' e 'vender', usando o CRM para devolver ao marketing quais campanhas realmente movimentaram o funil."
+    journey: ["Definir objetivo, oferta e público.","Criar campanha e peças coerentes com a mensagem.","Ativar nos canais conectados.","Capturar origem e campanha do lead.","Acompanhar avanço no CRM.","Comparar investimento com oportunidade e receita."],
+    sections: [{title:"Da mídia à venda",intro:"Anúncio só faz sentido quando conseguimos acompanhar o que aconteceu depois do clique.",items:[{title:"Campanha com contexto",pain:"Criativo e oferta não conversam com o restante da jornada.",execution:"Ads usa objetivo e campanha definidos no ecossistema de marketing.",benefit:"Mensagem mais consistente entre anúncio, conteúdo e LP."},{title:"Rastreamento comercial",pain:"A equipe sabe quantos leads vieram, mas não quais viraram negócio.",execution:"Origem e campanha acompanham o lead no CRM quando as integrações estão ativas.",benefit:"O marketing passa a enxergar qualidade e receita, não apenas volume."}]}],
+    outcome: "O objetivo final é reduzir a distância entre anunciar e vender, usando o CRM para devolver ao marketing quais campanhas realmente movimentaram o funil."
+  },
+  crm: {
+    headline: "CRM com IA que organiza a operação para ninguém depender da memória do vendedor",
+    intro: "O CRM do VendorAI existe para concentrar lead, cliente, oportunidade, conversa, tarefa, proposta, responsável, estágio e próxima ação no mesmo histórico. O problema que ele resolve não é apenas falta de cadastro: é falta de continuidade comercial.",
+    why: "Quando a operação vive em planilhas, WhatsApp, agenda e memória individual, negócios param sem ninguém perceber. O CRM transforma cada relacionamento em um fluxo rastreável e permite que agentes, gestores e vendedores trabalhem sobre o mesmo contexto.",
+    journey: ["Capturar ou importar lead e origem.","Identificar contato, empresa, responsável e contexto.","Criar oportunidade e posicionar no pipeline.","Registrar conversas, tarefas, propostas e próximos passos.","Acompanhar estágio, tempo parado e sinais de risco.","Usar histórico e inteligência para priorizar a próxima ação."],
+    sections: [{title:"Controle da jornada comercial",intro:"O CRM precisa evitar perda de oportunidade, não apenas armazenar dados.",items:[{title:"Pipeline e próxima ação",pain:"Negócios ficam parados sem retorno definido.",execution:"O VendorAI registra estágio, responsável e próxima ação e destaca itens que exigem atenção.",benefit:"Menos negócios esquecidos e maior disciplina comercial."},{title:"Histórico 360°",pain:"O vendedor entra em contato sem saber o que já aconteceu.",execution:"Conversas, atividades, propostas e mudanças ficam vinculadas ao relacionamento.",benefit:"Atendimento mais contextual e menos retrabalho."},{title:"Gestão por exceção",pain:"Gestor olha dezenas de negócios para descobrir onde agir.",execution:"Filtros, sinais e indicadores ajudam a apontar atrasos, concentração e gargalos.",benefit:"O gestor trabalha primeiro no que ameaça ou aumenta receita."},{title:"Base para IA e automação",pain:"Automação sem contexto manda mensagens erradas e cria tarefas desconectadas.",execution:"Agentes e automações usam o mesmo histórico, estágio e regras do CRM.",benefit:"Execução mais coerente e rastreável."}]}],
+    outcome: "O resultado esperado é transformar o CRM em sistema operacional da venda: cada oportunidade com contexto, responsável, estágio e próximo passo claros."
+  },
+  "agentes-ia": {
+    headline: "Agentes de IA que executam trabalho comercial, e não apenas respondem mensagens",
+    intro: "O Vendor AI Team reúne agentes especializados para recepção, SDR, closer, follow-up, cobrança, suporte, agendamento, reativação e pós-venda. Eles atuam sobre CRM, canais, conhecimento e regras da empresa.",
+    why: "Chatbots isolados respondem perguntas; agentes operacionais precisam entender objetivo, contexto, limite de autonomia e próxima ação. É isso que permite usar IA para executar trabalho real sem perder controle.",
+    journey: ["Receber objetivo e regras da função.","Ler histórico, estágio e contexto permitido.","Identificar intenção, risco ou oportunidade.","Executar ou sugerir a próxima ação conforme autonomia.","Registrar o que aconteceu no CRM.","Escalar para humano quando a regra exigir."],
+    sections: [{title:"Trabalho executável por agentes",intro:"Cada agente existe para remover um gargalo específico da jornada.",items:[{title:"Recepção e SDR",pain:"Leads demoram para receber resposta ou chegam ao vendedor sem qualificação.",execution:"Atende, identifica intenção, coleta dados, qualifica e encaminha o contato com contexto.",benefit:"Mais velocidade e vendedor focado em oportunidades melhores."},{title:"Closer e follow-up",pain:"Oportunidades qualificadas esfriam por falta de continuidade.",execution:"Acompanha estágio, objeções, proposta e próxima ação dentro das regras da empresa.",benefit:"Maior cobertura de negociação e menor dependência de memória humana."},{title:"Agendamento e suporte",pain:"Pedidos operacionais consomem tempo e geram filas.",execution:"Consulta disponibilidade, agenda, responde conhecimento autorizado e abre/escalona casos quando necessário.",benefit:"Atendimento mais rápido e equipe livre para exceções."},{title:"Pós-venda, cobrança e reativação",pain:"A empresa concentra esforço na aquisição e abandona a carteira existente.",execution:"Acompanha satisfação, pagamento, recompra, cliente inativo e oportunidades de nova abordagem.",benefit:"Mais retenção, recuperação e receita sobre a base."}]}],
+    outcome: "O resultado esperado é aumentar cobertura operacional sem aumentar proporcionalmente a equipe, mantendo regras, rastreabilidade e controle humano onde necessário."
+  },
+  prospeccao: {
+    headline: "Prospecção com IA: transformar mercado potencial em uma fila comercial priorizada",
+    intro: "O Vendor Prospector foi criado para tirar a prospecção do improviso. Ele ajuda a localizar empresas ou contatos dentro de critérios comerciais, enriquecer contexto e levar os prospects ao CRM com origem e prioridade.",
+    why: "Equipes comerciais perdem muitas horas pesquisando listas e abordando contas com pouca aderência. O problema não é apenas encontrar nomes, mas descobrir quem faz sentido abordar e criar um processo repetível.",
+    journey: ["Definir segmento, região e perfil desejado.","Pesquisar e organizar potenciais contas.","Enriquecer dados disponíveis e contexto comercial.","Aplicar critérios de qualificação e prioridade.","Enviar prospects relevantes ao CRM.","Executar cadência e medir conversão em oportunidade."],
+    sections: [{title:"Da pesquisa à oportunidade",intro:"Prospecção eficiente precisa de foco, contexto e acompanhamento.",items:[{title:"Descoberta por perfil",pain:"Vendedor pesquisa manualmente sem critério consistente.",execution:"A busca usa segmento, região e filtros comerciais para formar listas.",benefit:"Menos tempo de pesquisa e maior cobertura de mercado."},{title:"Qualificação antes da abordagem",pain:"A equipe aborda empresas fora do perfil ideal.",execution:"Critérios e sinais ajudam a priorizar prospects com maior aderência.",benefit:"Mais foco e melhor uso do tempo comercial."},{title:"Origem e histórico",pain:"Depois da abordagem ninguém sabe de onde veio o prospect ou o que já foi feito.",execution:"O prospect entra no CRM com origem, responsável e histórico do fluxo.",benefit:"Processo mensurável e repetível."},{title:"Cadência conectada",pain:"Listas são criadas, mas não recebem continuidade.",execution:"Agentes e tarefas podem trabalhar a fila de prospecção conforme regras definidas.",benefit:"Mais consistência de contato e menos base abandonada."}]}],
+    outcome: "O resultado esperado é uma máquina de prospecção disciplinada: menos pesquisa manual, melhor priorização e acompanhamento do prospect até virar oportunidade."
+  },
+  "revenue-scout": {
+    headline: "Revenue Scout: encontrar receita escondida dentro da própria carteira",
+    intro: "O Revenue Scout observa dados, regras e sinais comerciais para descobrir oportunidades que normalmente ficam invisíveis: recompra, reativação, upsell, cross-sell, expansão e recuperação de negócios.",
+    why: "A maior parte das empresas procura novos leads enquanto deixa receita parada na base existente. O Revenue Scout existe para transformar histórico e comportamento em fila de oportunidades explicáveis e acionáveis.",
+    journey: ["Ler carteira, produtos, eventos e regras comerciais.","Detectar sinais compatíveis com oportunidade.","Pontuar prioridade e potencial.","Explicar por que a oportunidade foi criada.","Criar ou sugerir próxima ação no CRM.","Acompanhar abordagem, conversão e receita influenciada."],
+    sections: [{title:"Inteligência de receita",intro:"A função não é gerar um alerta genérico, mas transformar sinal em oportunidade comercial com contexto.",items:[{title:"Recompra e reativação",pain:"Clientes deixam de comprar e ninguém percebe no momento certo.",execution:"O sistema identifica padrões, inatividade e janelas de retorno conforme regras e histórico.",benefit:"Mais recuperação de receita da base existente."},{title:"Upsell e cross-sell",pain:"Vendedores lembram apenas de poucos produtos complementares.",execution:"Sinais de carteira e produto ajudam a localizar combinações e lacunas de mix.",benefit:"Mais expansão por cliente e aumento de ticket potencial."},{title:"Priorização",pain:"A equipe recebe muitas possibilidades e não sabe por onde começar.",execution:"Scores e contexto ordenam oportunidades por relevância e urgência.",benefit:"Foco nas contas com melhor justificativa comercial."},{title:"Explicabilidade",pain:"Alertas de IA sem motivo claro geram desconfiança.",execution:"A oportunidade deve carregar sinal, regra e contexto que justificam a recomendação.",benefit:"Maior confiança para o vendedor agir."}]}],
+    outcome: "O resultado esperado é transformar dados já existentes em uma agenda contínua de receita, reduzindo dependência de aquisição e da memória individual do vendedor."
+  },
+  omnichannel: {
+    headline: "Omnichannel: todas as conversas com contexto único e continuidade comercial",
+    intro: "O Vendor Omnichannel centraliza canais de atendimento para que WhatsApp, Instagram e outros pontos conectados não funcionem como ilhas. A conversa precisa alimentar CRM, agente, tarefa, oportunidade e histórico.",
+    why: "Quando cada canal tem sua própria caixa de entrada, o cliente repete informações, mensagens se perdem e o time não sabe quem deve responder. O Omnichannel existe para organizar fila, contexto e responsabilidade.",
+    journey: ["Receber mensagem do canal conectado.","Identificar contato e histórico existente.","Classificar intenção, prioridade e responsável.","Responder por humano ou agente conforme regra.","Transformar conversa em lead, tarefa, oportunidade ou agendamento quando necessário.","Registrar tudo no histórico e manter continuidade em novos contatos."],
+    sections: [{title:"Atendimento conectado ao CRM",intro:"A conversa deixa de ser apenas mensagem e passa a ser parte da jornada comercial.",items:[{title:"Inbox unificada",pain:"A equipe alterna entre aplicativos e perde mensagens.",execution:"Canais conectados chegam a uma visão central com responsável e status.",benefit:"Menor risco de conversa esquecida e mais produtividade."},{title:"Contexto único",pain:"Cliente precisa repetir toda a história quando muda de canal ou atendente.",execution:"O histórico é associado ao mesmo relacionamento e pode ser consultado por equipe e agentes autorizados.",benefit:"Experiência mais contínua e respostas mais contextualizadas."},{title:"IA + humano",pain:"Automação rígida tenta resolver casos que deveriam ir para uma pessoa.",execution:"Regras definem quando o agente atua, quando sugere e quando transfere.",benefit:"Escala de atendimento com controle."},{title:"Conversão em atividade comercial",pain:"Conversas interessantes ficam soltas e nunca chegam ao pipeline.",execution:"Eventos da conversa podem gerar lead, oportunidade, tarefa ou agendamento.",benefit:"Menos intenção perdida entre atendimento e vendas."}]}],
+    outcome: "O resultado esperado é um atendimento contínuo e rastreável, em que cada conversa pode gerar próxima ação e nenhum canal fica desconectado do CRM."
   }
 };
 
