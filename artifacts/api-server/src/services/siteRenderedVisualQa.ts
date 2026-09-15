@@ -109,46 +109,52 @@ export async function inspectRenderedSiteVisualQuality(html: string): Promise<Si
       await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 10_000 });
       await page.addStyleTag({ content: "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}" });
       await page.evaluate(async () => {
-        try { await document.fonts?.ready; } catch {}
-        await new Promise((resolve) => window.setTimeout(resolve, 120));
+        const doc = (globalThis as any).document;
+        const win = (globalThis as any).window;
+        try { await doc?.fonts?.ready; } catch {}
+        await new Promise((resolve) => win.setTimeout(resolve, 120));
       });
 
       const metrics = await page.evaluate((input) => {
+        const doc: any = (globalThis as any).document;
+        const win: any = (globalThis as any).window;
         const width = input.width;
         const height = input.height;
-        const root = document.documentElement;
-        const body = document.body;
-        const horizontalOverflowPx = Math.max(0, root.scrollWidth - root.clientWidth, body?.scrollWidth - root.clientWidth || 0);
-        const isVisible = (el: Element) => {
-          const style = window.getComputedStyle(el);
-          const rect = (el as HTMLElement).getBoundingClientRect();
+        const root: any = doc.documentElement;
+        const body: any = doc.body;
+        const toArray = (value: any): any[] => Array.from(value ?? []) as any[];
+        const horizontalOverflowPx = Math.max(0, root.scrollWidth - root.clientWidth, (body?.scrollWidth ?? 0) - root.clientWidth);
+        const isVisible = (el: any): boolean => {
+          const style = win.getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
           return style.display !== "none" && style.visibility !== "hidden" && Number.parseFloat(style.opacity || "1") > 0.02 && rect.width > 1 && rect.height > 1;
         };
 
-        const candidates = Array.from(document.body?.querySelectorAll("main,section,article,header,footer,nav,div,img,video,iframe,a,button,input,textarea,select") ?? []).filter(isVisible);
-        const clippedElementCount = candidates.filter((el) => {
-          const rect = (el as HTMLElement).getBoundingClientRect();
-          const style = window.getComputedStyle(el);
+        const candidates = toArray(body?.querySelectorAll("main,section,article,header,footer,nav,div,img,video,iframe,a,button,input,textarea,select")).filter(isVisible);
+        const clippedElementCount = candidates.filter((el: any) => {
+          const rect = el.getBoundingClientRect();
+          const style = win.getComputedStyle(el);
           if (style.position === "fixed" && rect.width <= width) return rect.left < -2 || rect.right > width + 2;
           return rect.width > 24 && (rect.left < -2 || rect.right > width + 2);
         }).length;
 
-        const textNodes = Array.from(document.body?.querySelectorAll("h1,h2,h3,h4,p,li,label,span,a,button") ?? []).filter(isVisible).filter((el) => (el.textContent ?? "").trim().length >= 3);
-        const clippedTextCount = textNodes.filter((el) => {
-          const node = el as HTMLElement;
-          const style = window.getComputedStyle(node);
+        const textNodes = toArray(body?.querySelectorAll("h1,h2,h3,h4,p,li,label,span,a,button"))
+          .filter(isVisible)
+          .filter((el: any) => (el.textContent ?? "").trim().length >= 3);
+        const clippedTextCount = textNodes.filter((el: any) => {
+          const style = win.getComputedStyle(el);
           const clips = ["hidden", "clip"].includes(style.overflow) || ["hidden", "clip"].includes(style.overflowX) || ["hidden", "clip"].includes(style.overflowY);
-          return clips && (node.scrollWidth > node.clientWidth + 2 || node.scrollHeight > node.clientHeight + 2);
+          return clips && (el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2);
         }).length;
 
-        const actions = Array.from(document.body?.querySelectorAll("a[href],button,[role='button'],input[type='submit'],input[type='button']") ?? []).filter((el) => (((el.textContent ?? "") + " " + (el.getAttribute("aria-label") ?? "")).trim().length > 0));
+        const actions = toArray(body?.querySelectorAll("a[href],button,[role='button'],input[type='submit'],input[type='button']"))
+          .filter((el: any) => (((el.textContent ?? "") + " " + (el.getAttribute("aria-label") ?? "")).trim().length > 0));
         let clippedActionCount = 0;
         let occludedActionCount = 0;
         let hiddenActionCount = 0;
         for (const el of actions) {
-          const node = el as HTMLElement;
-          const style = window.getComputedStyle(node);
-          const rect = node.getBoundingClientRect();
+          const style = win.getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
           const rendered = style.display !== "none" && style.visibility !== "hidden";
           if (!rendered) continue;
           if (Number.parseFloat(style.opacity || "1") <= 0.02 || rect.width < 24 || rect.height < 20) hiddenActionCount += 1;
@@ -156,27 +162,31 @@ export async function inspectRenderedSiteVisualQuality(html: string): Promise<Si
           const centerX = Math.min(width - 1, Math.max(0, rect.left + rect.width / 2));
           const centerY = rect.top + rect.height / 2;
           if (centerY >= 0 && centerY < height && rect.width >= 24 && rect.height >= 20) {
-            const top = document.elementFromPoint(centerX, centerY);
+            const top = doc.elementFromPoint(centerX, centerY);
             if (top && top !== el && !el.contains(top) && !top.contains(el)) occludedActionCount += 1;
           }
         }
 
-        const sections = Array.from(document.body?.querySelectorAll("main > section, main > article, body > section, body > main, section") ?? []).filter(isVisible).map((el) => ({
-          el,
-          rect: (el as HTMLElement).getBoundingClientRect(),
-          text: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
-          hasMedia: Boolean(el.querySelector("img,video,iframe,svg,canvas")),
-        })).filter((item, index, list) => list.findIndex((other) => other.el === item.el) === index).sort((a, b) => a.rect.top - b.rect.top);
+        const sections = toArray(body?.querySelectorAll("main > section, main > article, body > section, body > main, section"))
+          .filter(isVisible)
+          .map((el: any) => ({
+            el,
+            rect: el.getBoundingClientRect(),
+            text: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+            hasMedia: Boolean(el.querySelector("img,video,iframe,svg,canvas")),
+          }))
+          .filter((item: any, index: number, list: any[]) => list.findIndex((other: any) => other.el === item.el) === index)
+          .sort((a: any, b: any) => a.rect.top - b.rect.top);
 
-        const emptySectionCount = sections.filter((item) => item.rect.height > 280 && item.text.length < 12 && !item.hasMedia).length;
-        const oversizedEmptySectionCount = sections.filter((item) => item.rect.height > height * 1.05 && item.text.length < 12 && !item.hasMedia).length;
+        const emptySectionCount = sections.filter((item: any) => item.rect.height > 280 && item.text.length < 12 && !item.hasMedia).length;
+        const oversizedEmptySectionCount = sections.filter((item: any) => item.rect.height > height * 1.05 && item.text.length < 12 && !item.hasMedia).length;
         let hugeGapCount = 0;
-        for (let i = 1; i < sections.length; i += 1) {
-          const previous = sections[i - 1]!;
-          const current = sections[i]!;
+        for (let index = 1; index < sections.length; index += 1) {
+          const previous = sections[index - 1]!;
+          const current = sections[index]!;
           if (current.rect.top - previous.rect.bottom > height * 0.75) hugeGapCount += 1;
         }
-        const visibleContentCount = Array.from(document.body?.querySelectorAll("h1,h2,h3,p,img,video,iframe,a,button") ?? []).filter(isVisible).length;
+        const visibleContentCount = toArray(body?.querySelectorAll("h1,h2,h3,p,img,video,iframe,a,button")).filter(isVisible).length;
         return { horizontalOverflowPx, clippedElementCount, clippedTextCount, clippedActionCount, occludedActionCount, hiddenActionCount, emptySectionCount, oversizedEmptySectionCount, hugeGapCount, visibleContentCount };
       }, viewport);
 
