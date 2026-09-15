@@ -47,9 +47,10 @@ export function inspectSiteMediaQuality(html: string): SiteMediaQualityResult {
   }
 
   const coverCount = countMatches(source, /object-fit\s*:\s*cover/gi);
-  const containCount = countMatches(source, /object-fit\s*:\s*contain/gi);
   const positionedCropCount = countMatches(source, /object-position\s*:/gi);
-  const destructiveCropRiskCount = Math.max(0, coverCount - positionedCropCount - containCount);
+  const destructiveCropRiskCount = coverCount > 0 && positionedCropCount === 0
+    ? Math.max(coverCount, images.length)
+    : Math.max(0, coverCount - positionedCropCount);
 
   const hasAdaptiveGrid = /grid-template-columns\s*:\s*repeat\s*\(\s*auto-(?:fit|fill)/i.test(source)
     || (/grid-template-columns\s*:[^;]*(?:minmax|1fr)/i.test(source) && /@media[\s\S]{0,1800}(?:grid-template-columns|display\s*:\s*grid)/i.test(source));
