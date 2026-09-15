@@ -51,7 +51,7 @@ const mediaPlanAvailableQuotaPlugin = {
     contents = replaceExact(
       contents,
       `      if (projectsRes.ok) {\n        const data = await projectsRes.json() as { projects?: MediaProject[] };\n        setProjects(data.projects ?? []);\n      }\n      const nextAssets: MediaAsset[] = [];`,
-      `      if (projectsRes.ok) {\n        const data = await projectsRes.json() as { projects?: MediaProject[] };\n        setProjects(data.projects ?? []);\n      }\n      if (usageRes.ok) {\n        const usage = await usageRes.json() as { availableGenerations?: number; monthlyUsed?: number; monthlyLimit?: number; extraRemaining?: number };\n        const fallback = Math.max(0, Number(usage.monthlyLimit ?? 0) - Number(usage.monthlyUsed ?? 0));\n        setAvailableGenerations(Math.max(0, Math.floor(Number(usage.availableGenerations ?? fallback))));\n      }\n      const nextAssets: MediaAsset[] = [];`,
+      `      if (projectsRes.ok) {\n        const data = await projectsRes.json() as { projects?: MediaProject[] };\n        setProjects(data.projects ?? []);\n      }\n      if (usageRes.ok) {\n        const usage = await usageRes.json() as { availableGenerations?: number | null; generationUnlimited?: boolean; monthlyUsed?: number; monthlyLimit?: number; extraRemaining?: number };\n        const fallback = Math.max(0, Number(usage.monthlyLimit ?? 0) - Number(usage.monthlyUsed ?? 0));\n        setAvailableGenerations(usage.generationUnlimited ? Number.MAX_SAFE_INTEGER : Math.max(0, Math.floor(Number(usage.availableGenerations ?? fallback))));\n      }\n      const nextAssets: MediaAsset[] = [];`,
       "apply usage",
     );
     contents = replaceExact(
