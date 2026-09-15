@@ -80,6 +80,11 @@ type PlannerCampaign = {
   canais: PlannerChannel[];
   kpiPrincipal: string;
   metaPrincipal: string;
+  status?: "rascunho" | "em_preparacao" | "em_revisao" | "agendada" | "ativa" | "pausada" | "concluida";
+  etapaAtual?: number;
+  dataInicio?: string;
+  dataFim?: string;
+  orcamento?: number;
 };
 
 type PlannerPlan = {
@@ -97,6 +102,26 @@ function authHeaders() {
 
 function normalizeChannel(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+function campaignStatusLabel(status: PlannerCampaign["status"], plannerApproved: boolean) {
+  if (status === "concluida") return "Concluída";
+  if (status === "ativa") return "Em andamento";
+  if (status === "pausada") return "Pausada";
+  if (status === "agendada") return "Agendada";
+  if (status === "em_revisao") return "Em revisão";
+  if (status === "em_preparacao") return "Em preparação";
+  return plannerApproved ? "Pronta para preparar" : "Aguardando aprovação";
+}
+
+function campaignJourneyStep(campaign: PlannerCampaign, plannerApproved: boolean) {
+  if (campaign.etapaAtual && campaign.etapaAtual >= 1 && campaign.etapaAtual <= 7) return campaign.etapaAtual;
+  if (campaign.status === "concluida") return 7;
+  if (campaign.status === "ativa" || campaign.status === "pausada") return 6;
+  if (campaign.status === "agendada") return 5;
+  if (campaign.status === "em_revisao") return 4;
+  if (campaign.status === "em_preparacao") return 3;
+  return plannerApproved ? 3 : 2;
 }
 
 function normalizeMainTab(tab: string): MainMarketingTab {
@@ -181,6 +206,14 @@ export default function ContentHub() {
   }, [plannerCampaigns, requestedPlannerCampaignId]);
 
   const plannerApproved = plannerPlan?.conteudo.statusPlanejamento === "aprovado";
+  const activePlannerCampaigns = useMemo(
+    () => plannerCampaigns.filter((campaign) => campaign.status !== "concluida"),
+    [plannerCampaigns],
+  );
+  const completedPlannerCampaigns = useMemo(
+    () => plannerCampaigns.filter((campaign) => campaign.status === "concluida"),
+    [plannerCampaigns],
+  );
 
   const executorAvailability = useMemo(() => {
     const channels = selectedPlannerCampaign?.canais.map((channel) => normalizeChannel(channel.canal)) ?? [];
@@ -223,6 +256,18 @@ export default function ContentHub() {
     const mediaPlanId = plannerPlan?.id ?? requestedMediaPlanId;
     if (mediaPlanId) next.set("mediaPlanId", mediaPlanId);
     setLocation(`/content?${next.toString()}`);
+  }
+
+  function handleOverviewAction() {
+    if (currentJourneyStep < 3) {
+      handleTabChange(overviewAction.tab);
+      return;
+    }
+    if (activePlannerCampaigns.length === 1) {
+      openPlannerCampaign(activePlannerCampaigns[0].id);
+      return;
+    }
+    openCampaignList();
   }
 
   function handleTabChange(nextTab: string) {
@@ -350,7 +395,14 @@ export default function ContentHub() {
     ? { title: "Crie o planejamento de marketing", description: "Defina o objetivo, o público, a oferta, os canais, o período e o orçamento para a IA preparar a estratégia.", label: "Começar planejamento", tab: "planejamento" as const }
     : currentJourneyStep === 2
       ? { title: "Revise e aprove o planejamento", description: "A execução só será liberada depois da sua aprovação. Confira a estratégia e solicite ajustes se necessário.", label: "Revisar e aprovar", tab: "planejamento" as const }
-      : { title: "Prepare as campanhas e os conteúdos", description: `O planejamento está aprovado. Organize a execução das ${plannerCampaigns.length || "suas"} campanhas e produza as peças necessárias.`, label: "Continuar execução", tab: "campanhas" as const };
+      : {
+          title: activePlannerCampaigns.length > 1 ? "Escolha a campanha que deseja continuar" : "Prepare a campanha e os conteúdos",
+          description: activePlannerCampaigns.length > 1
+            ? `Existem ${activePlannerCampaigns.length} campanhas em andamento. Cada campanha possui execução, jornada e resultados próprios.`
+            : "O planejamento está aprovado. Abra a campanha para preparar suas peças e acompanhar a execução.",
+          label: activePlannerCampaigns.length > 1 ? "Ver campanhas em andamento" : "Abrir campanha",
+          tab: "campanhas" as const,
+        };
 
   return (
     <div ref={rootRef} className="min-w-0">
@@ -405,7 +457,7 @@ export default function ContentHub() {
                         <h2 className="text-xl font-bold tracking-tight">{overviewAction.title}</h2>
                         <p className="mt-2 text-sm leading-6 text-muted-foreground">{overviewAction.description}</p>
                       </div>
-                      <Button size="lg" className="shrink-0" onClick={() => handleTabChange(overviewAction.tab)}>
+                      <Button size="lg" className="shrink-0" onClick={handleOverviewAction}>
                         {overviewAction.label}<ArrowRight className="ml-2 h-4 w-4" />
                       </Button>
                     </div>
@@ -415,8 +467,8 @@ export default function ContentHub() {
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <CardTitle className="text-base">Sua jornada de marketing</CardTitle>
-                      <p className="text-xs text-muted-foreground">Veja onde você está e o que acontece depois.</p>
+                      <CardTitle className="text-base">Jornada geral do marketing</CardTitle>
+                      <p className="text-xs text-muted-foreground">Resumo do processo. Cada campanha avança de forma independente.</p>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -449,6 +501,93 @@ export default function ContentHub() {
                   </CardContent>
                 </Card>
 
+                {plannerPlan && plannerCampaigns.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <CardTitle className="text-base">Campanhas em andamento</CardTitle>
+                          <p className="mt-1 text-xs text-muted-foreground">Abra uma campanha para continuar somente a jornada, os conteúdos e os resultados dela.</p>
+                        </div>
+                        <Badge variant="outline">{activePlannerCampaigns.length} em andamento</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {activePlannerCampaigns.length === 0 ? (
+                        <div className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">
+                          Nenhuma campanha em andamento.
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {activePlannerCampaigns.map((campaign) => {
+                            const campaignStep = campaignJourneyStep(campaign, plannerApproved);
+                            return (
+                              <div key={campaign.id} className="rounded-xl border bg-background p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="truncate font-semibold">{campaign.nome}</p>
+                                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{campaign.objetivo}</p>
+                                  </div>
+                                  <Badge variant={campaign.status === "ativa" ? "default" : "outline"} className="shrink-0">
+                                    {campaignStatusLabel(campaign.status, plannerApproved)}
+                                  </Badge>
+                                </div>
+
+                                <div className="mt-4 rounded-lg bg-muted/45 p-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada da campanha</span>
+                                    <span className="text-xs font-semibold text-primary">Etapa {campaignStep} de 7</span>
+                                  </div>
+                                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.round((campaignStep / 7) * 100)}%` }} />
+                                  </div>
+                                  <p className="mt-2 text-xs font-medium">{journeySteps[campaignStep - 1]?.title}</p>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                  {campaign.canais.slice(0, 4).map((channel) => (
+                                    <Badge key={channel.canal} variant="outline" className="text-[10px]">{channel.canal}</Badge>
+                                  ))}
+                                  {campaign.canais.length > 4 && <Badge variant="outline" className="text-[10px]">+{campaign.canais.length - 4}</Badge>}
+                                </div>
+
+                                <Button className="mt-4 w-full" onClick={() => openPlannerCampaign(campaign.id)}>
+                                  Abrir campanha<ArrowRight className="ml-2 h-4 w-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {completedPlannerCampaigns.length > 0 && (
+                        <div className="border-t pt-4">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold">Campanhas concluídas</p>
+                            <Badge variant="secondary">{completedPlannerCampaigns.length}</Badge>
+                          </div>
+                          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                            {completedPlannerCampaigns.map((campaign) => (
+                              <button
+                                key={campaign.id}
+                                type="button"
+                                onClick={() => openPlannerCampaign(campaign.id)}
+                                className="flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition hover:border-primary/50"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">{campaign.nome}</p>
+                                  <p className="text-xs text-muted-foreground">Ver jornada e resultados</p>
+                                </div>
+                                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <Card>
                     <CardContent className="p-4">
@@ -459,9 +598,9 @@ export default function ContentHub() {
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground">Campanhas planejadas</p>
-                      <p className="mt-1 font-semibold">{plannerPlan ? `${plannerCampaigns.length} campanha${plannerCampaigns.length === 1 ? "" : "s"}` : "Dependem do planejamento"}</p>
-                      <Button variant="link" className="mt-1 h-auto p-0 text-xs" onClick={() => handleTabChange("campanhas")}>Abrir campanhas</Button>
+                      <p className="text-xs text-muted-foreground">Campanhas</p>
+                      <p className="mt-1 font-semibold">{plannerPlan ? `${activePlannerCampaigns.length} em andamento` : "Dependem do planejamento"}</p>
+                      <Button variant="link" className="mt-1 h-auto p-0 text-xs" onClick={openCampaignList}>Ver todas as campanhas</Button>
                     </CardContent>
                   </Card>
                   <Card>
