@@ -28,7 +28,7 @@ function isGenerationPack(purchase: typeof tokenPurchasesTable.$inferSelect) {
 // ── POST /tenants/:tenantId/token-purchases ──────────────────────────────────
 router.post(
   "/tenants/:tenantId/token-purchases",
-  requireSameTenanOrSuperAdmin,
+  requireSameTenanOrSuperAdmin(),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
 
@@ -107,7 +107,7 @@ router.post(
 // ── GET /tenants/:tenantId/token-purchases ────────────────────────────────────
 router.get(
   "/tenants/:tenantId/token-purchases",
-  requireSameTenanOrSuperAdmin,
+  requireSameTenanOrSuperAdmin(),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
 
@@ -138,7 +138,7 @@ router.get(
 // o saldo disponível (franquia + extras anteriores) tiver chegado a zero.
 router.post(
   "/tenants/:tenantId/generation-pack-purchases",
-  requireSameTenanOrSuperAdmin,
+  requireSameTenanOrSuperAdmin(),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
     const allowance = await getContentGenerationAllowance(tenantId);
@@ -246,7 +246,7 @@ router.post(
 
 router.get(
   "/tenants/:tenantId/generation-pack-purchases",
-  requireSameTenanOrSuperAdmin,
+  requireSameTenanOrSuperAdmin(),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
     const [allowance, allPurchases] = await Promise.all([
@@ -269,7 +269,7 @@ router.get(
 // ── GET /tenants/:tenantId/token-purchases/:id/pix ───────────────────────────
 router.get(
   "/tenants/:tenantId/token-purchases/:id/pix",
-  requireSameTenanOrSuperAdmin,
+  requireSameTenanOrSuperAdmin(),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
     const purchaseId = String(req.params["id"]);
