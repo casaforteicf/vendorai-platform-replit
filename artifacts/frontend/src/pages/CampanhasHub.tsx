@@ -232,7 +232,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   }
 
   function handlePrimaryAction() {
-    if (summary.ready > 0 || summary.production > 0 || summary.total === 0) {
+    if (summary.failed > 0 || summary.ready > 0 || summary.production > 0 || summary.total === 0) {
       setLocation(executionUrl("conteudos"));
       return;
     }
