@@ -143,13 +143,13 @@ const contentGenerationAllowancePlugin = {
         contents = replaceExact(
           contents,
           "  const { used, limit, configId } = await getMonthlyUsage(tenantId);",
-          "  const usage = await getMonthlyUsage(tenantId);\n  const { used, limit, configId } = usage;",
+          "  const usage = await getMonthlyUsage(tenantId);\n  const { used, limit, configId } = usage;\n  const generationUnlimited = req.user?.platformRole === \"super_admin\";",
           "content usage",
         );
         contents = replaceExact(
           contents,
           `  if (used >= limit) {\n    res.status(402).json({\n      error: \`Limite mensal de \${limit} gerações atingido. Upgrade de plano para gerar mais conteúdo.\`,\n      monthlyUsed: used,\n      monthlyLimit: limit,\n    });\n    return;\n  }`,
-          `  if (usage.available <= 0) {\n    res.status(402).json({\n      error: "Franquia de gerações esgotada. Os itens restantes permanecem pendentes até a renovação ou compra de um pacote extra.",\n      monthlyUsed: used,\n      monthlyLimit: limit,\n      baseRemaining: usage.baseRemaining,\n      extraRemaining: usage.extraRemaining,\n      availableGenerations: usage.available,\n      canPurchaseGenerations: true,\n      generationPackSize: usage.packSize,\n      generationPackPrice: usage.packPriceBrl,\n    });\n    return;\n  }`,
+          `  if (!generationUnlimited && usage.available <= 0) {\n    res.status(402).json({\n      error: "Franquia de gerações esgotada. Os itens restantes permanecem pendentes até a renovação ou compra de um pacote extra.",\n      monthlyUsed: used,\n      monthlyLimit: limit,\n      baseRemaining: usage.baseRemaining,\n      extraRemaining: usage.extraRemaining,\n      availableGenerations: usage.available,\n      canPurchaseGenerations: true,\n      generationPackSize: usage.packSize,\n      generationPackPrice: usage.packPriceBrl,\n    });\n    return;\n  }`,
           "content quota response",
         );
         contents = replaceExact(
@@ -161,7 +161,7 @@ const contentGenerationAllowancePlugin = {
         contents = replaceExact(
           contents,
           `    if (configId) {\n      await db\n        .update(agentConfigsTable)\n        .set({ contentGenerationsThisMonth: used + 1 })\n        .where(eq(agentConfigsTable.id, configId));\n    }`,
-          `    if (configId) {\n      const consumed = await consumeContentGenerationCredit(tenantId).catch(() => null);\n      if (!consumed) {\n        await db.delete(contentGenerationsTable).where(eq(contentGenerationsTable.id, row.id)).catch(() => undefined);\n        saved = undefined;\n        quotaExhausted = true;\n      }\n    }`,
+          `    if (configId && !generationUnlimited) {\n      const consumed = await consumeContentGenerationCredit(tenantId).catch(() => null);\n      if (!consumed) {\n        await db.delete(contentGenerationsTable).where(eq(contentGenerationsTable.id, row.id)).catch(() => undefined);\n        saved = undefined;\n        quotaExhausted = true;\n      }\n    }`,
           "content consume",
         );
         contents = replaceExact(
@@ -173,7 +173,7 @@ const contentGenerationAllowancePlugin = {
         contents = replaceExact(
           contents,
           `  res.json({\n    items,\n    monthlyUsed: usage.used,\n    monthlyLimit: usage.limit,\n  });`,
-          `  res.json({\n    items,\n    monthlyUsed: usage.used,\n    monthlyLimit: usage.limit,\n    baseRemaining: usage.baseRemaining,\n    extraRemaining: usage.extraRemaining,\n    extraPurchased: usage.extraPurchased,\n    availableGenerations: usage.available,\n    canPurchaseGenerations: usage.available <= 0,\n    generationPackSize: usage.packSize,\n    generationPackPrice: usage.packPriceBrl,\n  });`,
+          `  res.json({\n    items,\n    monthlyUsed: usage.used,\n    monthlyLimit: usage.limit,\n    baseRemaining: usage.baseRemaining,\n    extraRemaining: usage.extraRemaining,\n    extraPurchased: usage.extraPurchased,\n    availableGenerations: req.user?.platformRole === "super_admin" ? null : usage.available,\n    generationUnlimited: req.user?.platformRole === "super_admin",\n    canPurchaseGenerations: req.user?.platformRole !== "super_admin" && usage.available <= 0,\n    generationPackSize: usage.packSize,\n    generationPackPrice: usage.packPriceBrl,\n  });`,
           "content usage payload",
         );
       } else {
