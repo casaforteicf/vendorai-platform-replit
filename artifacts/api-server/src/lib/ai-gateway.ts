@@ -402,7 +402,7 @@ export async function callOpenAI(
     log?: Logger;
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
-  const model = resolveTextModel({ feature, requestedModel: options.model, legacyDefault: "gpt-4o-mini" });
+  const model = resolveTextModel({ tenantId, feature, requestedModel: options.model, legacyDefault: "gpt-4o-mini" });
   const log = options.log;
   const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, messages);
 
