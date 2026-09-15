@@ -1,4 +1,5 @@
 import type { BrandProfile, CreativeBrief } from './creative-design';
+import { buildSiteGeneratorPlan, type MotionLevel, type SiteGeneratorPlan } from './site-generator-runtime';
 
 export type WebSurface = 'institutional' | 'landing' | 'product' | 'ecommerce';
 
@@ -45,6 +46,7 @@ export interface WebCreativeRuntime {
   brief: CreativeBrief;
   brand: BrandProfile;
   guidance: WebCreativeGuidance;
+  siteGeneratorPlan: SiteGeneratorPlan;
   promptContext: string;
 }
 
@@ -94,8 +96,14 @@ export function buildWebCreativeRuntime(input: {
   surface: WebSurface;
   businessName?: string | null;
   productName?: string | null;
+  motionLevel?: MotionLevel;
 }): WebCreativeRuntime {
   const guidance = getWebCreativeGuidance(input.surface);
+  const siteGeneratorPlan = buildSiteGeneratorPlan({
+    surface: input.surface,
+    motionLevel: input.motionLevel,
+  });
+
   const promptContext = [
     'DIREÇÃO CRIATIVA WEB OFICIAL DO VENDORAI',
     `Superfície: ${guidance.surface}`,
@@ -113,10 +121,12 @@ export function buildWebCreativeRuntime(input: {
     `Linguagem web: ${guidance.language.join(' | ')}`,
     `Estrutura recomendada: ${guidance.structure.join(' → ')}`,
     `Foco de QA: ${guidance.qaFocus.join(' | ')}`,
+    `Componentes disponíveis para esta superfície: ${siteGeneratorPlan.recommendedComponents.join(' | ')}`,
     ...buildAdvancedUiContract(input.surface),
+    siteGeneratorPlan.promptContract,
     'Priorizar mobile, clareza, contraste, hierarquia visual, acessibilidade, velocidade e coerência entre anúncio/campanha e página.',
     'Não inventar números, depoimentos, certificações, preços, garantias ou provas sociais que não existam nas fontes oficiais.',
   ].filter(Boolean).join('\n');
 
-  return { brief: input.brief, brand: input.brand, guidance, promptContext };
+  return { brief: input.brief, brand: input.brand, guidance, siteGeneratorPlan, promptContext };
 }
