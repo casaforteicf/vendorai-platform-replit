@@ -29,6 +29,7 @@ import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/M
 import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/MediaPlanProjectKindCompatibilityBridge";
 import { MediaPlanAutoProductionBridge } from "./components/marketing/QuotaSafeMediaPlanAutoProductionBridge";
 import { MediaPlanFailedRetryBridge } from "./components/marketing/MediaPlanFailedRetryBridge";
+import { MediaPlanBatchControl } from "./components/marketing/MediaPlanBatchControl";
 import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
 import { MediaPlanLandingPageStrategy } from "./components/marketing/MediaPlanLandingPageStrategy";
 import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaPlanPreparationActionsBridge";
@@ -193,6 +194,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaPlanProjectKindCompatibilityBridge />
           <MediaPlanAutoProductionBridge />
           <MediaPlanFailedRetryBridge />
+          <MediaPlanBatchControl />
           <MediaPlanLandingPageStrategy />
           <MediaPlanPublicationModeControl />
           <MediaPlanPreparationActionsBridge />
