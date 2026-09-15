@@ -3,6 +3,7 @@ import type { CreativeBrief } from '@workspace/vendor-brain/creative-design';
 import { resolveContentAutopilotBrandContext } from './contentAutopilotCreativeBridge';
 import { buildGenerationDesignQa } from './contentCreativeRuntime';
 import { buildPaidMediaLearningPromptBlock } from './paidMediaLearning';
+import { inspectSiteMediaQuality } from './siteMediaQuality';
 
 export interface SiteCreativeRuntimeInput {
   tenantId: string;
@@ -105,6 +106,7 @@ export function inspectGeneratedSite(input: {
     ? text.toLowerCase().includes(input.expectedCta.trim().toLowerCase())
     : /fale|solicite|compre|agende|saiba mais|entre em contato|whatsapp/i.test(text);
   const words = text.split(/\s+/).filter(Boolean).length;
+  const mediaQuality = inspectSiteMediaQuality(html);
 
   const hasVerticalWriting = /writing-mode\s*:\s*(vertical|sideways)/i.test(html);
   const hasBreakAll = /word-break\s*:\s*break-all/i.test(html);
@@ -132,7 +134,9 @@ export function inspectGeneratedSite(input: {
     ecommerceUsesWhatsAppCheckout,
     !ecommerceHasAsaasCheckout,
   ].filter(Boolean).length;
-  const moderateLayoutIssues = [hasAnywhereWrap, hasViewportWidthHack, !hasMobileMedia].filter(Boolean).length;
+  const mediaSevereIssues = mediaQuality.severeIssues.length;
+  const mediaWarningIssues = mediaQuality.warnings.length;
+  const moderateLayoutIssues = [hasAnywhereWrap, hasViewportWidthHack, !hasMobileMedia].filter(Boolean).length + mediaWarningIssues;
 
   const imageIntegrity = input.requiredImageCount && input.requiredImageCount > 0
     ? Math.max(0, Math.min(100, Math.round(((input.requiredImageCount - (input.injectedImageCount ?? 0)) / input.requiredImageCount) * 100)))
@@ -140,13 +144,13 @@ export function inspectGeneratedSite(input: {
   const seo = typeof input.seoScore === 'number' ? Math.max(0, Math.min(100, input.seoScore)) : 85;
 
   const baseReadability = words > 80 && words < 5_000 ? 92 : 80;
-  const readabilityScore = Math.max(45, baseReadability - severeLayoutIssues * 18 - moderateLayoutIssues * 6);
+  const readabilityScore = Math.max(45, baseReadability - severeLayoutIssues * 18 - mediaSevereIssues * 10 - moderateLayoutIssues * 6);
   const baseComposition = hasH1 && hasMain && hasSections ? 94 : 80;
-  const compositionScore = Math.max(40, baseComposition - severeLayoutIssues * 20 - moderateLayoutIssues * 7);
+  const compositionScore = Math.max(35, baseComposition - severeLayoutIssues * 20 - mediaSevereIssues * 22 - moderateLayoutIssues * 7);
   const mobileScore = hasResponsiveMeta && hasMobileMedia ? 96 : hasResponsiveMeta ? 78 : 60;
-  const channelFitScore = Math.max(40, Math.round((mobileScore * 0.62 + seo * 0.38) - severeLayoutIssues * 12 - moderateLayoutIssues * 5));
+  const channelFitScore = Math.max(35, Math.round((mobileScore * 0.55 + seo * 0.25 + mediaQuality.score * 0.2) - severeLayoutIssues * 12 - mediaSevereIssues * 14 - moderateLayoutIssues * 4));
   const technicalScore = input.technicalValid
-    ? Math.max(45, Math.round((96 + imageIntegrity) / 2) - severeLayoutIssues * 12 - moderateLayoutIssues * 4)
+    ? Math.max(30, Math.round((96 + imageIntegrity + mediaQuality.score) / 3) - severeLayoutIssues * 12 - mediaSevereIssues * 18 - moderateLayoutIssues * 4)
     : 45;
 
   return buildGenerationDesignQa({
@@ -171,6 +175,8 @@ export function inspectGeneratedSite(input: {
       ...(ecommerceMissingCore ? ['E-commerce sem sinais suficientes de catálogo e carrinho.'] : []),
       ...(ecommerceUsesWhatsAppCheckout ? ['Checkout financeiro via WhatsApp detectado. Pagamentos de e-commerce devem finalizar exclusivamente pelo Asaas.'] : []),
       ...(!ecommerceHasAsaasCheckout ? ['E-commerce sem integração ao checkout oficial Asaas do tenant.'] : []),
+      ...mediaQuality.severeIssues,
+      ...mediaQuality.warnings,
       ...((input.injectedImageCount ?? 0) > 0 ? ['Parte das mídias obrigatórias precisou ser reinserida pelo fallback determinístico.'] : []),
     ],
     recommendations: [
@@ -178,9 +184,13 @@ export function inspectGeneratedSite(input: {
       ...(!input.hasBrandContext ? ['Completar logo, cor e tom no Perfil da Empresa.'] : []),
       ...(!hasResponsiveMeta || !hasMobileMedia ? ['Garantir layout mobile-first real em 360px, 768px e desktop.'] : []),
       ...(severeLayoutIssues > 0 ? ['Regenerar a composição usando o padrão visual avançado antes de publicar.'] : []),
+      ...(mediaQuality.brokenOrPlaceholderCount > 0 ? ['Substituir mídia quebrada/genérica por ativo real da Media Library ou remover o bloco visual.'] : []),
+      ...(mediaQuality.destructiveCropRiskCount > 0 ? ['Reenquadrar mídia preservando o assunto principal; usar contain para interface/produto e cover apenas quando adequado.'] : []),
+      ...(mediaQuality.imageCount >= 3 && !mediaQuality.hasAdaptiveGrid ? ['Converter o conjunto de mídias para grid adaptativo com minmax/auto-fit ou breakpoints equivalentes.'] : []),
+      ...(mediaQuality.missingAltCount > 0 ? ['Criar alt text contextual descrevendo o conteúdo real de cada imagem.'] : []),
       ...(ecommerceMissingCore ? ['Reposicionar a grade de produtos como foco da página e usar carrinho compacto e funcional.'] : []),
       ...(ecommerceUsesWhatsAppCheckout || !ecommerceHasAsaasCheckout ? ['Trocar a finalização por POST /api/public/tenant-commerce/checkout e redirecionar para paymentUrl do Asaas.'] : []),
     ],
-    threshold: severeLayoutIssues > 0 ? 88 : 82,
+    threshold: severeLayoutIssues > 0 || mediaSevereIssues > 0 ? 90 : 82,
   });
 }
