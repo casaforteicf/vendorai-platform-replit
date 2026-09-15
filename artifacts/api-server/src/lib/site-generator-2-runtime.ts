@@ -68,13 +68,10 @@ function classifySection(block: string, fallback: string): string {
 
 function markSections(html: string, spec: SitePageSpec): string {
   let sectionIndex = 0;
-  return html.replace(/<section\b([^>]*)>/gi, (whole, attrs: string) => {
+  return html.replace(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi, (_whole, attrs: string, inner: string) => {
     const planned = spec.sections[Math.min(sectionIndex, Math.max(0, spec.sections.length - 1))];
-    const sampleEnd = html.indexOf("</section>", (arguments as unknown as { index?: number }).index ?? 0);
-    void sampleEnd;
     const fallbackKind = planned?.kind ?? "content";
-    const kindMatch = attrs.match(/data-vendor-section=["']([^"']+)["']/i)?.[1];
-    const kind = kindMatch ?? fallbackKind;
+    const kind = classifySection(`${attrs} ${inner}`, fallbackKind);
     const matchingPlan = spec.sections.find((section) => section.kind === kind) ?? planned;
     const componentId = attrs.match(/data-vendor-component=["']([^"']+)["']/i)?.[1] ?? matchingPlan?.componentId ?? `content-${sectionIndex + 1}`;
     const motion = attrs.match(/data-motion=["']([^"']+)["']/i)?.[1] ?? matchingPlan?.motion ?? "fade-up";
@@ -84,14 +81,15 @@ function markSections(html: string, spec: SitePageSpec): string {
     if (!/data-vendor-section=/i.test(nextAttrs)) nextAttrs += ` data-vendor-section="${escapeHtml(kind)}"`;
     if (!/data-vendor-component=/i.test(nextAttrs)) nextAttrs += ` data-vendor-component="${escapeHtml(componentId)}"`;
     if (!/data-motion=/i.test(nextAttrs)) nextAttrs += ` data-motion="${escapeHtml(motion)}"`;
-    return `<section${nextAttrs}>`;
+    return `<section${nextAttrs}>${inner}</section>`;
   });
 }
 
 function ensureSemanticMarkers(html: string, spec: SitePageSpec): string {
   let result = markSections(html, spec);
   if (!/<main\b/i.test(result) && /<body\b[^>]*>/i.test(result)) {
-    result = result.replace(/<body\b([^>]*)>/i, "<body$1><main id=\"main-content\">")
+    result = result
+      .replace(/<body\b([^>]*)>/i, "<body$1><main id=\"main-content\">")
       .replace(/<\/body>/i, "</main></body>");
   }
   if (!/data-vendor-component=/i.test(result)) {
@@ -102,7 +100,7 @@ function ensureSemanticMarkers(html: string, spec: SitePageSpec): string {
 
 function ensureMediaPerformance(html: string, businessName: string): string {
   let firstImage = true;
-  let result = html.replace(/<img\b([^>]*)>/gi, (whole, attrs: string) => {
+  let result = html.replace(/<img\b([^>]*)>/gi, (_whole, attrs: string) => {
     let next = attrs;
     if (!/\balt=/i.test(next)) next += ` alt="${escapeHtml(businessName)}"`;
     if (!/\bdecoding=/i.test(next)) next += ' decoding="async"';
@@ -114,7 +112,7 @@ function ensureMediaPerformance(html: string, businessName: string): string {
     }
     return `<img${next}>`;
   });
-  result = result.replace(/<video\b([^>]*)>/gi, (whole, attrs: string) => {
+  result = result.replace(/<video\b([^>]*)>/gi, (_whole, attrs: string) => {
     let next = attrs;
     if (!/\bpreload=/i.test(next)) next += ' preload="metadata"';
     if (!/\bplaysinline/i.test(next)) next += " playsinline";
@@ -129,7 +127,7 @@ function buildMotionStyle(): string {
 [data-motion]{--v-delay:0ms}
 .v-motion-ready[data-motion]:not([data-motion="none"]){opacity:0;transform:translate3d(0,20px,0);transition:opacity var(--v-motion-duration) var(--v-motion-ease) var(--v-delay),transform var(--v-motion-duration) var(--v-motion-ease) var(--v-delay)}
 .v-motion-ready[data-motion].is-visible{opacity:1;transform:none}
-[data-motion="image-reveal"], [data-motion="mask-scroll-reveal"], [data-motion="hero-cinematic-reveal"]{overflow:clip}
+[data-motion="image-reveal"],[data-motion="mask-scroll-reveal"],[data-motion="hero-cinematic-reveal"]{overflow:clip}
 .v-motion-ready[data-motion="image-reveal"] img,.v-motion-ready[data-motion="mask-scroll-reveal"] img,.v-motion-ready[data-motion="hero-cinematic-reveal"] img{transform:scale(1.035);transition:transform 1.05s var(--v-motion-ease)}
 .v-motion-ready[data-motion="image-reveal"].is-visible img,.v-motion-ready[data-motion="mask-scroll-reveal"].is-visible img,.v-motion-ready[data-motion="hero-cinematic-reveal"].is-visible img{transform:scale(1)}
 [data-motion="hover-lift"]{transition:transform .24s ease,box-shadow .24s ease}
@@ -160,7 +158,7 @@ var parallax=[].slice.call(document.querySelectorAll('[data-motion="parallax-sof
 function ensureSeo(html: string, input: { config: SiteGeneratorConfig; published: boolean; canonicalUrl?: string | null }): string {
   let result = html;
   const title = `${input.config.headline || input.config.name || "Site"}`.trim().slice(0, 64);
-  const description = `${input.config.desc || input.config.servicos || input.config.name || ""}`.replace(/\s+/g, " ").trim().slice(0, 158);
+  const description = `${input.config.desc || input.config.name || ""}`.replace(/\s+/g, " ").trim().slice(0, 158);
   const robots = input.published ? "index,follow,max-image-preview:large" : "noindex,nofollow";
   const canonical = input.canonicalUrl?.trim() || null;
 
@@ -171,7 +169,7 @@ function ensureSeo(html: string, input: { config: SiteGeneratorConfig; published
   if (!/<meta[^>]+property=["']og:title["']/i.test(result)) result = replaceOrInsertHeadTag(result, /$^/, `<meta property="og:title" content="${escapeHtml(title)}">`);
   if (!/<meta[^>]+property=["']og:description["']/i.test(result)) result = replaceOrInsertHeadTag(result, /$^/, `<meta property="og:description" content="${escapeHtml(description)}">`);
   if (canonical && !/<meta[^>]+property=["']og:url["']/i.test(result)) result = replaceOrInsertHeadTag(result, /$^/, `<meta property="og:url" content="${escapeHtml(canonical)}">`);
-  if (!/<meta[^>]+name=["']twitter:card["']/i.test(result)) result = replaceOrInsertHeadTag(result, /$^/, `<meta name="twitter:card" content="summary_large_image">`);
+  if (!/<meta[^>]+name=["']twitter:card["']/i.test(result)) result = replaceOrInsertHeadTag(result, /$^/, '<meta name="twitter:card" content="summary_large_image">');
 
   if (!/application\/ld\+json/i.test(result)) {
     const schema = {
@@ -181,9 +179,9 @@ function ensureSeo(html: string, input: { config: SiteGeneratorConfig; published
       ...(canonical ? { url: canonical } : {}),
       ...(description ? { description } : {}),
     };
-    result = result.includes("</head>")
-      ? result.replace("</head>", `<script type="application/ld+json">${escapeJsonForHtml(schema)}</script>\n</head>`)
-      : result;
+    if (result.includes("</head>")) {
+      result = result.replace("</head>", `<script type="application/ld+json">${escapeJsonForHtml(schema)}</script>\n</head>`);
+    }
   }
   return result;
 }
@@ -225,7 +223,9 @@ export function enhanceSiteGenerator2Html(input: {
     published: Boolean(input.published),
     canonicalUrl: resolveCanonicalSiteUrl(input.siteSlug),
   });
-  html = html.includes("</head>") ? html.replace("</head>", `${buildMotionStyle()}\n<script id="${SPEC_SCRIPT_ID}" type="application/json">${escapeJsonForHtml(pageSpec)}</script>\n</head>`) : html;
+  if (html.includes("</head>")) {
+    html = html.replace("</head>", `${buildMotionStyle()}\n<script id="${SPEC_SCRIPT_ID}" type="application/json">${escapeJsonForHtml(pageSpec)}</script>\n</head>`);
+  }
   html = html.includes("</body>") ? html.replace("</body>", `${buildMotionScript()}\n</body>`) : `${html}${buildMotionScript()}`;
 
   const { score: seoScore, checklist: seoChecklist } = computeSiteSeoScore(html);
@@ -254,9 +254,9 @@ export function buildSiteGenerator2Config(input: {
     componentIds: input.pageSpec.sections.map((section) => section.componentId),
     seoAutoEnabled: true,
     preserveUnaffectedSections: true,
-    pageSpec: input.pageSpec,
-    creativeDirector: input.pageSpec.director,
+    pageSpec: input.pageSpec as unknown as Record<string, unknown>,
+    creativeDirector: input.pageSpec.director as unknown as Record<string, unknown>,
     qaScorecard: input.qa ?? undefined,
     mediaAutoSelected: input.autoMedia ?? input.config.mediaAutoSelected,
-  } as SiteGeneratorConfig;
+  };
 }
