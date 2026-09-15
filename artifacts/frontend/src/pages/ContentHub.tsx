@@ -251,7 +251,11 @@ export default function ContentHub() {
       })
       .then((plan) => {
         if (cancelled) return;
-        if (!plan) throw new Error("Nenhum planejamento de mídia foi encontrado.");
+        if (!plan) {
+          if (mediaPlanSource) throw new Error("Nenhum planejamento de mídia foi encontrado.");
+          setPlannerPlan(null);
+          return;
+        }
         if (mediaPlanSource && requestedMediaPlanId && plan.id !== requestedMediaPlanId) {
           throw new Error("Este link aponta para uma versão anterior do planejamento. Abra o Planejamento atual para continuar.");
         }
