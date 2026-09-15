@@ -8,6 +8,10 @@ import siteGeneratorMotionPreferencesRouter from "./site_generator_motion_prefer
 import siteGeneratorPreviewToolbarRouter from "./site_generator_preview_toolbar.js";
 import siteGeneratorVersionsRouter from "./site_generator_versions.js";
 import siteGenerator2RuntimeRouter from "./site_generator_2_runtime.js";
+import {
+  siteGeneratorRenderedVisualQaPublishRouter,
+  siteGeneratorRenderedVisualQaResponseRouter,
+} from "./site_generator_rendered_visual_qa.js";
 
 function cleanText(value: string): string {
   return value
@@ -72,7 +76,12 @@ router.use(siteGeneratorPreviewToolbarRouter);
 router.use(siteGeneratorSearchDiscoveryRouter);
 router.use(siteGeneratorMotionPreferencesRouter);
 router.use(siteGeneratorVersionsRouter);
+// Enrich GET /qa with a real rendered-browser pass before the structured QA responds.
+router.use(siteGeneratorRenderedVisualQaResponseRouter);
 router.use(siteGenerator2RuntimeRouter);
+// The structured 2.0 runtime blocks static QA first; only approved candidates reach
+// this rendered viewport gate before the legacy publish route is allowed to execute.
+router.use(siteGeneratorRenderedVisualQaPublishRouter);
 
 router.use(async (req, res, next) => {
   const match = req.method === "POST"
