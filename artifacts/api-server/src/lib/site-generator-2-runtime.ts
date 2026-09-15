@@ -179,6 +179,13 @@ function ensureMediaPerformance(html: string, businessName: string): string {
 function buildMotionStyle(): string {
   return `<style id="${RUNTIME_STYLE_ID}">
 :root{--v-motion-duration:.62s;--v-motion-ease:cubic-bezier(.2,.75,.25,1);--v-motion-distance:22px;--v-tech-glow:rgba(99,102,241,.24)}
+img,video{max-width:100%}
+[data-vendor-section="hero"] img{width:100%;height:auto!important;max-height:min(70vh,720px);object-fit:contain!important;object-position:center}
+[data-vendor-section="gallery"] img,[data-vendor-section="solution"] img{width:100%;object-position:center}
+[data-vendor-section="footer"] img,footer img{width:auto!important;height:auto!important;max-width:min(220px,70vw);max-height:72px;object-fit:contain!important}
+.v-balanced-grid-4{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;align-items:stretch}
+.v-balanced-grid-4>*{min-width:0}
+@media(max-width:700px){.v-balanced-grid-4{grid-template-columns:1fr!important}}
 [data-motion]{--v-delay:0ms}
 .v-motion-ready[data-motion]:not([data-motion="none"]){opacity:0;transform:translate3d(0,var(--v-motion-distance),0);transition:opacity var(--v-motion-duration) var(--v-motion-ease) var(--v-delay),transform var(--v-motion-duration) var(--v-motion-ease) var(--v-delay)}
 .v-motion-ready[data-motion].is-visible{opacity:1;transform:none}
@@ -218,6 +225,7 @@ function buildMotionScript(): string {
 if(window.__vendorSite2)return;window.__vendorSite2=true;
 var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 var nodes=[].slice.call(document.querySelectorAll('[data-motion]'));
+['problem','benefits','services','process'].forEach(function(kind){var section=document.querySelector('[data-vendor-section="'+kind+'"]');if(!section)return;var groups=[].slice.call(section.querySelectorAll('div,ul,ol'));groups.forEach(function(group){var children=[].slice.call(group.children||[]).filter(function(child){return child.nodeType===1});if(children.length!==4)return;var style=window.getComputedStyle(group);if(style.display==='grid'||/grid/i.test(group.className||''))group.classList.add('v-balanced-grid-4')})});
 nodes.forEach(function(el){var kids=[].slice.call(el.children||[]);kids.forEach(function(k,i){k.style.setProperty('--v-child-index',String(i))});if(el.getAttribute('data-motion')==='interface-reveal'){var features=[].slice.call(el.querySelectorAll('[data-feature],[class*="badge"],[class*="metric"],[class*="stat"]')).slice(0,3);features.forEach(function(f){f.classList.add('v-feature-highlight')})}if(el.getAttribute('data-motion')!=='none')el.classList.add('v-motion-ready')});
 if(reduce){nodes.forEach(function(el){el.classList.add('is-visible')});return}
 var io='IntersectionObserver'in window?new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('is-visible');io.unobserve(e.target)}})},{rootMargin:'0px 0px -7% 0px',threshold:.08}):null;
