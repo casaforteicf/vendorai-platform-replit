@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Eye, Layers3, Loader2, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Eye, Layers3, Loader2, Play, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 
 const HOST_ATTR = "data-vendorai-media-plan-batch-control";
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
+const LEGACY_AUTO_KEY_PREFIX = "vendorai_media_plan_auto_production_v2:";
 const BATCH_SIZE = 10;
 
 type MediaPlan = {
@@ -19,6 +20,8 @@ type CalendarItem = {
   id: string;
   mediaPlanId?: string | null;
   status: string;
+  contentGenerationId?: string | null;
+  variationIdx?: number | null;
 };
 
 function currentTenantId(): string {
@@ -64,12 +67,17 @@ function openActionDetails() {
   if (button) window.setTimeout(() => button.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
 }
 
+function findProductionButton() {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>(`[data-vendorai-plan-production] button`))
+    .find((button) => normalizedText(button.textContent ?? "").startsWith("Produzir plano completo"));
+}
+
 export function MediaPlanBatchControl() {
   const [location, setLocation] = useState(() => window.location.pathname + window.location.search);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [plan, setPlan] = useState<MediaPlan | null>(null);
   const [items, setItems] = useState<CalendarItem[]>([]);
-  const [busy, setBusy] = useState<"approve" | "generate" | "refresh" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "generate" | "produce" | "refresh" | null>(null);
   const [message, setMessage] = useState("");
   const [complete, setComplete] = useState(false);
   const tenantId = currentTenantId();
@@ -88,6 +96,15 @@ export function MediaPlanBatchControl() {
       window.clearInterval(timer);
     };
   }, []);
+
+  // O produtor legado tinha auto-start ao abrir a fila. O lote agora é deliberado:
+  // aprovar não consome IA; somente o clique explícito em "Produzir lote" inicia geração.
+  useEffect(() => {
+    if (!context.active || !context.mediaPlanId) return;
+    try {
+      sessionStorage.setItem(`${LEGACY_AUTO_KEY_PREFIX}${context.mediaPlanId}`, "manual-batch-control");
+    } catch {}
+  }, [context.active, context.mediaPlanId]);
 
   useEffect(() => {
     if (!context.active) {
@@ -149,7 +166,9 @@ export function MediaPlanBatchControl() {
   const summary = useMemo(() => ({
     total: items.length,
     pending: items.filter((item) => item.status === "planejado").length,
+    awaitingProduction: items.filter((item) => item.status === "aprovado" && !item.contentGenerationId).length,
     approved: items.filter((item) => ["aprovado", "gerado", "publicado"].includes(item.status)).length,
+    produced: items.filter((item) => Boolean(item.contentGenerationId) || ["gerado", "publicado"].includes(item.status)).length,
     rejected: items.filter((item) => ["recusado", "pulado"].includes(item.status)).length,
   }), [items]);
 
@@ -167,7 +186,7 @@ export function MediaPlanBatchControl() {
       });
       const payload = await response.json().catch(() => ({})) as { approved?: number; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível aprovar o lote.");
-      setMessage(`${payload.approved ?? 0} ações aprovadas. Elas estão liberadas para produção.`);
+      setMessage(`${payload.approved ?? 0} ações aprovadas. Nenhuma IA foi acionada. Agora clique em Produzir lote quando quiser iniciar a geração.`);
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível aprovar o lote.");
@@ -176,8 +195,26 @@ export function MediaPlanBatchControl() {
     }
   }, [busy, context.mediaPlanId, load, summary.pending, tenantId]);
 
+  const produceBatch = useCallback(async () => {
+    if (busy || summary.awaitingProduction === 0) return;
+    setBusy("produce");
+    setMessage("");
+    try {
+      const trigger = findProductionButton();
+      if (!trigger) {
+        setMessage("O produtor do lote ainda está carregando. Aguarde alguns segundos e tente novamente.");
+        return;
+      }
+      trigger.click();
+      setMessage(`Produção do lote iniciada sob comando do usuário. Máximo atual: ${Math.min(summary.awaitingProduction, BATCH_SIZE)} ações.`);
+      window.setTimeout(() => { void load(); }, 1500);
+    } finally {
+      window.setTimeout(() => setBusy(null), 700);
+    }
+  }, [busy, load, summary.awaitingProduction]);
+
   const generateNextBatch = useCallback(async () => {
-    if (!tenantId || !context.mediaPlanId || busy || summary.pending > 0) return;
+    if (!tenantId || !context.mediaPlanId || busy || summary.pending > 0 || summary.awaitingProduction > 0) return;
     setBusy("generate");
     setMessage("");
     setComplete(false);
@@ -211,7 +248,7 @@ export function MediaPlanBatchControl() {
     } finally {
       setBusy(null);
     }
-  }, [busy, context.mediaPlanId, load, plan?.conteudo?.periodoDias, summary.pending, tenantId]);
+  }, [busy, context.mediaPlanId, load, plan?.conteudo?.periodoDias, summary.awaitingProduction, summary.pending, tenantId]);
 
   if (!host || !context.active || !plan || plan.id !== context.mediaPlanId) return null;
 
@@ -222,21 +259,24 @@ export function MediaPlanBatchControl() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold"><Layers3 className="h-4 w-4 text-primary" />Execução em lotes de 10</span>
             <span className="rounded-full border bg-background px-2 py-0.5 text-[11px]">Lote {batchNumber}</span>
-            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700"><ShieldCheck className="h-3.5 w-3.5" />proteção contra consumo em massa</span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700"><ShieldCheck className="h-3.5 w-3.5" />IA somente sob comando</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {summary.pending > 0
-              ? `${summary.pending} ação(ões) aguardam sua aprovação. Revise primeiro; somente depois elas ficam disponíveis para produção.`
-              : complete
-                ? "O plano não possui mais ações pendentes para gerar."
-                : summary.total === 0
-                  ? "Gere o primeiro lote. O sistema cria no máximo 10 ações por vez."
-                  : "O lote atual já foi decidido. Gere as próximas 10 somente quando quiser continuar."}
+              ? `${summary.pending} ação(ões) aguardam sua aprovação. Revisar e aprovar não consome IA.`
+              : summary.awaitingProduction > 0
+                ? `${summary.awaitingProduction} ação(ões) estão aprovadas e aguardam produção. Produza este lote antes de liberar os próximos 10.`
+                : complete
+                  ? "O plano não possui mais ações pendentes para gerar."
+                  : summary.total === 0
+                    ? "Gere o primeiro lote. O sistema cria no máximo 10 ações por vez."
+                    : "O lote atual já foi produzido/decidido. Gere as próximas 10 somente quando quiser continuar."}
           </p>
           <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-            <span>{summary.total} geradas no total</span>
+            <span>{summary.total} ações no total</span>
             <span>{summary.pending} em revisão</span>
-            <span>{summary.approved} liberadas/produzidas</span>
+            <span>{summary.awaitingProduction} aprovadas aguardando produção</span>
+            <span>{summary.produced} com produção iniciada/concluída</span>
             {summary.rejected > 0 ? <span>{summary.rejected} recusadas/ignoradas</span> : null}
           </div>
           {message ? <p className="mt-2 text-xs font-medium text-foreground">{message}</p> : null}
@@ -253,6 +293,11 @@ export function MediaPlanBatchControl() {
                 Aprovar lote ({Math.min(summary.pending, BATCH_SIZE)})
               </button>
             </>
+          ) : summary.awaitingProduction > 0 ? (
+            <button type="button" onClick={() => void produceBatch()} disabled={busy !== null} className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-60">
+              {busy === "produce" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
+              Produzir lote ({Math.min(summary.awaitingProduction, BATCH_SIZE)})
+            </button>
           ) : (
             <button type="button" onClick={() => void generateNextBatch()} disabled={busy !== null || complete} className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-60">
               {busy === "generate" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
