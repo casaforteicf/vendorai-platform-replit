@@ -30,8 +30,16 @@ const PLAN_LIMITS: Record<string, number> = {
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const PRODUCTION_LEAD_HOURS = Math.max(1, Number(process.env["MARKETING_PRODUCTION_LEAD_HOURS"] || 24));
 const MAX_ITEMS_PER_TICK = 8;
+const BILLING_CIRCUIT_MS = Math.max(
+  5 * 60_000,
+  Number(process.env["MARKETING_AI_BILLING_COOLDOWN_MS"] || 60 * 60_000),
+);
 const VIDEO_AUTO_TYPES = new Set(["reels", "tiktok", "youtube_short", "youtube_video"]);
 const AUTO_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post", ...VIDEO_AUTO_TYPES]);
+
+// In-memory circuit breaker. A restart clears it, but the first provider billing
+// failure opens it again before the worker can fan out into more paid retries.
+let aiBillingCircuitOpenUntil = 0;
 
 type Campaign = {
   id: string;
@@ -129,6 +137,12 @@ function directionText(campaign: Campaign, item: { temaSugerido: string; canal: 
     campaign.regraComunicacaoGeografica ? `Regra geográfica: ${campaign.regraComunicacaoGeografica}` : "",
     `Pilar: ${item.pilar}`,
   ].filter(Boolean).join("\n");
+}
+
+function gatewayStatus(error: unknown): number {
+  if (!error || typeof error !== "object") return 0;
+  const value = (error as { status?: unknown }).status;
+  return typeof value === "number" ? value : Number(value || 0);
 }
 
 async function monthlyAllowance(tenantId: string) {
@@ -343,6 +357,14 @@ async function startAutomatedVideo(input: {
 }
 
 export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
+  if (Date.now() < aiBillingCircuitOpenUntil) {
+    logger.warn(
+      { openUntil: new Date(aiBillingCircuitOpenUntil).toISOString() },
+      "Produção automática do Plano de Mídia pausada pelo circuit breaker de cobrança",
+    );
+    return 0;
+  }
+
   const rows = await db.select({
     id: contentCalendarItemsTable.id,
     tenantId: contentCalendarItemsTable.tenantId,
@@ -361,14 +383,16 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
     .where(and(
       eq(contentCalendarItemsTable.status, "aprovado"),
       isNull(contentCalendarItemsTable.contentGenerationId),
+      isNull(contentCalendarItemsTable.variationIdx),
       sql`${mediaPlansTable.conteudo}->>'statusPlanejamento' = 'aprovado'`,
     ))
     .orderBy(asc(contentCalendarItemsTable.dataAgendada))
     .limit(MAX_ITEMS_PER_TICK * 4);
 
   let produced = 0;
+  let attempted = 0;
   for (const row of rows) {
-    if (produced >= MAX_ITEMS_PER_TICK) break;
+    if (attempted >= MAX_ITEMS_PER_TICK) break;
     if (!row.mediaPlanId || !AUTO_TYPES.has(row.tipo) || !providerSupported(row.canal)) continue;
     const content = row.planContent as PlanContent;
     if (!shouldProduce(row.dataAgendada, content.publicacaoOrganica, now)) continue;
@@ -384,8 +408,10 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
       eq(contentCalendarItemsTable.tenantId, row.tenantId),
       eq(contentCalendarItemsTable.status, "aprovado"),
       isNull(contentCalendarItemsTable.contentGenerationId),
+      isNull(contentCalendarItemsTable.variationIdx),
     )).returning({ id: contentCalendarItemsTable.id });
     if (!claimed) continue;
+    attempted += 1;
 
     try {
       const theme = directionText(campaign, row);
@@ -420,14 +446,32 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
       produced += 1;
       logger.info({ tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo, generationId: generation.id }, "Plano de Mídia produziu conteúdo orgânico no backend");
     } catch (error) {
+      const status = gatewayStatus(error);
       await db.update(contentCalendarItemsTable).set({
         contentGenerationId: null,
+        // -1 is a persistent automatic-failure marker. Manual generation can
+        // still retry this item and will restore variationIdx=0 on success.
+        variationIdx: -1,
         updatedAt: new Date(),
       }).where(and(
         eq(contentCalendarItemsTable.id, row.id),
         eq(contentCalendarItemsTable.contentGenerationId, claim),
       )).catch(() => undefined);
-      logger.warn({ error, tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo }, "Produção automática do Plano de Mídia falhou");
+      logger.warn({ error, status, tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo }, "Produção automática do Plano de Mídia falhou");
+
+      if (status === 402 || status === 429) {
+        aiBillingCircuitOpenUntil = Date.now() + BILLING_CIRCUIT_MS;
+        logger.error(
+          {
+            status,
+            tenantId: row.tenantId,
+            calendarItemId: row.id,
+            openUntil: new Date(aiBillingCircuitOpenUntil).toISOString(),
+          },
+          "Circuit breaker abriu: produção automática de IA pausada após erro de cobrança/quota",
+        );
+        break;
+      }
     }
   }
   return produced;
