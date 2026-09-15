@@ -59,6 +59,15 @@ export interface SiteGeneratorQaScorecard {
   warnings: string[];
 }
 
+export interface SiteGeneratorVersionSnapshot {
+  id: string;
+  createdAt: string;
+  reason: "generation" | "refine" | "manual" | "publish" | "restore";
+  html: string;
+  seoScore?: number | null;
+  note?: string;
+}
+
 export interface SiteGeneratorConfig {
   type: "landing" | "ecommerce" | "institutional" | "product";
   name: string;
@@ -103,6 +112,7 @@ export interface SiteGeneratorConfig {
   creativeDirector?: Record<string, unknown>;
   qaScorecard?: SiteGeneratorQaScorecard;
   mediaAutoSelected?: { imageCount: number; videoCount: number };
+  versionHistory?: SiteGeneratorVersionSnapshot[];
 }
 
 export interface SiteSeoChecklist {
