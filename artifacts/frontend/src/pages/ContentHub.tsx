@@ -329,6 +329,7 @@ export default function ContentHub() {
     return () => observer.disconnect();
   }, []);
 
+  // The overview derives its guidance from the tenant's current marketing plan.
   const overviewStatus = plannerPlan?.conteudo.statusPlanejamento;
   const currentJourneyStep = !plannerPlan
     ? 1
