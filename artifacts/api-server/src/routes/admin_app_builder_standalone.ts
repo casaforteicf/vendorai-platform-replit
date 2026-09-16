@@ -95,6 +95,7 @@ const aiProposalSchema = z.object({
 });
 
 type AiProposal = z.infer<typeof aiProposalSchema>;
+type JsonObject = Record<string, unknown>;
 
 const ALLOWED_BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider", "action_form"]);
 const MOBILE_PRESET_VARIANTS = new Set([
@@ -110,20 +111,146 @@ const MOBILE_PRESET_VARIANTS = new Set([
   "callout:empty_state",
   "metrics:savings",
 ]);
+const PROFILE_ACTION_KEY = "viewer.profile.update";
+const PROFILE_SOURCE_KEY = "viewer.profile";
+const PROFILE_PAGE_ID = "profile";
+const ACTION_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
-function asObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+function asObject(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
 }
 
-function asObjects(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
+function asObjects(value: unknown): JsonObject[] {
+  return Array.isArray(value) ? value.filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
 }
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function validateAiDefinition(definition: Record<string, unknown>, actionKeys: Set<string>) {
+function stringArray(value: unknown, maxItems = 50, maxLength = 120): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().slice(0, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function canonicalProfilePage(): JsonObject {
+  return {
+    id: PROFILE_PAGE_ID,
+    title: "Meu perfil",
+    icon: "user",
+    blocks: [
+      {
+        id: "profile-summary",
+        type: "list",
+        dataSources: [PROFILE_SOURCE_KEY],
+        props: {
+          title: "Meus dados",
+          items: [
+            { title: "Nome", body: "{{data.viewer.profile.displayName}}" },
+            { title: "Telefone", body: "{{data.viewer.profile.phone}}" },
+            { title: "Idioma", body: "{{data.viewer.profile.locale}}" },
+          ],
+        },
+      },
+      {
+        id: "profile-update",
+        type: "action_form",
+        props: {
+          actionKey: PROFILE_ACTION_KEY,
+          title: "Atualizar meus dados",
+          body: "Atualize seu nome, telefone ou idioma. O e-mail e os dados sensíveis da conta não são alterados por esta ação.",
+          fields: [
+            { name: "displayName", label: "Nome" },
+            { name: "phone", label: "Telefone" },
+            { name: "locale", label: "Idioma" },
+          ],
+          submitLabel: "Salvar alterações",
+          successMessage: "Perfil atualizado com sucesso.",
+        },
+      },
+    ],
+  };
+}
+
+function normalizeRuntimeDefinition(
+  definition: JsonObject,
+  actionKeys: Set<string>,
+  dataSourceKeys: Set<string>,
+): JsonObject {
+  const source = asObject(definition);
+  const runtime = asObject(source.runtime);
+  const rawPages = asObjects(runtime.pages);
+  const canUseProfile = actionKeys.has(PROFILE_ACTION_KEY) && dataSourceKeys.has(PROFILE_SOURCE_KEY);
+
+  const pages = rawPages
+    .filter((page) => text(page.id) !== PROFILE_PAGE_ID)
+    .map((page) => ({
+      ...page,
+      blocks: asObjects(page.blocks).flatMap((block) => {
+        const props = asObject(block.props);
+        if (text(block.type) === "action_form") {
+          const actionKey = text(props.actionKey);
+          if (!actionKey || !actionKeys.has(actionKey)) return [];
+        }
+        const requestedSources = stringArray(block.dataSources, 20, 100);
+        const safeSources = requestedSources.filter((key) => dataSourceKeys.has(key));
+        return [{
+          ...block,
+          ...(requestedSources.length > 0 ? { dataSources: safeSources } : {}),
+        }];
+      }),
+    }));
+
+  if (canUseProfile) pages.push(canonicalProfilePage());
+
+  const requestedDefault = text(runtime.defaultPageId);
+  const defaultPageId = requestedDefault && pages.some((page) => text(page.id) === requestedDefault)
+    ? requestedDefault
+    : text(pages[0]?.id) || "home";
+
+  const referencedActions = new Set<string>();
+  for (const page of pages) {
+    for (const block of asObjects(page.blocks)) {
+      if (text(block.type) !== "action_form") continue;
+      const actionKey = text(asObject(block.props).actionKey);
+      if (actionKey && actionKeys.has(actionKey)) referencedActions.add(actionKey);
+    }
+  }
+
+  const settings = asObject(source.settings);
+  const runtimeAccess = asObject(settings.runtimeAccess);
+  const currentActions = asObject(runtimeAccess.actions);
+  const existingAllowed = stringArray(currentActions.keys, 30, 100)
+    .filter((key) => ACTION_KEY_PATTERN.test(key) && actionKeys.has(key));
+  const allowedActionKeys = Array.from(new Set([...existingAllowed, ...referencedActions]));
+
+  return {
+    ...source,
+    runtime: {
+      ...runtime,
+      version: 1,
+      defaultPageId,
+      pages,
+    },
+    settings: {
+      ...settings,
+      runtimeAccess: {
+        ...runtimeAccess,
+        actions: {
+          ...currentActions,
+          enabled: allowedActionKeys.length > 0,
+          keys: allowedActionKeys,
+        },
+      },
+    },
+  };
+}
+
+function validateAiDefinition(definition: JsonObject, actionKeys: Set<string>, dataSourceKeys: Set<string>) {
   const findings: string[] = [];
   const runtime = asObject(definition.runtime);
   const pages = asObjects(runtime.pages);
@@ -136,6 +263,7 @@ function validateAiDefinition(definition: Record<string, unknown>, actionKeys: S
   const emphasizedPages = pages.filter((page) => page.navigationEmphasis === true);
   if (emphasizedPages.length > 1) findings.push("A navegação mobile permite no máximo uma página com navigationEmphasis=true.");
   if (emphasizedPages.length > 0 && (pages.length < 3 || pages.length > 5)) findings.push("navigationEmphasis só pode ser usado quando a navegação principal tiver de 3 a 5 páginas.");
+
   for (const page of pages) {
     for (const block of asObjects(page.blocks)) {
       const type = text(block.type);
@@ -145,10 +273,26 @@ function validateAiDefinition(definition: Record<string, unknown>, actionKeys: S
       if (variant && !MOBILE_PRESET_VARIANTS.has(`${type}:${variant}`)) findings.push(`Preset visual não suportado: ${type}:${variant}.`);
       if (type === "action_form") {
         const actionKey = text(props.actionKey);
-        if (actionKey && !actionKeys.has(actionKey)) findings.push(`Action '${actionKey}' não existe no registry.`);
+        if (actionKey && !actionKeys.has(actionKey)) findings.push(`Action '${actionKey}' não existe no registry executável.`);
+      }
+      for (const sourceKey of stringArray(block.dataSources, 20, 100)) {
+        if (!dataSourceKeys.has(sourceKey)) findings.push(`Data source '${sourceKey}' não existe no registry ativo.`);
       }
     }
   }
+
+  const settings = asObject(definition.settings);
+  const runtimeAccess = asObject(settings.runtimeAccess);
+  const runtimeActions = asObject(runtimeAccess.actions);
+  for (const actionKey of stringArray(runtimeActions.keys, 30, 100)) {
+    if (!actionKeys.has(actionKey)) findings.push(`runtimeAccess contém Action indisponível: '${actionKey}'.`);
+  }
+
+  const hasProfilePage = pageIds.includes(PROFILE_PAGE_ID);
+  const canUseProfile = actionKeys.has(PROFILE_ACTION_KEY) && dataSourceKeys.has(PROFILE_SOURCE_KEY);
+  if (hasProfilePage && !canUseProfile) findings.push("A página Meu perfil exige viewer.profile e viewer.profile.update ativos.");
+  if (canUseProfile && !hasProfilePage) findings.push("Os recursos reais de perfil estão ativos, mas a página Meu perfil não foi criada.");
+
   return findings;
 }
 
@@ -171,6 +315,26 @@ Todo app mobile deve seguir o Design System oficial sem copiar identidade de apl
 - A IA organiza componentes oficiais do registry/runtime. Não invente componente visual executável; se faltar, registre como gap.
 - Card, lista, busca, categoria, detalhe, perfil, notificações, histórico, ajuda, legal e localização devem seguir padrões reutilizáveis e consistentes.
 - Não esconda a ação principal em menus de três pontos. Cada tela deve deixar claro o objetivo e o próximo passo.
+
+CONTRATOS REAIS DOS BLOCOS
+- hero: props.title obrigatório; use props.body para texto. Pode usar eyebrow, badge, imageUrl e align.
+- text: use props.body obrigatório; title é opcional.
+- callout: use props.body obrigatório; title e tone são opcionais.
+- metrics: props.items deve ser lista de objetos {label,value,detail?}.
+- list: props.items deve ser lista de objetos {title?,body?,label?}; nunca use strings soltas.
+- cards: props.items deve ser lista de objetos {title,body?,badge?,imageUrl?}; nunca use description/content no lugar de body.
+- action_form: só use actionKey realmente fornecida em registry.actions. Campos devem existir no inputSchema dessa Action.
+- dataSources ficam no bloco como lista de chaves registradas, por exemplo dataSources:["viewer.profile"]. Bindings usam exatamente {{data.viewer.profile.campo}}.
+- Nunca invente formulário, operation, endpoint, actionKey, data source ou permissão.
+
+PERFIL REAL DO APP USER
+- O contexto informa actions e dataSources ativos. Actions sem executorKey não são fornecidas e devem ser tratadas como inexistentes.
+- Se, e somente se, registry.actions contiver viewer.profile.update E registry.dataSources contiver viewer.profile, o app deve ter a página id=profile, título "Meu perfil", com leitura por viewer.profile e edição por viewer.profile.update.
+- viewer.profile.update altera somente displayName, phone e locale. Não ofereça alteração de e-mail, tenant, status, lead ou identidade de autenticação.
+- Use bindings {{data.viewer.profile.displayName}}, {{data.viewer.profile.phone}} e {{data.viewer.profile.locale}}.
+- Actions efetivamente usadas precisam estar em definition.settings.runtimeAccess.actions.keys; não coloque chaves fora do registry executável.
+- Use somente requiredPermissions vindas do registry. Hoje os contratos reais incluem profile.write_self para viewer.profile.update e profile.crm.read_self para viewer.linked_contact.summary quando essa fonte CRM for usada.
+- Se os recursos de perfil não existirem no registry, não crie a página, não crie action_form equivalente e não reporte um gap como se o recurso estivesse disponível.
 
 Inclua em definition.designSystem uma declaração do padrão visual, no mínimo:
 {
@@ -229,7 +393,7 @@ REGRAS INEGOCIÁVEIS
 1. Não invente capacidades executáveis. Actions, data sources, components e workflows disponíveis serão fornecidos no contexto. Se algo necessário não existir, registre em gaps; não finja que já existe.
 2. Preserve tudo que estiver bom na definição atual quando o modo for revise/analyze. Nunca destrua customizações sem motivo explícito.
 3. Gere definition compatível com runtime.version=1. Tipos de bloco permitidos: hero, text, callout, metrics, list, cards, divider, action_form.
-4. action_form só pode usar actionKey existente no registry. Se a action necessária não existir, descreva-a em gaps.
+4. action_form só pode usar actionKey existente no registry executável. Se a action necessária não existir, descreva-a em gaps.
 5. Segurança por menor privilégio. Sempre pense em role, permission, dados sensíveis, ações críticas e separação de responsabilidades.
 6. Mobile-first sem sacrificar desktop. Evite páginas gigantes; use navegação clara e fluxo por tarefa.
 7. Diferencie dashboard, operação, consulta, configuração e administração.
@@ -240,7 +404,7 @@ REGRAS INEGOCIÁVEIS
 12. Use navigationEmphasis=true em no máximo uma página e somente quando ela representar uma ação principal real do app.
 
 FORMATO OBRIGATÓRIO
-{"summary":"...","assumptions":[],"questions":[],"warnings":[],"architecture":{"pages":[{"id":"...","title":"...","purpose":"..."}],"roles":[{"key":"...","name":"...","purpose":"..."}],"dataModel":[{"entity":"...","purpose":"...","source":"registry|tenant|planned"}],"integrations":[],"risks":[]},"definition":{"designSystem":{"standard":"vendorai-mobile-v1","principles":[],"theme":{},"navigation":{},"interaction":{},"states":[],"privacy":{}},"runtime":{"version":1,"defaultPageId":"home","pages":[{"id":"home","title":"Início","icon":"home","navigationEmphasis":false,"blocks":[]}]}},"gaps":[{"type":"action|data_source|integration|permission|component|other","key":"opcional","description":"...","severity":"low|medium|high|critical"}],"recommendedActions":[],"quality":{"completeness":0,"ux":0,"security":0,"data":0,"integration":0}}
+{"summary":"...","assumptions":[],"questions":[],"warnings":[],"architecture":{"pages":[{"id":"...","title":"...","purpose":"..."}],"roles":[{"key":"...","name":"...","purpose":"..."}],"dataModel":[{"entity":"...","purpose":"...","source":"registry|tenant|planned"}],"integrations":[],"risks":[]},"definition":{"designSystem":{"standard":"vendorai-mobile-v1","principles":[],"theme":{},"navigation":{},"interaction":{},"states":[],"privacy":{}},"settings":{"runtimeAccess":{"actions":{"enabled":false,"keys":[]}}},"runtime":{"version":1,"defaultPageId":"home","pages":[{"id":"home","title":"Início","icon":"home","navigationEmphasis":false,"blocks":[]}]}},"gaps":[{"type":"action|data_source|integration|permission|component|other","key":"opcional","description":"...","severity":"low|medium|high|critical"}],"recommendedActions":[],"quality":{"completeness":0,"ux":0,"security":0,"data":0,"integration":0}}
 
 Os scores de quality devem ser rigorosos. Um app sem dados, permissões, integrações necessárias, estados de UX ou padrão visual consistente não merece nota alta.`;
 }
@@ -372,17 +536,39 @@ router.post("/admin/app-builder/ai/architect", async (req, res) => {
     if (!targetTenant) return res.status(404).json({ error: "Tenant de contexto não encontrado" });
   }
 
-  const [components, features, actions, dataSources, workflows, policies] = await Promise.all([
+  const [components, features, registeredActions, registeredDataSources, workflows, policies] = await Promise.all([
     db.select({ key: appComponentRegistryTable.key, name: appComponentRegistryTable.name, category: appComponentRegistryTable.category }).from(appComponentRegistryTable).where(eq(appComponentRegistryTable.status, "active")),
     db.select({ key: appFeatureRegistryTable.key, name: appFeatureRegistryTable.name, category: appFeatureRegistryTable.category }).from(appFeatureRegistryTable).where(eq(appFeatureRegistryTable.status, "active")),
-    db.select({ key: appActionRegistryTable.key, name: appActionRegistryTable.name, category: appActionRegistryTable.category, riskLevel: appActionRegistryTable.riskLevel, requiredPermissions: appActionRegistryTable.requiredPermissions }).from(appActionRegistryTable).where(eq(appActionRegistryTable.status, "active")),
-    db.select({ key: appDataSourceRegistryTable.key, name: appDataSourceRegistryTable.name, category: appDataSourceRegistryTable.category }).from(appDataSourceRegistryTable).where(eq(appDataSourceRegistryTable.status, "active")),
+    db.select({
+      key: appActionRegistryTable.key,
+      name: appActionRegistryTable.name,
+      description: appActionRegistryTable.description,
+      category: appActionRegistryTable.category,
+      riskLevel: appActionRegistryTable.riskLevel,
+      inputSchema: appActionRegistryTable.inputSchema,
+      outputSchema: appActionRegistryTable.outputSchema,
+      executorKey: appActionRegistryTable.executorKey,
+      requiredPermissions: appActionRegistryTable.requiredPermissions,
+      metadata: appActionRegistryTable.metadata,
+    }).from(appActionRegistryTable).where(eq(appActionRegistryTable.status, "active")),
+    db.select({
+      key: appDataSourceRegistryTable.key,
+      name: appDataSourceRegistryTable.name,
+      description: appDataSourceRegistryTable.description,
+      category: appDataSourceRegistryTable.category,
+      executorKey: appDataSourceRegistryTable.executorKey,
+      outputSchema: appDataSourceRegistryTable.outputSchema,
+      requiredPermissions: appDataSourceRegistryTable.requiredPermissions,
+      metadata: appDataSourceRegistryTable.metadata,
+    }).from(appDataSourceRegistryTable).where(eq(appDataSourceRegistryTable.status, "active")),
     db.select({ key: appWorkflowRegistryTable.key, name: appWorkflowRegistryTable.name }).from(appWorkflowRegistryTable).where(eq(appWorkflowRegistryTable.status, "active")),
     template?.verticalId
       ? db.select({ key: appAiPoliciesTable.key, name: appAiPoliciesTable.name, riskLevel: appAiPoliciesTable.riskLevel, rules: appAiPoliciesTable.rules }).from(appAiPoliciesTable).where(and(eq(appAiPoliciesTable.status, "active"), eq(appAiPoliciesTable.verticalId, template.verticalId)))
       : db.select({ key: appAiPoliciesTable.key, name: appAiPoliciesTable.name, riskLevel: appAiPoliciesTable.riskLevel, rules: appAiPoliciesTable.rules }).from(appAiPoliciesTable).where(eq(appAiPoliciesTable.status, "active")),
   ]);
 
+  const actions = registeredActions.filter((item) => Boolean(text(item.executorKey)));
+  const dataSources = registeredDataSources.filter((item) => Boolean(text(item.executorKey)));
   const registry = { components, features, actions, dataSources, workflows, aiPolicies: policies };
   const compactContext = { mode, target: targetTenant ?? appContext ?? { ownerType: "internal" }, template, vertical, currentDefinition: baseDefinition, registry };
   const historyText = conversation.length ? `\nHISTÓRICO:\n${conversation.map((item) => `${item.role.toUpperCase()}: ${item.content}`).join("\n")}` : "";
@@ -397,7 +583,9 @@ router.post("/admin/app-builder/ai/architect", async (req, res) => {
   catch { return res.status(502).json({ error: "A IA retornou uma arquitetura inválida. Tente novamente." }); }
 
   const actionKeys = new Set(actions.map((item) => item.key));
-  let findings = validateAiDefinition(proposal.definition, actionKeys);
+  const dataSourceKeys = new Set(dataSources.map((item) => item.key));
+  proposal.definition = normalizeRuntimeDefinition(proposal.definition, actionKeys, dataSourceKeys);
+  let findings = validateAiDefinition(proposal.definition, actionKeys, dataSourceKeys);
   let usage = { inputTokens: first.inputTokens, outputTokens: first.outputTokens, costUsd: first.costUsd, passes: 1 };
 
   if (depth === "deep") {
@@ -407,7 +595,8 @@ router.post("/admin/app-builder/ai/architect", async (req, res) => {
     ], { model: "gpt-4.1", temperature: 0.1, maxTokens: 10000, responseFormat: { type: "json_object" } });
     try {
       proposal = parseAiProposal(second.content);
-      findings = validateAiDefinition(proposal.definition, actionKeys);
+      proposal.definition = normalizeRuntimeDefinition(proposal.definition, actionKeys, dataSourceKeys);
+      findings = validateAiDefinition(proposal.definition, actionKeys, dataSourceKeys);
       usage = { inputTokens: first.inputTokens + second.inputTokens, outputTokens: first.outputTokens + second.outputTokens, costUsd: first.costUsd + second.costUsd, passes: 2 };
     } catch {
       proposal.warnings.push("A segunda passagem não pôde ser validada; foi mantida a proposta da primeira passagem.");
