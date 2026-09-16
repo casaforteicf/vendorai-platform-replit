@@ -1,5 +1,6 @@
 FROM node:24-bookworm-slim
 
+# PR 1552 isolated validation
 WORKDIR /app
 RUN corepack enable
 COPY . .
