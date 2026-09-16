@@ -1,6 +1,7 @@
 import type { MarketingAgentPlan } from '@workspace/vendor-brain/marketing-agent';
 import type { CreativeBrief, DesignQaResult } from '@workspace/vendor-brain/creative-design';
 import { resolveTenantCreativePlan, resolveCreativeDesignQa } from './creativeDesignBridge';
+import { resolveContentContext } from './contentContextLibrary';
 
 export interface MarketingGenerationContext {
   campaignId?: string | null;
@@ -38,7 +39,16 @@ export async function buildContentCreativeRuntime(input: {
     assetIds: input.context.assetIds ?? [],
   };
 
-  const creativePlan = await resolveTenantCreativePlan(input.tenantId, brief);
+  const [creativePlan, libraryContext] = await Promise.all([
+    resolveTenantCreativePlan(input.tenantId, brief),
+    resolveContentContext({
+      tenantId: input.tenantId,
+      query: [input.context.objective, input.context.message, input.context.productName, input.context.visualDirection].filter(Boolean).join(' '),
+      productIds: input.context.productId ? [input.context.productId] : [],
+      limit: 8,
+    }),
+  ]);
+  brief.assetIds = [...new Set([...(brief.assetIds ?? []), ...libraryContext.assetIds])];
   const promptContext = [
     `Campanha: ${input.context.campaignName || input.context.campaignId || 'não vinculada'}`,
     `Objetivo: ${brief.objective}`,
@@ -54,9 +64,11 @@ export async function buildContentCreativeRuntime(input: {
     `Linguagem do canal: ${creativePlan.channel.language}`,
     `Regras do canal: ${creativePlan.channel.rules.join(' | ')}`,
     input.agentPlan?.skills?.length ? `Skills do Marketing Agent: ${input.agentPlan.skills.join(', ')}` : null,
-  ].filter(Boolean).join('\n');
+    '',
+    libraryContext.promptBlock,
+  ].filter((value) => value !== null && value !== undefined).join('\n');
 
-  return { brief, creativePlan, promptContext };
+  return { brief, creativePlan, promptContext, contextSources: libraryContext.sources };
 }
 
 /**
