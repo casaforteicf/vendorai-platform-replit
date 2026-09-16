@@ -21,6 +21,10 @@ const CANONICAL_NAVIGATION_ALIASES = [
  * obvious that they are scoped views rather than a second global module.
  */
 const CONTEXTUAL_LINK_LABELS = [
+  { href: "/leads", label: "Clientes & Leads" },
+  { href: "/usuarios", label: "Equipe & Usuários" },
+  { href: "/base-conhecimento", label: "Conhecimento da Empresa" },
+  { href: "/configuracoes", label: "Configurações Gerais" },
   { href: "/erp", label: "Financeiro & ERP" },
   { href: "/supermercado/config", label: "Config. do Supermercado" },
   { href: "/varejo/produtos", label: "Produtos do Varejo" },
