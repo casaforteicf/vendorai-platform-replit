@@ -6,6 +6,7 @@ import {
   leadsTable,
   produtosCatalogoTable,
 } from "@workspace/db";
+import { listAppRuntimeOrders } from "./app_runtime_commerce.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -163,6 +164,19 @@ const DATA_SOURCE_EXECUTORS: Record<string, DataSourceExecutor> = {
       total: items.length,
       sourceOfTruth: "vendorai.catalog",
     };
+  },
+
+  "commerce.orders": async ({ tenantId, appInstanceId, viewer }) => {
+    return listAppRuntimeOrders({
+      tenantId,
+      appInstanceId,
+      viewer: {
+        id: viewer.id,
+        displayName: viewer.displayName,
+        email: viewer.email,
+        phone: viewer.phone,
+      },
+    });
   },
 };
 
