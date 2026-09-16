@@ -10,6 +10,7 @@ import {
   AppRuntimeCommerceError,
   startAppRuntimeCheckout,
 } from "./app_runtime_commerce.js";
+import { linkCpfToAppUser } from "./customer_purchase_identity.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -48,6 +49,10 @@ const profileUpdateSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "Informe ao menos um campo para atualizar",
   });
+
+const cpfLinkSchema = z.object({
+  cpf: z.string().trim().min(11).max(18),
+}).strict();
 
 function parseProfileUpdate(input: unknown) {
   const parsed = profileUpdateSchema.safeParse(input);
@@ -89,6 +94,38 @@ const ACTION_EXECUTORS: Record<string, ActionExecutor> = {
 
     if (!updated) throw new RuntimeActionInputError("ACTION_TARGET_UNAVAILABLE");
     return updated;
+  },
+
+  "viewer.identity.cpf.link": async (input, { tenantId, viewer }) => {
+    const parsed = cpfLinkSchema.safeParse(input);
+    if (!parsed.success) throw new RuntimeActionInputError("ACTION_INPUT_INVALID");
+    try {
+      return await linkCpfToAppUser({
+        tenantId,
+        appUserId: viewer.id,
+        leadId: viewer.leadId,
+        cpf: parsed.data.cpf,
+        verifiedSource: "app_user",
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "CPF_LINK_FAILED";
+      if (code === "CPF_INVALID") throw new RuntimeActionInputError("ACTION_INPUT_INVALID");
+      if (code === "CPF_ALREADY_LINKED") {
+        throw new AppRuntimeCommerceError(
+          "cpf_already_linked",
+          "conflict",
+          "Este CPF já está vinculado a outra identidade deste estabelecimento.",
+        );
+      }
+      if (code === "CUSTOMER_IDENTITY_SECRET_NOT_CONFIGURED" || code.includes("MASTER_ENCRYPTION_KEY")) {
+        throw new AppRuntimeCommerceError(
+          "identity_unavailable",
+          "unavailable",
+          "A identificação por CPF está temporariamente indisponível.",
+        );
+      }
+      throw error;
+    }
   },
 
   "commerce.checkout.start": async (input, { tenantId, appInstanceId, viewer }) => {
@@ -138,7 +175,7 @@ export async function loadInteractiveRuntimeActions(
   return new Map(
     rows.flatMap((row) => {
       // Somente ações de baixo risco podem virar formulário genérico do Runtime.
-      // Checkout é medium e só é disparado pelo componente de compra, após confirmação explícita.
+      // Checkout e vínculo de CPF são medium e só são disparados por componentes dedicados.
       if (
         row.riskLevel !== "low" ||
         !row.executorKey ||
@@ -185,8 +222,12 @@ export async function executeRuntimeAction(
     .limit(1);
 
   if (!action?.executorKey) return { actionKey, status: "not_found" };
+  const allowedMediumExecutors = new Set([
+    "commerce.checkout.start",
+    "viewer.identity.cpf.link",
+  ]);
   const allowedRisk = action.riskLevel === "low"
-    || (action.riskLevel === "medium" && action.executorKey === "commerce.checkout.start");
+    || (action.riskLevel === "medium" && allowedMediumExecutors.has(action.executorKey));
   if (!allowedRisk) return { actionKey, status: "forbidden" };
 
   const permissionSet = new Set(context.viewer.permissions);
