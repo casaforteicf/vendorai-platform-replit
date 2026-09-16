@@ -4,6 +4,7 @@ import { db, archAiRendersTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
 import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-spec.js";
+import { buildArqdorProjectDocuments } from "../lib/arqdor-project-documents.js";
 import { archAiRenderRouter as legacyArchAiRenderRouter } from "./arch_ai_render_legacy.js";
 
 export const archAiRenderRouter = Router();
@@ -55,8 +56,6 @@ function normalizeSelectionMetadata(body: any) {
     }));
 }
 
-// O pipeline legado continua responsável por gerar/processar a imagem.
-// Estes interceptadores persistem metadados sem duplicar o pipeline.
 archAiRenderRouter.post("/arch/ai-render", authenticate, (req, res, next) => {
   const tid = tenantId(req);
   captureJson(req, res, async (body) => {
@@ -111,8 +110,6 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, (req, res, 
   }, next);
 });
 
-// Fonte oficial do histórico persistente. Registrada antes do router legado para
-// expor todos os metadados adicionados à tabela sem alterar o pipeline grande.
 archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, res: Response) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
@@ -163,6 +160,19 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       version_number: index + 1,
     })),
   });
+});
+
+archAiRenderRouter.get("/arch/projects/:projectId/documents", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const projectId = String(req.params["projectId"] ?? "").trim();
+  if (!projectId) return res.status(400).json({ success: false, error: "projectId obrigatório" });
+
+  const documents = await buildArqdorProjectDocuments({ tenantId: tid, projectId });
+  if (!documents) return res.status(404).json({ success: false, error: "Projeto não encontrado" });
+
+  return res.json({ success: true, ...documents });
 });
 
 archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request, res: Response) => {
