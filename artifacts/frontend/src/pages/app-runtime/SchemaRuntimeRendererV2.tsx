@@ -16,6 +16,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import RuntimeCommerceCatalog from "./RuntimeCommerceCatalog";
+import RuntimeCommerceCart from "./RuntimeCommerceCart";
+import { readRuntimeCart, RUNTIME_CART_EVENT } from "./runtimeCommerceState";
 
 type JsonObject = Record<string, unknown>;
 
@@ -106,12 +108,23 @@ function normalized(value: string | undefined) {
   return (value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .trim();
 }
 
 function isCatalogPage(page: RuntimePage) {
-  const key = `${normalized(page.id)} ${normalized(page.title)}`;
-  return ["catalog", "catalogo", "produto", "products", "loja", "store"].some((term) => key.includes(term));
+  const id = normalized(page.id);
+  const title = normalized(page.title);
+  return ["catalog", "catalogo", "products", "produtos"].includes(id)
+    || title.includes("catalogo")
+    || title === "produtos"
+    || title === "products";
+}
+
+function isCartPage(page: RuntimePage) {
+  const id = normalized(page.id);
+  const title = normalized(page.title);
+  return ["cart", "carrinho"].includes(id) || title.includes("carrinho") || title === "cart";
 }
 
 function toneClasses(tone: unknown) {
@@ -334,8 +347,20 @@ function RuntimeBlockView({ block, lang, actionClient }: { block: RuntimeBlock; 
 export default function SchemaRuntimeRendererV2({ payload, lang, actionClient }: Props) {
   const copy = COPY[lang];
   const [livePayload, setLivePayload] = useState(payload);
+  const [cartCount, setCartCount] = useState(() => readRuntimeCart(payload.app.id).reduce((sum, item) => sum + item.quantity, 0));
 
   useEffect(() => { setLivePayload(payload); }, [payload]);
+
+  useEffect(() => {
+    const refresh = () => setCartCount(readRuntimeCart(livePayload.app.id).reduce((sum, item) => sum + item.quantity, 0));
+    refresh();
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ appId?: string }>).detail;
+      if (!detail?.appId || detail.appId === livePayload.app.id) refresh();
+    };
+    window.addEventListener(RUNTIME_CART_EVENT, handler);
+    return () => window.removeEventListener(RUNTIME_CART_EVENT, handler);
+  }, [livePayload.app.id]);
 
   const effectiveActionClient = useMemo<RuntimeActionClient | undefined>(() => {
     if (actionClient) return actionClient;
@@ -379,6 +404,7 @@ export default function SchemaRuntimeRendererV2({ payload, lang, actionClient }:
   if (!page) return <div className="rounded-2xl border border-dashed bg-white p-10 text-center text-sm text-slate-500"><LayoutGrid className="mx-auto mb-3 h-6 w-6 text-slate-400" />{copy.empty}</div>;
 
   const mobileNavigation = navigation.slice(0, 5);
+  const structuredCommercePage = isCatalogPage(page) || isCartPage(page);
 
   return (
     <div className="space-y-5 pb-24 sm:pb-0">
@@ -387,17 +413,20 @@ export default function SchemaRuntimeRendererV2({ payload, lang, actionClient }:
       <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{page.title}</h1>{page.subtitle && <p className="mt-1 text-sm leading-6 text-slate-500">{page.subtitle}</p>}</div>
 
       {isCatalogPage(page) && <RuntimeCommerceCatalog appId={livePayload.app.id} lang={lang} />}
+      {isCartPage(page) && <RuntimeCommerceCart appId={livePayload.app.id} lang={lang} />}
 
-      <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} />) : !isCatalogPage(page) ? <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div> : null}</div>
+      <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} />) : !structuredCommercePage ? <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div> : null}</div>
 
       {mobileNavigation.length > 1 && (
         <nav aria-label={copy.navigation} className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 px-2 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.45rem)" }}>
           <div className="mx-auto grid max-w-lg gap-1" style={{ gridTemplateColumns: `repeat(${mobileNavigation.length}, minmax(0, 1fr))` }}>
             {mobileNavigation.map((item) => {
               const active = item.pageId === page.id;
+              const itemPage = pages.find((candidate) => candidate.id === item.pageId);
+              const cartItem = itemPage ? isCartPage(itemPage) : false;
               return (
-                <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} className="flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[10px] font-medium transition" style={active ? { color: "var(--app-runtime-primary, #0f172a)" } : { color: "#64748b" }}>
-                  <NavGlyph label={item.label} icon={item.icon} />
+                <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} className="relative flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[10px] font-medium transition" style={active ? { color: "var(--app-runtime-primary, #0f172a)" } : { color: "#64748b" }}>
+                  <span className="relative"><NavGlyph label={item.label} icon={item.icon} />{cartItem && cartCount > 0 && <span className="absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white" style={{ backgroundColor: "var(--app-runtime-primary, #0f172a)" }}>{cartCount > 99 ? "99+" : cartCount}</span>}</span>
                   <span className="mt-1 max-w-full truncate">{item.label}</span>
                 </button>
               );
