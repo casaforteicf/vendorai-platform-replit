@@ -1,8 +1,8 @@
-# VendorAI App Builder — Mobile App Standard V2.1
+# VendorAI App Builder — Mobile App Standard V2.2
 
 ## Objetivo
 
-Padronizar todos os apps mobile criados pelo App Builder em uma experiência consistente, moderna, white-label e preparada desde a arquitetura para comércio, ERP, estoque, financeiro e VendorAI.
+Padronizar todos os apps mobile criados pelo App Builder em uma experiência consistente, moderna, white-label e preparada desde a arquitetura para comércio, ERP, PDV, estoque, financeiro e VendorAI.
 
 O padrão visual parte de uma linguagem de apps de varejo modernos: navegação inferior persistente, Home com informação útil e acesso rápido, catálogos em grade, busca, categorias, histórico, perfil, notificações, menu e estados vazios bem definidos. O padrão é universal e não depende do segmento.
 
@@ -27,299 +27,177 @@ O tenant pode mudar marca, cores, conteúdo, ordem e capacidades habilitadas. N�
 - texto + ícone;
 - item ativo sempre evidente;
 - respeita safe-area;
-- conteúdo tem padding inferior suficiente para nunca ficar escondido;
-- carrinho pode exibir badge de quantidade.
+- conteúdo tem padding inferior suficiente para nunca ficar escondido.
 
-O Runtime Renderer V2 já aplica a navegação inferior no mobile e preserva a navegação horizontal no desktop.
+## IDs canônicos
 
-## IDs canônicos de páginas commerce
+Quando uma tela existir, o Arquiteto IA deve preferir `home`, `catalog`, `search`, `categories`, `product-detail`, `cart`, `checkout`, `orders`, `order-detail`, `promotions`, `stores`, `profile`, `notifications` e `menu`.
 
-Quando uma tela existir, o Arquiteto IA deve preferir:
+As páginas `catalog`, `cart` e `orders` ativam componentes estruturados do Runtime.
 
-- `home`
-- `catalog`
-- `search`
-- `categories`
-- `product-detail`
-- `cart`
-- `checkout`
-- `orders`
-- `order-detail`
-- `promotions`
-- `stores`
-- `profile`
-- `notifications`
-- `menu`
+## Catálogo real
 
-As páginas `catalog`, `cart` e `orders` ativam os componentes commerce estruturados oficiais do Runtime.
+A data source `catalog.products` lê somente produtos ativos do catálogo real do tenant e retorna nome, SKU, marca, categoria, mídia, preço, promoção, estoque/disponibilidade, prazo e destaque. O frontend nunca escolhe o tenant da consulta.
 
-## Padrões oficiais de tela
+## Compras realizadas no app
 
-1. Home
-2. Busca
-3. Categorias
-4. Catálogo / produtos / serviços
-5. Detalhe de produto ou serviço
-6. Carrinho
-7. Checkout
-8. Pedidos / compras
-9. Detalhe de pedido
-10. Promoções / campanhas / conteúdo
-11. Unidades / lojas / mapa
-12. Perfil
-13. Notificações
-14. Menu / conta / preferências
-15. Empty state
-16. Loading state
-17. Error / retry state
+O carrinho é persistente por App Product e o fechamento usa a action `commerce.checkout.start`.
 
-Nem todo app precisa de todas as telas. O Arquiteto IA escolhe somente as necessárias ao objetivo do produto.
+No servidor, o checkout:
 
-## Componentes oficiais
+- revalida o catálogo;
+- usa preço atual e promoção vigente;
+- valida e reserva estoque local controlado;
+- usa idempotência;
+- cria cobrança no Asaas configurado para o tenant;
+- acompanha pagamento e recorrência pelo lifecycle já existente;
+- registra eventos no outbox de commerce.
 
-- AppHeader
-- HeroBannerCarousel
-- SearchBar
-- CategoryScroller
-- QuickActions
-- ProductGrid
-- ProductCard
-- ProductDetail
-- Cart
-- Checkout
-- PurchaseHistory
-- StoreCard
-- MetricCard
-- NotificationList
-- ProfileFields
-- ContentCarousel
-- EmptyState
-- BottomNavigation
+A regra é fixa: confirmou a compra, o checkout é criado automaticamente. Não existe um toggle por produto para desativar essa geração.
 
-A evolução do Runtime deve priorizar componentes oficiais em vez de HTML livre ou layouts arbitrários por tenant.
+## Customer Identity — CPF
 
-## Catálogo real no Runtime
+O CPF é usado como identificador de correspondência, não como chave primária técnica.
 
-A V2.1 possui a data source oficial `catalog.products`.
+O backend:
 
-Ela lê somente produtos ativos do catálogo real do tenant e retorna:
+1. normaliza e valida o CPF;
+2. cria um fingerprint HMAC-SHA256 usando segredo da plataforma;
+3. mantém o documento bruto cifrado usando a infraestrutura de criptografia existente;
+4. faz matching sempre dentro do tenant;
+5. nunca publica CPF bruto no histórico, analytics ou eventos de commerce.
 
-- id, nome, SKU e marca;
-- categoria;
-- imagem;
-- preço base e preço promocional;
-- validade da promoção;
-- disponibilidade e estoque quando controlado;
-- prazo de entrega;
-- destaque.
+A action oficial `viewer.identity.cpf.link` permite ao App User vincular explicitamente o próprio CPF. A ação é de risco médio e precisa estar habilitada na versão publicada.
 
-O executor é allowlisted no backend e sempre usa o `tenantId` do App User autenticado. O frontend nunca informa o tenant da consulta.
+Se já houver compras externas com o mesmo fingerprint, elas são associadas ao App User no momento do vínculo e passam a aparecer em `Minhas compras`.
 
-A tela `catalog` consome essa data source pela rota autenticada do App Runtime e oferece busca, filtro por categoria, preço/promoção, situação do estoque e detalhe de produto. Não existe cópia paralela do catálogo no app.
+Se o CRM já possuir o mesmo CPF em `leads.documento` e o App User estiver ligado ao contato, o Identity Resolver pode associar a compra ao cliente existente.
 
-## Carrinho e checkout
+## Compras realizadas fora do app
 
-O carrinho pertence ao App Product e é persistido por App Instance no dispositivo. Preço e disponibilidade não são tratados como autoridade no navegador: antes de gerar cobrança, o backend consulta novamente o catálogo oficial.
+Uma venda também pode nascer em:
 
-A action oficial é `commerce.checkout.start`.
+- ERP;
+- PDV / frente de caixa;
+- e-commerce;
+- marketplace;
+- integração própria do cliente.
 
-Regras obrigatórias:
+O serviço canônico `ingestExternalPurchase()` recebe a venda já autenticada pelo adapter e normaliza os dados para `external_purchases`.
 
-- `riskLevel=medium`;
-- não pode aparecer como formulário genérico;
-- exige `confirmPurchase=true`;
-- exige `idempotencyKey`;
-- precisa estar explicitamente habilitada em `definition.settings.runtimeAccess.actions.keys` da versão publicada;
-- recebe somente SKU e quantidade como itens do carrinho;
-- revalida produto ativo, preço, promoção, recorrência e estoque no backend;
-- usa a conta Asaas do tenant quando disponível;
-- reutiliza o lifecycle/webhook `tenant_checkout:` já existente;
-- ao confirmar a compra, o checkout é gerado automaticamente;
-- não existe configuração por produto para desligar a geração automática do checkout.
+O contrato mínimo inclui:
 
-### Reserva de estoque local
-
-Quando `produtos_catalogo.controla_estoque=true`, a reserva é feita atomicamente antes da criação da cobrança. O UPDATE só acontece se ainda houver quantidade suficiente naquele instante.
-
-Em falha de criação da cobrança ou cancelamento, a reserva é devolvida uma única vez. Status vencido não libera a reserva automaticamente, porque uma cobrança vencida ainda pode ser confirmada posteriormente pelo provedor; a política de expiração/cancelamento definitivo deve ser tratada por workflow próprio.
-
-Quando um ERP externo for a autoridade de estoque, a reserva externa deve ser feita pelo adapter oficial do ERP. A reserva local atual não deve ser apresentada como substituta de uma reserva no ERP.
-
-## Pedidos e histórico
-
-A data source `commerce.orders` retorna somente pedidos do App User autenticado dentro da App Instance e tenant atuais.
-
-A tela `orders` exibe:
-
-- número do pedido;
-- data;
+- `sourceKey` e `sourceKind`;
+- `externalOrderId`;
+- CPF, quando informado pelo consumidor;
+- data/hora da venda;
 - itens e quantidades;
-- valor total;
-- status do pagamento;
-- link para retomar pagamento quando aplicável.
+- subtotal, desconto e total;
+- loja/unidade;
+- terminal/caixa;
+- vendedor, quando disponível;
+- meio de pagamento;
+- status.
 
-Pedidos pendentes são atualizados periodicamente no Runtime. O status financeiro continua sendo atualizado pelo webhook do provedor.
+Não foi criado endpoint público genérico sem autenticação. Cada adapter de ERP/PDV deve autenticar seu fornecedor e somente então chamar o serviço interno de ingestão.
 
-## Personalização white-label
+## Idempotência de compras externas
 
-A identidade é expressa por tokens, não por CSS livre:
+A chave lógica é:
 
-```json
-{
-  "designSystem": {
-    "standard": "vendorai-mobile-v2",
-    "themeTokens": {
-      "brandPrimary": "#...",
-      "brandSecondary": "#...",
-      "surface": "#...",
-      "text": "#..."
-    },
-    "density": "comfortable",
-    "radius": "large",
-    "typography": "system",
-    "iconStyle": "outline"
-  }
-}
-```
+`tenant + sourceKey + externalOrderId`
+
+O mesmo evento reenviado não cria outra compra. Uma atualização posterior pode mudar a mesma venda para `cancelled`, `refunded`, `partially_refunded` ou `voided`.
+
+## Compra antes do cadastro no app
+
+Se a compra externa chegar com CPF e ainda não existir App User correspondente:
+
+1. a venda é preservada;
+2. fica relacionada ao fingerprint do CPF;
+3. não é atribuída arbitrariamente a outro usuário;
+4. quando o consumidor vincula o mesmo CPF no app, as compras pendentes daquele tenant são reclamadas automaticamente;
+5. a tela `Minhas compras` é recarregada com o histórico anterior.
+
+## Histórico unificado
+
+A data source `commerce.orders` agora combina:
+
+- checkout/pedido feito dentro do App Product;
+- compras externas vinculadas ao mesmo App User.
+
+A UI mostra status, itens, total, data, origem (`App`, `PDV/Caixa`, `ERP`, `E-commerce`, `Marketplace` etc.), identificador externo e loja quando disponível.
+
+O consumidor passa a enxergar o relacionamento inteiro com a empresa, e não apenas o que comprou dentro do aplicativo.
+
+## Outbox e VendorAI
+
+Tanto compras internas quanto externas alimentam `app_runtime_commerce_events`.
+
+Compras externas emitem eventos como:
+
+- `commerce.external_purchase.created`;
+- `commerce.external_purchase.paid`;
+- `commerce.external_purchase.cancelled`;
+- `commerce.external_purchase.refunded`;
+- `commerce.external_purchase.partially_refunded`;
+- `commerce.external_purchase.voided`.
+
+O outbox é o contrato para adapters e consumidores de CRM, Customer Intelligence, fidelidade/cashback, marketing, financeiro, fiscal, ERP, agentes e automações.
+
+## Source of truth
+
+Cada integração deve declarar autoridade por entidade. Exemplos:
+
+- ERP/PDV pode ser autoridade da venda, estoque, fiscal e financeiro;
+- App Product é autoridade da sessão/carrinho;
+- provedor de pagamento é autoridade do status da transação;
+- VendorAI é autoridade de lead, inteligência, segmentação e automação.
+
+Quando ERP ou PDV for a autoridade da venda, VendorAI mantém uma projeção operacional e eventos. Cancelamentos/estornos devem ser confirmados pela fonte oficial ou por um adapter oficial.
+
+## Segurança
+
+- isolamento por tenant;
+- CPF bruto cifrado em repouso;
+- matching por HMAC, não por hash simples;
+- CPF bruto fora de analytics e outbox;
+- nenhuma origem externa pode selecionar outro tenant por payload;
+- compras externas deduplicadas;
+- ações sensíveis não viram formulário genérico;
+- segredos fora de templates;
+- nenhuma publicação automática pelo Arquiteto IA.
 
 ## Arquitetura de integração obrigatória
 
-Todo app deve nascer com `definition.integrationArchitecture`, mesmo quando a primeira versão ainda não utiliza todos os domínios.
+Toda geração mobile deve definir `integrationArchitecture` com os domínios necessários: catálogo, estoque, commerce, financeiro, ERP/PDV, fiscal, VendorAI, identidade, engajamento, localização e analytics.
 
-### Catálogo
-Entidades: produto/serviço, categoria, mídia, atributos, preço, preço promocional e condições comerciais.
+Para cada domínio registrar `sourceOfTruth`, direção, provider/registry, entidades, eventos, actions, permissões, modo de sincronização, health check e fallback. Capacidade inexistente deve continuar como `gap`.
 
-### Estoque
-Entidades: saldo, disponibilidade, reserva, depósito/unidade e prazo.
+## Status V2.2
 
-### Compras / comércio
-Entidades: carrinho, checkout, pedido, item, status, entrega/retirada, devolução e cancelamento.
+Implementado na branch atual:
 
-### Financeiro
-Entidades: pagamento, cobrança, contas a receber, estorno, cashback, voucher e conciliação quando aplicável.
+1. padrão visual Mobile V2.2 no Arquiteto IA;
+2. catálogo real;
+3. ProductGrid/ProductCard e detalhe;
+4. carrinho persistente;
+5. checkout automático real com Asaas;
+6. reserva de estoque local controlado;
+7. pedidos e lifecycle financeiro;
+8. Customer Identity por CPF protegido;
+9. action de vínculo de CPF;
+10. ingestão canônica de compras externas;
+11. deduplicação por sistema de origem e ID da venda;
+12. histórico unificado de compras;
+13. origem da compra na interface;
+14. outbox para compras internas e externas.
 
-### ERP
-Integração por contrato de capacidade, não por telas específicas do fornecedor. Deve permitir mapear pelo menos clientes, produtos, preços, estoque, pedidos, fiscal e financeiro.
+Ainda dependem do fornecedor escolhido:
 
-### Fiscal
-NF/documento fiscal, status, chave/identificador e comprovantes permitidos.
-
-### VendorAI
-O app publica eventos e dados úteis para CRM, Customer Intelligence, automações, agentes, marketing, suporte e analytics. O VendorAI devolve ações/inteligência sem se tornar fonte duplicada do ERP quando o ERP for a autoridade.
-
-### Identidade / LGPD
-App User, perfil, consentimentos, preferências, exportação quando aplicável e exclusão de conta.
-
-### Engajamento
-Push, in-app, e-mail e WhatsApp conforme consentimento e disponibilidade do canal.
-
-### Localização
-Unidades, distância, mapa, área de atendimento, retirada e disponibilidade local quando aplicável.
-
-### Analytics
-Eventos mínimos: app_open, screen_view, search, category_view, product_view, add_to_cart, checkout_started, purchase_completed, promotion_view, notification_opened, profile_updated e support_requested quando aplicável.
-
-## Contrato de cada integração
-
-Cada domínio deve registrar no mínimo:
-
-```json
-{
-  "domain": "inventory",
-  "sourceOfTruth": "erp",
-  "direction": "bidirectional",
-  "provider": "registry-key-or-gap",
-  "entities": ["stock", "availability"],
-  "events": ["stock.changed"],
-  "actions": ["inventory.reserve"],
-  "permissions": ["inventory.read"],
-  "syncMode": "webhook+reconciliation",
-  "healthCheck": true,
-  "fallback": "read_only_cached"
-}
-```
-
-## Autoridade dos dados
-
-Cada entidade precisa de uma fonte oficial. Exemplos:
-
-- ERP pode ser autoridade de estoque, fiscal e contas;
-- App Product pode ser autoridade do carrinho e sessão;
-- VendorAI pode ser autoridade de lead, inteligência, segmentação e automação;
-- provedor de pagamento pode ser autoridade do status financeiro da transação.
-
-Não manter duas fontes de verdade concorrentes.
-
-## Outbox de commerce
-
-A V2.1 cria `app_runtime_commerce_events` como outbox transacional para desacoplar o App Product dos sistemas externos.
-
-Eventos de criação e mudança de status do checkout/pedido são registrados com tenant, App Instance, App User, pedido e snapshot dos dados relevantes.
-
-Adapters de ERP, financeiro, fiscal, CRM/Customer Intelligence, automações e analytics devem consumir esse outbox, marcar entrega e manter tentativa/erro. O fato de o evento existir no outbox não significa que um adapter externo já esteja implementado.
-
-## Sincronização e segurança
-
-- escrita externa sempre idempotente;
-- webhook preferido para mudanças externas;
-- reconciliação periódica para corrigir perdas de evento;
-- log de sincronização e erro obrigatório;
-- health status por conexão;
-- segredos fora da definição do template;
-- isolamento por tenant;
-- permissões explícitas por Data Source e Action;
-- sem SQL, URL, código ou segredo arbitrário em template;
-- checkout resolve tenant/app/user pelo token autenticado;
-- preços e estoque são revalidados no servidor;
-- checkout medium-risk exige confirmação explícita.
-
-## App Product × App Admin × VendorAI SaaS
-
-O padrão mantém o modelo existente:
-
-`APP PRODUCT -> eventos/dados -> VENDORAI -> inteligência/automação -> APP PRODUCT`
-
-O App Admin administra o próprio produto: catálogo, conteúdo, usuários, pedidos, agenda, notificações e configurações que façam parte do produto vendido. O VendorAI SaaS amplia a operação com CRM, marketing, IA, automação e inteligência. ERP e financeiro permanecem integrados por source-of-truth definido.
-
-## Comportamento do Arquiteto IA
-
-A partir deste padrão, toda geração/revisão mobile deve incluir:
-
-- `definition.designSystem`;
-- `definition.mobileShell`;
-- `definition.integrationArchitecture`;
-- `definition.analyticsPlan`;
-- `definition.offlinePolicy`;
-- `definition.productModel`;
-- `definition.valueAgent`.
-
-Para apps commerce, quando a compra for parte do produto, o Arquiteto deve incluir `commerce.checkout.start` nas actions permitidas e usar `catalog.products` e `commerce.orders` quando as telas correspondentes existirem.
-
-A IA deve usar registries oficiais. Capacidade não encontrada vira `gap`; nunca é considerada disponível por suposição.
-
-## Status de implementação
-
-Implementado na V2.1:
-
-1. padrão obrigatório no Arquiteto IA;
-2. IDs canônicos de páginas commerce;
-3. bottom navigation mobile real com safe-area e badge do carrinho;
-4. manutenção da navegação desktop existente;
-5. data source `catalog.products` tenant-scoped;
-6. busca, categorias e ProductGrid/ProductCard alimentados pelo catálogo real;
-7. detalhe de produto e carrinho persistente;
-8. preço promocional e disponibilidade de estoque;
-9. action `commerce.checkout.start` com confirmação explícita e idempotência;
-10. criação de cobrança Asaas usando a conta do tenant e lifecycle existente;
-11. reserva atômica e liberação segura de estoque local controlado;
-12. data source `commerce.orders` e histórico de compras;
-13. outbox de eventos commerce para futuros adapters externos.
-
-Ainda pendente — não simular como concluído:
-
-1. consumidor do outbox para ERP e reserva/baixa no ERP quando ele for source-of-truth;
-2. integração fiscal/NF;
-3. ações de estorno, devolução e cancelamento operacional pelo App Product;
-4. consumidor do outbox para financeiro/conciliação adicional;
-5. consumidor do outbox para CRM/Customer Intelligence/automações VendorAI;
-6. perfil expandido com CPF, endereço e campos específicos por segmento.
+- adapter/webhook específico do ERP;
+- adapter do PDV/frente de caixa;
+- adapter do e-commerce/marketplace;
+- fiscal/NF quando a fonte oficial for externa;
+- regras específicas de cashback/pontos;
+- APIs de estorno/devolução do fornecedor quando aplicável.
