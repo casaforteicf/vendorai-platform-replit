@@ -261,7 +261,7 @@ export default function AppRuntimeShell({ appId }: Props) {
     const previous = document.documentElement.style.getPropertyValue("--app-runtime-primary");
     document.documentElement.style.setProperty("--app-runtime-primary", identity.primary);
     return () => {
-      if (previous) document.documentElement.style.setPropertyValue?.("--app-runtime-primary", previous);
+      if (previous) document.documentElement.style.setProperty("--app-runtime-primary", previous);
       else document.documentElement.style.removeProperty("--app-runtime-primary");
     };
   }, [identity.primary]);
