@@ -25,7 +25,7 @@ type BlockType = "hero" | "text" | "callout" | "metrics" | "list" | "cards" | "d
 type Device = "desktop" | "tablet" | "mobile";
 type VisibilityForm = { roles: string; permissions: string; permissionMode: "all" | "any" };
 type BlockForm = { id: string; type: BlockType; visibility: VisibilityForm; props: JsonObject };
-type PageForm = { id: string; title: string; subtitle: string; visibility: VisibilityForm; blocks: BlockForm[] };
+type PageForm = { id: string; title: string; subtitle: string; icon: string; visibility: VisibilityForm; blocks: BlockForm[] };
 type TemplateLike = { id: string; name: string };
 type TemplateVersion = { id: string; templateId: string; version: number; status: string; definition: JsonObject };
 type Props = { template: TemplateLike | null; token: string | null | undefined; open: boolean; onOpenChange: (open: boolean) => void };
@@ -112,6 +112,7 @@ function normalize(definition: JsonObject) {
     id: str(page.id) || `page-${pageIndex + 1}`,
     title: str(page.title) || `Página ${pageIndex + 1}`,
     subtitle: str(page.subtitle),
+    icon: str(page.icon),
     visibility: visibilityFrom(page.visibility),
     blocks: asObjects(page.blocks).map((block, blockIndex) => ({
       id: str(block.id) || `block-${blockIndex + 1}`,
@@ -129,7 +130,7 @@ function toBlock(block: BlockForm): JsonObject {
 }
 function toPage(page: PageForm): JsonObject {
   const visibility = visibilityTo(page.visibility);
-  return { id: page.id.trim(), title: page.title.trim(), ...(page.subtitle.trim() ? { subtitle: page.subtitle.trim() } : {}), blocks: page.blocks.map(toBlock), ...(visibility ? { visibility } : {}) };
+  return { id: page.id.trim(), title: page.title.trim(), ...(page.subtitle.trim() ? { subtitle: page.subtitle.trim() } : {}), ...(page.icon.trim() ? { icon: page.icon.trim() } : {}), blocks: page.blocks.map(toBlock), ...(visibility ? { visibility } : {}) };
 }
 
 export default function TemplateRuntimeEditorDialog({ template, token, open, onOpenChange }: Props) {
@@ -186,7 +187,7 @@ export default function TemplateRuntimeEditorDialog({ template, token, open, onO
     const version = versions.find((item) => item.id === versionId); if (version) hydrate(version.definition ?? {}, version.id);
   }
   function addPage() {
-    const next: PageForm = { id: id("page"), title: "Nova página", subtitle: "", visibility: { ...EMPTY_VISIBILITY }, blocks: [] };
+    const next: PageForm = { id: id("page"), title: "Nova página", subtitle: "", icon: "", visibility: { ...EMPTY_VISIBILITY }, blocks: [] };
     setPages((current) => [...current, next]); setSelectedPageId(next.id); setSelectedBlockId(""); if (!defaultPageId) setDefaultPageId(next.id);
   }
   function addBlock(type: BlockType) {
@@ -248,7 +249,7 @@ export default function TemplateRuntimeEditorDialog({ template, token, open, onO
       {loading ? <div className="flex min-h-[560px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div> : <div className="grid min-h-[650px] gap-3 xl:grid-cols-[210px_220px_minmax(420px,1fr)_300px]">
         <aside className="rounded-xl border bg-muted/10 p-3">
           <div className="flex items-center justify-between"><p className="text-sm font-semibold">Páginas</p><Button size="icon" variant="outline" className="h-8 w-8" onClick={addPage}><Plus className="h-4 w-4" /></Button></div>
-          <div className="mt-3 space-y-2">{pages.map((item) => <div key={item.id} draggable onDragStart={() => setDragPageId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropPage(item.id)} className={`rounded-lg border p-2 ${item.id === selectedPageId ? "border-primary bg-primary/5" : "bg-card"}`}><button className="flex w-full items-center gap-2 text-left" onClick={() => { setSelectedPageId(item.id); setSelectedBlockId(item.blocks[0]?.id ?? ""); }}><GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{item.id}</span></span></button></div>)}</div>
+          <div className="mt-3 space-y-2">{pages.map((item) => <div key={item.id} draggable onDragStart={() => setDragPageId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropPage(item.id)} className={`rounded-lg border p-2 ${item.id === selectedPageId ? "border-primary bg-primary/5" : "bg-card"}`}><button className="flex w-full items-center gap-2 text-left" onClick={() => { setSelectedPageId(item.id); setSelectedBlockId(item.blocks[0]?.id ?? ""); }}><GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{item.icon ? `${item.id} · ${item.icon}` : item.id}</span></span></button></div>)}</div>
         </aside>
 
         <aside className="rounded-xl border bg-muted/10 p-3">
@@ -275,7 +276,7 @@ export default function TemplateRuntimeEditorDialog({ template, token, open, onO
 }
 
 function PageProperties({ page, defaultPageId, pages, onPatch, onDefault, onDelete }: { page: PageForm; defaultPageId: string; pages: PageForm[]; onPatch: (patch: Partial<PageForm>) => void; onDefault: (value: string) => void; onDelete: () => void }) {
-  return <div className="mt-4 space-y-3"><label className="block space-y-1"><span className="text-xs">ID</span><Input value={page.id} onChange={(e) => onPatch({ id: e.target.value })} /></label><label className="block space-y-1"><span className="text-xs">Título</span><Input value={page.title} onChange={(e) => onPatch({ title: e.target.value })} /></label><label className="block space-y-1"><span className="text-xs">Subtítulo</span><Input value={page.subtitle} onChange={(e) => onPatch({ subtitle: e.target.value })} /></label><label className="block space-y-1"><span className="text-xs">Página inicial</span><Select value={defaultPageId || page.id} onValueChange={onDefault}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{pages.map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select></label><Visibility value={page.visibility} onChange={(visibility) => onPatch({ visibility })} /><Button variant="destructive" className="w-full" onClick={onDelete}><Trash2 className="mr-2 h-4 w-4" />Remover página</Button></div>;
+  return <div className="mt-4 space-y-3"><label className="block space-y-1"><span className="text-xs">ID</span><Input value={page.id} onChange={(e) => onPatch({ id: e.target.value })} /></label><label className="block space-y-1"><span className="text-xs">Título</span><Input value={page.title} onChange={(e) => onPatch({ title: e.target.value })} /></label><label className="block space-y-1"><span className="text-xs">Subtítulo</span><Input value={page.subtitle} onChange={(e) => onPatch({ subtitle: e.target.value })} /></label><label className="block space-y-1"><span className="text-xs">Ícone da navegação</span><Input value={page.icon} onChange={(e) => onPatch({ icon: e.target.value })} placeholder="Ex.: home, search, tag, bell, user, menu" /><span className="text-[10px] leading-4 text-muted-foreground">Usado na barra inferior quando não houver navegação personalizada.</span></label><label className="block space-y-1"><span className="text-xs">Página inicial</span><Select value={defaultPageId || page.id} onValueChange={onDefault}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{pages.map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select></label><Visibility value={page.visibility} onChange={(visibility) => onPatch({ visibility })} /><Button variant="destructive" className="w-full" onClick={onDelete}><Trash2 className="mr-2 h-4 w-4" />Remover página</Button></div>;
 }
 
 function BlockProperties({ block, onPatch, onProp, onDelete }: { block: BlockForm; onPatch: (patch: Partial<BlockForm>) => void; onProp: (key: string, value: unknown) => void; onDelete: () => void }) {
