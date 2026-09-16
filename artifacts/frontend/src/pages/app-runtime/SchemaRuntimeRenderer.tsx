@@ -378,7 +378,7 @@ export default function SchemaRuntimeRenderer({ payload, lang, actionClient }: P
   const navigation = useMemo(() => {
     const configured = (livePayload.app.navigation ?? []).filter((item) => availableIds.has(item.pageId));
     if (configured.length > 0) return configured;
-    return pages.slice(0, 5).map((page) => ({ id: `page-${page.id}`, label: page.title, pageId: page.id, icon: page.icon, emphasis: false }));
+    return pages.map((page) => ({ id: `page-${page.id}`, label: page.title, pageId: page.id, icon: page.icon, emphasis: false }));
   }, [availableIds, livePayload.app.navigation, pages]);
   const initial = livePayload.runtime.defaultPageId && availableIds.has(livePayload.runtime.defaultPageId) ? livePayload.runtime.defaultPageId : pages[0]?.id ?? "";
   const [selectedPageId, setSelectedPageId] = useState(initial);
