@@ -1,48 +1,93 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type DocumentationStudioProps = {
   arqState: any;
   onNavigate?: (module: string) => void;
 };
 
-type DisciplineId =
-  | "geral"
-  | "arquitetura"
-  | "interiores"
-  | "marcenaria"
-  | "gesso"
-  | "iluminacao"
-  | "eletrica"
-  | "hidraulica"
-  | "marmoraria"
-  | "pintura"
-  | "paisagismo"
-  | "esquadrias";
+type DocumentTab = "memorial" | "materials" | "shopping";
 
-type ViewId = "visao" | "plantas" | "memorial" | "quantitativos" | "revisoes" | "impressao";
-
-type DocItem = {
-  id: string;
-  title: string;
-  type: string;
-  status: "gerado" | "pendente" | "revisao" | "aprovado";
-  source: string;
+type ProjectDocuments = {
+  generatedAt: string;
+  project: {
+    id: string;
+    title: string;
+    clientName: string | null;
+    workType: string | null;
+    areaM2: string | number | null;
+    status: string | null;
+  };
+  sources: {
+    specifications: number;
+    renders: number;
+    approvedRenders: number;
+    budgetId: string | null;
+  };
+  memorial: {
+    title: string;
+    approvedRenderIds: string[];
+    sections: Array<{
+      id: string;
+      ambienteId: string | null;
+      category: string | null;
+      region: string | null;
+      title: string;
+      description: string | null;
+      material: string | null;
+      product: string | null;
+      manufacturer: string | null;
+      supplier: string | null;
+      quantity: number;
+      unit: string;
+      notes: string | null;
+      sourceRenderId: string | null;
+      status: string;
+    }>;
+  };
+  materialsBook: {
+    title: string;
+    items: Array<{
+      specObjectId: string;
+      ambienteId: string | null;
+      category: string | null;
+      region: string | null;
+      material: string | null;
+      product: string | null;
+      manufacturer: string | null;
+      supplier: string | null;
+      catalogMaterialId: string | null;
+      catalogProductId: string | null;
+      quantity: number;
+      unit: string;
+      materialValue: number;
+      sourceRenderId: string | null;
+    }>;
+  };
+  shoppingList: {
+    title: string;
+    items: Array<{
+      specObjectId: string;
+      description: string;
+      category: string | null;
+      supplier: string | null;
+      manufacturer: string | null;
+      quantity: number;
+      unit: string;
+      unitMaterialValue: number;
+      laborValue: number;
+      estimatedTotal: number;
+      budgetStatus: "linked" | "pending";
+    }>;
+    summary: null | {
+      budgetId: string;
+      status: string;
+      subtotalMaterial: number;
+      subtotalLabor: number;
+      discountValue: number;
+      totalValue: number;
+    };
+  };
 };
-
-const disciplines: Array<{ id: DisciplineId; label: string; description: string }> = [
-  { id: "geral", label: "Geral", description: "Resumo técnico, índice e controle geral." },
-  { id: "arquitetura", label: "Arquitetura", description: "Plantas, cortes, fachadas e implantação." },
-  { id: "interiores", label: "Interiores", description: "Ambientes, conceito, materiais e mobiliário." },
-  { id: "marcenaria", label: "Marcenaria", description: "Módulos, ferragens, vistas e detalhamento." },
-  { id: "gesso", label: "Gesso", description: "Forros, sancas, cortineiros e rasgos." },
-  { id: "iluminacao", label: "Iluminação", description: "Luminárias, cenas, circuitos e temperatura." },
-  { id: "eletrica", label: "Elétrica", description: "Tomadas, interruptores, pontos e circuitos." },
-  { id: "hidraulica", label: "Hidráulica", description: "Pontos, louças, metais e observações técnicas." },
-  { id: "marmoraria", label: "Marmoraria", description: "Bancadas, soleiras, peitoris e cubas." },
-  { id: "pintura", label: "Pintura", description: "Tintas, massas, áreas e acabamentos." },
-  { id: "paisagismo", label: "Paisagismo", description: "Espécies, vasos, pedras e iluminação externa." },
-  { id: "esquadrias", label: "Esquadrias", description: "Portas, janelas, vidros e persianas." },
-];
 
 function getProjects(arqState: any): any[] {
   const list = arqState?.projects || arqState?.projetos || arqState?.allProjects || [];
@@ -54,411 +99,255 @@ function getProject(arqState: any) {
   return arqState?.currentProject || arqState?.selectedProject || arqState?.project || projects?.[0] || null;
 }
 
-function projectTitle(project: any): string {
-  return project?.titulo || project?.title || project?.name || "Projeto ARQDOR";
+function projectId(project: any): string {
+  return String(project?.id || project?.projectId || project?.projetoId || "");
 }
 
-function clientName(project: any): string {
-  return project?.clienteNome || project?.clientName || "Cliente";
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem("vendorai_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function buildItems(discipline: DisciplineId): DocItem[] {
-  if (discipline === "geral") {
-    return [
-      { id: "capa", title: "Capa do projeto", type: "Memorial", status: "gerado", source: "Projeto" },
-      { id: "indice", title: "Índice de cadernos", type: "Índice", status: "gerado", source: "Automático" },
-      { id: "revisoes", title: "Controle de revisões", type: "Revisão", status: "pendente", source: "Workspace" },
-      { id: "resumo", title: "Resumo executivo", type: "Relatório", status: "revisao", source: "IA" },
-    ];
-  }
-
-  return [
-    { id: `${discipline}-planta`, title: "Planta técnica", type: "Planta", status: "pendente", source: "Render + Projeto" },
-    { id: `${discipline}-vista-frontal`, title: "Vista frontal", type: "Vista", status: "pendente", source: "Render" },
-    { id: `${discipline}-vista-lateral`, title: "Vista lateral", type: "Vista", status: "pendente", source: "Render" },
-    { id: `${discipline}-memorial`, title: "Memorial descritivo", type: "Memorial", status: "revisao", source: "IA" },
-    { id: `${discipline}-quantitativos`, title: "Quantitativos", type: "Tabela", status: "pendente", source: "Objetos" },
-  ];
+function money(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-const statusClass: Record<DocItem["status"], string> = {
-  gerado: "bg-blue-50 text-blue-700",
-  pendente: "bg-amber-50 text-amber-700",
-  revisao: "bg-violet-50 text-violet-700",
-  aprovado: "bg-emerald-50 text-emerald-700",
-};
-
-const statusLabel: Record<DocItem["status"], string> = {
-  gerado: "Gerado",
-  pendente: "Pendente",
-  revisao: "Revisão",
-  aprovado: "Aprovado",
-};
-
-function Sidebar({
-  active,
-  setActive,
-}: {
-  active: DisciplineId;
-  setActive: (id: DisciplineId) => void;
-}) {
+function EmptyState({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <aside className="flex h-full flex-col border-r border-slate-100 bg-white p-5">
-      <div className="mb-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Cadernos</p>
-        <h3 className="mt-1 text-xl font-semibold text-slate-950">Disciplinas</h3>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-        {disciplines.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setActive(item.id)}
-            className={[
-              "w-full rounded-2xl px-4 py-3 text-left transition",
-              active === item.id ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-violet-50 hover:text-violet-700",
-            ].join(" ")}
-          >
-            <p className="text-sm font-semibold">{item.label}</p>
-            <p className={["mt-1 line-clamp-2 text-xs", active === item.id ? "text-slate-300" : "text-slate-400"].join(" ")}>
-              {item.description}
-            </p>
-          </button>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
-function Header({
-  project,
-  view,
-  setView,
-  onNavigate,
-}: {
-  project: any;
-  view: ViewId;
-  setView: (view: ViewId) => void;
-  onNavigate?: (module: string) => void;
-}) {
-  const views: Array<{ id: ViewId; label: string }> = [
-    { id: "visao", label: "Visão" },
-    { id: "plantas", label: "Plantas" },
-    { id: "memorial", label: "Memorial" },
-    { id: "quantitativos", label: "Quantitativos" },
-    { id: "revisoes", label: "Revisões" },
-    { id: "impressao", label: "Impressão" },
-  ];
-
-  return (
-    <header className="border-b border-slate-100 bg-white px-6 py-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Documentation Studio Enterprise</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{projectTitle(project)}</h1>
-          <p className="mt-1 text-sm text-slate-500">{clientName(project)} • Documentação técnica conectada ao render</p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {views.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setView(item.id)}
-              className={[
-                "rounded-2xl px-4 py-2 text-sm font-semibold transition",
-                view === item.id ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700",
-              ].join(" ")}
-            >
-              {item.label}
-            </button>
-          ))}
-
-          <button
-            type="button"
-            onClick={() => onNavigate?.("renders")}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
-          >
-            Voltar ao Studio
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function DocumentCard({ item }: { item: DocItem }) {
-  return (
-    <article className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-base font-semibold text-slate-950">{item.title}</p>
-          <p className="mt-1 text-sm text-slate-500">{item.type} • {item.source}</p>
-        </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass[item.status]}`}>
-          {statusLabel[item.status]}
-        </span>
-      </div>
-
-      <div className="mt-5 flex h-40 items-center justify-center rounded-3xl bg-slate-50 text-sm text-slate-400">
-        Prévia técnica
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <button className="rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-violet-50 hover:text-violet-700" type="button">
-          Abrir
-        </button>
-        <button className="rounded-2xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700" type="button">
-          Gerar IA
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function Overview({ discipline }: { discipline: DisciplineId }) {
-  const items = buildItems(discipline);
-
-  return (
-    <div className="space-y-5">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Documentos" value={String(items.length)} />
-        <Metric label="Gerados" value={String(items.filter((i) => i.status === "gerado").length)} />
-        <Metric label="Pendentes" value={String(items.filter((i) => i.status === "pendente").length)} />
-        <Metric label="Revisão" value={String(items.filter((i) => i.status === "revisao").length)} />
-      </section>
-
-      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <DocumentCard key={item.id} item={item} />
-        ))}
-      </section>
+    <div className="rounded-[28px] border border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+      <p className="text-lg font-semibold text-slate-800">{title}</p>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">{children}</p>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[26px] border border-slate-100 bg-white p-5 shadow-sm">
+    <div className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className="mt-2 text-3xl font-semibold text-slate-950">{value}</p>
     </div>
   );
 }
 
-function TechnicalPreview({ discipline }: { discipline: DisciplineId }) {
+function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
-      <section className="flex min-h-[620px] items-center justify-center rounded-[34px] border border-slate-100 bg-white p-8 shadow-sm">
-        <div className="w-full max-w-4xl rounded-3xl border border-slate-200 bg-slate-50 p-8">
-          <div className="aspect-[1.45] rounded-2xl border border-dashed border-slate-300 bg-white p-8">
-            <div className="flex h-full items-center justify-center rounded-xl border-2 border-slate-300 text-center">
-              <div>
-                <p className="text-2xl font-semibold text-slate-700">Planta / Vista Técnica</p>
-                <p className="mt-2 text-sm text-slate-500">Disciplina: {discipline}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <aside className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Camadas técnicas</p>
-        <h3 className="mt-1 text-lg font-semibold text-slate-950">Controle visual</h3>
-
-        <div className="mt-5 space-y-2">
-          {["Planta baixa", "Vistas", "Medidas", "Objetos", "Materiais", "Observações", "Quantitativos"].map((item) => (
-            <label key={item} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-slate-300" />
-              {item}
-            </label>
-          ))}
-        </div>
-      </aside>
+    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 text-sm font-medium text-slate-700">{value}</p>
     </div>
   );
 }
 
-function Memorial({ discipline }: { discipline: DisciplineId }) {
-  const [text, setText] = useState(
-    `Memorial técnico — ${discipline}\n\nDescrever materiais, medidas, acabamentos, critérios de execução, observações de obra e requisitos de aprovação.`
-  );
+function MemorialView({ data }: { data: ProjectDocuments }) {
+  if (data.memorial.sections.length === 0) {
+    return (
+      <EmptyState title="Memorial ainda sem itens reais">
+        Aprove uma versão do render e complete as especificações. O memorial será montado automaticamente a partir dessas informações, sem texto fictício.
+      </EmptyState>
+    );
+  }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
-      <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Memorial inteligente</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-950">Editor assistido por IA</h3>
-          </div>
-          <button type="button" className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">
-            Gerar com IA
-          </button>
-        </div>
-
-        <textarea
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          className="min-h-[620px] w-full resize-none rounded-3xl border border-slate-200 bg-slate-50 p-5 text-sm leading-6 outline-none focus:border-violet-300 focus:bg-white focus:ring-4 focus:ring-violet-100"
-        />
-      </section>
-
-      <aside className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Checklist IA</p>
-        <h3 className="mt-1 text-lg font-semibold text-slate-950">Itens obrigatórios</h3>
-
-        <div className="mt-5 space-y-2">
-          {["Materiais", "Medidas", "Acabamentos", "Fornecedores", "Execução", "Revisão", "Aprovação"].map((item) => (
-            <label key={item} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
-              {item}
-            </label>
-          ))}
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function Quantities({ discipline }: { discipline: DisciplineId }) {
-  const rows = [
-    ["Material principal", "m²", "0,00", "Render/Objeto"],
-    ["Acabamento linear", "m", "0,00", "Planta"],
-    ["Peças / módulos", "un", "0", "Biblioteca"],
-    ["Mão de obra", "vb", "1", "Produção"],
-  ];
-
-  return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Quantitativos</p>
-          <h3 className="mt-1 text-lg font-semibold text-slate-950">{discipline}</h3>
-        </div>
-        <button type="button" className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">
-          Recalcular IA
-        </button>
-      </div>
-
-      <div className="overflow-hidden rounded-3xl border border-slate-100">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
-            <tr>
-              <th className="px-4 py-3">Item</th>
-              <th className="px-4 py-3">Unidade</th>
-              <th className="px-4 py-3">Qtd.</th>
-              <th className="px-4 py-3">Origem</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((row) => (
-              <tr key={row[0]}>
-                <td className="px-4 py-4 font-medium text-slate-800">{row[0]}</td>
-                <td className="px-4 py-4 text-slate-500">{row[1]}</td>
-                <td className="px-4 py-4 text-slate-500">{row[2]}</td>
-                <td className="px-4 py-4 text-slate-500">{row[3]}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function Revisions() {
-  const items = [
-    ["R00", "Base criada", "Sistema"],
-    ["R01", "Memorial revisado", "IA"],
-    ["R02", "Aguardando aprovação técnica", "Arquiteto"],
-  ];
-
-  return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Controle de revisões</p>
-      <h3 className="mt-1 text-lg font-semibold text-slate-950">Histórico técnico</h3>
-
-      <div className="mt-5 space-y-4">
-        {items.map(([rev, title, author], index) => (
-          <div key={rev} className="flex gap-4">
-            <div className="flex flex-col items-center">
-              <span className="h-3 w-3 rounded-full bg-violet-600" />
-              {index < items.length - 1 ? <span className="mt-2 h-full min-h-[42px] w-px bg-slate-200" /> : null}
-            </div>
+    <div className="space-y-4">
+      {data.memorial.sections.map((item, index) => (
+        <article key={item.id} className="rounded-[26px] border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-950">{rev} — {title}</p>
-              <p className="mt-1 text-xs text-slate-500">{author}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Item {index + 1}</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-950">{item.title}</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                {[item.category, item.region].filter(Boolean).join(" • ") || "Sem classificação"}
+              </p>
             </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{item.status}</span>
           </div>
-        ))}
-      </div>
-    </section>
-  );
-}
 
-function PrintPanel({ discipline }: { discipline: DisciplineId }) {
-  const items = buildItems(discipline);
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Info label="Material" value={item.material || "—"} />
+            <Info label="Produto" value={item.product || "—"} />
+            <Info label="Fabricante" value={item.manufacturer || "—"} />
+            <Info label="Quantidade" value={`${item.quantity} ${item.unit}`} />
+          </div>
 
-  return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-      <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Impressão</p>
-        <h3 className="mt-1 text-lg font-semibold text-slate-950">Selecionar documentos</h3>
-
-        <div className="mt-5 space-y-2">
-          {items.map((item) => (
-            <label key={item.id} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-slate-300" />
-              {item.title}
-            </label>
-          ))}
-        </div>
-      </section>
-
-      <aside className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-        <p className="text-sm font-semibold text-slate-950">Saídas</p>
-        <div className="mt-5 space-y-3">
-          {["Gerar PDF técnico", "Enviar ao cliente", "Salvar no projeto", "Anexar à proposta"].map((item) => (
-            <button key={item} type="button" className="w-full rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-violet-50 hover:text-violet-700">
-              {item}
-            </button>
-          ))}
-        </div>
-      </aside>
+          {(item.description || item.notes) && (
+            <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+              {item.description && <p>{item.description}</p>}
+              {item.notes && <p className="mt-2 text-slate-500">{item.notes}</p>}
+            </div>
+          )}
+        </article>
+      ))}
     </div>
   );
 }
 
-function Content({ view, discipline }: { view: ViewId; discipline: DisciplineId }) {
-  if (view === "plantas") return <TechnicalPreview discipline={discipline} />;
-  if (view === "memorial") return <Memorial discipline={discipline} />;
-  if (view === "quantitativos") return <Quantities discipline={discipline} />;
-  if (view === "revisoes") return <Revisions />;
-  if (view === "impressao") return <PrintPanel discipline={discipline} />;
-  return <Overview discipline={discipline} />;
+function MaterialsView({ data }: { data: ProjectDocuments }) {
+  if (data.materialsBook.items.length === 0) {
+    return <EmptyState title="Caderno de materiais vazio">Nenhum material ou produto real está especificado no projeto ainda.</EmptyState>;
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {data.materialsBook.items.map((item) => (
+        <article key={item.specObjectId} className="rounded-[26px] border border-slate-100 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">{item.category || "Material"}</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">{item.product || item.material || "Item especificado"}</h3>
+          <p className="mt-1 text-sm text-slate-500">{item.region || "Região não informada"}</p>
+          <div className="mt-4 space-y-2">
+            <Info label="Material" value={item.material || "—"} />
+            <Info label="Fabricante" value={item.manufacturer || "—"} />
+            <Info label="Fornecedor" value={item.supplier || "—"} />
+            <Info label="Quantidade" value={`${item.quantity} ${item.unit}`} />
+            <Info label="Valor material" value={item.materialValue > 0 ? money(item.materialValue) : "A definir"} />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ShoppingView({ data }: { data: ProjectDocuments }) {
+  const summary = data.shoppingList.summary;
+  return (
+    <div className="space-y-5">
+      {summary && (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Materiais" value={money(summary.subtotalMaterial)} />
+          <Metric label="Mão de obra" value={money(summary.subtotalLabor)} />
+          <Metric label="Desconto" value={money(summary.discountValue)} />
+          <Metric label="Total" value={money(summary.totalValue)} />
+        </section>
+      )}
+
+      {data.shoppingList.items.length === 0 ? (
+        <EmptyState title="Lista de compras vazia">Complete as especificações do projeto para formar a lista automaticamente.</EmptyState>
+      ) : (
+        <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-5 py-3">Item</th>
+                  <th className="px-5 py-3">Fornecedor</th>
+                  <th className="px-5 py-3">Quantidade</th>
+                  <th className="px-5 py-3">Estimado</th>
+                  <th className="px-5 py-3">Orçamento</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.shoppingList.items.map((item) => (
+                  <tr key={item.specObjectId}>
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-slate-900">{item.description}</p>
+                      <p className="mt-1 text-xs text-slate-400">{item.category || "Sem categoria"}</p>
+                    </td>
+                    <td className="px-5 py-4 text-slate-600">{item.supplier || item.manufacturer || "A definir"}</td>
+                    <td className="px-5 py-4 text-slate-600">{item.quantity} {item.unit}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-900">{money(item.estimatedTotal)}</td>
+                    <td className="px-5 py-4">
+                      <span className={item.budgetStatus === "linked" ? "rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" : "rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"}>
+                        {item.budgetStatus === "linked" ? "Vinculado" : "Pendente"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DocumentationStudio({ arqState, onNavigate }: DocumentationStudioProps) {
   const project = useMemo(() => getProject(arqState), [arqState]);
-  const [discipline, setDiscipline] = useState<DisciplineId>("geral");
-  const [view, setView] = useState<ViewId>("visao");
+  const id = projectId(project);
+  const [tab, setTab] = useState<DocumentTab>("memorial");
+  const [data, setData] = useState<ProjectDocuments | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) {
+      setData(null);
+      setError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    fetch(`/api/arch/projects/${encodeURIComponent(id)}/documents`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+        setData(body as ProjectDocuments);
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") setError(err instanceof Error ? err.message : "Erro ao carregar documentação");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [id]);
+
+  if (!id) {
+    return (
+      <div className="h-full overflow-y-auto bg-slate-50 p-6">
+        <EmptyState title="Selecione um projeto">A documentação é sempre derivada do projeto ativo. Nenhum documento demonstrativo será exibido sem uma fonte real.</EmptyState>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] p-6 text-slate-950">
-      <div className="mx-auto flex min-h-[820px] max-w-[1760px] overflow-hidden rounded-[38px] border border-slate-100 bg-white shadow-sm">
-        <div className="w-[330px] shrink-0">
-          <Sidebar active={discipline} setActive={setDiscipline} />
+    <div className="flex h-full flex-col overflow-hidden bg-slate-50">
+      <header className="border-b border-slate-100 bg-white px-6 py-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Documentação do projeto</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{data?.project.title || project?.titulo || project?.title || "Projeto ARQDOR"}</h1>
+            <p className="mt-1 text-sm text-slate-500">Gerada das especificações, renders aprovados e orçamento reais.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setTab("memorial")} className={tab === "memorial" ? "rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white" : "rounded-2xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600"}>Memorial</button>
+            <button type="button" onClick={() => setTab("materials")} className={tab === "materials" ? "rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white" : "rounded-2xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600"}>Caderno de materiais</button>
+            <button type="button" onClick={() => setTab("shopping")} className={tab === "shopping" ? "rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white" : "rounded-2xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600"}>Lista de compras</button>
+            <button type="button" onClick={() => onNavigate?.("renders")} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Voltar ao Studio</button>
+          </div>
         </div>
+      </header>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Header project={project} view={view} setView={setView} onNavigate={onNavigate} />
-          <main className="min-h-0 flex-1 overflow-y-auto bg-[#f7f7f8] p-6">
-            <Content view={view} discipline={discipline} />
-          </main>
-        </div>
-      </div>
+      <main className="min-h-0 flex-1 overflow-y-auto p-6">
+        {loading && <div className="rounded-[28px] border border-slate-100 bg-white p-10 text-center text-sm text-slate-500">Carregando dados reais do projeto…</div>}
+        {error && <div className="rounded-[28px] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">{error}</div>}
+
+        {!loading && !error && data && (
+          <div className="space-y-5">
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Metric label="Especificações" value={data.sources.specifications} />
+              <Metric label="Renders" value={data.sources.renders} />
+              <Metric label="Renders aprovados" value={data.sources.approvedRenders} />
+              <Metric label="Orçamento" value={data.sources.budgetId ? "Conectado" : "Pendente"} />
+            </section>
+
+            {tab === "memorial" && <MemorialView data={data} />}
+            {tab === "materials" && <MaterialsView data={data} />}
+            {tab === "shopping" && <ShoppingView data={data} />}
+
+            <p className="pb-2 text-right text-xs text-slate-400">
+              Atualizado em {new Date(data.generatedAt).toLocaleString("pt-BR")}
+            </p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
