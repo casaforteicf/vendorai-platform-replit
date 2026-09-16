@@ -55,6 +55,7 @@ DECLARE
   line jsonb;
   product_id text;
   qty integer;
+  was_stock_controlled boolean;
 BEGIN
   IF NEW.app_instance_id IS NULL
      OR NEW.stock_reserved_at IS NULL
@@ -66,19 +67,19 @@ BEGIN
   FOR line IN SELECT value FROM jsonb_array_elements(COALESCE(NEW.items, '[]'::jsonb))
   LOOP
     product_id := NULLIF(line->>'productId', '');
+    was_stock_controlled := COALESCE((line->>'stockControlled')::boolean, false);
     BEGIN
       qty := GREATEST(COALESCE((line->>'quantity')::integer, 0), 0);
     EXCEPTION WHEN invalid_text_representation THEN
       qty := 0;
     END;
 
-    IF product_id IS NOT NULL AND qty > 0 THEN
+    IF was_stock_controlled AND product_id IS NOT NULL AND qty > 0 THEN
       UPDATE produtos_catalogo
          SET estoque_quantidade = COALESCE(estoque_quantidade, 0) + qty,
              updated_at = now()
        WHERE id = product_id
-         AND tenant_id = NEW.tenant_id
-         AND controla_estoque = true;
+         AND tenant_id = NEW.tenant_id;
     END IF;
   END LOOP;
 
