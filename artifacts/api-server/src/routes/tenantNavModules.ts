@@ -12,6 +12,7 @@ import { requireRole } from "./index.js";
 const router: IRouter = Router();
 const ERP_MODULE_KEY: NavModuleKey = "financeiro";
 const PRACA_AI_MODULE_KEY: NavModuleKey = "praca_ai";
+const ARQDOR_MODULE_KEY: NavModuleKey = "arch";
 const SUPERADMIN_ONLY_MODULE_KEYS = new Set<NavModuleKey>([
   ERP_MODULE_KEY,
   PRACA_AI_MODULE_KEY,
@@ -20,6 +21,35 @@ const EFFECTIVE_DEFAULT_OFF_MODULE_KEYS = new Set<NavModuleKey>([
   ERP_MODULE_KEY,
   PRACA_AI_MODULE_KEY,
 ]);
+
+function normalizeVertical(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isArqdorEligibleVertical(vertical: string | null | undefined) {
+  const normalized = normalizeVertical(vertical);
+  if (!normalized) return false;
+
+  return (
+    normalized === "construcao & reforma" ||
+    normalized === "arquitetura" ||
+    normalized === "arquitetura & design" ||
+    normalized === "obras" ||
+    normalized.includes("construtora") ||
+    normalized.includes("gestao de obras") ||
+    normalized.includes("marcenaria") ||
+    normalized.includes("fabrica de moveis") ||
+    normalized.includes("moveis planejados") ||
+    normalized.includes("moveis sob medida") ||
+    normalized.includes("industria de moveis") ||
+    normalized.includes("designer de interiores") ||
+    normalized.includes("design de interiores")
+  );
+}
 
 function superAdminOnlyModuleMessage(moduleKey: string) {
   if (moduleKey === PRACA_AI_MODULE_KEY) {
@@ -58,7 +88,9 @@ router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_
 // Módulos sem override usam o default do catálogo. Entitlements comerciais ou
 // exclusivos do Super Admin (ERP e Praça.AI) têm o default false efetivo mesmo
 // sem linha persistida, garantindo que tenants atuais e futuros não recebam
-// acesso automaticamente.
+// acesso automaticamente. O Arqdor.ai usa um default segmentado: fica ligado
+// automaticamente apenas para verticais de obras/construção, arquitetura,
+// design de interiores e fabricação/marcenaria de móveis.
 router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
@@ -72,6 +104,14 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     return;
   }
 
+  const [tenant] = await db
+    .select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  const arqdorEligible = isArqdorEligibleVertical(tenant?.vertical);
+
   const overrides = await db
     .select({ moduleKey: tenantNavModulesTable.moduleKey, isEnabled: tenantNavModulesTable.isEnabled })
     .from(tenantNavModulesTable)
@@ -82,16 +122,20 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   const modules = NAV_MODULE_CATALOG.map((entry) => {
     const hasPersistedOverride = overrideMap.has(entry.moduleKey);
     const hasEffectiveDefaultOff = EFFECTIVE_DEFAULT_OFF_MODULE_KEYS.has(entry.moduleKey);
+    const persistedValue = hasPersistedOverride ? overrideMap.get(entry.moduleKey)! : undefined;
+    const isArqdor = entry.moduleKey === ARQDOR_MODULE_KEY;
 
     return {
       moduleKey:   entry.moduleKey,
       moduleName:  entry.moduleName,
       icon:        entry.icon,
       description: entry.description,
-      isDefault:   entry.isDefault,
-      isEnabled:   hasPersistedOverride
-        ? overrideMap.get(entry.moduleKey)!
-        : entry.isDefault,
+      isDefault:   isArqdor ? arqdorEligible : entry.isDefault,
+      isEnabled:   isArqdor
+        ? arqdorEligible && (hasPersistedOverride ? persistedValue === true : true)
+        : hasPersistedOverride
+          ? persistedValue!
+          : entry.isDefault,
       // O menu legado só esconde módulos quando hasOverride=true. Para
       // entitlements que devem falhar fechados, o default false já é efetivo
       // mesmo antes de existir uma linha tenant_nav_modules.

@@ -56,7 +56,7 @@ export const NAV_MODULE_CATALOG: NavModuleCatalogEntry[] = [
   { moduleKey: "revenue",     moduleName: "Receita",         icon: "DollarSign",      description: "Oportunidades preditivas",          isDefault: false },
   { moduleKey: "churn",       moduleName: "Churn",           icon: "AlertCircle",     description: "Prevenção de cancelamento",         isDefault: false },
   { moduleKey: "analytics",   moduleName: "Análises",        icon: "BarChart2",       description: "Relatórios e inteligência",         isDefault: false },
-  { moduleKey: "arch",        moduleName: "Arch",            icon: "Compass",         description: "Módulo de arquitetura e design",    isDefault: false },
+  { moduleKey: "arch",        moduleName: "Arqdor.ai",       icon: "Compass",         description: "Projetos, arquitetura, interiores, renderização e obra", isDefault: false },
   { moduleKey: "obras",       moduleName: "Obras",           icon: "HardHat",         description: "Gestão de obras e projetos",        isDefault: false },
   { moduleKey: "financeiro",  moduleName: "Gestão ERP",      icon: "WalletCards",     description: "ERP financeiro e operacional — add-on R$ 299/mês", isDefault: false },
   { moduleKey: "settings",    moduleName: "Configurações",   icon: "Settings",        description: "Configurações do sistema",          isDefault: true  },
