@@ -65,10 +65,9 @@ function unifyCompanyLibraryUi() {
     }
   });
 
-  Array.from(library.querySelectorAll<HTMLElement>("span, p, div")).forEach((element) => {
-    const text = normalizedText(element.textContent);
-    if (text === "Base IA") element.textContent = "Conhecimento da IA";
-    if (text === "BASE IA") element.textContent = "IA";
+  Array.from(library.querySelectorAll<HTMLElement>("span, p, div, button")).forEach((element) => {
+    replaceTextNode(element, "Base IA", "Conhecimento da IA");
+    replaceTextNode(element, "BASE IA", "IA");
   });
 
   Array.from(library.querySelectorAll<HTMLButtonElement>("button")).forEach((button) => {
