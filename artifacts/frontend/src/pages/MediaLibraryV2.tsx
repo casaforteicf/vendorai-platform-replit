@@ -4,7 +4,6 @@ import { useToast } from "@/hooks/use-toast";
 import {
   AudioLines,
   Bot,
-  ChevronDown,
   Download,
   FileText,
   Film,
@@ -24,7 +23,7 @@ import {
 } from "lucide-react";
 
 type MediaType = "image" | "video" | "audio" | "document";
-type Filter = "all" | MediaType | "favorites";
+type Filter = "all" | MediaType | "favorites" | "ai";
 
 type MediaAsset = {
   id: string;
@@ -86,9 +85,26 @@ function isFavorite(asset: MediaAsset) {
   return asset.metadata?.favorite === true;
 }
 
+function isAiApproved(asset: MediaAsset) {
+  return asset.metadata?.aiUsage === "approved";
+}
+
+function friendlyName(asset: MediaAsset) {
+  const explicit = asset.metadata?.displayName;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  const raw = (asset.originalFilename || "Mídia sem nome").replace(/\.[^.]+$/, "");
+  const scene = raw.match(/video[-_ ]generate[-_ ]scene[-_ ]?(\d+)/i);
+  if (scene) return `Cena gerada ${scene[1]}`;
+  return raw
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function Preview({ asset, className = "" }: { asset: MediaAsset; className?: string }) {
   const url = mediaUrl(asset.storageUrl);
-  if (asset.type === "image") return <img src={url} alt={asset.originalFilename ?? "Mídia"} className={`h-full w-full object-cover ${className}`} />;
+  if (asset.type === "image") return <img src={url} alt={friendlyName(asset)} className={`h-full w-full object-cover ${className}`} />;
   if (asset.type === "video") return <video src={url} muted playsInline preload="metadata" className={`h-full w-full object-cover ${className}`} />;
   if (asset.type === "audio") return <div className={`flex h-full w-full items-center justify-center bg-slate-950 text-white ${className}`}><AudioLines className="h-12 w-12" /></div>;
   return <div className={`flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-100 text-slate-600 ${className}`}><FileText className="h-12 w-12" /><span className="text-xs font-medium">Documento</span></div>;
@@ -140,14 +156,22 @@ export default function MediaLibraryV2() {
     return ["Todas as mídias", ...preferred, ...dynamic];
   }, [assets]);
 
+  const counts = useMemo(() => ({
+    all: assets.length,
+    image: assets.filter((asset) => asset.type === "image").length,
+    video: assets.filter((asset) => asset.type === "video").length,
+    ai: assets.filter(isAiApproved).length,
+  }), [assets]);
+
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
     return assets.filter((asset) => {
-      if (filter !== "all" && filter !== "favorites" && asset.type !== filter) return false;
+      if (filter !== "all" && filter !== "favorites" && filter !== "ai" && asset.type !== filter) return false;
       if (filter === "favorites" && !isFavorite(asset)) return false;
+      if (filter === "ai" && !isAiApproved(asset)) return false;
       if (folder !== "Todas as mídias" && folderOf(asset) !== folder) return false;
       if (!term) return true;
-      const haystack = [asset.originalFilename ?? "", descriptionOf(asset), folderOf(asset), ...tagsOf(asset)].join(" ").toLocaleLowerCase("pt-BR");
+      const haystack = [friendlyName(asset), asset.originalFilename ?? "", descriptionOf(asset), folderOf(asset), ...tagsOf(asset)].join(" ").toLocaleLowerCase("pt-BR");
       return haystack.includes(term);
     });
   }, [assets, filter, folder, search]);
@@ -211,61 +235,88 @@ export default function MediaLibraryV2() {
   }
 
   const filterTabs: Array<{ id: Filter; label: string; icon: React.ElementType }> = [
-    { id: "all", label: "Todas", icon: Grid3X3 }, { id: "image", label: "Imagens", icon: ImageIcon }, { id: "video", label: "Vídeos", icon: Film },
-    { id: "audio", label: "Áudios", icon: AudioLines }, { id: "document", label: "Documentos", icon: FileText }, { id: "favorites", label: "Favoritos", icon: Star },
+    { id: "all", label: "Tudo", icon: Grid3X3 },
+    { id: "image", label: "Imagens", icon: ImageIcon },
+    { id: "video", label: "Vídeos", icon: Film },
+    { id: "document", label: "Documentos", icon: FileText },
+    { id: "favorites", label: "Favoritos", icon: Star },
+    { id: "ai", label: "Base IA", icon: Sparkles },
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] p-4 pb-24 sm:p-6 lg:p-8">
+    <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-6 lg:px-8">
       <input ref={inputRef} type="file" multiple className="hidden" accept="image/*,video/*,audio/*,.pdf,.txt" onChange={(event) => void upload(event.target.files)} />
 
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Biblioteca de Mídias</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Organize, encontre e use suas mídias em conteúdos, campanhas, sites e materiais de marketing.</p>
+      <header className="mb-5 rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Biblioteca de Mídias</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Organize fotos, vídeos, referências e materiais da sua empresa em um só lugar.</p>
+          </div>
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Adicionar mídia
+          </button>
         </div>
-        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60">
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Adicionar mídia<ChevronDown className="h-4 w-4" />
-        </button>
-      </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            { key: "all", label: "Todas", value: counts.all, icon: Grid3X3 },
+            { key: "image", label: "Imagens", value: counts.image, icon: ImageIcon },
+            { key: "video", label: "Vídeos", value: counts.video, icon: Film },
+            { key: "ai", label: "Base IA", value: counts.ai, icon: Sparkles },
+          ].map(({ key, label: statLabel, value, icon: Icon }) => (
+            <button key={key} type="button" onClick={() => setFilter(key as Filter)} className={`rounded-2xl border p-3 text-left transition ${filter === key ? "border-orange-300 bg-orange-50" : "bg-background hover:border-slate-300"}`}>
+              <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted-foreground">{statLabel}</span><Icon className={`h-4 w-4 ${key === "ai" ? "text-emerald-600" : "text-orange-500"}`} /></div>
+              <p className="mt-2 text-xl font-semibold">{value}</p>
+            </button>
+          ))}
+        </div>
+      </header>
 
       <div className={`grid gap-5 ${inspected ? "xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}>
         <main className="min-w-0">
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          <div className="mb-4 flex items-center gap-2">
+            <label className="relative min-w-0 flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome, tag ou pasta" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" />
+            </label>
+            <button type="button" onClick={() => void load()} className="h-11 shrink-0 rounded-xl border bg-background px-3 text-xs font-medium sm:px-4 sm:text-sm">Atualizar</button>
+          </div>
+
+          <section className="mb-4">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Pastas</h2><span className="text-xs text-muted-foreground">{folders.length - 1} categorias</span></div>
+            <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {folders.slice(0, 6).map((item, index) => {
+                const count = item === "Todas as mídias" ? assets.length : assets.filter((asset) => folderOf(asset) === item).length;
+                return <button key={item} type="button" onClick={() => setFolder(item)} className={`min-w-[145px] shrink-0 rounded-2xl border p-3 text-left transition ${folder === item ? "border-orange-300 bg-orange-50" : "bg-card hover:border-slate-300"}`}>
+                  <div className="flex items-center justify-between"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${folder === item ? "bg-orange-100 text-orange-600" : "bg-slate-100 text-slate-500"}`}>{index === 0 ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}</div><span className="text-xs text-muted-foreground">{count}</span></div>
+                  <p className="mt-3 truncate text-sm font-semibold">{item}</p>
+                </button>;
+              })}
+            </div>
+          </section>
+
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filterTabs.map(({ id, label: tabLabel, icon: Icon }) => (
-              <button key={id} type="button" onClick={() => setFilter(id)} className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-sm font-medium ${filter === id ? "border-orange-300 bg-orange-50 text-orange-700" : "bg-background text-muted-foreground hover:text-foreground"}`}>
-                <Icon className="h-4 w-4" />{tabLabel}
+              <button key={id} type="button" onClick={() => setFilter(id)} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-medium ${filter === id ? "border-orange-300 bg-orange-50 text-orange-700" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+                <Icon className="h-3.5 w-3.5" />{tabLabel}
               </button>
             ))}
           </div>
 
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar na biblioteca…" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" />
-            </label>
-            <select value={folder} onChange={(event) => setFolder(event.target.value)} className="h-11 rounded-xl border bg-background px-3 text-sm"><option value="Todas as mídias">Todas as pastas</option>{folders.slice(1).map((item) => <option key={item}>{item}</option>)}</select>
-            <button type="button" onClick={() => void load()} className="h-11 rounded-xl border bg-background px-4 text-sm font-medium">Atualizar</button>
-          </div>
-
-          <section className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
-            {folders.slice(0, 6).map((item, index) => {
-              const count = item === "Todas as mídias" ? assets.length : assets.filter((asset) => folderOf(asset) === item).length;
-              return <button key={item} type="button" onClick={() => setFolder(item)} className={`rounded-2xl border p-3 text-left transition ${folder === item ? "border-orange-300 bg-orange-50" : "bg-card hover:border-slate-300"}`}>
-                <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${folder === item ? "bg-orange-100 text-orange-600" : "bg-slate-100 text-slate-500"}`}>{index === 0 ? <FolderOpen className="h-5 w-5" /> : <Folder className="h-5 w-5" />}</div>
-                <p className="truncate text-sm font-semibold">{item}</p><p className="mt-1 text-xs text-muted-foreground">{count} itens</p>
-              </button>;
-            })}
-          </section>
-
           {loading ? <div className="flex min-h-[360px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-500" /></div> : filtered.length === 0 ? (
-            <div className="rounded-3xl border border-dashed p-12 text-center"><ImageIcon className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhuma mídia encontrada</p><p className="mt-1 text-sm text-muted-foreground">Ajuste os filtros ou adicione uma nova mídia.</p></div>
+            <div className="rounded-3xl border border-dashed p-10 text-center"><ImageIcon className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhuma mídia encontrada</p><p className="mt-1 text-sm text-muted-foreground">Ajuste a busca, troque a pasta ou adicione uma nova mídia.</p></div>
           ) : (
             <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
               {filtered.map((asset) => (
                 <article key={asset.id} onClick={() => setInspectedId(asset.id)} className={`group cursor-pointer overflow-hidden rounded-2xl border bg-card transition hover:-translate-y-0.5 hover:shadow-md ${inspectedId === asset.id ? "border-orange-400 ring-2 ring-orange-100" : ""}`}>
-                  <div className="relative aspect-[4/3] overflow-hidden bg-muted"><Preview asset={asset} /><div className="absolute left-2 top-2 rounded-lg bg-black/55 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">{label(asset.type)}</div>{asset.type === "video" && <div className="absolute inset-0 flex items-center justify-center"><div className="rounded-full bg-black/55 p-3 text-white"><Film className="h-5 w-5" /></div></div>}</div>
-                  <div className="p-3"><p className="truncate text-sm font-semibold">{asset.originalFilename || "Mídia sem nome"}</p><div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span>{label(asset.type)} · {bytes(asset.fileSize)}</span><MoreHorizontal className="h-4 w-4" /></div></div>
+                  <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+                    <Preview asset={asset} />
+                    <div className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">{label(asset.type)}</div>
+                    {isAiApproved(asset) && <div className="absolute bottom-2 left-2 rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-bold text-white">BASE IA</div>}
+                    {asset.type === "video" && <div className="absolute inset-0 flex items-center justify-center"><div className="rounded-full bg-black/55 p-3 text-white"><Film className="h-5 w-5" /></div></div>}
+                  </div>
+                  <div className="p-3"><div className="flex items-start gap-2"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{friendlyName(asset)}</p><MoreHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /></div><p className="mt-1 truncate text-xs text-muted-foreground">{label(asset.type)} · {bytes(asset.fileSize)}</p>{folderOf(asset) !== "Sem pasta" && <p className="mt-1 truncate text-[10px] text-muted-foreground">{folderOf(asset)}</p>}</div>
                 </article>
               ))}
             </section>
@@ -277,16 +328,16 @@ export default function MediaLibraryV2() {
           <aside className="h-fit overflow-hidden rounded-3xl border bg-card shadow-sm xl:sticky xl:top-4">
             <div className="relative aspect-[16/10] overflow-hidden bg-muted"><Preview asset={inspected} /><button type="button" onClick={() => setInspectedId(null)} className="absolute right-3 top-3 rounded-full bg-black/50 p-2 text-white backdrop-blur"><X className="h-4 w-4" /></button></div>
             <div className="space-y-5 p-4">
-              <div><h2 className="break-words text-lg font-semibold">{inspected.originalFilename || "Mídia sem nome"}</h2><p className="mt-1 text-xs text-muted-foreground">{label(inspected.type)} · {bytes(inspected.fileSize)} · {inspected.createdAt ? new Date(inspected.createdAt).toLocaleDateString("pt-BR") : ""}</p></div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => void patchAsset(inspected, { aiUsage: "approved", aiCollection: "Base IA da Empresa" })} className="inline-flex h-9 items-center gap-2 rounded-lg bg-orange-500 px-3 text-sm font-semibold text-white"><Sparkles className="h-4 w-4" />Usar na IA</button>
-                <a href={mediaUrl(inspected.storageUrl)} download={inspected.originalFilename ?? undefined} className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium"><Download className="h-4 w-4" />Baixar</a>
-                <button type="button" onClick={() => void patchAsset(inspected, { favorite: !isFavorite(inspected) })} className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${isFavorite(inspected) ? "text-amber-600" : ""}`}><Star className="h-4 w-4" />Favorito</button>
+              <div><h2 className="break-words text-lg font-semibold">{friendlyName(inspected)}</h2><p className="mt-1 text-xs text-muted-foreground">{label(inspected.type)} · {bytes(inspected.fileSize)} · {inspected.createdAt ? new Date(inspected.createdAt).toLocaleDateString("pt-BR") : ""}</p><p className="mt-1 truncate text-[10px] text-muted-foreground">Arquivo: {inspected.originalFilename || "—"}</p></div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => void patchAsset(inspected, { aiUsage: isAiApproved(inspected) ? "manual" : "approved", aiCollection: isAiApproved(inspected) ? "" : "Base IA da Empresa" })} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold ${isAiApproved(inspected) ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-orange-500 text-white"}`}><Sparkles className="h-4 w-4" />{isAiApproved(inspected) ? "Na Base IA" : "Usar na IA"}</button>
+                <a href={mediaUrl(inspected.storageUrl)} download={inspected.originalFilename ?? undefined} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium"><Download className="h-4 w-4" />Baixar</a>
+                <button type="button" onClick={() => void patchAsset(inspected, { favorite: !isFavorite(inspected) })} className={`col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium ${isFavorite(inspected) ? "text-amber-600" : ""}`}><Star className="h-4 w-4" />{isFavorite(inspected) ? "Favorito" : "Adicionar aos favoritos"}</button>
               </div>
               <div className="border-t pt-4"><p className="mb-3 text-sm font-semibold text-orange-600">Informações</p><label className="block text-xs font-medium text-muted-foreground">Descrição<textarea value={description} onChange={(event) => setDescription(event.target.value)} onBlur={() => void patchAsset(inspected, { description })} rows={3} placeholder="Descreva esta mídia para facilitar a busca e o uso pela IA." className="mt-1 w-full resize-none rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300" /></label></div>
               <div><p className="text-xs font-medium text-muted-foreground">Pasta</p><div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-muted px-3 py-1.5 text-xs">{folderOf(inspected)}</span>{folders.slice(1, 5).filter((item) => item !== folderOf(inspected)).map((item) => <button key={item} type="button" onClick={() => void patchAsset(inspected, { folderPath: item })} className="rounded-full border px-3 py-1.5 text-xs">+ {item}</button>)}</div></div>
               <div><p className="text-xs font-medium text-muted-foreground">Tags</p><div className="mt-2 flex flex-wrap gap-2">{tagsOf(inspected).map((tag) => <button key={tag} type="button" onClick={() => void patchAsset(inspected, { tags: tagsOf(inspected).filter((item) => item !== tag) })} className="rounded-full bg-muted px-3 py-1.5 text-xs">{tag} ×</button>)}</div><div className="mt-2 flex gap-2"><input value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && tagDraft.trim()) { event.preventDefault(); void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); } }} placeholder="Adicionar tag" className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-xs" /><button type="button" onClick={() => { if (!tagDraft.trim()) return; void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); }} className="rounded-lg border px-3 text-xs font-medium">Adicionar</button></div></div>
-              <div className="rounded-2xl border bg-muted/30 p-3"><div className="flex items-start gap-2"><Bot className="mt-0.5 h-4 w-4 text-orange-500" /><div><p className="text-sm font-semibold">Uso pela IA</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">A Biblioteca é a fonte de referência para conteúdos, sites e campanhas. Marque apenas mídias que a IA pode reutilizar.</p></div></div></div>
+              <div className="rounded-2xl border bg-muted/30 p-3"><div className="flex items-start gap-2"><Bot className="mt-0.5 h-4 w-4 text-orange-500" /><div><p className="text-sm font-semibold">Uso pela IA</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Apenas mídias liberadas para a Base IA podem ser reutilizadas automaticamente nas criações.</p></div></div></div>
               <button type="button" onClick={() => void remove(inspected)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Excluir mídia</button>
               {saving && <p className="text-center text-xs text-muted-foreground">Salvando…</p>}
             </div>
