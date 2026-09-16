@@ -133,6 +133,9 @@ function validateAiDefinition(definition: Record<string, unknown>, actionKeys: S
   if (new Set(pageIds).size !== pageIds.length) findings.push("Existem IDs de página duplicados.");
   const defaultPageId = text(runtime.defaultPageId);
   if (defaultPageId && !pageIds.includes(defaultPageId)) findings.push("runtime.defaultPageId não aponta para uma página existente.");
+  const emphasizedPages = pages.filter((page) => page.navigationEmphasis === true);
+  if (emphasizedPages.length > 1) findings.push("A navegação mobile permite no máximo uma página com navigationEmphasis=true.");
+  if (emphasizedPages.length > 0 && (pages.length < 3 || pages.length > 5)) findings.push("navigationEmphasis só pode ser usado quando a navegação principal tiver de 3 a 5 páginas.");
   for (const page of pages) {
     for (const block of asObjects(page.blocks)) {
       const type = text(block.type);
@@ -160,6 +163,8 @@ Todo app mobile deve seguir o Design System oficial sem copiar identidade de apl
 - Nunca reutilize nomes de empresas, pessoas, CPF, telefone, e-mail, endereço, fotos pessoais ou banners presentes em prints de referência. Em preview, use dados sintéticos e masque dados sensíveis.
 - Respeite safe areas de iOS/Android. Header, status bar, bottom navigation e ações flutuantes jamais podem se sobrepor.
 - Bottom navigation deve ter de 3 a 5 destinos. Uma ação central destacada é opcional e deve ter função semântica configurável para o segmento.
+- Quando uma ação central fizer sentido, marque EXATAMENTE UMA página de runtime.pages com navigationEmphasis=true e use icon semântico. Não marque página central quando houver menos de 3 ou mais de 5 destinos principais.
+- Exemplos de ação central: comprar, agendar, pedir orçamento, ofertas, QR, carteira ou outra ação principal do segmento. Não destaque uma página apenas por estética.
 - Alvo de toque mínimo: 44x44 px. Use contraste adequado e nunca dependa apenas de cor para comunicar estado.
 - Toda jornada crítica deve prever loading, empty, error, offline, success, unavailable, permission_denied e session_expired quando aplicáveis.
 - Prefira skeleton a spinner solto para conteúdo estruturado.
@@ -232,9 +237,10 @@ REGRAS INEGOCIÁVEIS
 9. Retorne SOMENTE JSON válido, sem markdown.
 10. Para apps mobile, definition.designSystem.standard deve ser "vendorai-mobile-v1" e os dados de demonstração devem ser sintéticos.
 11. Quando usar props.variant, use somente os presets oficiais listados acima; se outro componente for necessário, registre gap em vez de inventar variant.
+12. Use navigationEmphasis=true em no máximo uma página e somente quando ela representar uma ação principal real do app.
 
 FORMATO OBRIGATÓRIO
-{"summary":"...","assumptions":[],"questions":[],"warnings":[],"architecture":{"pages":[{"id":"...","title":"...","purpose":"..."}],"roles":[{"key":"...","name":"...","purpose":"..."}],"dataModel":[{"entity":"...","purpose":"...","source":"registry|tenant|planned"}],"integrations":[],"risks":[]},"definition":{"designSystem":{"standard":"vendorai-mobile-v1","principles":[],"theme":{},"navigation":{},"interaction":{},"states":[],"privacy":{}},"runtime":{"version":1,"defaultPageId":"...","pages":[]}},"gaps":[{"type":"action|data_source|integration|permission|component|other","key":"opcional","description":"...","severity":"low|medium|high|critical"}],"recommendedActions":[],"quality":{"completeness":0,"ux":0,"security":0,"data":0,"integration":0}}
+{"summary":"...","assumptions":[],"questions":[],"warnings":[],"architecture":{"pages":[{"id":"...","title":"...","purpose":"..."}],"roles":[{"key":"...","name":"...","purpose":"..."}],"dataModel":[{"entity":"...","purpose":"...","source":"registry|tenant|planned"}],"integrations":[],"risks":[]},"definition":{"designSystem":{"standard":"vendorai-mobile-v1","principles":[],"theme":{},"navigation":{},"interaction":{},"states":[],"privacy":{}},"runtime":{"version":1,"defaultPageId":"home","pages":[{"id":"home","title":"Início","icon":"home","navigationEmphasis":false,"blocks":[]}]}},"gaps":[{"type":"action|data_source|integration|permission|component|other","key":"opcional","description":"...","severity":"low|medium|high|critical"}],"recommendedActions":[],"quality":{"completeness":0,"ux":0,"security":0,"data":0,"integration":0}}
 
 Os scores de quality devem ser rigorosos. Um app sem dados, permissões, integrações necessárias, estados de UX ou padrão visual consistente não merece nota alta.`;
 }
