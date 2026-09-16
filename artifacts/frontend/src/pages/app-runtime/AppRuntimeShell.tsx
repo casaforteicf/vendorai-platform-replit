@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { KeyRound, Loader2, LogOut, Mail, Menu, ShieldCheck, Smartphone, UserRound } from "lucide-react";
+import { KeyRound, Loader2, LogOut, Mail, Menu, RefreshCw, ShieldCheck, Smartphone, UserRound } from "lucide-react";
 import SchemaRuntimeRenderer, { type RuntimePayload } from "./SchemaRuntimeRenderer";
 
 type JsonObject = Record<string, unknown>;
@@ -71,6 +71,7 @@ const COPY = {
     moduleReady: "disponível no manifesto publicado",
     runtimeLoading: "Carregando conteúdo publicado...",
     runtimeError: "Não foi possível carregar o conteúdo deste perfil.",
+    retry: "Tentar novamente",
   },
   es: {
     loading: "Cargando aplicación...",
@@ -102,6 +103,7 @@ const COPY = {
     moduleReady: "disponible en el manifiesto publicado",
     runtimeLoading: "Cargando contenido publicado...",
     runtimeError: "No fue posible cargar el contenido de este perfil.",
+    retry: "Intentar nuevamente",
   },
 } as const;
 
@@ -141,6 +143,14 @@ function appIdentity(manifest: RuntimeManifest | null) {
   };
 }
 
+function RuntimeSkeleton() {
+  return <div className="space-y-4" aria-label="Carregando conteúdo">
+    <div className="h-40 animate-pulse rounded-3xl bg-slate-200/70" />
+    <div className="grid grid-cols-2 gap-3"><div className="h-24 animate-pulse rounded-2xl bg-slate-200/70" /><div className="h-24 animate-pulse rounded-2xl bg-slate-200/70" /></div>
+    <div className="grid grid-cols-2 gap-3"><div className="h-52 animate-pulse rounded-2xl bg-slate-200/70" /><div className="h-52 animate-pulse rounded-2xl bg-slate-200/70" /></div>
+  </div>;
+}
+
 export default function AppRuntimeShell({ appId }: Props) {
   const lang: "pt" | "es" = typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "pt";
   const copy = COPY[lang];
@@ -159,6 +169,7 @@ export default function AppRuntimeShell({ appId }: Props) {
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [runtimeReloadKey, setRuntimeReloadKey] = useState(0);
 
   const identity = useMemo(() => appIdentity(manifest), [manifest]);
   const authEnabled = manifest?.capabilities?.auth?.enabled === true && (manifest.capabilities.auth.methods ?? []).includes("email_code");
@@ -243,14 +254,14 @@ export default function AppRuntimeShell({ appId }: Props) {
     }
     void loadRuntime();
     return () => { alive = false; };
-  }, [appId, clearSession, runtimeToken, session]);
+  }, [appId, clearSession, runtimeReloadKey, runtimeToken, session]);
 
   useEffect(() => {
     if (!identity.primary) return;
     const previous = document.documentElement.style.getPropertyValue("--app-runtime-primary");
     document.documentElement.style.setProperty("--app-runtime-primary", identity.primary);
     return () => {
-      if (previous) document.documentElement.style.setProperty("--app-runtime-primary", previous);
+      if (previous) document.documentElement.style.setPropertyValue?.("--app-runtime-primary", previous);
       else document.documentElement.style.removeProperty("--app-runtime-primary");
     };
   }, [identity.primary]);
@@ -326,7 +337,7 @@ export default function AppRuntimeShell({ appId }: Props) {
 
   if (authEnabled && !session) {
     return (
-      <div className="min-h-screen bg-slate-50 px-4 py-8 sm:py-14">
+      <div className="min-h-screen bg-slate-50 px-4 pb-8 sm:py-14" style={{ paddingTop: "max(2rem, env(safe-area-inset-top))" }}>
         <div className="mx-auto w-full max-w-md">
           <div className="mb-6 text-center">
             {identity.logoUrl ? <img src={identity.logoUrl} alt="" className="mx-auto h-14 max-w-[180px] object-contain" /> : <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white"><Smartphone className="h-6 w-6" /></div>}
@@ -358,7 +369,7 @@ export default function AppRuntimeShell({ appId }: Props) {
 
   if (!authEnabled && !session) {
     return (
-      <div className="min-h-screen bg-slate-50 px-4 py-10">
+      <div className="min-h-screen bg-slate-50 px-4 py-10" style={{ paddingTop: "max(2rem, env(safe-area-inset-top))" }}>
         <div className="mx-auto max-w-3xl rounded-2xl border bg-white p-6 shadow-sm sm:p-9">
           <div className="flex items-center gap-4">{identity.logoUrl ? <img src={identity.logoUrl} alt="" className="h-12 w-12 rounded-xl object-contain" /> : <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900 text-white"><Smartphone className="h-5 w-5" /></div>}<div><h1 className="text-xl font-bold text-slate-950">{identity.name}</h1><p className="mt-1 text-sm text-slate-500">{copy.publicOnlyBody}</p></div></div>
           {publicContent && identity.navigation.length > 0 && <div className="mt-7"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.modules}</p><div className="grid gap-3 sm:grid-cols-2">{identity.navigation.map((item) => <div key={item.key} className="rounded-xl border p-4"><p className="text-sm font-semibold text-slate-800">{item.label}</p><p className="mt-1 text-xs text-slate-400">{copy.moduleReady}</p></div>)}</div></div>}
@@ -369,23 +380,27 @@ export default function AppRuntimeShell({ appId }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
+      <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="mx-auto hidden h-16 max-w-7xl items-center gap-3 px-6 sm:flex">
           {identity.logoUrl ? <img src={identity.logoUrl} alt="" className="h-9 max-w-[150px] object-contain" /> : <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white"><Smartphone className="h-4 w-4" /></div>}
           <span className="truncate text-sm font-semibold text-slate-900">{identity.name}</span>
-          <div className="ml-auto hidden items-center gap-2 sm:flex"><Badge variant="secondary">{session?.membership.roleKey}</Badge><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div>
-          <Button size="icon" variant="ghost" className="ml-auto sm:hidden" onClick={() => setMenuOpen((value) => !value)}><Menu className="h-5 w-5" /></Button>
+          <div className="ml-auto flex items-center gap-2"><Badge variant="secondary">{session?.membership.roleKey}</Badge><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div>
         </div>
-        {menuOpen && <div className="border-t px-4 py-3 sm:hidden"><div className="flex items-center justify-between"><Badge variant="secondary">{session?.membership.roleKey}</Badge><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div></div>}
+        <div className="grid h-16 grid-cols-[48px_1fr_48px] items-center px-3 sm:hidden">
+          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" aria-label="Abrir perfil"><UserRound className="h-6 w-6" /></button>
+          <div className="flex min-w-0 items-center justify-center">{identity.logoUrl ? <img src={identity.logoUrl} alt={identity.name} className="h-9 max-w-[150px] object-contain" /> : <span className="truncate text-sm font-bold text-slate-900">{identity.name}</span>}</div>
+          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" aria-label="Abrir menu"><Menu className="h-5 w-5" /></button>
+        </div>
+        {menuOpen && <div className="border-t bg-white px-4 py-4 shadow-sm sm:hidden"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100"><UserRound className="h-5 w-5 text-slate-500" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900">{session?.user.displayName || identity.name}</p>{session?.user.email && <p className="truncate text-xs text-slate-400">{session.user.email}</p>}</div><Badge variant="secondary" className="text-[10px]">{session?.membership.roleKey}</Badge></div><Button size="sm" variant="ghost" className="mt-3 w-full justify-start" onClick={logout}><LogOut className="mr-2 h-4 w-4" />{copy.logout}</Button></div>}
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-9">
+      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
           <section className="min-w-0">
-            {runtimeLoading && <div className="rounded-2xl border bg-white p-10 text-center shadow-sm"><Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /><p className="mt-3 text-sm text-slate-500">{copy.runtimeLoading}</p></div>}
-            {!runtimeLoading && runtimeError && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">{copy.runtimeError}</div>}
+            {runtimeLoading && <RuntimeSkeleton />}
+            {!runtimeLoading && runtimeError && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900"><p>{copy.runtimeError}</p><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => setRuntimeReloadKey((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />{copy.retry}</Button></div>}
             {!runtimeLoading && !runtimeError && runtimePayload && <SchemaRuntimeRenderer payload={runtimePayload} lang={lang} />}
           </section>
-          <aside className="space-y-4">
+          <aside className="hidden space-y-4 xl:block">
             <div className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-slate-500" /><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.role}</p></div><p className="mt-2 font-mono text-sm font-semibold text-slate-800">{session?.membership.roleKey}</p></div>
             <div className="rounded-2xl border bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.permissions}</p>{session?.membership.permissions?.length ? <div className="mt-3 flex flex-wrap gap-2">{session.membership.permissions.map((permission) => <Badge key={permission} variant="outline" className="font-mono text-[10px]">{permission}</Badge>)}</div> : <p className="mt-2 text-sm text-slate-500">{copy.noPermissions}</p>}</div>
             <div className="rounded-2xl border bg-white p-5 text-xs leading-5 text-slate-500 shadow-sm"><ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />{copy.secure}<div className="mt-2 text-slate-400">{copy.published}: {runtimePayload?.publishedVersion ?? manifest.publishedVersion}</div></div>
