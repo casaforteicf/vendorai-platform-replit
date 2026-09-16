@@ -26,6 +26,7 @@ const CANONICAL_NAVIGATION_ALIASES = [
  * obvious that they are scoped views rather than a second global module.
  */
 const CONTEXTUAL_LINK_LABELS = [
+  { href: "/trabalho", label: "Central Operacional" },
   { href: "/leads", label: "Clientes & Leads" },
   { href: "/contacts-nonleads", label: "Contatos (não-leads)" },
   { href: "/deals", label: "Vendas & Negócios" },
@@ -149,11 +150,24 @@ export function useNavigationDeduplication() {
         });
       });
 
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/"]').forEach((link) => {
+        const text = link.textContent?.replace(/\s+/g, " ").trim();
+        if (text === "Dashboard") setScopedLabel(link, "Início & Visão Geral");
+      });
+
       CONTEXTUAL_LINK_LABELS.forEach(({ href, label }) => {
         document.querySelectorAll<HTMLAnchorElement>(`a[href="${href}"]`).forEach((link) => {
           setScopedLabel(link, label);
         });
       });
+
+      if (window.location.pathname === "/trabalho") {
+        document.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
+          if (heading.textContent?.trim() === "Central de Trabalho") {
+            setScopedLabel(heading, "Central Operacional");
+          }
+        });
+      }
 
       if (/^\/obras\//.test(window.location.pathname)) {
         document.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
