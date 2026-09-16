@@ -4,6 +4,13 @@ import { z } from "zod/v4";
 import { obrasTable } from "./obras";
 import { usersTable } from "./users";
 
+type DiarioMedia = { url: string; caption?: string; uploadedAt: string; mimeType?: string; name?: string };
+type DiarioServico = { nome: string; quantidade?: number; unidade?: string; etapaId?: string; observacao?: string };
+type DiarioMaterial = { nome: string; quantidade?: number; unidade?: string; fornecedor?: string; conferido?: boolean; observacao?: string };
+type DiarioOcorrencia = { tipo: string; descricao: string; gravidade?: "baixa" | "media" | "alta" | "critica"; resolvida?: boolean; responsavel?: string };
+type DiarioEquipe = { equipe?: string; funcao?: string; quantidade: number; horas?: number; responsavel?: string };
+type DiarioEquipamento = { nome: string; quantidade?: number; horasUso?: number; status?: "operando" | "parado" | "manutencao"; observacao?: string };
+
 export const obraDiarioTable = pgTable("obra_diario", {
   id: text("id")
     .primaryKey()
@@ -21,7 +28,15 @@ export const obraDiarioTable = pgTable("obra_diario", {
   climaTempo: text("clima_tempo"),
   maoDeObra: integer("mao_de_obra"),
   observacoes: text("observacoes"),
-  fotos: jsonb("fotos").$type<Array<{ url: string; caption?: string; uploadedAt: string }>>(),
+  condicaoCanteiro: text("condicao_canteiro"),
+  servicosExecutados: jsonb("servicos_executados").$type<DiarioServico[]>().notNull().default([]),
+  materiaisRecebidos: jsonb("materiais_recebidos").$type<DiarioMaterial[]>().notNull().default([]),
+  ocorrencias: jsonb("ocorrencias").$type<DiarioOcorrencia[]>().notNull().default([]),
+  equipeDetalhes: jsonb("equipe_detalhes").$type<DiarioEquipe[]>().notNull().default([]),
+  equipamentos: jsonb("equipamentos").$type<DiarioEquipamento[]>().notNull().default([]),
+  fotos: jsonb("fotos").$type<DiarioMedia[]>(),
+  videos: jsonb("videos").$type<DiarioMedia[]>().notNull().default([]),
+  anexos: jsonb("anexos").$type<DiarioMedia[]>().notNull().default([]),
   resumoIA: text("resumo_ia"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, integer, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, integer, date, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -70,16 +70,23 @@ export const obraEtapasTable = pgTable("obra_etapas", {
   status: text("status").notNull().default("pendente"),
   percentualExecutado: numeric("percentual_executado", { precision: 5, scale: 2 }).notNull().default("0"),
   responsavel: text("responsavel"),
+  custoPrevisto: numeric("custo_previsto", { precision: 15, scale: 2 }).notNull().default("0"),
+  pesoFisico: numeric("peso_fisico", { precision: 7, scale: 4 }).notNull().default("0"),
+  marco: boolean("marco").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertObraEtapaSchema = createInsertSchema(obraEtapasTable, {
   percentualExecutado: decimalOptional,
+  custoPrevisto: decimalOptional,
+  pesoFisico: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateObraEtapaSchema = createSelectSchema(obraEtapasTable, {
   percentualExecutado: decimalOptional,
+  custoPrevisto: decimalOptional,
+  pesoFisico: decimalOptional,
 })
   .omit({ id: true, obraId: true, createdAt: true, updatedAt: true })
   .partial();
@@ -87,6 +94,35 @@ export const updateObraEtapaSchema = createSelectSchema(obraEtapasTable, {
 export type InsertObraEtapa = z.infer<typeof insertObraEtapaSchema>;
 export type UpdateObraEtapa = z.infer<typeof updateObraEtapaSchema>;
 export type ObraEtapa = typeof obraEtapasTable.$inferSelect;
+
+// ─── Dependências do Cronograma ──────────────────────────────────────────────
+
+export const obraEtapaDependenciasTable = pgTable("obra_etapa_dependencias", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  obraId: text("obra_id")
+    .notNull()
+    .references(() => obrasTable.id, { onDelete: "cascade" }),
+  etapaId: text("etapa_id")
+    .notNull()
+    .references(() => obraEtapasTable.id, { onDelete: "cascade" }),
+  dependeDeEtapaId: text("depende_de_etapa_id")
+    .notNull()
+    .references(() => obraEtapasTable.id, { onDelete: "cascade" }),
+  tipo: text("tipo").notNull().default("FS"),
+  defasagemDias: integer("defasagem_dias").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertObraEtapaDependenciaSchema = createInsertSchema(obraEtapaDependenciasTable)
+  .omit({ id: true, createdAt: true });
+
+export type InsertObraEtapaDependencia = z.infer<typeof insertObraEtapaDependenciaSchema>;
+export type ObraEtapaDependencia = typeof obraEtapaDependenciasTable.$inferSelect;
 
 // ─── Medições ─────────────────────────────────────────────────────────────────
 

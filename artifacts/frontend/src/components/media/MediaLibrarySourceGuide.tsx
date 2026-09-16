@@ -1,12 +1,42 @@
 import { useEffect } from "react";
-import { BookOpen, Building2, FolderKanban, Images, PlusCircle, Users } from "lucide-react";
-
-function go(path: string) {
-  window.location.assign(path);
-}
 
 function normalizedText(value: string | null | undefined) {
   return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function replaceTextNode(root: HTMLElement, from: string, to: string) {
+  for (const node of Array.from(root.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE && normalizedText(node.textContent) === from) {
+      node.textContent = to;
+      return true;
+    }
+  }
+  return false;
+}
+
+function keepInternalProductsVisible(library: HTMLElement) {
+  const internalProducts = library.querySelector<HTMLButtonElement>('button[data-internal-products-library="true"]');
+  const catalogProducts = Array.from(library.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => normalizedText(button.textContent).includes("Produtos do catálogo"));
+
+  if (!internalProducts || !catalogProducts) return;
+
+  // Mantém a linha Vendor.ai logo ao lado do catálogo, evitando que ela fique
+  // escondida no fim do carrossel horizontal em telas menores.
+  if (catalogProducts.nextElementSibling !== internalProducts) {
+    catalogProducts.insertAdjacentElement("afterend", internalProducts);
+  }
+
+  const categoriesSection = catalogProducts.closest("section");
+  if (!categoriesSection) return;
+
+  const counter = Array.from(categoriesSection.querySelectorAll<HTMLElement>("span"))
+    .find((element) => /^\d+ categorias$/.test(normalizedText(element.textContent)));
+  if (counter) {
+    const visibleCategoryButtons = Array.from(categoriesSection.querySelectorAll<HTMLButtonElement>("button"))
+      .filter((button) => normalizedText(button.textContent) !== "Todas as mídias");
+    counter.textContent = `${visibleCategoryButtons.length} categorias`;
+  }
 }
 
 function unifyCompanyLibraryUi() {
@@ -29,11 +59,50 @@ function unifyCompanyLibraryUi() {
       link.setAttribute("title", "Biblioteca da Empresa");
     });
 
-  Array.from(document.querySelectorAll<HTMLElement>("h1")).forEach((heading) => {
+  const library = document.getElementById("biblioteca-midias");
+  if (!library) return;
+
+  Array.from(library.querySelectorAll<HTMLElement>("h1")).forEach((heading) => {
     if (normalizedText(heading.textContent) === "Biblioteca de Informações") {
-      heading.textContent = "Biblioteca da Empresa — Informações";
+      heading.textContent = "Biblioteca da Empresa";
     }
   });
+
+  Array.from(library.querySelectorAll<HTMLButtonElement>("button")).forEach((button) => {
+    const text = normalizedText(button.textContent);
+    if (text === "Adicionar mídia") {
+      replaceTextNode(button, "Adicionar mídia", "Adicionar à biblioteca");
+      button.setAttribute("aria-label", "Adicionar à biblioteca");
+      button.setAttribute("title", "Adicionar fotos, vídeos, áudios ou documentos à Biblioteca da Empresa");
+    }
+  });
+
+  Array.from(library.querySelectorAll<HTMLElement>("h2")).forEach((heading) => {
+    if (normalizedText(heading.textContent) === "Referências da empresa") {
+      heading.textContent = "Categorias da Biblioteca";
+    }
+  });
+
+  Array.from(library.querySelectorAll<HTMLElement>("p")).forEach((paragraph) => {
+    const text = normalizedText(paragraph.textContent);
+    if (text === "Organize cada mídia pelo assunto que ela representa para a IA.") {
+      paragraph.textContent = "Escolha uma categoria para encontrar e organizar as informações que a IA deve consultar.";
+    }
+  });
+
+  Array.from(library.querySelectorAll<HTMLElement>("span, p, div, button")).forEach((element) => {
+    replaceTextNode(element, "Base IA", "Conhecimento da IA");
+    replaceTextNode(element, "BASE IA", "IA");
+  });
+
+  Array.from(library.querySelectorAll<HTMLButtonElement>("button")).forEach((button) => {
+    if (normalizedText(button.textContent) !== "Apresentações") return;
+    const label = Array.from(button.querySelectorAll<HTMLElement>("p, span"))
+      .find((node) => normalizedText(node.textContent) === "Apresentações");
+    if (label) label.textContent = "Documentos e arquivos";
+  });
+
+  keepInternalProductsVisible(library);
 }
 
 export default function MediaLibrarySourceGuide() {
@@ -49,91 +118,5 @@ export default function MediaLibrarySourceGuide() {
     };
   }, []);
 
-  const sources = [
-    {
-      title: "Empresa e marca",
-      description: "Nome, descrição, posicionamento, diferenciais, público, história e identidade oficial.",
-      helper: "Fonte oficial: Configurações da Empresa",
-      action: "Editar empresa",
-      path: "/configuracoes",
-      icon: Building2,
-    },
-    {
-      title: "Produtos e serviços",
-      description: "Produtos, serviços, descrições, preços, categorias, características e informações comerciais.",
-      helper: "Fonte oficial: Catálogo",
-      action: "Abrir catálogo",
-      path: "/catalogo",
-      icon: BookOpen,
-    },
-    {
-      title: "Equipe",
-      description: "Pessoas, funções e acessos. Fotos, vídeos e materiais da equipe ficam vinculados nesta biblioteca.",
-      helper: "Fonte oficial: Equipe e Acessos",
-      action: "Abrir equipe",
-      path: "/usuarios",
-      icon: Users,
-    },
-    {
-      title: "Obras, projetos e cases",
-      description: "Fotos, vídeos, antes e depois, resultados, ambientes, aplicações e documentos de referência.",
-      helper: "Adicione e organize diretamente na Biblioteca",
-      action: "Ir para mídias",
-      path: "#biblioteca-midias",
-      icon: FolderKanban,
-    },
-  ];
-
-  return (
-    <section className="mx-auto w-full max-w-[1500px] px-3 pt-4 sm:px-6 lg:px-8" aria-label="Fontes de informação da empresa">
-      <div className="rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
-              <Images className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold">Base de contexto da empresa</h2>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                A Biblioteca da Empresa reúne os dados oficiais do VendorAI e os complementos que a IA precisa consultar: fotos, vídeos, documentos, obras, cases, referências e informações adicionais. Não cadastre a mesma informação duas vezes.
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => go("/midias/informacoes")}
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Adicionar informação
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {sources.map(({ title, description, helper, action, path, icon: Icon }) => (
-            <article key={title} className="rounded-2xl border bg-background p-3.5">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4 w-4" /></div>
-                <h3 className="text-sm font-semibold">{title}</h3>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{description}</p>
-              <p className="mt-2 text-[11px] font-medium text-foreground/70">{helper}</p>
-              <button
-                type="button"
-                onClick={() => path.startsWith("#") ? document.querySelector(path)?.scrollIntoView({ behavior: "smooth", block: "start" }) : go(path)}
-                className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-xl border bg-card px-3 text-xs font-semibold transition hover:border-orange-300 hover:text-orange-700"
-              >
-                {action}
-              </button>
-            </article>
-          ))}
-        </div>
-
-        <div className="mt-3 rounded-2xl bg-muted/40 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
-          <strong className="text-foreground">Entram automaticamente:</strong> materiais de campanhas e conteúdos gerados pelo sistema. <strong className="text-foreground">Entram manualmente:</strong> fotos, vídeos, documentos, obras, cases, referências e informações complementares cadastradas dentro desta Biblioteca da Empresa.
-        </div>
-      </div>
-    </section>
-  );
+  return null;
 }
