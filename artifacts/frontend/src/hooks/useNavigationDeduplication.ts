@@ -16,6 +16,75 @@ const CANONICAL_NAVIGATION_ALIASES = [
   },
 ] as const;
 
+/**
+ * Context-specific features remain available, but their labels must make it
+ * obvious that they are scoped views rather than a second global module.
+ */
+const CONTEXTUAL_LINK_LABELS = [
+  { href: "/erp", label: "Financeiro & ERP" },
+  { href: "/supermercado/config", label: "Config. do Supermercado" },
+  { href: "/varejo/produtos", label: "Produtos do Varejo" },
+  { href: "/supermercado/produtos", label: "Produtos do Supermercado" },
+  { href: "/farmacia/produtos", label: "Produtos da Farmácia" },
+  { href: "/beauty/profissionais", label: "Profissionais do Salão" },
+  { href: "/clinic/medicos", label: "Médicos da Clínica" },
+] as const;
+
+const OBRA_CONTEXT_LABELS: Record<string, string> = {
+  Financeiro: "Custos da Obra",
+  Estoque: "Estoque da Obra",
+  Compras: "Compras da Obra",
+  Orçamento: "Orçamento da Obra",
+};
+
+function visibleTextElement(root: HTMLElement) {
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>("span, p"))
+    .filter((element) => element.children.length === 0 && Boolean(element.textContent?.trim()));
+  return candidates.at(-1) ?? null;
+}
+
+function setScopedLabel(element: HTMLElement, label: string) {
+  if (element.dataset.vendoraiCanonicalText === label) return;
+
+  const target = visibleTextElement(element);
+  if (target) {
+    if (target.dataset.vendoraiOriginalText === undefined) {
+      target.dataset.vendoraiOriginalText = target.textContent ?? "";
+    }
+    target.textContent = label;
+    element.dataset.vendoraiCanonicalText = label;
+    return;
+  }
+
+  const textNode = Array.from(element.childNodes).find(
+    (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+  );
+  if (!textNode) return;
+
+  if (element.dataset.vendoraiOriginalDirectText === undefined) {
+    element.dataset.vendoraiOriginalDirectText = textNode.textContent ?? "";
+  }
+  textNode.textContent = ` ${label}`;
+  element.dataset.vendoraiCanonicalText = label;
+}
+
+function restoreScopedLabels() {
+  document.querySelectorAll<HTMLElement>("[data-vendorai-canonical-text]").forEach((element) => {
+    const target = element.querySelector<HTMLElement>("[data-vendorai-original-text]");
+    if (target) {
+      target.textContent = target.dataset.vendoraiOriginalText ?? target.textContent;
+      delete target.dataset.vendoraiOriginalText;
+    } else if (element.dataset.vendoraiOriginalDirectText !== undefined) {
+      const textNode = Array.from(element.childNodes).find(
+        (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+      );
+      if (textNode) textNode.textContent = element.dataset.vendoraiOriginalDirectText;
+      delete element.dataset.vendoraiOriginalDirectText;
+    }
+    delete element.dataset.vendoraiCanonicalText;
+  });
+}
+
 export function useNavigationDeduplication() {
   useEffect(() => {
     const applyPolicy = () => {
@@ -47,6 +116,20 @@ export function useNavigationDeduplication() {
           });
         });
       });
+
+      CONTEXTUAL_LINK_LABELS.forEach(({ href, label }) => {
+        document.querySelectorAll<HTMLAnchorElement>(`a[href="${href}"]`).forEach((link) => {
+          setScopedLabel(link, label);
+        });
+      });
+
+      if (/^\/obras\//.test(window.location.pathname)) {
+        document.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+          const current = button.textContent?.trim() ?? "";
+          const contextual = OBRA_CONTEXT_LABELS[current];
+          if (contextual) setScopedLabel(button, contextual);
+        });
+      }
     };
 
     applyPolicy();
@@ -65,6 +148,7 @@ export function useNavigationDeduplication() {
           delete link.dataset.vendoraiCanonicalHref;
           delete link.dataset.vendoraiCanonicalLabel;
         });
+      restoreScopedLabels();
     };
   }, []);
 }
