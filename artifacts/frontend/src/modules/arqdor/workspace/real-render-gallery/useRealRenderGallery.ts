@@ -13,6 +13,19 @@ import type {
 } from "./renderGalleryTypes";
 import { groupRenderVersions } from "./renderGalleryUtils";
 
+function readPersistentStudioVersionIds(): Set<string> {
+  if (typeof window === "undefined" || window.location.pathname !== "/arch/render") return new Set();
+  try {
+    const raw = sessionStorage.getItem("arq_studio_versions");
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.map((item) => String(item?.id ?? "")).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
 export function useRealRenderGallery(projectId: string) {
   const [items, setItems] = useState<RenderGalleryItem[]>([]);
   const [selectedRender, setSelectedRender] = useState<RenderGalleryItem | null>(null);
@@ -36,7 +49,11 @@ export function useRealRenderGallery(projectId: string) {
       return;
     }
 
-    const list = result.data?.items || [];
+    // No Render Studio, o histórico persistente já foi hidratado antes da
+    // montagem da tela. A galeria antiga fica apenas como fallback para itens
+    // legados que ainda não existem em arch_ai_renders, evitando duplicidade.
+    const persistentIds = readPersistentStudioVersionIds();
+    const list = (result.data?.items || []).filter((item) => !persistentIds.has(item.id));
     setItems(list);
 
     setSelectedRender((current) => {
