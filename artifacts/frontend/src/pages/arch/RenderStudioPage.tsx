@@ -28,53 +28,62 @@ const SHELL_STYLES = `
     position: relative;
     height: 100vh;
     overflow: hidden;
-    background: #f8fafc;
-    color: #0f172a;
+    background: #f7f8fa;
+    color: #172033;
     color-scheme: light;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .arqdor-studio-v3 button,
+  .arqdor-studio-v3 input,
+  .arqdor-studio-v3 select,
+  .arqdor-studio-v3 textarea {
+    font-family: inherit !important;
   }
 
   .arqdor-studio-v3 .arqdor-back-btn {
     position: fixed;
-    top: 8px;
-    left: 10px;
+    top: 11px;
+    left: 12px;
     z-index: 1200;
-    height: 32px;
-    padding: 0 12px;
+    height: 36px;
+    padding: 0 13px;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    border-radius: 9px;
-    border: 1px solid #e2e8f0;
-    background: rgba(255,255,255,.98);
-    color: #334155;
-    font: 700 11px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    gap: 7px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 750;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(15,23,42,.08);
-    transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+    box-shadow: 0 3px 10px rgba(15,23,42,.06);
+    transition: .16s ease;
   }
 
   .arqdor-studio-v3 .arqdor-back-btn:hover {
-    background: #fff7ed;
     border-color: #fb923c;
+    background: #fff7ed;
     color: #c2410c;
     transform: translateY(-1px);
   }
 
   .arqdor-studio-v3 .arqdor-legacy-root,
   .arqdor-studio-v3 .arqdor-legacy-workspace {
-    background: #f8fafc !important;
-    color: #0f172a !important;
+    background: #f7f8fa !important;
+    color: #172033 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar {
-    height: 50px !important;
-    min-height: 50px !important;
-    padding-left: 96px !important;
-    padding-right: 14px !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    padding-left: 102px !important;
+    padding-right: 16px !important;
     background: rgba(255,255,255,.98) !important;
-    border-bottom: 1px solid #e2e8f0 !important;
-    box-shadow: 0 1px 3px rgba(15,23,42,.04) !important;
-    color: #0f172a !important;
+    border-bottom: 1px solid #e8ebf0 !important;
+    box-shadow: 0 1px 0 rgba(15,23,42,.03) !important;
+    color: #172033 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-shell-hidden {
@@ -82,20 +91,53 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-topbar-brand {
-    margin-right: 10px !important;
+    margin-right: 14px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-topbar span {
+    font-size: 12px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action {
+    min-height: 38px !important;
+    padding: 0 18px !important;
+    border-radius: 10px !important;
+    background: #f97316 !important;
+    color: #ffffff !important;
+    border: 1px solid #ea580c !important;
+    box-shadow: 0 5px 14px rgba(249,115,22,.18) !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action:hover {
+    background: #ea580c !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-sidebar {
-    width: 190px !important;
-    min-width: 190px !important;
+    width: 218px !important;
+    min-width: 218px !important;
     background: #ffffff !important;
-    border-right: 1px solid #e2e8f0 !important;
-    box-shadow: 4px 0 18px rgba(15,23,42,.025) !important;
+    border-right: 1px solid #e8ebf0 !important;
+    box-shadow: none !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-sidebar > div:first-child {
-    padding: 10px 11px !important;
-    border-bottom-color: #f1f5f9 !important;
+    padding: 15px 14px 13px !important;
+    border-bottom: 1px solid #f0f2f5 !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-sidebar > div:first-child > div:first-child {
+    font-size: 10px !important;
+    color: #94a3b8 !important;
+    margin-bottom: 7px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-sidebar > div:first-child > div:last-child {
+    min-height: 38px !important;
+    border-radius: 10px !important;
+    background: #f8fafc !important;
+    border-color: #e5e7eb !important;
   }
 
   .arqdor-studio-v3 .arqdor-sidebar-hidden-group {
@@ -104,25 +146,30 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-legacy-sidebar > div:nth-child(2) {
     overflow: hidden !important;
-    padding-top: 7px !important;
+    padding: 11px 0 16px !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step {
-    min-height: 38px;
-    margin: 2px 8px !important;
-    padding: 8px 9px !important;
-    border-radius: 9px !important;
+    min-height: 44px !important;
+    margin: 3px 10px !important;
+    padding: 9px 10px !important;
+    border-radius: 10px !important;
     color: #475569 !important;
-    transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+    border-left: 0 !important;
+    transition: .16s ease !important;
   }
 
-  .arqdor-studio-v3 .arqdor-studio-step:hover {
-    background: #fffaf5 !important;
+  .arqdor-studio-v3 .arqdor-studio-step span {
+    font-size: 12px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-studio-step:hover:not(:disabled) {
+    background: #fff7ed !important;
     color: #c2410c !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"] {
-    background: #fff7ed !important;
+    background: linear-gradient(90deg, #fff3e8 0%, #fff9f4 100%) !important;
     color: #c2410c !important;
     box-shadow: inset 3px 0 0 #f97316 !important;
   }
@@ -130,10 +177,10 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-studio-step::after {
     content: attr(data-step-number);
     margin-left: auto;
-    min-width: 20px;
-    height: 20px;
+    min-width: 22px;
+    height: 22px;
     border-radius: 999px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e5e7eb;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -145,50 +192,125 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"]::after {
     color: #c2410c;
-    border-color: #fed7aa;
+    border-color: #fdba74;
     background: #ffedd5;
   }
 
   .arqdor-studio-v3 .arqdor-center-panel {
-    background: #f1f5f9 !important;
+    background: #f7f8fa !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-canvas-stage {
+    background: #f7f8fa !important;
+    padding: 72px 34px 44px !important;
+    gap: 24px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-flow-guide {
+    width: min(560px, calc(100% - 40px)) !important;
+    max-width: 560px !important;
+    padding: 30px 32px !important;
+    border-radius: 18px !important;
+    border: 1px solid #e5e7eb !important;
+    background: #ffffff !important;
+    box-shadow: 0 14px 34px rgba(15,23,42,.07) !important;
+    gap: 16px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-flow-guide > div:first-child {
+    margin-bottom: -2px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-upload-card {
+    width: min(590px, calc(100% - 40px)) !important;
+    max-width: 590px !important;
+    min-height: 300px !important;
+    padding: 44px 48px !important;
+    border-radius: 18px !important;
+    border: 2px dashed #fdba74 !important;
+    background: #ffffff !important;
+    box-shadow: 0 14px 34px rgba(15,23,42,.07) !important;
+    gap: 18px !important;
+    justify-content: center !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-upload-card:hover {
+    border-color: #f97316 !important;
+    background: #fffaf5 !important;
+    transform: translateY(-1px);
+  }
+
+  .arqdor-studio-v3 .arqdor-upload-card > div:first-child {
+    background: #fff1e8 !important;
+    color: #f97316 !important;
+    border: 1px solid #fed7aa !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-upload-card,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Ambiente"] .arqdor-upload-card {
+    display: none !important;
   }
 
   .arqdor-studio-v3 .arqdor-canvas-toolbar {
-    top: 10px !important;
-    padding: 4px !important;
-    gap: 2px !important;
-    border-radius: 10px !important;
-    background: rgba(255,255,255,.94) !important;
-    border: 1px solid #e2e8f0 !important;
+    top: 14px !important;
+    padding: 5px !important;
+    gap: 3px !important;
+    border-radius: 11px !important;
+    background: rgba(255,255,255,.98) !important;
+    border: 1px solid #e5e7eb !important;
     backdrop-filter: blur(12px);
-    box-shadow: 0 8px 24px rgba(15,23,42,.10) !important;
+    box-shadow: 0 8px 20px rgba(15,23,42,.08) !important;
   }
 
   .arqdor-studio-v3 .arqdor-canvas-toolbar button {
-    min-height: 28px;
-    padding: 4px 9px !important;
-    border-radius: 7px !important;
-    color: #475569 !important;
+    min-height: 30px !important;
+    padding: 5px 10px !important;
+    border-radius: 8px !important;
+    color: #64748b !important;
+    font-size: 11px !important;
   }
 
-  .arqdor-studio-v3 .arqdor-canvas-toolbar button:hover {
-    background: #fff7ed !important;
+  .arqdor-studio-v3 .arqdor-canvas-toolbar button[aria-pressed="true"] {
+    background: #fff1e8 !important;
     color: #c2410c !important;
+    border-color: #fdba74 !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-canvas-toolbar,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Ambiente"] .arqdor-canvas-toolbar {
+    display: none !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel {
-    background: #ffffff !important;
-    border-left: 1px solid #e2e8f0 !important;
+    background: #f7f8fa !important;
+    border-left: 0 !important;
+    padding: 12px 12px 12px 0 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
-    width: 292px !important;
+    width: 324px !important;
     background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 16px !important;
+    box-shadow: 0 10px 28px rgba(15,23,42,.06) !important;
+    overflow: hidden !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-right-panel > div > div:first-child {
+    min-height: 46px !important;
+    background: #ffffff !important;
+    border-bottom-color: #eef0f3 !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-right-panel > div > div:first-child button {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    padding: 13px 0 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel .arqdor-properties-scroll {
-    padding: 12px !important;
-    gap: 10px !important;
+    padding: 16px !important;
+    gap: 12px !important;
     background: #ffffff !important;
   }
 
@@ -199,23 +321,29 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel select,
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel textarea {
     background: #ffffff !important;
-    color: #0f172a !important;
-    border-color: #cbd5e1 !important;
-    box-shadow: inset 0 1px 1px rgba(15,23,42,.02) !important;
+    color: #172033 !important;
+    border-color: #d8dee8 !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-right-panel input {
+    min-height: 40px !important;
+    border-radius: 9px !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel input:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel select:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel textarea:focus {
     border-color: #fb923c !important;
-    box-shadow: 0 0 0 3px rgba(249,115,22,.12) !important;
+    box-shadow: 0 0 0 3px rgba(249,115,22,.11) !important;
     outline: none !important;
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px !important;
+    gap: 9px !important;
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > div:first-child,
@@ -225,13 +353,15 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta) {
-    min-height: 40px;
-    padding: 8px !important;
+    min-height: 44px !important;
+    padding: 9px !important;
+    border-radius: 10px !important;
     text-align: center !important;
-    line-height: 1.25;
+    line-height: 1.25 !important;
     background: #ffffff !important;
     color: #334155 !important;
     border-color: #e2e8f0 !important;
+    font-size: 12px !important;
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta):hover {
@@ -240,14 +370,22 @@ const SHELL_STYLES = `
     border-color: #fdba74 !important;
   }
 
+  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="249, 115, 22"],
+  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#F97316"] {
+    background: #fff1e8 !important;
+    color: #c2410c !important;
+    border-color: #fb923c !important;
+  }
+
   .arqdor-studio-v3 .arqdor-env-cta,
   .arqdor-studio-v3 .arqdor-primary-action {
-    margin-top: 3px;
-    min-height: 38px;
+    min-height: 40px !important;
+    border-radius: 10px !important;
     background: #f97316 !important;
     color: #ffffff !important;
     border-color: #ea580c !important;
-    box-shadow: 0 6px 14px rgba(249,115,22,.16) !important;
+    box-shadow: 0 5px 14px rgba(249,115,22,.16) !important;
+    font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta:hover,
@@ -255,19 +393,34 @@ const SHELL_STYLES = `
     background: #ea580c !important;
   }
 
+  .arqdor-studio-v3 .arqdor-copilot-strip {
+    border-top-color: #eef0f3 !important;
+    background: #fff !important;
+  }
+
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-copilot-strip,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Ambiente"] .arqdor-copilot-strip,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Imagem base"] .arqdor-copilot-strip {
+    display: none !important;
+  }
+
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel {
     background: #ffffff !important;
-    border-top: 1px solid #e2e8f0 !important;
-    box-shadow: 0 -10px 28px rgba(15,23,42,.08) !important;
+    border-top: 1px solid #e5e7eb !important;
+    box-shadow: 0 -8px 22px rgba(15,23,42,.05) !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel > div:first-child {
-    min-height: 38px;
-    background: rgba(255,255,255,.98) !important;
+    min-height: 40px !important;
+    background: #ffffff !important;
   }
 
-  .arqdor-studio-v3 .arqdor-legacy-bottom-panel input[aria-label="Filtrar versões"] {
-    height: 28px;
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-legacy-bottom-panel,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Ambiente"] .arqdor-legacy-bottom-panel,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Imagem base"] .arqdor-legacy-bottom-panel,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Render IA"] .arqdor-legacy-bottom-panel,
+  .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Melhoria"] .arqdor-legacy-bottom-panel {
+    display: none !important;
   }
 
   .arqdor-studio-v3 .arqdor-step-confirm-banner {
@@ -276,31 +429,31 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-approved-badge {
     position: fixed;
-    right: 308px;
-    top: 58px;
+    right: 350px;
+    top: 68px;
     z-index: 240;
     max-width: 360px;
-    padding: 8px 11px;
-    border-radius: 9px;
-    background: rgba(236,253,245,.97);
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: #ecfdf5;
     border: 1px solid #a7f3d0;
-    box-shadow: 0 8px 24px rgba(15,23,42,.10);
+    box-shadow: 0 8px 24px rgba(15,23,42,.08);
     color: #047857;
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 750;
     pointer-events: none;
   }
 
-  @media (max-width: 1180px) {
+  @media (max-width: 1220px) {
     .arqdor-studio-v3 .arqdor-legacy-sidebar {
-      width: 170px !important;
-      min-width: 170px !important;
+      width: 190px !important;
+      min-width: 190px !important;
     }
     .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
-      width: 266px !important;
+      width: 288px !important;
     }
     .arqdor-studio-v3 .arqdor-approved-badge {
-      right: 282px;
+      right: 314px;
     }
   }
 
@@ -312,36 +465,41 @@ const SHELL_STYLES = `
 `;
 
 const INLINE_PALETTE_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/#060911/gi, "#F8FAFC"],
-  [/#03050A/gi, "#F1F5F9"],
+  [/#060911/gi, "#F7F8FA"],
+  [/#03050A/gi, "#F7F8FA"],
   [/#0C1120/gi, "#FFFFFF"],
   [/#111827/gi, "#FFFFFF"],
   [/#0B1122/gi, "#FFFFFF"],
-  [/#1E2A3A/gi, "#E2E8F0"],
-  [/#253347/gi, "#CBD5E1"],
+  [/#1E2A3A/gi, "#E5E7EB"],
+  [/#253347/gi, "#D8DEE8"],
   [/#7C3AED/gi, "#F97316"],
   [/#6D28D9/gi, "#EA580C"],
   [/#9F6BF1/gi, "#FB923C"],
   [/#A78BFA/gi, "#C2410C"],
-  [/#EDF2F7/gi, "#0F172A"],
+  [/#EDF2F7/gi, "#172033"],
   [/#7B8EA5/gi, "#64748B"],
   [/#3D4F62/gi, "#94A3B8"],
-  [/rgb\(\s*6,\s*9,\s*17\s*\)/gi, "rgb(248, 250, 252)"],
-  [/rgb\(\s*3,\s*5,\s*10\s*\)/gi, "rgb(241, 245, 249)"],
+  [/rgb\(\s*6,\s*9,\s*17\s*\)/gi, "rgb(247, 248, 250)"],
+  [/rgb\(\s*3,\s*5,\s*10\s*\)/gi, "rgb(247, 248, 250)"],
   [/rgb\(\s*12,\s*17,\s*32\s*\)/gi, "rgb(255, 255, 255)"],
   [/rgb\(\s*17,\s*24,\s*39\s*\)/gi, "rgb(255, 255, 255)"],
   [/rgb\(\s*11,\s*17,\s*34\s*\)/gi, "rgb(255, 255, 255)"],
-  [/rgb\(\s*30,\s*42,\s*58\s*\)/gi, "rgb(226, 232, 240)"],
-  [/rgb\(\s*37,\s*51,\s*71\s*\)/gi, "rgb(203, 213, 225)"],
+  [/rgb\(\s*30,\s*42,\s*58\s*\)/gi, "rgb(229, 231, 235)"],
+  [/rgb\(\s*37,\s*51,\s*71\s*\)/gi, "rgb(216, 222, 232)"],
   [/rgb\(\s*124,\s*58,\s*237\s*\)/gi, "rgb(249, 115, 22)"],
   [/rgb\(\s*109,\s*40,\s*217\s*\)/gi, "rgb(234, 88, 12)"],
   [/rgb\(\s*167,\s*139,\s*250\s*\)/gi, "rgb(194, 65, 12)"],
-  [/rgb\(\s*237,\s*242,\s*247\s*\)/gi, "rgb(15, 23, 42)"],
+  [/rgb\(\s*237,\s*242,\s*247\s*\)/gi, "rgb(23, 32, 51)"],
   [/rgb\(\s*123,\s*142,\s*165\s*\)/gi, "rgb(100, 116, 139)"],
   [/rgb\(\s*61,\s*79,\s*98\s*\)/gi, "rgb(148, 163, 184)"],
   [/rgba\(\s*124,\s*58,\s*237,/gi, "rgba(249,115,22,"],
-  [/rgba\(\s*6,\s*9,\s*17,/gi, "rgba(248,250,252,"],
+  [/rgba\(\s*6,\s*9,\s*17,/gi, "rgba(247,248,250,"],
+  [/rgba\(\s*3,\s*5,\s*10,/gi, "rgba(247,248,250,"],
   [/rgba\(\s*12,\s*17,\s*32,/gi, "rgba(255,255,255,"],
+  [/rgba\(\s*17,\s*24,\s*39,/gi, "rgba(255,255,255,"],
+  [/rgba\(\s*11,\s*17,\s*34,/gi, "rgba(255,255,255,"],
+  [/rgba\(\s*30,\s*42,\s*58,/gi, "rgba(229,231,235,"],
+  [/rgba\(\s*37,\s*51,\s*71,/gi, "rgba(216,222,232,"],
 ];
 
 function textOf(el: Element | null) {
@@ -354,9 +512,7 @@ function applyVendorAiPalette(root: HTMLElement) {
     const current = el.getAttribute("style");
     if (!current) continue;
     let next = current;
-    for (const [pattern, replacement] of INLINE_PALETTE_REPLACEMENTS) {
-      next = next.replace(pattern, replacement);
-    }
+    for (const [pattern, replacement] of INLINE_PALETTE_REPLACEMENTS) next = next.replace(pattern, replacement);
     if (next !== current) el.setAttribute("style", next);
   }
 }
@@ -374,7 +530,7 @@ function tagStudioChrome(root: HTMLElement) {
     topbar.querySelectorAll<HTMLElement>('[aria-disabled="true"]').forEach((el) => el.classList.add("arqdor-shell-hidden"));
     topbar.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
       const label = textOf(button);
-      if (label.includes("Carregar Imagem") || label.includes("Continuar")) button.classList.add("arqdor-primary-action");
+      if (/Carregar Imagem|Continuar|Gerar Render|Melhorar|Ver Versões|Aprovar|Especificação/.test(label)) button.classList.add("arqdor-primary-action");
     });
   }
 
@@ -423,9 +579,8 @@ function tagStudioChrome(root: HTMLElement) {
             });
           }
         }
-        if (/Continuar|Gerar Render|Gerar render|Aprovar|Carregar Imagem|Confirmar|Salvar/.test(label)) {
-          button.classList.add("arqdor-primary-action");
-        }
+        if (/Continuar|Gerar Render|Gerar render|Aprovar|Carregar Imagem|Confirmar|Salvar/.test(label)) button.classList.add("arqdor-primary-action");
+        if (label.includes("IA COPILOT")) button.parentElement?.classList.add("arqdor-copilot-strip");
       });
     }
   }
@@ -434,6 +589,20 @@ function tagStudioChrome(root: HTMLElement) {
     centerPanel.classList.add("arqdor-center-panel");
     const canvasToolbarButton = centerPanel.querySelector<HTMLElement>("[data-canvas-action]");
     canvasToolbarButton?.parentElement?.classList.add("arqdor-canvas-toolbar");
+
+    const uploadCard = centerPanel.querySelector<HTMLElement>('[aria-label^="Carregar imagem"]');
+    if (uploadCard) {
+      uploadCard.classList.add("arqdor-upload-card");
+      const stage = uploadCard.parentElement;
+      if (stage) {
+        stage.classList.add("arqdor-canvas-stage");
+        Array.from(stage.children).forEach((child) => {
+          if (!(child instanceof HTMLElement) || child === uploadCard) return;
+          const label = textOf(child);
+          if (/Etapa \d+ de 8|Escolha o tipo de ambiente|Selecione ou crie um projeto/.test(label)) child.classList.add("arqdor-flow-guide");
+        });
+      }
+    }
 
     const bottomPanel = Array.from(centerPanel.children).find((el) =>
       el instanceof HTMLElement && el.querySelector('button[aria-label="Recolher"], button[aria-label="Expandir"]')
@@ -492,10 +661,7 @@ function readCachedVersions(): RenderStudioVersion[] {
   }
 }
 
-function findApprovedVersion(state: {
-  versions: RenderStudioVersion[];
-  approvedVersionId: string | null;
-}) {
+function findApprovedVersion(state: { versions: RenderStudioVersion[]; approvedVersionId: string | null }) {
   return state.versions.find((version) => version.id === state.approvedVersionId)
     ?? state.versions.find((version) => Boolean(version.approvedBy && version.approvedAt))
     ?? null;
@@ -516,11 +682,9 @@ function persistBootstrapState(state: {
     if (state.approvedVersionId) sessionStorage.setItem(SK.approvedVersionId, state.approvedVersionId);
     else sessionStorage.removeItem(SK.approvedVersionId);
 
-    if (findApprovedVersion(state) && sessionStorage.getItem(SK.step) === "aprovar") {
-      sessionStorage.setItem(SK.step, "especificacao");
-    }
+    if (findApprovedVersion(state) && sessionStorage.getItem(SK.step) === "aprovar") sessionStorage.setItem(SK.step, "especificacao");
   } catch {
-    // Recovery cache is best-effort only. Backend remains the source of truth.
+    // recovery cache is best effort
   }
 }
 
@@ -542,10 +706,7 @@ export default function RenderStudioPage() {
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
-  const approvedVersion = useMemo(
-    () => findApprovedVersion(bootstrap.state),
-    [bootstrap.state],
-  );
+  const approvedVersion = useMemo(() => findApprovedVersion(bootstrap.state), [bootstrap.state]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -567,20 +728,16 @@ export default function RenderStudioPage() {
     return () => window.clearInterval(interval);
   }, [approvedVersion?.id]);
 
-  useEffect(() => {
-    setHydratedKey(null);
-  }, [projectId, ambiente]);
+  useEffect(() => setHydratedKey(null), [projectId, ambiente]);
 
   useEffect(() => {
     if (!projectId) {
       setHydratedKey(targetKey);
       return;
     }
-
     const backendLoaded = bootstrap.loadedProjectId === projectId;
     const canUseRecovery = Boolean(bootstrap.error) || bootstrap.hasRecoveryOnly;
     if (!backendLoaded && !canUseRecovery) return;
-
     persistBootstrapState(bootstrap.state);
     setHydratedKey(targetKey);
   }, [projectId, targetKey, bootstrap.loadedProjectId, bootstrap.error, bootstrap.hasRecoveryOnly, bootstrap.state]);
@@ -600,6 +757,8 @@ export default function RenderStudioPage() {
       tagStudioChrome(root);
 
       const activeStep = getActiveStudioStep(root);
+      if (activeStep) root.dataset.arqdorStep = activeStep;
+
       const collapseBottom = root.querySelector<HTMLButtonElement>('button[aria-label="Recolher"]');
       const expandBottom = root.querySelector<HTMLButtonElement>('button[aria-label="Expandir"]');
 
@@ -614,16 +773,14 @@ export default function RenderStudioPage() {
       }
     };
 
-    const timer = window.setTimeout(enhance, 50);
+    const timer = window.setTimeout(enhance, 40);
     const observer = new MutationObserver(() => window.requestAnimationFrame(enhance));
-    if (shellRef.current) {
-      observer.observe(shellRef.current, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["aria-current", "aria-label", "style"],
-      });
-    }
+    if (shellRef.current) observer.observe(shellRef.current, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-current", "aria-label", "style"],
+    });
 
     return () => {
       window.clearTimeout(timer);
@@ -633,10 +790,10 @@ export default function RenderStudioPage() {
 
   if (hydratedKey !== targetKey) {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f8fafc", color: "#c2410c", fontFamily: "Inter, sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f7f8fa", color: "#c2410c", fontFamily: "Inter, sans-serif" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid #e2e8f0", borderTopColor: "#f97316", animation: "arq-persistent-spin .7s linear infinite" }} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Carregando histórico do projeto…</span>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid #e5e7eb", borderTopColor: "#f97316", animation: "arq-persistent-spin .7s linear infinite" }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Carregando histórico do projeto…</span>
           <style>{`@keyframes arq-persistent-spin{to{transform:rotate(360deg)}}`}</style>
         </div>
       </div>
