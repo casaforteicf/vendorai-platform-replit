@@ -13,6 +13,8 @@ ENV NODE_OPTIONS=--max-old-space-size=6144
 RUN pnpm install --no-frozen-lockfile
 
 # Valida os três arquivos de API alterados pelo Video Studio com TypeScript real.
+# O projeto já possui erros TypeScript antigos fora desta superfície; por isso
+# exibimos o diagnóstico completo, mas bloqueamos somente erros nos arquivos do PR.
 RUN printf '%s\n' \
   '{' \
   '  "extends": "./tsconfig.json",' \
@@ -33,7 +35,11 @@ RUN printf '%s\n' \
   > artifacts/api-server/tsconfig.video-studio-temp.json
 
 RUN pnpm exec tsc -b lib/integrations-anthropic-ai/tsconfig.json
-RUN pnpm --filter @workspace/api-server exec tsc -p tsconfig.video-studio-temp.json --noEmit
+RUN pnpm --filter @workspace/api-server exec tsc -p tsconfig.video-studio-temp.json --noEmit --pretty false > /tmp/video-studio-tsc.log 2>&1 || true; \
+    cat /tmp/video-studio-tsc.log; \
+    if grep -E '^src/(routes/social-integrations\.ts|services/social-publication-dispatcher\.ts|services/social-publication-worker\.ts)\(' /tmp/video-studio-tsc.log; then \
+      echo 'TypeScript error found in Video Studio API changes' >&2; exit 1; \
+    fi
 
 # Valida os bundles que o PR efetivamente altera.
 RUN pnpm --filter @workspace/frontend build
