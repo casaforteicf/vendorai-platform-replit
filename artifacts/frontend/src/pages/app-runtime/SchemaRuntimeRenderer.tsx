@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import MobilePresetBlock from "./MobilePresetBlocks";
 import {
   AlertCircle,
   Bell,
@@ -32,7 +33,7 @@ export type RuntimePayload = {
     slug: string;
     theme?: JsonObject;
     whiteLabel?: JsonObject;
-    navigation?: Array<{ id: string; label: string; pageId: string; icon?: string }>;
+    navigation?: Array<{ id: string; label: string; pageId: string; icon?: string; emphasis?: boolean }>;
   };
   template: { versionId: string; version: number };
   runtime: {
@@ -68,6 +69,20 @@ type Props = {
   lang: "pt" | "es";
   actionClient?: RuntimeActionClient;
 };
+
+const MOBILE_PRESET_KEYS = new Set([
+  "hero:promo_banner",
+  "cards:quick_actions",
+  "cards:product_grid",
+  "cards:product_detail",
+  "list:history",
+  "list:notifications",
+  "list:profile_fields",
+  "list:menu",
+  "list:stores",
+  "callout:empty_state",
+  "metrics:savings",
+]);
 
 const COPY = {
   pt: {
@@ -292,8 +307,12 @@ function ActionFormBlock({ block, lang, actionClient, accent }: { block: Runtime
   );
 }
 
-function RuntimeBlockView({ block, lang, actionClient, accent }: { block: RuntimeBlock; lang: "pt" | "es"; actionClient?: RuntimeActionClient; accent?: string }) {
+function RuntimeBlockView({ block, lang, actionClient, accent, onNavigate }: { block: RuntimeBlock; lang: "pt" | "es"; actionClient?: RuntimeActionClient; accent?: string; onNavigate?: (pageId: string) => void }) {
   const props = block.props ?? {};
+  const variant = stringValue(props.variant)?.toLowerCase();
+  if (variant && MOBILE_PRESET_KEYS.has(`${block.type}:${variant}`)) {
+    return <MobilePresetBlock blockId={block.id} type={block.type} props={props} accent={accent} onNavigate={onNavigate} />;
+  }
   if (block.type === "action_form") return <ActionFormBlock block={block} lang={lang} actionClient={actionClient} accent={accent} />;
 
   if (block.type === "hero") {
@@ -359,7 +378,7 @@ export default function SchemaRuntimeRenderer({ payload, lang, actionClient }: P
   const navigation = useMemo(() => {
     const configured = (livePayload.app.navigation ?? []).filter((item) => availableIds.has(item.pageId));
     if (configured.length > 0) return configured;
-    return pages.map((page) => ({ id: `page-${page.id}`, label: page.title, pageId: page.id, icon: page.icon }));
+    return pages.slice(0, 5).map((page) => ({ id: `page-${page.id}`, label: page.title, pageId: page.id, icon: page.icon, emphasis: false }));
   }, [availableIds, livePayload.app.navigation, pages]);
   const initial = livePayload.runtime.defaultPageId && availableIds.has(livePayload.runtime.defaultPageId) ? livePayload.runtime.defaultPageId : pages[0]?.id ?? "";
   const [selectedPageId, setSelectedPageId] = useState(initial);
@@ -375,17 +394,23 @@ export default function SchemaRuntimeRenderer({ payload, lang, actionClient }: P
   const accent = stringValue(theme.primary) ?? stringValue(theme.primaryColor);
   const hasMobileBottomNavigation = navigation.length > 1 && navigation.length <= 5;
   const isPreview = livePayload.app.id.startsWith("preview-");
+  const navigate = (pageId: string) => {
+    if (!availableIds.has(pageId)) return;
+    setSelectedPageId(pageId);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  return <div className={hasMobileBottomNavigation ? "space-y-5 pb-20 sm:pb-0" : "space-y-5"}>
-    {navigation.length > 1 && <nav aria-label={copy.navigation} className={`${hasMobileBottomNavigation ? "hidden sm:block" : "block"} overflow-x-auto rounded-2xl border bg-white p-2 shadow-sm`}><div className="flex min-w-max gap-1">{navigation.map((item) => <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} style={item.pageId === page.id && accent ? { backgroundColor: accent } : undefined} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-medium transition ${item.pageId === page.id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item.label}</button>)}</div></nav>}
-    <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{page.title}</h1>{page.subtitle && <p className="mt-1 text-sm leading-6 text-slate-500">{page.subtitle}</p>}</div>
-    <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} accent={accent} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div>}</div>
+  return <div className={hasMobileBottomNavigation ? "space-y-5 pb-24 sm:pb-0" : "space-y-5"}>
+    {navigation.length > 1 && <nav aria-label={copy.navigation} className={`${hasMobileBottomNavigation ? "hidden sm:block" : "block"} overflow-x-auto rounded-2xl border bg-white p-2 shadow-sm`}><div className="flex min-w-max gap-1">{navigation.map((item) => <button key={item.id} type="button" onClick={() => navigate(item.pageId)} style={item.pageId === page.id && accent ? { backgroundColor: accent } : undefined} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-medium transition ${item.pageId === page.id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item.label}</button>)}</div></nav>}
+    <div className="px-0.5"><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{page.title}</h1>{page.subtitle && <p className="mt-1 text-sm leading-6 text-slate-500">{page.subtitle}</p>}</div>
+    <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} accent={accent} onNavigate={navigate} />) : <MobilePresetBlock blockId="empty-page" type="callout" props={{ variant: "empty_state", title: copy.empty, body: lang === "pt" ? "Volte mais tarde ou escolha outra área do aplicativo." : "Vuelve más tarde o elige otra área de la aplicación.", icon: "info" }} accent={accent} onNavigate={navigate} />}</div>
 
-    {hasMobileBottomNavigation && <nav aria-label={copy.navigation} className={`${isPreview ? "sticky" : "fixed"} bottom-0 left-0 right-0 z-40 border-t bg-white/95 px-2 pt-1.5 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden`} style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}>
-      <div className="mx-auto grid max-w-lg" style={{ gridTemplateColumns: `repeat(${navigation.length}, minmax(0, 1fr))` }}>
+    {hasMobileBottomNavigation && <nav aria-label={copy.navigation} className={`${isPreview ? "sticky" : "fixed"} bottom-0 left-0 right-0 z-40 border-t bg-white/95 px-2 pt-1 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden`} style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}>
+      <div className="mx-auto grid max-w-lg items-end" style={{ gridTemplateColumns: `repeat(${navigation.length}, minmax(0, 1fr))` }}>
         {navigation.map((item) => {
           const active = item.pageId === page.id;
-          return <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} className="flex min-h-[58px] min-w-11 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition hover:bg-slate-50" style={active && accent ? { color: accent } : active ? { color: "#0f172a" } : { color: "#94a3b8" }} aria-current={active ? "page" : undefined}>
+          if (item.emphasis) return <button key={item.id} type="button" onClick={() => navigate(item.pageId)} className="flex min-h-[64px] min-w-11 -translate-y-2 flex-col items-center justify-center gap-1 px-1 text-[10px] font-semibold" style={{ color: active && accent ? accent : "#475569" }} aria-current={active ? "page" : undefined}><span className="flex h-12 w-12 items-center justify-center rounded-full border-4 border-white text-white shadow-lg" style={{ backgroundColor: accent ?? "#0f172a" }}><NavigationIcon name={item.icon ?? pages.find((candidate) => candidate.id === item.pageId)?.icon ?? item.label} className="h-5 w-5" /></span><span className="max-w-full truncate">{item.label}</span></button>;
+          return <button key={item.id} type="button" onClick={() => navigate(item.pageId)} className="flex min-h-[58px] min-w-11 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition hover:bg-slate-50" style={active && accent ? { color: accent } : active ? { color: "#0f172a" } : { color: "#94a3b8" }} aria-current={active ? "page" : undefined}>
             <NavigationIcon name={item.icon ?? pages.find((candidate) => candidate.id === item.pageId)?.icon ?? item.label} className="h-5 w-5" />
             <span className="max-w-full truncate">{item.label}</span>
           </button>;
