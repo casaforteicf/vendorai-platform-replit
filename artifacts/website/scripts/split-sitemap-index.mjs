@@ -10,6 +10,60 @@ const urlBlocks = xml.match(/<url>[\s\S]*?<\/url>/g) ?? [];
 
 if (!urlBlocks.length) throw new Error("[sitemap-index] sitemap.xml has no <url> entries");
 
+// Crawl-focus strategy: keep the full site live/indexable, but submit only the
+// strongest commercial/content nucleus while Google is still establishing crawl trust.
+// Expand this list progressively as the priority set gets crawled/indexed.
+const priorityPaths = new Set([
+  "/",
+  "/produtos",
+  "/funcionalidades",
+  "/solucoes",
+  "/blog",
+  "/precos",
+  "/sobre",
+  "/contato",
+
+  "/produtos/crm",
+  "/produtos/agentes-ia",
+  "/produtos/prospeccao",
+  "/produtos/revenue-scout",
+  "/produtos/omnichannel",
+  "/produtos/marketing",
+  "/produtos/agenda-inteligente",
+  "/produtos/sites-lp-ecommerce",
+
+  "/solucoes/crm-whatsapp",
+  "/solucoes/agentes-ia-vendas",
+  "/solucoes/automatizar-follow-up",
+  "/solucoes/recuperar-leads-parados",
+  "/solucoes/prospeccao-b2b-ia",
+  "/solucoes/revenue-intelligence",
+  "/solucoes/qualificar-leads-com-ia",
+  "/solucoes/pipeline-vendas-com-ia",
+  "/solucoes/multiatendimento-whatsapp",
+  "/solucoes/automacao-comercial",
+
+  "/segmentos/retail",
+  "/segmentos/clinics",
+  "/segmentos/dealerships",
+  "/segmentos/distributors",
+  "/segmentos/services",
+  "/segmentos/industries",
+
+  "/agentes-virtuais-inteligentes",
+  "/agentes-virtuais-inteligentes/recepcao",
+  "/agentes-virtuais-inteligentes/sdr",
+  "/agentes-virtuais-inteligentes/closer",
+  "/agentes-virtuais-inteligentes/follow-up",
+  "/agentes-virtuais-inteligentes/agendamento",
+  "/agentes-virtuais-inteligentes/suporte",
+  "/agentes-virtuais-inteligentes/pos-venda",
+  "/agentes-virtuais-inteligentes/revenue-scout",
+
+  "/blog/crm-integrado-com-whatsapp-o-que-e-e-como-funciona",
+  "/comparar/crm-com-ia-vs-crm-tradicional",
+]);
+
 const groups = {
   core: [],
   products: [],
@@ -34,11 +88,19 @@ function groupFor(url) {
 }
 
 const seen = new Set();
+const selected = [];
 for (const block of urlBlocks) {
   const loc = locFromBlock(block);
   if (seen.has(loc)) throw new Error(`[sitemap-index] duplicate URL: ${loc}`);
   seen.add(loc);
+  const pathname = new URL(loc).pathname;
+  if (!priorityPaths.has(pathname)) continue;
+  selected.push(block);
   groups[groupFor(loc)].push(block);
+}
+
+if (selected.length < 30 || selected.length > 50) {
+  throw new Error(`[sitemap-index] priority nucleus must stay between 30 and 50 URLs; selected=${selected.length}`);
 }
 
 const header = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n';
@@ -52,21 +114,24 @@ const childFiles = [
 ];
 
 let written = 0;
+const writtenChildren = [];
 for (const [key, filename] of childFiles) {
   const blocks = groups[key];
-  if (!blocks.length) throw new Error(`[sitemap-index] empty group: ${key}`);
+  if (!blocks.length) continue;
   fs.writeFileSync(path.join(outDir, filename), `${header}${blocks.join("\n")}${footer}`);
   written += blocks.length;
+  writtenChildren.push([key, filename]);
 }
 
-if (written !== urlBlocks.length || seen.size !== urlBlocks.length) {
-  throw new Error(`[sitemap-index] preservation failed: source=${urlBlocks.length}, written=${written}, unique=${seen.size}`);
+if (written !== selected.length) {
+  throw new Error(`[sitemap-index] priority preservation failed: selected=${selected.length}, written=${written}`);
 }
 
 const baseUrl = "https://appvendorai.com";
 const today = new Date().toISOString().slice(0, 10);
-const indexEntries = childFiles.map(([, filename]) => `  <sitemap>\n    <loc>${baseUrl}/${filename}</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>`).join("\n");
+const indexEntries = writtenChildren.map(([, filename]) => `  <sitemap>\n    <loc>${baseUrl}/${filename}</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>`).join("\n");
 const sitemapIndex = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${indexEntries}\n</sitemapindex>\n`;
 fs.writeFileSync(sitemapPath, sitemapIndex);
 
-console.log(`[sitemap-index] ${urlBlocks.length} URLs split into core=${groups.core.length}, products=${groups.products.length}, solutions=${groups.solutions.length}, segments=${groups.segments.length}, content=${groups.content.length}`);
+const groupSummary = writtenChildren.map(([key]) => `${key}=${groups[key].length}`).join(", ");
+console.log(`[sitemap-index] priority nucleus ${selected.length}/${urlBlocks.length} URLs; ${groupSummary}; deferred=${urlBlocks.length - selected.length}`);
