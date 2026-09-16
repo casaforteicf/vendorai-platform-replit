@@ -14,6 +14,11 @@ const CANONICAL_NAVIGATION_ALIASES = [
     duplicateHrefs: ["/beauty/agenda", "/clinic/agenda"],
     canonicalLabel: "Agenda",
   },
+  {
+    canonicalHref: "/content",
+    duplicateHrefs: ["/campanhas", "/campanhas-nova"],
+    canonicalLabel: "Marketing",
+  },
 ] as const;
 
 /**
@@ -26,10 +31,16 @@ const CONTEXTUAL_LINK_LABELS = [
   { href: "/base-conhecimento", label: "Conhecimento da Empresa" },
   { href: "/configuracoes", label: "Configurações Gerais" },
   { href: "/erp", label: "Financeiro & ERP" },
+  { href: "/analytics", label: "Analytics & Relatórios" },
+  { href: "/midias", label: "Biblioteca de Mídias" },
+  { href: "/midias/informacoes", label: "Biblioteca Empresarial" },
+  { href: "/ads", label: "Anúncios & Mídia Paga" },
+  { href: "/content-autopilot", label: "Automação de Conteúdo" },
   { href: "/supermercado/config", label: "Config. do Supermercado" },
   { href: "/varejo/produtos", label: "Produtos do Varejo" },
   { href: "/supermercado/produtos", label: "Produtos do Supermercado" },
   { href: "/farmacia/produtos", label: "Produtos da Farmácia" },
+  { href: "/supermercado/campanhas", label: "Campanhas do Supermercado" },
   { href: "/beauty/profissionais", label: "Profissionais do Salão" },
   { href: "/clinic/medicos", label: "Médicos da Clínica" },
 ] as const;
@@ -93,8 +104,9 @@ export function useNavigationDeduplication() {
   useEffect(() => {
     const applyPolicy = () => {
       CANONICAL_NAVIGATION_ALIASES.forEach((policy) => {
+        const canonicalSelector = `a[href="${policy.canonicalHref}"], a[href^="${policy.canonicalHref}?"]`;
         const canonicalLinks = Array.from(
-          document.querySelectorAll<HTMLAnchorElement>(`a[href="${policy.canonicalHref}"]`),
+          document.querySelectorAll<HTMLAnchorElement>(canonicalSelector),
         ).filter((link) => link.offsetParent !== null || link.style.display !== "none");
 
         const canonicalAvailable = canonicalLinks.length > 0;
