@@ -14,7 +14,14 @@ export { evaluateObjectRules, getDefaultRulesForCategory, evaluateAllObjects,
 export { validateProject, validationSummary,
 } from '../../../pages/arch/arqdor/domain/arqdor-validation-engine'
 
-export { calculateMockRenderScore, scoreColor, scoreLabel, SCORE_DIMENSIONS,
+export {
+  calculateStructuralReadiness,
+  STRUCTURAL_READINESS_TITLE,
+  STRUCTURAL_READINESS_DIMENSIONS,
+  calculateMockRenderScore,
+  scoreColor,
+  scoreLabel,
+  SCORE_DIMENSIONS,
 } from '../../../pages/arch/arqdor/domain/arqdor-score-engine'
 
 export { createRelationship, getObjectRelationships, getRelatedObjects,
