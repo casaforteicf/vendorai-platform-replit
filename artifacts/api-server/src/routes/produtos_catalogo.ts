@@ -95,6 +95,13 @@ type PricingFields = {
 };
 
 function withCalculatedPrice(data: PricingFields): PricingFields {
+  // Sem custo informado, precoBase é um preço comercial manual e deve ser
+  // preservado. Number(null) === 0 fazia produtos/serviços sem custo fixo
+  // serem gravados por R$ 0,00 em qualquer PATCH subsequente.
+  if (data.custoFornecedor === null || data.custoFornecedor === undefined || data.custoFornecedor === "") {
+    return data;
+  }
+
   const custo = Number(data.custoFornecedor);
   if (!Number.isFinite(custo) || custo < 0) return data;
 
@@ -311,6 +318,7 @@ router.get("/produtos-catalogo/:id/composicao", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && produto.tenantId !== req.user?.tenantId) {
     return res.status(403).json({ error: "Access denied to this tenant" });
   }
+  if (!produto.tenantId) return res.status(422).json({ error: "O produto não está vinculado a uma empresa válida." });
 
   const itens = await db
     .select({
