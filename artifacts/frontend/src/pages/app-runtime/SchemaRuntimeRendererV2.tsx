@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import RuntimeCommerceCatalog from "./RuntimeCommerceCatalog";
 import RuntimeCommerceCart from "./RuntimeCommerceCart";
+import RuntimeCommerceOrders from "./RuntimeCommerceOrders";
 import { readRuntimeCart, RUNTIME_CART_EVENT } from "./runtimeCommerceState";
 
 type JsonObject = Record<string, unknown>;
@@ -125,6 +126,15 @@ function isCartPage(page: RuntimePage) {
   const id = normalized(page.id);
   const title = normalized(page.title);
   return ["cart", "carrinho"].includes(id) || title.includes("carrinho") || title === "cart";
+}
+
+function isOrdersPage(page: RuntimePage) {
+  const id = normalized(page.id);
+  const title = normalized(page.title);
+  return ["orders", "pedidos", "purchases", "compras"].includes(id)
+    || title.includes("minhas compras")
+    || title === "pedidos"
+    || title === "orders";
 }
 
 function toneClasses(tone: unknown) {
@@ -404,7 +414,7 @@ export default function SchemaRuntimeRendererV2({ payload, lang, actionClient }:
   if (!page) return <div className="rounded-2xl border border-dashed bg-white p-10 text-center text-sm text-slate-500"><LayoutGrid className="mx-auto mb-3 h-6 w-6 text-slate-400" />{copy.empty}</div>;
 
   const mobileNavigation = navigation.slice(0, 5);
-  const structuredCommercePage = isCatalogPage(page) || isCartPage(page);
+  const structuredCommercePage = isCatalogPage(page) || isCartPage(page) || isOrdersPage(page);
 
   return (
     <div className="space-y-5 pb-24 sm:pb-0">
@@ -414,6 +424,7 @@ export default function SchemaRuntimeRendererV2({ payload, lang, actionClient }:
 
       {isCatalogPage(page) && <RuntimeCommerceCatalog appId={livePayload.app.id} lang={lang} />}
       {isCartPage(page) && <RuntimeCommerceCart appId={livePayload.app.id} lang={lang} />}
+      {isOrdersPage(page) && <RuntimeCommerceOrders appId={livePayload.app.id} lang={lang} />}
 
       <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} />) : !structuredCommercePage ? <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div> : null}</div>
 
