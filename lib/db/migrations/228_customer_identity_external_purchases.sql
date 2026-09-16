@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS customer_identity_documents (
 
 CREATE UNIQUE INDEX IF NOT EXISTS customer_identity_documents_tenant_doc_uidx
   ON customer_identity_documents (tenant_id, document_type, document_fingerprint);
-CREATE INDEX IF NOT EXISTS customer_identity_documents_app_user_idx
+CREATE UNIQUE INDEX IF NOT EXISTS customer_identity_documents_tenant_app_user_uidx
   ON customer_identity_documents (tenant_id, app_user_id)
   WHERE app_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS customer_identity_documents_lead_idx
