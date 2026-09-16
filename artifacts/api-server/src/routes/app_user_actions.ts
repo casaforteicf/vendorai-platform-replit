@@ -178,6 +178,18 @@ router.post(
     if (resolution.status === "invalid_input") {
       return res.status(422).json({ error: "ACTION_INPUT_INVALID" });
     }
+    if (resolution.status === "conflict") {
+      return res.status(409).json({
+        error: resolution.code,
+        message: resolution.message,
+      });
+    }
+    if (resolution.status === "unavailable") {
+      return res.status(503).json({
+        error: resolution.code,
+        message: resolution.message,
+      });
+    }
 
     res.setHeader("Cache-Control", "private, no-store");
     return res.json({
