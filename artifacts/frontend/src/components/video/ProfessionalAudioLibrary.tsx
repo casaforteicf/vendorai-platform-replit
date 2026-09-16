@@ -56,8 +56,10 @@ export default function ProfessionalAudioLibrary({
   onJingleChange,
   onVoiceoverChange,
 }: Props) {
-  const [tab, setTab] = useState<Tab>("music");
+  const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
+  const manualSelectionCount = [musicAssetId, effectAssetId, jingleAssetId, voiceoverAssetId].filter(Boolean).length;
+  const automaticMode = manualSelectionCount === 0;
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -86,12 +88,35 @@ export default function ProfessionalAudioLibrary({
     if (kind === "jingle" || kind === "sonic_identity") onJingleChange(jingleAssetId === asset.id ? "" : asset.id);
   };
 
+  const useAutomaticAudio = () => {
+    onMusicChange("");
+    onEffectChange("");
+    onJingleChange("");
+    onVoiceoverChange?.("");
+  };
+
   return (
     <section className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-4">
+      <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-3 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Sparkles className="h-4 w-4" /></div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-foreground">Áudio automático</p>
+                <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", automaticMode ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-primary/25 bg-primary/10 text-primary")}>{automaticMode ? "Ativo" : `${manualSelectionCount} ajuste${manualSelectionCount === 1 ? "" : "s"} manual${manualSelectionCount === 1 ? "" : "is"}`}</span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{automaticMode ? "A VendorAI escolhe trilha, efeitos e assinatura sonora compatíveis quando houver material liberado na Biblioteca, faz ducking e entrega a master pronta." : "Suas escolhas substituem apenas os itens selecionados. O restante continua sendo dirigido automaticamente pela VendorAI."}</p>
+            </div>
+          </div>
+          {!automaticMode && <button type="button" onClick={useAutomaticAudio} className="shrink-0 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">Voltar ao automático</button>}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-2"><Music2 className="h-4 w-4 text-primary" /><h3 className="font-semibold text-foreground">Biblioteca de áudio</h3></div>
-          <p className="mt-1 text-xs text-muted-foreground">Ouça antes de aplicar. Música, efeitos, locuções, jingles e assinatura sonora ficam visíveis dentro do projeto.</p>
+          <div className="flex items-center gap-2"><Music2 className="h-4 w-4 text-primary" /><h3 className="font-semibold text-foreground">Alterar áudio</h3></div>
+          <p className="mt-1 text-xs text-muted-foreground">Só altere se quiser escolher algo específico. Você pode ouvir antes de aplicar.</p>
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -114,7 +139,7 @@ export default function ProfessionalAudioLibrary({
             const selectable = kind === "music" || kind === "sound_effect" || kind === "jingle" || kind === "sonic_identity" || (kind === "voiceover" && Boolean(onVoiceoverChange));
             const selected = selectedIdFor(kind) === asset.id;
             return (
-              <div key={asset.id} className={cn("rounded-xl border p-3 transition", selected ? "border-primary/45 bg-primary/5" : "border-border bg-background/40")}> 
+              <div key={asset.id} className={cn("rounded-xl border p-3 transition", selected ? "border-primary/45 bg-primary/5" : "border-border bg-background/40")}>
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                     {kind === "music" ? <Music2 className="h-4 w-4" /> : kind === "sound_effect" ? <Sparkles className="h-4 w-4" /> : kind === "voiceover" ? <Volume2 className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
