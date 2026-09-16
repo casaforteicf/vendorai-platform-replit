@@ -4,13 +4,14 @@ import AdvancedSchedulePanel from "./AdvancedSchedulePanel";
 import CompleteSiteDiaryPanel from "./CompleteSiteDiaryPanel";
 import RealConstructionFinancePanel from "./RealConstructionFinancePanel";
 import RealConstructionQualityPanel from "./RealConstructionQualityPanel";
+import RealProjectDecisionsPanel from "./RealProjectDecisionsPanel";
 
 type Props = {
   arqState?: any;
   onNavigate?: (module: string) => void;
 };
 
-type Mode = "planning" | "diary" | "finance" | "quality" | "operation";
+type Mode = "planning" | "diary" | "finance" | "quality" | "decisions" | "operation";
 
 export default function ConstructionHub({ arqState, onNavigate }: Props) {
   const [mode, setMode] = useState<Mode>("planning");
@@ -49,6 +50,13 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
           </button>
           <button
             type="button"
+            onClick={() => setMode("decisions")}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "decisions" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+          >
+            Decisões
+          </button>
+          <button
+            type="button"
             onClick={() => setMode("operation")}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "operation" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
           >
@@ -72,6 +80,10 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
       ) : mode === "quality" ? (
         <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
           <RealConstructionQualityPanel arqState={arqState} />
+        </div>
+      ) : mode === "decisions" ? (
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
+          <RealProjectDecisionsPanel arqState={arqState} onNavigate={onNavigate} />
         </div>
       ) : (
         <ArqdorConstructionWorkspace arqState={arqState} onNavigate={onNavigate} />
