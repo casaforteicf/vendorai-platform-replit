@@ -8,7 +8,7 @@ Este documento define o contrato oficial para consolidar o Render Studio sem cri
 
 Cada registro representa uma versão imutável e deve ser ligado ao projeto e, quando aplicável, à versão pai.
 
-Campos já existentes e obrigatórios no fluxo:
+Campos oficiais do histórico:
 
 - `id`
 - `tenantId`
@@ -16,34 +16,58 @@ Campos já existentes e obrigatórios no fluxo:
 - `parentRenderId`
 - `mode`
 - `ambiente`
+- `operationType`
+- `materialId`
+- `materialName`
+- `selectionMetadata`
 - `originalImageUrl`
 - `resultImageUrl`
 - `maskZones`
 - `prompt`
 - `motor`
+- `costEstimateUsd`
 - `status`
 - `versionTag`
 - `approvedBy`
 - `approvedAt`
+- `approvalNote`
 - `createdAt`
 - `concluidoEm`
 
-## Metadados ainda não persistidos
+## Operações de versão
 
-O frontend hoje mantém parte dos dados de versão apenas em memória/sessionStorage:
+`operationType` deve identificar por que a versão nasceu:
 
-- tipo da operação (`initial`, `material`, `lighting`, `improve`, `approved`)
-- `materialId`
-- `materialName`
-- rótulo da seleção/região
-- observação de aprovação
-- custo da geração
+- `initial` — render inicial;
+- `material` — troca/aplicação de material;
+- `lighting` — ajuste de iluminação;
+- `improve` — melhoria geral ou pontual;
+- `approved` — compatibilidade de leitura para versões antigas; a aprovação oficial é definida por `approvedBy` + `approvedAt`.
 
-Esses dados NÃO devem continuar tendo o navegador como fonte oficial.
+## Material e seleção
+
+Quando uma alteração vier do catálogo, `materialId` e `materialName` devem permanecer associados à versão gerada. O material não pode existir apenas no estado React/sessionStorage.
+
+`selectionMetadata` registra as regiões efetivamente selecionadas no canvas (`x`, `y`, `w`, `h`, `label`) para permitir auditoria, comparação e futura reexecução da alteração.
+
+## Aprovação
+
+A aprovação é persistente e auditável:
+
+- `approvedBy` deve vir do usuário autenticado;
+- `approvedAt` registra o timestamp do backend;
+- `approvalNote` guarda a observação da aprovação;
+- uma versão aprovada nunca é sobrescrita; qualquer mudança gera uma nova versão filha.
+
+## Custo
+
+`costEstimateUsd` registra o custo estimado da geração quando o provedor/motor permitir mensuração. O campo permanece nullable para execuções antigas ou motores sem medição disponível.
 
 ## Regra de evolução
 
-Antes de remover `sessionStorage` como fallback, o backend deve persistir os metadados acima de forma compatível e migrável. Não criar tabela paralela de versões.
+O backend é a fonte oficial. `sessionStorage` pode ser usado somente como cache/recovery temporário e jamais como origem definitiva do histórico.
+
+Não criar tabela paralela de versões.
 
 ## Fluxo oficial
 
@@ -51,9 +75,9 @@ Projeto → Ambiente → Render V1 → Ajuste V2/V3/Vn → Aprovação → Espec
 
 - toda alteração cria um novo registro filho;
 - nenhuma versão aprovada é sobrescrita;
-- catálogo/material selecionado deve permanecer associado à versão que o utilizou;
-- especificação deve apontar para o render aprovado;
-- orçamento deve derivar da especificação, não do estado local do Studio.
+- catálogo/material selecionado permanece associado à versão que o utilizou;
+- especificação aponta para o render aprovado;
+- orçamento deriva da especificação, não do estado local do Studio.
 
 ## Estado atual confirmado
 
@@ -61,6 +85,8 @@ Projeto → Ambiente → Render V1 → Ajuste V2/V3/Vn → Aprovação → Espec
 - seleção de material já é enviada para o fluxo de melhoria no frontend;
 - existe sincronização posterior com item da especificação quando possível;
 - especificação já possui ponte para orçamento;
-- histórico persistente está sendo consolidado no PR #1528.
+- endpoint persistente de histórico por projeto foi criado no PR #1528;
+- schema/migração para metadados persistentes de versão foram adicionados no PR #1528;
+- o próximo passo é fazer os endpoints de geração/ajuste preencherem esses campos e conectar o `RenderStudioPage` ao hook persistente.
 
 Relacionado: #1526, #1528.
