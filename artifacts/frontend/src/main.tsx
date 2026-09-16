@@ -51,7 +51,7 @@ const WorkspaceEnhancements = lazy(() => import("./components/runtime/WorkspaceE
 setupApiClient();
 installVisitorTelemetry();
 
-document.documentElement.dataset.vendoraiBuild = "media-production-isolation-20260916";
+document.documentElement.dataset.vendoraiBuild = "media-library-emergency-20260916a";
 
 // O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
 // obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
@@ -118,20 +118,22 @@ function WorkspaceEnhancementsGate() {
   const params = new URLSearchParams(window.location.search);
   const contentTab = params.get("tab") ?? "visao-geral";
   const isContentProduction = pathname === "/content" && (contentTab === "conteudos" || contentTab === "gerador");
+  const isMediaLibrary = pathname.startsWith("/midias");
   const relevantWorkspace =
     pathname === "/content" ||
     pathname.startsWith("/marketing") ||
-    pathname.startsWith("/midias") ||
+    isMediaLibrary ||
     pathname.startsWith("/ads") ||
     pathname.startsWith("/site") ||
     pathname.startsWith("/catalog") ||
     pathname.startsWith("/convers") ||
     pathname.startsWith("/content-studio/video");
 
-  // A tela de geração tem runtime próprio. Não carregamos o pacote legado de
-  // bridges nessa rota, evitando polling duplicado, observadores de DOM e
-  // consultas repetidas exatamente enquanto as peças estão sendo produzidas.
-  if (!relevantWorkspace || isContentProduction) return null;
+  // A geração e a Biblioteca de Mídias já possuem runtime próprio.
+  // Em /midias não carregamos o pacote legado de bridges: ele inclui polling,
+  // MutationObserver e indexação automática, que podem saturar a thread principal
+  // quando há muitas imagens e vídeos e deixar a aba inteira sem resposta.
+  if (!relevantWorkspace || isContentProduction || isMediaLibrary) return null;
 
   return (
     <Suspense fallback={null}>
