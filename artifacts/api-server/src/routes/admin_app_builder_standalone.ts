@@ -97,6 +97,19 @@ const aiProposalSchema = z.object({
 type AiProposal = z.infer<typeof aiProposalSchema>;
 
 const ALLOWED_BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider", "action_form"]);
+const MOBILE_PRESET_VARIANTS = new Set([
+  "hero:promo_banner",
+  "cards:quick_actions",
+  "cards:product_grid",
+  "cards:product_detail",
+  "list:history",
+  "list:notifications",
+  "list:profile_fields",
+  "list:menu",
+  "list:stores",
+  "callout:empty_state",
+  "metrics:savings",
+]);
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -124,8 +137,11 @@ function validateAiDefinition(definition: Record<string, unknown>, actionKeys: S
     for (const block of asObjects(page.blocks)) {
       const type = text(block.type);
       if (!ALLOWED_BLOCK_TYPES.has(type)) findings.push(`Bloco não suportado: ${type || "sem tipo"}.`);
+      const props = asObject(block.props);
+      const variant = text(props.variant);
+      if (variant && !MOBILE_PRESET_VARIANTS.has(`${type}:${variant}`)) findings.push(`Preset visual não suportado: ${type}:${variant}.`);
       if (type === "action_form") {
-        const actionKey = text(asObject(block.props).actionKey);
+        const actionKey = text(props.actionKey);
         if (actionKey && !actionKeys.has(actionKey)) findings.push(`Action '${actionKey}' não existe no registry.`);
       }
     }
@@ -178,6 +194,32 @@ Inclua em definition.designSystem uma declaração do padrão visual, no mínimo
   "privacy": {"syntheticPreviewData": true, "maskSensitiveData": true}
 }
 
+PRESETS VISUAIS JÁ DISPONÍVEIS NO RUNTIME
+Use props.variant somente nos pares abaixo. Eles são componentes oficiais do vendorai-mobile-v1 e funcionam dentro dos tipos de bloco existentes:
+- hero + promo_banner: banner principal com imageUrl, eyebrow, title, body, ctaLabel e pageId opcional.
+- metrics + savings: card de indicador principal com label, value e detail.
+- cards + quick_actions: atalhos com items[{title,icon,pageId}].
+- cards + product_grid: busca, categorias e grade responsiva com items[{title,brand,category,imageUrl,oldPrice,price,discount,expiry,pageId}]. Serve também para serviços/ofertas adaptando os rótulos.
+- cards + product_detail: detalhe com imageUrl, brand, title, oldPrice, price, discount, expiry, body e actionLabel.
+- list + history: histórico por período com items[{title,body,value,pageId}].
+- list + notifications: central com items[{title,body,time,icon,unread}].
+- list + profile_fields: perfil com avatarUrl, title, subtitle mascarado e items[{label,value,pageId}].
+- list + menu: menu de conta/suporte/legal com items[{title,icon,pageId}] e version opcional.
+- list + stores: unidades/localizações com busca e items[{title,address,status,distance,favorite,pageId}].
+- callout + empty_state: estado vazio com icon,title,body,actionLabel,pageId.
+
+COMPOSIÇÃO RECOMENDADA, NÃO OBRIGATÓRIA
+- Home: promo_banner -> savings/metrics -> quick_actions -> conteúdo relevante.
+- Catálogo/ofertas: product_grid.
+- Detalhe: product_detail.
+- Histórico/compras/agendamentos: history.
+- Notificações: notifications.
+- Perfil: profile_fields.
+- Menu: menu.
+- Unidades: stores.
+- Sem resultados: empty_state.
+Adapte nomes e conteúdo ao segmento. Não transforme todo app em e-commerce quando o negócio não for comércio.
+
 REGRAS INEGOCIÁVEIS
 1. Não invente capacidades executáveis. Actions, data sources, components e workflows disponíveis serão fornecidos no contexto. Se algo necessário não existir, registre em gaps; não finja que já existe.
 2. Preserve tudo que estiver bom na definição atual quando o modo for revise/analyze. Nunca destrua customizações sem motivo explícito.
@@ -189,6 +231,7 @@ REGRAS INEGOCIÁVEIS
 8. Não publique. Sua saída sempre é uma proposta versionável para revisão humana.
 9. Retorne SOMENTE JSON válido, sem markdown.
 10. Para apps mobile, definition.designSystem.standard deve ser "vendorai-mobile-v1" e os dados de demonstração devem ser sintéticos.
+11. Quando usar props.variant, use somente os presets oficiais listados acima; se outro componente for necessário, registre gap em vez de inventar variant.
 
 FORMATO OBRIGATÓRIO
 {"summary":"...","assumptions":[],"questions":[],"warnings":[],"architecture":{"pages":[{"id":"...","title":"...","purpose":"..."}],"roles":[{"key":"...","name":"...","purpose":"..."}],"dataModel":[{"entity":"...","purpose":"...","source":"registry|tenant|planned"}],"integrations":[],"risks":[]},"definition":{"designSystem":{"standard":"vendorai-mobile-v1","principles":[],"theme":{},"navigation":{},"interaction":{},"states":[],"privacy":{}},"runtime":{"version":1,"defaultPageId":"...","pages":[]}},"gaps":[{"type":"action|data_source|integration|permission|component|other","key":"opcional","description":"...","severity":"low|medium|high|critical"}],"recommendedActions":[],"quality":{"completeness":0,"ux":0,"security":0,"data":0,"integration":0}}
