@@ -47,27 +47,59 @@ const CONTEXTUAL_LINK_LABELS = [
   { href: "/onboarding/integracoes", label: "Integrações da Implantação" },
   { href: "/erp", label: "Financeiro & ERP" },
   { href: "/solicitacao-compra", label: "Compras & Fornecedores" },
+  { href: "/estoque", label: "Estoque Geral" },
   { href: "/entregas", label: "Entregas" },
   { href: "/analytics", label: "Analytics & Relatórios" },
   { href: "/midias", label: "Biblioteca de Mídias" },
   { href: "/midias/informacoes", label: "Biblioteca Empresarial" },
   { href: "/ads", label: "Anúncios & Mídia Paga" },
   { href: "/content-autopilot", label: "Automação de Conteúdo" },
-  { href: "/supermercado/config", label: "Config. do Supermercado" },
+
+  // Construção: extensões operacionais do núcleo geral.
+  { href: "/obras", label: "Obras & Projetos" },
+  { href: "/insumos", label: "Insumos da Construção" },
+  { href: "/composicoes", label: "Composições de Obra" },
+
+  // Varejo e supermercado: deixam explícito que são recortes do segmento.
   { href: "/varejo/produtos", label: "Produtos do Varejo" },
+  { href: "/varejo/colecoes", label: "Coleções do Varejo" },
   { href: "/varejo/fornecedores", label: "Fornecedores do Varejo" },
   { href: "/varejo/compras", label: "Compras do Varejo" },
+  { href: "/varejo/fidelidade", label: "Fidelidade do Varejo" },
+  { href: "/varejo/combos", label: "Combos do Varejo" },
+  { href: "/supermercado", label: "Operação do Supermercado" },
   { href: "/supermercado/produtos", label: "Produtos do Supermercado" },
   { href: "/supermercado/pedidos", label: "Pedidos do Supermercado" },
-  { href: "/farmacia/produtos", label: "Produtos da Farmácia" },
-  { href: "/farmacia/pedidos", label: "Pedidos da Farmácia" },
   { href: "/supermercado/campanhas", label: "Campanhas do Supermercado" },
+  { href: "/supermercado/config", label: "Config. do Supermercado" },
+
+  // Salão e clínica: Agenda global permanece canônica; o restante é extensão.
+  { href: "/beauty", label: "Visão do Salão" },
+  { href: "/beauty/servicos", label: "Serviços do Salão" },
+  { href: "/beauty/profissionais", label: "Profissionais do Salão" },
+  { href: "/clinic", label: "Visão da Clínica" },
+  { href: "/clinic/medicos", label: "Médicos da Clínica" },
+
+  // Farmácia: operação própria sem competir com catálogo e pedidos gerais.
+  { href: "/farmacia", label: "Operação da Farmácia" },
+  { href: "/farmacia/produtos", label: "Produtos da Farmácia" },
+  { href: "/farmacia/bulas", label: "Bulas da Farmácia" },
+  { href: "/farmacia/pedidos", label: "Pedidos da Farmácia" },
+  { href: "/farmacia/receitas", label: "Receitas da Farmácia" },
+
+  // Imobiliário e veículos: nomes específicos evitam colisão com agenda/estoque globais.
+  { href: "/imoveis/propriedades", label: "Propriedades Imobiliárias" },
+  { href: "/imoveis/visitas", label: "Visitas a Imóveis" },
+  { href: "/veiculos/estoque", label: "Estoque de Veículos" },
+  { href: "/veiculos/test-drives", label: "Test-drives de Veículos" },
+
+  // Serviços e PraçaAI.
+  { href: "/servicos", label: "Operação de Serviços" },
+  { href: "/servicos/cadastros", label: "Cadastros de Serviços" },
   { href: "/entregas-praca", label: "Entregas PraçaAI" },
   { href: "/logistica-praca", label: "Logística PraçaAI" },
   { href: "/praca-conciliacao", label: "Conciliação PraçaAI" },
   { href: "/praca-executivo", label: "Operação PraçaAI" },
-  { href: "/beauty/profissionais", label: "Profissionais do Salão" },
-  { href: "/clinic/medicos", label: "Médicos da Clínica" },
 ] as const;
 
 const OBRA_CONTEXT_LABELS: Record<string, string> = {
