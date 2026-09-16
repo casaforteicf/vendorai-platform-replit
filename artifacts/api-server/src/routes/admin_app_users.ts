@@ -12,7 +12,10 @@ import {
 import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
-router.use(requireRole("super_admin"));
+// IMPORTANT: this router is mounted globally. Scope the super-admin guard to
+// the admin app-builder namespace so unrelated routes mounted afterwards
+// (e.g. construction /insumos and /composicoes) are not rejected with 403.
+router.use("/admin/app-builder", requireRole("super_admin"));
 
 const metadataSchema = z.record(z.string(), z.unknown());
 const roleKeySchema = z
