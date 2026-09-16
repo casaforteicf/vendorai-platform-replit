@@ -52,6 +52,7 @@ function isArqdorEligibleVertical(vertical: string | null | undefined) {
     normalized === "arquitetura & design" ||
     normalized === "obras" ||
     normalized.includes("construtora") ||
+    normalized.includes("construcao") ||
     normalized.includes("gestao de obras") ||
     normalized.includes("marcenaria") ||
     normalized.includes("fabrica de moveis") ||
@@ -133,18 +134,32 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
     "Sua empresa";
 
+  const tenantSnapshot = tenantQuery.data as
+    | { vertical?: string | null; segmento?: string | null }
+    | undefined;
+  const userSnapshot = user as
+    | { tenantVertical?: string | null; tenantSegment?: string | null; tenantSegmento?: string | null }
+    | null;
+
   const effectiveVertical =
     tenantOverride?.vertical ??
-    (tenantQuery.data as { vertical?: string | null } | undefined)?.vertical ??
-    (user as { tenantVertical?: string | null } | null)?.tenantVertical ??
+    tenantSnapshot?.vertical ??
+    userSnapshot?.tenantVertical ??
+    null;
+  const effectiveSegment =
+    tenantSnapshot?.segmento ??
+    userSnapshot?.tenantSegment ??
+    userSnapshot?.tenantSegmento ??
     null;
 
-  const arqdorEligible = isArqdorEligibleVertical(effectiveVertical);
+  const arqdorEligible =
+    isArqdorEligibleVertical(effectiveVertical) ||
+    isArqdorEligibleVertical(effectiveSegment);
   const arqdorModule = tenantNavModules.find((module) => module.moduleKey === "arch");
-  // Compatível com o backend antigo durante rollout: ausência de override não
-  // bloqueia um segmento elegível. Um desligamento explícito por tenant, sim.
+  // Ausência de override não bloqueia um segmento elegível. Um desligamento
+  // explícito por tenant continua sendo respeitado.
   const arqdorDisabledByOverride = arqdorModule?.hasOverride === true && arqdorModule.isEnabled === false;
-  const arqdorVisible = arqdorEligible && !arqdorDisabledByOverride;
+  const arqdorVisible = !!effectiveTenantId && arqdorEligible && !arqdorDisabledByOverride;
 
   const erpEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
@@ -159,9 +174,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
       );
 
-      // A navegação antiga de arquitetura tinha cinco links separados. O hub
-      // atual do Arqdor já contém essa navegação internamente, então escondemos
-      // o grupo legado para manter uma única entrada clara na barra.
+      // O hub atual do Arqdor já contém sua navegação interna. Em tenants de
+      // arquitetura escondemos o grupo legado com cinco links para manter uma
+      // única entrada clara na barra externa.
       document.querySelectorAll<HTMLAnchorElement>('a[href="/arch"]').forEach((archLink) => {
         if (archLink.dataset.arqdorToolEntry === "true") return;
         const group = archLink.parentElement;
@@ -175,10 +190,25 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      document.querySelectorAll<HTMLAnchorElement>('a[href="/configuracoes"]').forEach((settingsLink) => {
-        const navContainer = settingsLink.parentElement;
-        if (!navContainer?.querySelector('a[href="/"]')) return;
+      // Insere o Arqdor perto do topo, logo após Central de Trabalho. Esse
+      // ponto existe no desktop e no drawer mobile e não depende do allowlist
+      // legado da vertical, que era o motivo de Construção & Reforma perder
+      // /arch antes da renderização.
+      const anchors = Array.from(
+        document.querySelectorAll<HTMLAnchorElement>('a[href="/trabalho"], a[href="/configuracoes"]'),
+      );
+      const processedContainers = new Set<HTMLElement>();
 
+      anchors.forEach((anchor) => {
+        const navContainer = anchor.parentElement;
+        if (!navContainer || processedContainers.has(navContainer)) return;
+
+        const workLink = navContainer.querySelector<HTMLAnchorElement>('a[href="/trabalho"]');
+        const settingsLink = navContainer.querySelector<HTMLAnchorElement>('a[href="/configuracoes"]');
+        const insertionAnchor = workLink ?? settingsLink;
+        if (!insertionAnchor) return;
+
+        processedContainers.add(navContainer);
         let link = navContainer.querySelector<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]');
         if (!link) {
           link = document.createElement("a");
@@ -201,7 +231,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             event.preventDefault();
             setLocation("/arch");
           });
-          settingsLink.insertAdjacentElement("beforebegin", link);
+
+          if (workLink) workLink.insertAdjacentElement("afterend", link);
+          else settingsLink?.insertAdjacentElement("beforebegin", link);
         }
 
         const active = location === "/arch" || location.startsWith("/arch/");
@@ -231,6 +263,15 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         });
     };
   }, [arqdorVisible, location, setLocation]);
+
+  useEffect(() => {
+    const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
+    if (isPureSuperAdmin || tenantNavModulesLoading || tenantQuery.isLoading) return;
+    const pathname = location.split("?")[0];
+    if ((pathname === "/arch" || pathname.startsWith("/arch/")) && !arqdorVisible) {
+      setLocation("/");
+    }
+  }, [arqdorVisible, location, setLocation, tenantNavModulesLoading, tenantOverride, tenantQuery.isLoading, user?.platformRole]);
 
   useEffect(() => {
     const enforceErpEntitlement = () => {
