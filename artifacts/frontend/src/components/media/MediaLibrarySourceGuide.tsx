@@ -14,6 +14,31 @@ function replaceTextNode(root: HTMLElement, from: string, to: string) {
   return false;
 }
 
+function keepInternalProductsVisible(library: HTMLElement) {
+  const internalProducts = library.querySelector<HTMLButtonElement>('button[data-internal-products-library="true"]');
+  const catalogProducts = Array.from(library.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => normalizedText(button.textContent).includes("Produtos do catálogo"));
+
+  if (!internalProducts || !catalogProducts) return;
+
+  // Mantém a linha Vendor.ai logo ao lado do catálogo, evitando que ela fique
+  // escondida no fim do carrossel horizontal em telas menores.
+  if (catalogProducts.nextElementSibling !== internalProducts) {
+    catalogProducts.insertAdjacentElement("afterend", internalProducts);
+  }
+
+  const categoriesSection = catalogProducts.closest("section");
+  if (!categoriesSection) return;
+
+  const counter = Array.from(categoriesSection.querySelectorAll<HTMLElement>("span"))
+    .find((element) => /^\d+ categorias$/.test(normalizedText(element.textContent)));
+  if (counter) {
+    const visibleCategoryButtons = Array.from(categoriesSection.querySelectorAll<HTMLButtonElement>("button"))
+      .filter((button) => normalizedText(button.textContent) !== "Todas as mídias");
+    counter.textContent = `${visibleCategoryButtons.length} categorias`;
+  }
+}
+
 function unifyCompanyLibraryUi() {
   document
     .querySelectorAll<HTMLAnchorElement>('[data-marketing-flow-menu] a[href="/midias/informacoes"]')
@@ -76,6 +101,8 @@ function unifyCompanyLibraryUi() {
       .find((node) => normalizedText(node.textContent) === "Apresentações");
     if (label) label.textContent = "Documentos e arquivos";
   });
+
+  keepInternalProductsVisible(library);
 }
 
 export default function MediaLibrarySourceGuide() {
