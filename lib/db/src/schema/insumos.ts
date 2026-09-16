@@ -1,9 +1,10 @@
-import { pgTable, text, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, date, jsonb, uuid, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
-import { obrasTable } from "./obras";
+import { obrasTable, obraEtapasTable } from "./obras";
 import { usersTable } from "./users";
+import { obraLancamentosTable } from "./obra_lancamentos";
 
 const decimalOptional = z
   .union([z.string(), z.number()])
@@ -129,14 +130,31 @@ export const comprasObrasTable = pgTable("compras_obras", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   obraId: text("obra_id").references(() => obrasTable.id, { onDelete: "set null" }),
   insumoId: text("insumo_id").references(() => insumosTable.id, { onDelete: "set null" }),
+  codigo: text("codigo"),
+  etapaId: text("etapa_id").references(() => obraEtapasTable.id, { onDelete: "set null" }),
   descricao: text("descricao").notNull(),
+  ambiente: text("ambiente"),
+  disciplina: text("disciplina"),
+  categoria: text("categoria"),
   fornecedor: text("fornecedor"),
   quantidade: numeric("quantidade", { precision: 15, scale: 4 }),
+  unidade: text("unidade").notNull().default("un"),
   valorUnitario: numeric("valor_unitario", { precision: 15, scale: 4 }),
   valorTotal: numeric("valor_total", { precision: 15, scale: 2 }),
+  prioridade: text("prioridade").notNull().default("media"),
   status: text("status").notNull().default("pendente"),
   dataPrevista: text("data_prevista"),
   dataEfetuada: text("data_efetuada"),
+  dataNecessidade: date("data_necessidade", { mode: "string" }),
+  solicitanteId: text("solicitante_id"),
+  solicitanteNome: text("solicitante_nome"),
+  aprovadoPorId: text("aprovado_por_id"),
+  aprovadoEm: timestamp("aprovado_em", { withTimezone: true }),
+  cotacaoSelecionadaId: uuid("cotacao_selecionada_id"),
+  pedidoFornecedorId: uuid("pedido_fornecedor_id"),
+  lancamentoFinanceiroId: text("lancamento_financeiro_id").references(() => obraLancamentosTable.id, { onDelete: "set null" }),
+  origem: text("origem").notNull().default("manual"),
+  documentos: jsonb("documentos").$type<Array<Record<string, unknown>>>().notNull().default([]),
   observacoes: text("observacoes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -159,6 +177,29 @@ export const updateCompraObraSchema = createSelectSchema(comprasObrasTable, {
 export type InsertCompraObra = z.infer<typeof insertCompraObraSchema>;
 export type UpdateCompraObra = z.infer<typeof updateCompraObraSchema>;
 export type CompraObra = typeof comprasObrasTable.$inferSelect;
+
+// ─── Recebimentos de compras da obra ──────────────────────────────────────────
+
+export const obraCompraRecebimentosTable = pgTable("obra_compra_recebimentos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: text("tenant_id").notNull(),
+  obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
+  compraId: text("compra_id").notNull().references(() => comprasObrasTable.id, { onDelete: "cascade" }),
+  supplierOrderId: uuid("supplier_order_id").notNull(),
+  dataRecebimento: timestamp("data_recebimento", { withTimezone: true }).notNull().defaultNow(),
+  quantidadeRecebida: numeric("quantidade_recebida", { precision: 15, scale: 4 }).notNull().default("0"),
+  quantidadeAprovada: numeric("quantidade_aprovada", { precision: 15, scale: 4 }).notNull().default("0"),
+  quantidadeRejeitada: numeric("quantidade_rejeitada", { precision: 15, scale: 4 }).notNull().default("0"),
+  status: text("status").notNull().default("inspecao"),
+  responsavelId: text("responsavel_id"),
+  responsavelNome: text("responsavel_nome"),
+  observacoes: text("observacoes"),
+  fotos: jsonb("fotos").$type<Array<Record<string, unknown>>>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type ObraCompraRecebimento = typeof obraCompraRecebimentosTable.$inferSelect;
 
 export const insertMovimentacaoEstoqueObraSchema = createInsertSchema(movimentacoesEstoqueObrasTable, {
   quantia: z.union([z.string(), z.number()]).transform((v) => String(v)).pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal")),
