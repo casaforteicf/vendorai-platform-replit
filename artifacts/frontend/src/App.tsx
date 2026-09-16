@@ -6,6 +6,50 @@ import "./video-studio-modern.css";
 
 const DevAgentOverlay = React.lazy(() => import("@/components/admin/DevAgentOverlay"));
 
+const GET_FETCH_TIMEOUT_MS = 15_000;
+
+function installGetFetchTimeout() {
+  if (typeof window === "undefined" || typeof window.fetch !== "function") return;
+  const existing = window.fetch as typeof window.fetch & { __vendoraiGetTimeout?: boolean };
+  if (existing.__vendoraiGetTimeout) return;
+
+  const nativeFetch = window.fetch.bind(window);
+  const guardedFetch: typeof window.fetch = async (input, init) => {
+    const requestMethod = (
+      init?.method
+      ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")
+      ?? "GET"
+    ).toUpperCase();
+
+    if (requestMethod !== "GET" || init?.signal) {
+      return nativeFetch(input, init);
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), GET_FETCH_TIMEOUT_MS);
+    try {
+      return await nativeFetch(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        console.warn("VendorAI: GET encerrado por timeout", typeof input === "string" ? input : input.toString());
+        return new Response(null, {
+          status: 504,
+          statusText: "VendorAI request timeout",
+          headers: { "X-VendorAI-Timeout": "true" },
+        });
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  };
+
+  (guardedFetch as typeof guardedFetch & { __vendoraiGetTimeout?: boolean }).__vendoraiGetTimeout = true;
+  window.fetch = guardedFetch;
+}
+
+installGetFetchTimeout();
+
 class DevAgentIsolationBoundary extends React.Component<
   { children: React.ReactNode; onError?: () => void },
   { failed: boolean }
