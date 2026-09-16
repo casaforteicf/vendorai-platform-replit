@@ -118,6 +118,18 @@ const CONTEXTUAL_LINK_LABELS = [
   { href: "/poe", label: "Motor de Oportunidades" },
 ] as const;
 
+const COLLAPSIBLE_SECTION_LABELS = [
+  "Construção Civil",
+  "Varejo de Moda",
+  "Supermercado",
+  "Arch — Design",
+  "Salão de Beleza",
+  "Clínica",
+  "Farmácia",
+  "Inteligência",
+  "Partner Network",
+] as const;
+
 const OBRA_CONTEXT_LABELS: Record<string, string> = {
   Financeiro: "Custos da Obra",
   Estoque: "Estoque da Obra",
@@ -173,6 +185,81 @@ function restoreScopedLabels() {
   });
 }
 
+function isCollapsibleSectionHeading(text: string) {
+  return (
+    COLLAPSIBLE_SECTION_LABELS.some((label) => text === label) ||
+    text.startsWith("Revenue Scout ·")
+  );
+}
+
+function setSectionExpanded(container: HTMLElement, heading: HTMLElement, expanded: boolean) {
+  container.dataset.vendoraiSectionExpanded = expanded ? "true" : "false";
+  heading.setAttribute("aria-expanded", expanded ? "true" : "false");
+
+  Array.from(container.children).forEach((child) => {
+    if (!(child instanceof HTMLAnchorElement)) return;
+    child.style.display = expanded ? "" : "none";
+    child.dataset.vendoraiSectionChild = "true";
+  });
+
+  const indicator = heading.querySelector<HTMLElement>("[data-vendorai-section-indicator]");
+  if (indicator) indicator.textContent = expanded ? "⌄" : "›";
+}
+
+function applyCollapsibleSections() {
+  const pathname = window.location.pathname;
+
+  document.querySelectorAll<HTMLElement>("p").forEach((heading) => {
+    const text = heading.textContent?.replace(/[⌄›]/g, "").replace(/\s+/g, " ").trim() ?? "";
+    if (!isCollapsibleSectionHeading(text)) return;
+
+    const container = heading.parentElement;
+    if (!container) return;
+
+    const sectionLinks = Array.from(container.children).filter(
+      (child): child is HTMLAnchorElement => child instanceof HTMLAnchorElement,
+    );
+    if (sectionLinks.length === 0) return;
+
+    const containsActiveRoute = sectionLinks.some((link) => {
+      const href = link.getAttribute("href")?.split("?")[0] ?? "";
+      return Boolean(href) && (pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)));
+    });
+
+    heading.classList.add("cursor-pointer", "select-none");
+    heading.setAttribute("role", "button");
+    heading.setAttribute("tabindex", "0");
+    heading.dataset.vendoraiCollapsibleSection = "true";
+
+    let indicator = heading.querySelector<HTMLElement>("[data-vendorai-section-indicator]");
+    if (!indicator) {
+      indicator = document.createElement("span");
+      indicator.dataset.vendoraiSectionIndicator = "true";
+      indicator.setAttribute("aria-hidden", "true");
+      indicator.className = "ml-auto text-sm leading-none";
+      heading.appendChild(indicator);
+    }
+
+    if (heading.dataset.vendoraiCollapsibleSectionBound !== "true") {
+      const toggle = () => {
+        const expanded = container.dataset.vendoraiSectionExpanded !== "true";
+        setSectionExpanded(container, heading, expanded);
+      };
+      heading.addEventListener("click", toggle);
+      heading.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        toggle();
+      });
+      heading.dataset.vendoraiCollapsibleSectionBound = "true";
+    }
+
+    const persisted = container.dataset.vendoraiSectionExpanded;
+    const expanded = containsActiveRoute || persisted === "true";
+    setSectionExpanded(container, heading, expanded);
+  });
+}
+
 export function useNavigationDeduplication() {
   useEffect(() => {
     const applyPolicy = () => {
@@ -217,6 +304,8 @@ export function useNavigationDeduplication() {
         });
       });
 
+      applyCollapsibleSections();
+
       if (window.location.pathname === "/trabalho") {
         document.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
           if (heading.textContent?.trim() === "Central de Trabalho") {
@@ -250,6 +339,22 @@ export function useNavigationDeduplication() {
           delete link.dataset.vendoraiCanonicalHref;
           delete link.dataset.vendoraiCanonicalLabel;
         });
+      document.querySelectorAll<HTMLAnchorElement>('a[data-vendorai-section-child="true"]').forEach((link) => {
+        link.style.display = "";
+        delete link.dataset.vendoraiSectionChild;
+      });
+      document.querySelectorAll<HTMLElement>('[data-vendorai-collapsible-section="true"]').forEach((heading) => {
+        heading.querySelector<HTMLElement>("[data-vendorai-section-indicator]")?.remove();
+        heading.classList.remove("cursor-pointer", "select-none");
+        heading.removeAttribute("role");
+        heading.removeAttribute("tabindex");
+        heading.removeAttribute("aria-expanded");
+        delete heading.dataset.vendoraiCollapsibleSection;
+        delete heading.dataset.vendoraiCollapsibleSectionBound;
+      });
+      document.querySelectorAll<HTMLElement>("[data-vendorai-section-expanded]").forEach((container) => {
+        delete container.dataset.vendoraiSectionExpanded;
+      });
       restoreScopedLabels();
     };
   }, []);
