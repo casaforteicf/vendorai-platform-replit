@@ -53,6 +53,23 @@ function tenantId(req: any): string | null {
   return req?.user?.tenantId ?? req?.tenantId ?? null;
 }
 
+function requireTenant(req: any, res: any): string | null {
+  const tid = tenantId(req);
+  if (!tid) {
+    res.status(403).json({ error: "Tenant ativo é obrigatório para operar a obra do ARQDOR." });
+    return null;
+  }
+  return tid;
+}
+
+async function ownedObra(tid: string, obraId: string) {
+  const result = await pool.query(
+    `SELECT * FROM obras WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+    [obraId, tid],
+  );
+  return result.rows[0] ?? null;
+}
+
 async function addEvent(
   projectId: string,
   workOrderId: string | null,
@@ -292,6 +309,220 @@ async function createOrdersFromApproval(tId: string | null, payload: {
 // ─── Router ───────────────────────────────────────────────────────────────────
 const archProductionProcurementRouter = Router();
 
+// ─── ARQDOR Construction Bridge ───────────────────────────────────────────────
+// O projeto ARQDOR é o identificador funcional; a obra usa a tabela real `obras`.
+// A ponte fica dentro do Arch Hub para funcionar tanto em tenants de arquitetura
+// quanto de construção, sempre limitada ao tenant autenticado.
+archProductionProcurementRouter.post("/arch/construction/ensure", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const projectId = String(req.body?.projectId ?? "").trim();
+    const name = String(req.body?.name ?? "Projeto ARQDOR").trim() || "Projeto ARQDOR";
+    if (!projectId) { res.status(400).json({ error: "projectId é obrigatório" }); return; }
+
+    const marker = `[ARQDOR:${projectId}]`;
+    let result = await pool.query(
+      `SELECT * FROM obras
+       WHERE tenant_id = $1 AND (descricao LIKE $2 OR lower(nome) = lower($3))
+       ORDER BY created_at DESC LIMIT 1`,
+      [tid, `%${marker}%`, name],
+    );
+
+    let obra = result.rows[0];
+    if (!obra) {
+      const id = crypto.randomUUID();
+      result = await pool.query(
+        `INSERT INTO obras (
+          id, tenant_id, nome, descricao, cliente_nome, status,
+          orcamento_total, custo_realizado, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),now()) RETURNING *`,
+        [
+          id,
+          tid,
+          name,
+          `${marker} Obra operacional vinculada automaticamente ao projeto ARQDOR.`,
+          req.body?.clientName ?? null,
+          req.body?.status === "em_execucao" ? "em_andamento" : "planejamento",
+          req.body?.budget ? String(req.body.budget) : null,
+          "0",
+        ],
+      );
+      obra = result.rows[0];
+    }
+
+    res.json({ obra });
+  } catch (err) {
+    logger.error({ err }, "arch/construction/ensure error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const obra = await ownedObra(tid, obraId);
+    if (!obra) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const [etapasResult, diarioResult, comprasResult, medicoesResult] = await Promise.all([
+      pool.query(`SELECT * FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`, [obraId]),
+      pool.query(`SELECT * FROM obra_diario WHERE obra_id = $1 ORDER BY data DESC, created_at DESC`, [obraId]),
+      pool.query(`SELECT * FROM compras_obras WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
+      pool.query(
+        `SELECT m.* FROM obra_etapa_medicoes m
+         INNER JOIN obra_etapas e ON e.id = m.etapa_id
+         WHERE e.obra_id = $1 ORDER BY m.created_at DESC`,
+        [obraId],
+      ),
+    ]);
+
+    const etapas = etapasResult.rows;
+    const percentualGeral = etapas.length
+      ? etapas.reduce((sum: number, item: any) => sum + Number(item.percentual_executado ?? 0), 0) / etapas.length
+      : 0;
+
+    res.json({
+      obra: { ...obra, percentualGeral },
+      etapas,
+      diario: diarioResult.rows,
+      compras: comprasResult.rows,
+      medicoes: medicoesResult.rows,
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction bundle error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/etapas", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    const nome = String(req.body?.nome ?? "").trim();
+    if (!nome) { res.status(400).json({ error: "Nome da etapa é obrigatório" }); return; }
+
+    const result = await pool.query(
+      `INSERT INTO obra_etapas (
+        id, obra_id, nome, descricao, ordem, data_inicio_prevista, data_fim_prevista,
+        status, percentual_executado, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',now(),now()) RETURNING *`,
+      [crypto.randomUUID(), obraId, nome, req.body?.descricao ?? null, Number(req.body?.ordem ?? 0), req.body?.dataInicioPrevista || null, req.body?.dataFimPrevista || null],
+    );
+    res.status(201).json({ etapa: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch/construction etapa error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/diario", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    const conteudo = String(req.body?.conteudo ?? "").trim();
+    const data = String(req.body?.data ?? "").trim();
+    if (!conteudo || !data) { res.status(400).json({ error: "Data e conteúdo são obrigatórios" }); return; }
+
+    const result = await pool.query(
+      `INSERT INTO obra_diario (
+        id, obra_id, data, conteudo, responsavel_id, responsavel_nome, status,
+        clima_tempo, mao_de_obra, observacoes, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,'rascunho',$7,$8,$9,now(),now()) RETURNING *`,
+      [
+        crypto.randomUUID(), obraId, data, conteudo,
+        req?.user?.sub ?? null, req?.user?.name ?? req?.user?.email ?? null,
+        req.body?.climaTempo ?? null,
+        req.body?.maoDeObra === undefined || req.body?.maoDeObra === "" ? null : Number(req.body.maoDeObra),
+        req.body?.observacoes ?? null,
+      ],
+    );
+    res.status(201).json({ diario: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch/construction diario error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/compras", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    const descricao = String(req.body?.descricao ?? "").trim();
+    if (!descricao) { res.status(400).json({ error: "Descrição da compra é obrigatória" }); return; }
+
+    const quantidade = Number(req.body?.quantidade ?? 0);
+    const valorUnitario = Number(req.body?.valorUnitario ?? 0);
+    const valorTotal = req.body?.valorTotal === undefined ? quantidade * valorUnitario : Number(req.body.valorTotal);
+
+    const result = await pool.query(
+      `INSERT INTO compras_obras (
+        id, tenant_id, obra_id, descricao, fornecedor, quantidade, valor_unitario,
+        valor_total, status, data_prevista, observacoes, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),now()) RETURNING *`,
+      [
+        crypto.randomUUID(), tid, obraId, descricao, req.body?.fornecedor ?? null,
+        String(quantidade), String(valorUnitario), String(valorTotal), req.body?.status ?? "pendente",
+        req.body?.dataPrevista || null, req.body?.observacoes ?? null,
+      ],
+    );
+    res.status(201).json({ compra: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch/construction compra error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId/medicoes", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const etapaId = String(req.params["etapaId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const etapaResult = await pool.query(`SELECT * FROM obra_etapas WHERE id = $1 AND obra_id = $2 LIMIT 1`, [etapaId, obraId]);
+    const etapa = etapaResult.rows[0];
+    if (!etapa) { res.status(404).json({ error: "Etapa não encontrada" }); return; }
+
+    const novo = Number(req.body?.percentualNovo ?? 0);
+    if (!Number.isFinite(novo) || novo < 0 || novo > 100) {
+      res.status(400).json({ error: "Percentual deve estar entre 0 e 100" });
+      return;
+    }
+
+    const medicaoResult = await pool.query(
+      `INSERT INTO obra_etapa_medicoes (
+        id, etapa_id, data, percentual_anterior, percentual_novo, responsavel_id,
+        observacao, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,now()) RETURNING *`,
+      [
+        crypto.randomUUID(), etapaId, req.body?.data ?? new Date().toISOString().slice(0, 10),
+        String(etapa.percentual_executado ?? 0), String(novo), req?.user?.sub ?? null,
+        req.body?.observacao ?? null,
+      ],
+    );
+
+    await pool.query(
+      `UPDATE obra_etapas SET percentual_executado = $1, status = $2, updated_at = now() WHERE id = $3 AND obra_id = $4`,
+      [String(novo), novo >= 100 ? "concluida" : novo > 0 ? "em_andamento" : "pendente", etapaId, obraId],
+    );
+
+    res.status(201).json({ medicao: medicaoResult.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch/construction medicao error");
+    next(err);
+  }
+});
+
+// ─── Production, Procurement & Execution ──────────────────────────────────────
 archProductionProcurementRouter.get("/arch/producao", async (req, res, next) => {
   try {
     const projectId = String(req.query["projectId"] ?? "");
