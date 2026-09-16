@@ -1,0 +1,44 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY . .
+
+ENV DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/vendorai_ci
+ENV NODE_OPTIONS=--max-old-space-size=6144
+
+# O lockfile global está temporariamente desalinhado por artifacts/website,
+# então esta validação reproduz o comportamento dos workflows atuais.
+RUN pnpm install --no-frozen-lockfile
+
+# Valida os três arquivos de API alterados pelo Video Studio com TypeScript real.
+RUN printf '%s\n' \
+  '{' \
+  '  "extends": "./tsconfig.json",' \
+  '  "compilerOptions": {' \
+  '    "incremental": false,' \
+  '    "composite": false,' \
+  '    "noEmit": true,' \
+  '    "types": ["node", "pino-http"]' \
+  '  },' \
+  '  "include": [],' \
+  '  "files": [' \
+  '    "src/routes/social-integrations.ts",' \
+  '    "src/services/social-publication-dispatcher.ts",' \
+  '    "src/services/social-publication-worker.ts"' \
+  '  ],' \
+  '  "references": []' \
+  '}' \
+  > artifacts/api-server/tsconfig.video-studio-temp.json
+
+RUN pnpm exec tsc -b lib/integrations-anthropic-ai/tsconfig.json
+RUN pnpm --filter @workspace/api-server exec tsc -p tsconfig.video-studio-temp.json --noEmit
+
+# Valida os bundles que o PR efetivamente altera.
+RUN pnpm --filter @workspace/frontend build
+RUN test -f artifacts/frontend/dist/public/index.html
+RUN test -f artifacts/frontend/dist/public/_worker.js
+RUN pnpm --filter @workspace/api-server run build
+
+CMD ["node", "-e", "console.log('PR1551 validation passed')"]
