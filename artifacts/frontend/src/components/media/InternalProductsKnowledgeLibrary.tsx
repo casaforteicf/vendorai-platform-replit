@@ -17,7 +17,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-type ProductType = "servico" | "produto" | "oferta";
+type ProductType = "servico" | "produto" | "oferta" | "etapa";
 type AttachmentType = "image" | "video" | "audio" | "document";
 type InternalAttachment = {
   id: string;
@@ -71,8 +71,9 @@ type KnowledgeField = { key: DetailTextKey; label: string; placeholder: string; 
 
 const TYPE_LABEL: Record<ProductType, string> = {
   servico: "Serviço",
-  produto: "Produto",
+  produto: "Solução",
   oferta: "Oferta",
+  etapa: "Etapa do processo",
 };
 
 const KNOWLEDGE_FIELDS: KnowledgeField[] = [
@@ -153,7 +154,7 @@ function formFromProduct(product: InternalProduct): FormState {
 
 function emptyForm(): FormState {
   return {
-    nome: "", categoria: "", tipo: "produto", descricaoUso: "", nichos: "", descricaoCompleta: "", caracteristicas: "",
+    nome: "", categoria: "", tipo: "servico", descricaoUso: "", nichos: "", descricaoCompleta: "", caracteristicas: "",
     beneficios: "", diferenciais: "", aplicacoes: "", publicoIndicado: "", argumentosComerciais: "", duvidasFrequentes: "",
     objecoesRespostas: "", garantia: "", instalacao: "", entrega: "", observacoesIa: "", condicoesPagamento: "", tags: "", aiEnabled: true,
   };
@@ -201,12 +202,12 @@ export default function InternalProductsKnowledgeLibrary() {
     try {
       const response = await fetch("/api/admin/produtos-internos", { headers: authHeaders(), cache: "no-store" });
       const body = await response.json().catch(() => []);
-      if (!response.ok) throw new Error("Não foi possível carregar a linha de produtos Vendor.ai.");
+      if (!response.ok) throw new Error("Não foi possível carregar serviços, soluções e etapas.");
       const next = Array.isArray(body) ? (body as InternalProduct[]).filter((product) => product.ativo !== false) : [];
       setProducts(next);
       if (selectedId && !next.some((product) => product.id === selectedId)) setSelectedId(null);
     } catch (error) {
-      toast({ title: "Linha de produtos indisponível", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      toast({ title: "Serviços e etapas indisponíveis", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -238,7 +239,7 @@ export default function InternalProductsKnowledgeLibrary() {
       clone.dataset.internalProductsLibrary = "true";
       clone.type = "button";
       clone.removeAttribute("aria-pressed");
-      replaceFirstText(clone, "Produtos do catálogo", "Produtos Vendor.ai");
+      replaceFirstText(clone, "Produtos do catálogo", "Serviços e etapas");
       const countNode = Array.from(clone.querySelectorAll<HTMLElement>("span, p, div"))
         .find((element) => /^\d+$/.test(normalizedText(element.textContent)));
       if (countNode) countNode.textContent = String(products.length);
@@ -335,7 +336,7 @@ export default function InternalProductsKnowledgeLibrary() {
       const updated = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(updated.error || "Não foi possível salvar.");
       setProducts((current) => current.map((product) => product.id === selected.id ? { ...product, ...updated } : product));
-      toast({ title: "Produto atualizado", description: "Informações, regras e conhecimento ficaram salvos na mesma referência." });
+      toast({ title: "Item atualizado", description: "Informações, regras e conhecimento ficaram salvos na mesma referência." });
     } catch (error) {
       toast({ title: "Não foi possível salvar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -414,7 +415,7 @@ export default function InternalProductsKnowledgeLibrary() {
       const updated = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(updated.error || "Não foi possível vincular os anexos.");
       setProducts((current) => current.map((product) => product.id === selected.id ? { ...product, ...updated } : product));
-      toast({ title: "Arquivos anexados", description: "Os anexos ficaram vinculados a este produto Vendor.ai." });
+      toast({ title: "Arquivos anexados", description: "Os anexos ficaram vinculados a este item." });
     } catch (error) {
       toast({ title: "Falha ao anexar arquivos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -452,28 +453,29 @@ export default function InternalProductsKnowledgeLibrary() {
             <div className="flex items-center gap-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600"><Package className="h-5 w-5" /></div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Produtos Vendor.ai</h1>
-                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">Mesmo padrão dos produtos do catálogo: selecione um item para editar informações, completar a base de conhecimento, anexar arquivos e receber apoio da IA.</p>
+                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Serviços, soluções e etapas</h1>
+                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">Use esta área para o que não é um produto direto do catálogo: serviços, ofertas, soluções e etapas do processo. Cada item pode receber informações, anexos e conhecimento para a IA.</p>
               </div>
             </div>
           </div>
           <a href="/content" className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600"><Wand2 className="h-4 w-4" /> Criar material</a>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
           <div className="rounded-2xl border bg-background p-3"><p className="text-xs font-medium text-muted-foreground">Total</p><p className="mt-2 text-xl font-semibold">{products.length}</p></div>
-          <div className="rounded-2xl border bg-background p-3"><p className="text-xs font-medium text-muted-foreground">Produtos</p><p className="mt-2 text-xl font-semibold">{products.filter((item) => item.tipo === "produto").length}</p></div>
+          <div className="rounded-2xl border bg-background p-3"><p className="text-xs font-medium text-muted-foreground">Soluções</p><p className="mt-2 text-xl font-semibold">{products.filter((item) => item.tipo === "produto").length}</p></div>
           <div className="rounded-2xl border bg-background p-3"><p className="text-xs font-medium text-muted-foreground">Serviços</p><p className="mt-2 text-xl font-semibold">{products.filter((item) => item.tipo === "servico").length}</p></div>
+          <div className="rounded-2xl border bg-background p-3"><p className="text-xs font-medium text-muted-foreground">Etapas</p><p className="mt-2 text-xl font-semibold">{products.filter((item) => item.tipo === "etapa").length}</p></div>
           <div className="rounded-2xl border bg-background p-3"><p className="text-xs font-medium text-muted-foreground">Ofertas</p><p className="mt-2 text-xl font-semibold">{products.filter((item) => item.tipo === "oferta").length}</p></div>
         </div>
       </header>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_450px]">
         <main className="min-w-0">
-          <label className="relative mb-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto, categoria, descrição ou nicho" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" /></label>
+          <label className="relative mb-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar serviço, etapa, solução, oferta ou categoria" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" /></label>
           {loading ? (
             <div className="flex min-h-[360px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-500" /></div>
           ) : grouped.length === 0 ? (
-            <div className="rounded-3xl border border-dashed p-10 text-center"><Package className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhum produto encontrado</p></div>
+            <div className="rounded-3xl border border-dashed p-10 text-center"><Package className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhum item encontrado</p></div>
           ) : (
             <div className="space-y-6">
               {grouped.map(([category, items]) => (
@@ -495,7 +497,7 @@ export default function InternalProductsKnowledgeLibrary() {
 
         <aside className="h-fit overflow-hidden rounded-3xl border bg-card shadow-sm xl:sticky xl:top-4">
           {!selected ? (
-            <div className="p-8 text-center"><Sparkles className="mx-auto h-9 w-9 text-orange-500" /><h2 className="mt-3 font-semibold">Selecione um produto</h2><p className="mt-1 text-sm text-muted-foreground">Ao abrir um item você poderá editar, anexar materiais e pedir à IA para completar os campos vazios.</p></div>
+            <div className="p-8 text-center"><Sparkles className="mx-auto h-9 w-9 text-orange-500" /><h2 className="mt-3 font-semibold">Selecione um item</h2><p className="mt-1 text-sm text-muted-foreground">Ao abrir um item você poderá editar, anexar materiais e pedir à IA para completar os campos vazios.</p></div>
           ) : (
             <>
               <div className="flex items-start gap-3 border-b p-4">
@@ -518,7 +520,7 @@ export default function InternalProductsKnowledgeLibrary() {
                     <label className="block text-xs font-medium text-muted-foreground">Nome<input value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" /></label>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-xs font-medium text-muted-foreground">Categoria<input value={form.categoria} onChange={(event) => setForm((current) => ({ ...current, categoria: event.target.value }))} className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" /></label>
-                      <label className="block text-xs font-medium text-muted-foreground">Tipo<select value={form.tipo} onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value as ProductType }))} className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"><option value="produto">Produto</option><option value="servico">Serviço</option><option value="oferta">Oferta</option></select></label>
+                      <label className="block text-xs font-medium text-muted-foreground">Tipo<select value={form.tipo} onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value as ProductType }))} className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"><option value="servico">Serviço</option><option value="etapa">Etapa do processo</option><option value="produto">Solução</option><option value="oferta">Oferta</option></select></label>
                     </div>
                     <label className="block text-xs font-medium text-muted-foreground">Descrição de uso<textarea value={form.descricaoUso} onChange={(event) => setForm((current) => ({ ...current, descricaoUso: event.target.value }))} rows={3} className="mt-1 w-full resize-y rounded-xl border bg-background p-3 text-sm outline-none focus:border-orange-300" /></label>
                     <label className="block text-xs font-medium text-muted-foreground">Nichos relacionados<input value={form.nichos} onChange={(event) => setForm((current) => ({ ...current, nichos: event.target.value }))} placeholder="Ex.: Farmácia, Construção, Imobiliária" className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" /></label>
@@ -534,7 +536,7 @@ export default function InternalProductsKnowledgeLibrary() {
                 </section>
 
                 <section className="border-t pt-4">
-                  <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Arquivos anexados</p><p className="mt-0.5 text-xs text-muted-foreground">Fotos, vídeos, PDFs, documentos e referências ficam ligados a este produto.</p></div><button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border bg-background px-3 text-xs font-semibold hover:bg-muted disabled:opacity-60">{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Anexar</button></div>
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Arquivos anexados</p><p className="mt-0.5 text-xs text-muted-foreground">Fotos, vídeos, PDFs, documentos e referências ficam ligados a este item.</p></div><button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border bg-background px-3 text-xs font-semibold hover:bg-muted disabled:opacity-60">{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Anexar</button></div>
                   {(selected.anexos ?? []).length === 0 ? (
                     <div className="mt-3 rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground"><Paperclip className="mx-auto mb-2 h-5 w-5" />Nenhum arquivo anexado.</div>
                   ) : (
