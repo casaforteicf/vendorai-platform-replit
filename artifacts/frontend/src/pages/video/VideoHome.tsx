@@ -21,6 +21,7 @@ const ProfessionalCreationModelPanel = lazy(() => import("@/components/video/Pro
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
+const MediaPlanReviewWorkspace = lazy(() => import("@/components/video/MediaPlanReviewWorkspace"));
 
 interface VideoCard {
   title: string;
@@ -45,12 +46,22 @@ function LoadingPanel({ label }: { label: string }) {
 
 export default function VideoHome() {
   const [, navigate] = useLocation();
-  const planExecution = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "media-calendar";
+  const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const planExecution = query.get("from") === "media-calendar";
+  const advancedMode = query.get("advanced") === "1";
   const [showGraphicDesign, setShowGraphicDesign] = useState(true);
   const [showProfessionalModel, setShowProfessionalModel] = useState(false);
   const [showDubleStudio, setShowDubleStudio] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showBrandKit, setShowBrandKit] = useState(false);
+
+  if (planExecution && !advancedMode) {
+    return (
+      <Suspense fallback={<LoadingPanel label="Carregando revisão do material…" />}>
+        <MediaPlanReviewWorkspace />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-28 sm:pb-10">
@@ -67,14 +78,25 @@ export default function VideoHome() {
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
                 {planExecution
-                  ? "A direção do Plano de Mídia foi carregada. Primeiro defina a direção de arte e o layout; depois avance para roteiro, mídia, Dublê, áudio e produção."
+                  ? "Editor avançado do material. Use somente quando precisar alterar direção de arte, mídia, roteiro, Dublê, áudio ou produção."
                   : "O design vem primeiro: direção de arte, grid, tipografia, hierarquia, paleta e safe area. Depois a peça ganha roteiro, movimento, Dublê, áudio e versões por canal."}
               </p>
             </div>
           </div>
-          <Button onClick={() => setShowGraphicDesign((value) => !value)} className="w-full rounded-xl lg:w-auto">
-            <Sparkles className="mr-2 h-4 w-4" />{showGraphicDesign ? "Recolher Design Director" : "Criar direção visual"}
-          </Button>
+          <div className="flex w-full gap-2 lg:w-auto">
+            {planExecution && (
+              <Button variant="outline" onClick={() => {
+                const params = new URLSearchParams(window.location.search);
+                params.delete("advanced");
+                navigate(`${window.location.pathname}?${params.toString()}`);
+              }} className="flex-1 rounded-xl lg:flex-none">
+                Voltar à revisão
+              </Button>
+            )}
+            <Button onClick={() => setShowGraphicDesign((value) => !value)} className="flex-1 rounded-xl lg:flex-none">
+              <Sparkles className="mr-2 h-4 w-4" />{showGraphicDesign ? "Recolher Design Director" : "Criar direção visual"}
+            </Button>
+          </div>
         </div>
       </header>
 
