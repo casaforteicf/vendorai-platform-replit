@@ -91,7 +91,7 @@ import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 setupApiClient();
 installVisitorTelemetry();
 
-document.documentElement.dataset.vendoraiBuild = "asset-versioning-20260910";
+document.documentElement.dataset.vendoraiBuild = "media-freeze-20260916";
 
 // O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
 // obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
@@ -155,66 +155,82 @@ function CanonicalMarketingRouteBridge() {
 function EnhancementWorkspaceBridges() {
   const [location] = useLocation();
   const pathname = location.split("?")[0] || "/";
+  const params = new URLSearchParams(window.location.search);
+  const contentTab = params.get("tab") ?? "visao-geral";
+  const contentView = params.get("view") ?? "";
 
-  // Estes bridges fazem leitura/mutação de DOM e vários usam MutationObserver.
-  // Mantê-los montados em todas as rotas gera trabalho desnecessário e pode
-  // provocar cascatas de observadores durante a montagem de páginas pesadas.
-  // Eles só são necessários nos workspaces de conteúdo, marketing e canais.
-  const shouldMount =
-    pathname.startsWith("/content") ||
-    pathname.startsWith("/marketing") ||
-    pathname.startsWith("/media") ||
-    pathname.startsWith("/ads") ||
-    pathname.startsWith("/site") ||
-    pathname.startsWith("/catalog") ||
-    pathname.startsWith("/convers");
+  const isContent = pathname === "/content";
+  const isMarketing = isContent || pathname.startsWith("/marketing");
+  const isMediaLibrary = pathname.startsWith("/midias");
+  const isAds = pathname.startsWith("/ads");
+  const isSite = pathname.startsWith("/site") || (isContent && contentView === "lp");
+  const isCatalog = pathname.startsWith("/catalog");
+  const isConversations = pathname.startsWith("/convers");
+  const isVideoStudio = pathname.startsWith("/content-studio/video");
 
-  if (!shouldMount) return null;
+  if (!isMarketing && !isMediaLibrary && !isAds && !isSite && !isCatalog && !isConversations && !isVideoStudio) {
+    return null;
+  }
 
   return (
     <>
-      <MediaAdsBridge />
-      <MediaSitesBridge />
-      <MediaCatalogBridge />
-      <MediaContentStudioBridge />
-      <MediaContextLibrary />
-      <MediaMarketingContentBridge />
-      <MediaConversationsBridge />
-      <MediaAiBaseBridge />
-      <MediaLibraryWorkflowBridge />
-      <MediaIntelligenceIndexBridge />
-      <MediaAiBaseWorkspaceNav />
-      <MediaDeleteSelectionBridge />
-      <ContentGeneratorQueueUxBridge />
-      <ContentContextSourcesBridge />
-      <ContentApprovalClarityBridge />
-      <ContentProductionClarityBridge />
-      <MarketingOverviewBridge />
-      <CampaignWorkspaceClarityBridge />
-      <PlanningReviewBridge />
-      <ContentPlanVisualCompletionBridge />
-      <MediaPlanProductionCompatibilityBridge />
-      <MediaPlanProjectKindCompatibilityBridge />
-      <MediaPlanAutoProductionBridge />
-      <MediaPlanFailedRetryBridge />
-      <MediaPlanBatchControl />
-      <MediaPlanLandingPageStrategy />
-      <MediaPlanPublicationModeControl />
-      <MediaPlanPreparationActionsBridge />
-      <MediaPlanLifecycleSummary />
-      <CheckoutConversionFunnel />
-      <AcquisitionInvestmentIntelligence />
-      <AcquisitionMasterOrchestrator />
-      <MediaPlanPerformanceCommandCenter />
-      <MediaPlanBudgetExecutionBridge />
-      <MarketingAutonomyControl />
-      <MarketingAutonomyAudit />
-      <CampaignAbTestControl />
-      <CampaignAbWinnerApprovalBridge />
-      <MediaPlanProductionRuntimeBridge />
-      <AdsCreativePreviewBridge />
-      <SearchPerformanceTrackingBridge />
-      <SeoAuthorityTrackingBridge />
+      {isAds && <MediaAdsBridge />}
+      {isSite && <MediaSitesBridge />}
+      {isCatalog && <MediaCatalogBridge />}
+      {isVideoStudio && <MediaContentStudioBridge />}
+      {isMediaLibrary && <MediaContextLibrary />}
+      {isContent && <MediaMarketingContentBridge />}
+      {isConversations && <MediaConversationsBridge />}
+
+      {isMediaLibrary && (
+        <>
+          <MediaAiBaseBridge />
+          <MediaLibraryWorkflowBridge />
+          <MediaIntelligenceIndexBridge />
+          <MediaAiBaseWorkspaceNav />
+          <MediaDeleteSelectionBridge />
+        </>
+      )}
+
+      {isMarketing && (
+        <>
+          <ContentGeneratorQueueUxBridge />
+          <ContentContextSourcesBridge />
+          <ContentApprovalClarityBridge />
+          <ContentProductionClarityBridge />
+          <MarketingOverviewBridge />
+          <CampaignWorkspaceClarityBridge />
+          <PlanningReviewBridge />
+          <ContentPlanVisualCompletionBridge />
+          <MediaPlanProductionCompatibilityBridge />
+          <MediaPlanProjectKindCompatibilityBridge />
+          <MediaPlanAutoProductionBridge />
+          <MediaPlanFailedRetryBridge />
+          <MediaPlanBatchControl />
+          <MediaPlanLandingPageStrategy />
+          <MediaPlanPublicationModeControl />
+          <MediaPlanPreparationActionsBridge />
+          <MediaPlanLifecycleSummary />
+          <CheckoutConversionFunnel />
+          <AcquisitionInvestmentIntelligence />
+          <AcquisitionMasterOrchestrator />
+          <MediaPlanPerformanceCommandCenter />
+          <MediaPlanBudgetExecutionBridge />
+          <MarketingAutonomyControl />
+          <MarketingAutonomyAudit />
+          <CampaignAbTestControl />
+          <CampaignAbWinnerApprovalBridge />
+          <MediaPlanProductionRuntimeBridge />
+        </>
+      )}
+
+      {isAds && <AdsCreativePreviewBridge />}
+      {isContent && contentTab === "rastreamento" && (
+        <>
+          <SearchPerformanceTrackingBridge />
+          <SeoAuthorityTrackingBridge />
+        </>
+      )}
     </>
   );
 }
