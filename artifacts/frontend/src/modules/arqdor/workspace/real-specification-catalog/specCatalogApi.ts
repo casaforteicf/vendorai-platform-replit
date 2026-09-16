@@ -141,9 +141,15 @@ export async function sendSpecObjectToBudget(id: string): Promise<ApiResult<{ ok
 }
 
 export function applyCatalogItemToSpecObject(object: SpecObject, item: CatalogItem): SpecObjectPayload {
-  const materialValue = Number(item.price || object.materialValue || 0);
-  const laborValue = Number(item.laborPrice || object.laborValue || 0);
+  const materialValue = Number(item.price ?? object.materialValue ?? 0);
+  const laborValue = Number(item.laborPrice ?? object.laborValue ?? 0);
   const quantity = Number(object.quantity || 1);
+
+  // Política de governança:
+  // - item já enviado ao orçamento permanece sent-to-budget para disparar a sincronização no backend;
+  // - item aprovado que sofreu alteração volta para specified e precisa ser aprovado novamente;
+  // - demais estados passam a specified.
+  const nextStatus = object.status === "sent-to-budget" ? "sent-to-budget" : "specified";
 
   return {
     projectId: object.projectId,
@@ -167,6 +173,6 @@ export function applyCatalogItemToSpecObject(object: SpecObject, item: CatalogIt
     materialValue,
     laborValue,
     notes: object.notes,
-    status: "specified",
+    status: nextStatus,
   };
 }
