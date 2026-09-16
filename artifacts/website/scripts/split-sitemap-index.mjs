@@ -61,6 +61,7 @@ const priorityPaths = new Set([
   "/agentes-virtuais-inteligentes/revenue-scout",
 
   "/blog/crm-integrado-com-whatsapp-o-que-e-e-como-funciona",
+  "/blog/como-aumentar-recompra-produtividade-comercial-distribuidoras",
   "/comparar/crm-com-ia-vs-crm-tradicional",
 ]);
 
