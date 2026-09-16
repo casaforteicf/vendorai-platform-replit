@@ -6,7 +6,7 @@ import {
   leadsTable,
   produtosCatalogoTable,
 } from "@workspace/db";
-import { listAppRuntimeOrders } from "./app_runtime_commerce.js";
+import { listUnifiedPurchaseHistory } from "./customer_purchase_identity.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -167,15 +167,10 @@ const DATA_SOURCE_EXECUTORS: Record<string, DataSourceExecutor> = {
   },
 
   "commerce.orders": async ({ tenantId, appInstanceId, viewer }) => {
-    return listAppRuntimeOrders({
+    return listUnifiedPurchaseHistory({
       tenantId,
       appInstanceId,
-      viewer: {
-        id: viewer.id,
-        displayName: viewer.displayName,
-        email: viewer.email,
-        phone: viewer.phone,
-      },
+      appUserId: viewer.id,
     });
   },
 };
