@@ -16,6 +16,7 @@ import {
 type TenantNavModule = {
   moduleKey: string;
   isEnabled: boolean;
+  hasOverride?: boolean;
 };
 
 const PRACA_AI_PATHS = new Set([
@@ -32,6 +33,35 @@ const PRACA_AI_PATHS = new Set([
 const PRACA_AI_LINK_SELECTOR = Array.from(PRACA_AI_PATHS)
   .map((href) => `a[href="${href}"]`)
   .join(",");
+
+function normalizeVertical(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isArqdorEligibleVertical(vertical: string | null | undefined) {
+  const normalized = normalizeVertical(vertical);
+  if (!normalized) return false;
+
+  return (
+    normalized === "construcao & reforma" ||
+    normalized === "arquitetura" ||
+    normalized === "arquitetura & design" ||
+    normalized === "obras" ||
+    normalized.includes("construtora") ||
+    normalized.includes("gestao de obras") ||
+    normalized.includes("marcenaria") ||
+    normalized.includes("fabrica de moveis") ||
+    normalized.includes("moveis planejados") ||
+    normalized.includes("moveis sob medida") ||
+    normalized.includes("industria de moveis") ||
+    normalized.includes("designer de interiores") ||
+    normalized.includes("design de interiores")
+  );
+}
 
 /**
  * Navigation policy wrapper.
@@ -103,12 +133,104 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
     "Sua empresa";
 
+  const effectiveVertical =
+    tenantOverride?.vertical ??
+    (tenantQuery.data as { vertical?: string | null } | undefined)?.vertical ??
+    (user as { tenantVertical?: string | null } | null)?.tenantVertical ??
+    null;
+
+  const arqdorEligible = isArqdorEligibleVertical(effectiveVertical);
+  const arqdorModule = tenantNavModules.find((module) => module.moduleKey === "arch");
+  // Compatível com o backend antigo durante rollout: ausência de override não
+  // bloqueia um segmento elegível. Um desligamento explícito por tenant, sim.
+  const arqdorDisabledByOverride = arqdorModule?.hasOverride === true && arqdorModule.isEnabled === false;
+  const arqdorVisible = arqdorEligible && !arqdorDisabledByOverride;
+
   const erpEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
   );
   const pracaAiEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "praca_ai" && module.isEnabled === true,
   );
+
+  useEffect(() => {
+    const enforceArqdorTenantTool = () => {
+      const injected = Array.from(
+        document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
+      );
+
+      // A navegação antiga de arquitetura tinha cinco links separados. O hub
+      // atual do Arqdor já contém essa navegação internamente, então escondemos
+      // o grupo legado para manter uma única entrada clara na barra.
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/arch"]').forEach((archLink) => {
+        if (archLink.dataset.arqdorToolEntry === "true") return;
+        const group = archLink.parentElement;
+        if (!group?.querySelector('a[href="/arch/projetos"]')) return;
+        group.style.display = "none";
+        group.dataset.arqdorLegacyGroupHidden = "true";
+      });
+
+      if (!arqdorVisible) {
+        injected.forEach((entry) => entry.remove());
+        return;
+      }
+
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/configuracoes"]').forEach((settingsLink) => {
+        const navContainer = settingsLink.parentElement;
+        if (!navContainer?.querySelector('a[href="/"]')) return;
+
+        let link = navContainer.querySelector<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]');
+        if (!link) {
+          link = document.createElement("a");
+          link.href = "/arch";
+          link.dataset.arqdorToolEntry = "true";
+          link.title = "Arqdor.ai — Projetos, arquitetura, interiores e obra";
+          link.setAttribute("aria-label", "Arqdor.ai");
+
+          const icon = document.createElement("span");
+          icon.setAttribute("aria-hidden", "true");
+          icon.className = "h-4 w-4 shrink-0 grid place-items-center text-[13px] font-bold";
+          icon.textContent = "A";
+
+          const label = document.createElement("span");
+          label.className = "flex-1";
+          label.textContent = "Arqdor.ai";
+
+          link.append(icon, label);
+          link.addEventListener("click", (event) => {
+            event.preventDefault();
+            setLocation("/arch");
+          });
+          settingsLink.insertAdjacentElement("beforebegin", link);
+        }
+
+        const active = location === "/arch" || location.startsWith("/arch/");
+        link.className = [
+          "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+          active
+            ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+            : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground",
+        ].join(" ");
+      });
+    };
+
+    enforceArqdorTenantTool();
+    const observer = new MutationObserver(enforceArqdorTenantTool);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      document
+        .querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]')
+        .forEach((entry) => entry.remove());
+      document
+        .querySelectorAll<HTMLElement>('[data-arqdor-legacy-group-hidden="true"]')
+        .forEach((group) => {
+          group.style.display = "";
+          delete group.dataset.arqdorLegacyGroupHidden;
+        });
+    };
+  }, [arqdorVisible, location, setLocation]);
 
   useEffect(() => {
     const enforceErpEntitlement = () => {
