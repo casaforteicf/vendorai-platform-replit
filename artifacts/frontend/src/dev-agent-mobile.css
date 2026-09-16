@@ -44,3 +44,22 @@
     color: white;
   }
 }
+
+@media (max-width: 767px) {
+  #vendorai-visitor-alert-container {
+    top: calc(env(safe-area-inset-top, 0px) + 4.75rem) !important;
+    right: 0.75rem !important;
+    width: calc(100vw - 1.5rem) !important;
+    max-width: calc(100vw - 1.5rem) !important;
+    z-index: 45 !important;
+  }
+
+  body:has(.md\:hidden.fixed.inset-0.z-50) {
+    overflow: hidden !important;
+  }
+
+  body:has(.md\:hidden.fixed.inset-0.z-50) #vendorai-visitor-alert-container,
+  body:has(.md\:hidden.fixed.inset-0.z-50) button[aria-label="Abrir JARVIS"] {
+    display: none !important;
+  }
+}
