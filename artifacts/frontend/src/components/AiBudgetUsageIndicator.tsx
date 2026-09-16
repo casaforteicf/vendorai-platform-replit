@@ -144,28 +144,42 @@ export function AiBudgetUsageIndicator() {
   const percent = Math.max(0, Math.min(100, budget.percentUsed));
   const mobileContainer = expanded
     ? "left-3 right-3 w-auto rounded-xl sm:left-4 sm:right-auto sm:w-[min(390px,calc(100vw-2rem))]"
-    : "right-4 h-12 w-12 rounded-full sm:left-4 sm:right-auto sm:h-auto sm:w-[min(390px,calc(100vw-2rem))] sm:rounded-xl";
+    : "left-3 w-auto rounded-full sm:left-4";
 
   return (
     <div className={`fixed bottom-4 z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className={`flex items-center text-left ${expanded ? "w-full gap-3 px-3 py-2" : "h-12 w-12 justify-center p-0 sm:h-auto sm:w-full sm:justify-start sm:gap-3 sm:px-3 sm:py-2"}`}
+        className={expanded
+          ? "flex w-full items-center gap-3 px-3 py-2 text-left"
+          : "flex h-8 items-center gap-1.5 px-2.5 text-left"
+        }
         aria-expanded={expanded}
         aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
       >
-        <span className="rounded-full bg-black/5 p-1.5"><Sparkles className="h-4 w-4" /></span>
-        <span className={`${expanded ? "block" : "hidden sm:block"} min-w-0 flex-1`}>
-          <span className="flex items-center justify-between gap-3 text-xs font-semibold">
-            <span>Consumo de IA · {percent.toFixed(0)}%</span>
-            <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
-          </span>
-          <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
-            <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
-          </span>
+        <span className={expanded ? "rounded-full bg-black/5 p-1.5" : "rounded-full bg-black/5 p-1"}>
+          <Sparkles className={expanded ? "h-4 w-4" : "h-3 w-3"} />
         </span>
-        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="hidden h-4 w-4 sm:block" />}
+
+        {expanded ? (
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold">
+              <span>Consumo de IA · {percent.toFixed(0)}%</span>
+              <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
+            </span>
+            <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
+              <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
+            </span>
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold leading-none tracking-tight">IA · {percent.toFixed(0)}%</span>
+        )}
+
+        {expanded
+          ? <ChevronDown className="h-4 w-4 shrink-0" />
+          : <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-70" />
+        }
       </button>
 
       {expanded ? (
