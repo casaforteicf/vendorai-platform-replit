@@ -140,11 +140,13 @@ export async function linkCpfToAppUser(input: {
   const claimedRows = rowsOf<{ id: string }>(claimed);
 
   if (claimedRows.length > 0) {
-    await db.execute(sql`
-      UPDATE app_runtime_commerce_events e
-         SET app_user_id = ${input.appUserId}, updated_at = now()
-       WHERE e.external_purchase_id IN (${sql.join(claimedRows.map((row) => sql`${row.id}`), sql`, `)})
-    `);
+    for (const row of claimedRows) {
+      await db.execute(sql`
+        UPDATE app_runtime_commerce_events
+           SET app_user_id = ${input.appUserId}, updated_at = now()
+         WHERE external_purchase_id = ${row.id}
+      `);
+    }
   }
 
   return {
@@ -210,7 +212,7 @@ export async function ingestExternalPurchase(raw: unknown): Promise<JsonObject> 
          AND document_fingerprint = ${fingerprint}
        LIMIT 1
     `);
-    let identity = rowsOf<IdentityRow>(identityResult)[0] ?? null;
+    const identity = rowsOf<IdentityRow>(identityResult)[0] ?? null;
 
     if (!identity) {
       const lead = await findLeadByCpf(data.tenantId, cpf);
