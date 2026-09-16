@@ -227,11 +227,21 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
     }
   }
 
+  const facebookInput: Parameters<typeof createFacebookOrganicPublication>[1] = {
+    text: parsed.data.text,
+    mediaUrl: parsed.data.mediaUrl,
+    mediaUrls: parsed.data.mediaUrls,
+    contentType: parsed.data.contentType === "video" || parsed.data.contentType === "short"
+      ? "reel"
+      : parsed.data.contentType,
+    mediaKind: parsed.data.mediaKind,
+  };
+
   try {
     const publication = selected === "instagram"
       ? await createInstagramOrganicPublication(tenantId, parsed.data)
       : selected === "facebook"
-        ? await createFacebookOrganicPublication(tenantId, parsed.data)
+        ? await createFacebookOrganicPublication(tenantId, facebookInput)
         : await createSocialPublication(tenantId, selected, parsed.data);
 
     const sourceMetadata: Record<string, unknown> = parsed.data.calendarItemId ? {
