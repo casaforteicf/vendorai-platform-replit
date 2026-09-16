@@ -19,13 +19,13 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
   return (
     <div className="min-h-screen bg-[#f7f7f8]">
       <div className="mx-auto w-full max-w-[1760px] px-5 pt-5 lg:px-8">
-        <div className="inline-flex flex-wrap rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
           <button
             type="button"
             onClick={() => setMode("planning")}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "planning" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
           >
-            Planejamento físico-financeiro
+            Planejamento
           </button>
           <button
             type="button"
@@ -39,7 +39,7 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
             onClick={() => setMode("finance")}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "finance" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
           >
-            Financeiro da Obra
+            Financeiro
           </button>
           <button
             type="button"
@@ -60,7 +60,15 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
             onClick={() => setMode("operation")}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "operation" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
           >
-            Operação da obra
+            Acompanhamento & Medições
+          </button>
+          <span className="mx-1 hidden h-6 w-px bg-slate-200 lg:block" />
+          <button
+            type="button"
+            onClick={() => onNavigate?.("procurement")}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-50"
+          >
+            Compras →
           </button>
         </div>
       </div>
