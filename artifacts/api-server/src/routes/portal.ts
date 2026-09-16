@@ -9,9 +9,130 @@ import {
   obraOrcamentoEtapasTable,
   obraOrcamentoItensTable,
   obraDiarioTable,
+  archProjetosTable,
+  archCenasTable,
+  archAiRendersTable,
+  archRenderSolicitacoesTable,
 } from "@workspace/db";
 
 const router = Router();
+
+async function getArqdorPortalProject(token: string) {
+  const [project] = await db
+    .select()
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.portalToken, token), eq(archProjetosTable.portalAtivo, true)))
+    .limit(1);
+  return project ?? null;
+}
+
+// GET /api/portal/arqdor/:token/versions — official persistent Render Studio history
+router.get("/portal/arqdor/:token/versions", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const project = await getArqdorPortalProject(token);
+  if (!project) return res.status(404).json({ error: "Portal não encontrado ou inativo." });
+
+  const versions = await db
+    .select({
+      id: archAiRendersTable.id,
+      parentRenderId: archAiRendersTable.parentRenderId,
+      ambiente: archAiRendersTable.ambiente,
+      operationType: archAiRendersTable.operationType,
+      materialId: archAiRendersTable.materialId,
+      materialName: archAiRendersTable.materialName,
+      resultImageUrl: archAiRendersTable.resultImageUrl,
+      originalImageUrl: archAiRendersTable.originalImageUrl,
+      versionTag: archAiRendersTable.versionTag,
+      status: archAiRendersTable.status,
+      approvedAt: archAiRendersTable.approvedAt,
+      approvalNote: archAiRendersTable.approvalNote,
+      createdAt: archAiRendersTable.createdAt,
+      concluidoEm: archAiRendersTable.concluidoEm,
+    })
+    .from(archAiRendersTable)
+    .where(and(
+      eq(archAiRendersTable.tenantId, project.tenantId),
+      eq(archAiRendersTable.projectId, project.id),
+      eq(archAiRendersTable.status, "concluido"),
+    ))
+    .orderBy(asc(archAiRendersTable.createdAt));
+
+  const numbered = versions.map((version, index) => ({ ...version, versionNumber: index + 1 }));
+  const byEnvironment = numbered.reduce<Record<string, typeof numbered>>((acc, version) => {
+    const key = version.ambiente || "sem_ambiente";
+    (acc[key] ??= []).push(version);
+    return acc;
+  }, {});
+
+  return res.json({
+    project: { id: project.id, title: project.titulo, clientName: project.clienteNome },
+    versions: numbered,
+    byEnvironment,
+  });
+});
+
+// POST /api/portal/arqdor/:token/revisions — records a real client revision request
+// linked to the exact official Render Studio version being reviewed.
+router.post("/portal/arqdor/:token/revisions", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const project = await getArqdorPortalProject(token);
+  if (!project) return res.status(404).json({ error: "Portal não encontrado ou inativo." });
+
+  const cenaId = String(req.body?.cenaId ?? "").trim();
+  const sourceAiRenderId = String(req.body?.sourceAiRenderId ?? "").trim();
+  const observacoes = typeof req.body?.observacoes === "string" ? req.body.observacoes.trim() : "";
+  const clienteNome = typeof req.body?.clienteNome === "string" && req.body.clienteNome.trim()
+    ? req.body.clienteNome.trim()
+    : project.clienteNome ?? null;
+
+  if (!cenaId || !sourceAiRenderId) {
+    return res.status(400).json({ error: "cenaId e sourceAiRenderId são obrigatórios." });
+  }
+  if (!observacoes && !Array.isArray(req.body?.itensAdicionados) && !Array.isArray(req.body?.texturasAlteradas)) {
+    return res.status(400).json({ error: "Descreva a revisão solicitada." });
+  }
+
+  const [scene] = await db
+    .select({ id: archCenasTable.id, projetoId: archCenasTable.projetoId })
+    .from(archCenasTable)
+    .where(and(eq(archCenasTable.id, cenaId), eq(archCenasTable.projetoId, project.id)))
+    .limit(1);
+  if (!scene) return res.status(404).json({ error: "Cena não pertence a este projeto." });
+
+  const [sourceVersion] = await db
+    .select({ id: archAiRendersTable.id, status: archAiRendersTable.status })
+    .from(archAiRendersTable)
+    .where(and(
+      eq(archAiRendersTable.id, sourceAiRenderId),
+      eq(archAiRendersTable.tenantId, project.tenantId),
+      eq(archAiRendersTable.projectId, project.id),
+    ))
+    .limit(1);
+  if (!sourceVersion) return res.status(404).json({ error: "Versão do render não pertence a este projeto." });
+  if (sourceVersion.status !== "concluido") {
+    return res.status(409).json({ error: "Somente versões concluídas podem receber pedido de revisão." });
+  }
+
+  const [revision] = await db
+    .insert(archRenderSolicitacoesTable)
+    .values({
+      cenaId,
+      clienteNome,
+      status: "pendente",
+      sourceAiRenderId,
+      itensAdicionados: Array.isArray(req.body?.itensAdicionados) ? req.body.itensAdicionados : [],
+      texturasAlteradas: Array.isArray(req.body?.texturasAlteradas) ? req.body.texturasAlteradas : [],
+      observacoes: observacoes || null,
+    } as any)
+    .returning();
+
+  return res.status(201).json({
+    revision,
+    projectId: project.id,
+    sourceAiRenderId,
+    nextAction: "revisao_pendente",
+  });
+});
 
 // GET /api/portal/obra/:token — public, no auth required
 router.get("/portal/obra/:token", async (req, res) => {
