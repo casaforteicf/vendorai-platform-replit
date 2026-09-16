@@ -1,5 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import { contentCalendarItemsTable, db, socialPublicationsTable } from "@workspace/db";
+import {
+  contentCalendarItemsTable,
+  contentPublishedPostsTable,
+  db,
+  mediaProjectsTable,
+  socialPublicationsTable,
+} from "@workspace/db";
 import { publishSocialPublication } from "./social-publication-publisher.js";
 import { publishInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { publishFacebookOrganicPublication } from "./facebook-organic-publication.js";
@@ -17,6 +23,16 @@ function asRecord(value: unknown): Record<string, unknown> {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function promptField(prompt: string, label: string): string {
+  if (!prompt) return "";
+  const match = prompt.match(new RegExp(`(?:^|\\n)${label}:\\s*([^\\n]+)`, "i"));
+  return match?.[1]?.trim() ?? "";
 }
 
 function publicationMediaRefs(publication: typeof socialPublicationsTable.$inferSelect) {
@@ -48,6 +64,89 @@ async function markCalendarPublished(tenantId: string, publication: typeof socia
   }).where(and(
     eq(contentCalendarItemsTable.id, calendarItemId),
     eq(contentCalendarItemsTable.tenantId, tenantId),
+  ));
+}
+
+async function registerVideoStudioInstagramPerformance(
+  tenantId: string,
+  publication: typeof socialPublicationsTable.$inferSelect,
+) {
+  if (publication.provider !== "instagram" || publication.status !== "published" || !publication.externalId) return;
+  const metadata = asRecord(publication.metadata);
+  if (metadata.source !== "video-studio") return;
+
+  const [existing] = await db.select({ id: contentPublishedPostsTable.id })
+    .from(contentPublishedPostsTable)
+    .where(and(
+      eq(contentPublishedPostsTable.tenantId, tenantId),
+      eq(contentPublishedPostsTable.instagramMediaId, publication.externalId),
+    ))
+    .limit(1);
+  if (existing) return;
+
+  const sourceProjectId = text(metadata.sourceProjectId);
+  const sourceVersion = Math.max(1, Number(metadata.sourceVersion ?? 1) || 1);
+  let title = `Vídeo Studio V${sourceVersion}`;
+  let learningContext = publication.text ?? "";
+
+  if (sourceProjectId) {
+    const [project] = await db.select({
+      title: mediaProjectsTable.title,
+      context: mediaProjectsTable.context,
+    }).from(mediaProjectsTable).where(and(
+      eq(mediaProjectsTable.id, sourceProjectId),
+      eq(mediaProjectsTable.tenantId, tenantId),
+    )).limit(1);
+
+    if (project) {
+      const context = asRecord(project.context);
+      const professional = asRecord(context.professionalCreation);
+      const prompt = text(context.prompt);
+      const profileId = text(professional.profileId);
+      const script = text(professional.script);
+      const objective = promptField(prompt, "OBJETIVO DO NEGÓCIO");
+      const product = promptField(prompt, "PRODUTO/SERVIÇO");
+      const audience = promptField(prompt, "PÚBLICO");
+      const cta = promptField(prompt, "PRÓXIMA AÇÃO/OFERTA");
+      const channel = promptField(prompt, "CANAL");
+
+      title = [
+        text(context.guidedVideoTitle) || project.title,
+        profileId ? `perfil ${profileId}` : "",
+        objective,
+        product,
+        channel,
+      ].filter(Boolean).join(" · ").slice(0, 500);
+
+      learningContext = [
+        publication.text ?? "",
+        audience ? `Público: ${audience}` : "",
+        cta ? `CTA: ${cta}` : "",
+        script ? `Roteiro: ${script}` : "",
+      ].filter(Boolean).join(" | ").slice(0, 4000);
+    }
+  }
+
+  await db.insert(contentPublishedPostsTable).values({
+    tenantId,
+    contentGenerationId: null,
+    variationIndex: sourceVersion - 1,
+    instagramMediaId: publication.externalId,
+    contentType: publication.contentType || "reel",
+    theme: title,
+    captionOuTexto: learningContext || publication.text || null,
+    publishedAt: publication.publishedAt ?? new Date(),
+  });
+
+  await db.update(socialPublicationsTable).set({
+    metadata: {
+      ...metadata,
+      performanceLearningRegisteredAt: new Date().toISOString(),
+    },
+    updatedAt: new Date(),
+  }).where(and(
+    eq(socialPublicationsTable.id, publication.id),
+    eq(socialPublicationsTable.tenantId, tenantId),
   ));
 }
 
@@ -106,5 +205,6 @@ export async function publishAnySocialPublication(tenantId: string, publicationI
       : await publishSocialPublication(tenantId, publicationId);
 
   await markCalendarPublished(tenantId, published);
+  await registerVideoStudioInstagramPerformance(tenantId, published);
   return published;
 }
