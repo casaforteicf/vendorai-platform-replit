@@ -13,6 +13,7 @@ import {
 const POLL_MS = 60_000;
 const STALE_AFTER_MS = 15 * 60_000;
 const BATCH_SIZE = 10;
+const SCHEDULE_BATCH_SIZE = 50;
 const PERFORMANCE_INTERVAL_MS = 6 * 60 * 60_000;
 const PERFORMANCE_POST_AGE_MS = 24 * 60 * 60_000;
 const PERFORMANCE_TENANT_BATCH = 20;
@@ -26,6 +27,60 @@ const AUTO_MEDIA_PLAN_PRODUCTION_ENABLED =
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let lastPerformanceRunAt = 0;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function releaseDueScheduledPublications(now = new Date()) {
+  const scheduled = await db.select({
+    id: socialPublicationsTable.id,
+    tenantId: socialPublicationsTable.tenantId,
+    metadata: socialPublicationsTable.metadata,
+  }).from(socialPublicationsTable)
+    .where(eq(socialPublicationsTable.status, "scheduled"))
+    .limit(SCHEDULE_BATCH_SIZE);
+
+  for (const item of scheduled) {
+    const metadata = asRecord(item.metadata);
+    const scheduledAtRaw = typeof metadata.scheduledAt === "string" ? metadata.scheduledAt : "";
+    if (!scheduledAtRaw) continue;
+    const scheduledAt = new Date(scheduledAtRaw);
+    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() > now.getTime()) continue;
+
+    const [claimed] = await db.update(socialPublicationsTable).set({
+      status: "queued",
+      metadata: {
+        ...metadata,
+        scheduleReleasedAt: now.toISOString(),
+      },
+      updatedAt: now,
+    }).where(and(
+      eq(socialPublicationsTable.id, item.id),
+      eq(socialPublicationsTable.tenantId, item.tenantId),
+      eq(socialPublicationsTable.status, "scheduled"),
+    )).returning({
+      id: socialPublicationsTable.id,
+      tenantId: socialPublicationsTable.tenantId,
+    });
+
+    if (!claimed) continue;
+    try {
+      await publishAnySocialPublication(claimed.tenantId, claimed.id);
+      logger.info(
+        { tenantId: claimed.tenantId, publicationId: claimed.id, scheduledAt: scheduledAtRaw },
+        "Publicação agendada pelo Video Studio foi liberada para publicação",
+      );
+    } catch (error) {
+      logger.warn(
+        { error, tenantId: claimed.tenantId, publicationId: claimed.id, scheduledAt: scheduledAtRaw },
+        "Worker social não conseguiu publicar item agendado pelo Video Studio",
+      );
+    }
+  }
+}
 
 async function processDueContentPerformanceLearning() {
   const now = Date.now();
@@ -93,6 +148,9 @@ export async function processPendingSocialPublications() {
     await enqueueDueMediaPlanPublications().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu preparar publicações vencidas do Plano de Mídia");
     });
+    await releaseDueScheduledPublications().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu liberar publicações agendadas do Video Studio");
+    });
     await processDueContentPerformanceLearning().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu processar aprendizado automático de performance");
     });
@@ -130,6 +188,7 @@ export function startSocialPublicationWorker() {
     {
       pollMs: POLL_MS,
       staleAfterMs: STALE_AFTER_MS,
+      scheduleBatchSize: SCHEDULE_BATCH_SIZE,
       performanceIntervalMs: PERFORMANCE_INTERVAL_MS,
       performancePostAgeMs: PERFORMANCE_POST_AGE_MS,
       autoMediaPlanProductionEnabled: AUTO_MEDIA_PLAN_PRODUCTION_ENABLED,
