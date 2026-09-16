@@ -100,6 +100,22 @@ const CONTEXTUAL_LINK_LABELS = [
   { href: "/logistica-praca", label: "Logística PraçaAI" },
   { href: "/praca-conciliacao", label: "Conciliação PraçaAI" },
   { href: "/praca-executivo", label: "Operação PraçaAI" },
+
+  // Fretes: recursos próprios do transporte, sem competir com Entregas gerais.
+  { href: "/fretes/cargas", label: "Cargas & Fretes" },
+  { href: "/fretes/veiculos", label: "Veículos de Frete" },
+  { href: "/fretes/motorista", label: "Entregas do Motorista" },
+
+  // Arqdor: módulo especializado de arquitetura e projeto.
+  { href: "/arch", label: "Arqdor.ai" },
+  { href: "/arch/projetos", label: "Projetos no Arqdor" },
+  { href: "/arch/render", label: "Render no Arqdor" },
+  { href: "/arch/catalogo", label: "Catálogo do Arqdor" },
+  { href: "/arch/marketplace", label: "Marketplace do Arqdor" },
+
+  // Distribuidora/ecossistema: capacidades adicionais, não duplicações do CRM.
+  { href: "/vendor-certified-network", label: "Rede Certificada VendorAI" },
+  { href: "/poe", label: "Motor de Oportunidades" },
 ] as const;
 
 const OBRA_CONTEXT_LABELS: Record<string, string> = {
