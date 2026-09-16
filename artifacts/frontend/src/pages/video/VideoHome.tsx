@@ -1,15 +1,18 @@
-import { lazy, Suspense, useState, type ElementType } from "react";
+import { lazy, Suspense, useEffect, useState, type ElementType } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowRight,
+  BarChart3,
   Captions,
   Check,
   ChevronDown,
   ChevronUp,
   Clapperboard,
+  FolderOpen,
   LayoutGrid,
   Mic2,
   Palette,
+  Send,
   Settings2,
   ShieldCheck,
   ShoppingBag,
@@ -19,6 +22,8 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
 
 const GraphicDesignDirectorPanel = lazy(() => import("@/components/video/GraphicDesignDirectorPanel"));
 const GraphicDesignTimelineHandoff = lazy(() => import("@/components/video/GraphicDesignTimelineHandoff"));
@@ -40,13 +45,20 @@ interface VideoCard {
 }
 
 type AdvancedSection = "design" | "duble" | "broll" | "brand" | null;
+type WorkspaceTab = "projects" | "create" | "publish" | "results";
 
-const WORKFLOW_STEPS = [
-  { number: 1, label: "Briefing", description: "Objetivo, produto, público e canal" },
-  { number: 2, label: "Direção + roteiro", description: "Conceito, gancho, mensagem e CTA" },
-  { number: 3, label: "Storyboard", description: "Cenas, mídias, textos e duração" },
-  { number: 4, label: "Produção", description: "Mídias reais, voz e áudio" },
-  { number: 5, label: "Finalização", description: "Verificação, render e publicação" },
+const WORKFLOW_STEPS = ["Briefing", "Roteiro", "Storyboard", "Produção", "Finalização"];
+
+const WORKSPACE_TABS: Array<{
+  id: WorkspaceTab;
+  label: string;
+  description: string;
+  icon: ElementType;
+}> = [
+  { id: "projects", label: "Projetos", description: "Retomar e acompanhar", icon: FolderOpen },
+  { id: "create", label: "Criar vídeo", description: "Fluxo guiado", icon: Sparkles },
+  { id: "publish", label: "Publicar", description: "Publicar ou agendar", icon: Send },
+  { id: "results", label: "Resultados", description: "Desempenho e aprendizado", icon: BarChart3 },
 ];
 
 const CARDS: VideoCard[] = [
@@ -133,12 +145,49 @@ function AdvancedPanel({ section }: { section: Exclude<AdvancedSection, null> })
 
 export default function VideoHome() {
   const [, navigate] = useLocation();
+  const { user, tenantOverride } = useAuth();
+  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const planExecution = query.get("from") === "media-calendar";
   const advancedMode = query.get("advanced") === "1";
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("projects");
+  const [resultsAvailable, setResultsAvailable] = useState<boolean | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSection, setAdvancedSection] = useState<AdvancedSection>(null);
   const [showTools, setShowTools] = useState(false);
+
+  useEffect(() => {
+    if (!tenantId || planExecution) return;
+    let disposed = false;
+
+    const checkResults = async () => {
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/social-publications`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` },
+        });
+        if (!response.ok) return;
+        const body = await response.json().catch(() => ({})) as { publications?: Array<{ metadata?: Record<string, unknown> | null }> };
+        const available = (body.publications ?? []).some((publication) => publication.metadata?.source === "video-studio");
+        if (!disposed) setResultsAvailable(available);
+      } catch {
+        if (!disposed && resultsAvailable === null) setResultsAvailable(false);
+      }
+    };
+
+    void checkResults();
+    const timer = window.setInterval(() => { void checkResults(); }, 12_000);
+    const handleFocus = () => { void checkResults(); };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [tenantId, planExecution]);
+
+  useEffect(() => {
+    if (workspaceTab === "results" && resultsAvailable === false) setWorkspaceTab("projects");
+  }, [workspaceTab, resultsAvailable]);
 
   if (planExecution && !advancedMode) {
     return (
@@ -152,10 +201,12 @@ export default function VideoHome() {
     setAdvancedSection((current) => (current === section ? null : section));
   };
 
+  const visibleTabs = WORKSPACE_TABS.filter((tab) => tab.id !== "results" || resultsAvailable === true);
+
   return (
-    <div className="space-y-6 pb-28 sm:pb-10">
+    <div className="space-y-5 pb-28 sm:pb-10">
       <header className="overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.08] via-card to-card p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/12 text-violet-600 dark:text-violet-300">
               <Clapperboard className="h-5 w-5" />
@@ -166,8 +217,16 @@ export default function VideoHome() {
                 <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">Modo guiado</span>
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                Crie um vídeo profissional em cinco etapas. A VendorAI cuida de direção visual, seleção de mídia, consistência da marca e controle de qualidade nos bastidores.
+                Crie, publique e acompanhe vídeos profissionais sem precisar dominar ferramentas técnicas.
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                {WORKFLOW_STEPS.map((step, index) => (
+                  <span key={step} className="inline-flex items-center gap-1.5">
+                    {index > 0 && <ArrowRight className="h-3 w-3 opacity-45" />}
+                    <span>{step}</span>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -185,67 +244,85 @@ export default function VideoHome() {
             </Button>
           )}
         </div>
-
-        <div className="mt-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {WORKFLOW_STEPS.map((step) => (
-            <div key={step.number} className="rounded-2xl border border-border/70 bg-background/70 p-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{step.number}</span>
-                <p className="text-sm font-semibold text-foreground">{step.label}</p>
-              </div>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{step.description}</p>
-            </div>
-          ))}
-        </div>
       </header>
 
-      <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.035] p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-            <ShieldCheck className="h-5 w-5" />
+      <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.035] px-4 py-3 sm:px-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="font-semibold text-foreground">Qualidade automática nos bastidores</span>
+            <span className="hidden text-muted-foreground md:inline">Mídia real primeiro, roteiro aprovado, marca consistente e verificação antes de gerar.</span>
           </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground">Qualidade profissional sem exigir conhecimento técnico</p>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              O sistema prioriza mídias reais da empresa e do catálogo, mantém identidade visual, valida roteiro e cenas antes do render e usa IA generativa somente quando faltar material adequado.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              {["Mídia real primeiro", "Marca consistente", "Verificação antes de gerar", "Troca de mídia por cena"].map((item) => (
-                <span key={item} className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" />{item}</span>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground md:hidden">
+            {["Mídia real primeiro", "Roteiro aprovado", "Verificação final"].map((item) => (
+              <span key={item} className="inline-flex items-center gap-1"><Check className="h-3 w-3 text-emerald-600" />{item}</span>
+            ))}
           </div>
         </div>
       </section>
 
-      <Suspense fallback={<LoadingPanel label="Carregando projetos de vídeo…" />}>
-        <VideoProjectsPanel />
-      </Suspense>
-
-      <section className="space-y-3">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Criar vídeo</h2>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">Preencha o essencial, aprove o roteiro e deixe a VendorAI conduzir o restante do processo.</p>
-          </div>
-          <span className="text-xs font-medium text-muted-foreground">Rascunho salvo automaticamente</span>
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="grid gap-1 border-b border-border bg-muted/20 p-2 sm:grid-cols-2 lg:grid-cols-4">
+          {visibleTabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = workspaceTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setWorkspaceTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-3 py-3 text-left transition",
+                  active ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                )}
+              >
+                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{tab.label}</p>
+                  <p className="mt-0.5 truncate text-[11px] opacity-75">{tab.description}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        <Suspense fallback={<LoadingPanel label="Carregando criador de vídeo…" />}>
-          <GuidedVideoCreationPanel />
-        </Suspense>
+        <div className="p-3 sm:p-4">
+          {workspaceTab === "projects" && (
+            <Suspense fallback={<LoadingPanel label="Carregando projetos de vídeo…" />}>
+              <VideoProjectsPanel />
+            </Suspense>
+          )}
+
+          {workspaceTab === "create" && (
+            <section className="space-y-3">
+              <div className="flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Criar vídeo</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Preencha o essencial, aprove o roteiro e deixe a VendorAI conduzir o restante.</p>
+                </div>
+                <span className="text-xs font-medium text-muted-foreground">Rascunho salvo automaticamente</span>
+              </div>
+              <Suspense fallback={<LoadingPanel label="Carregando criador de vídeo…" />}>
+                <GuidedVideoCreationPanel />
+              </Suspense>
+            </section>
+          )}
+
+          {workspaceTab === "publish" && (
+            <Suspense fallback={<LoadingPanel label="Carregando publicação e agendamento…" />}>
+              <VideoPublishPanel />
+            </Suspense>
+          )}
+
+          {workspaceTab === "results" && resultsAvailable === true && (
+            <Suspense fallback={<LoadingPanel label="Carregando resultados e aprendizado…" />}>
+              <VideoPerformancePanel />
+            </Suspense>
+          )}
+        </div>
       </section>
-
-      <Suspense fallback={<LoadingPanel label="Carregando publicação e agendamento…" />}>
-        <VideoPublishPanel />
-      </Suspense>
-
-      <Suspense fallback={<LoadingPanel label="Carregando resultados e aprendizado…" />}>
-        <VideoPerformancePanel />
-      </Suspense>
 
       <section className="overflow-hidden rounded-2xl border border-border bg-card">
         <button
@@ -259,7 +336,7 @@ export default function VideoHome() {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><SlidersHorizontal className="h-5 w-5" /></div>
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-foreground">Opções avançadas</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">Abra somente quando precisar controlar direção visual, Dublê, geração de cena ou padrão da marca.</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Direção visual, Dublê, geração de cena e padrão da marca.</p>
           </div>
           <span className="hidden rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">Opcional</span>
           {showAdvanced ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -279,7 +356,7 @@ export default function VideoHome() {
                     className={`rounded-2xl border p-4 text-left transition ${active ? "border-primary/40 bg-primary/[0.045]" : "border-border hover:bg-muted/40"}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4.5 w-4.5" /></div>
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4 w-4" /></div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-foreground">{item.title}</p>
                         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
@@ -309,7 +386,7 @@ export default function VideoHome() {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Settings2 className="h-5 w-5" /></div>
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-foreground">Ferramentas específicas</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">Recursos auxiliares para tarefas que não fazem parte do fluxo principal.</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Editor, legendas, clipes, lote e recursos especializados.</p>
           </div>
           {showTools ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </button>
@@ -326,7 +403,7 @@ export default function VideoHome() {
                   className="group rounded-2xl border border-border p-4 text-left transition hover:border-primary/30 hover:bg-muted/40"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4.5 w-4.5" /></div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4 w-4" /></div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-foreground">{card.title}</p>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{card.description}</p>
