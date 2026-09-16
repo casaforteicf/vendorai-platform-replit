@@ -7,6 +7,7 @@ import MediaLibraryV2 from "@/pages/MediaLibraryV2";
 import MediaLibrarySourceGuide from "@/components/media/MediaLibrarySourceGuide";
 import ProductCatalogKnowledgeLibrary from "@/components/media/ProductCatalogKnowledgeLibrary";
 import ProductCatalogSelectionBridge from "@/components/media/ProductCatalogSelectionBridge";
+import ProductCatalogAiAssistBridge from "@/components/media/ProductCatalogAiAssistBridge";
 import ProjectKnowledgeLibrary from "@/components/media/ProjectKnowledgeLibrary";
 import InternalProductsKnowledgeLibrary from "@/components/media/InternalProductsKnowledgeLibrary";
 import Conversations from "@/pages/Conversations";
@@ -57,6 +58,7 @@ export default function NotFound() {
         {isMediaCenter ? (
           <>
             <MediaLibrarySourceGuide />
+            <ProductCatalogAiAssistBridge />
             <div id="biblioteca-midias">
               <MediaLibraryV2 />
               <ProductCatalogKnowledgeLibrary />
