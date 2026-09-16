@@ -32,6 +32,16 @@ A primeira etapa inclui:
 
 A implementação inicial é deliberadamente aditiva e sem alteração destrutiva de fluxos existentes. A migração dos módulos atuais para consumo desses registries deve ocorrer incrementalmente.
 
+## Infraestrutura oficial
+
+A topologia oficial de produção do VendorAI é:
+
+- **Cloudflare Pages + Worker** para frontend, SPA, proxy `/api` e domínio `app.appvendorai.com`;
+- **Railway** para a API e serviços Node;
+- **Supabase/PostgreSQL** para persistência, RLS e serviços de dados.
+
+Vercel não é gate nem runtime oficial do VendorAI. Configurações ou referências legadas só devem permanecer quando ainda forem necessárias para um produto separado e até sua migração específica ser concluída.
+
 ## Validação externa
 
 Quando o GitHub Actions não consegue atribuir runner ao job, a PR pode ser validada por builds isolados vinculados ao SHA da própria branch. A evidência só é aceita quando o provedor informa explicitamente a branch e o commit avaliados; builds de `main` ou snapshots reutilizados não substituem essa validação.
@@ -43,7 +53,9 @@ Os gates equivalentes ao CI usados na PR #668 são:
 - `pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit`
 - Vitest focado de regras críticas da API
 - `pnpm --filter @workspace/api-server run build`
-- Preview Vercel do mesmo SHA como gate adicional do frontend
+- build do frontend no mesmo SHA;
+- publicação/validação Cloudflare Pages para frontend;
+- validação Railway pós-deploy quando houver mudança de backend.
 
 Essa validação comprova instalação, tipagem, testes e build. Ela não substitui smoke integrado com banco, Meta, Google ou demais serviços externos.
 
