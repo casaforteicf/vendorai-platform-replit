@@ -229,7 +229,8 @@ export default function TemplateRuntimeEditorDialog({ template, token, open, onO
     if (!template) return;
     const pageIds = pages.map((item) => item.id.trim());
     if (!pageIds.length || pageIds.some((value) => !value) || new Set(pageIds).size !== pageIds.length || pages.some((item) => !item.title.trim())) {
-      return toast({ title: "Revise IDs e títulos das páginas antes de salvar", variant: "destructive" });
+      toast({ title: "Revise IDs e títulos das páginas antes de salvar", variant: "destructive" });
+      return;
     }
     setSaving(true);
     try {
