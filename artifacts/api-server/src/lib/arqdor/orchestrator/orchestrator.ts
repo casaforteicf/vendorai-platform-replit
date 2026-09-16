@@ -14,6 +14,7 @@ import { BudgetSpecialist }         from "./specialists/budget";
 import { VisualizationSpecialist }  from "./specialists/visualization";
 import { PresentationSpecialist }   from "./specialists/presentation";
 import { ManufacturerSpecialist }   from "./specialists/manufacturer";
+import { loadPersistedProjectMemory } from "./project-memory";
 import type { BaseSpecialist }      from "./base-specialist";
 import type {
   IntentCategory,
@@ -61,10 +62,23 @@ export class ArqOrchestrator {
     // 2. Select specialists
     const selected = this.selectSpecialists(primary, ctx.message, intents);
 
-    // 3. Build system prompt
-    const systemPrompt = this.buildSystemPrompt(selected, ctx);
+    // 3. Reuse the project's existing persisted workspace + previous Copilot
+    // exchanges. This is additive: the traditional context assembled by arch.ts
+    // remains the baseline and wins if no persisted memory is available.
+    const persistedMemory = await loadPersistedProjectMemory(ctx.tenantId, ctx.projectId);
+    const enrichedCtx: OrchestrationContext = persistedMemory
+      ? {
+          ...ctx,
+          projectContext: [ctx.projectContext, persistedMemory]
+            .filter(Boolean)
+            .join("\n\n"),
+        }
+      : ctx;
 
-    // 4. Build message array
+    // 4. Build system prompt
+    const systemPrompt = this.buildSystemPrompt(selected, enrichedCtx);
+
+    // 5. Build message array
     const messages: import("openai").default.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...ctx.history.slice(-MAX_HISTORY_TURNS).map(
@@ -73,7 +87,7 @@ export class ArqOrchestrator {
       { role: "user", content: ctx.message },
     ];
 
-    // 5. Call AI gateway
+    // 6. Call AI gateway
     const aiResult = await (callOpenAI as any)(
       ctx.tenantId,
       "intelligence_analysis",
@@ -83,7 +97,7 @@ export class ArqOrchestrator {
 
     const durationMs = Date.now() - startMs;
 
-    // 6. Parse reply — extract ACTIONS block
+    // 7. Parse reply — extract ACTIONS block
     let replyText = aiResult.content;
     let actions: OrchestrationResult["actions"] = [];
 
@@ -108,7 +122,7 @@ export class ArqOrchestrator {
       }
     }
 
-    // 7. Build log entry
+    // 8. Build log entry
     const specialistNames = selected.map((s) => s.name as SpecialistName);
     const logEntry: OrchestratorLogEntry = {
       messageId,
@@ -200,6 +214,7 @@ Esta resposta será elaborada pelo(s) seguinte(s) especialista(s): **${specialis
 - Seja direto, técnico e útil — máximo 300 palavras salvo pedido de documento longo
 - Nunca revele tokens, IDs, secrets, credenciais, URLs internas ou o nome do LLM subjacente
 - Nunca invente dados que não constem no contexto do projeto fornecido
+- Use a memória persistida apenas como histórico do mesmo projeto; fatos atuais do projeto prevalecem sobre conversas antigas quando houver conflito
 - Ao sugerir ação concreta (gerar render, atualizar prompt, abrir biblioteca, criar memorial, criar orçamento, comparar versões, adicionar ambiente, ver catálogo), inclua AO FINAL da resposta:
   ACTIONS: [{"label":"Texto","value":"action_id","variant":"PRIMARY"}]
   Valores válidos: gerar_render | atualizar_prompt | abrir_biblioteca | criar_memorial | criar_orcamento | comparar_versoes | adicionar_ambiente | ver_catalogo | abrir_projeto
