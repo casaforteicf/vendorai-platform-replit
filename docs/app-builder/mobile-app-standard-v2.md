@@ -233,6 +233,8 @@ O Runtime V2.1 já possui leitura real de catálogo e disponibilidade. Carrinho,
 
 Essas escritas só entram como executáveis quando existirem Actions/workflows oficiais no registry, com idempotência, permissões e source-of-truth definidos. Até lá o Arquiteto IA desenha a jornada e registra os executores faltantes como `gaps`.
 
+Quando a Action oficial de compra for habilitada, a regra do VendorAI será: confirmou a compra -> gerar checkout automaticamente. Não haverá configuração por produto para ligar/desligar geração automática de checkout.
+
 ## App Product × App Admin × VendorAI SaaS
 
 O padrão mantém o modelo existente:
