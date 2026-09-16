@@ -368,10 +368,6 @@ export default function GuidedVideoCreationPanel() {
   }, [draftLoaded, draftKey, step, intentId, objective, product, audience, offer, proof, restrictions, channel, duration, script, scriptApproved, scenes, voiceoverAssetId, musicAssetId, effectAssetId, jingleAssetId]);
 
   useEffect(() => {
-    setDuration(intent.defaultDuration);
-  }, [intent.id]);
-
-  useEffect(() => {
     if (!tenantId || !projectId || !jobId) return;
     let cancelled = false;
     const load = async () => {
@@ -701,7 +697,7 @@ export default function GuidedVideoCreationPanel() {
 
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
             {INTENTS.map((item) => (
-              <button key={item.id} type="button" onClick={() => setIntentId(item.id)} className={cn("rounded-2xl border p-3 text-left transition", intentId === item.id ? "border-primary/45 bg-primary/[0.07]" : "border-border bg-background/40 hover:border-primary/25")}>
+              <button key={item.id} type="button" onClick={() => { setIntentId(item.id); setDuration(item.defaultDuration); }} className={cn("rounded-2xl border p-3 text-left transition", intentId === item.id ? "border-primary/45 bg-primary/[0.07]" : "border-border bg-background/40 hover:border-primary/25")}>
                 <p className="text-sm font-semibold text-foreground">{item.name}</p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
               </button>
