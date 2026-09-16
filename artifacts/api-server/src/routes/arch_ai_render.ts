@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, archAiRendersTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
+import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-spec.js";
 import { archAiRenderRouter as legacyArchAiRenderRouter } from "./arch_ai_render_legacy.js";
 
 export const archAiRenderRouter = Router();
@@ -104,6 +105,9 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, (req, res, 
     await db.update(archAiRendersTable)
       .set({ operationType: "approved", approvalNote })
       .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
+
+    const specSync = await syncApprovedRenderSpecifications({ tenantId: tid, renderId });
+    req.log?.info?.({ renderId, ...specSync }, "arch/ai-render approve: especificações sincronizadas");
   }, next);
 });
 
