@@ -86,6 +86,7 @@ import archBudgetEngineRouter from "./arch_budget_engine";
 import archClientPortalApprovalRouter from "./arch_client_portal_approval";
 import archProductionProcurementRouter from "./arch_production_procurement";
 import archConstructionDiaryRouter from "./arch_construction_diary";
+import archProcurementRealRouter from "./arch_procurement_real";
 import archPostSaleRouter from "./arch_post_sale";
 import { createSystemConsolidationRouter } from "./arch_system_consolidation";
 import archThemePreferencesRouter from "./arch_theme_preferences";
@@ -281,9 +282,6 @@ router.use(appRuntimeRouter);
 // Trilha de Configurações precisa observar mutações do tenant e dos hubs abaixo.
 router.use(configurationBusinessProfileAudit);
 
-// Leitura da coleção inteira de tenants é exclusiva do Super Admin. Para a
-// leitura do próprio tenant, escondemos campos estritamente internos de
-// negociação/gestão da plataforma sem interferir em cobrança/licença do cliente.
 const tenantInternalResponseFields = [
   "mensalidadeTabelaValor",
   "taxaImplantacaoValor",
@@ -325,25 +323,14 @@ router.use("/tenants", (req, res, next) => {
   next();
 });
 
-// Tenants — super_admin only for write, tenant scope for reads
 router.use(tenantsRouter);
-
-// Users — super_admin can do anything; tenant_admin manages own tenant
 router.use(usersRouter);
-
-// Leads, conversations, consents, agent logs — any authenticated user
 router.use(leadsRouter);
 router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
 router.use(consentsRouter);
-
-// Business Hub
 router.use(businessProfilesRouter);
-
-// Agent Config
 router.use(agentConfigsRouter);
-
-// CRM Hub
 router.use(funisRouter);
 router.use(dealsRouter);
 router.use(pipelineStagesRouter);
@@ -353,49 +340,28 @@ router.use(propostasRouter);
 router.use(leadProposalsRouter);
 router.use(productPresentationsRouter);
 router.use(messagesRouter);
-
-// Customer Intelligence Hub
 router.use(customerIntelligenceRouter);
-
-// AI Hub — ações externas do JARVIS interceptam somente os tipos próprios
-// e reutilizam a mesma fila/endpoints antes do executor padrão.
 router.use(jarvisEmailActionsRouter);
 router.use(jarvisExternalActionsRouter);
 router.use(agentTasksRouter);
 router.use(agentsRouter);
-
-// Marketing Hub
 router.use(campaignsRouter);
-
-// Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
 router.use(solicitacoesCompraRouter);
 router.use(categoriasProdutoRouter);
-
-// Schedule Hub
 router.use(agendasRouter);
 router.use(agendamentosRouter);
 router.use(entregasRouter);
 router.use(bloqueiosAgendaRouter);
-
-// Billing Hub
 router.use(subscriptionsRouter);
 router.use(invoicesRouter);
 router.use(billingEventsRouter);
 router.use(tokenPurchasesRouter);
-
-// Executive Intelligence Hub
 router.use(dashboardRouter);
 router.use(officialMetricsRouter);
 router.use(analyticsRouter);
-
-// Knowledge Hub
 router.use(knowledgeBaseRouter);
-
-// Rules Engine
 router.use(rulesRouter);
-
-// Inventory Hub
 router.use(inventoryRouter);
 router.use(erpRouter);
 router.use(financeIntegrationsRouter);
@@ -405,21 +371,11 @@ router.use(mlStatusRouter);
 router.use(leadOportunidadesPrevistasRouter);
 router.use(contentAutopilotRouter);
 router.use(siteBlogAdminRouter);
-
-// Website Hub
 router.use(siteConfigRouter);
-
-// Marketplace Hub
 router.use(segmentTemplatesRouter);
-
-// Invites Hub (protected: create + list)
 router.use(invitesProtectedRouter);
-
-// Onboarding Hub
 router.use(onboardingRouter);
 router.use(onboardingImplementationRouter);
-
-// Content Generation Hub
 router.use(contentRouter);
 router.use(socialIntegrationsRouter);
 router.use(contentReferenceCreatorsRouter);
@@ -431,14 +387,8 @@ router.use(videoProcessingRouter);
 router.use(mediaLibraryRouter);
 router.use(mediaEngineRouter);
 router.use(mediaLipSyncRouter);
-
-// Partner Hub (revendedor dashboard — legacy)
 router.use(partnerRouter);
-
-// Partners Hub (módulo parceiros Etapa 2)
 router.use(partnersRouter);
-
-// Admin Partners Hub (super_admin management)
 router.use(adminBugReportsRouter);
 router.use(adminRelatosTecnicosRouter);
 router.use(adminPartnersRouter);
@@ -450,16 +400,10 @@ router.use(adminAgentDefaultsRouter);
 router.use(adminAppBuilderRouter);
 router.use(adminAppBuilderStandaloneRouter);
 router.use(adminAppUsersRouter);
-
-// Construção Civil Hub
 router.use(construcaoRouter);
 router.use(financeiroObraRouter);
 router.use(archAiRenderRouter);
-
-// Varejo de Roupas & Acessórios Hub
 router.use(varejoRouter);
-
-// Supermercado Hub
 router.use(supermercadoRouter);
 router.use(farmaciaRouter);
 router.use(adsRouter);
@@ -471,31 +415,17 @@ router.use(veiculosRouter);
 router.use(pracaPerguntasRouter);
 router.use(pracaAvaliacoesRouter);
 router.use(restauranteRouter);
-
-// Site Generator Hub
 router.use(siteGeneratorSectionRefinementRouter);
 router.use(siteGeneratorRouter);
-
-// Tenant Domains Hub
 router.use(tenantDomainsRouter);
-
-// Notifications Hub
 router.use(notificationsRouter);
-
-// Relationship Hub
 router.use(tenantCalendarSettingsRouter);
 router.use(tenantDistribuicaoConfigRouter);
 router.use(leadSpouseConsentRouter);
-
-// AI Gateway Hub
 router.use(aiGatewayRouter);
-
-// Prospector Hub
 router.use(prospectorRouter);
 router.use(prospectorMultiRouter);
 router.use(prospectorFlowsRouter);
-
-// Partner Prospector Hub (admin)
 router.use(partnerProspectorRouter);
 
 // Arch Hub
@@ -505,69 +435,35 @@ router.use(archBudgetEngineRouter);
 router.use(archClientPortalApprovalRouter);
 router.use(archProductionProcurementRouter);
 router.use(archConstructionDiaryRouter);
+router.use(archProcurementRealRouter);
 router.use(archPostSaleRouter);
 router.use(createSystemConsolidationRouter());
 router.use(archThemePreferencesRouter);
 
-// Beauty (Salão de Beleza) Hub
 router.use(sdrTemplatesRouter);
 router.use(beautyRouter);
 router.use(servicosRouter);
-
-// Clínica Hub
 router.use(clinicRouter);
-
-// Revenue Scout Hub
 router.use(scoutRouter);
 router.use(intentWebhooksRouter);
-
-// Partner Hub (VPN — Vendor Partner Network — FASE 20)
 router.use(partnerHubRouter);
-
-// Ecosystem Hub (VEP — Vendor Ecosystem Platform — FASE 21)
 router.use(ecosystemHubRouter);
-
-// Vendor Certified Network (VCN — FASE 22)
 router.use(vcnRouter);
-
-// Project Opportunity Engine (POE — FASE 23)
 router.use(poeRouter);
 router.use(knowledgeGraphRouter);
-
-// Render Hub
 router.use(renderRouter);
-
-// SPIN Selling Briefing Hub
 router.use(spinRouter);
-
-// JARVIS: comandos naturais controlados precisam interceptar o chat antes do LLM.
 router.use(jarvisNaturalActionsRouter);
 router.use(jarvisActionPlansRouter);
 router.use(jarvisMissionsRouter);
-
-// Support chat + Dev IA
 router.use(supportRouter);
 router.use(devAgentAutonomyRouter);
-
-// Contract Templates Hub
 router.use(contractTemplatesRouter);
-
-// Confirm Closure (contract + ZapSign + Asaas + WhatsApp)
 router.use(confirmClosureRouter);
-
-// BLOCO 14 — Organizações / painel consolidado multi-loja
 router.use(organizacoesRouter);
-
-// BLOCO 14 Fase B — Troca de tenant (switch-tenant + switchable-tenants)
 router.use(tenantSwitchRouter);
-
-// BLOCO 18 — Painel financeiro da plataforma (super_admin)
 router.use(adminFinancialRouter);
-
-// Comissões de vendedores
 router.use(sellerCommissionsRouter);
-
-// Módulos de navegação por tenant
 router.use(tenantNavModulesRouter);
 router.use(vendasPracaRouter);
 router.use(pracaOrdersRouter);
@@ -579,8 +475,6 @@ router.use(pracaDeliveryOpsRouter);
 router.use(pracaExceptionsRouter);
 router.use(pracaExecutiveRouter);
 router.use(pracaReconciliationRouter);
-
-// Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
 router.use(contentTrackingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
