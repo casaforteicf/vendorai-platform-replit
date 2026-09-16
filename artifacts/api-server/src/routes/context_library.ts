@@ -21,7 +21,7 @@ function list(value: unknown, max = 50): string[] {
 }
 
 router.get("/tenants/:tenantId/context-library", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed allowed() enforces authenticated tenant ownership
   if (!allowed(req, tenantId)) { res.status(403).json({ error: "Acesso negado" }); return; }
   const status = text(req.query.status, 30);
   const values: unknown[] = [tenantId];
@@ -42,7 +42,7 @@ router.get("/tenants/:tenantId/context-library", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/context-library", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed allowed() enforces authenticated tenant ownership
   if (!allowed(req, tenantId)) { res.status(403).json({ error: "Acesso negado" }); return; }
   const title = text(req.body?.title, 180);
   const summary = text(req.body?.summary, 5000);
@@ -73,7 +73,7 @@ router.post("/tenants/:tenantId/context-library", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/context-library/:entryId", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed allowed() enforces authenticated tenant ownership
   if (!allowed(req, tenantId)) { res.status(403).json({ error: "Acesso negado" }); return; }
   const current = await pool.query("SELECT * FROM media_context_entries WHERE tenant_id = $1 AND id = $2 LIMIT 1", [tenantId, String(req.params.entryId)]);
   if (!current.rowCount) { res.status(404).json({ error: "Informação não encontrada" }); return; }
@@ -106,7 +106,7 @@ router.patch("/tenants/:tenantId/context-library/:entryId", async (req, res) => 
 });
 
 router.delete("/tenants/:tenantId/context-library/:entryId", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed allowed() enforces authenticated tenant ownership
   if (!allowed(req, tenantId)) { res.status(403).json({ error: "Acesso negado" }); return; }
   const result = await pool.query(
     "DELETE FROM media_context_entries WHERE tenant_id = $1 AND id = $2 RETURNING id",

@@ -34,7 +34,6 @@
     grid-column: 1 / -1;
   }
 
-  /* Métricas em uma faixa curta. */
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) [class*="md:grid-cols-4"] {
     display: flex !important;
     gap: 8px !important;
@@ -55,7 +54,6 @@
     font-size: 1.25rem !important;
   }
 
-  /* Busca primeiro, filtros secundários compactos. */
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) div:has(> .flex > .relative.flex-1 > input[placeholder*="Buscar por nome"]) {
     padding: 10px !important;
     border-radius: 16px !important;
@@ -85,7 +83,6 @@
     border-style: dashed;
   }
 
-  /* Configuração de upload compacta. */
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) div:has(.tiny-label) {
     border-radius: 16px !important;
   }
@@ -103,7 +100,6 @@
     border-radius: 12px !important;
   }
 
-  /* Galeria visual. */
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) [class*="grid-cols-2"][class*="sm:grid-cols-3"] {
     gap: 9px !important;
   }
@@ -149,7 +145,6 @@
     font-size:9px !important;
   }
 
-  /* Seleção em barra contextual. */
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) .action-pill {
     height:36px !important;
     min-height:36px !important;
@@ -168,22 +163,6 @@
     box-shadow:0 12px 34px rgb(15 23 42 / .12);
   }
 
-  /* Base IA e Dev IA deixam de cobrir a biblioteca. */
-  :where(body:has(.folder-chip):has(article.group):has(.top-btn)) button[title*="Gerenciar quais mídias a IA pode usar"] {
-    left:16px !important;
-    bottom:18px !important;
-    width:48px !important;
-    min-width:48px !important;
-    max-width:48px !important;
-    height:48px !important;
-    min-height:48px !important;
-    padding:0 !important;
-    justify-content:center !important;
-    overflow:hidden !important;
-    font-size:0 !important;
-    border-radius:9999px !important;
-  }
-  :where(body:has(.folder-chip):has(article.group):has(.top-btn)) button[title*="Gerenciar quais mídias a IA pode usar"] > span { display:none !important; }
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) button[aria-label="Carregar Dev IA"],
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) button[aria-label="Tentar Dev IA novamente"],
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) button[aria-label="Abrir Dev IA"] {
@@ -205,4 +184,9 @@
   :where(body:has(.folder-chip):has(article.group):has(.top-btn)) div:has(.tiny-label) .flex.flex-wrap.items-end.gap-2 {
     grid-template-columns:1fr !important;
   }
+}
+
+/* A Base IA agora faz parte do cabeçalho da Biblioteca V2; o launcher legado não deve cobrir os cards. */
+button[title*="Gerenciar quais mídias a IA pode usar automaticamente"] {
+  display: none !important;
 }

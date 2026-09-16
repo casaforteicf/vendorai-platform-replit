@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BrainCircuit, CheckCircle2, Loader2, RefreshCw, ScanSearch, Sparkles } from "lucide-react";
+import { BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanSearch, Sparkles } from "lucide-react";
 import {
   analyseMediaAsset,
   existingMediaIntelligence,
@@ -60,13 +60,9 @@ function ensureHost(): HTMLElement | null {
   if (host) return host;
   host = document.createElement("div");
   host.dataset.mediaIntelligenceIndexHost = "true";
-  host.className = "mt-4";
-
-  const totalLabel = Array.from(main.querySelectorAll<HTMLElement>("span"))
-    .find((node) => node.textContent?.trim() === "Total");
-  const statsGrid = totalLabel?.closest<HTMLElement>(".grid");
-  if (statsGrid?.parentElement) statsGrid.insertAdjacentElement("afterend", host);
-  else main.prepend(host);
+  host.className = "mt-6";
+  // O índice é apoio da biblioteca, não a primeira etapa da tela.
+  main.append(host);
   return host;
 }
 
@@ -95,6 +91,7 @@ export function MediaIntelligenceIndexBridge() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [lastError, setLastError] = useState<string | null>(null);
   const [autoIndex, setAutoIndex] = useState(() => localStorage.getItem(AUTO_INDEX_KEY) !== "off");
+  const [expanded, setExpanded] = useState(false);
   const failedSessionIds = useRef(new Set<string>());
   const mounted = useRef(true);
 
@@ -258,66 +255,32 @@ export function MediaIntelligenceIndexBridge() {
   if (pathname !== "/midias" || !host) return null;
 
   return createPortal(
-    <section className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.08] via-background to-background p-4 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-violet-600 dark:text-violet-300">
-            <BrainCircuit className="h-4 w-4" />
-            <span className="text-xs font-semibold uppercase tracking-[0.16em]">Media Intelligence Index</span>
+    <section className="overflow-hidden rounded-2xl border border-violet-500/20 bg-background shadow-sm">
+      <button
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left"
+        aria-expanded={expanded}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-300">
+            <BrainCircuit className="h-5 w-5" />
           </div>
-          <h2 className="mt-1 text-base font-semibold text-foreground">Biblioteca visual já entendida pela IA</h2>
-          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-            Cada foto e vídeo recebe foco, áreas livres, assunto conhecido, orientação, paleta, qualidade e crops recomendados. O índice fica salvo na própria mídia e é reutilizado por Design Director, Auto Layout e produção.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleAutoIndex}
-            className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium ${autoIndex ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-border bg-background text-muted-foreground"}`}
-          >
-            {autoIndex ? <CheckCircle2 className="h-3.5 w-3.5" /> : <ScanSearch className="h-3.5 w-3.5" />}
-            Indexação automática {autoIndex ? "ativa" : "pausada"}
-          </button>
-          <button
-            type="button"
-            disabled={running || pendingAssets.length === 0}
-            onClick={() => void indexAssets(pendingAssets)}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Catalogar pendentes
-          </button>
-          <button
-            type="button"
-            disabled={running || visualAssets.length === 0}
-            onClick={() => void reindexAll()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} />
-            Reindexar
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        {[
-          ["Visuais", visualAssets.length],
-          ["Indexadas", indexedAssets.length],
-          ["Pendentes", Math.max(0, visualAssets.length - indexedAssets.length)],
-          ["Alta qualidade", highQualityAssets.length],
-          ["Limitadas", limitedAssets.length],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-xl border border-border/70 bg-background/70 px-3 py-2.5">
-            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-            <p className="mt-0.5 text-lg font-semibold text-foreground">{value}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">Inteligência da Biblioteca</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {indexedAssets.length}/{visualAssets.length} mídias indexadas · {Math.max(0, visualAssets.length - indexedAssets.length)} pendentes
+            </p>
           </div>
-        ))}
-      </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {autoIndex && <span className="hidden rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">Automática</span>}
+          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </button>
 
       {running && progress.total > 0 && (
-        <div className="mt-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-3">
+        <div className="border-t px-4 py-3">
           <div className="flex items-center justify-between gap-3 text-xs">
             <span className="flex min-w-0 items-center gap-2 text-foreground">
               <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-violet-500" />
@@ -331,34 +294,92 @@ export function MediaIntelligenceIndexBridge() {
         </div>
       )}
 
-      {lastError && (
-        <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">{lastError}</p>
-      )}
-
-      {newestIndexed.length > 0 && (
-        <div className="mt-4 grid gap-2 lg:grid-cols-3">
-          {newestIndexed.map(({ asset, index }) => (
-            <div key={asset.id} className="rounded-xl border border-border/70 bg-background/60 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-xs font-semibold text-foreground">{asset.originalFilename || `Mídia ${asset.id.slice(0, 8)}`}</p>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${index.status === "ready" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>{indexLabel(index)}</span>
-              </div>
-              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                {index.dimensions.orientation} · espaço livre {zoneLabel(index.composition.whitespaceSide)} · foco {zoneLabel(index.composition.subjectSide)}
-                {index.subjects.labels.length ? ` · ${index.subjects.labels.slice(0, 3).join(", ")}` : ""}
-              </p>
-              {index.palette.dominant.length > 0 && (
-                <div className="mt-2 flex gap-1.5" aria-label="Paleta dominante">
-                  {index.palette.dominant.slice(0, 5).map((color) => <span key={color} title={color} className="h-4 w-4 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}
-                </div>
-              )}
+      {expanded && (
+        <div className="space-y-4 border-t p-4">
+          <div>
+            <div className="flex items-center gap-2 text-violet-600 dark:text-violet-300">
+              <BrainCircuit className="h-4 w-4" />
+              <span className="text-xs font-semibold uppercase tracking-[0.14em]">Media Intelligence Index</span>
             </div>
-          ))}
-        </div>
-      )}
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+              A IA analisa foco, áreas livres, orientação, paleta e qualidade para reutilizar cada mídia com mais consistência em campanhas, layouts e produção.
+            </p>
+          </div>
 
-      {loading && assets.length === 0 && (
-        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Lendo índice da Biblioteca...</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleAutoIndex}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium ${autoIndex ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-border bg-background text-muted-foreground"}`}
+            >
+              {autoIndex ? <CheckCircle2 className="h-3.5 w-3.5" /> : <ScanSearch className="h-3.5 w-3.5" />}
+              Indexação {autoIndex ? "automática" : "pausada"}
+            </button>
+            <button
+              type="button"
+              disabled={running || pendingAssets.length === 0}
+              onClick={() => void indexAssets(pendingAssets)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              Indexar pendentes
+            </button>
+            <button
+              type="button"
+              disabled={running || visualAssets.length === 0}
+              onClick={() => void reindexAll()}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} />
+              Reindexar
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            {[
+              ["Visuais", visualAssets.length],
+              ["Indexadas", indexedAssets.length],
+              ["Pendentes", Math.max(0, visualAssets.length - indexedAssets.length)],
+              ["Alta qualidade", highQualityAssets.length],
+              ["Limitadas", limitedAssets.length],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+                <p className="mt-0.5 text-lg font-semibold text-foreground">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {lastError && (
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">{lastError}</p>
+          )}
+
+          {newestIndexed.length > 0 && (
+            <div className="grid gap-2 lg:grid-cols-3">
+              {newestIndexed.map(({ asset, index }) => (
+                <div key={asset.id} className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-xs font-semibold text-foreground">{asset.originalFilename || `Mídia ${asset.id.slice(0, 8)}`}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${index.status === "ready" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>{indexLabel(index)}</span>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                    {index.dimensions.orientation} · espaço livre {zoneLabel(index.composition.whitespaceSide)} · foco {zoneLabel(index.composition.subjectSide)}
+                    {index.subjects.labels.length ? ` · ${index.subjects.labels.slice(0, 3).join(", ")}` : ""}
+                  </p>
+                  {index.palette.dominant.length > 0 && (
+                    <div className="mt-2 flex gap-1.5" aria-label="Paleta dominante">
+                      {index.palette.dominant.slice(0, 5).map((color) => <span key={color} title={color} className="h-4 w-4 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {loading && assets.length === 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Lendo índice da Biblioteca...</div>
+          )}
+        </div>
       )}
     </section>,
     host,
