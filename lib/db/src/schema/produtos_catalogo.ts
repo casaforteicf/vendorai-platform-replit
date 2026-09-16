@@ -27,6 +27,95 @@ export interface ProdutoCompatibilidadeVeicular {
   anoFim?: number | null;
 }
 
+export type ProdutoPricingMode = "cost_plus" | "sale_minus_expenses";
+export type ProdutoSaleMode = "direct_purchase" | "subscription" | "quote" | "assisted_sale";
+
+export interface ProdutoPricingConfig {
+  mode?: ProdutoPricingMode;
+  saleMode?: ProdutoSaleMode;
+  salePrice?: number | null;
+  minimumPrice?: number | null;
+  taxPercent?: number | null;
+  otherCostPercent?: number | null;
+  otherCostFixed?: number | null;
+  cashPrice?: number | null;
+  installmentTotalPrice?: number | null;
+  maxInstallments?: number | null;
+  cashFinancialCostPercent?: number | null;
+  installmentFinancialCostPercent?: number | null;
+  priceValidUntil?: string | null;
+}
+
+export type ProdutoDeliveryCoverageType =
+  | "all_brazil"
+  | "by_regions"
+  | "pickup_only"
+  | "no_delivery";
+
+export type ProdutoDeliveryAvailability =
+  | "delivery"
+  | "pickup_only"
+  | "unavailable"
+  | "quote";
+
+export type ProdutoDeliveryFeeType =
+  | "fixed"
+  | "percent"
+  | "per_km"
+  | "quote"
+  | "free";
+
+export interface ProdutoDeliveryRegion {
+  id: string;
+  name: string;
+  enabled?: boolean;
+  coverageType?: "states" | "cities" | "postal_code" | "radius";
+  coverageValue?: string;
+  availability?: ProdutoDeliveryAvailability;
+  feeType?: ProdutoDeliveryFeeType;
+  feeValue?: number | null;
+  leadTimeMinDays?: number | null;
+  leadTimeMaxDays?: number | null;
+  minimumOrder?: number | null;
+  freeShippingAbove?: number | null;
+  deliveryMode?: "own" | "carrier" | "postal" | "courier" | "pickup" | "redispatch" | "quote";
+  notes?: string | null;
+}
+
+export interface ProdutoDeliveryRoute {
+  id: string;
+  name: string;
+  regionIds?: string[];
+  coverageValue?: string;
+  daysOfWeek?: number[];
+  frequency?: "weekly" | "biweekly" | "monthly" | "custom";
+  cutoffTime?: string | null;
+  cutoffDaysBefore?: number | null;
+  departureTime?: string | null;
+  estimatedWindow?: string | null;
+  carrierOrDriver?: string | null;
+  vehicle?: string | null;
+  capacity?: string | null;
+  routeCost?: number | null;
+  active?: boolean;
+  notes?: string | null;
+}
+
+export interface ProdutoDeliveryException {
+  id: string;
+  date: string;
+  type: "blocked" | "extra" | "changed";
+  routeId?: string | null;
+  description?: string | null;
+}
+
+export interface ProdutoDeliveryConfig {
+  coverageType?: ProdutoDeliveryCoverageType;
+  regions?: ProdutoDeliveryRegion[];
+  routes?: ProdutoDeliveryRoute[];
+  exceptions?: ProdutoDeliveryException[];
+}
+
 export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   id: text("id")
     .primaryKey()
@@ -104,7 +193,13 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // usada pelo filtro "selecione seu carro" da categoria Acessórios para
   // Veículos no Praça.ai. Vazio/null para produtos sem aplicação automotiva.
   compatibilidadeVeicular: jsonb("compatibilidade_veicular").$type<ProdutoCompatibilidadeVeicular[]>(),
-    fornecedor: text("fornecedor"),
+  // Configuração comercial complementar. Mantém o preço oficial em precoBase,
+  // mas registra qual método o produto usa e as regras para IA/checkout.
+  pricingConfig: jsonb("pricing_config").$type<ProdutoPricingConfig>(),
+  // Cobertura logística por produto, incluindo regiões, taxas, rotas, dias de
+  // entrega e exceções de calendário. Null = produto sem regra específica.
+  deliveryConfig: jsonb("delivery_config").$type<ProdutoDeliveryConfig>(),
+  fornecedor: text("fornecedor"),
   prazoEntregaDias: integer("prazo_entrega_dias"),
   custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),
   margemPercentual: numeric("margem_percentual", { precision: 7, scale: 2 }),
@@ -112,7 +207,7 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   custoFinanceiroPercentual: numeric("custo_financeiro_percentual", { precision: 7, scale: 2 }),
   rendimentoPorUnidade: numeric("rendimento_por_unidade", { precision: 12, scale: 3 }),
   unidadeRendimento: text("unidade_rendimento"),
-    // Cálculo de orçamento por m² (teto vinílico, revestimento) — Complemento
+  // Cálculo de orçamento por m² (teto vinílico, revestimento) — Complemento
   // appvendor.ai. tipoCalculo define como o motor de cálculo trata o
   // produto: "area_simples" | "area_com_acabamento_perimetro" |
   // "acabamento_perimetro" | "linear" | "peca_avulsa". colecao é usado
