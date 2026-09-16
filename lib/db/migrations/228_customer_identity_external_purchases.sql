@@ -131,7 +131,7 @@ BEGIN
       'occurredAt', NEW.occurred_at
     )
   )
-  ON CONFLICT (external_purchase_id, event_type) DO NOTHING;
+  ON CONFLICT DO NOTHING;
 
   RETURN NEW;
 END;
