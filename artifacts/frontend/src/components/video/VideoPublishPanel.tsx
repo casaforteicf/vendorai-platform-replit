@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Send,
   ShieldCheck,
   Video,
@@ -43,6 +44,9 @@ type PublishableVideo = {
   seriesId: string;
   version: number;
   updatedAt: string;
+  context: Record<string, unknown>;
+  approvedAt: string;
+  approvedAssetId: string;
 };
 
 type SocialConnection = {
@@ -72,6 +76,7 @@ type Publication = {
   provider: string;
   status: string;
   externalId?: string | null;
+  metrics?: Record<string, number> | null;
   metadata?: Record<string, unknown> | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -117,6 +122,11 @@ function absoluteMediaUrl(value: string): string {
   }
 }
 
+function localDateTimeValue(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 function outputVideo(detail: MediaProjectDetail): ProfessionalMediaAsset | null {
   return (detail.assets ?? []).find((asset) => asset.type === "video" && asset.role === "output") ?? null;
 }
@@ -145,6 +155,7 @@ function friendlyError(code: string) {
   if (code === "linked_page_not_found") return "Não foi encontrada uma Página vinculada ao Instagram deste tenant.";
   if (code === "schedule_in_past") return "Escolha uma data e hora futuras para o agendamento.";
   if (code === "invalid_publication") return "Os dados da publicação estão incompletos ou inválidos.";
+  if (code.includes("QUALITY_GATE")) return "A publicação foi bloqueada pela verificação de qualidade. Revise o vídeo antes de tentar novamente.";
   return code || "Não foi possível concluir a publicação.";
 }
 
@@ -166,12 +177,18 @@ export default function VideoPublishPanel() {
   const [mode, setMode] = useState<PublishMode>("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [retryingId, setRetryingId] = useState("");
   const [publicationIds, setPublicationIds] = useState<string[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
 
   const selectedVideo = useMemo(
     () => videos.find((video) => video.assetId === selectedAssetId) ?? videos[0] ?? null,
     [videos, selectedAssetId],
+  );
+
+  const approvedForPublication = Boolean(
+    selectedVideo?.approvedAt && selectedVideo.approvedAssetId === selectedVideo.assetId,
   );
 
   const connectionMap = useMemo(() => {
@@ -225,6 +242,9 @@ export default function VideoPublishPanel() {
           seriesId: String(context.guidedVideoSeriesId ?? ""),
           version: Math.max(1, Number(context.guidedVideoVersion ?? 1) || 1),
           updatedAt: String(project.updatedAt ?? project.createdAt ?? ""),
+          context,
+          approvedAt: typeof context.publicationApprovedAt === "string" ? context.publicationApprovedAt : "",
+          approvedAssetId: typeof context.publicationApprovedAssetId === "string" ? context.publicationApprovedAssetId : "",
         } satisfies PublishableVideo;
       }));
 
@@ -260,36 +280,100 @@ export default function VideoPublishPanel() {
   }, [tenantId]);
 
   const refreshPublications = useCallback(async () => {
-    if (!tenantId || publicationIds.length === 0) return;
+    if (!tenantId) return;
     try {
       const response = await fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders() });
       if (!response.ok) return;
       const body = await response.json() as { publications?: Publication[] };
-      const ids = new Set(publicationIds);
-      setPublications((body.publications ?? []).filter((item) => ids.has(item.id)));
+      const currentIds = new Set(publicationIds);
+      const studioItems = (body.publications ?? []).filter((item) => {
+        const metadata = asRecord(item.metadata);
+        return metadata.source === "video-studio" || currentIds.has(item.id);
+      }).slice(0, 18);
+      setPublications(studioItems);
     } catch {
-      // Acompanhar status é complementar; não interrompe a tela se a consulta falhar.
+      // O histórico é complementar; a criação/publicação continua funcionando.
     }
   }, [tenantId, publicationIds]);
 
-  useEffect(() => { void loadVideos(); void loadConnections(); }, [loadVideos, loadConnections]);
+  useEffect(() => {
+    void loadVideos();
+    void loadConnections();
+  }, [loadVideos, loadConnections]);
+
+  useEffect(() => {
+    void refreshPublications();
+  }, [refreshPublications]);
 
   const hasPendingPublication = publications.some((item) => ["queued", "publishing", "processing", "scheduled"].includes(item.status));
   useEffect(() => {
-    if (!publicationIds.length) return;
-    void refreshPublications();
-    if (!hasPendingPublication && publications.length > 0) return;
-    const timer = window.setInterval(() => { void refreshPublications(); }, 3000);
+    if (!hasPendingPublication) return;
+    const timer = window.setInterval(() => { void refreshPublications(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [publicationIds, refreshPublications, hasPendingPublication, publications.length]);
+  }, [refreshPublications, hasPendingPublication]);
 
   const toggleProvider = (provider: Provider) => {
-    if (!connectionMap.get(provider)?.connected) return;
+    if (!approvedForPublication || !connectionMap.get(provider)?.connected) return;
     setSelectedProviders((current) => current.includes(provider) ? current.filter((item) => item !== provider) : [...current, provider]);
+  };
+
+  const approveVideo = async () => {
+    if (!tenantId || !selectedVideo || approving) return;
+    setApproving(true);
+    const approvedAt = new Date().toISOString();
+    const nextContext = {
+      ...selectedVideo.context,
+      publicationApprovedAt: approvedAt,
+      publicationApprovedAssetId: selectedVideo.assetId,
+      publicationApprovalSource: "video-studio",
+    };
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/projects/${selectedVideo.projectId}`, {
+        method: "PATCH",
+        headers: authHeaders(true),
+        body: JSON.stringify({ context: nextContext }),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Falha ao aprovar vídeo");
+      setVideos((current) => current.map((video) => video.projectId === selectedVideo.projectId ? {
+        ...video,
+        context: nextContext,
+        approvedAt,
+        approvedAssetId: selectedVideo.assetId,
+      } : video));
+      toast({ title: "Vídeo aprovado para publicação", description: "Agora escolha os canais e publique ou agende com segurança." });
+    } catch (error) {
+      toast({ title: "Não foi possível registrar a aprovação", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const retryPublication = async (publication: Publication) => {
+    if (!tenantId || retryingId) return;
+    setRetryingId(publication.id);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/social-publications/${publication.id}/retry`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const body = await response.json().catch(() => ({})) as { publication?: Publication; error?: string; detail?: string };
+      if (!response.ok || !body.publication) throw new Error(body.detail || body.error || "Falha ao tentar novamente");
+      toast({ title: body.publication.status === "published" ? "Publicação concluída" : "Nova tentativa iniciada" });
+      await refreshPublications();
+    } catch (error) {
+      toast({ title: "A nova tentativa falhou", description: friendlyError(error instanceof Error ? error.message : String(error)), variant: "destructive" });
+    } finally {
+      setRetryingId("");
+    }
   };
 
   const publish = async () => {
     if (!tenantId || !selectedVideo || submitting) return;
+    if (!approvedForPublication) {
+      toast({ title: "Aprove o vídeo antes de publicar", description: "Assista à versão final e confirme a aprovação para liberar os canais." });
+      return;
+    }
     if (selectedProviders.length === 0) {
       toast({ title: "Escolha pelo menos um canal", description: "Selecione onde este vídeo deve ser publicado." });
       return;
@@ -347,7 +431,7 @@ export default function VideoPublishPanel() {
     setSubmitting(false);
     if (created.length) {
       setPublicationIds(created.map((item) => item.id));
-      setPublications(created);
+      setPublications((current) => [...created, ...current.filter((item) => !created.some((next) => next.id === item.id))].slice(0, 18));
       toast({
         title: mode === "schedule" ? "Publicação agendada" : "Publicação iniciada",
         description: `${created.length} canal${created.length === 1 ? "" : "is"} recebido${created.length === 1 ? "" : "s"} pela fila de publicação.`,
@@ -363,15 +447,15 @@ export default function VideoPublishPanel() {
       <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
         <div>
           <div className="flex items-center gap-2"><Send className="h-4 w-4 text-primary" /><h2 className="font-semibold text-foreground">Publicar ou agendar</h2></div>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Escolha um vídeo aprovado, os canais e quando publicar. A VendorAI acompanha o status sem tirar você desta tela.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Escolha um vídeo final, aprove a versão e publique sem sair do fluxo. O histórico continua visível depois de atualizar a página.</p>
         </div>
-        <button type="button" onClick={() => { void loadVideos(); void loadConnections(); }} disabled={loading || connectionsLoading} className="inline-flex items-center gap-2 self-start rounded-xl border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
+        <button type="button" onClick={() => { void loadVideos(); void loadConnections(); void refreshPublications(); }} disabled={loading || connectionsLoading} className="inline-flex items-center gap-2 self-start rounded-xl border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
           {loading || connectionsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}Atualizar
         </button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 px-5 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Procurando vídeos aprovados…</div>
+        <div className="flex items-center justify-center gap-2 px-5 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Procurando vídeos finalizados…</div>
       ) : !selectedVideo ? (
         <div className="px-5 py-10 text-center">
           <Video className="mx-auto h-6 w-6 text-muted-foreground" />
@@ -383,13 +467,22 @@ export default function VideoPublishPanel() {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <div className="space-y-3">
               <label className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Vídeo aprovado</span>
-                <select value={selectedVideo.assetId} onChange={(event) => setSelectedAssetId(event.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">Vídeo final</span>
+                <select value={selectedVideo.assetId} onChange={(event) => { setSelectedAssetId(event.target.value); setSelectedProviders([]); }} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
                   {videos.map((video) => <option key={video.assetId} value={video.assetId}>{video.title} · V{video.version}</option>)}
                 </select>
               </label>
               <div className="overflow-hidden rounded-2xl border border-border bg-black">
                 <video src={selectedVideo.url} controls className="max-h-[420px] w-full bg-black" />
+              </div>
+              <div className={cn("rounded-xl border p-3", approvedForPublication ? "border-emerald-500/25 bg-emerald-500/[0.05]" : "border-amber-500/25 bg-amber-500/[0.05]")}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">{approvedForPublication ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <ShieldCheck className="h-4 w-4 text-amber-500" />}<p className="text-xs font-semibold text-foreground">{approvedForPublication ? "Aprovado para publicar" : "Aprovação final necessária"}</p></div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{approvedForPublication ? `Esta versão foi aprovada em ${new Date(selectedVideo.approvedAt).toLocaleString("pt-BR")}.` : "Assista ao vídeo acima. Ao aprovar, os canais de publicação serão liberados."}</p>
+                  </div>
+                  {!approvedForPublication && <button type="button" onClick={() => void approveVideo()} disabled={approving} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}Aprovar vídeo</button>}
+                </div>
               </div>
             </div>
 
@@ -402,7 +495,7 @@ export default function VideoPublishPanel() {
                     const connected = Boolean(connection?.connected);
                     const selected = selectedProviders.includes(channel.id);
                     return (
-                      <button key={channel.id} type="button" onClick={() => toggleProvider(channel.id)} disabled={!connected || connectionsLoading} className={cn("rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55", selected ? "border-primary/45 bg-primary/[0.07]" : "border-border bg-background/40 hover:border-primary/25")}>
+                      <button key={channel.id} type="button" onClick={() => toggleProvider(channel.id)} disabled={!approvedForPublication || !connected || connectionsLoading} className={cn("rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55", selected ? "border-primary/45 bg-primary/[0.07]" : "border-border bg-background/40 hover:border-primary/25")}>
                         <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold text-foreground">{channel.label}</span>{connected ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <AlertTriangle className="h-4 w-4 text-amber-500" />}</div>
                         <p className="mt-1 text-[11px] text-muted-foreground">{connected ? `${connection?.name || channel.label} · ${channel.description}` : "Não conectado"}</p>
                       </button>
@@ -420,10 +513,10 @@ export default function VideoPublishPanel() {
                   <button type="button" onClick={() => setMode("now")} className={cn("rounded-xl border px-3 py-2.5 text-sm font-semibold", mode === "now" ? "border-primary/45 bg-primary/[0.07] text-primary" : "border-border text-muted-foreground")}><Send className="mr-1.5 inline h-4 w-4" />Agora</button>
                   <button type="button" onClick={() => setMode("schedule")} className={cn("rounded-xl border px-3 py-2.5 text-sm font-semibold", mode === "schedule" ? "border-primary/45 bg-primary/[0.07] text-primary" : "border-border text-muted-foreground")}><CalendarClock className="mr-1.5 inline h-4 w-4" />Agendar</button>
                 </div>
-                {mode === "schedule" && <label className="mt-2 block space-y-1.5"><span className="text-[11px] text-muted-foreground">Data e hora</span><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm" /></label>}
+                {mode === "schedule" && <label className="mt-2 block space-y-1.5"><span className="text-[11px] text-muted-foreground">Data e hora local</span><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} min={localDateTimeValue(new Date(Date.now() + 60_000))} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm" /></label>}
               </div>
 
-              <button type="button" onClick={() => void publish()} disabled={submitting || selectedProviders.length === 0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40">
+              <button type="button" onClick={() => void publish()} disabled={!approvedForPublication || submitting || selectedProviders.length === 0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === "schedule" ? <CalendarClock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                 {submitting ? "Enviando…" : mode === "schedule" ? `Agendar em ${selectedProviders.length || 0} canal${selectedProviders.length === 1 ? "" : "is"}` : `Publicar em ${selectedProviders.length || 0} canal${selectedProviders.length === 1 ? "" : "is"}`}
               </button>
@@ -432,14 +525,19 @@ export default function VideoPublishPanel() {
 
           {publications.length > 0 && (
             <div className="rounded-2xl border border-border bg-muted/20 p-3 sm:p-4">
-              <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><p className="text-sm font-semibold text-foreground">Status da publicação</p></div>
+              <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><p className="text-sm font-semibold text-foreground">Histórico de publicação</p></div>
+              <p className="mt-1 text-xs text-muted-foreground">Acompanhe publicações recentes deste Video Studio, inclusive depois de recarregar a página.</p>
               <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {publications.map((publication) => (
-                  <div key={publication.id} className="rounded-xl border border-border bg-card p-3">
-                    <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold capitalize text-foreground">{publication.provider}</p><span className={cn("rounded-full border px-2 py-1 text-[10px] font-semibold", statusClass(publication.status))}>{statusLabel(publication.status)}</span></div>
-                    <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">{["queued", "publishing", "processing", "scheduled"].includes(publication.status) ? <Clock3 className="h-3.5 w-3.5" /> : publication.status === "published" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}{publication.status === "scheduled" && typeof publication.metadata?.scheduledAt === "string" ? `Programado para ${new Date(publication.metadata.scheduledAt).toLocaleString("pt-BR")}` : statusLabel(publication.status)}</div>
-                  </div>
-                ))}
+                {publications.map((publication) => {
+                  const metadata = asRecord(publication.metadata);
+                  return (
+                    <div key={publication.id} className="rounded-xl border border-border bg-card p-3">
+                      <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold capitalize text-foreground">{publication.provider}</p><span className={cn("rounded-full border px-2 py-1 text-[10px] font-semibold", statusClass(publication.status))}>{statusLabel(publication.status)}</span></div>
+                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">{["queued", "publishing", "processing", "scheduled"].includes(publication.status) ? <Clock3 className="h-3.5 w-3.5" /> : publication.status === "published" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}{publication.status === "scheduled" && typeof metadata.scheduledAt === "string" ? `Programado para ${new Date(metadata.scheduledAt).toLocaleString("pt-BR")}` : statusLabel(publication.status)}</div>
+                      {publication.status === "failed" && <button type="button" onClick={() => void retryPublication(publication)} disabled={Boolean(retryingId)} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40">{retryingId === publication.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}Tentar novamente</button>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
