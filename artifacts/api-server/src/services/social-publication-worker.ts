@@ -17,15 +17,28 @@ const PERFORMANCE_INTERVAL_MS = 6 * 60 * 60_000;
 const PERFORMANCE_POST_AGE_MS = 24 * 60 * 60_000;
 const PERFORMANCE_TENANT_BATCH = 20;
 
-// Safety-first: automatic AI materialization from approved media plans is OFF
-// unless production explicitly opts in. This prevents a failed provider call
-// from being retried by the social worker every minute and consuming API credit.
 const AUTO_MEDIA_PLAN_PRODUCTION_ENABLED =
   process.env["MARKETING_AUTO_PRODUCTION_ENABLED"] === "true";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let lastPerformanceRunAt = 0;
+let databaseAuthBlocked = false;
+
+function databaseErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const direct = (error as { code?: unknown }).code;
+  if (typeof direct === "string") return direct;
+  const cause = (error as { cause?: unknown }).cause;
+  return databaseErrorCode(cause);
+}
+
+function isDatabaseAuthenticationFailure(error: unknown): boolean {
+  const code = databaseErrorCode(error);
+  if (code === "28P01") return true;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /password authentication failed|too many authentication failures/i.test(message);
+}
 
 async function processDueContentPerformanceLearning() {
   const now = Date.now();
@@ -78,7 +91,7 @@ async function processDueContentPerformanceLearning() {
 }
 
 export async function processPendingSocialPublications() {
-  if (running) return;
+  if (running || databaseAuthBlocked) return;
   running = true;
   try {
     if (AUTO_MEDIA_PLAN_PRODUCTION_ENABLED) {
@@ -116,6 +129,16 @@ export async function processPendingSocialPublications() {
         logger.warn({ error, tenantId: publication.tenantId, publicationId: publication.id }, "Worker social não conseguiu concluir publicação");
       }
     }
+  } catch (error) {
+    if (isDatabaseAuthenticationFailure(error)) {
+      databaseAuthBlocked = true;
+      logger.error(
+        { error },
+        "Worker social pausado: credencial do banco inválida. Corrija APP_DATABASE_URL e redeploye para reativar o worker.",
+      );
+      return;
+    }
+    logger.error({ error }, "Worker social encontrou erro não tratado; ciclo foi encerrado sem derrubar a API");
   } finally {
     running = false;
   }
