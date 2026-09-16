@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KeyRound, Loader2, LogOut, Mail, Menu, RefreshCw, ShieldCheck, Smartphone, UserRound } from "lucide-react";
@@ -60,18 +59,15 @@ const COPY = {
     genericCode: "Se a conta tiver acesso a este app, o código será enviado.",
     invalid: "Código inválido ou expirado.",
     requestError: "Não foi possível solicitar o código.",
-    role: "Perfil",
-    permissions: "Permissões",
-    noPermissions: "Sem permissões adicionais",
-    published: "Versão publicada",
-    secure: "Acesso protegido por identidade externa do aplicativo.",
+    secure: "Acesso protegido pela identidade do aplicativo.",
     logout: "Sair",
     publicOnlyBody: "Este aplicativo está disponível publicamente e não exige login nesta versão.",
     modules: "Navegação",
-    moduleReady: "disponível no manifesto publicado",
-    runtimeLoading: "Carregando conteúdo publicado...",
+    moduleReady: "disponível no aplicativo",
     runtimeError: "Não foi possível carregar o conteúdo deste perfil.",
     retry: "Tentar novamente",
+    openProfile: "Abrir perfil",
+    openMenu: "Abrir menu",
   },
   es: {
     loading: "Cargando aplicación...",
@@ -92,18 +88,15 @@ const COPY = {
     genericCode: "Si la cuenta tiene acceso a esta app, el código será enviado.",
     invalid: "Código inválido o vencido.",
     requestError: "No fue posible solicitar el código.",
-    role: "Perfil",
-    permissions: "Permisos",
-    noPermissions: "Sin permisos adicionales",
-    published: "Versión publicada",
-    secure: "Acceso protegido por la identidad externa de la aplicación.",
+    secure: "Acceso protegido por la identidad de la aplicación.",
     logout: "Salir",
     publicOnlyBody: "Esta aplicación está disponible públicamente y no requiere inicio de sesión en esta versión.",
     modules: "Navegación",
-    moduleReady: "disponible en el manifiesto publicado",
-    runtimeLoading: "Cargando contenido publicado...",
+    moduleReady: "disponible en la aplicación",
     runtimeError: "No fue posible cargar el contenido de este perfil.",
     retry: "Intentar nuevamente",
+    openProfile: "Abrir perfil",
+    openMenu: "Abrir menú",
   },
 } as const;
 
@@ -381,31 +374,24 @@ export default function AppRuntimeShell({ appId }: Props) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur" style={{ paddingTop: "env(safe-area-inset-top)" }}>
-        <div className="mx-auto hidden h-16 max-w-7xl items-center gap-3 px-6 sm:flex">
+        <div className="mx-auto hidden h-16 max-w-6xl items-center gap-3 px-6 sm:flex">
           {identity.logoUrl ? <img src={identity.logoUrl} alt="" className="h-9 max-w-[150px] object-contain" /> : <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white"><Smartphone className="h-4 w-4" /></div>}
           <span className="truncate text-sm font-semibold text-slate-900">{identity.name}</span>
-          <div className="ml-auto flex items-center gap-2"><Badge variant="secondary">{session?.membership.roleKey}</Badge><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div>
+          <div className="ml-auto flex items-center gap-3"><div className="text-right"><p className="max-w-[220px] truncate text-sm font-medium text-slate-700">{session?.user.displayName || identity.name}</p>{session?.user.email && <p className="max-w-[220px] truncate text-[11px] text-slate-400">{session.user.email}</p>}</div><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div>
         </div>
         <div className="grid h-16 grid-cols-[48px_1fr_48px] items-center px-3 sm:hidden">
-          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" aria-label="Abrir perfil"><UserRound className="h-6 w-6" /></button>
+          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" aria-label={copy.openProfile}><UserRound className="h-6 w-6" /></button>
           <div className="flex min-w-0 items-center justify-center">{identity.logoUrl ? <img src={identity.logoUrl} alt={identity.name} className="h-9 max-w-[150px] object-contain" /> : <span className="truncate text-sm font-bold text-slate-900">{identity.name}</span>}</div>
-          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" aria-label="Abrir menu"><Menu className="h-5 w-5" /></button>
+          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" aria-label={copy.openMenu}><Menu className="h-5 w-5" /></button>
         </div>
-        {menuOpen && <div className="border-t bg-white px-4 py-4 shadow-sm sm:hidden"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100"><UserRound className="h-5 w-5 text-slate-500" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900">{session?.user.displayName || identity.name}</p>{session?.user.email && <p className="truncate text-xs text-slate-400">{session.user.email}</p>}</div><Badge variant="secondary" className="text-[10px]">{session?.membership.roleKey}</Badge></div><Button size="sm" variant="ghost" className="mt-3 w-full justify-start" onClick={logout}><LogOut className="mr-2 h-4 w-4" />{copy.logout}</Button></div>}
+        {menuOpen && <div className="border-t bg-white px-4 py-4 shadow-sm sm:hidden"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100"><UserRound className="h-5 w-5 text-slate-500" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900">{session?.user.displayName || identity.name}</p>{session?.user.email && <p className="truncate text-xs text-slate-400">{session.user.email}</p>}</div></div><Button size="sm" variant="ghost" className="mt-3 w-full justify-start" onClick={logout}><LogOut className="mr-2 h-4 w-4" />{copy.logout}</Button></div>}
       </header>
-      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-          <section className="min-w-0">
-            {runtimeLoading && <RuntimeSkeleton />}
-            {!runtimeLoading && runtimeError && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900"><p>{copy.runtimeError}</p><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => setRuntimeReloadKey((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />{copy.retry}</Button></div>}
-            {!runtimeLoading && !runtimeError && runtimePayload && <SchemaRuntimeRenderer payload={runtimePayload} lang={lang} />}
-          </section>
-          <aside className="hidden space-y-4 xl:block">
-            <div className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-slate-500" /><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.role}</p></div><p className="mt-2 font-mono text-sm font-semibold text-slate-800">{session?.membership.roleKey}</p></div>
-            <div className="rounded-2xl border bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.permissions}</p>{session?.membership.permissions?.length ? <div className="mt-3 flex flex-wrap gap-2">{session.membership.permissions.map((permission) => <Badge key={permission} variant="outline" className="font-mono text-[10px]">{permission}</Badge>)}</div> : <p className="mt-2 text-sm text-slate-500">{copy.noPermissions}</p>}</div>
-            <div className="rounded-2xl border bg-white p-5 text-xs leading-5 text-slate-500 shadow-sm"><ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />{copy.secure}<div className="mt-2 text-slate-400">{copy.published}: {runtimePayload?.publishedVersion ?? manifest.publishedVersion}</div></div>
-          </aside>
-        </div>
+      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-8">
+        <section className="min-w-0">
+          {runtimeLoading && <RuntimeSkeleton />}
+          {!runtimeLoading && runtimeError && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900"><p>{copy.runtimeError}</p><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => setRuntimeReloadKey((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />{copy.retry}</Button></div>}
+          {!runtimeLoading && !runtimeError && runtimePayload && <SchemaRuntimeRenderer payload={runtimePayload} lang={lang} />}
+        </section>
       </main>
     </div>
   );
