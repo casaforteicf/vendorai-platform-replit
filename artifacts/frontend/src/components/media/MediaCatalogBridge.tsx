@@ -10,6 +10,7 @@ type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
 type Target = "cover" | "gallery" | "video";
 type SelectionState = { target: Target; assets: MediaPickerAsset[] };
+type ProductImagePreview = { src: string; alt: string };
 
 function currentTenantId(): string {
   try {
@@ -54,11 +55,18 @@ function mergeGallery(existing: unknown, additions: string[]): string[] {
   return [...new Set([...current, ...additions])];
 }
 
+function isProductEditorThumbnail(image: HTMLImageElement): boolean {
+  const alt = (image.getAttribute("alt") ?? "").trim();
+  if (!(alt === "preview" || /^foto\s+\d+$/i.test(alt))) return false;
+  return Boolean(image.closest('[role="dialog"]'));
+}
+
 export function MediaCatalogBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [target, setTarget] = useState<Target>("cover");
   const [selection, setSelection] = useState<SelectionState | null>(readStoredSelection);
+  const [imagePreview, setImagePreview] = useState<ProductImagePreview | null>(null);
   const selectionRef = useRef<SelectionState | null>(selection);
   const tenantId = currentTenantId();
   const onCatalog = pathname === "/catalogo" || pathname.startsWith("/catalogo/");
@@ -78,6 +86,41 @@ export function MediaCatalogBridge() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!onCatalog) {
+      setImagePreview(null);
+      return;
+    }
+
+    const handleImageClick = (event: MouseEvent) => {
+      const targetElement = event.target;
+      if (!(targetElement instanceof HTMLImageElement)) return;
+      if (!isProductEditorThumbnail(targetElement)) return;
+
+      const src = targetElement.currentSrc || targetElement.src;
+      if (!src) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setImagePreview({
+        src,
+        alt: targetElement.getAttribute("alt") || "Imagem do produto",
+      });
+    };
+
+    document.addEventListener("click", handleImageClick, true);
+    return () => document.removeEventListener("click", handleImageClick, true);
+  }, [onCatalog]);
+
+  useEffect(() => {
+    if (!imagePreview) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImagePreview(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [imagePreview]);
 
   useEffect(() => {
     const previousFetch = window.fetch.bind(window);
@@ -133,6 +176,13 @@ export function MediaCatalogBridge() {
 
   return (
     <>
+      <style>{`
+        img[alt="preview"],
+        img[alt^="foto "] {
+          cursor: zoom-in;
+        }
+      `}</style>
+
       <div className="fixed bottom-5 right-5 z-[80] w-[min(390px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
@@ -184,6 +234,32 @@ export function MediaCatalogBridge() {
         confirmLabel="Usar no produto"
         onConfirm={(assets) => setSelection({ target, assets })}
       />
+
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Visualização ampliada da imagem do produto"
+          onMouseDown={() => setImagePreview(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-4 z-[210] flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg transition hover:bg-white"
+            onClick={() => setImagePreview(null)}
+            aria-label="Fechar visualização"
+            title="Fechar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={imagePreview.src}
+            alt={imagePreview.alt}
+            className="max-h-[92vh] max-w-[96vw] rounded-xl object-contain shadow-2xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
     </>
   );
 }
