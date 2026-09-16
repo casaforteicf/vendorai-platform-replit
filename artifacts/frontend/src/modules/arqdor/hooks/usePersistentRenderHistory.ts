@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+export type PersistentRenderOperationType = "initial" | "material" | "lighting" | "improve" | "approved";
+
+export type PersistentRenderSelection = {
+  id?: string;
+  label?: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export type PersistentRenderVersion = {
   id: string;
   projectId: string | null;
@@ -8,6 +19,12 @@ export type PersistentRenderVersion = {
   mode: string;
   status: string | null;
   versionTag: string | null;
+  operationType: PersistentRenderOperationType | null;
+  materialId: string | null;
+  materialName: string | null;
+  selectionMetadata: PersistentRenderSelection[];
+  costEstimateUsd: string | null;
+  approvalNote: string | null;
   prompt: string | null;
   motor: string | null;
   originalImageUrl: string | null;
@@ -31,6 +48,12 @@ type ApiRenderVersion = {
   mode?: string | null;
   status?: string | null;
   version_tag?: string | null;
+  operation_type?: PersistentRenderOperationType | null;
+  material_id?: string | null;
+  material_name?: string | null;
+  selection_metadata?: PersistentRenderSelection[] | null;
+  cost_estimate_usd?: string | number | null;
+  approval_note?: string | null;
   prompt?: string | null;
   motor?: string | null;
   original_image_url?: string | null;
@@ -65,6 +88,12 @@ function mapVersion(v: ApiRenderVersion, index: number): PersistentRenderVersion
     mode: v.mode ?? "preservar",
     status: v.status ?? null,
     versionTag: v.version_tag ?? null,
+    operationType: v.operation_type ?? null,
+    materialId: v.material_id ?? null,
+    materialName: v.material_name ?? null,
+    selectionMetadata: Array.isArray(v.selection_metadata) ? v.selection_metadata : [],
+    costEstimateUsd: v.cost_estimate_usd == null ? null : String(v.cost_estimate_usd),
+    approvalNote: v.approval_note ?? null,
     prompt: v.prompt ?? null,
     motor: v.motor ?? null,
     originalImageUrl: v.original_image_url ?? null,
@@ -143,7 +172,7 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
   );
 
   const approvedVersion = useMemo(
-    () => [...versions].reverse().find(v => v.versionTag === "aprovado" || Boolean(v.approvedAt)) ?? null,
+    () => [...versions].reverse().find(v => v.operationType === "approved" || v.versionTag === "aprovado" || Boolean(v.approvedAt)) ?? null,
     [versions],
   );
 
@@ -152,11 +181,23 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
     [versions],
   );
 
+  const versionsByParent = useMemo(() => {
+    const tree = new Map<string | null, PersistentRenderVersion[]>();
+    for (const version of versions) {
+      const key = version.parentRenderId ?? null;
+      const children = tree.get(key) ?? [];
+      children.push(version);
+      tree.set(key, children);
+    }
+    return tree;
+  }, [versions]);
+
   return {
     versions,
     completedVersions,
     approvedVersion,
     latestVersion,
+    versionsByParent,
     loading,
     error,
     loadedProjectId,
