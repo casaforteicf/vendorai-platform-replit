@@ -1,9 +1,9 @@
 import { execFile } from "child_process";
+import { randomUUID } from "crypto";
 import { readFile, unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
-import { randomUUID } from "crypto";
 import { pool } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { assessMediaAudioUsage } from "./media-rights.js";
@@ -34,6 +34,14 @@ type AudioSelection = {
   music: AudioAsset | null;
   sfx: AudioAsset | null;
   jingle: AudioAsset | null;
+};
+
+type AudioIndexes = Partial<Record<keyof AudioSelection, number>>;
+
+export type GuidedAudioFilterGraphInput = {
+  duration: number;
+  sceneCount: number;
+  indexes: AudioIndexes;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -68,6 +76,10 @@ function assetIdForRole(inputs: Array<Record<string, unknown>>, roles: string[])
 
 function rightsObject(asset: AudioAsset): Record<string, unknown> {
   return record(asset.metadata["rights"]);
+}
+
+function hasRights(asset: AudioAsset): boolean {
+  return Object.keys(rightsObject(asset)).length > 0;
 }
 
 function rightsExplicitlyBlocked(asset: AudioAsset): boolean {
@@ -183,6 +195,95 @@ function audioMetadata(selection: AudioSelection) {
   };
 }
 
+function masterRights(selection: AudioSelection) {
+  const sources = Object.values(selection).filter((asset): asset is AudioAsset => Boolean(asset));
+  const allHaveRights = sources.every(hasRights);
+  const assessments = sources.map((asset) => assessMediaAudioUsage(rightsObject(asset)));
+  const organicAllowed = allHaveRights && assessments.every((assessment) => assessment.organicAllowed);
+  const paidAdsAllowed = organicAllowed && assessments.every((assessment) => assessment.paidAdsAllowed);
+  const allGenerated = sources.length > 0 && sources.every((asset) => asset.source === "generated");
+  const allTenantOwned = sources.length > 0 && sources.every((asset) => asset.source === "upload" || asset.source === "imported");
+  return {
+    status: allHaveRights ? (organicAllowed ? "cleared" : "restricted") : "pending",
+    origin: allGenerated ? "generated" : allTenantOwned ? "tenant_owned" : "unknown",
+    commercialUse: organicAllowed,
+    paidAds: paidAdsAllowed,
+    territories: ["*"],
+    expiresAt: null,
+    attributionRequired: false,
+    attributionText: null,
+    licenseReference: null,
+    evidenceAssetId: null,
+  };
+}
+
+function normalizedAudio(label: string): string {
+  return `${label}aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo`;
+}
+
+export function buildGuidedAudioFilterGraph(input: GuidedAudioFilterGraphInput): string {
+  const durationSeconds = Math.max(0.1, Number(input.duration) || 0.1);
+  const sceneCount = Math.max(1, Math.round(Number(input.sceneCount) || 1));
+  const duration = durationSeconds.toFixed(3);
+  const filter: string[] = [`[0:a]atrim=0:${duration},asetpts=N/SR/TB[bed]`];
+  const mixLabels = ["[bed]"];
+  const voiceIndex = input.indexes.voiceover;
+  const musicIndex = input.indexes.music;
+
+  if (typeof voiceIndex === "number") {
+    filter.push(`${normalizedAudio(`[${voiceIndex}:a]`)},volume=1,apad,atrim=0:${duration},asetpts=N/SR/TB[voiceprep]`);
+    if (typeof musicIndex === "number") {
+      filter.push("[voiceprep]asplit=2[voicemix][voicesc]");
+      mixLabels.push("[voicemix]");
+    } else {
+      mixLabels.push("[voiceprep]");
+    }
+  }
+
+  if (typeof musicIndex === "number") {
+    const fadeOutStart = Math.max(0, durationSeconds - 0.65).toFixed(3);
+    filter.push(`${normalizedAudio(`[${musicIndex}:a]`)},volume=0.24,atrim=0:${duration},afade=t=in:st=0:d=0.25,afade=t=out:st=${fadeOutStart}:d=0.65,asetpts=N/SR/TB[musicraw]`);
+    if (typeof voiceIndex === "number") {
+      filter.push("[musicraw][voicesc]sidechaincompress=threshold=0.025:ratio=8:attack=15:release=300[musicmix]");
+      mixLabels.push("[musicmix]");
+    } else {
+      mixLabels.push("[musicraw]");
+    }
+  }
+
+  const sfxIndex = input.indexes.sfx;
+  if (typeof sfxIndex === "number") {
+    const count = Math.max(1, Math.min(5, sceneCount - 1));
+    const sourceLabels = Array.from({ length: count }, (_, index) => `sfxsrc${index}`);
+    const preparedLabel = "sfxprepared";
+    filter.push(`${normalizedAudio(`[${sfxIndex}:a]`)}[${preparedLabel}]`);
+    if (count > 1) filter.push(`[${preparedLabel}]asplit=${count}${sourceLabels.map((label) => `[${label}]`).join("")}`);
+    for (let index = 0; index < count; index += 1) {
+      const source = count > 1 ? `[${sourceLabels[index]}]` : `[${preparedLabel}]`;
+      const positionSeconds = sceneCount > 1 ? (durationSeconds * (index + 1)) / (count + 1) : 0;
+      const delay = Math.max(0, Math.round(positionSeconds * 1000));
+      const label = `sfxmix${index}`;
+      filter.push(`${source}atrim=0:0.85,volume=0.30,adelay=${delay}|${delay},asetpts=N/SR/TB[${label}]`);
+      mixLabels.push(`[${label}]`);
+    }
+  }
+
+  const jingleIndex = input.indexes.jingle;
+  if (typeof jingleIndex === "number") {
+    const windowSeconds = Math.min(3, durationSeconds);
+    const delay = Math.max(0, Math.round((durationSeconds - windowSeconds) * 1000));
+    filter.push(`${normalizedAudio(`[${jingleIndex}:a]`)},atrim=0:${windowSeconds.toFixed(3)},volume=0.48,adelay=${delay}|${delay},asetpts=N/SR/TB[jinglemix]`);
+    mixLabels.push("[jinglemix]");
+  }
+
+  filter.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:normalize=0,loudnorm=I=-16:LRA=11:TP=-1.5,alimiter=limit=0.95:level=false[aout]`);
+  return filter.join(";");
+}
+
+function selectionId(asset: AudioAsset | null): string | null {
+  return asset?.id ?? null;
+}
+
 async function renderAudioMaster(input: {
   tenantId: string;
   userId?: string | null;
@@ -196,8 +297,8 @@ async function renderAudioMaster(input: {
   tempPaths.push(outputPath);
   let projectId = "";
   try {
-    const args: string[] = ["-y", "-f", "lavfi", "-t", input.duration.toFixed(3), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"];
-    const indexes: Partial<Record<"voiceover" | "music" | "sfx" | "jingle", number>> = {};
+    const args: string[] = ["-hide_banner", "-nostdin", "-y", "-f", "lavfi", "-t", input.duration.toFixed(3), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"];
+    const indexes: AudioIndexes = {};
     let nextIndex = 1;
 
     for (const [key, asset] of Object.entries(input.selection) as Array<[keyof AudioSelection, AudioAsset | null]>) {
@@ -210,58 +311,8 @@ async function renderAudioMaster(input: {
     }
 
     const duration = input.duration.toFixed(3);
-    const filter: string[] = [`[0:a]atrim=0:${duration},asetpts=N/SR/TB[bed]`];
-    const mixLabels = ["[bed]"];
-
-    const voiceIndex = indexes.voiceover;
-    const musicIndex = indexes.music;
-    if (voiceIndex) {
-      filter.push(`[${voiceIndex}:a]volume=1,apad,atrim=0:${duration},asetpts=N/SR/TB[voiceprep]`);
-      if (musicIndex) {
-        filter.push("[voiceprep]asplit=2[voicemix][voicesc]");
-        mixLabels.push("[voicemix]");
-      } else {
-        mixLabels.push("[voiceprep]");
-      }
-    }
-
-    if (musicIndex) {
-      const fadeOutStart = Math.max(0, input.duration - 0.65).toFixed(3);
-      filter.push(`[${musicIndex}:a]volume=0.24,atrim=0:${duration},afade=t=in:st=0:d=0.25,afade=t=out:st=${fadeOutStart}:d=0.65,asetpts=N/SR/TB[musicraw]`);
-      if (voiceIndex) {
-        filter.push("[musicraw][voicesc]sidechaincompress=threshold=0.025:ratio=8:attack=15:release=300[musicmix]");
-        mixLabels.push("[musicmix]");
-      } else {
-        mixLabels.push("[musicraw]");
-      }
-    }
-
-    const sfxIndex = indexes.sfx;
-    if (sfxIndex) {
-      const count = Math.max(1, Math.min(5, input.sceneCount - 1));
-      const sourceLabels = Array.from({ length: count }, (_, index) => `sfxsrc${index}`);
-      if (count > 1) filter.push(`[${sfxIndex}:a]asplit=${count}${sourceLabels.map((label) => `[${label}]`).join("")}`);
-      for (let index = 0; index < count; index += 1) {
-        const source = count > 1 ? `[${sourceLabels[index]}]` : `[${sfxIndex}:a]`;
-        const positionSeconds = input.sceneCount > 1 ? (input.duration * (index + 1)) / input.sceneCount : 0;
-        const delay = Math.max(0, Math.round(positionSeconds * 1000));
-        const label = `sfxmix${index}`;
-        filter.push(`${source}atrim=0:0.85,volume=0.30,adelay=${delay}|${delay},asetpts=N/SR/TB[${label}]`);
-        mixLabels.push(`[${label}]`);
-      }
-    }
-
-    const jingleIndex = indexes.jingle;
-    if (jingleIndex) {
-      const windowSeconds = Math.min(3, input.duration);
-      const delay = Math.max(0, Math.round((input.duration - windowSeconds) * 1000));
-      filter.push(`[${jingleIndex}:a]atrim=0:${windowSeconds.toFixed(3)},volume=0.48,adelay=${delay}|${delay},asetpts=N/SR/TB[jinglemix]`);
-      mixLabels.push("[jinglemix]");
-    }
-
-    filter.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:normalize=0,loudnorm=I=-16:LRA=11:TP=-1.5,alimiter=limit=0.95[aout]`);
     args.push(
-      "-filter_complex", filter.join(";"),
+      "-filter_complex", buildGuidedAudioFilterGraph({ duration: input.duration, sceneCount: input.sceneCount, indexes }),
       "-map", "[aout]",
       "-t", duration,
       "-c:a", "pcm_s16le",
@@ -292,24 +343,17 @@ async function renderAudioMaster(input: {
       mimeType: "audio/wav",
       fileSize: output.length,
       type: "audio",
-      originalFilename: `guided-video-audio-master.wav`,
+      originalFilename: "guided-video-audio-master.wav",
       operation: "guided_video_audio_master",
       label: "Master de áudio automático",
       metadata: {
-        audioKind: "voiceover",
+        audioKind: "other",
         audioMaster: true,
-        generatedBy: "guided-video-audio-director-v1",
+        generatedBy: "guided-video-audio-director-v2",
         durationSeconds: input.duration,
         ...meta,
-        rights: {
-          status: "cleared",
-          origin: "generated",
-          commercialUse: true,
-          paidAds: Boolean(input.selection.music ? assessMediaAudioUsage(rightsObject(input.selection.music)).paidAdsAllowed : true),
-          territories: ["*"],
-          expiresAt: null,
-          attributionRequired: false,
-        },
+        sourceAssetIds: [selectionId(input.selection.voiceover), selectionId(input.selection.music), selectionId(input.selection.sfx), selectionId(input.selection.jingle)].filter(Boolean),
+        rights: masterRights(input.selection),
       },
     });
     return { assetId: registered.assetId, projectId, metadata: meta };
@@ -351,7 +395,7 @@ export async function prepareGuidedVideoAudio(input: {
       ...input.context,
       professionalCreation: {
         ...professional,
-        audioDirector: { version: 1, automatic: true, status: "no_audio_available" },
+        audioDirector: { version: 2, automatic: true, status: "no_audio_available" },
       },
     };
   }
@@ -390,7 +434,7 @@ export async function prepareGuidedVideoAudio(input: {
     professionalCreation: {
       ...professional,
       audioDirector: {
-        version: 1,
+        version: 2,
         automatic: true,
         status: "ready",
         masterAssetId: master.assetId,
