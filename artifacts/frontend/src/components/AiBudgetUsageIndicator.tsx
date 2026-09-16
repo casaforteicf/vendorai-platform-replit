@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, ShoppingCart, Sparkles } from "lucide-react";
 import "./marketing/MarketingResponsiveFocusBridge";
 import "./marketing/MarketingResultsTrackingBridge";
@@ -56,6 +57,7 @@ export function AiBudgetUsageIndicator() {
   const [purchaseBusy, setPurchaseBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [tenantId, setTenantId] = useState(() => tenantIdFromStorage());
+  const [sidebarSlot, setSidebarSlot] = useState<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
     const currentTenant = tenantIdFromStorage();
@@ -103,6 +105,56 @@ export function AiBudgetUsageIndicator() {
     };
   }, [load]);
 
+  useEffect(() => {
+    let createdSlot: HTMLElement | null = null;
+
+    const attachToSidebar = () => {
+      if (window.innerWidth < 768) {
+        setSidebarSlot(null);
+        return;
+      }
+
+      const desktopFooter = document.querySelector(
+        ".hidden.md\\:flex.sticky.top-0.h-screen > div > .p-4.border-t",
+      ) as HTMLElement | null;
+      if (!desktopFooter) {
+        setSidebarSlot(null);
+        return;
+      }
+
+      const logoutButton = Array.from(desktopFooter.children).find(
+        (child) => child instanceof HTMLButtonElement && /sair/i.test(child.textContent ?? ""),
+      ) as HTMLButtonElement | undefined;
+      if (!logoutButton) {
+        setSidebarSlot(null);
+        return;
+      }
+
+      let slot = desktopFooter.querySelector<HTMLElement>("[data-ai-budget-sidebar-slot]");
+      if (!slot) {
+        slot = document.createElement("div");
+        slot.dataset.aiBudgetSidebarSlot = "true";
+        slot.className = "relative mb-1";
+        desktopFooter.insertBefore(slot, logoutButton);
+        createdSlot = slot;
+      }
+
+      setSidebarSlot((current) => current === slot ? current : slot);
+    };
+
+    attachToSidebar();
+    const timer = window.setInterval(attachToSidebar, 1000);
+    window.addEventListener("resize", attachToSidebar);
+    window.addEventListener("popstate", attachToSidebar);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("resize", attachToSidebar);
+      window.removeEventListener("popstate", attachToSidebar);
+      if (createdSlot?.isConnected) createdSlot.remove();
+    };
+  }, []);
+
   const tone = useMemo(() => {
     const p = budget?.percentUsed ?? 0;
     if (p >= 100) return "border-red-300 bg-red-50 text-red-900";
@@ -142,12 +194,95 @@ export function AiBudgetUsageIndicator() {
   if (!budget) return null;
 
   const percent = Math.max(0, Math.min(100, budget.percentUsed));
+
+  const details = (
+    <div className="border-t border-black/10 px-3 pb-3 pt-2 text-xs">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+        <span className="opacity-70">Plano</span><span className="text-right font-medium">{budget.planName ?? "Sem plano"}</span>
+        <span className="opacity-70">Franquia mensal</span><span className="text-right font-medium">{formatCredits(budget.baseCredits)} créditos</span>
+        <span className="opacity-70">Créditos extras</span><span className="text-right font-medium">{formatCredits(budget.extraCreditsRemaining)}</span>
+        <span className="opacity-70">Consumidos no ciclo</span><span className="text-right font-medium">{formatCredits(budget.usedCredits)}</span>
+      </div>
+
+      {budget.alertPercent >= 50 ? (
+        <div className="mt-2 flex gap-2 rounded-lg bg-black/5 p-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            {budget.blocked
+              ? "Franquia esgotada. O backend bloqueia novas chamadas compartilhadas antes de enviá-las ao provedor."
+              : `Alerta de consumo: ${budget.alertPercent}% utilizado.`}
+          </p>
+        </div>
+      ) : null}
+
+      {notice ? <p className="mt-2 rounded-lg bg-black/5 p-2">{notice}</p> : null}
+
+      <button
+        type="button"
+        onClick={() => void buyCredits()}
+        disabled={purchaseBusy}
+        className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-center font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+      >
+        {purchaseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+        Comprar +{formatCredits(budget.pack.credits)} créditos · R$ {budget.pack.priceBrl.toFixed(2).replace(".", ",")}
+      </button>
+      <p className="mt-1.5 text-[10px] opacity-65">Alertas automáticos em 50%, 75%, 90% e 100% por tenant.</p>
+    </div>
+  );
+
+  if (sidebarSlot) {
+    return createPortal(
+      <div className="relative z-[125]">
+        {expanded ? (
+          <div className={`absolute bottom-full left-0 z-[130] mb-2 w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-xl border shadow-lg ${tone}`}>
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left"
+              aria-expanded="true"
+              aria-label="Fechar consumo de IA"
+            >
+              <span className="rounded-full bg-black/5 p-1.5"><Sparkles className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-3 text-xs font-semibold">
+                  <span>Consumo de IA · {percent.toFixed(0)}%</span>
+                  <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
+                </span>
+                <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
+                  <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
+                </span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            </button>
+            {details}
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className={`flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-left shadow-sm ${tone}`}
+          aria-expanded={expanded}
+          aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
+        >
+          <span className="rounded-full bg-black/5 p-1"><Sparkles className="h-3 w-3" /></span>
+          <span className="text-[10px] font-semibold leading-none tracking-tight">IA · {percent.toFixed(0)}%</span>
+          {expanded
+            ? <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            : <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          }
+        </button>
+      </div>,
+      sidebarSlot,
+    );
+  }
+
   const mobileContainer = expanded
     ? "left-3 right-3 w-auto rounded-xl sm:left-4 sm:right-auto sm:w-[min(390px,calc(100vw-2rem))]"
     : "left-3 w-auto rounded-full sm:left-4";
 
   return (
-    <div className={`fixed bottom-4 sm:bottom-[54px] z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
+    <div className={`fixed bottom-4 z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
@@ -182,40 +317,7 @@ export function AiBudgetUsageIndicator() {
         }
       </button>
 
-      {expanded ? (
-        <div className="border-t border-black/10 px-3 pb-3 pt-2 text-xs">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            <span className="opacity-70">Plano</span><span className="text-right font-medium">{budget.planName ?? "Sem plano"}</span>
-            <span className="opacity-70">Franquia mensal</span><span className="text-right font-medium">{formatCredits(budget.baseCredits)} créditos</span>
-            <span className="opacity-70">Créditos extras</span><span className="text-right font-medium">{formatCredits(budget.extraCreditsRemaining)}</span>
-            <span className="opacity-70">Consumidos no ciclo</span><span className="text-right font-medium">{formatCredits(budget.usedCredits)}</span>
-          </div>
-
-          {budget.alertPercent >= 50 ? (
-            <div className="mt-2 flex gap-2 rounded-lg bg-black/5 p-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                {budget.blocked
-                  ? "Franquia esgotada. O backend bloqueia novas chamadas compartilhadas antes de enviá-las ao provedor."
-                  : `Alerta de consumo: ${budget.alertPercent}% utilizado.`}
-              </p>
-            </div>
-          ) : null}
-
-          {notice ? <p className="mt-2 rounded-lg bg-black/5 p-2">{notice}</p> : null}
-
-          <button
-            type="button"
-            onClick={() => void buyCredits()}
-            disabled={purchaseBusy}
-            className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            {purchaseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-            Comprar +{formatCredits(budget.pack.credits)} créditos · R$ {budget.pack.priceBrl.toFixed(2).replace(".", ",")}
-          </button>
-          <p className="mt-1.5 text-[10px] opacity-65">Alertas automáticos em 50%, 75%, 90% e 100% por tenant.</p>
-        </div>
-      ) : null}
+      {expanded ? details : null}
     </div>
   );
 }
