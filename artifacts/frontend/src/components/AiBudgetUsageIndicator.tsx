@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, ShoppingCart, Sparkles } from "lucide-react";
 import "./marketing/MarketingResponsiveFocusBridge";
@@ -19,6 +19,12 @@ type Budget = {
   remainingCredits: number;
   totalCycleCredits: number;
   pack: { priceBrl: number; credits: number };
+};
+
+type PopoverPosition = {
+  left: number;
+  bottom: number;
+  width: number;
 };
 
 function tenantIdFromStorage() {
@@ -58,6 +64,8 @@ export function AiBudgetUsageIndicator() {
   const [notice, setNotice] = useState("");
   const [tenantId, setTenantId] = useState(() => tenantIdFromStorage());
   const [sidebarSlot, setSidebarSlot] = useState<HTMLElement | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
     const currentTenant = tenantIdFromStorage();
@@ -66,12 +74,14 @@ export function AiBudgetUsageIndicator() {
       setBudget(null);
       return;
     }
+
     try {
       const response = await fetch(`/api/tenants/${currentTenant}/ai-budget`, {
         headers: headers(),
         cache: "no-store",
       });
       if (!response.ok) return;
+
       const next = await response.json() as Budget;
       setBudget(next);
 
@@ -168,6 +178,42 @@ export function AiBudgetUsageIndicator() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!expanded || !sidebarSlot) {
+      setPopoverPosition(null);
+      return;
+    }
+
+    const updatePopoverPosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const width = Math.min(390, Math.max(280, viewportWidth - 24));
+      const left = Math.max(12, Math.min(rect.right - width, viewportWidth - width - 12));
+      const bottom = Math.max(12, window.innerHeight - rect.top + 8);
+      setPopoverPosition({ left, bottom, width });
+    };
+
+    updatePopoverPosition();
+    window.addEventListener("resize", updatePopoverPosition);
+    window.addEventListener("scroll", updatePopoverPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverPosition);
+      window.removeEventListener("scroll", updatePopoverPosition, true);
+    };
+  }, [expanded, sidebarSlot]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [expanded]);
+
   const tone = useMemo(() => {
     const p = budget?.percentUsed ?? 0;
     if (p >= 100) return "border-red-300 bg-red-50 text-red-900";
@@ -180,8 +226,8 @@ export function AiBudgetUsageIndicator() {
   const buyCredits = async () => {
     if (!budget || purchaseBusy) return;
     setPurchaseBusy(true);
-    setNotice("");
-    const paymentWindow = window.open("", "_blank");
+    setNotice("Criando cobrança segura...");
+
     try {
       const response = await fetch(`/api/tenants/${budget.tenantId}/ai-credit-pack-purchases`, {
         method: "POST",
@@ -189,17 +235,25 @@ export function AiBudgetUsageIndicator() {
         body: JSON.stringify({}),
       });
       const payload = await response.json().catch(() => ({})) as { invoiceUrl?: string; error?: string };
-      if (!response.ok || !payload.invoiceUrl) throw new Error(payload.error ?? "Não foi possível abrir a cobrança.");
-      if (paymentWindow) {
-        paymentWindow.opener = null;
-        paymentWindow.location.href = payload.invoiceUrl;
-      } else {
-        setNotice("A cobrança foi criada. Permita pop-ups para abrir o pagamento.");
+      if (!response.ok || !payload.invoiceUrl) {
+        throw new Error(payload.error ?? "Não foi possível abrir a cobrança.");
       }
+
+      let checkoutUrl: URL;
+      try {
+        checkoutUrl = new URL(payload.invoiceUrl, window.location.origin);
+      } catch {
+        throw new Error("A cobrança foi criada, mas o endereço de pagamento retornado é inválido.");
+      }
+
+      if (checkoutUrl.protocol !== "https:" && checkoutUrl.protocol !== "http:") {
+        throw new Error("A cobrança foi criada, mas o endereço de pagamento retornado não é seguro.");
+      }
+
+      setNotice("Abrindo pagamento...");
+      window.location.assign(checkoutUrl.href);
     } catch (error) {
-      paymentWindow?.close();
       setNotice(error instanceof Error ? error.message : "Não foi possível comprar créditos agora.");
-    } finally {
       setPurchaseBusy(false);
     }
   };
@@ -237,57 +291,76 @@ export function AiBudgetUsageIndicator() {
         className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-center font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
       >
         {purchaseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-        Comprar +{formatCredits(budget.pack.credits)} créditos · R$ {budget.pack.priceBrl.toFixed(2).replace(".", ",")}
+        {purchaseBusy
+          ? "Preparando pagamento..."
+          : `Comprar +${formatCredits(budget.pack.credits)} créditos · R$ ${budget.pack.priceBrl.toFixed(2).replace(".", ",")}`}
       </button>
       <p className="mt-1.5 text-[10px] opacity-65">Alertas automáticos em 50%, 75%, 90% e 100% por tenant.</p>
     </div>
   );
 
-  if (sidebarSlot) {
-    return createPortal(
-      <div className="relative">
-        {expanded ? (
-          <div className={`absolute bottom-full right-0 z-[130] mb-2 w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-xl border shadow-lg ${tone}`}>
-            <button
-              type="button"
-              onClick={() => setExpanded(false)}
-              className="flex w-full items-center gap-3 px-3 py-2 text-left"
-              aria-expanded="true"
-              aria-label="Fechar consumo de IA"
-            >
-              <span className="rounded-full bg-black/5 p-1.5"><Sparkles className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center justify-between gap-3 text-xs font-semibold">
-                  <span>Consumo de IA · {percent.toFixed(0)}%</span>
-                  <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
-                </span>
-                <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
-                  <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
-                </span>
-              </span>
-              <ChevronDown className="h-4 w-4 shrink-0" />
-            </button>
-            {details}
-          </div>
-        ) : null}
+  const expandedPanel = (
+    <div className={`overflow-hidden rounded-xl border shadow-xl ${tone}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded(false)}
+        className="flex w-full items-center gap-3 px-3 py-2 text-left"
+        aria-expanded="true"
+        aria-label="Fechar consumo de IA"
+      >
+        <span className="rounded-full bg-black/5 p-1.5"><Sparkles className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center justify-between gap-3 text-xs font-semibold">
+            <span>Consumo de IA · {percent.toFixed(0)}%</span>
+            <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
+          </span>
+          <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
+            <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0" />
+      </button>
+      {details}
+    </div>
+  );
 
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className={`flex h-7 items-center gap-1 rounded-full border px-2 text-left shadow-sm ${tone}`}
-          aria-expanded={expanded}
-          aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
-        >
-          <Sparkles className="h-3 w-3 shrink-0" />
-          <span className="text-[9px] font-semibold leading-none tracking-tight">IA · {percent.toFixed(0)}%</span>
-          {expanded
-            ? <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
-            : <ChevronUp className="h-3 w-3 shrink-0 opacity-70" />
-          }
-        </button>
-      </div>,
+  if (sidebarSlot) {
+    const trigger = createPortal(
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className={`flex h-7 items-center gap-1 rounded-full border px-2 text-left shadow-sm ${tone}`}
+        aria-expanded={expanded}
+        aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
+      >
+        <Sparkles className="h-3 w-3 shrink-0" />
+        <span className="text-[9px] font-semibold leading-none tracking-tight">IA · {percent.toFixed(0)}%</span>
+        {expanded
+          ? <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
+          : <ChevronUp className="h-3 w-3 shrink-0 opacity-70" />
+        }
+      </button>,
       sidebarSlot,
     );
+
+    const popover = expanded && popoverPosition
+      ? createPortal(
+          <div
+            className="fixed z-[1000] max-h-[calc(100vh-24px)] overflow-y-auto"
+            style={{
+              left: popoverPosition.left,
+              bottom: popoverPosition.bottom,
+              width: popoverPosition.width,
+            }}
+          >
+            {expandedPanel}
+          </div>,
+          document.body,
+        )
+      : null;
+
+    return <>{trigger}{popover}</>;
   }
 
   const mobileContainer = expanded
