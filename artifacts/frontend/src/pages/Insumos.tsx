@@ -8,7 +8,7 @@ import {
   getListInsumosQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,17 +19,20 @@ import type { Insumo } from "@workspace/api-client-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
 
-const CATEGORIAS = ["Alvenaria", "Concreto", "Cobertura", "Elétrica", "Hidráulica", "Acabamento", "Estrutura", "Movimento de terra", "Ferramentas", "Outros"];
+const CATEGORIAS_PADRAO = ["Alvenaria", "Concreto", "Cobertura", "Elétrica", "Hidráulica", "Acabamento", "Estrutura", "Movimento de terra", "Ferramentas", "Outros"];
+const NOVA_CATEGORIA_VALUE = "__nova_categoria__";
 
 const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx"];
 
 function InsumoForm({
   initial,
+  categorias = [],
   onSave,
   onCancel,
   isPending,
 }: {
   initial?: Partial<Insumo>;
+  categorias?: string[];
   onSave: (data: Record<string, unknown>) => void;
   onCancel: () => void;
   isPending: boolean;
@@ -42,10 +45,21 @@ function InsumoForm({
     categoria: initial?.categoria ?? "",
     codigo: initial?.codigo ?? "",
   });
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+
+  const availableCategories = [...new Set([
+    ...CATEGORIAS_PADRAO,
+    ...categorias,
+    ...(initial?.categoria ? [initial.categoria] : []),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const payload: Record<string, unknown> = { ...form };
+    const payload: Record<string, unknown> = {
+      ...form,
+      categoria: creatingCategory ? newCategory.trim() : form.categoria,
+    };
     Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
     onSave(payload);
   }
@@ -69,10 +83,33 @@ function InsumoForm({
         </div>
         <div className="space-y-2">
           <Label>Categoria</Label>
-          <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" value={form.categoria} onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}>
+          <select
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+            value={creatingCategory ? NOVA_CATEGORIA_VALUE : form.categoria}
+            onChange={(e) => {
+              if (e.target.value === NOVA_CATEGORIA_VALUE) {
+                setCreatingCategory(true);
+                setNewCategory("");
+                return;
+              }
+              setCreatingCategory(false);
+              setNewCategory("");
+              setForm((f) => ({ ...f, categoria: e.target.value }));
+            }}
+          >
             <option value="">Selecione...</option>
-            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            {availableCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+            <option value={NOVA_CATEGORIA_VALUE}>+ Cadastrar nova categoria</option>
           </select>
+          {creatingCategory && (
+            <Input
+              autoFocus
+              required
+              placeholder="Nome da nova categoria"
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+            />
+          )}
         </div>
         <div className="space-y-2">
           <Label>Código interno</Label>
@@ -91,7 +128,7 @@ function InsumoForm({
   );
 }
 
-function EditDialog({ tenantId, insumo }: { tenantId: string; insumo: Insumo }) {
+function EditDialog({ tenantId, insumo, categorias }: { tenantId: string; insumo: Insumo; categorias: string[] }) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
   const { mutateAsync, isPending } = useUpdateInsumo();
@@ -109,7 +146,7 @@ function EditDialog({ tenantId, insumo }: { tenantId: string; insumo: Insumo }) 
       </DialogTrigger>
       <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Editar insumo</DialogTitle></DialogHeader>
-        <InsumoForm initial={insumo} onSave={handleSave} onCancel={() => setOpen(false)} isPending={isPending} />
+        <InsumoForm initial={insumo} categorias={categorias} onSave={handleSave} onCancel={() => setOpen(false)} isPending={isPending} />
       </DialogContent>
     </Dialog>
   );
@@ -186,7 +223,7 @@ export default function Insumos() {
     return true;
   });
 
-  const categorias = [...new Set(insumos.map((i) => i.categoria).filter(Boolean))];
+  const categorias = [...new Set(insumos.map((i) => i.categoria).filter(Boolean))] as string[];
 
   return (
     <div className="space-y-6">
@@ -217,7 +254,7 @@ export default function Insumos() {
           </DialogTrigger>
           <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Novo insumo</DialogTitle></DialogHeader>
-            <InsumoForm onSave={handleCreate} onCancel={() => setAddOpen(false)} isPending={isCreating} />
+            <InsumoForm categorias={categorias} onSave={handleCreate} onCancel={() => setAddOpen(false)} isPending={isCreating} />
           </DialogContent>
         </Dialog>
         </div>
@@ -230,7 +267,7 @@ export default function Insumos() {
           <Input placeholder="Buscar insumo..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {[{ value: "all", label: "Todos" }, ...categorias.map((c) => ({ value: c!, label: c! }))].map((opt) => (
+          {[{ value: "all", label: "Todos" }, ...categorias.map((c) => ({ value: c, label: c }))].map((opt) => (
             <button key={opt.value} onClick={() => setCatFilter(opt.value)}
               className={`text-xs px-3 py-1 rounded-full border transition-colors ${catFilter === opt.value ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
               {opt.label}
@@ -260,7 +297,7 @@ export default function Insumos() {
                       {insumo.descricao && <p className="text-xs text-muted-foreground mt-0.5">{insumo.descricao}</p>}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <EditDialog tenantId={tenantId} insumo={insumo} />
+                      <EditDialog tenantId={tenantId} insumo={insumo} categorias={categorias} />
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -327,7 +364,7 @@ export default function Insumos() {
                       <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{insumo.codigo ?? "—"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">
-                          <EditDialog tenantId={tenantId} insumo={insumo} />
+                          <EditDialog tenantId={tenantId} insumo={insumo} categorias={categorias} />
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
