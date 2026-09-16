@@ -8,6 +8,7 @@ import MediaLibrarySourceGuide from "@/components/media/MediaLibrarySourceGuide"
 import ProductCatalogKnowledgeLibrary from "@/components/media/ProductCatalogKnowledgeLibrary";
 import ProductCatalogSelectionBridge from "@/components/media/ProductCatalogSelectionBridge";
 import ProjectKnowledgeLibrary from "@/components/media/ProjectKnowledgeLibrary";
+import InternalProductsKnowledgeLibrary from "@/components/media/InternalProductsKnowledgeLibrary";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import GrowthLabConnected from "@/pages/GrowthLabConnected";
@@ -61,6 +62,7 @@ export default function NotFound() {
               <ProductCatalogKnowledgeLibrary />
               <ProductCatalogSelectionBridge />
               <ProjectKnowledgeLibrary />
+              <InternalProductsKnowledgeLibrary />
             </div>
           </>
         ) : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLabConnected />}
