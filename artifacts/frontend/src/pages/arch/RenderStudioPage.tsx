@@ -4,6 +4,7 @@ import { useRenderStudioPersistentBootstrap } from "@/modules/arqdor/hooks/useRe
 import type { RenderStudioVersion } from "@/modules/arqdor/hooks/renderStudioPersistentAdapter";
 
 const SK = {
+  step: "arq_studio_step",
   ambiente: "arq_studio_ambiente",
   renderId: "arq_studio_renderId",
   renderUrl: "arq_studio_renderUrl",
@@ -46,6 +47,15 @@ function readCachedVersions(): RenderStudioVersion[] {
   }
 }
 
+function findApprovedVersion(state: {
+  versions: RenderStudioVersion[];
+  approvedVersionId: string | null;
+}) {
+  return state.versions.find((version) => version.id === state.approvedVersionId)
+    ?? state.versions.find((version) => Boolean(version.approvedBy && version.approvedAt))
+    ?? null;
+}
+
 function persistBootstrapState(state: {
   versions: RenderStudioVersion[];
   latestRenderId: string | null;
@@ -60,6 +70,13 @@ function persistBootstrapState(state: {
     else sessionStorage.removeItem(SK.renderUrl);
     if (state.approvedVersionId) sessionStorage.setItem(SK.approvedVersionId, state.approvedVersionId);
     else sessionStorage.removeItem(SK.approvedVersionId);
+
+    // The legacy Studio still keeps approval UI state locally. Until that
+    // monolith is retired, never remount an already-approved render on the
+    // approval action itself: hydrate directly into Specification instead.
+    if (findApprovedVersion(state) && sessionStorage.getItem(SK.step) === "aprovar") {
+      sessionStorage.setItem(SK.step, "especificacao");
+    }
   } catch {
     // Recovery cache is best-effort only. Backend remains the source of truth.
   }
@@ -72,11 +89,16 @@ function persistBootstrapState(state: {
  * session cache from the backend before mounting it. When the active project
  * or environment changes, it re-hydrates and remounts the Studio with the
  * persisted version history.
+ *
+ * Approval is also restored from the persisted version. Because the legacy
+ * inner Studio still owns a local approvalRecord, approved renders are kept
+ * out of the approval action and a persisted approval badge remains visible.
  */
 export default function RenderStudioPage() {
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem("arq_last_project_id"));
   const [ambiente, setAmbiente] = useState(() => sessionStorage.getItem(SK.ambiente) ?? "");
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  const [approvalRedirectEpoch, setApprovalRedirectEpoch] = useState(0);
 
   const recoveryCache = useMemo(() => ({
     versions: readCachedVersions(),
@@ -86,6 +108,10 @@ export default function RenderStudioPage() {
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
+  const approvedVersion = useMemo(
+    () => findApprovedVersion(bootstrap.state),
+    [bootstrap.state],
+  );
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -96,6 +122,20 @@ export default function RenderStudioPage() {
     }, 400);
     return () => window.clearInterval(interval);
   }, []);
+
+  // If an already-approved version is reopened and the legacy sidebar sends
+  // the user back to "Aprovar", move back to Specification and remount. This
+  // prevents duplicate approval requests while the backend approval remains
+  // the source of truth.
+  useEffect(() => {
+    if (!approvedVersion) return;
+    const interval = window.setInterval(() => {
+      if (sessionStorage.getItem(SK.step) !== "aprovar") return;
+      sessionStorage.setItem(SK.step, "especificacao");
+      setApprovalRedirectEpoch((value) => value + 1);
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [approvedVersion?.id]);
 
   useEffect(() => {
     setHydratedKey(null);
@@ -127,5 +167,43 @@ export default function RenderStudioPage() {
     );
   }
 
-  return <LegacyRenderStudioPage key={targetKey} />;
+  const approvedAt = reviveDate(approvedVersion?.approvedAt);
+  const approvalTitle = approvedVersion
+    ? [
+        `Aprovado por ${approvedVersion.approvedBy ?? "usuário autenticado"}`,
+        approvedAt ? approvedAt.toLocaleString("pt-BR") : null,
+        approvedVersion.approvalNote || null,
+      ].filter(Boolean).join(" · ")
+    : "";
+
+  return (
+    <>
+      <LegacyRenderStudioPage key={`${targetKey}:${approvalRedirectEpoch}`} />
+      {approvedVersion && (
+        <div
+          role="status"
+          title={approvalTitle}
+          style={{
+            position: "fixed",
+            right: 316,
+            top: 60,
+            zIndex: 240,
+            maxWidth: 360,
+            padding: "7px 10px",
+            borderRadius: 8,
+            background: "rgba(6, 78, 59, 0.94)",
+            border: "1px solid rgba(16, 185, 129, 0.55)",
+            boxShadow: "0 8px 24px rgba(0,0,0,.28)",
+            color: "#D1FAE5",
+            fontSize: 10,
+            fontWeight: 700,
+            pointerEvents: "none",
+          }}
+        >
+          ✓ Versão aprovada · {approvedVersion.approvedBy ?? "usuário autenticado"}
+          {approvedAt ? ` · ${approvedAt.toLocaleDateString("pt-BR")}` : ""}
+        </div>
+      )}
+    </>
+  );
 }
