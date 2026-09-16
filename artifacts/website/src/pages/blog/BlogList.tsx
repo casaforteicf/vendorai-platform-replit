@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { blogPosts } from "@/data/blog-posts";
+import { extraBlogPosts } from "@/data/blog-posts-extra";
 import { useSeoMeta } from "@/hooks/use-seo-meta";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, ArrowRight, Languages } from "lucide-react";
@@ -48,9 +49,6 @@ export default function BlogList() {
     description: copy.seoDescription,
   });
 
-  // Posts gerados automaticamente pelo Content Autopilot somam aos manuais.
-  // O catálogo atual ainda não possui locale próprio; por isso o shell muda de
-  // idioma sem duplicar ou fingir que artigos em português foram traduzidos.
   const { data } = useQuery<{ posts: DynamicPost[] }>({
     queryKey: ["site-blog-dynamic-posts"],
     queryFn: () => fetch("/api/sites/vendorai/blog-data").then((r) => (r.ok ? r.json() : { posts: [] })),
@@ -60,6 +58,7 @@ export default function BlogList() {
 
   const allPosts = [
     ...blogPosts.map((p) => ({ slug: p.slug, title: p.title, summary: p.summary, publishedAt: p.publishedAt, dynamic: false as const })),
+    ...extraBlogPosts.map((p) => ({ slug: p.slug, title: p.title, summary: p.summary, publishedAt: p.publishedAt, dynamic: false as const })),
     ...dynamicPosts.map((p) => ({ slug: p.slug, title: p.titulo, summary: p.metaDescription ?? "", publishedAt: p.publicadoEm ?? new Date().toISOString(), dynamic: true as const })),
   ].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
