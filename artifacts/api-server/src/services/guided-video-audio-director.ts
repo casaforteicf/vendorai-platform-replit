@@ -6,7 +6,8 @@ import { join } from "path";
 import { promisify } from "util";
 import { pool } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { assessMediaAudioUsage } from "./media-rights.js";
+import { assessMediaAudioUsage, normalizeMediaAudioRights } from "./media-rights.js";
+import { buildGuidedAudioFilterGraph, type GuidedAudioIndexes } from "./guided-video-audio-filter.js";
 import {
   createProcessingMediaProject,
   registerGeneratedMediaOutput,
@@ -34,14 +35,6 @@ type AudioSelection = {
   music: AudioAsset | null;
   sfx: AudioAsset | null;
   jingle: AudioAsset | null;
-};
-
-type AudioIndexes = Partial<Record<keyof AudioSelection, number>>;
-
-export type GuidedAudioFilterGraphInput = {
-  duration: number;
-  sceneCount: number;
-  indexes: AudioIndexes;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -82,14 +75,13 @@ function hasRights(asset: AudioAsset): boolean {
   return Object.keys(rightsObject(asset)).length > 0;
 }
 
-function rightsExplicitlyBlocked(asset: AudioAsset): boolean {
-  const rights = rightsObject(asset);
-  if (!Object.keys(rights).length) return false;
-  return !assessMediaAudioUsage(rights).organicAllowed;
+function automaticAssetAllowed(asset: AudioAsset): boolean {
+  if (!hasRights(asset)) return false;
+  return assessMediaAudioUsage(rightsObject(asset)).organicAllowed;
 }
 
-function musicAllowed(asset: AudioAsset): boolean {
-  return assessMediaAudioUsage(rightsObject(asset)).organicAllowed;
+function rightsExplicitlyBlocked(asset: AudioAsset): boolean {
+  return hasRights(asset) && !assessMediaAudioUsage(rightsObject(asset)).organicAllowed;
 }
 
 function scoreAsset(asset: AudioAsset, kind: GuidedAudioKind, keywords: string[]): number {
@@ -149,8 +141,7 @@ function chooseBest(assets: AudioAsset[], kind: GuidedAudioKind, keywords: strin
   const acceptableKinds = kind === "jingle" ? new Set<GuidedAudioKind>(["jingle", "sonic_identity"]) : new Set<GuidedAudioKind>([kind]);
   const ranked = assets
     .filter((asset) => acceptableKinds.has(audioKind(asset)))
-    .filter((asset) => kind !== "music" || musicAllowed(asset))
-    .filter((asset) => !rightsExplicitlyBlocked(asset))
+    .filter(automaticAssetAllowed)
     .map((asset) => ({ asset, score: scoreAsset(asset, kind, keywords) }))
     .sort((left, right) => right.score - left.score);
   return ranked[0]?.asset ?? null;
@@ -163,10 +154,10 @@ function selectedAsset(assets: AudioAsset[], id: string, expected: GuidedAudioKi
   const kind = audioKind(asset);
   const accepted = expected === "jingle" ? kind === "jingle" || kind === "sonic_identity" : kind === expected;
   if (!accepted) throw new Error(`O arquivo “${asset.originalFilename}” não é compatível com ${expected}`);
-  if (expected === "music" && !musicAllowed(asset)) {
-    throw new Error(`A trilha “${asset.originalFilename}” não está liberada para uso comercial/orgânico. Revise o Passaporte de Direitos em Mídias.`);
+  if (expected === "music" && !hasRights(asset)) {
+    throw new Error(`A trilha “${asset.originalFilename}” ainda não possui Passaporte de Direitos. Revise os direitos em Mídias antes de usar.`);
   }
-  if (expected !== "voiceover" && rightsExplicitlyBlocked(asset)) {
+  if (rightsExplicitlyBlocked(asset)) {
     throw new Error(`O áudio “${asset.originalFilename}” possui restrição de uso. Revise o Passaporte de Direitos em Mídias.`);
   }
   return asset;
@@ -195,89 +186,49 @@ function audioMetadata(selection: AudioSelection) {
   };
 }
 
+function commonTerritories(selection: AudioSelection): { territories: string[]; resolved: boolean } {
+  const sources = Object.values(selection).filter((asset): asset is AudioAsset => Boolean(asset));
+  let common: Set<string> | null = null;
+  for (const asset of sources) {
+    if (!hasRights(asset)) continue;
+    const rights = normalizeMediaAudioRights(rightsObject(asset));
+    if (rights.territories.includes("*")) continue;
+    const current = new Set(rights.territories);
+    common = common === null ? current : new Set([...common].filter((territory) => current.has(territory)));
+  }
+  if (common === null) return { territories: ["*"], resolved: true };
+  if (common.size === 0) return { territories: ["UNRESOLVED"], resolved: false };
+  return { territories: Array.from(common).sort(), resolved: true };
+}
+
 function masterRights(selection: AudioSelection) {
   const sources = Object.values(selection).filter((asset): asset is AudioAsset => Boolean(asset));
-  const allHaveRights = sources.every(hasRights);
-  const assessments = sources.map((asset) => assessMediaAudioUsage(rightsObject(asset)));
-  const organicAllowed = allHaveRights && assessments.every((assessment) => assessment.organicAllowed);
+  const allHaveRights = sources.length > 0 && sources.every(hasRights);
+  const rights = sources.filter(hasRights).map((asset) => normalizeMediaAudioRights(rightsObject(asset)));
+  const assessments = sources.filter(hasRights).map((asset) => assessMediaAudioUsage(rightsObject(asset)));
+  const territory = commonTerritories(selection);
+  const organicAllowed = allHaveRights && territory.resolved && assessments.every((assessment) => assessment.organicAllowed);
   const paidAdsAllowed = organicAllowed && assessments.every((assessment) => assessment.paidAdsAllowed);
-  const allGenerated = sources.length > 0 && sources.every((asset) => asset.source === "generated");
-  const allTenantOwned = sources.length > 0 && sources.every((asset) => asset.source === "upload" || asset.source === "imported");
+  const origins = new Set(rights.map((item) => item.origin));
+  const expiresAt = rights
+    .map((item) => item.expiresAt)
+    .filter((value): value is string => Boolean(value))
+    .sort()[0] ?? null;
+  const attributionTexts = Array.from(new Set(rights.map((item) => item.attributionText).filter((value): value is string => Boolean(value))));
+  const licenseReferences = Array.from(new Set(rights.map((item) => item.licenseReference).filter((value): value is string => Boolean(value))));
+  const evidenceAssetIds = rights.map((item) => item.evidenceAssetId).filter((value): value is string => Boolean(value));
   return {
     status: allHaveRights ? (organicAllowed ? "cleared" : "restricted") : "pending",
-    origin: allGenerated ? "generated" : allTenantOwned ? "tenant_owned" : "unknown",
+    origin: origins.size === 1 ? Array.from(origins)[0] : "unknown",
     commercialUse: organicAllowed,
     paidAds: paidAdsAllowed,
-    territories: ["*"],
-    expiresAt: null,
-    attributionRequired: false,
-    attributionText: null,
-    licenseReference: null,
-    evidenceAssetId: null,
+    territories: territory.territories,
+    expiresAt,
+    attributionRequired: rights.some((item) => item.attributionRequired),
+    attributionText: attributionTexts.length ? attributionTexts.join(" | ") : null,
+    licenseReference: licenseReferences.length ? licenseReferences.join(" | ") : null,
+    evidenceAssetId: evidenceAssetIds[0] ?? null,
   };
-}
-
-function normalizedAudio(label: string): string {
-  return `${label}aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo`;
-}
-
-export function buildGuidedAudioFilterGraph(input: GuidedAudioFilterGraphInput): string {
-  const durationSeconds = Math.max(0.1, Number(input.duration) || 0.1);
-  const sceneCount = Math.max(1, Math.round(Number(input.sceneCount) || 1));
-  const duration = durationSeconds.toFixed(3);
-  const filter: string[] = [`[0:a]atrim=0:${duration},asetpts=N/SR/TB[bed]`];
-  const mixLabels = ["[bed]"];
-  const voiceIndex = input.indexes.voiceover;
-  const musicIndex = input.indexes.music;
-
-  if (typeof voiceIndex === "number") {
-    filter.push(`${normalizedAudio(`[${voiceIndex}:a]`)},volume=1,apad,atrim=0:${duration},asetpts=N/SR/TB[voiceprep]`);
-    if (typeof musicIndex === "number") {
-      filter.push("[voiceprep]asplit=2[voicemix][voicesc]");
-      mixLabels.push("[voicemix]");
-    } else {
-      mixLabels.push("[voiceprep]");
-    }
-  }
-
-  if (typeof musicIndex === "number") {
-    const fadeOutStart = Math.max(0, durationSeconds - 0.65).toFixed(3);
-    filter.push(`${normalizedAudio(`[${musicIndex}:a]`)},volume=0.24,atrim=0:${duration},afade=t=in:st=0:d=0.25,afade=t=out:st=${fadeOutStart}:d=0.65,asetpts=N/SR/TB[musicraw]`);
-    if (typeof voiceIndex === "number") {
-      filter.push("[musicraw][voicesc]sidechaincompress=threshold=0.025:ratio=8:attack=15:release=300[musicmix]");
-      mixLabels.push("[musicmix]");
-    } else {
-      mixLabels.push("[musicraw]");
-    }
-  }
-
-  const sfxIndex = input.indexes.sfx;
-  if (typeof sfxIndex === "number") {
-    const count = Math.max(1, Math.min(5, sceneCount - 1));
-    const sourceLabels = Array.from({ length: count }, (_, index) => `sfxsrc${index}`);
-    const preparedLabel = "sfxprepared";
-    filter.push(`${normalizedAudio(`[${sfxIndex}:a]`)}[${preparedLabel}]`);
-    if (count > 1) filter.push(`[${preparedLabel}]asplit=${count}${sourceLabels.map((label) => `[${label}]`).join("")}`);
-    for (let index = 0; index < count; index += 1) {
-      const source = count > 1 ? `[${sourceLabels[index]}]` : `[${preparedLabel}]`;
-      const positionSeconds = sceneCount > 1 ? (durationSeconds * (index + 1)) / (count + 1) : 0;
-      const delay = Math.max(0, Math.round(positionSeconds * 1000));
-      const label = `sfxmix${index}`;
-      filter.push(`${source}atrim=0:0.85,volume=0.30,adelay=${delay}|${delay},asetpts=N/SR/TB[${label}]`);
-      mixLabels.push(`[${label}]`);
-    }
-  }
-
-  const jingleIndex = input.indexes.jingle;
-  if (typeof jingleIndex === "number") {
-    const windowSeconds = Math.min(3, durationSeconds);
-    const delay = Math.max(0, Math.round((durationSeconds - windowSeconds) * 1000));
-    filter.push(`${normalizedAudio(`[${jingleIndex}:a]`)},atrim=0:${windowSeconds.toFixed(3)},volume=0.48,adelay=${delay}|${delay},asetpts=N/SR/TB[jinglemix]`);
-    mixLabels.push("[jinglemix]");
-  }
-
-  filter.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:normalize=0,loudnorm=I=-16:LRA=11:TP=-1.5,alimiter=limit=0.95:level=false[aout]`);
-  return filter.join(";");
 }
 
 function selectionId(asset: AudioAsset | null): string | null {
@@ -298,7 +249,7 @@ async function renderAudioMaster(input: {
   let projectId = "";
   try {
     const args: string[] = ["-hide_banner", "-nostdin", "-y", "-f", "lavfi", "-t", input.duration.toFixed(3), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"];
-    const indexes: AudioIndexes = {};
+    const indexes: GuidedAudioIndexes = {};
     let nextIndex = 1;
 
     for (const [key, asset] of Object.entries(input.selection) as Array<[keyof AudioSelection, AudioAsset | null]>) {
