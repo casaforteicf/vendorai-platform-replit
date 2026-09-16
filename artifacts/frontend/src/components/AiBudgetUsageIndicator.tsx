@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, ShoppingCart, Sparkles } from "lucide-react";
 import "./marketing/MarketingResponsiveFocusBridge";
+import "./marketing/MarketingResultsTrackingBridge";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
