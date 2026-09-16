@@ -39,7 +39,10 @@ export const archRenderSolicitacoesTable = pgTable("arch_render_solicitacoes", {
   itensAdicionados:  jsonb("itens_adicionados").$type<ItemAdicionado[]>(),
   texturasAlteradas: jsonb("texturas_alteradas").$type<TexturaAlterada[]>(),
   observacoes: text("observacoes"),
-  // preenchido quando o render é gerado a partir desta solicitação
+  // versão oficial de arch_ai_renders que o cliente estava revisando.
+  // A rota pública valida tenant/projeto antes de persistir.
+  sourceAiRenderId: text("source_ai_render_id"),
+  // preenchido quando o render é gerado a partir desta solicitação no fluxo legado
   versaoGeradaId: text("versao_gerada_id")
     .references(() => archRenderVersoesTable.id, { onDelete: "set null" }),
   createdAt:    timestamp("created_at").notNull().defaultNow(),
