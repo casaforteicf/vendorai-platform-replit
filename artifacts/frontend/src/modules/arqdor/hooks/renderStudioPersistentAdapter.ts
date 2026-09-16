@@ -44,11 +44,18 @@ function versionLabel(version: PersistentRenderVersion, operationType: RenderStu
   return `Versão ${n} · Original`;
 }
 
+function parseCost(value: PersistentRenderVersion["costEstimateUsd"]): number | undefined {
+  if (value == null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function mapPersistentVersionToStudio(version: PersistentRenderVersion): RenderStudioVersion | null {
   if (!version.resultImageUrl || version.status !== "concluido") return null;
 
   const approved = Boolean(version.approvedAt || version.versionTag === "aprovado");
   const operationType = normalizeOperationType(version.operationType, approved, version.parentRenderId);
+  const selectionLabel = version.selectionMetadata.find(selection => Boolean(selection.label?.trim()))?.label;
 
   return {
     id: version.id,
@@ -57,13 +64,13 @@ export function mapPersistentVersionToStudio(version: PersistentRenderVersion): 
     parentVersionId: version.parentRenderId || undefined,
     operationType,
     createdAt: version.createdAt,
-    selectionLabel: version.selectionLabel || undefined,
+    selectionLabel: selectionLabel || undefined,
     materialId: version.materialId || undefined,
     materialName: version.materialName || undefined,
     approvedBy: version.approvedBy || undefined,
     approvedAt: version.approvedAt || undefined,
     approvalNote: version.approvalNote || undefined,
-    costEstimateUsd: version.costEstimateUsd ?? undefined,
+    costEstimateUsd: parseCost(version.costEstimateUsd),
   };
 }
 
