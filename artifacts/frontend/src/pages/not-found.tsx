@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
-import MediaCenter from "@/pages/MediaCenter";
+import MediaLibraryV2 from "@/pages/MediaLibraryV2";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import GrowthLabConnected from "@/pages/GrowthLabConnected";
@@ -49,7 +49,7 @@ export default function NotFound() {
 
     return (
       <SidebarLayout>
-        {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLabConnected />}
+        {isMediaCenter ? <MediaLibraryV2 /> : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLabConnected />}
       </SidebarLayout>
     );
   }
