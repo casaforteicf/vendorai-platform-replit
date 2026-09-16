@@ -6,6 +6,7 @@ import {
   mediaProjectsTable,
   socialPublicationsTable,
 } from "@workspace/db";
+import { logger } from "../lib/logger.js";
 import { publishSocialPublication } from "./social-publication-publisher.js";
 import { publishInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { publishFacebookOrganicPublication } from "./facebook-organic-publication.js";
@@ -205,6 +206,11 @@ export async function publishAnySocialPublication(tenantId: string, publicationI
       : await publishSocialPublication(tenantId, publicationId);
 
   await markCalendarPublished(tenantId, published);
-  await registerVideoStudioInstagramPerformance(tenantId, published);
+  await registerVideoStudioInstagramPerformance(tenantId, published).catch((error) => {
+    logger.warn(
+      { error, tenantId, publicationId: published.id, externalId: published.externalId },
+      "Video Studio: publicação concluída, mas o registro no aprendizado de performance falhou",
+    );
+  });
   return published;
 }
