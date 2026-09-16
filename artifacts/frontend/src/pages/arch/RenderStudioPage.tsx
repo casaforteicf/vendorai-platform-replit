@@ -71,9 +71,6 @@ function persistBootstrapState(state: {
     if (state.approvedVersionId) sessionStorage.setItem(SK.approvedVersionId, state.approvedVersionId);
     else sessionStorage.removeItem(SK.approvedVersionId);
 
-    // The legacy Studio still keeps approval UI state locally. Until that
-    // monolith is retired, never remount an already-approved render on the
-    // approval action itself: hydrate directly into Specification instead.
     if (findApprovedVersion(state) && sessionStorage.getItem(SK.step) === "aprovar") {
       sessionStorage.setItem(SK.step, "especificacao");
     }
@@ -90,9 +87,9 @@ function persistBootstrapState(state: {
  * or environment changes, it re-hydrates and remounts the Studio with the
  * persisted version history.
  *
- * Approval is also restored from the persisted version. Because the legacy
- * inner Studio still owns a local approvalRecord, approved renders are kept
- * out of the approval action and a persisted approval badge remains visible.
+ * Approval is restored from the persisted version. Because the legacy inner
+ * Studio still owns a local approvalRecord, approved renders are kept out of
+ * the approval action and a persisted approval badge remains visible.
  */
 export default function RenderStudioPage() {
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem("arq_last_project_id"));
@@ -123,10 +120,6 @@ export default function RenderStudioPage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  // If an already-approved version is reopened and the legacy sidebar sends
-  // the user back to "Aprovar", move back to Specification and remount. This
-  // prevents duplicate approval requests while the backend approval remains
-  // the source of truth.
   useEffect(() => {
     if (!approvedVersion) return;
     const interval = window.setInterval(() => {
