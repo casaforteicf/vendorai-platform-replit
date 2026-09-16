@@ -11,6 +11,13 @@ const SK = {
   approvedVersionId: "arq_studio_approvedVersionId",
 } as const;
 
+function reviveDate(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 function readCachedVersions(): RenderStudioVersion[] {
   const raw = sessionStorage.getItem(SK.versions);
   if (!raw) return [];
@@ -25,12 +32,12 @@ function readCachedVersions(): RenderStudioVersion[] {
         label: version.label ?? "Versão recuperada",
         parentVersionId: version.parentVersionId,
         operationType: version.operationType ?? (version.parentVersionId ? "improve" : "initial"),
-        createdAt: version.createdAt ? new Date(version.createdAt) : new Date(0),
+        createdAt: reviveDate(version.createdAt) ?? new Date(0),
         selectionLabel: version.selectionLabel,
         materialId: version.materialId,
         materialName: version.materialName,
         approvedBy: version.approvedBy,
-        approvedAt: version.approvedAt ? new Date(version.approvedAt) : undefined,
+        approvedAt: reviveDate(version.approvedAt),
         approvalNote: version.approvalNote,
         costEstimateUsd: version.costEstimateUsd,
       }));
