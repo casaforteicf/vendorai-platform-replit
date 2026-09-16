@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { T } from '../../shared/arqdor-theme'
+import { useWorkspace } from '../../workspace/context/WorkspaceContext'
 
 const BASE = '/api'
 function authHeaders(): Record<string, string> {
@@ -44,7 +45,22 @@ function AssetCard({ item, selected, onSelect }: { item: CatItem; selected: bool
   )
 }
 
-function AssetDetail({ item }: { item: CatItem }) {
+function AssetDetail({ item, projectId, canApply }: { item: CatItem; projectId: string | null; canApply: boolean }) {
+  const [handoff, setHandoff] = useState(false)
+
+  const useInProject = () => {
+    if (!projectId || !canApply) return
+    sessionStorage.setItem('arqdor:pendingCatalogItem', JSON.stringify({
+      id: item.id,
+      name: item.nome,
+      category: item.categoria,
+      source: 'asset-library',
+      projectId,
+    }))
+    setHandoff(true)
+    window.dispatchEvent(new CustomEvent('arqdor:navigate', { detail: { module: 'real-specification' } }))
+  }
+
   return (
     <div style={{ height:'100%', overflowY:'auto' as const, padding:16 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
@@ -103,14 +119,34 @@ function AssetDetail({ item }: { item: CatItem }) {
         </div>
       )}
 
-      <button style={{ width:'100%', padding:'9px', borderRadius:7, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>
-        📥 Usar neste Projeto
+      {!projectId && (
+        <div style={{ marginBottom:10, padding:'8px 10px', borderRadius:7, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.22)', color:'#fbbf24', fontSize:10, lineHeight:1.45 }}>
+          Abra ou selecione um projeto antes de aplicar este item.
+        </div>
+      )}
+      {projectId && !canApply && (
+        <div style={{ marginBottom:10, padding:'8px 10px', borderRadius:7, background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.22)', color:'#f87171', fontSize:10, lineHeight:1.45 }}>
+          Seu perfil não possui permissão para editar especificações deste projeto.
+        </div>
+      )}
+
+      <button
+        onClick={useInProject}
+        disabled={!projectId || !canApply}
+        style={{ width:'100%', padding:'9px', borderRadius:7, border:'none', background:(!projectId || !canApply)?'rgba(255,255,255,0.08)':T.purple, color:(!projectId || !canApply)?T.dim:'#fff', cursor:(!projectId || !canApply)?'not-allowed':'pointer', fontSize:11, fontWeight:700 }}>
+        {handoff ? '✓ Abrindo especificações…' : '📥 Usar neste Projeto'}
       </button>
+      {projectId && canApply && (
+        <p style={{ margin:'7px 0 0', fontSize:9, color:T.dim, lineHeight:1.45, textAlign:'center' as const }}>
+          Você escolherá o objeto do projeto antes da aplicação. Nenhum material é alterado automaticamente.
+        </p>
+      )}
     </div>
   )
 }
 
 export function AssetLibraryView() {
+  const { activeProject, hasPermission } = useWorkspace()
   const [items,   setItems]   = useState<CatItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string|null>(null)
@@ -128,17 +164,18 @@ export function AssetLibraryView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: CatItem[] = await res.json()
       setItems(data)
-      if (data.length > 0 && !sel) setSel(data[0])
+      setSel(current => current && data.some(item => item.id === current.id) ? current : data[0] ?? null)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar assets')
     } finally {
       setLoading(false)
     }
-  }, [catFilt, query, sel])
+  }, [catFilt, query])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { void load() }, [load])
 
   const categories = [...new Set(items.map(i => i.categoria).filter(Boolean))] as string[]
+  const canApply = hasPermission('PROJECT_EDIT') && hasPermission('MATERIAL_SELECT')
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const }}>
@@ -150,7 +187,7 @@ export function AssetLibraryView() {
           <option value=''>Todos os tipos</option>
           {categories.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
-        <button onClick={load} style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>↻</button>
+        <button onClick={() => void load()} style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>↻</button>
         <span style={{ fontSize:10, color:T.dim }}>{items.length} assets</span>
       </div>
 
@@ -179,7 +216,7 @@ export function AssetLibraryView() {
             </div>
           )}
         </div>
-        {sel && <div style={{ width:300, flexShrink:0, borderLeft:`1px solid ${T.border}` }}><AssetDetail item={sel}/></div>}
+        {sel && <div style={{ width:300, flexShrink:0, borderLeft:`1px solid ${T.border}` }}><AssetDetail item={sel} projectId={activeProject?.id ?? null} canApply={canApply}/></div>}
       </div>
     </div>
   )
