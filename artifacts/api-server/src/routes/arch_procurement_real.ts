@@ -107,7 +107,7 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
         descricao, req.body?.ambiente || null, req.body?.disciplina || null, req.body?.categoria || null,
         String(quantidade), String(req.body?.unidade || "un"), String(valorUnitario), String(valorTotal),
         String(req.body?.prioridade || "media"), String(req.body?.status || "pendente"), req.body?.dataPrevista || null,
-        req.body?.dataNecessidade || null, req.user?.sub ?? null, req.user?.name ?? req.user?.email ?? null,
+        req.body?.dataNecessidade || null, req.user?.sub ?? null, req.user?.email ?? null,
         String(req.body?.origem || "manual"), req.body?.observacoes || null,
       ],
     );
@@ -391,7 +391,7 @@ router.post("/arch/procurement/:obraId/requests/:requestId/receipts", async (req
          quantidade_recebida, quantidade_aprovada, quantidade_rejeitada, status,
          responsavel_id, responsavel_nome, observacoes, fotos, created_at, updated_at
        ) VALUES (gen_random_uuid(),$1,$2,$3,$4::uuid,now(),$5,$6,$7,$8,$9,$10,$11,'[]'::jsonb,now(),now()) RETURNING *`,
-      [tid, obraId, requestId, quoteId, String(received), String(approved), String(rejected), rejected > 0 ? "com_ressalva" : "aprovado", req.user?.sub ?? null, req.user?.name ?? req.user?.email ?? null, req.body?.observacoes || null],
+      [tid, obraId, requestId, quoteId, String(received), String(approved), String(rejected), rejected > 0 ? "com_ressalva" : "aprovado", req.user?.sub ?? null, req.user?.email ?? null, req.body?.observacoes || null],
     );
 
     if (request.insumo_id && approved > 0) {
