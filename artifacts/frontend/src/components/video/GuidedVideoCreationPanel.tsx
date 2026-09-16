@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Film,
+  ImagePlus,
   Library,
   Loader2,
   Play,
@@ -213,6 +214,14 @@ function generatorTypeFor(channel: Channel): "reels" | "youtube" | "tiktok" {
   return "reels";
 }
 
+function imageContentTypeFor(channel: Channel): "stories" | "feed" {
+  return aspectRatioFor(channel) === "portrait" ? "stories" : "feed";
+}
+
+function imageAspectFor(channel: Channel): "9:16" | "16:9" {
+  return aspectRatioFor(channel) === "portrait" ? "9:16" : "16:9";
+}
+
 function buildDirection(input: {
   intent: Intent;
   objective: string;
@@ -264,6 +273,34 @@ function newSeriesId(): string {
     : `guided-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function generatedImageUrl(data: unknown): string {
+  const root = asRecord(data);
+  const result = asRecord(root.result);
+  const variations = Array.isArray(result.variations) ? result.variations : [];
+  for (const raw of variations) {
+    const variation = asRecord(raw);
+    if (typeof variation.imageUrl === "string" && variation.imageUrl.trim()) return variation.imageUrl.trim();
+    if (Array.isArray(variation.imageUrls)) {
+      const first = variation.imageUrls.find((url): url is string => typeof url === "string" && Boolean(url.trim()));
+      if (first) return first.trim();
+    }
+    if (Array.isArray(variation.mediaUrls)) {
+      const first = variation.mediaUrls.find((url): url is string => typeof url === "string" && Boolean(url.trim()));
+      if (first) return first.trim();
+    }
+  }
+  if (typeof root.imageUrl === "string" && root.imageUrl.trim()) return root.imageUrl.trim();
+  if (Array.isArray(root.imageUrls)) {
+    const first = root.imageUrls.find((url): url is string => typeof url === "string" && Boolean(url.trim()));
+    if (first) return first.trim();
+  }
+  return "";
+}
+
+function selectedAssetFor(scene: ProfessionalScene, assets: ProfessionalMediaAsset[]): ProfessionalMediaAsset | null {
+  return assets.find((asset) => asset.id === scene.assetId) ?? null;
+}
+
 export default function GuidedVideoCreationPanel() {
   const { user, tenantOverride } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
@@ -293,6 +330,7 @@ export default function GuidedVideoCreationPanel() {
   const [generatingScript, setGeneratingScript] = useState(false);
   const [assigningMedia, setAssigningMedia] = useState(false);
   const [regeneratingSceneId, setRegeneratingSceneId] = useState("");
+  const [generatingVisualSceneId, setGeneratingVisualSceneId] = useState("");
 
   const [voiceoverAssetId, setVoiceoverAssetId] = useState("");
   const [musicAssetId, setMusicAssetId] = useState("");
@@ -318,6 +356,7 @@ export default function GuidedVideoCreationPanel() {
   const mediaCoverage = scenes.length ? scenes.filter((scene) => scene.assetId).length : 0;
   const uniqueMedia = new Set(scenes.filter((scene) => scene.assetId).map((scene) => scene.assetId)).size;
   const projectTitle = product.trim() || objective.trim() || "Novo vídeo";
+  const generatedVisualCount = scenes.filter((scene) => selectedAssetFor(scene, visualAssets)?.source === "generated").length;
 
   const loadAssets = useCallback(async () => {
     if (!tenantId) return;
@@ -354,23 +393,21 @@ export default function GuidedVideoCreationPanel() {
         const body = await apiJson<{ project?: MediaProjectSummary; assets?: ProfessionalMediaAsset[]; versions?: MediaVersion[] }>(`/api/tenants/${tenantId}/media/projects/${project.id}`);
         const context = asRecord(body.project?.context ?? project.context);
         const versionNumber = Math.max(1, Number(context.guidedVideoVersion ?? 1) || 1);
-        const outputAssets = (body.assets ?? []).filter((asset) => asset.type === "video" && asset.role === "output");
-        const output = outputAssets[0] ?? null;
+        const output = (body.assets ?? []).find((asset) => asset.type === "video" && asset.role === "output") ?? null;
         const relatedVersion = (body.versions ?? []).find((version) => version.assetId === output?.id && version.operation === "video_generate");
-        const rawUrl = output?.storageUrl ?? output?.storage_url ?? "";
         return {
           projectId: project.id,
           versionNumber,
           title: project.title,
           status: body.project?.status ?? project.status,
           assetId: output?.id ?? relatedVersion?.assetId ?? "",
-          url: mediaUrl(rawUrl),
+          url: mediaUrl(output?.storageUrl ?? output?.storage_url ?? ""),
           createdAt: String(relatedVersion?.createdAt ?? body.project?.updatedAt ?? project.updatedAt ?? project.createdAt ?? ""),
         } satisfies VersionEntry;
       }));
       setVersionHistory(details.sort((a, b) => a.versionNumber - b.versionNumber));
     } catch {
-      // Histórico é complementar; não interrompe o criador se estiver indisponível.
+      // Histórico é complementar e não deve bloquear o criador.
     } finally {
       setLoadingVersions(false);
     }
@@ -527,7 +564,17 @@ export default function GuidedVideoCreationPanel() {
     if (!scene.assetId) return { sceneId: scene.id, status: "fail", label: "Sem mídia", detail: "Escolha uma foto ou vídeo para esta cena.", bestAssetId: "" };
     const rankings = rankAssetsForScene(scene, visualAssets, new Set<string>(), retrievalContext);
     const selected = rankings.find((item) => item.asset.id === scene.assetId);
+    const selectedAsset = selectedAssetFor(scene, visualAssets);
     const bestAlternative = rankings.find((item) => item.asset.id !== scene.assetId)?.asset.id ?? "";
+    if (selectedAsset?.source === "generated" && !selected?.ranking.diagnostics.hasIntelligenceIndex) {
+      return {
+        sceneId: scene.id,
+        status: "warn",
+        label: "Visual gerado — confira",
+        detail: "A IA criou esta imagem para a cena. Confira visualmente antes de aprovar o storyboard.",
+        bestAssetId: bestAlternative,
+      };
+    }
     if (!selected) {
       return { sceneId: scene.id, status: "warn", label: "Confira visualmente", detail: "A mídia selecionada não possui dados suficientes para uma comparação automática.", bestAssetId: bestAlternative };
     }
@@ -553,8 +600,8 @@ export default function GuidedVideoCreationPanel() {
     setScriptApproved(false);
     setResultUrl("");
     setResultAssetId("");
-    const direction = buildDirection({ intent, objective, product, audience, offer, channel, duration, proof, restrictions });
     try {
+      const direction = buildDirection({ intent, objective, product, audience, offer, channel, duration, proof, restrictions });
       const data = await apiJson<Record<string, unknown>>(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
         body: JSON.stringify({
@@ -569,8 +616,7 @@ export default function GuidedVideoCreationPanel() {
       });
       const generatedScenes = scenesFromGeneration(data);
       if (!generatedScenes.length) throw new Error("Não foi possível montar uma proposta de vídeo aproveitável");
-      const preparedScenes = assignMediaToScenes(generatedScenes);
-      setScenes(preparedScenes);
+      setScenes(assignMediaToScenes(generatedScenes));
       setScript(scriptFromScenes(generatedScenes));
       setStep(2);
       toast({ title: "Proposta pronta", description: "Revise o roteiro. As mídias reais compatíveis já foram pré-selecionadas quando disponíveis." });
@@ -666,11 +712,86 @@ export default function GuidedVideoCreationPanel() {
       setScenes(nextScenes);
       setScript(scriptFromScenes(nextScenes));
       setScriptApproved(false);
-      toast({ title: "Cena refeita", description: "A mensagem e a mídia foram atualizadas. Aprove novamente o roteiro antes de produzir." });
+      toast({ title: "Cena refeita", description: "A mensagem foi atualizada. Aprove novamente o roteiro antes de produzir." });
     } catch (error) {
       toast({ title: "Não foi possível refazer a cena", description: error instanceof Error ? error.message : "Erro desconhecido", variant: "destructive" });
     } finally {
       setRegeneratingSceneId("");
+    }
+  };
+
+  const generateVisualForScene = async (sceneId: string) => {
+    if (!tenantId || generatingVisualSceneId) return;
+    const sceneIndex = scenes.findIndex((item) => item.id === sceneId);
+    const scene = scenes[sceneIndex];
+    if (!scene) return;
+    setGeneratingVisualSceneId(sceneId);
+    try {
+      const prompt = [
+        "GERE UMA IMAGEM DE B-ROLL PROFISSIONAL PARA UMA CENA DE VÍDEO.",
+        `Produto/serviço: ${product}.`,
+        `Público: ${audience}.`,
+        `Objetivo do vídeo: ${objective}.`,
+        `Mensagem da cena: ${scene.fala}.`,
+        `O que deve aparecer: ${scene.visual}.`,
+        proof ? `Fatos e diferenciais autorizados: ${proof}.` : "",
+        restrictions ? `Restrições obrigatórias: ${restrictions}.` : "",
+        `Formato: ${imageAspectFor(channel)} para ${channel}.`,
+        "Fotografia publicitária realista, natural e coerente com o produto. Sem texto, sem tipografia, sem logotipo inventado, sem interface, sem moldura e sem marca d'água.",
+        "Não invente preços, números, certificações, resultados, recursos ou características não fornecidas. Preserve características reais do produto quando descritas.",
+      ].filter(Boolean).join("\n");
+
+      const generated = await apiJson<Record<string, unknown>>(`/api/tenants/${tenantId}/content/generate`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: imageContentTypeFor(channel),
+          theme: prompt.slice(0, 8000),
+          variations: 1,
+          imageCount: 1,
+          aspectRatio: imageAspectFor(channel),
+          postObjective: "B-roll visual para storyboard de vídeo",
+          desiredCta: "",
+          voiceTone: "visual comercial realista",
+        }),
+      });
+      const imageUrl = generatedImageUrl(generated);
+      if (!imageUrl) throw new Error("A geração terminou sem retornar uma imagem utilizável");
+
+      const registered = await apiJson<{ asset?: ProfessionalMediaAsset }>(`/api/tenants/${tenantId}/media/assets`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "image",
+          role: "broll",
+          source: "generated",
+          storageUrl: imageUrl,
+          mimeType: imageUrl.toLowerCase().includes(".png") ? "image/png" : "image/jpeg",
+          originalFilename: `video-${seriesId.slice(0, 8)}-cena-${sceneIndex + 1}-${Date.now()}.png`,
+          metadata: {
+            operation: "guided_video_scene_visual",
+            aiRole: "guided_broll",
+            guidedVideoSeriesId: seriesId,
+            sceneId,
+            sceneIndex,
+            channel,
+            targetFormat: imageAspectFor(channel),
+            prompt,
+          },
+        }),
+      });
+      if (!registered.asset?.id) throw new Error("A imagem foi criada, mas não foi registrada na Biblioteca");
+      const asset = registered.asset;
+      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+      setScenes((current) => current.map((item) => item.id === sceneId ? {
+        ...item,
+        assetId: asset.id,
+        assetType: "image",
+        assetLabel: assetLabel(asset),
+      } : item));
+      toast({ title: "Visual criado para esta cena", description: "A imagem foi salva na Biblioteca e aplicada somente nesta cena. Confira antes de continuar." });
+    } catch (error) {
+      toast({ title: "Não foi possível gerar o visual", description: error instanceof Error ? error.message : "Erro desconhecido", variant: "destructive" });
+    } finally {
+      setGeneratingVisualSceneId("");
     }
   };
 
@@ -702,7 +823,7 @@ export default function GuidedVideoCreationPanel() {
       {
         id: "relevance",
         label: "Mídias combinam com o roteiro",
-        detail: relevanceFail ? "Há cena com mídia pouco relacionada ao conteúdo. Corrija antes de gerar." : relevanceWarn ? "Algumas cenas merecem conferência visual; o sistema sugeriu alternativas quando disponíveis." : "As mídias analisadas estão alinhadas às respectivas cenas.",
+        detail: relevanceFail ? "Há cena com mídia pouco relacionada ao conteúdo. Corrija antes de gerar." : relevanceWarn ? "Algumas cenas pedem conferência visual. Visuais gerados por IA também precisam dessa conferência." : "As mídias analisadas estão alinhadas às respectivas cenas.",
         status: relevanceFail ? "fail" : relevanceWarn ? "warn" : "pass",
       },
       {
@@ -798,11 +919,12 @@ export default function GuidedVideoCreationPanel() {
               sfx: "none",
             },
             professionalCreation: {
-              version: 4,
+              version: 5,
               guided: true,
               profileId: intent.id,
               scriptApproved: true,
               script,
+              generatedSceneVisuals: generatedVisualCount,
               storyboard: scenes.map((scene, index) => ({ index, fala: scene.fala, visual: scene.visual, assetId: scene.assetId })),
               requestedJingleAssetId: jingleAssetId || null,
             },
@@ -972,7 +1094,7 @@ export default function GuidedVideoCreationPanel() {
       {step === 3 && (
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">3 · Storyboard</p><h3 className="mt-1 text-lg font-semibold text-foreground">Confira o que aparece em cada cena</h3><p className="mt-1 text-sm text-muted-foreground">A VendorAI compara a mídia com a mensagem da cena e avisa quando algo parece desconexo.</p></div>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">3 · Storyboard</p><h3 className="mt-1 text-lg font-semibold text-foreground">Confira o que aparece em cada cena</h3><p className="mt-1 text-sm text-muted-foreground">A Biblioteca vem primeiro. Se faltar uma mídia adequada, gere somente o visual daquela cena sem refazer o vídeo.</p></div>
             <button type="button" onClick={assignMedia} disabled={!scenes.length || assigningMedia || loadingAssets} className="inline-flex items-center gap-2 self-start rounded-xl border border-border px-3 py-2 text-xs font-medium text-muted-foreground disabled:opacity-40"><Library className="h-4 w-4" />Preencher automaticamente</button>
           </div>
 
@@ -985,23 +1107,33 @@ export default function GuidedVideoCreationPanel() {
 
           {!scenes.length ? <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">Volte ao roteiro e gere uma proposta.</div> : <div className="space-y-3">{scenes.map((scene, index) => {
             const match = sceneMatches.find((item) => item.sceneId === scene.id);
+            const selected = selectedAssetFor(scene, visualAssets);
+            const selectedUrl = mediaUrl(selected?.storageUrl ?? selected?.storage_url ?? "");
             return (
-              <div key={scene.id} className="grid gap-3 rounded-xl border border-border bg-background/40 p-3 lg:grid-cols-[72px_minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-start">
+              <div key={scene.id} className="grid gap-3 rounded-xl border border-border bg-background/40 p-3 lg:grid-cols-[72px_minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
                 <div className="rounded-lg bg-muted px-2 py-2 text-center"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Cena</p><p className="text-lg font-bold text-foreground">{index + 1}</p><p className="text-[10px] text-muted-foreground">{scene.duracao}</p></div>
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Mensagem</p><p className="mt-1 text-sm text-foreground">{scene.fala}</p>
                   <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">O que deve aparecer</p><p className="mt-1 text-xs text-muted-foreground">{scene.visual}</p>
-                  <button type="button" onClick={() => void regenerateScene(scene.id)} disabled={Boolean(regeneratingSceneId)} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground disabled:opacity-40">{regeneratingSceneId === scene.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}Refazer só esta cena</button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void regenerateScene(scene.id)} disabled={Boolean(regeneratingSceneId) || Boolean(generatingVisualSceneId)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground disabled:opacity-40">{regeneratingSceneId === scene.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}Refazer texto da cena</button>
+                    <button type="button" onClick={() => void generateVisualForScene(scene.id)} disabled={Boolean(generatingVisualSceneId) || Boolean(regeneratingSceneId)} className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-primary disabled:opacity-40">{generatingVisualSceneId === scene.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}{selected ? "Gerar alternativa com IA" : "Gerar visual com IA"}</button>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="space-y-1.5"><span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Foto ou vídeo desta cena</span><select value={scene.assetId} onChange={(event) => changeSceneAsset(scene.id, event.target.value)} className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-xs"><option value="">Selecionar mídia…</option>{visualAssets.map((asset) => <option key={asset.id} value={asset.id}>{assetLabel(asset)}</option>)}</select>{scene.assetLabel && <p className="truncate text-[11px] text-muted-foreground">{scene.assetLabel}</p>}</label>
-                  {match && <div className={cn("rounded-lg border px-2.5 py-2 text-[11px]", match.status === "pass" ? "border-emerald-500/25 bg-emerald-500/[0.05]" : match.status === "warn" ? "border-amber-500/25 bg-amber-500/[0.05]" : "border-red-500/25 bg-red-500/[0.05]")}><div className="flex items-center gap-1.5">{match.status === "pass" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className={cn("h-3.5 w-3.5", match.status === "warn" ? "text-amber-500" : "text-red-500")} />}<span className="font-semibold text-foreground">{match.label}</span></div><p className="mt-1 leading-relaxed text-muted-foreground">{match.detail}</p>{match.status !== "pass" && match.bestAssetId && <button type="button" onClick={() => replaceSceneWithBest(scene.id)} className="mt-2 text-[11px] font-semibold text-primary hover:underline">Usar melhor sugestão</button>}</div>}
+                  {selectedUrl && (
+                    <div className="overflow-hidden rounded-xl border border-border bg-black/5">
+                      {selected?.type === "video" ? <video src={selectedUrl} controls muted className="h-36 w-full object-cover" /> : <img src={selectedUrl} alt="Prévia da cena" className="h-36 w-full object-cover" />}
+                    </div>
+                  )}
+                  <label className="space-y-1.5"><span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Foto ou vídeo desta cena</span><select value={scene.assetId} onChange={(event) => changeSceneAsset(scene.id, event.target.value)} className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-xs"><option value="">Selecionar mídia…</option>{visualAssets.map((asset) => <option key={asset.id} value={asset.id}>{assetLabel(asset)}</option>)}</select>{scene.assetLabel && <p className="truncate text-[11px] text-muted-foreground">{scene.assetLabel}{selected?.source === "generated" ? " · gerada por IA" : ""}</p>}</label>
+                  {match && <div className={cn("rounded-lg border px-2.5 py-2 text-[11px]", match.status === "pass" ? "border-emerald-500/25 bg-emerald-500/[0.05]" : match.status === "warn" ? "border-amber-500/25 bg-amber-500/[0.05]" : "border-red-500/25 bg-red-500/[0.05]")}><div className="flex items-center gap-1.5">{match.status === "pass" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className={cn("h-3.5 w-3.5", match.status === "warn" ? "text-amber-500" : "text-red-500")} />}<span className="font-semibold text-foreground">{match.label}</span></div><p className="mt-1 leading-relaxed text-muted-foreground">{match.detail}</p>{match.status !== "pass" && match.bestAssetId && selected?.source !== "generated" && <button type="button" onClick={() => replaceSceneWithBest(scene.id)} className="mt-2 text-[11px] font-semibold text-primary hover:underline">Usar melhor sugestão da Biblioteca</button>}</div>}
                 </div>
               </div>
             );
           })}</div>}
 
-          <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">{mediaCoverage}/{scenes.length || 0} cenas com mídia · {uniqueMedia} mídias diferentes</div>
+          <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">{mediaCoverage}/{scenes.length || 0} cenas com mídia · {uniqueMedia} mídias diferentes · {generatedVisualCount} visuais gerados por IA</div>
           <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setStep(4)} disabled={!scenes.length || mediaCoverage !== scenes.length || !scriptApproved || sceneMatches.some((item) => item.status === "fail")} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-40">Aprovar storyboard e continuar</button><button type="button" onClick={() => setStep(2)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground">Voltar ao roteiro</button></div>
         </section>
       )}
@@ -1011,7 +1143,7 @@ export default function GuidedVideoCreationPanel() {
           <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
             <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">4 · Produção</p><h3 className="mt-1 text-lg font-semibold text-foreground">Como o vídeo será montado</h3><p className="mt-1 text-sm text-muted-foreground">A configuração técnica já está definida pelo canal. Áudio é opcional e pode ser ajustado antes de gerar.</p></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-4"><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Canal</p><p className="mt-1 text-sm font-semibold text-foreground">{channel}</p></div><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Formato</p><p className="mt-1 text-sm font-semibold text-foreground">{aspect === "portrait" ? "Vertical" : "Horizontal"}</p></div><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Duração</p><p className="mt-1 text-sm font-semibold text-foreground">{duration}s</p></div><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Próxima versão</p><p className="mt-1 text-sm font-semibold text-foreground">V{nextVersionNumber}</p></div></div>
-            <div className="mt-3 rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">Uso previsto: 1 render · {scenes.length} cenas · {duration}s. Como todas as cenas já têm mídia, o fluxo prioriza composição e não gera imagens novas desnecessariamente.</div>
+            <div className="mt-3 rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">Uso previsto agora: 1 render · {scenes.length} cenas · {duration}s. {generatedVisualCount > 0 ? `${generatedVisualCount} visual(is) foram gerados antes e já estão salvos na Biblioteca.` : "Nenhuma imagem nova será gerada durante o render porque todas as cenas já têm mídia aprovada."}</div>
             <button type="button" onClick={() => setShowAudio((value) => !value)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">{showAudio ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}Configurar voz, música e efeitos</button>
           </div>
 
@@ -1040,7 +1172,7 @@ export default function GuidedVideoCreationPanel() {
         </section>
       )}
 
-      <div className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p><span className="font-semibold text-foreground">Como a qualidade é protegida:</span> a IA usa fatos do briefing, prioriza a Biblioteca, compara a mídia com o conteúdo de cada cena, evita repetição excessiva, permite refazer somente uma cena e mantém as versões V1/V2/V3 agrupadas.</p></div></div>
+      <div className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p><span className="font-semibold text-foreground">Como a qualidade é protegida:</span> a IA usa fatos do briefing, prioriza a Biblioteca, compara a mídia com o conteúdo de cada cena, gera somente o visual que estiver faltando, exige conferência do material gerado e mantém as versões V1/V2/V3 agrupadas.</p></div></div>
     </section>
   );
 }
