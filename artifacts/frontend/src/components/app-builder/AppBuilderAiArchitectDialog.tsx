@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { BrainCircuit, CheckCircle2, Loader2, ShieldCheck, Sparkles, TriangleAlert, WandSparkles } from "lucide-react";
+import { MOBILE_APP_ARCHITECT_REQUIREMENT } from "./mobileAppStandard";
 
 type JsonObject = Record<string, unknown>;
 type TemplateLike = { id: string; name: string } | null;
@@ -210,7 +211,7 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
   async function runArchitect(nextRequest?: string) {
     const rawRequest = (nextRequest ?? prompt).trim();
     if (!token || !rawRequest) return;
-    const request = `${PRODUCT_MODEL_REQUIREMENT}\n\n${VALUE_AGENT_REQUIREMENT}\n\nPEDIDO DO USUÁRIO:\n${rawRequest}`;
+    const request = `${MOBILE_APP_ARCHITECT_REQUIREMENT}\n\n${PRODUCT_MODEL_REQUIREMENT}\n\n${VALUE_AGENT_REQUIREMENT}\n\nPEDIDO DO USUÁRIO:\n${rawRequest}`;
     setBusy(true);
     try {
       const response = await fetch("/api/admin/app-builder/ai/architect", {
