@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGuidedAudioFilterGraph } from "./guided-video-audio-director.js";
+import { buildGuidedAudioFilterGraph } from "./guided-video-audio-filter.js";
 
 describe("buildGuidedAudioFilterGraph", () => {
   it("mantém locução curta sem repetir e completa a duração com silêncio", () => {
