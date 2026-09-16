@@ -9,214 +9,147 @@ function authHeaders(): Record<string, string> {
 }
 
 interface CatItem {
-  id:            string
-  nome:          string
-  descricao:     string | null
-  categoria:     string | null
-  subcategoria:  string | null
-  fornecedor:    string | null
-  precoBase:     string | null
-  imagens:       string[] | null
+  id: string
+  nome: string
+  descricao: string | null
+  categoria: string | null
+  subcategoria: string | null
+  fornecedor: string | null
+  precoBase: string | null
+  imagens: string[] | null
   especificacoes: Record<string, unknown> | null
-  createdAt:     string
+  createdAt: string
 }
 
-function AssetCard({ item, selected, onSelect }: { item: CatItem; selected: boolean; onSelect: ()=>void }) {
+function AssetCard({ item, selected, onSelect }: { item: CatItem; selected: boolean; onSelect: () => void }) {
   const img = item.imagens?.[0]
   return (
-    <div onClick={onSelect} style={{ cursor:'pointer', borderRadius:10, border:`1px solid ${selected?'rgba(124,58,237,0.5)':T.border}`, background:selected?'rgba(124,58,237,0.07)':T.surface, padding:14, transition:'border 0.15s' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-        {img
-          ? <img src={img} alt={item.nome} style={{ width:48, height:48, borderRadius:8, objectFit:'cover' as const }}/>
-          : <span style={{ fontSize:28 }}>📦</span>
-        }
-        <div style={{ display:'flex', flexDirection:'column' as const, gap:3, alignItems:'flex-end' }}>
-          {item.categoria && (
-            <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(124,58,237,0.12)', color:T.purpleL, fontWeight:700 }}>{item.categoria}</span>
-          )}
-          {item.subcategoria && (
-            <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(255,255,255,0.05)', color:T.dim }}>{item.subcategoria}</span>
-          )}
+    <button type="button" onClick={onSelect} className="arq-asset-card" aria-pressed={selected}
+      style={{ textAlign:'left', cursor:'pointer', borderRadius:10, border:`1px solid ${selected?'rgba(124,58,237,0.5)':T.border}`, background:selected?'rgba(124,58,237,0.07)':T.surface, padding:14 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:10 }}>
+        {img ? <img src={img} alt={item.nome} style={{ width:48, height:48, borderRadius:8, objectFit:'cover' }} /> : <span style={{ fontSize:28 }}>📦</span>}
+        <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'flex-end' }}>
+          {item.categoria && <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(124,58,237,0.12)', color:T.purpleL, fontWeight:700 }}>{item.categoria}</span>}
+          {item.subcategoria && <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(255,255,255,0.05)', color:T.dim }}>{item.subcategoria}</span>}
         </div>
       </div>
       <p style={{ margin:'0 0 2px', fontSize:11, fontWeight:700, color:'#fff', lineHeight:1.3 }}>{item.nome}</p>
       <p style={{ margin:0, fontSize:9, color:T.dim }}>{item.fornecedor ?? '—'}</p>
-    </div>
+    </button>
   )
 }
 
-function AssetDetail({ item, projectId, canApply }: { item: CatItem; projectId: string | null; canApply: boolean }) {
+function AssetDetail({ item, projectId, canApply, onClose }: { item: CatItem; projectId: string | null; canApply: boolean; onClose: () => void }) {
   const [handoff, setHandoff] = useState(false)
-
   const useInProject = () => {
     if (!projectId || !canApply) return
-    sessionStorage.setItem('arqdor:pendingCatalogItem', JSON.stringify({
-      id: item.id,
-      name: item.nome,
-      category: item.categoria,
-      source: 'asset-library',
-      projectId,
-    }))
+    sessionStorage.setItem('arqdor:pendingCatalogItem', JSON.stringify({ id:item.id, name:item.nome, category:item.categoria, source:'asset-library', projectId }))
     setHandoff(true)
-    window.dispatchEvent(new CustomEvent('arqdor:navigate', { detail: { module: 'real-specification' } }))
+    window.dispatchEvent(new CustomEvent('arqdor:navigate', { detail: { module:'real-specification' } }))
   }
 
   return (
-    <div style={{ height:'100%', overflowY:'auto' as const, padding:16 }}>
+    <aside className="arq-asset-detail" aria-label={`Detalhes de ${item.nome}`}>
+      <button type="button" className="arq-mobile-close" onClick={onClose}>← Voltar à biblioteca</button>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
-        {item.imagens?.[0]
-          ? <img src={item.imagens[0]} alt={item.nome} style={{ width:56, height:56, borderRadius:10, objectFit:'cover' as const }}/>
-          : <span style={{ fontSize:42 }}>📦</span>
-        }
-        <div>
-          <p style={{ margin:'0 0 2px', fontSize:14, fontWeight:800, color:'#fff' }}>{item.nome}</p>
+        {item.imagens?.[0] ? <img src={item.imagens[0]} alt={item.nome} style={{ width:56, height:56, borderRadius:10, objectFit:'cover' }} /> : <span style={{ fontSize:42 }}>📦</span>}
+        <div style={{ minWidth:0 }}>
+          <p style={{ margin:'0 0 2px', fontSize:14, fontWeight:800, color:'#fff', overflowWrap:'anywhere' }}>{item.nome}</p>
           <p style={{ margin:'0 0 4px', fontSize:10, color:T.dim }}>{item.fornecedor ?? '—'}</p>
-          <div style={{ display:'flex', gap:4 }}>
-            {item.categoria && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:5, background:'rgba(124,58,237,0.12)', color:T.purpleL, fontWeight:700 }}>{item.categoria}</span>}
-            {item.subcategoria && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:5, background:'rgba(255,255,255,0.05)', color:T.dim }}>{item.subcategoria}</span>}
-          </div>
         </div>
       </div>
 
-      {item.descricao && (
-        <p style={{ margin:'0 0 14px', fontSize:11, color:T.text, lineHeight:1.65 }}>{item.descricao}</p>
-      )}
+      {item.descricao && <p style={{ margin:'0 0 14px', fontSize:11, color:T.text, lineHeight:1.65 }}>{item.descricao}</p>}
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:14 }}>
+      <div className="arq-detail-grid">
         {[
-          ['Categoria',    item.categoria ?? '—'],
-          ['Fornecedor',   item.fornecedor ?? '—'],
-          ['Preço base',   item.precoBase ? `R$ ${Number(item.precoBase).toFixed(2)}` : '—'],
-          ['Adicionado',   new Date(item.createdAt).toLocaleDateString('pt-BR')],
-        ].map(([k,v])=>(
-          <div key={k} style={{ padding:'6px 8px', borderRadius:6, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}` }}>
-            <p style={{ margin:'0 0 2px', fontSize:8, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>{k}</p>
-            <p style={{ margin:0, fontSize:10, color:T.text }}>{v}</p>
-          </div>
-        ))}
+          ['Categoria', item.categoria ?? '—'], ['Fornecedor', item.fornecedor ?? '—'],
+          ['Preço base', item.precoBase ? `R$ ${Number(item.precoBase).toFixed(2)}` : '—'],
+          ['Adicionado', new Date(item.createdAt).toLocaleDateString('pt-BR')],
+        ].map(([k,v]) => <div key={k} className="arq-detail-info"><p>{k}</p><strong>{v}</strong></div>)}
       </div>
 
       {item.especificacoes && Object.keys(item.especificacoes).length > 0 && (
         <div style={{ marginBottom:14 }}>
-          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>ESPECIFICAÇÕES</p>
-          {Object.entries(item.especificacoes).slice(0, 8).map(([k,v])=>(
-            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', borderBottom:`1px solid rgba(255,255,255,0.04)`, fontSize:10 }}>
-              <span style={{ color:T.dim }}>{k}</span>
-              <span style={{ color:T.text }}>{String(v)}</span>
-            </div>
+          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim }}>ESPECIFICAÇÕES</p>
+          {Object.entries(item.especificacoes).slice(0,8).map(([k,v]) => (
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'4px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', fontSize:10 }}><span style={{ color:T.dim }}>{k}</span><span style={{ color:T.text, textAlign:'right', overflowWrap:'anywhere' }}>{String(v)}</span></div>
           ))}
         </div>
       )}
 
-      {item.imagens && item.imagens.length > 1 && (
-        <div style={{ marginBottom:14 }}>
-          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>IMAGENS ({item.imagens.length})</p>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap' as const }}>
-            {item.imagens.slice(0, 6).map((url, i) => (
-              <img key={i} src={url} alt="" style={{ width:60, height:60, borderRadius:6, objectFit:'cover' as const, border:`1px solid ${T.border}` }}/>
-            ))}
-          </div>
-        </div>
-      )}
+      {item.imagens && item.imagens.length > 1 && <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>{item.imagens.slice(0,6).map((url,i)=><img key={i} src={url} alt="" style={{ width:60, height:60, borderRadius:6, objectFit:'cover', border:`1px solid ${T.border}` }} />)}</div>}
 
-      {!projectId && (
-        <div style={{ marginBottom:10, padding:'8px 10px', borderRadius:7, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.22)', color:'#fbbf24', fontSize:10, lineHeight:1.45 }}>
-          Abra ou selecione um projeto antes de aplicar este item.
-        </div>
-      )}
-      {projectId && !canApply && (
-        <div style={{ marginBottom:10, padding:'8px 10px', borderRadius:7, background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.22)', color:'#f87171', fontSize:10, lineHeight:1.45 }}>
-          Seu perfil não possui permissão para editar especificações deste projeto.
-        </div>
-      )}
-
-      <button
-        onClick={useInProject}
-        disabled={!projectId || !canApply}
-        style={{ width:'100%', padding:'9px', borderRadius:7, border:'none', background:(!projectId || !canApply)?'rgba(255,255,255,0.08)':T.purple, color:(!projectId || !canApply)?T.dim:'#fff', cursor:(!projectId || !canApply)?'not-allowed':'pointer', fontSize:11, fontWeight:700 }}>
-        {handoff ? '✓ Abrindo especificações…' : '📥 Usar neste Projeto'}
-      </button>
-      {projectId && canApply && (
-        <p style={{ margin:'7px 0 0', fontSize:9, color:T.dim, lineHeight:1.45, textAlign:'center' as const }}>
-          Você escolherá o objeto do projeto antes da aplicação. Nenhum material é alterado automaticamente.
-        </p>
-      )}
-    </div>
+      {!projectId && <div className="arq-alert arq-alert-warn">Abra ou selecione um projeto antes de aplicar este item.</div>}
+      {projectId && !canApply && <div className="arq-alert arq-alert-error">Seu perfil não possui permissão para editar especificações deste projeto.</div>}
+      <button type="button" onClick={useInProject} disabled={!projectId || !canApply || handoff} className="arq-use-btn">{handoff ? '✓ Abrindo especificações…' : '📥 Usar neste Projeto'}</button>
+      {projectId && canApply && <p style={{ margin:'7px 0 0', fontSize:9, color:T.dim, lineHeight:1.45, textAlign:'center' }}>Você escolherá o objeto antes da aplicação. Nenhum material é alterado automaticamente.</p>}
+    </aside>
   )
 }
 
 export function AssetLibraryView() {
   const { activeProject, hasPermission } = useWorkspace()
-  const [items,   setItems]   = useState<CatItem[]>([])
+  const [items, setItems] = useState<CatItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState<string|null>(null)
-  const [query, setQuery]     = useState('')
+  const [error, setError] = useState<string|null>(null)
+  const [query, setQuery] = useState('')
   const [catFilt, setCatFilt] = useState('')
-  const [sel, setSel]         = useState<CatItem|null>(null)
+  const [sel, setSel] = useState<CatItem|null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const params = new URLSearchParams({ limit: '60' })
+      const params = new URLSearchParams({ limit:'60' })
       if (catFilt) params.set('categoria', catFilt)
-      if (query)   params.set('busca', query)
-      const res = await fetch(`${BASE}/arch/catalogo?${params}`, { headers: authHeaders() })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (query) params.set('busca', query)
+      const res = await fetch(`${BASE}/arch/catalogo?${params}`, { headers:authHeaders() })
+      if (!res.ok) throw new Error(res.status === 403 ? 'Sem permissão para acessar a biblioteca.' : `Falha ao carregar a biblioteca (${res.status}).`)
       const data: CatItem[] = await res.json()
       setItems(data)
-      setSel(current => current && data.some(item => item.id === current.id) ? current : data[0] ?? null)
+      setSel(current => current && data.some(item => item.id === current.id) ? current : null)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar assets')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [catFilt, query])
 
   useEffect(() => { void load() }, [load])
-
-  const categories = [...new Set(items.map(i => i.categoria).filter(Boolean))] as string[]
+  const categories = [...new Set(items.map(i=>i.categoria).filter(Boolean))] as string[]
   const canApply = hasPermission('PROJECT_EDIT') && hasPermission('MATERIAL_SELECT')
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const }}>
-      <div style={{ padding:'10px 16px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' as const }}>
-        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar asset…"
-          style={{ flex:1, minWidth:120, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'5px 10px', outline:'none' }}/>
-        <select value={catFilt} onChange={e=>setCatFilt(e.target.value)}
-          style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:catFilt?T.text:T.dim, fontSize:10, padding:'5px 8px', cursor:'pointer' }}>
-          <option value=''>Todos os tipos</option>
-          {categories.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
-        <button onClick={() => void load()} style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>↻</button>
+    <div className="arq-asset-shell">
+      <style>{`
+        .arq-asset-shell{height:100%;display:flex;flex-direction:column;min-width:0}
+        .arq-asset-toolbar{padding:10px 16px;border-bottom:1px solid ${T.border};display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+        .arq-asset-body{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,320px);min-height:0;overflow:hidden}
+        .arq-asset-grid-wrap{overflow:auto;padding:16px;min-width:0}
+        .arq-asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+        .arq-asset-card{min-width:0}
+        .arq-asset-detail{height:100%;overflow:auto;padding:16px;border-left:1px solid ${T.border};box-sizing:border-box}
+        .arq-mobile-close{display:none;margin:0 0 12px;padding:7px 10px;border:1px solid ${T.border};border-radius:7px;background:transparent;color:${T.text};cursor:pointer}
+        .arq-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px}
+        .arq-detail-info{padding:6px 8px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid ${T.border};min-width:0}.arq-detail-info p{margin:0 0 2px;font-size:8px;color:${T.dim};font-weight:700}.arq-detail-info strong{display:block;font-size:10px;color:${T.text};overflow-wrap:anywhere}
+        .arq-alert{margin-bottom:10px;padding:8px 10px;border-radius:7px;font-size:10px;line-height:1.45}.arq-alert-warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.22);color:#fbbf24}.arq-alert-error{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.22);color:#f87171}
+        .arq-use-btn{width:100%;padding:10px;border:0;border-radius:8px;background:${T.purple};color:#fff;cursor:pointer;font-size:11px;font-weight:700}.arq-use-btn:disabled{background:rgba(255,255,255,.08);color:${T.dim};cursor:not-allowed}
+        @media(max-width:760px){.arq-asset-toolbar{padding:10px}.arq-asset-toolbar input{flex-basis:100%}.arq-asset-body{display:block;overflow:auto}.arq-asset-grid-wrap{padding:10px}.arq-asset-grid{grid-template-columns:1fr}.arq-asset-detail{border-left:0;border-top:1px solid ${T.border};height:auto;min-height:100%;padding:14px}.arq-mobile-close{display:inline-flex}.arq-detail-grid{grid-template-columns:1fr}.arq-asset-shell[data-has-selection="true"] .arq-asset-grid-wrap{display:none}}
+      `}</style>
+      <div className="arq-asset-toolbar">
+        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar asset…" style={{ flex:1, minWidth:120, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'7px 10px', outline:'none' }} />
+        <select value={catFilt} onChange={e=>setCatFilt(e.target.value)} style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:catFilt?T.text:T.dim, fontSize:10, padding:'7px 8px' }}><option value="">Todos os tipos</option>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select>
+        <button type="button" onClick={()=>void load()} disabled={loading} style={{ padding:'7px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:loading?'wait':'pointer', fontSize:10 }}>{loading?'…':'↻'}</button>
         <span style={{ fontSize:10, color:T.dim }}>{items.length} assets</span>
       </div>
 
-      {error && (
-        <div style={{ padding:'8px 16px', background:'rgba(248,113,113,0.08)', borderBottom:`1px solid rgba(248,113,113,0.2)`, fontSize:11, color:'#f87171', flexShrink:0 }}>
-          ⚠ {error}
-        </div>
-      )}
+      {error && <div style={{ padding:'10px 16px', background:'rgba(248,113,113,0.08)', borderBottom:'1px solid rgba(248,113,113,0.2)', fontSize:11, color:'#f87171', display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}><span>⚠ {error}</span><button type="button" onClick={()=>void load()} style={{ border:`1px solid ${T.border}`, borderRadius:6, background:'transparent', color:T.text, padding:'5px 8px', cursor:'pointer' }}>Tentar novamente</button></div>}
 
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
-        <div style={{ flex:1, overflowY:'auto' as const, padding:16 }}>
-          {loading && (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-              {[1,2,3,4,5,6].map(i=><div key={i} style={{ height:120, borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, animation:'pulse 1.5s infinite' }}/>)}
-            </div>
-          )}
-          {!loading && items.length === 0 && (
-            <div style={{ textAlign:'center' as const, padding:60, color:T.dim, fontSize:12 }}>
-              <p style={{ margin:'0 0 8px', fontSize:28 }}>📦</p>
-              <p>Biblioteca vazia. Adicione itens ao catálogo via Biblioteca.</p>
-            </div>
-          )}
-          {!loading && (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-              {items.map(item=><AssetCard key={item.id} item={item} selected={sel?.id===item.id} onSelect={()=>setSel(item)}/>)}
-            </div>
-          )}
+      <div className="arq-asset-body" data-has-selection={Boolean(sel)}>
+        <div className="arq-asset-grid-wrap">
+          {loading && <div className="arq-asset-grid">{[1,2,3,4,5,6].map(i=><div key={i} style={{ height:120, borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}` }} />)}</div>}
+          {!loading && !error && items.length===0 && <div style={{ textAlign:'center', padding:'48px 16px', color:T.dim, fontSize:12 }}><p style={{ fontSize:28, margin:'0 0 8px' }}>📦</p><p>Nenhum item encontrado. Ajuste os filtros ou cadastre itens na Biblioteca.</p></div>}
+          {!loading && !error && items.length>0 && <div className="arq-asset-grid">{items.map(item=><AssetCard key={item.id} item={item} selected={sel?.id===item.id} onSelect={()=>setSel(item)} />)}</div>}
         </div>
-        {sel && <div style={{ width:300, flexShrink:0, borderLeft:`1px solid ${T.border}` }}><AssetDetail item={sel} projectId={activeProject?.id ?? null} canApply={canApply}/></div>}
+        {sel ? <AssetDetail item={sel} projectId={activeProject?.id ?? null} canApply={canApply} onClose={()=>setSel(null)} /> : <div className="arq-asset-detail" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:T.dim, fontSize:11, textAlign:'center' }}>Selecione um item para ver detalhes e usar no projeto.</div>}
       </div>
     </div>
   )
