@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { useLayoutEffect } from "react";
+import { useLocation } from "wouter";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -136,26 +137,86 @@ const isAppHost = hostname === "app.appvendorai.com" || /^[a-z0-9-]+\.app\.appve
 const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
 function CanonicalMarketingRouteBridge() {
-  useLayoutEffect(() => {
-    const canonicalize = () => {
-      if (window.location.pathname !== "/marketing/plano-de-midia") return;
-      const params = new URLSearchParams(window.location.search);
-      params.set("tab", "planejamento");
-      const target = `/content?${params.toString()}`;
-      window.history.replaceState(window.history.state, "", target);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    };
+  const [location] = useLocation();
 
-    canonicalize();
-    window.addEventListener("popstate", canonicalize);
-    const timer = window.setInterval(canonicalize, 250);
-    return () => {
-      window.removeEventListener("popstate", canonicalize);
-      window.clearInterval(timer);
-    };
-  }, []);
+  useLayoutEffect(() => {
+    if (!location.startsWith("/marketing/plano-de-midia")) return;
+
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", "planejamento");
+    const target = `/content?${params.toString()}`;
+    window.history.replaceState(window.history.state, "", target);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [location]);
 
   return null;
+}
+
+function EnhancementWorkspaceBridges() {
+  const [location] = useLocation();
+  const pathname = location.split("?")[0] || "/";
+
+  // Estes bridges fazem leitura/mutação de DOM e vários usam MutationObserver.
+  // Mantê-los montados em todas as rotas gera trabalho desnecessário e pode
+  // provocar cascatas de observadores durante a montagem de páginas pesadas.
+  // Eles só são necessários nos workspaces de conteúdo, marketing e canais.
+  const shouldMount =
+    pathname.startsWith("/content") ||
+    pathname.startsWith("/marketing") ||
+    pathname.startsWith("/media") ||
+    pathname.startsWith("/ads") ||
+    pathname.startsWith("/site") ||
+    pathname.startsWith("/catalog") ||
+    pathname.startsWith("/convers");
+
+  if (!shouldMount) return null;
+
+  return (
+    <>
+      <MediaAdsBridge />
+      <MediaSitesBridge />
+      <MediaCatalogBridge />
+      <MediaContentStudioBridge />
+      <MediaContextLibrary />
+      <MediaMarketingContentBridge />
+      <MediaConversationsBridge />
+      <MediaAiBaseBridge />
+      <MediaLibraryWorkflowBridge />
+      <MediaIntelligenceIndexBridge />
+      <MediaAiBaseWorkspaceNav />
+      <MediaDeleteSelectionBridge />
+      <ContentGeneratorQueueUxBridge />
+      <ContentContextSourcesBridge />
+      <ContentApprovalClarityBridge />
+      <ContentProductionClarityBridge />
+      <MarketingOverviewBridge />
+      <CampaignWorkspaceClarityBridge />
+      <PlanningReviewBridge />
+      <ContentPlanVisualCompletionBridge />
+      <MediaPlanProductionCompatibilityBridge />
+      <MediaPlanProjectKindCompatibilityBridge />
+      <MediaPlanAutoProductionBridge />
+      <MediaPlanFailedRetryBridge />
+      <MediaPlanBatchControl />
+      <MediaPlanLandingPageStrategy />
+      <MediaPlanPublicationModeControl />
+      <MediaPlanPreparationActionsBridge />
+      <MediaPlanLifecycleSummary />
+      <CheckoutConversionFunnel />
+      <AcquisitionInvestmentIntelligence />
+      <AcquisitionMasterOrchestrator />
+      <MediaPlanPerformanceCommandCenter />
+      <MediaPlanBudgetExecutionBridge />
+      <MarketingAutonomyControl />
+      <MarketingAutonomyAudit />
+      <CampaignAbTestControl />
+      <CampaignAbWinnerApprovalBridge />
+      <MediaPlanProductionRuntimeBridge />
+      <AdsCreativePreviewBridge />
+      <SearchPerformanceTrackingBridge />
+      <SeoAuthorityTrackingBridge />
+    </>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(
@@ -176,48 +237,7 @@ createRoot(document.getElementById("root")!).render(
           <JarvisResponseHealthNotice />
           <BudgetImportAutofill />
           <MediaMenuInjector />
-          <MediaAdsBridge />
-          <MediaSitesBridge />
-          <MediaCatalogBridge />
-          <MediaContentStudioBridge />
-          <MediaContextLibrary />
-          <MediaMarketingContentBridge />
-          <MediaConversationsBridge />
-          <MediaAiBaseBridge />
-          <MediaLibraryWorkflowBridge />
-          <MediaIntelligenceIndexBridge />
-          <MediaAiBaseWorkspaceNav />
-          <MediaDeleteSelectionBridge />
-          <ContentGeneratorQueueUxBridge />
-          <ContentContextSourcesBridge />
-          <ContentApprovalClarityBridge />
-          <ContentProductionClarityBridge />
-          <MarketingOverviewBridge />
-          <CampaignWorkspaceClarityBridge />
-          <PlanningReviewBridge />
-          <ContentPlanVisualCompletionBridge />
-          <MediaPlanProductionCompatibilityBridge />
-          <MediaPlanProjectKindCompatibilityBridge />
-          <MediaPlanAutoProductionBridge />
-          <MediaPlanFailedRetryBridge />
-          <MediaPlanBatchControl />
-          <MediaPlanLandingPageStrategy />
-          <MediaPlanPublicationModeControl />
-          <MediaPlanPreparationActionsBridge />
-          <MediaPlanLifecycleSummary />
-          <CheckoutConversionFunnel />
-          <AcquisitionInvestmentIntelligence />
-          <AcquisitionMasterOrchestrator />
-          <MediaPlanPerformanceCommandCenter />
-          <MediaPlanBudgetExecutionBridge />
-          <MarketingAutonomyControl />
-          <MarketingAutonomyAudit />
-          <CampaignAbTestControl />
-          <CampaignAbWinnerApprovalBridge />
-          <MediaPlanProductionRuntimeBridge />
-          <AdsCreativePreviewBridge />
-          <SearchPerformanceTrackingBridge />
-          <SeoAuthorityTrackingBridge />
+          <EnhancementWorkspaceBridges />
         </>
       )}
     </I18nProvider>
