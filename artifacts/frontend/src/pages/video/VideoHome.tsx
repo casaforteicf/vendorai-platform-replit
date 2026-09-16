@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 
 const GraphicDesignDirectorPanel = lazy(() => import("@/components/video/GraphicDesignDirectorPanel"));
 const GraphicDesignTimelineHandoff = lazy(() => import("@/components/video/GraphicDesignTimelineHandoff"));
-const ProfessionalCreationModelPanel = lazy(() => import("@/components/video/ProfessionalCreationModelPanel"));
+const GuidedVideoCreationPanel = lazy(() => import("@/components/video/GuidedVideoCreationPanel"));
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
@@ -42,7 +42,7 @@ const WORKFLOW_STEPS = [
   { number: 1, label: "Briefing", description: "Objetivo, produto, público e canal" },
   { number: 2, label: "Direção + roteiro", description: "Conceito, gancho, mensagem e CTA" },
   { number: 3, label: "Storyboard", description: "Cenas, mídias, textos e duração" },
-  { number: 4, label: "Produção", description: "Mídias reais, Dublê, voz e áudio" },
+  { number: 4, label: "Produção", description: "Mídias reais, voz e áudio" },
   { number: 5, label: "Finalização", description: "Verificação, render e publicação" },
 ];
 
@@ -207,7 +207,7 @@ export default function VideoHome() {
               O sistema prioriza mídias reais da empresa e do catálogo, mantém identidade visual, valida roteiro e cenas antes do render e usa IA generativa somente quando faltar material adequado.
             </p>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              {["Mídia real primeiro", "Marca consistente", "QA antes de gerar", "Correção por cena"].map((item) => (
+              {["Mídia real primeiro", "Marca consistente", "Verificação antes de gerar", "Correção por cena"].map((item) => (
                 <span key={item} className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" />{item}</span>
               ))}
             </div>
@@ -224,11 +224,11 @@ export default function VideoHome() {
             </div>
             <p className="mt-1 text-sm text-muted-foreground">Preencha o essencial, aprove o roteiro e deixe a VendorAI conduzir o restante do processo.</p>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">Salvamento e verificações acontecem durante o fluxo</span>
+          <span className="text-xs font-medium text-muted-foreground">Rascunho salvo automaticamente</span>
         </div>
 
         <Suspense fallback={<LoadingPanel label="Carregando criador de vídeo…" />}>
-          <ProfessionalCreationModelPanel />
+          <GuidedVideoCreationPanel />
         </Suspense>
       </section>
 
