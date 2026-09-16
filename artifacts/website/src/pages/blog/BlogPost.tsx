@@ -1,5 +1,6 @@
 import { Link, useParams } from "wouter";
 import { getBlogPost } from "@/data/blog-posts";
+import { getExtraBlogPost } from "@/data/blog-posts-extra";
 import { useSeoMeta } from "@/hooks/use-seo-meta";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { useQuery } from "@tanstack/react-query";
@@ -108,10 +109,8 @@ export default function BlogPost() {
   const { isSpanish, country } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
   const { slug } = useParams<{ slug: string }>();
-  const staticPost = getBlogPost(slug ?? "");
+  const staticPost = getBlogPost(slug ?? "") ?? getExtraBlogPost(slug ?? "");
 
-  // O endpoint atual não expõe locale; buscamos o mesmo post canônico e
-  // localizamos apenas o shell até o Content Autopilot ganhar conteúdo por locale.
   const { data, isLoading } = useQuery<{ post: DynamicPost }>({
     queryKey: ["site-blog-dynamic-post", slug],
     queryFn: () => fetch(`/api/sites/vendorai/blog-data/${slug}`).then((r) => (r.ok ? r.json() : null)),
