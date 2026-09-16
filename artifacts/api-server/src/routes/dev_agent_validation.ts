@@ -12,10 +12,9 @@ type ValidationState =
   | "stale"
   | "unknown_revision"
   | "github_unavailable"
-  | "vercel_pending"
   | "frontend_unreachable";
 
-type Runtime = "railway" | "vercel";
+type Runtime = "railway" | "cloudflare";
 
 export type ProductionValidationResult = {
   success: boolean;
@@ -40,15 +39,6 @@ const BACKEND_PATH_PATTERNS = [
   /^backend\//i,
 ];
 
-const REQUIRED_VERCEL_CONTEXTS = new Set([
-  "vendorai-platform-replit-frontend",
-  "tad-vendorai",
-]);
-
-const OPTIONAL_VERCEL_CONTEXTS = new Set([
-  "vendorai-platform-replit-website",
-]);
-
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
@@ -65,7 +55,7 @@ async function githubJson(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Validation/2.1",
+      "User-Agent": "VendorAI-Dev-Validation/3.0",
     },
   });
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
@@ -80,19 +70,22 @@ async function getMainRevision() {
 
 async function getCommitEvidence(revision: string) {
   const { owner, repo } = githubConfig();
-  const [commit, status] = await Promise.all([
-    githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(revision)}`),
-    githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(revision)}/status`),
-  ]);
+  const commit = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(revision)}`);
   const changedFiles = Array.isArray(commit?.files)
     ? commit.files.map((file: any) => String(file?.filename ?? "")).filter(Boolean)
     : [];
   const backendTouched = changedFiles.some((file: string) => BACKEND_PATH_PATTERNS.some((pattern) => pattern.test(file)));
-  return {
-    changedFiles,
-    backendTouched,
-    statuses: Array.isArray(status?.statuses) ? status.statuses : [],
-  };
+  return { changedFiles, backendTouched };
+}
+
+function normalizeRevision(value: string | undefined | null) {
+  const normalized = String(value ?? "unknown").trim().toLowerCase();
+  return /^[0-9a-f]{7,64}$/.test(normalized) ? normalized : "unknown";
+}
+
+function revisionsMatch(a: string, b: string) {
+  if (a === "unknown" || b === "unknown") return false;
+  return a === b || a.startsWith(b) || b.startsWith(a);
 }
 
 async function revisionIsIncluded(baseRevision: string, headRevision: string) {
@@ -108,58 +101,39 @@ async function revisionIsIncluded(baseRevision: string, headRevision: string) {
   }
 }
 
-function normalizeRevision(value: string | undefined | null) {
-  const normalized = String(value ?? "unknown").trim().toLowerCase();
-  return /^[0-9a-f]{7,64}$/.test(normalized) ? normalized : "unknown";
-}
-
-function revisionsMatch(a: string, b: string) {
-  if (a === "unknown" || b === "unknown") return false;
-  return a === b || a.startsWith(b) || b.startsWith(a);
-}
-
-function normalizeVercelContext(value: unknown) {
-  return String(value ?? "").replace(/^Vercel\s*[–-]\s*/i, "").trim();
-}
-
-function evaluateVercel(statuses: any[]) {
-  const normalized = statuses.map((item: any) => ({
-    context: normalizeVercelContext(item?.context),
-    rawContext: String(item?.context ?? ""),
-    state: String(item?.state ?? "pending"),
-    targetUrl: item?.target_url ?? null,
-  }));
-  const relevant = normalized.filter(
-    (item) => REQUIRED_VERCEL_CONTEXTS.has(item.context) || OPTIONAL_VERCEL_CONTEXTS.has(item.context),
-  );
-  const required = relevant.filter((item) => REQUIRED_VERCEL_CONTEXTS.has(item.context));
-  const requiredContexts = new Set(required.map((item) => item.context));
-  const missingRequired = [...REQUIRED_VERCEL_CONTEXTS].filter((context) => !requiredContexts.has(context));
-  const blocking = required.filter((item) => item.state !== "success");
-  return {
-    success: missingRequired.length === 0 && blocking.length === 0,
-    relevant,
-    required,
-    blocking,
-    missingRequired,
-  };
-}
-
-async function checkFrontendReachability() {
+async function checkCloudflareFrontend(expectedRevision: string) {
   const url = process.env["VENDORAI_FRONTEND_URL"] ?? "https://app.appvendorai.com";
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${url.replace(/\/$/, "")}/?__vendorai_validation=${Date.now()}`, {
       method: "GET",
       redirect: "follow",
-      signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "VendorAI-Dev-Validation/2.1" },
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        "User-Agent": "VendorAI-Dev-Validation/3.0",
+        "Cache-Control": "no-cache",
+      },
     });
-    return { url, reachable: response.status >= 200 && response.status < 400, status: response.status };
+    const html = await response.text();
+    const revisionPrefix = expectedRevision === "unknown" ? null : expectedRevision.slice(0, 12);
+    const deployedRevision = revisionPrefix && html.includes(`-${revisionPrefix}-`) ? expectedRevision : "unknown";
+    return {
+      url,
+      reachable: response.status >= 200 && response.status < 400,
+      status: response.status,
+      deployedRevision,
+      revisionPrefix,
+      matchesExpected: revisionPrefix ? html.includes(`-${revisionPrefix}-`) : false,
+      provider: "cloudflare_pages",
+    };
   } catch (error) {
     return {
       url,
       reachable: false,
       status: null,
+      deployedRevision: "unknown",
+      revisionPrefix: expectedRevision === "unknown" ? null : expectedRevision.slice(0, 12),
+      matchesExpected: false,
+      provider: "cloudflare_pages",
       error: error instanceof Error ? error.message : "frontend unavailable",
     };
   }
@@ -179,37 +153,35 @@ export async function validateProductionRevision(expectedRevisionInput?: string 
   }
 
   const runtime: Runtime = expectedRevision !== "unknown" && commitEvidence && !commitEvidence.backendTouched
-    ? "vercel"
+    ? "cloudflare"
     : "railway";
 
-  if (runtime === "vercel" && expectedRevision !== "unknown" && commitEvidence) {
-    const vercel = evaluateVercel(commitEvidence.statuses);
-    const frontend = await checkFrontendReachability();
+  if (runtime === "cloudflare") {
+    const frontend = await checkCloudflareFrontend(expectedRevision);
     const expectedIncludedInMain = mainRevision !== "unknown"
       ? await revisionIsIncluded(expectedRevision, mainRevision)
       : false;
 
-    let state: ValidationState = "vercel_pending";
+    let state: ValidationState = "stale";
     if (!githubAvailable) state = "github_unavailable";
-    else if (!expectedIncludedInMain) state = "stale";
-    else if (!vercel.success) state = "vercel_pending";
     else if (!frontend.reachable) state = "frontend_unreachable";
-    else state = "validated";
+    else if (!expectedIncludedInMain) state = "stale";
+    else if (frontend.matchesExpected) state = "validated";
 
     return {
       success: state === "validated",
       state,
       runtime,
-      observedRevision: expectedRevision,
+      observedRevision: frontend.deployedRevision,
       expectedRevision,
       mainRevision: mainRevision === "unknown" ? null : mainRevision,
       expectedIncludedInMain,
       githubAvailable,
       checkedAt: new Date().toISOString(),
       evidence: {
-        source: "github_vercel_status_and_live_frontend",
-        changedFiles: commitEvidence.changedFiles,
-        vercel,
+        source: "cloudflare_pages_live_bundle",
+        deployment: "Cloudflare Pages",
+        changedFiles: commitEvidence?.changedFiles ?? [],
         frontend,
       },
     };
@@ -251,6 +223,7 @@ export async function validateProductionRevision(expectedRevisionInput?: string 
     checkedAt: new Date().toISOString(),
     evidence: {
       source: "running_api_instance",
+      deployment: "Railway",
       healthContract: "/healthz",
       revisionHeader: "X-VendorAI-Revision",
       changedFiles: commitEvidence?.changedFiles ?? [],
