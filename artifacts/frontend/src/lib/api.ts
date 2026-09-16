@@ -36,8 +36,8 @@ export function setupApiClient() {
 
       // ObrasGov não libera CORS para app.appvendorai.com. Na web publicada,
       // convertemos chamadas diretas ao domínio oficial em um caminho de mesma
-      // origem que o Vercel encaminha server-side. Isso preserva o fluxo atual
-      // do Radar de Obras sem expor credenciais nem criar um módulo paralelo.
+      // origem que o Cloudflare Pages Worker encaminha server-side. Isso preserva
+      // o Radar de Obras sem expor credenciais nem criar um módulo paralelo.
       const isObrasGovRequest =
         isHostedProductionWeb &&
         resolvedUrl.origin === OBRAS_GOV_ORIGIN &&
@@ -58,9 +58,9 @@ export function setupApiClient() {
         resolvedUrl.pathname.startsWith("/api/");
 
       if (isSameOriginApi) {
-        // Vercel external rewrites can replace Host/X-Forwarded-Host with the
-        // Railway hostname. Preserve the browser-facing CRM hostname explicitly
-        // so the API never mistakes app.appvendorai.com for a tenant website.
+        // O Cloudflare Pages Worker encaminha /api para o Railway. Preserve o
+        // hostname visto pelo navegador para a API nunca confundir o domínio
+        // oficial app.appvendorai.com com um site de tenant.
         const headers = new Headers(requestInput instanceof Request ? requestInput.headers : undefined);
         new Headers(init.headers).forEach((value, key) => headers.set(key, value));
         headers.set("X-Original-Host", window.location.hostname);
