@@ -1,10 +1,10 @@
-# VendorAI App Builder — Mobile App Standard V2
+# VendorAI App Builder — Mobile App Standard V2.1
 
 ## Objetivo
 
 Padronizar todos os apps mobile criados pelo App Builder em uma experiência consistente, moderna, white-label e preparada desde a arquitetura para comércio, ERP, estoque, financeiro e VendorAI.
 
-O padrão visual parte de uma linguagem de apps de varejo modernos: navegação inferior persistente, ação central destacada quando fizer sentido, Home com informação útil e acesso rápido, catálogos em grade, busca, categorias, histórico, perfil, notificações, menu e estados vazios bem definidos. O padrão é universal e não depende do segmento.
+O padrão visual parte de uma linguagem de apps de varejo modernos: navegação inferior persistente, Home com informação útil e acesso rápido, catálogos em grade, busca, categorias, histórico, perfil, notificações, menu e estados vazios bem definidos. O padrão é universal e não depende do segmento.
 
 ## Regra central
 
@@ -25,10 +25,32 @@ O tenant pode mudar marca, cores, conteúdo, ordem e capacidades habilitadas. N�
 
 - até 5 destinos;
 - texto + ícone;
-- ação central pode ser maior e destacada;
 - item ativo sempre evidente;
 - respeita safe-area;
 - conteúdo tem padding inferior suficiente para nunca ficar escondido.
+
+O Runtime Renderer V2 já aplica a navegação inferior no mobile e preserva a navegação horizontal no desktop.
+
+## IDs canônicos de páginas commerce
+
+Quando uma tela existir, o Arquiteto IA deve preferir:
+
+- `home`
+- `catalog`
+- `search`
+- `categories`
+- `product-detail`
+- `cart`
+- `checkout`
+- `orders`
+- `order-detail`
+- `promotions`
+- `stores`
+- `profile`
+- `notifications`
+- `menu`
+
+A página `catalog` ativa o catálogo estruturado oficial do Runtime.
 
 ## Padrões oficiais de tela
 
@@ -72,6 +94,25 @@ Nem todo app precisa de todas as telas. O Arquiteto IA escolhe somente as necess
 - BottomNavigation
 
 A evolução do Runtime deve priorizar componentes oficiais em vez de HTML livre ou layouts arbitrários por tenant.
+
+## Catálogo real no Runtime
+
+A V2.1 adiciona a data source oficial `catalog.products`.
+
+Ela lê somente produtos ativos do catálogo real do tenant e retorna:
+
+- id, nome, SKU e marca;
+- categoria;
+- imagem;
+- preço base e preço promocional;
+- validade da promoção;
+- disponibilidade e estoque quando controlado;
+- prazo de entrega;
+- destaque.
+
+O executor é allowlisted no backend e sempre usa o `tenantId` do App User autenticado. O frontend nunca informa o tenant da consulta.
+
+A tela `catalog` consome essa data source pela rota autenticada do App Runtime e oferece busca, filtro por categoria, preço/promoção e situação do estoque. Não existe cópia paralela do catálogo no app.
 
 ## Personalização white-label
 
@@ -186,6 +227,12 @@ Não manter duas fontes de verdade concorrentes.
 - permissões explícitas por Data Source e Action;
 - sem SQL, URL, código ou segredo arbitrário em template.
 
+## Compras e checkout
+
+O Runtime V2.1 já possui leitura real de catálogo e disponibilidade. Carrinho, checkout, pagamento, criação de pedido, reserva de estoque, estorno e devolução não devem ser simulados como concluídos.
+
+Essas escritas só entram como executáveis quando existirem Actions/workflows oficiais no registry, com idempotência, permissões e source-of-truth definidos. Até lá o Arquiteto IA desenha a jornada e registra os executores faltantes como `gaps`.
+
 ## App Product × App Admin × VendorAI SaaS
 
 O padrão mantém o modelo existente:
@@ -208,13 +255,25 @@ A partir deste padrão, toda geração/revisão mobile deve incluir:
 
 A IA deve usar registries oficiais. Capacidade não encontrada vira `gap`; nunca é considerada disponível por suposição.
 
-## Próxima evolução do Runtime
+## Status de implementação
 
-A camada atual já possui templates/versionamento, registries, Data Sources e Actions. A evolução V2 deve adicionar gradualmente os componentes oficiais acima ao Runtime Renderer e ao Editor Visual, mantendo compatibilidade com os blocos atuais. A prioridade funcional é:
+Implementado na V2.1:
 
-1. Shell mobile + safe-area + bottom navigation.
-2. Busca + categorias + ProductGrid/ProductCard.
-3. Produto + carrinho + checkout + pedidos.
-4. Perfil + notificações + menu.
-5. Lojas/mapa + promoções/conteúdo.
-6. Conectores efetivos de catálogo/estoque/compras/financeiro/ERP/VendorAI por registry.
+1. padrão obrigatório no Arquiteto IA;
+2. IDs canônicos de páginas commerce;
+3. bottom navigation mobile real com safe-area;
+4. manutenção da navegação desktop existente;
+5. data source `catalog.products` tenant-scoped;
+6. busca, categorias e ProductGrid/ProductCard alimentados pelo catálogo real;
+7. preço promocional e disponibilidade de estoque no catálogo;
+8. fallback seguro quando a data source não estiver registrada/disponível.
+
+Próximas camadas executáveis:
+
+1. Product Detail conectado ao item real;
+2. carrinho persistente do App Product;
+3. Action de checkout com geração automática de checkout;
+4. pedido + reserva/baixa de estoque;
+5. financeiro/pagamento/estorno;
+6. adaptadores ERP e fiscal;
+7. eventos do app para CRM/Customer Intelligence/automação no VendorAI.
