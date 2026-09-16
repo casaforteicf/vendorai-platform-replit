@@ -16,6 +16,126 @@ const buildId = (process.env.VENDOR_BUILD_ID || process.env.GITHUB_SHA || "local
   .replace(/[^a-zA-Z0-9_-]/g, "")
   .slice(0, 12) || "local";
 
+// Política do Super Admin: a conta de plataforma precisa enxergar todas as
+// telas do sistema, inclusive quando abre/visualiza um tenant específico.
+// Os filtros de plano, vertical, função e entitlement continuam valendo
+// normalmente para todos os usuários de tenant.
+const superAdminFullVisibilityPlugin = {
+  name: "super-admin-full-visibility",
+  enforce: "pre" as const,
+  transform(code: string, id: string) {
+    const normalizedId = id.split("?")[0]?.replace(/\\/g, "/") ?? id;
+
+    const replaceExact = (value: string, from: string, to: string, label: string) => {
+      const first = value.indexOf(from);
+      if (first < 0 || value.indexOf(from, first + from.length) >= 0) {
+        throw new Error(`Super Admin visibility transform guard failed (${label})`);
+      }
+      return value.replace(from, to);
+    };
+
+    if (normalizedId.endsWith("/src/components/layout/SidebarLayoutLegacy.tsx")) {
+      const alreadyApplied = `  function isVisible(item: typeof allNavItems[0]) {\n    if (isSuperAdmin) return true;`;
+      if (code.includes(alreadyApplied)) return null;
+
+      const from = `  function isVisible(item: typeof allNavItems[0]) {\n    if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;`;
+      const to = `  function isVisible(item: typeof allNavItems[0]) {\n    if (isSuperAdmin) return true;\n    if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;`;
+
+      return { code: replaceExact(code, from, to, "legacy menu bypass"), map: null };
+    }
+
+    if (!normalizedId.endsWith("/src/components/layout/SidebarLayout.tsx")) return null;
+
+    let contents = code;
+    contents = replaceExact(
+      contents,
+      `  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";`,
+      `  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";\n  const isSuperAdmin = user?.platformRole === "super_admin";`,
+      "wrapper super admin flag",
+    );
+    contents = replaceExact(
+      contents,
+      `      document.querySelectorAll<HTMLAnchorElement>('a[href="/arch"]').forEach((archLink) => {\n        if (archLink.dataset.arqdorToolEntry === "true") return;\n        const group = archLink.parentElement;`,
+      `      document.querySelectorAll<HTMLAnchorElement>('a[href="/arch"]').forEach((archLink) => {\n        if (archLink.dataset.arqdorToolEntry === "true") return;\n        if (isSuperAdmin) return;\n        const group = archLink.parentElement;`,
+      "keep full Arqdor navigation for super admin",
+    );
+    contents = replaceExact(
+      contents,
+      `      if (!arqdorVisible) {\n        injected.forEach((entry) => entry.remove());\n        return;\n      }`,
+      `      if (isSuperAdmin) {\n        injected.forEach((entry) => entry.remove());\n        return;\n      }\n\n      if (!arqdorVisible) {\n        injected.forEach((entry) => entry.remove());\n        return;\n      }`,
+      "skip tenant Arqdor injector for super admin",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [arqdorVisible, location, setLocation]);`,
+      `  }, [arqdorVisible, isSuperAdmin, location, setLocation]);`,
+      "Arqdor effect dependencies",
+    );
+    contents = replaceExact(
+      contents,
+      `  useEffect(() => {\n    const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;\n    if (isPureSuperAdmin || tenantNavModulesLoading || tenantQuery.isLoading) return;`,
+      `  useEffect(() => {\n    if (isSuperAdmin || tenantNavModulesLoading || tenantQuery.isLoading) return;`,
+      "Arqdor route bypass",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [arqdorVisible, location, setLocation, tenantNavModulesLoading, tenantOverride, tenantQuery.isLoading, user?.platformRole]);`,
+      `  }, [arqdorVisible, isSuperAdmin, location, setLocation, tenantNavModulesLoading, tenantQuery.isLoading]);`,
+      "Arqdor route effect dependencies",
+    );
+    contents = replaceExact(
+      contents,
+      `        const nextDisplay = erpEntitled ? "" : "none";`,
+      `        const nextDisplay = isSuperAdmin || erpEntitled ? "" : "none";`,
+      "ERP super admin visibility",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [erpEntitled]);`,
+      `  }, [erpEntitled, isSuperAdmin]);`,
+      "ERP effect dependencies",
+    );
+    contents = replaceExact(
+      contents,
+      `    const enforceBudgetSidebarPolicy = () => {\n      document.querySelectorAll<HTMLAnchorElement>('a[href="/propostas"]').forEach((link) => {`,
+      `    const enforceBudgetSidebarPolicy = () => {\n      if (isSuperAdmin) return;\n      document.querySelectorAll<HTMLAnchorElement>('a[href="/propostas"]').forEach((link) => {`,
+      "budget super admin visibility",
+    );
+    contents = replaceExact(
+      contents,
+      `    };\n  }, []);\n\n  useEffect(() => {\n    if (!PRACA_AI_LINK_SELECTOR) return;`,
+      `    };\n  }, [isSuperAdmin]);\n\n  useEffect(() => {\n    if (!PRACA_AI_LINK_SELECTOR) return;`,
+      "budget effect dependencies",
+    );
+    contents = replaceExact(
+      contents,
+      `        const nextDisplay = pracaAiEntitled ? "" : "none";`,
+      `        const nextDisplay = isSuperAdmin || pracaAiEntitled ? "" : "none";`,
+      "Praça.ai super admin visibility",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [pracaAiEntitled]);`,
+      `  }, [isSuperAdmin, pracaAiEntitled]);`,
+      "Praça.ai effect dependencies",
+    );
+    contents = replaceExact(
+      contents,
+      `    if (!effectiveTenantId || tenantNavModulesLoading || pracaAiEntitled) return;`,
+      `    if (isSuperAdmin || !effectiveTenantId || tenantNavModulesLoading || pracaAiEntitled) return;`,
+      "Praça.ai route bypass",
+    );
+    contents = replaceExact(
+      contents,
+      `  }, [effectiveTenantId, location, pracaAiEntitled, setLocation, tenantNavModulesLoading]);`,
+      `  }, [effectiveTenantId, isSuperAdmin, location, pracaAiEntitled, setLocation, tenantNavModulesLoading]);`,
+      "Praça.ai route effect dependencies",
+    );
+
+    return { code: contents, map: null };
+  },
+};
+
 // Proteção do produtor do Plano de Mídia. A produção é sempre deliberada:
 // nunca inicia por effect/abertura de tela, passa pelo gate de permissão do
 // backend, processa somente itens aprovados sem geração e no máximo 10 por clique.
@@ -122,6 +242,7 @@ const mediaPlanAvailableQuotaPlugin = {
 export default defineConfig({
   base: basePath,
   plugins: [
+    superAdminFullVisibilityPlugin,
     mediaPlanAvailableQuotaPlugin,
     react(),
     tailwindcss(),
