@@ -8,7 +8,7 @@ import type { ProviderRegistry, BuiltPrompt } from '../providers/interfaces'
 import type { RenderJob, RenderReview, CorrectionItem, ExportFormat } from '../shared/platform-types'
 import { generateFullPromptStructure } from '../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
 import { validateProject } from '../../../pages/arch/arqdor/domain/arqdor-validation-engine'
-import { calculateMockRenderScore } from '../../../pages/arch/arqdor/domain/arqdor-score-engine'
+import { calculateStructuralReadiness } from '../../../pages/arch/arqdor/domain/arqdor-score-engine'
 
 // ─── Result type ──────────────────────────────────────────────────────────────
 
@@ -168,8 +168,8 @@ export function ExportProjectUseCase(
   }
 }
 
-// ─── 10. Score Project Readiness ──────────────────────────────────────────────
+// ─── 10. Structural Readiness ─────────────────────────────────────────────────
 
 export function ScoreProjectUseCase(project: Project) {
-  return success(calculateMockRenderScore(project))
+  return success(calculateStructuralReadiness(project))
 }
