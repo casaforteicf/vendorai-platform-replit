@@ -12,6 +12,18 @@ function storageKey(appId: string) {
   return `vendorai:app-runtime-cart:${appId}`;
 }
 
+function checkoutStorageKey(appId: string) {
+  return `vendorai:app-runtime-checkout-key:${appId}`;
+}
+
+function cartFingerprint(items: RuntimeCartItem[]) {
+  return JSON.stringify(
+    [...items]
+      .map((item) => ({ sku: item.sku, quantity: item.quantity }))
+      .sort((a, b) => a.sku.localeCompare(b.sku)),
+  );
+}
+
 export function readRuntimeCart(appId: string): RuntimeCartItem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -67,4 +79,29 @@ export function setRuntimeCartQuantity(appId: string, productId: string, quantit
 
 export function clearRuntimeCart(appId: string) {
   writeRuntimeCart(appId, []);
+  clearRuntimeCheckoutIdempotencyKey(appId);
+}
+
+export function getRuntimeCheckoutIdempotencyKey(appId: string, items: RuntimeCartItem[]) {
+  if (typeof window === "undefined") return `checkout-${Date.now()}`;
+  const fingerprint = cartFingerprint(items);
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(checkoutStorageKey(appId)) ?? "null") as { fingerprint?: string; key?: string } | null;
+    if (parsed?.fingerprint === fingerprint && typeof parsed.key === "string" && parsed.key.length >= 8) {
+      return parsed.key;
+    }
+  } catch {
+    // A nova chave abaixo substitui qualquer valor inválido.
+  }
+
+  const key = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(checkoutStorageKey(appId), JSON.stringify({ fingerprint, key }));
+  return key;
+}
+
+export function clearRuntimeCheckoutIdempotencyKey(appId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(checkoutStorageKey(appId));
 }
