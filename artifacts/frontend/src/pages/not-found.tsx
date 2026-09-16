@@ -17,7 +17,7 @@ const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
 export default function NotFound() {
   const { token, isLoading } = useAuth();
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
-  const isMediaCenter = normalizedPath === "/midias";
+  const isMediaCenter = normalizedPath === "/midias" || normalizedPath === "/midias/informacoes";
   const isConversations = normalizedPath === "/conversas";
   const isAiMetrics = normalizedPath === "/metricas-ia";
   const isGrowthLab = normalizedPath === "/growth-lab";
