@@ -1,10 +1,54 @@
-import { BookOpen, Building2, FolderKanban, Images, Users } from "lucide-react";
+import { useEffect } from "react";
+import { BookOpen, Building2, FolderKanban, Images, PlusCircle, Users } from "lucide-react";
 
 function go(path: string) {
   window.location.assign(path);
 }
 
+function normalizedText(value: string | null | undefined) {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function unifyCompanyLibraryUi() {
+  document
+    .querySelectorAll<HTMLAnchorElement>('[data-marketing-flow-menu] a[href="/midias/informacoes"]')
+    .forEach((link) => {
+      link.hidden = true;
+      link.style.display = "none";
+      link.setAttribute("aria-hidden", "true");
+      link.tabIndex = -1;
+    });
+
+  document
+    .querySelectorAll<HTMLAnchorElement>('[data-marketing-flow-menu] a[href="/midias"]')
+    .forEach((link) => {
+      const label = Array.from(link.querySelectorAll<HTMLElement>("span"))
+        .find((node) => normalizedText(node.textContent) === "Mídias");
+      if (label) label.textContent = "Biblioteca da Empresa";
+      link.setAttribute("aria-label", "Biblioteca da Empresa");
+      link.setAttribute("title", "Biblioteca da Empresa");
+    });
+
+  Array.from(document.querySelectorAll<HTMLElement>("h1")).forEach((heading) => {
+    if (normalizedText(heading.textContent) === "Biblioteca de Informações") {
+      heading.textContent = "Biblioteca da Empresa — Informações";
+    }
+  });
+}
+
 export default function MediaLibrarySourceGuide() {
+  useEffect(() => {
+    unifyCompanyLibraryUi();
+    const observer = new MutationObserver(unifyCompanyLibraryUi);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("popstate", unifyCompanyLibraryUi);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("popstate", unifyCompanyLibraryUi);
+    };
+  }, []);
+
   const sources = [
     {
       title: "Empresa e marca",
@@ -43,16 +87,27 @@ export default function MediaLibrarySourceGuide() {
   return (
     <section className="mx-auto w-full max-w-[1500px] px-3 pt-4 sm:px-6 lg:px-8" aria-label="Fontes de informação da empresa">
       <div className="rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
-            <Images className="h-5 w-5" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+              <Images className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">Base de contexto da empresa</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                A Biblioteca da Empresa reúne os dados oficiais do VendorAI e os complementos que a IA precisa consultar: fotos, vídeos, documentos, obras, cases, referências e informações adicionais. Não cadastre a mesma informação duas vezes.
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold">Base de contexto da empresa</h2>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              A IA consulta os dados oficiais já cadastrados no VendorAI e usa esta biblioteca para complementar com fotos, vídeos, documentos, obras, cases e referências. Não cadastre a mesma informação duas vezes.
-            </p>
-          </div>
+
+          <button
+            type="button"
+            onClick={() => go("/midias/informacoes")}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Adicionar informação
+          </button>
         </div>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -76,7 +131,7 @@ export default function MediaLibrarySourceGuide() {
         </div>
 
         <div className="mt-3 rounded-2xl bg-muted/40 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
-          <strong className="text-foreground">Entram automaticamente:</strong> materiais de campanhas e conteúdos gerados pelo sistema. <strong className="text-foreground">Entram manualmente:</strong> fotos, vídeos, documentos, obras, cases e referências que complementam o contexto da empresa.
+          <strong className="text-foreground">Entram automaticamente:</strong> materiais de campanhas e conteúdos gerados pelo sistema. <strong className="text-foreground">Entram manualmente:</strong> fotos, vídeos, documentos, obras, cases, referências e informações complementares cadastradas dentro desta Biblioteca da Empresa.
         </div>
       </div>
     </section>
