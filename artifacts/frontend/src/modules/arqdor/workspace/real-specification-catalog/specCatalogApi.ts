@@ -10,6 +10,34 @@ import type {
 } from "./specCatalogTypes";
 import { getAuthHeaders, normalizeCatalogItem, normalizeSpecObject } from "./specCatalogUtils";
 
+export type FinancialImpact = {
+  sourceBudgetId: string | null;
+  sourceBudgetVersion: number;
+  proposalId: string | null;
+  proposalStatus: string | null;
+  previousItemTotal: number;
+  revisedItemTotal: number;
+  delta: number;
+  requiresReview: true;
+};
+
+export type BudgetSyncResult = {
+  ok?: boolean;
+  specObjectId?: string;
+  budgetId?: string;
+  budgetItemId?: string;
+  budgetCreated?: boolean;
+  revisionCreated?: boolean;
+  financialImpact?: FinancialImpact | null;
+  totals?: {
+    subtotalMaterial: number;
+    subtotalLabor: number;
+    subtotal: number;
+    discountTotal: number;
+    grandTotal: number;
+  };
+};
+
 const jsonHeaders = () => ({
   "Content-Type": "application/json",
   ...getAuthHeaders(),
@@ -97,7 +125,10 @@ export async function createSpecObject(payload: SpecObjectPayload): Promise<ApiR
   return { data: normalizeSpecObject(result.data?.item || result.data?.data || result.data) };
 }
 
-export async function updateSpecObject(id: string, payload: Partial<SpecObjectPayload>): Promise<ApiResult<SpecObject>> {
+export async function updateSpecObject(
+  id: string,
+  payload: Partial<SpecObjectPayload>,
+): Promise<ApiResult<{ item: SpecObject; budgetSync?: BudgetSyncResult | null }>> {
   const response = await fetch(`/api/arch/spec-objects/${id}`, {
     method: "PATCH",
     headers: jsonHeaders(),
@@ -107,7 +138,13 @@ export async function updateSpecObject(id: string, payload: Partial<SpecObjectPa
   const result = await parseResponse<any>(response);
   if (result.error) return { error: result.error };
 
-  return { data: normalizeSpecObject(result.data?.item || result.data?.data || result.data) };
+  const raw = result.data;
+  return {
+    data: {
+      item: normalizeSpecObject(raw?.item || raw?.data || raw),
+      budgetSync: raw?.budgetSync ?? null,
+    },
+  };
 }
 
 export async function createSpecObjectsFromRender(payload: BulkFromRenderPayload): Promise<ApiResult<SpecObjectsResponse>> {
@@ -131,13 +168,13 @@ export async function createSpecObjectsFromRender(payload: BulkFromRenderPayload
   };
 }
 
-export async function sendSpecObjectToBudget(id: string): Promise<ApiResult<{ ok: boolean; budgetItemId?: string }>> {
+export async function sendSpecObjectToBudget(id: string): Promise<ApiResult<BudgetSyncResult>> {
   const response = await fetch(`/api/arch/spec-objects/${id}/send-to-budget`, {
     method: "POST",
     headers: jsonHeaders(),
   });
 
-  return parseResponse<{ ok: boolean; budgetItemId?: string }>(response);
+  return parseResponse<BudgetSyncResult>(response);
 }
 
 export function applyCatalogItemToSpecObject(object: SpecObject, item: CatalogItem): SpecObjectPayload {
