@@ -31,6 +31,7 @@ import { InstagramApiError, listRecentMedia } from "../lib/instagram-publish.js"
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { publishContentGenerationToInstagram, getPublishingCredentials, SocialPublicationError } from "../services/contentSocialPublisher.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
+import { resolveContentContext } from "../services/contentContextLibrary.js";
 import { applyBrandFrame, generateHighlightCover } from "../services/brandFrame.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -178,16 +179,22 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     }
   }
 
-  const [ownPerfBlock, refCreatorsBlock] = await Promise.all([
+  const [ownPerfBlock, refCreatorsBlock, libraryContext] = await Promise.all([
     buildOwnPerformancePromptBlock(tenantId),
     buildReferencePatternsPromptBlock(tenantId),
+    resolveContentContext({
+      tenantId,
+      query: [theme, productName, customerPain, postObjective].filter(Boolean).join(" "),
+      productIds: productId && productSource === "catalog" ? [productId] : [],
+      limit: 8,
+    }),
   ]);
   const strategy = {
     customerPain: customerPain ?? undefined,
     postObjective: postObjective ?? undefined,
     voiceTone: voiceTone ?? undefined,
     desiredCta: desiredCta ?? undefined,
-    referencePatterns: ownPerfBlock + refCreatorsBlock,
+    referencePatterns: [libraryContext.promptBlock, ownPerfBlock, refCreatorsBlock].filter(Boolean).join("\n\n"),
   };
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
@@ -248,7 +255,9 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     req.log.error({ err: dbErr }, "content: failed to persist generation — returning result without saving");
   }
 
-  res.json(saved ?? { id: null, tenantId, type, theme, result: finalResult, tokensUsed: result.tokensUsed });
+  res.json(saved
+    ? { ...saved, contextSources: libraryContext.sources }
+    : { id: null, tenantId, type, theme, result: finalResult, tokensUsed: result.tokensUsed, contextSources: libraryContext.sources });
 });
 
 const strategyBodySchema = z.object({
@@ -279,9 +288,10 @@ router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   try {
-    const [ownPerfBlock, refCreatorsBlock] = await Promise.all([
+    const [ownPerfBlock, refCreatorsBlock, libraryContext] = await Promise.all([
       buildOwnPerformancePromptBlock(tenantId),
       buildReferencePatternsPromptBlock(tenantId),
+      resolveContentContext({ tenantId, query: command, limit: 8 }),
     ]);
     const { strategy } = await generateContentStrategy(
       profile ?? {},
@@ -289,9 +299,9 @@ router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
       command,
       contentType,
       variations,
-      ownPerfBlock + refCreatorsBlock,
+      [libraryContext.promptBlock, ownPerfBlock, refCreatorsBlock].filter(Boolean).join("\n\n"),
     );
-    res.json(strategy);
+    res.json({ ...strategy, contextSources: libraryContext.sources });
   } catch (err) {
     req.log.error({ err }, "content strategy generation failed");
     res.status(500).json({ error: "Falha na geração de estratégia. Tente novamente." });
