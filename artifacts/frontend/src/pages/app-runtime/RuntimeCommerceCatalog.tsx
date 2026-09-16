@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, PackageOpen, Search, ShoppingBag } from "lucide-react";
+import { Check, Loader2, PackageOpen, Search, ShoppingBag, X } from "lucide-react";
+import { addRuntimeCartItem } from "./runtimeCommerceState";
 
 type JsonObject = Record<string, unknown>;
 
@@ -43,6 +44,10 @@ const COPY = {
     delivery: "Entrega em até",
     days: "dias",
     promo: "Oferta",
+    details: "Ver detalhes",
+    add: "Adicionar",
+    added: "Adicionado",
+    noSku: "Compra indisponível para este item",
   },
   es: {
     search: "Buscar productos",
@@ -55,6 +60,10 @@ const COPY = {
     delivery: "Entrega en hasta",
     days: "días",
     promo: "Oferta",
+    details: "Ver detalles",
+    add: "Agregar",
+    added: "Agregado",
+    noSku: "Compra no disponible para este producto",
   },
 } as const;
 
@@ -103,6 +112,8 @@ export default function RuntimeCommerceCatalog({ appId, lang }: Props) {
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState("__all__");
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
+  const [addedProductId, setAddedProductId] = useState<string | null>(null);
 
   useEffect(() => {
     if (appId.startsWith("preview-")) {
@@ -147,6 +158,18 @@ export default function RuntimeCommerceCatalog({ appId, lang }: Props) {
     });
   }, [categoryId, products, query]);
 
+  function addToCart(product: CatalogProduct) {
+    if (product.available === false || !product.sku) return;
+    addRuntimeCartItem(appId, {
+      productId: product.id,
+      sku: product.sku,
+      name: product.name,
+      imageUrl: product.imageUrl ?? null,
+    });
+    setAddedProductId(product.id);
+    window.setTimeout(() => setAddedProductId((current) => current === product.id ? null : current), 1600);
+  }
+
   if (loading) {
     return <section className="rounded-2xl border bg-white p-8 text-center shadow-sm"><Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /></section>;
   }
@@ -185,29 +208,57 @@ export default function RuntimeCommerceCatalog({ appId, lang }: Props) {
           {filtered.map((product) => {
             const promotional = activePromotion(product);
             const available = product.available !== false;
+            const added = addedProductId === product.id;
             return (
               <article key={product.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-                <div className="relative aspect-square bg-slate-50">
-                  {product.imageUrl ? <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full items-center justify-center"><PackageOpen className="h-8 w-8 text-slate-300" /></div>}
-                  {promotional && <span className="absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold text-white" style={{ backgroundColor: "var(--app-runtime-primary, #0f172a)" }}>{copy.promo}</span>}
-                </div>
-                <div className="p-3">
-                  {product.categoryName && <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{product.categoryName}</p>}
-                  <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900">{product.name}</h3>
-                  {product.brand && <p className="mt-1 truncate text-xs text-slate-400">{product.brand}</p>}
-                  <div className="mt-3">
-                    {promotional && <p className="text-[11px] text-slate-400 line-through">{money(product.basePrice, lang)}</p>}
-                    <p className="text-base font-bold text-slate-950">{money(promotional ? product.promotionalPrice : product.basePrice, lang)}</p>
+                <button type="button" className="block w-full text-left" onClick={() => setSelectedProduct(product)}>
+                  <div className="relative aspect-square bg-slate-50">
+                    {product.imageUrl ? <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full items-center justify-center"><PackageOpen className="h-8 w-8 text-slate-300" /></div>}
+                    {promotional && <span className="absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold text-white" style={{ backgroundColor: "var(--app-runtime-primary, #0f172a)" }}>{copy.promo}</span>}
                   </div>
-                  <div className="mt-3 border-t pt-2 text-[10px] leading-4">
-                    <p className={available ? "font-semibold text-emerald-600" : "font-semibold text-rose-600"}>{available ? copy.inStock : copy.outOfStock}</p>
-                    {available && product.controlsStock && typeof product.stockQuantity === "number" && <p className="text-slate-400">{product.stockQuantity} {copy.units}</p>}
-                    {available && product.deliveryDays && <p className="text-slate-400">{copy.delivery} {product.deliveryDays} {copy.days}</p>}
+                  <div className="p-3 pb-1">
+                    {product.categoryName && <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{product.categoryName}</p>}
+                    <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900">{product.name}</h3>
+                    {product.brand && <p className="mt-1 truncate text-xs text-slate-400">{product.brand}</p>}
+                    <div className="mt-3">
+                      {promotional && <p className="text-[11px] text-slate-400 line-through">{money(product.basePrice, lang)}</p>}
+                      <p className="text-base font-bold text-slate-950">{money(promotional ? product.promotionalPrice : product.basePrice, lang)}</p>
+                    </div>
+                    <div className="mt-3 border-t pt-2 text-[10px] leading-4">
+                      <p className={available ? "font-semibold text-emerald-600" : "font-semibold text-rose-600"}>{available ? copy.inStock : copy.outOfStock}</p>
+                      {available && product.controlsStock && typeof product.stockQuantity === "number" && <p className="text-slate-400">{product.stockQuantity} {copy.units}</p>}
+                      {available && product.deliveryDays && <p className="text-slate-400">{copy.delivery} {product.deliveryDays} {copy.days}</p>}
+                    </div>
                   </div>
+                </button>
+                <div className="p-3 pt-2">
+                  <button type="button" onClick={() => addToCart(product)} disabled={!available || !product.sku} className="flex h-10 w-full items-center justify-center rounded-xl text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500" style={available && product.sku ? { backgroundColor: "var(--app-runtime-primary, #0f172a)" } : undefined}>{added ? <><Check className="mr-1.5 h-4 w-4" />{copy.added}</> : available && product.sku ? copy.add : copy.noSku}</button>
                 </div>
               </article>
             );
           })}
+        </div>
+      )}
+
+      {selectedProduct && (
+        <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/45 sm:items-center sm:justify-center sm:p-5" role="dialog" aria-modal="true">
+          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl">
+            <div className="sticky top-0 z-10 flex justify-end bg-white/95 p-3 backdrop-blur"><button type="button" onClick={() => setSelectedProduct(null)} className="rounded-full bg-slate-100 p-2 text-slate-600"><X className="h-5 w-5" /></button></div>
+            <div className="px-5 pb-6 sm:px-6">
+              <div className="overflow-hidden rounded-2xl bg-slate-50">
+                {selectedProduct.imageUrl ? <img src={selectedProduct.imageUrl} alt={selectedProduct.name} className="aspect-square w-full object-cover" /> : <div className="flex aspect-square items-center justify-center"><PackageOpen className="h-12 w-12 text-slate-300" /></div>}
+              </div>
+              {selectedProduct.categoryName && <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">{selectedProduct.categoryName}</p>}
+              <h2 className="mt-1 text-xl font-bold text-slate-950">{selectedProduct.name}</h2>
+              {selectedProduct.brand && <p className="mt-1 text-sm text-slate-500">{selectedProduct.brand}</p>}
+              {selectedProduct.description && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-slate-600">{selectedProduct.description}</p>}
+              <div className="mt-5 flex items-end justify-between gap-3 border-t pt-4">
+                <div>{activePromotion(selectedProduct) && <p className="text-xs text-slate-400 line-through">{money(selectedProduct.basePrice, lang)}</p>}<p className="text-2xl font-bold text-slate-950">{money(activePromotion(selectedProduct) ? selectedProduct.promotionalPrice : selectedProduct.basePrice, lang)}</p></div>
+                <div className="text-right text-xs">{selectedProduct.available !== false ? <p className="font-semibold text-emerald-600">{copy.inStock}</p> : <p className="font-semibold text-rose-600">{copy.outOfStock}</p>}{selectedProduct.controlsStock && typeof selectedProduct.stockQuantity === "number" && <p className="text-slate-400">{selectedProduct.stockQuantity} {copy.units}</p>}</div>
+              </div>
+              <button type="button" onClick={() => addToCart(selectedProduct)} disabled={selectedProduct.available === false || !selectedProduct.sku} className="mt-5 flex h-12 w-full items-center justify-center rounded-xl text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500" style={selectedProduct.available !== false && selectedProduct.sku ? { backgroundColor: "var(--app-runtime-primary, #0f172a)" } : undefined}>{addedProductId === selectedProduct.id ? <><Check className="mr-2 h-4 w-4" />{copy.added}</> : selectedProduct.available !== false && selectedProduct.sku ? copy.add : copy.noSku}</button>
+            </div>
+          </div>
         </div>
       )}
     </section>
