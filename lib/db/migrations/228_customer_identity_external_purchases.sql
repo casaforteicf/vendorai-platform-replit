@@ -84,7 +84,6 @@ CREATE INDEX IF NOT EXISTS external_purchases_lead_idx
   ON external_purchases (tenant_id, lead_id, occurred_at DESC)
   WHERE lead_id IS NOT NULL;
 
--- O outbox criado na migration 227 passa a aceitar também compras originadas fora do App Product.
 ALTER TABLE app_runtime_commerce_events
   ALTER COLUMN app_instance_id DROP NOT NULL,
   ALTER COLUMN order_id DROP NOT NULL;
@@ -96,7 +95,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS app_runtime_commerce_events_external_purchase_
   ON app_runtime_commerce_events (external_purchase_id, event_type)
   WHERE external_purchase_id IS NOT NULL;
 
--- Eventos externos entram no mesmo pipeline de ERP/financeiro/fiscal/CRM/CI/automação.
 CREATE OR REPLACE FUNCTION emit_external_purchase_event()
 RETURNS trigger AS $$
 DECLARE
@@ -113,12 +111,7 @@ BEGIN
   INSERT INTO app_runtime_commerce_events (
     tenant_id, app_instance_id, app_user_id, order_id, external_purchase_id, event_type, payload
   ) VALUES (
-    NEW.tenant_id,
-    NULL,
-    NEW.app_user_id,
-    NULL,
-    NEW.id,
-    next_event,
+    NEW.tenant_id, NULL, NEW.app_user_id, NULL, NEW.id, next_event,
     jsonb_build_object(
       'externalPurchaseId', NEW.id,
       'externalOrderId', NEW.external_order_id,
@@ -143,7 +136,6 @@ AFTER INSERT OR UPDATE OF status ON external_purchases
 FOR EACH ROW
 EXECUTE FUNCTION emit_external_purchase_event();
 
--- Ação explícita do App User para vincular o próprio CPF à identidade do tenant.
 INSERT INTO app_action_registry (
   id, key, name, description, category, input_schema, output_schema,
   executor_key, required_permissions, risk_level, status, metadata
