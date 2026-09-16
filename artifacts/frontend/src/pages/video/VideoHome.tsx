@@ -207,7 +207,7 @@ export default function VideoHome() {
               O sistema prioriza mídias reais da empresa e do catálogo, mantém identidade visual, valida roteiro e cenas antes do render e usa IA generativa somente quando faltar material adequado.
             </p>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              {["Mídia real primeiro", "Marca consistente", "Verificação antes de gerar", "Correção por cena"].map((item) => (
+              {["Mídia real primeiro", "Marca consistente", "Verificação antes de gerar", "Troca de mídia por cena"].map((item) => (
                 <span key={item} className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" />{item}</span>
               ))}
             </div>
