@@ -54,6 +54,8 @@ const COPY = {
   },
 } as const;
 
+type Copy = (typeof COPY)[keyof typeof COPY];
+
 function sessionStorageKey(appId: string) {
   return `vendorai:app-user-session:${appId}`;
 }
@@ -76,7 +78,7 @@ function dateLabel(value: string | null | undefined, lang: "pt" | "es") {
   }).format(date);
 }
 
-function statusLabel(status: string, copy: typeof COPY.pt) {
+function statusLabel(status: string, copy: Copy) {
   if (status === "paid") return copy.paid;
   if (status === "cancelled") return copy.cancelled;
   if (status === "overdue") return copy.overdue;
