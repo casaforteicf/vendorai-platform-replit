@@ -1,10 +1,13 @@
 import type { Project, RenderReviewScore } from './arqdor-domain-types'
 import { getAllObjects } from './arqdor-relationships'
 
-// ─── Mock score calculator ────────────────────────────────────────────────────
-// (No IA real — scores are derived from project structure quality)
+// ─── Structural Readiness ─────────────────────────────────────────────────────
+// Deterministic project-readiness calculation. This is NOT visual AI review and
+// MUST NOT be presented as Fidelity or as a comparison between base/render images.
 
-export function calculateMockRenderScore(project: Project): RenderReviewScore {
+export const STRUCTURAL_READINESS_TITLE = 'Structural Readiness'
+
+export function calculateStructuralReadiness(project: Project): RenderReviewScore {
   const objs        = getAllObjects(project)
   const nonEnv      = objs.filter(o => o.category !== 'AMBIENTE')
   const total       = nonEnv.length || 1
@@ -71,7 +74,13 @@ export function calculateMockRenderScore(project: Project): RenderReviewScore {
   }
 }
 
-// ─── Score label helpers ──────────────────────────────────────────────────────
+/**
+ * @deprecated Use calculateStructuralReadiness. Kept temporarily so legacy UI
+ * callers do not break while the monolithic ArqdorPage is migrated safely.
+ */
+export const calculateMockRenderScore = calculateStructuralReadiness
+
+// ─── Readiness label helpers ──────────────────────────────────────────────────
 
 export function scoreColor(score: number): string {
   if (score >= 90) return '#22c55e'
@@ -87,10 +96,13 @@ export function scoreLabel(score: number): string {
   return 'Crítico'
 }
 
-export const SCORE_DIMENSIONS: { key: keyof RenderReviewScore; label: string }[] = [
+export const STRUCTURAL_READINESS_DIMENSIONS: { key: keyof RenderReviewScore; label: string }[] = [
   { key: 'geometryScore',  label: 'Geometria'  },
   { key: 'materialScore',  label: 'Materiais'  },
   { key: 'lightingScore',  label: 'Iluminação' },
   { key: 'furnitureScore', label: 'Mobiliário' },
   { key: 'cameraScore',    label: 'Câmera'     },
 ]
+
+/** @deprecated Use STRUCTURAL_READINESS_DIMENSIONS. */
+export const SCORE_DIMENSIONS = STRUCTURAL_READINESS_DIMENSIONS
