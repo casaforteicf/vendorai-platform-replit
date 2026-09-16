@@ -16,7 +16,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 type ProductSpec = { label: string; value: string };
-
+type MediaAsset = {
+  id: string;
+  type: "image" | "video" | "audio" | "document";
+  storageUrl: string;
+  originalFilename?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
 type CatalogProduct = {
   id: string;
   nome: string;
@@ -34,15 +40,6 @@ type CatalogProduct = {
   tags?: string[] | null;
   especificacoes?: ProductSpec[] | null;
 };
-
-type MediaAsset = {
-  id: string;
-  type: "image" | "video" | "audio" | "document";
-  storageUrl: string;
-  originalFilename?: string | null;
-  metadata?: Record<string, unknown> | null;
-};
-
 type ProductForm = {
   descricaoCompleta: string;
   beneficios: string;
@@ -59,68 +56,41 @@ type ProductForm = {
   tags: string;
   aiEnabled: boolean;
 };
+type TextFieldKey = Exclude<keyof ProductForm, "descricaoCompleta" | "tags" | "aiEnabled">;
 
 const KNOWLEDGE_MARKER = "--- Base IA do produto ---";
-
-const FIELD_SPECS: Array<{ key: keyof ProductForm; label: string; placeholder: string; rows?: number }> = [
+const FIELD_SPECS: Array<{ key: TextFieldKey; label: string; placeholder: string; rows?: number }> = [
   { key: "beneficios", label: "Benefícios", placeholder: "Quais benefícios o cliente obtém com este produto?" },
   { key: "diferenciais", label: "Diferenciais", placeholder: "O que diferencia este produto de alternativas e concorrentes?" },
   { key: "aplicacoes", label: "Aplicações", placeholder: "Onde, como e em quais situações o produto pode ser utilizado?" },
   { key: "publicoIndicado", label: "Público / cliente indicado", placeholder: "Para quem este produto é mais indicado?" },
   { key: "argumentosComerciais", label: "Argumentos comerciais", placeholder: "Pontos que vendedores e agentes de IA podem usar no atendimento." },
-  { key: "duvidasFrequentes", label: "Dúvidas frequentes", placeholder: "Perguntas frequentes e respectivas respostas." , rows: 4},
-  { key: "objecoesRespostas", label: "Objeções e respostas", placeholder: "Principais objeções do cliente e como respondê-las com informações reais." , rows: 4},
+  { key: "duvidasFrequentes", label: "Dúvidas frequentes", placeholder: "Perguntas frequentes e respectivas respostas.", rows: 4 },
+  { key: "objecoesRespostas", label: "Objeções e respostas", placeholder: "Principais objeções do cliente e como respondê-las com informações reais.", rows: 4 },
   { key: "garantia", label: "Garantia", placeholder: "Regras e informações de garantia." },
   { key: "instalacao", label: "Instalação / uso", placeholder: "Orientações de instalação, montagem ou utilização." },
   { key: "entrega", label: "Entrega / prazo", placeholder: "Informações relevantes sobre entrega, prazo e disponibilidade." },
-  { key: "observacoesIa", label: "Observações para IA", placeholder: "Regras específicas que a IA deve respeitar ao falar deste produto." , rows: 4},
+  { key: "observacoesIa", label: "Observações para IA", placeholder: "Regras específicas que a IA deve respeitar ao falar deste produto.", rows: 4 },
 ];
-
 const KNOWN_SPEC_LABELS = new Set([...FIELD_SPECS.map((field) => field.label), "Uso pela IA"]);
 
 function authHeaders(json = false): Record<string, string> {
   const token = localStorage.getItem("vendorai_token") ?? "";
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(json ? { "Content-Type": "application/json" } : {}),
-  };
+  return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(json ? { "Content-Type": "application/json" } : {}) };
 }
-
-function mediaUrl(value: string) {
-  return value.startsWith("/objects/") ? `/api/storage${value}` : value;
-}
-
-function publicMediaUrl(value: string) {
-  return new URL(mediaUrl(value), window.location.origin).toString();
-}
-
+function mediaUrl(value: string) { return value.startsWith("/objects/") ? `/api/storage${value}` : value; }
+function publicMediaUrl(value: string) { return new URL(mediaUrl(value), window.location.origin).toString(); }
+function specValue(product: CatalogProduct, label: string) { return product.especificacoes?.find((item) => item.label === label)?.value ?? ""; }
+function aiEnabledFor(product: CatalogProduct) { return specValue(product, "Uso pela IA") !== "Não"; }
 function stripGeneratedKnowledge(value?: string | null) {
   const text = String(value ?? "");
-  const markerIndex = text.indexOf(KNOWLEDGE_MARKER);
-  return (markerIndex >= 0 ? text.slice(0, markerIndex) : text).trim();
+  const index = text.indexOf(KNOWLEDGE_MARKER);
+  return (index >= 0 ? text.slice(0, index) : text).trim();
 }
-
-function specValue(product: CatalogProduct, label: string) {
-  return product.especificacoes?.find((item) => item.label === label)?.value ?? "";
-}
-
-function aiEnabledFor(product: CatalogProduct) {
-  return specValue(product, "Uso pela IA") !== "Não";
-}
-
 function formatPrice(value?: string | null) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return "";
-  return number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return Number.isFinite(number) ? number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "";
 }
-
-function typeLabel(type: MediaAsset["type"]) {
-  if (type === "image") return "Imagem";
-  if (type === "video") return "Vídeo";
-  if (type === "audio") return "Áudio";
-  return "Documento";
-}
-
 function inferType(file: File): MediaAsset["type"] | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
@@ -128,35 +98,22 @@ function inferType(file: File): MediaAsset["type"] | null {
   if (file.type === "application/pdf" || file.type.startsWith("text/")) return "document";
   return null;
 }
-
+function typeLabel(type: MediaAsset["type"]) {
+  return type === "image" ? "Imagem" : type === "video" ? "Vídeo" : type === "audio" ? "Áudio" : "Documento";
+}
 function emptyForm(): ProductForm {
   return {
-    descricaoCompleta: "",
-    beneficios: "",
-    diferenciais: "",
-    aplicacoes: "",
-    publicoIndicado: "",
-    argumentosComerciais: "",
-    duvidasFrequentes: "",
-    objecoesRespostas: "",
-    garantia: "",
-    instalacao: "",
-    entrega: "",
-    observacoesIa: "",
-    tags: "",
-    aiEnabled: true,
+    descricaoCompleta: "", beneficios: "", diferenciais: "", aplicacoes: "", publicoIndicado: "",
+    argumentosComerciais: "", duvidasFrequentes: "", objecoesRespostas: "", garantia: "", instalacao: "",
+    entrega: "", observacoesIa: "", tags: "", aiEnabled: true,
   };
 }
-
 function formFromProduct(product: CatalogProduct): ProductForm {
   const form = emptyForm();
   form.descricaoCompleta = stripGeneratedKnowledge(product.descricaoLonga) || product.descricao || "";
   form.tags = (product.tags ?? []).join(", ");
   form.aiEnabled = aiEnabledFor(product);
-  for (const field of FIELD_SPECS) {
-    if (field.key === "aiEnabled" || field.key === "tags" || field.key === "descricaoCompleta") continue;
-    (form[field.key] as string) = specValue(product, field.label);
-  }
+  for (const field of FIELD_SPECS) form[field.key] = specValue(product, field.label);
   return form;
 }
 
@@ -176,30 +133,18 @@ export default function ProductCatalogKnowledgeLibrary() {
   const [form, setForm] = useState<ProductForm>(emptyForm);
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
-  const productAssets = useMemo(
-    () => selected ? assets.filter((asset) => asset.metadata?.productId === selected.id) : [],
-    [assets, selected],
-  );
-
+  const productAssets = useMemo(() => selected ? assets.filter((asset) => asset.metadata?.productId === selected.id) : [], [assets, selected]);
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
     if (!term) return products;
-    return products.filter((product) => [
-      product.nome,
-      product.sku ?? "",
-      product.marca ?? "",
-      product.categoriaNome ?? "",
-      product.descricao ?? "",
-      ...(product.tags ?? []),
-    ].join(" ").toLocaleLowerCase("pt-BR").includes(term));
+    return products.filter((product) => [product.nome, product.sku ?? "", product.marca ?? "", product.categoriaNome ?? "", product.descricao ?? "", ...(product.tags ?? [])]
+      .join(" ").toLocaleLowerCase("pt-BR").includes(term));
   }, [products, search]);
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      const button = target?.closest("button");
-      if (!button || !button.closest("#biblioteca-midias")) return;
-      if (!button.textContent?.includes("Produtos do catálogo")) return;
+      const button = (event.target as HTMLElement | null)?.closest("button");
+      if (!button?.closest("#biblioteca-midias") || !button.textContent?.includes("Produtos do catálogo")) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
@@ -220,20 +165,13 @@ export default function ProductCatalogKnowledgeLibrary() {
   }, [open]);
 
   useEffect(() => {
-    const applyCount = () => {
-      const container = document.getElementById("biblioteca-midias");
-      if (!container) return;
-      const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.includes("Produtos do catálogo"));
-      if (!button) return;
-      const numeric = Array.from(button.querySelectorAll("span")).find((span) => /^\d+$/.test(span.textContent?.trim() ?? ""));
-      if (numeric) numeric.textContent = String(products.length);
-    };
-    applyCount();
-    const observer = new MutationObserver(applyCount);
     const container = document.getElementById("biblioteca-midias");
-    if (container) observer.observe(container, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [products.length]);
+    if (!container) return;
+    const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.includes("Produtos do catálogo"));
+    const numeric = button ? Array.from(button.querySelectorAll("span")).find((span) => /^\d+$/.test(span.textContent?.trim() ?? "")) : null;
+    const next = String(products.length);
+    if (numeric && numeric.textContent?.trim() !== next) numeric.textContent = next;
+  }, [products.length, open]);
 
   const load = async () => {
     if (!tenantId) return;
@@ -252,18 +190,11 @@ export default function ProductCatalogKnowledgeLibrary() {
       if (selectedId && !nextProducts.some((item) => item.id === selectedId)) setSelectedId(null);
     } catch (error) {
       toast({ title: "Catálogo indisponível", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    if (open) void load();
-  }, [open, tenantId]);
-
-  useEffect(() => {
-    if (selected) setForm(formFromProduct(selected));
-  }, [selected?.id]);
+  useEffect(() => { if (tenantId) void load(); }, [tenantId]);
+  useEffect(() => { if (selected) setForm(formFromProduct(selected)); }, [selected?.id]);
 
   async function saveProduct() {
     if (!selected) return;
@@ -271,49 +202,29 @@ export default function ProductCatalogKnowledgeLibrary() {
     try {
       const preservedSpecs = (selected.especificacoes ?? []).filter((spec) => !KNOWN_SPEC_LABELS.has(spec.label));
       const knowledgeSpecs = FIELD_SPECS.flatMap((field) => {
-        if (field.key === "aiEnabled" || field.key === "tags" || field.key === "descricaoCompleta") return [];
-        const value = String(form[field.key] ?? "").trim();
+        const value = form[field.key].trim();
         return value ? [{ label: field.label, value }] : [];
       });
-      const especificacoes = [
-        ...preservedSpecs,
-        ...knowledgeSpecs,
-        { label: "Uso pela IA", value: form.aiEnabled ? "Sim" : "Não" },
-      ];
-
-      const knowledgeText = form.aiEnabled
-        ? knowledgeSpecs.map((spec) => `${spec.label}: ${spec.value}`).join("\n\n")
-        : "";
-      const descricaoLonga = [
-        form.descricaoCompleta.trim(),
-        knowledgeText ? `${KNOWLEDGE_MARKER}\n${knowledgeText}` : "",
-      ].filter(Boolean).join("\n\n");
-
+      const especificacoes = [...preservedSpecs, ...knowledgeSpecs, { label: "Uso pela IA", value: form.aiEnabled ? "Sim" : "Não" }];
+      const knowledgeText = form.aiEnabled ? knowledgeSpecs.map((spec) => `${spec.label}: ${spec.value}`).join("\n\n") : "";
+      const descricaoLonga = [form.descricaoCompleta.trim(), knowledgeText ? `${KNOWLEDGE_MARKER}\n${knowledgeText}` : ""].filter(Boolean).join("\n\n");
       const tags = form.tags.split(",").map((tag) => tag.trim()).filter(Boolean);
       const response = await fetch(`/api/produtos-catalogo/${selected.id}`, {
-        method: "PATCH",
-        headers: authHeaders(true),
-        body: JSON.stringify({ descricaoLonga, especificacoes, tags }),
+        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ descricaoLonga, especificacoes, tags }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Não foi possível salvar as informações do produto.");
 
       const linkedAssets = assets.filter((asset) => asset.metadata?.productId === selected.id);
       await Promise.all(linkedAssets.map((asset) => fetch(`/api/tenants/${tenantId}/media/assets/${asset.id}`, {
-        method: "PATCH",
-        headers: authHeaders(true),
-        body: JSON.stringify({ metadata: { aiUsage: form.aiEnabled ? "approved" : "manual" } }),
+        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ metadata: { aiUsage: form.aiEnabled ? "approved" : "manual" } }),
       }).catch(() => null)));
 
-      setProducts((current) => current.map((product) => product.id === selected.id
-        ? { ...product, ...body, categoriaNome: product.categoriaNome }
-        : product));
-      toast({ title: "Informações do produto salvas", description: form.aiEnabled ? "A Base IA deste produto foi atualizada." : "O produto foi salvo sem liberar o complemento para a IA." });
+      setProducts((current) => current.map((product) => product.id === selected.id ? { ...product, ...body, categoriaNome: product.categoriaNome } : product));
+      toast({ title: "Informações do produto salvas", description: form.aiEnabled ? "A Base IA deste produto foi atualizada." : "O complemento foi salvo sem liberação para a IA." });
     } catch (error) {
       toast({ title: "Não foi possível salvar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   async function uploadProductFiles(files: FileList | null) {
@@ -324,64 +235,37 @@ export default function ProductCatalogKnowledgeLibrary() {
       let nextCover = selected.imagemUrl ?? null;
       let nextVideo = selected.videoUrl ?? null;
       let sent = 0;
-
       for (const file of Array.from(files)) {
         const type = inferType(file);
         if (!type) continue;
         const request = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, {
-          method: "POST",
-          headers: authHeaders(true),
-          body: JSON.stringify({ name: file.name, contentType: file.type || "application/octet-stream", type, size: file.size }),
+          method: "POST", headers: authHeaders(true), body: JSON.stringify({ name: file.name, contentType: file.type || "application/octet-stream", type, size: file.size }),
         });
         const prepared = await request.json().catch(() => ({}));
         if (!request.ok) throw new Error(prepared.error || `Falha ao preparar ${file.name}`);
-
-        const put = await fetch(prepared.uploadURL, {
-          method: "PUT",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        });
+        const put = await fetch(prepared.uploadURL, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
         if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
-
         const register = await fetch(`/api/tenants/${tenantId}/media/assets`, {
-          method: "POST",
-          headers: authHeaders(true),
-          body: JSON.stringify({
-            type,
-            role: "reference",
-            source: "upload",
-            storageUrl: prepared.objectPath,
-            originalFilename: file.name,
-            mimeType: file.type || null,
-            fileSize: file.size,
+          method: "POST", headers: authHeaders(true), body: JSON.stringify({
+            type, role: "reference", source: "upload", storageUrl: prepared.objectPath, originalFilename: file.name, mimeType: file.type || null, fileSize: file.size,
             metadata: {
-              folderPath: "Produtos do catálogo",
-              productId: selected.id,
-              productName: selected.nome,
-              aiUsage: form.aiEnabled ? "approved" : "manual",
-              aiCollection: `Produto:${selected.id}`,
-              uploadedFrom: "product_catalog_knowledge_library",
-              uploadedAt: new Date().toISOString(),
+              folderPath: "Produtos do catálogo", productId: selected.id, productName: selected.nome,
+              aiUsage: form.aiEnabled ? "approved" : "manual", aiCollection: `Produto:${selected.id}`,
+              uploadedFrom: "product_catalog_knowledge_library", uploadedAt: new Date().toISOString(),
             },
           }),
         });
         const registered = await register.json().catch(() => ({}));
         if (!register.ok) throw new Error(registered.error || `Falha ao vincular ${file.name}`);
-
         const url = publicMediaUrl(prepared.objectPath);
-        if (type === "image") {
-          nextImages = [...new Set([...nextImages, url])];
-          if (!nextCover) nextCover = url;
-        }
+        if (type === "image") { nextImages = [...new Set([...nextImages, url])]; if (!nextCover) nextCover = url; }
         if (type === "video" && !nextVideo) nextVideo = url;
         sent += 1;
       }
-
-      await fetch(`/api/produtos-catalogo/${selected.id}`, {
-        method: "PATCH",
-        headers: authHeaders(true),
-        body: JSON.stringify({ imagemUrl: nextCover, imagens: nextImages, videoUrl: nextVideo }),
+      const patch = await fetch(`/api/produtos-catalogo/${selected.id}`, {
+        method: "PATCH", headers: authHeaders(true), body: JSON.stringify({ imagemUrl: nextCover, imagens: nextImages, videoUrl: nextVideo }),
       });
+      if (!patch.ok) throw new Error("Os arquivos foram enviados, mas não foi possível atualizar as mídias do produto.");
       await load();
       toast({ title: `${sent} arquivo(s) vinculado(s) ao produto` });
     } catch (error) {
@@ -396,85 +280,31 @@ export default function ProductCatalogKnowledgeLibrary() {
 
   return (
     <div data-product-knowledge-root="true" className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-6 lg:px-8">
-      <input
-        ref={uploadInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        accept="image/*,video/*,audio/*,.pdf,.txt"
-        onChange={(event) => void uploadProductFiles(event.target.files)}
-      />
-
+      <input ref={uploadInputRef} type="file" multiple className="hidden" accept="image/*,video/*,audio/*,.pdf,.txt" onChange={(event) => void uploadProductFiles(event.target.files)} />
       <header className="mb-5 rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <button type="button" onClick={() => { setSelectedId(null); setOpen(false); }} className="mt-0.5 rounded-xl border bg-background p-2.5 hover:bg-muted" title="Voltar à Biblioteca">
-              <ArrowLeft className="h-4 w-4" />
-            </button>
+            <button type="button" onClick={() => { setSelectedId(null); setOpen(false); }} className="mt-0.5 rounded-xl border bg-background p-2.5 hover:bg-muted" title="Voltar à Biblioteca"><ArrowLeft className="h-4 w-4" /></button>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Produtos do catálogo</h1>
-                <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">{products.length} produtos</span>
-              </div>
-              <p className="mt-1 max-w-4xl text-sm leading-relaxed text-muted-foreground">
-                O catálogo é a fonte oficial. Aqui você complementa cada produto com informações, argumentos, dúvidas, documentos, fotos e vídeos sem duplicar o cadastro.
-              </p>
+              <div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Produtos do catálogo</h1><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">{products.length} produtos</span></div>
+              <p className="mt-1 max-w-4xl text-sm leading-relaxed text-muted-foreground">O catálogo é a fonte oficial. Aqui você complementa cada produto com informações, argumentos, dúvidas, documentos, fotos e vídeos sem duplicar o cadastro.</p>
             </div>
           </div>
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-            <div className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4" /> Base por produto</div>
-            <p className="mt-1">O conteúdo salvo fica vinculado ao ID real do produto para reutilização pela IA.</p>
-          </div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800"><div className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4" /> Base por produto</div><p className="mt-1">O conteúdo salvo fica vinculado ao ID real do produto para reutilização pela IA.</p></div>
         </div>
       </header>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_430px]">
         <main className="min-w-0">
-          <label className="relative mb-4 block">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar produto, SKU, marca, categoria ou descrição"
-              className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300"
-            />
-          </label>
-
-          {loading ? (
-            <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-500" /></div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="rounded-3xl border border-dashed p-10 text-center">
-              <Box className="mx-auto h-10 w-10 text-muted-foreground" />
-              <p className="mt-3 font-semibold">Nenhum produto encontrado</p>
-              <p className="mt-1 text-sm text-muted-foreground">Cadastre o produto no Catálogo principal; ele aparecerá aqui automaticamente.</p>
-            </div>
+          <label className="relative mb-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto, SKU, marca, categoria ou descrição" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" /></label>
+          {loading ? <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-500" /></div> : filteredProducts.length === 0 ? (
+            <div className="rounded-3xl border border-dashed p-10 text-center"><Box className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhum produto encontrado</p><p className="mt-1 text-sm text-muted-foreground">Cadastre o produto no Catálogo principal; ele aparecerá aqui automaticamente.</p></div>
           ) : (
             <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredProducts.map((product) => (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => setSelectedId(product.id)}
-                  className={`overflow-hidden rounded-2xl border bg-card text-left transition hover:-translate-y-0.5 hover:shadow-md ${selectedId === product.id ? "border-orange-400 ring-2 ring-orange-100" : ""}`}
-                >
-                  <div className="aspect-[4/3] overflow-hidden bg-muted">
-                    {product.imagemUrl ? (
-                      <img src={product.imagemUrl} alt={product.nome} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center"><Box className="h-10 w-10 text-muted-foreground/50" /></div>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="line-clamp-2 text-sm font-semibold">{product.nome}</p>
-                      <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${product.ativo ? "bg-emerald-500" : "bg-slate-300"}`} title={product.ativo ? "Ativo" : "Inativo"} />
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{product.categoriaNome || "Sem categoria"}{product.sku ? ` · SKU ${product.sku}` : ""}</p>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold">{formatPrice(product.precoBase)}</span>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${aiEnabledFor(product) ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{aiEnabledFor(product) ? "IA liberada" : "IA restrita"}</span>
-                    </div>
-                  </div>
+                <button key={product.id} type="button" onClick={() => setSelectedId(product.id)} className={`overflow-hidden rounded-2xl border bg-card text-left transition hover:-translate-y-0.5 hover:shadow-md ${selectedId === product.id ? "border-orange-400 ring-2 ring-orange-100" : ""}`}>
+                  <div className="aspect-[4/3] overflow-hidden bg-muted">{product.imagemUrl ? <img src={mediaUrl(product.imagemUrl)} alt={product.nome} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Box className="h-10 w-10 text-muted-foreground/50" /></div>}</div>
+                  <div className="p-3"><div className="flex items-start justify-between gap-2"><p className="line-clamp-2 text-sm font-semibold">{product.nome}</p><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${product.ativo ? "bg-emerald-500" : "bg-slate-300"}`} /></div><p className="mt-1 truncate text-xs text-muted-foreground">{product.categoriaNome || "Sem categoria"}{product.sku ? ` · SKU ${product.sku}` : ""}</p><div className="mt-3 flex items-center justify-between gap-2"><span className="text-xs font-semibold">{formatPrice(product.precoBase)}</span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${aiEnabledFor(product) ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{aiEnabledFor(product) ? "IA liberada" : "IA restrita"}</span></div></div>
                 </button>
               ))}
             </section>
@@ -484,108 +314,26 @@ export default function ProductCatalogKnowledgeLibrary() {
 
         <aside className="h-fit overflow-hidden rounded-3xl border bg-card shadow-sm xl:sticky xl:top-4">
           {!selected ? (
-            <div className="p-8 text-center">
-              <Sparkles className="mx-auto h-9 w-9 text-orange-500" />
-              <h2 className="mt-3 font-semibold">Selecione um produto</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Abra um produto para complementar as informações que a IA poderá usar em atendimento, Praça.ai e geração de conteúdo.</p>
-            </div>
+            <div className="p-8 text-center"><Sparkles className="mx-auto h-9 w-9 text-orange-500" /><h2 className="mt-3 font-semibold">Selecione um produto</h2><p className="mt-1 text-sm text-muted-foreground">Abra um produto para complementar as informações que a IA poderá usar em atendimento, Praça.ai e geração de conteúdo.</p></div>
           ) : (
             <>
               <div className="flex items-start gap-3 border-b p-4">
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-muted">
-                  {selected.imagemUrl ? <img src={selected.imagemUrl} alt={selected.nome} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Box className="h-6 w-6 text-muted-foreground" /></div>}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="line-clamp-2 font-semibold">{selected.nome}</h2>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{selected.categoriaNome || "Sem categoria"}{selected.sku ? ` · ${selected.sku}` : ""}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="rounded-full bg-muted px-2 py-1 text-[10px]">{selected.ativo ? "Ativo" : "Inativo"}</span>
-                    <span className="rounded-full bg-muted px-2 py-1 text-[10px]">{selected.vendeNoPracaAi === false ? "Fora do Praça.ai" : "Praça.ai disponível"}</span>
-                  </div>
-                </div>
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-muted">{selected.imagemUrl ? <img src={mediaUrl(selected.imagemUrl)} alt={selected.nome} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Box className="h-6 w-6 text-muted-foreground" /></div>}</div>
+                <div className="min-w-0 flex-1"><h2 className="line-clamp-2 font-semibold">{selected.nome}</h2><p className="mt-1 truncate text-xs text-muted-foreground">{selected.categoriaNome || "Sem categoria"}{selected.sku ? ` · ${selected.sku}` : ""}</p><div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full bg-muted px-2 py-1 text-[10px]">{selected.ativo ? "Ativo" : "Inativo"}</span><span className="rounded-full bg-muted px-2 py-1 text-[10px]">{selected.vendeNoPracaAi === false ? "Fora do Praça.ai" : "Praça.ai disponível"}</span></div></div>
                 <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
               </div>
-
               <div className="max-h-[calc(100vh-190px)] space-y-5 overflow-y-auto p-4">
-                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3">
-                  <label className="flex cursor-pointer items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-orange-900">Disponível para IA</p>
-                      <p className="mt-1 text-xs leading-relaxed text-orange-800/80">Libera o complemento deste produto para uso automatizado. Informações operacionais sensíveis devem ficar fora dos campos abaixo.</p>
-                    </div>
-                    <input type="checkbox" checked={form.aiEnabled} onChange={(event) => setForm((current) => ({ ...current, aiEnabled: event.target.checked }))} className="mt-1 h-4 w-4 accent-orange-500" />
-                  </label>
-                </div>
-
-                <label className="block text-xs font-medium text-muted-foreground">
-                  Descrição completa
-                  <textarea
-                    value={form.descricaoCompleta}
-                    onChange={(event) => setForm((current) => ({ ...current, descricaoCompleta: event.target.value }))}
-                    rows={5}
-                    placeholder="Descrição oficial e completa do produto."
-                    className="mt-1 w-full resize-y rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300"
-                  />
-                </label>
-
-                <div className="grid gap-4">
-                  {FIELD_SPECS.map((field) => (
-                    <label key={field.label} className="block text-xs font-medium text-muted-foreground">
-                      {field.label}
-                      <textarea
-                        value={String(form[field.key] ?? "")}
-                        onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))}
-                        rows={field.rows ?? 3}
-                        placeholder={field.placeholder}
-                        className="mt-1 w-full resize-y rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300"
-                      />
-                    </label>
-                  ))}
-                </div>
-
-                <label className="block text-xs font-medium text-muted-foreground">
-                  Tags
-                  <input
-                    value={form.tags}
-                    onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
-                    placeholder="ex.: piscina, acabamento, área externa"
-                    className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"
-                  />
-                </label>
+                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3"><label className="flex cursor-pointer items-start justify-between gap-3"><div><p className="text-sm font-semibold text-orange-900">Disponível para IA</p><p className="mt-1 text-xs leading-relaxed text-orange-800/80">Libera o complemento deste produto para uso automatizado. Informações operacionais sensíveis devem ficar fora dos campos abaixo.</p></div><input type="checkbox" checked={form.aiEnabled} onChange={(event) => setForm((current) => ({ ...current, aiEnabled: event.target.checked }))} className="mt-1 h-4 w-4 accent-orange-500" /></label></div>
+                <label className="block text-xs font-medium text-muted-foreground">Descrição completa<textarea value={form.descricaoCompleta} onChange={(event) => setForm((current) => ({ ...current, descricaoCompleta: event.target.value }))} rows={5} placeholder="Descrição oficial e completa do produto." className="mt-1 w-full resize-y rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300" /></label>
+                <div className="grid gap-4">{FIELD_SPECS.map((field) => <label key={field.label} className="block text-xs font-medium text-muted-foreground">{field.label}<textarea value={form[field.key]} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} rows={field.rows ?? 3} placeholder={field.placeholder} className="mt-1 w-full resize-y rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300" /></label>)}</div>
+                <label className="block text-xs font-medium text-muted-foreground">Tags<input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} placeholder="ex.: piscina, acabamento, área externa" className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" /></label>
 
                 <section className="border-t pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">Arquivos anexados ao produto</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">Fotos, vídeos, PDFs, fichas técnicas e referências ficam vinculados ao ID deste produto.</p>
-                    </div>
-                    <button type="button" disabled={uploading} onClick={() => uploadInputRef.current?.click()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border bg-background px-3 text-xs font-semibold hover:bg-muted disabled:opacity-60">
-                      {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Anexar
-                    </button>
-                  </div>
-
-                  {productAssets.length === 0 ? (
-                    <div className="mt-3 rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground"><Paperclip className="mx-auto mb-2 h-5 w-5" />Nenhum arquivo complementar anexado.</div>
-                  ) : (
-                    <div className="mt-3 space-y-2">
-                      {productAssets.map((asset) => (
-                        <a key={asset.id} href={mediaUrl(asset.storageUrl)} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border p-2.5 hover:bg-muted/50">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                            {asset.type === "image" ? <ImageIcon className="h-4 w-4" /> : asset.type === "video" ? <Video className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                          </div>
-                          <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{asset.originalFilename || "Arquivo do produto"}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{typeLabel(asset.type)} · {asset.metadata?.aiUsage === "approved" ? "liberado para IA" : "uso manual"}</p></div>
-                        </a>
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Arquivos anexados ao produto</p><p className="mt-0.5 text-xs text-muted-foreground">Fotos, vídeos, PDFs, fichas técnicas e referências ficam vinculados ao ID deste produto.</p></div><button type="button" disabled={uploading} onClick={() => uploadInputRef.current?.click()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border bg-background px-3 text-xs font-semibold hover:bg-muted disabled:opacity-60">{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Anexar</button></div>
+                  {productAssets.length === 0 ? <div className="mt-3 rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground"><Paperclip className="mx-auto mb-2 h-5 w-5" />Nenhum arquivo complementar anexado.</div> : <div className="mt-3 space-y-2">{productAssets.map((asset) => <a key={asset.id} href={mediaUrl(asset.storageUrl)} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border p-2.5 hover:bg-muted/50"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">{asset.type === "image" ? <ImageIcon className="h-4 w-4" /> : asset.type === "video" ? <Video className="h-4 w-4" /> : <FileText className="h-4 w-4" />}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{asset.originalFilename || "Arquivo do produto"}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{typeLabel(asset.type)} · {asset.metadata?.aiUsage === "approved" ? "liberado para IA" : "uso manual"}</p></div></a>)}</div>}
                 </section>
 
-                <div className="sticky bottom-0 -mx-4 border-t bg-card/95 px-4 pb-1 pt-3 backdrop-blur">
-                  <button type="button" onClick={() => void saveProduct()} disabled={saving} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-60">
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Salvar informações do produto
-                  </button>
-                  <p className="mt-2 text-center text-[10px] text-muted-foreground">Salva no produto oficial; não cria uma cópia na Biblioteca.</p>
-                </div>
+                <div className="sticky bottom-0 -mx-4 border-t bg-card/95 px-4 pb-1 pt-3 backdrop-blur"><button type="button" onClick={() => void saveProduct()} disabled={saving} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-60">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Salvar informações do produto</button><p className="mt-2 text-center text-[10px] text-muted-foreground">Salva no produto oficial; não cria uma cópia na Biblioteca.</p></div>
               </div>
             </>
           )}
