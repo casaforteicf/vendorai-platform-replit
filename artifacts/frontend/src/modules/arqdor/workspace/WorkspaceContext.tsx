@@ -39,6 +39,8 @@ export interface WorkspaceContextValue {
   setProjectCtx:  (ctx: ProjectContext) => void
   saving:         boolean
   loadError:      string | null
+  saveError:      string | null
+  lastSavedAt:    Date | null
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
@@ -49,7 +51,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveRequestRef = useRef(0)
   const initialLoadDone = useRef(false)
 
   // ── Load on mount ───────────────────────────────────────────────────────────
@@ -64,6 +69,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!storedId) return  // Nenhum projeto salvo — exibe tela de boas-vindas
 
     setIsInitializing(true)
+    setLoadError(null)
     fetch(`${BASE}/arqdor/projects/${storedId}`, { headers: authHeaders() })
       .then(async res => {
         if (res.status === 404) {
@@ -80,12 +86,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         try {
           ctx = await res.json() as ProjectContext
         } catch {
-          // Non-JSON response (e.g. proxy HTML error page) — ignore silently
+          setLoadError('O projeto retornou dados inválidos. Tente recarregar.')
           return
         }
         if (ctx && typeof ctx === 'object' && ctx.id) {
           setProjectCtxState(ctx)
           setIsRealProject(true)
+          setLoadError(null)
           localStorage.setItem(STORAGE_KEY, ctx.id)
         }
       })
@@ -100,24 +107,47 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // ── Debounced save ──────────────────────────────────────────────────────────
   const persistCtx = useCallback((ctx: ProjectContext) => {
     const tok = getToken()
-    if (!tok) return
+    if (!tok || !ctx.id) return
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    const requestId = ++saveRequestRef.current
+
     saveTimerRef.current = setTimeout(async () => {
       setSaving(true)
+      setSaveError(null)
       try {
-        await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
+        const res = await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify(ctx),
         })
+
+        if (!res.ok) {
+          throw new Error(`Workspace save failed with status ${res.status}`)
+        }
+
+        // Ignore completion from an older request if a newer edit was queued.
+        if (requestId !== saveRequestRef.current) return
+
         localStorage.setItem(STORAGE_KEY, ctx.id)
+        setLastSavedAt(new Date())
+        setSaveError(null)
       } catch {
-        // silently ignore network errors — we'll retry on next change
+        if (requestId === saveRequestRef.current) {
+          setSaveError('Não foi possível salvar as últimas alterações. Verifique a conexão e tente novamente.')
+        }
       } finally {
-        setSaving(false)
+        if (requestId === saveRequestRef.current) {
+          setSaving(false)
+        }
       }
     }, SAVE_DEBOUNCE_MS)
+  }, [])
+
+  // Clear a pending timer when the provider unmounts so an obsolete project is
+  // never persisted after the user has already left the workspace.
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
   }, [])
 
   // ── Setter exposed to modules ───────────────────────────────────────────────
@@ -132,12 +162,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       persistCtx(merged)
       return merged
     })
-    setIsRealProject(true)
+    if (incoming.id) setIsRealProject(true)
   }, [persistCtx])
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError }),
-    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError],
+    () => ({
+      projectCtx,
+      isRealProject,
+      isInitializing,
+      setProjectCtx,
+      saving,
+      loadError,
+      saveError,
+      lastSavedAt,
+    }),
+    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError, lastSavedAt],
   )
 
   return (
