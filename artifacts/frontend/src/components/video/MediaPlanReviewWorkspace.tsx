@@ -68,6 +68,18 @@ type StoredDesign = {
   };
 };
 
+type MediaProject = {
+  id: string;
+  context?: Record<string, unknown> | null;
+};
+
+type MediaJob = {
+  id: string;
+  status?: string;
+  error?: string | null;
+  output?: { videoUrl?: string; videoAssetId?: string } | null;
+};
+
 type CalendarItem = {
   id: string;
   mediaPlanId?: string | null;
@@ -131,6 +143,9 @@ export default function MediaPlanReviewWorkspace() {
   const [brandColor, setBrandColor] = useState("#F97316");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [generatedMedia, setGeneratedMedia] = useState<ReferenceMedia | null>(null);
+  const [productionState, setProductionState] = useState<"idle" | "processing" | "ready" | "failed">("idle");
+  const [productionDetail, setProductionDetail] = useState("");
 
   useEffect(() => {
     try {
@@ -158,8 +173,60 @@ export default function MediaPlanReviewWorkspace() {
       .catch(() => setCalendar([]));
   }, [execution?.tenantId, execution?.mediaPlanId]);
 
+  useEffect(() => {
+    if (!execution?.tenantId || !execution.calendarItem?.id) return;
+    let active = true;
+    const loadGeneratedMedia = async () => {
+      try {
+        const projectsResponse = await fetch(`/api/tenants/${execution.tenantId}/media/projects?limit=200`, { headers: authHeaders(), cache: "no-store" });
+        const projectsBody = await projectsResponse.json().catch(() => ({})) as { projects?: MediaProject[] };
+        const project = (projectsBody.projects ?? []).find((entry) => String(entry.context?.calendarItemId ?? "") === execution.calendarItem?.id);
+        if (!active || !project) {
+          if (active) setProductionState("idle");
+          return;
+        }
+        const context = project.context ?? {};
+        const outputUrl = typeof context.executorOutputUrl === "string" ? context.executorOutputUrl : "";
+        const projectId = typeof context.executorProjectId === "string" ? context.executorProjectId : "";
+        const jobId = typeof context.executorJobId === "string" ? context.executorJobId : "";
+        const materialStatus = String(context.materializationStatus ?? "");
+        if (outputUrl) {
+          setGeneratedMedia({ assetId: String(context.executorOutputAssetId ?? jobId ?? project.id), type: "video", storageUrl: outputUrl, originalFilename: "Vídeo gerado pela IA" });
+          setProductionState("ready");
+          setProductionDetail("Vídeo gerado e pronto para revisão");
+          return;
+        }
+        if (projectId && jobId) {
+          const detailResponse = await fetch(`/api/tenants/${execution.tenantId}/media/projects/${projectId}`, { headers: authHeaders(), cache: "no-store" });
+          const detail = await detailResponse.json().catch(() => ({})) as { jobs?: MediaJob[] };
+          const job = (detail.jobs ?? []).find((entry) => entry.id === jobId);
+          const jobUrl = job?.output?.videoUrl ?? "";
+          if (job?.status === "done" && jobUrl) {
+            setGeneratedMedia({ assetId: job.output?.videoAssetId ?? job.id, type: "video", storageUrl: jobUrl, originalFilename: "Vídeo gerado pela IA" });
+            setProductionState("ready");
+            setProductionDetail("Vídeo gerado e pronto para revisão");
+          } else if (job?.status === "error" || materialStatus === "failed") {
+            setProductionState("failed");
+            setProductionDetail(job?.error ?? String(context.executorDetail ?? "A geração da mídia falhou."));
+          } else {
+            setProductionState("processing");
+            setProductionDetail("A IA está criando as cenas e montando o vídeo.");
+          }
+          return;
+        }
+        setProductionState(materialStatus === "failed" ? "failed" : materialStatus === "processing" ? "processing" : "idle");
+        setProductionDetail(String(context.executorDetail ?? ""));
+      } catch {
+        if (active) setProductionDetail("Não foi possível consultar a produção agora.");
+      }
+    };
+    void loadGeneratedMedia();
+    const timer = window.setInterval(() => void loadGeneratedMedia(), 4000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [execution?.tenantId, execution?.calendarItem?.id]);
+
   const currentItem = useMemo(() => calendar.find((item) => item.id === execution?.calendarItem?.id), [calendar, execution?.calendarItem?.id]);
-  const media = execution?.referenceMedia ?? [];
+  const media = generatedMedia ? [generatedMedia, ...(execution?.referenceMedia ?? [])] : (execution?.referenceMedia ?? []);
   const mainMedia = media[0];
   const previewUrl = mediaUrl(mainMedia?.storageUrl);
   const score = storedDesign?.plan?.overallScore ?? scoreFor(headline, supportingText, cta, Boolean(previewUrl));
@@ -202,6 +269,10 @@ export default function MediaPlanReviewWorkspace() {
 
   const approve = async () => {
     if (!execution?.calendarItem?.id) return;
+    if (!previewUrl) {
+      toast({ title: "Mídia ainda não está pronta", description: productionState === "processing" ? "A IA ainda está montando o material. Aguarde a conclusão." : "Gere a mídia com IA ou selecione uma mídia própria antes de aprovar.", variant: "destructive" });
+      return;
+    }
     setApproving(true);
     try {
       if (currentItem?.status === "gerado" && currentItem.contentGenerationId) {
@@ -235,7 +306,7 @@ export default function MediaPlanReviewWorkspace() {
   ];
   const suggestions = [
     headline.length > 70 ? "Encurtar a headline para leitura mais rápida" : null,
-    !previewUrl ? "Adicionar mídia principal antes da aprovação final" : null,
+    !previewUrl ? productionState === "processing" ? "Aguardar a IA concluir a mídia principal" : "Gerar a mídia principal com IA antes da aprovação" : null,
     supportingText.length > 140 ? "Reduzir o texto de apoio" : null,
   ].filter(Boolean) as string[];
 
@@ -299,11 +370,17 @@ export default function MediaPlanReviewWorkspace() {
               <div className="flex items-center justify-between"><p className="text-sm font-semibold">Mídia utilizada</p><span className="text-xs text-muted-foreground">{media.length} item(ns)</span></div>
               <div className="mt-3 flex gap-2 overflow-x-auto">
                 {media.slice(0, 4).map((item) => <div key={item.assetId} className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border bg-muted">{item.type === "video" ? <video src={mediaUrl(item.storageUrl)} muted className="h-full w-full object-cover" /> : <img src={mediaUrl(item.storageUrl)} alt="" className="h-full w-full object-cover" />}</div>)}
-                <button type="button" onClick={openAdvanced} className="flex h-20 w-24 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground"><Plus className="mb-1 h-5 w-5" />Adicionar mídia</button>
+                {productionState === "processing" ? (
+                  <div className="flex h-20 min-w-48 shrink-0 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-medium text-indigo-800"><Loader2 className="h-4 w-4 animate-spin" />IA criando cenas e montando vídeo</div>
+                ) : !previewUrl ? (
+                  <button type="button" onClick={() => navigate(`/content?tab=campanhas&source=media-plan&mediaPlanId=${execution.mediaPlanId ?? ""}`)} className="flex h-20 min-w-40 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-orange-300 bg-orange-50 text-xs font-semibold text-orange-800"><Sparkles className="mb-1 h-5 w-5" />{productionState === "failed" ? "Tentar gerar novamente" : "Gerar mídia com IA"}</button>
+                ) : null}
+                <button type="button" onClick={openAdvanced} className="flex h-20 min-w-32 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground"><Plus className="mb-1 h-5 w-5" />Usar mídia própria</button>
               </div>
+              {productionDetail ? <p className={`mt-2 text-xs ${productionState === "failed" ? "text-red-700" : "text-muted-foreground"}`}>{productionDetail}</p> : null}
             </div>
 
-            <Button className="mt-4 h-12 w-full rounded-xl bg-orange-500 text-base hover:bg-orange-600" onClick={() => void approve()} disabled={approving}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Aprovar material</Button>
+            <Button className="mt-4 h-12 w-full rounded-xl bg-orange-500 text-base hover:bg-orange-600" onClick={() => void approve()} disabled={approving || !previewUrl}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
             <div className="mt-2 grid grid-cols-3 gap-2">
               <Button variant="outline" className="h-11" onClick={() => quickEditRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><Pencil className="mr-1.5 h-4 w-4" />Editar texto</Button>
               <Button variant="outline" className="h-11" onClick={openAdvanced}><ImageIcon className="mr-1.5 h-4 w-4" />Trocar mídia</Button>
