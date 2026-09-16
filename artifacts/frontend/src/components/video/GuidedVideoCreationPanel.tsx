@@ -357,6 +357,8 @@ export default function GuidedVideoCreationPanel() {
   const uniqueMedia = new Set(scenes.filter((scene) => scene.assetId).map((scene) => scene.assetId)).size;
   const projectTitle = product.trim() || objective.trim() || "Novo vídeo";
   const generatedVisualCount = scenes.filter((scene) => selectedAssetFor(scene, visualAssets)?.source === "generated").length;
+  const manualAudioSelectionCount = [voiceoverAssetId, musicAssetId, effectAssetId, jingleAssetId].filter(Boolean).length;
+  const automaticAudioMode = manualAudioSelectionCount === 0;
 
   const loadAssets = useCallback(async () => {
     if (!tenantId) return;
@@ -840,12 +842,14 @@ export default function GuidedVideoCreationPanel() {
       },
       {
         id: "audio",
-        label: "Áudio",
-        detail: voiceoverAssetId || musicAssetId ? "Há áudio selecionado para a produção." : "Sem áudio selecionado. O vídeo pode usar áudio original ou ser finalizado depois no editor.",
-        status: voiceoverAssetId || musicAssetId ? "pass" : "warn",
+        label: "Direção de áudio",
+        detail: automaticAudioMode
+          ? "Áudio automático ativo. A VendorAI escolhe apenas trilhas, efeitos e assinaturas liberados na Biblioteca e faz a masterização; locução só entra quando você selecionar uma."
+          : `${manualAudioSelectionCount} ajuste${manualAudioSelectionCount === 1 ? "" : "s"} manual${manualAudioSelectionCount === 1 ? "" : "is"}. O restante continua automático e os direitos são validados antes da masterização.`,
+        status: "pass",
       },
     ];
-  }, [objective, product, audience, scriptApproved, scenes.length, mediaCoverage, sceneMatches, uniqueMedia, intentId, offer, voiceoverAssetId, musicAssetId]);
+  }, [objective, product, audience, scriptApproved, scenes.length, mediaCoverage, sceneMatches, uniqueMedia, intentId, offer, automaticAudioMode, manualAudioSelectionCount]);
 
   const readyToRender = qualityChecks.every((check) => check.status !== "fail");
 
@@ -1141,10 +1145,21 @@ export default function GuidedVideoCreationPanel() {
       {step === 4 && (
         <section className="space-y-4">
           <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">4 · Produção</p><h3 className="mt-1 text-lg font-semibold text-foreground">Como o vídeo será montado</h3><p className="mt-1 text-sm text-muted-foreground">A configuração técnica já está definida pelo canal. Áudio é opcional e pode ser ajustado antes de gerar.</p></div>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">4 · Produção</p><h3 className="mt-1 text-lg font-semibold text-foreground">Como o vídeo será montado</h3><p className="mt-1 text-sm text-muted-foreground">A configuração técnica já está definida pelo canal. O áudio também é dirigido automaticamente; só altere se quiser escolher algo específico.</p></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-4"><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Canal</p><p className="mt-1 text-sm font-semibold text-foreground">{channel}</p></div><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Formato</p><p className="mt-1 text-sm font-semibold text-foreground">{aspect === "portrait" ? "Vertical" : "Horizontal"}</p></div><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Duração</p><p className="mt-1 text-sm font-semibold text-foreground">{duration}s</p></div><div className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">Próxima versão</p><p className="mt-1 text-sm font-semibold text-foreground">V{nextVersionNumber}</p></div></div>
             <div className="mt-3 rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">Uso previsto agora: 1 render · {scenes.length} cenas · {duration}s. {generatedVisualCount > 0 ? `${generatedVisualCount} visual(is) foram gerados antes e já estão salvos na Biblioteca.` : "Nenhuma imagem nova será gerada durante o render porque todas as cenas já têm mídia aprovada."}</div>
-            <button type="button" onClick={() => setShowAudio((value) => !value)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">{showAudio ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}Configurar voz, música e efeitos</button>
+            <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Sparkles className="h-4 w-4" /></div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-foreground">Áudio automático</p><span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">{automaticAudioMode ? "Ativo" : `${manualAudioSelectionCount} ajuste${manualAudioSelectionCount === 1 ? "" : "s"} manual${manualAudioSelectionCount === 1 ? "" : "is"}`}</span></div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{automaticAudioMode ? "A VendorAI procura trilha, efeitos e assinatura sonora liberados, faz ducking e masterização. Locução só entra quando você escolher uma." : "Suas escolhas manuais serão respeitadas; o restante continua automático e passa pela validação de direitos."}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setShowAudio((value) => !value)} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">{showAudio ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}{showAudio ? "Fechar opções de áudio" : "Alterar áudio"}</button>
+              </div>
+            </div>
           </div>
 
           {showAudio && <ProfessionalAudioLibrary assets={audioAssets} musicAssetId={musicAssetId} effectAssetId={effectAssetId} jingleAssetId={jingleAssetId} voiceoverAssetId={voiceoverAssetId} onMusicChange={setMusicAssetId} onEffectChange={setEffectAssetId} onJingleChange={setJingleAssetId} onVoiceoverChange={setVoiceoverAssetId} />}
@@ -1172,7 +1187,7 @@ export default function GuidedVideoCreationPanel() {
         </section>
       )}
 
-      <div className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p><span className="font-semibold text-foreground">Como a qualidade é protegida:</span> a IA usa fatos do briefing, prioriza a Biblioteca, compara a mídia com o conteúdo de cada cena, gera somente o visual que estiver faltando, exige conferência do material gerado e mantém as versões V1/V2/V3 agrupadas.</p></div></div>
+      <div className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p><span className="font-semibold text-foreground">Como a qualidade é protegida:</span> a IA usa fatos do briefing, prioriza a Biblioteca, compara a mídia com o conteúdo de cada cena, gera somente o visual que estiver faltando, valida os direitos das fontes de áudio, masteriza automaticamente e mantém as versões V1/V2/V3 agrupadas.</p></div></div>
     </section>
   );
 }

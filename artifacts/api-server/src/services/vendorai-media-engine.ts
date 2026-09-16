@@ -7,6 +7,7 @@ import { startVendorAiMediaBatch, type MediaBatchItem } from "./vendorai-media-b
 import { startVendorAiAiImageTool } from "./vendorai-ai-image-tools.js";
 import { generateVendorAiMusic } from "./vendorai-music-engine.js";
 import { generateVendorAiLipSync } from "./vendorai-lipsync-engine.js";
+import { prepareGuidedVideoAudio } from "./guided-video-audio-director.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -216,7 +217,10 @@ export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
 }) {
   const initialContext = input.context ?? {};
-  const context = await prepareProfessionalMediaPlanVideo({ tenantId: input.tenantId, operation: input.operation, context: initialContext });
+  const professionalContext = await prepareProfessionalMediaPlanVideo({ tenantId: input.tenantId, operation: input.operation, context: initialContext });
+  const context = input.operation === "video_generate"
+    ? await prepareGuidedVideoAudio({ tenantId: input.tenantId, userId: input.userId ?? null, title: input.title, context: professionalContext })
+    : professionalContext;
 
   if (input.operation === "photo_video") {
     const rawFormat = String(context["format"] ?? "16:9");
