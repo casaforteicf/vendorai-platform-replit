@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { syncSpecObjectToBudget } from "../lib/arqdor-spec-budget-sync.js";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 type SpecObjectStatus =
   | "draft"
   | "identified"
@@ -38,7 +38,6 @@ interface SpecObjectPayload {
   status?: SpecObjectStatus;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function totalValue(payload: Partial<SpecObjectPayload>) {
   const quantity = Number(payload.quantity ?? 1);
   const material = Number(payload.materialValue ?? 0);
@@ -50,7 +49,6 @@ function tenantId(req: any): string | null {
   return req?.user?.tenantId ?? req?.tenantId ?? null;
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
 async function listSpecObjects(params: {
   tenantId?: string | null;
   projectId: string;
@@ -130,6 +128,16 @@ async function updateSpecObject(
   tId: string | null,
   payload: Partial<SpecObjectPayload>,
 ) {
+  const currentValues: unknown[] = [id];
+  let currentWhere = `id = $1`;
+  if (tId) {
+    currentValues.push(tId);
+    currentWhere += ` AND tenant_id = $2`;
+  }
+  const currentResult = await pool.query(`SELECT * FROM arch_spec_objects WHERE ${currentWhere} LIMIT 1`, currentValues);
+  const current = currentResult.rows[0];
+  if (!current) return null;
+
   const allowed: Record<string, string> = {
     name: "name",
     description: "description",
@@ -160,9 +168,14 @@ async function updateSpecObject(
     sets.push(`${column} = $${values.length}`);
   }
 
-  if (sets.length === 0) return null;
+  if (sets.length === 0) return current;
 
-  values.push(totalValue(payload));
+  const mergedTotals = totalValue({
+    quantity: payload.quantity ?? Number(current.quantity ?? 1),
+    materialValue: payload.materialValue ?? Number(current.material_value ?? 0),
+    laborValue: payload.laborValue ?? Number(current.labor_value ?? 0),
+  });
+  values.push(mergedTotals);
   sets.push(`total_value = $${values.length}`);
   values.push(new Date());
   sets.push(`updated_at = $${values.length}`);
@@ -216,7 +229,6 @@ async function createSpecObjectsFromRender(
   return rows;
 }
 
-// ─── Router ───────────────────────────────────────────────────────────────────
 const archSpecObjectsRouter = Router();
 
 archSpecObjectsRouter.get("/arch/spec-objects", async (req, res, next) => {
@@ -262,16 +274,20 @@ archSpecObjectsRouter.post("/arch/spec-objects/bulk-from-render", async (req, re
 
 archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => {
   try {
+    const tId = tenantId(req);
     const item = await updateSpecObject(
       req.params["id"]!,
-      tenantId(req),
+      tId,
       req.body as Partial<SpecObjectPayload>,
     );
     if (!item) {
       res.status(404).json({ error: "SpecObject não encontrado" });
       return;
     }
-    res.json({ item });
+    const budgetSync = item.status === "sent-to-budget"
+      ? await syncSpecObjectToBudget({ tenantId: tId, specObjectId: item.id })
+      : null;
+    res.json({ item, budgetSync });
   } catch (err) {
     logger.error({ err }, "arch/spec-objects PATCH error");
     next(err);
@@ -280,10 +296,20 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
 
 archSpecObjectsRouter.post("/arch/spec-objects/:id/send-to-budget", async (req, res, next) => {
   try {
-    const item = await updateSpecObject(req.params["id"]!, tenantId(req), {
+    const tId = tenantId(req);
+    const item = await updateSpecObject(req.params["id"]!, tId, {
       status: "sent-to-budget",
     });
-    res.json({ ok: true, specObjectId: item?.id ?? req.params["id"], budgetItemId: null });
+    if (!item) {
+      res.status(404).json({ error: "SpecObject não encontrado" });
+      return;
+    }
+    const budgetSync = await syncSpecObjectToBudget({ tenantId: tId, specObjectId: item.id });
+    if (!budgetSync) {
+      res.status(404).json({ error: "Não foi possível sincronizar a especificação com o orçamento" });
+      return;
+    }
+    res.json({ ok: true, specObjectId: item.id, ...budgetSync });
   } catch (err) {
     logger.error({ err }, "arch/spec-objects/send-to-budget error");
     next(err);

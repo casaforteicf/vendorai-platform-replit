@@ -146,6 +146,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const perms    = permissionsForRole(user?.platformRole, user?.role)
     const isDemoEmail = user?.email?.includes('demo@') ?? false
 
+    const activeProject: ActiveProjectSummary | null = projectContext
+      ? {
+          id: projectContext.id,
+          name: projectContext.name,
+          tenantId,
+          status: 'IN_PROGRESS',
+        }
+      : null
+
     return {
       workspaceId:       `ws-${tenantId || 'arqdor'}`,
       tenantId,
@@ -154,14 +163,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       tenantName:        user?.name ?? 'Workspace',
       permissions:       perms,
       hasPermission:     (p: WorkspacePermission) => perms.includes(p),
-      activeProject:     null,
+      activeProject,
       activeEnvironment: isDemoEmail ? 'DEMO' : 'PRODUCTION',
       activeAgent:       ARCH_AGENT,
       projectContext,
-      setProjectContext,
       hubs:              HUBS_CONNECTED,
     }
-  }, [user, projectContext, setProjectContext])
+  }, [user, projectContext])
 
   return (
     <SetProjectContextCtx.Provider value={setProjectContext}>
