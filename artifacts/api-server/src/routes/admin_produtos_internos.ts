@@ -48,6 +48,7 @@ function parseJsonObject(content: string): unknown {
 // linha interna Vendor.ai. A IA apenas sugere/preenche o formulário; o usuário
 // continua responsável por revisar e salvar, evitando alterações automáticas.
 router.post("/tenants/:tenantId/product-knowledge/ai-fill", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately against authenticated tenant/super_admin before use
   const tenantId = String(req.params.tenantId ?? "");
   if (!tenantId) {
     res.status(422).json({ error: "Tenant inválido." });
