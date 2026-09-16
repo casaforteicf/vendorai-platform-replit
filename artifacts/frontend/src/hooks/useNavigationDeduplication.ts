@@ -27,6 +27,10 @@ const CANONICAL_NAVIGATION_ALIASES = [
  */
 const CONTEXTUAL_LINK_LABELS = [
   { href: "/leads", label: "Clientes & Leads" },
+  { href: "/contacts-nonleads", label: "Contatos (não-leads)" },
+  { href: "/deals", label: "Vendas & Negócios" },
+  { href: "/pipeline-operacional", label: "Operação & Relacionamento" },
+  { href: "/propostas", label: "Propostas & Orçamentos" },
   { href: "/usuarios", label: "Equipe & Usuários" },
   { href: "/base-conhecimento", label: "Conhecimento da Empresa" },
   { href: "/configuracoes", label: "Configurações Gerais" },
