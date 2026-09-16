@@ -121,6 +121,17 @@ function splitDescriptionPrice(value: string) {
     payment: match[1].trim(),
   };
 }
+function installmentCondition(value: string) {
+  const text = value.trim();
+  if (!text) return "";
+  const match = /(?:^|\bou\b|[,;])\s*(\d+\s*x\s*(?:de\s*)?R\$?\s*[\d.,]+)/i.exec(text);
+  if (!match) return text;
+  return match[1]
+    .replace(/\s*x\s*/i, "x de ")
+    .replace(/de\s+de\s+/i, "de ")
+    .replace(/R\$\s*/i, "R$ ")
+    .trim();
+}
 function hasValue(value: unknown) { return value !== null && value !== undefined && String(value).trim() !== ""; }
 function formatPrice(value?: string | null) {
   if (!hasValue(value)) return "";
@@ -140,7 +151,7 @@ function formatDate(value?: string | null) {
 function priceRows(product: CatalogProduct): PriceRow[] {
   const rows: PriceRow[] = [];
   const push = (label: string, value: string, hint?: string) => { if (value) rows.push({ label, value, hint }); };
-  push("Preço final ao cliente", formatPrice(product.precoBase), product.unidade ? `Unidade: ${product.unidade}` : undefined);
+  push("Preço à vista", formatPrice(product.precoBase), product.unidade ? `Unidade: ${product.unidade}` : undefined);
   push("Implantação", formatPrice(product.precoImplantacao));
   push("Mensalidade", formatPrice(product.precoMensalidade), product.recorrencia ? `Recorrência: ${product.recorrencia}` : undefined);
   push("Preço promocional", formatPrice(product.precoPromocional), product.promocaoAtivaAte ? `Válido até ${formatDate(product.promocaoAtivaAte)}` : undefined);
@@ -172,7 +183,7 @@ function formFromProduct(product: CatalogProduct): ProductForm {
   const originalDescription = stripGeneratedKnowledge(product.descricaoLonga) || product.descricao || "";
   const separated = splitDescriptionPrice(originalDescription);
   form.descricaoCompleta = separated.description;
-  form.condicoesPagamento = specValueAny(product, PRICE_SPEC_ALIASES) || separated.payment;
+  form.condicoesPagamento = installmentCondition(specValueAny(product, PRICE_SPEC_ALIASES) || separated.payment);
   form.tags = (product.tags ?? []).join(", ");
   form.aiEnabled = aiEnabledFor(product);
   for (const field of FIELD_SPECS) form[field.key] = specValueAny(product, field.aliases);
@@ -395,10 +406,36 @@ export default function ProductCatalogKnowledgeLibraryV2() {
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3"><label className="flex cursor-pointer items-start justify-between gap-3"><div><p className="text-sm font-semibold text-orange-900">Disponível para IA</p><p className="mt-1 text-xs leading-relaxed text-orange-800/80">Libera o complemento deste produto para uso automatizado. Informações operacionais sensíveis devem ficar fora dos campos abaixo.</p></div><input type="checkbox" checked={form.aiEnabled} onChange={(event) => setForm((current) => ({ ...current, aiEnabled: event.target.checked }))} className="mt-1 h-4 w-4 accent-orange-500" /></label></div>
 
                 <section className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
-                  <div className="flex items-start gap-2"><CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" /><div><p className="text-sm font-semibold text-sky-950">Informações de preço</p><p className="mt-0.5 text-[11px] leading-relaxed text-sky-800/80">Fonte: Catálogo oficial. Valores já cadastrados entram automaticamente aqui e não são duplicados na descrição.</p></div></div>
-                  {selectedPrices.length > 0 ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{selectedPrices.map((row) => <div key={row.label} className="rounded-xl border border-sky-100 bg-background/90 px-3 py-2.5"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{row.label}</p><p className="mt-1 text-sm font-semibold text-foreground">{row.value}</p>{row.hint ? <p className="mt-0.5 text-[10px] text-muted-foreground">{row.hint}</p> : null}</div>)}</div> : <p className="mt-3 rounded-xl border border-dashed border-sky-200 bg-background/60 p-3 text-xs text-muted-foreground">Nenhum valor estruturado foi encontrado no Catálogo.</p>}
-                  <label className="mt-3 block text-xs font-medium text-sky-950">Condições de pagamento<textarea value={form.condicoesPagamento} onChange={(event) => setForm((current) => ({ ...current, condicoesPagamento: event.target.value }))} rows={3} placeholder="Ex.: à vista, parcelamento, entrada + parcelas ou outra condição comercial já cadastrada." className="mt-1 w-full resize-y rounded-xl border border-sky-200 bg-background p-3 text-sm text-foreground outline-none focus:border-sky-400" /></label>
-                  <p className="mt-2 text-[10px] leading-relaxed text-sky-800/75">O campo acima reaproveita automaticamente informações existentes como “Valor”, “Pagamento” ou “Condições de pagamento”. Custos, margem e dados internos continuam fora da Base IA.</p>
+                  <div className="flex items-start gap-2"><CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" /><div><p className="text-sm font-semibold text-sky-950">Preço e pagamento</p><p className="mt-0.5 text-[11px] leading-relaxed text-sky-800/80">Padrão único do catálogo: uma linha para o valor à vista e outra para o parcelamento.</p></div></div>
+
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-100 bg-background/90 px-3 py-3">
+                      <div className="min-w-0"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Preço à vista</p><p className="mt-1 text-sm font-semibold text-foreground">{formatPrice(selected.precoBase) || "Não informado"}</p>{selected.unidade ? <p className="mt-0.5 text-[10px] text-muted-foreground">Unidade: {selected.unidade}</p> : null}</div>
+                      <span className="shrink-0 rounded-full bg-sky-100 px-2 py-1 text-[10px] font-semibold text-sky-800">Catálogo</span>
+                    </div>
+
+                    <label className="block rounded-xl border border-sky-100 bg-background/90 px-3 py-3">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Preço parcelado</span>
+                      <input value={form.condicoesPagamento} onChange={(event) => setForm((current) => ({ ...current, condicoesPagamento: event.target.value }))} placeholder="Ex.: 12x de R$ 499,00" className="mt-1.5 h-9 w-full rounded-lg border border-sky-200 bg-background px-3 text-sm font-semibold text-foreground outline-none focus:border-sky-400" />
+                    </label>
+                  </div>
+
+                  {selectedPrices.filter((row) => row.label !== "Preço à vista" && !row.label.startsWith("Teto de desconto")).length > 0 ? (
+                    <div className="mt-3 border-t border-sky-100 pt-3">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-sky-900/70">Outros valores do catálogo</p>
+                      <div className="grid gap-2 sm:grid-cols-2">{selectedPrices.filter((row) => row.label !== "Preço à vista" && !row.label.startsWith("Teto de desconto")).map((row) => <div key={row.label} className="rounded-xl border border-sky-100 bg-background/80 px-3 py-2.5"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{row.label}</p><p className="mt-1 text-sm font-semibold text-foreground">{row.value}</p>{row.hint ? <p className="mt-0.5 text-[10px] text-muted-foreground">{row.hint}</p> : null}</div>)}</div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-background/80 px-3 py-2.5">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Desconto máximo permitido</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{formatPercent(selected.descontoMaximoPercentual) || formatPercent(selected.categoriaDescontoMaximoPercentual) || "0%"}</p>
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-900">
+                    <p className="text-xs font-semibold">Checkout automático</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-800">Quando o cliente confirma a compra, o VendorAI gera o checkout automaticamente com a condição escolhida. Esta é uma regra padrão do sistema e não possui liga/desliga por produto.</p>
+                  </div>
                 </section>
 
                 <label className="block text-xs font-medium text-muted-foreground">Descrição completa<textarea value={form.descricaoCompleta} onChange={(event) => setForm((current) => ({ ...current, descricaoCompleta: event.target.value }))} rows={5} placeholder="Descrição oficial e completa do produto, sem preço ou condição de pagamento." className="mt-1 w-full resize-y rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300" /></label>
