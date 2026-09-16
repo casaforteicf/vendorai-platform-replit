@@ -6,6 +6,7 @@ import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import MediaLibraryV2 from "@/pages/MediaLibraryV2";
 import MediaLibrarySourceGuide from "@/components/media/MediaLibrarySourceGuide";
 import ProductCatalogKnowledgeLibrary from "@/components/media/ProductCatalogKnowledgeLibrary";
+import ProjectKnowledgeLibrary from "@/components/media/ProjectKnowledgeLibrary";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import GrowthLabConnected from "@/pages/GrowthLabConnected";
@@ -57,6 +58,7 @@ export default function NotFound() {
             <div id="biblioteca-midias">
               <MediaLibraryV2 />
               <ProductCatalogKnowledgeLibrary />
+              <ProjectKnowledgeLibrary />
             </div>
           </>
         ) : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLabConnected />}
