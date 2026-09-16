@@ -1,0 +1,71 @@
+name: Temporary Arqdor platform patch
+
+on:
+  push:
+    branches:
+      - feat/remove-vercel-arqdor-real-data-20260916
+    paths:
+      - ".github/workflows/tmp-arqdor-platform-patch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/remove-vercel-arqdor-real-data-20260916
+          fetch-depth: 0
+
+      - name: Apply focused migration patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new, required=True):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if required and count != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}; got {count}: {old[:80]}")
+              if count:
+                  p.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace(
+              "artifacts/api-server/src/routes/construcao.ts",
+              '  if (!tenant?.vertical || !tenant.vertical.toLowerCase().includes("constru")) {',
+              '  const constructionVertical = tenant?.vertical?.toLowerCase() ?? "";\n  if (!/(constru|reforma|arquitet|engenharia)/.test(constructionVertical)) {'
+          )
+
+          replace(
+              "artifacts/api-server/src/routes/dev_agent_autonomy.ts",
+              'runtime: pr.backendTouched ? "railway" : "vercel"',
+              'runtime: pr.backendTouched ? "railway" : "cloudflare"'
+          )
+
+          replace(
+              "artifacts/frontend/src/App.tsx",
+              'const runtimeLabel = evidence.runtime === "vercel" ? "Vercel" : evidence.runtime === "railway" ? "Railway" : "produção";',
+              'const runtimeLabel = evidence.runtime === "cloudflare" ? "Cloudflare Pages" : evidence.runtime === "railway" ? "Railway" : "produção";'
+          )
+
+          replace(
+              "artifacts/api-server/src/routes/dev_agent_planner_reviewer.ts",
+              'Preview Vercel relevante publicado sem regressão visual/funcional observada na rota alterada.',
+              'Deploy Cloudflare Pages relevante publicado sem regressão visual/funcional observada na rota alterada.',
+              required=False,
+          )
+
+          # Remove this one-shot workflow from the final branch after applying it.
+          Path(".github/workflows/tmp-arqdor-platform-patch.yml").unlink()
+
+      - name: Commit patch
+        run: |
+          git config user.name "VendorAI Platform Migration"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(platform): concluir migração Vercel para Cloudflare e liberar Arqdor"
+          git push origin HEAD:feat/remove-vercel-arqdor-real-data-20260916
