@@ -39,6 +39,108 @@
     <div id="root"></div>
 
     <!--
+      Fallback de sessão: se uma rota autenticada permanecer apenas no spinner
+      por tempo demais, reconstruímos somente a identidade mínima a partir das
+      claims do JWT já assinado pelo backend e recarregamos uma única vez.
+      Isso evita loading infinito quando /auth/me sofre falha transitória, sem
+      substituir as autorizações do backend nem sobrescrever um cache válido.
+    -->
+    <script>
+      (() => {
+        const TOKEN_KEY = "vendorai_token";
+        const USER_CACHE_KEY = "vendorai_user_cache";
+        const RECOVERY_KEY = "vendorai_session_bootstrap_recovery_at";
+        const RECOVERY_DELAY_MS = 12_000;
+        const RECOVERY_WINDOW_MS = 60_000;
+
+        function decodeClaims(token) {
+          try {
+            const part = token.split(".")[1];
+            if (!part) return null;
+            const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
+            const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+            return JSON.parse(atob(padded));
+          } catch (_) {
+            return null;
+          }
+        }
+
+        function seedTrustedUserCache() {
+          try {
+            const token = localStorage.getItem(TOKEN_KEY);
+            if (!token) return false;
+            const claims = decodeClaims(token);
+            if (!claims) return false;
+            if (
+              typeof claims.sub !== "string" ||
+              typeof claims.tenantId !== "string" ||
+              typeof claims.platformRole !== "string" ||
+              typeof claims.email !== "string"
+            ) {
+              return false;
+            }
+            if (typeof claims.exp === "number" && claims.exp * 1000 <= Date.now()) return false;
+
+            try {
+              const currentRaw = localStorage.getItem(USER_CACHE_KEY);
+              const current = currentRaw ? JSON.parse(currentRaw) : null;
+              if (
+                current?.id === claims.sub &&
+                current?.tenantId === claims.tenantId &&
+                current?.platformRole === claims.platformRole &&
+                current?.email === claims.email
+              ) {
+                return true;
+              }
+            } catch (_) {
+              // Cache inválido será substituído apenas pelas claims assinadas do JWT.
+            }
+
+            localStorage.setItem(
+              USER_CACHE_KEY,
+              JSON.stringify({
+                id: claims.sub,
+                tenantId: claims.tenantId,
+                platformRole: claims.platformRole,
+                email: claims.email,
+                name:
+                  typeof claims.name === "string" && claims.name.trim()
+                    ? claims.name.trim()
+                    : claims.email.split("@")[0],
+              }),
+            );
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        window.setTimeout(() => {
+          try {
+            if (!localStorage.getItem(TOKEN_KEY)) return;
+            const root = document.getElementById("root");
+            if (!root) return;
+            const spinner = root.querySelector(".animate-spin");
+            const hasVisibleText = Boolean(root.textContent?.trim());
+            if (!spinner || hasVisibleText) return;
+
+            const now = Date.now();
+            const lastRecoveryAt = Number(sessionStorage.getItem(RECOVERY_KEY) || "0");
+            if (now - lastRecoveryAt < RECOVERY_WINDOW_MS) return;
+            if (!seedTrustedUserCache()) return;
+
+            sessionStorage.setItem(RECOVERY_KEY, String(now));
+            const url = new URL(window.location.href);
+            url.searchParams.set("__session_recovery", String(now));
+            window.location.replace(url.toString());
+          } catch (_) {
+            // Recuperação é best-effort e nunca pode impedir o carregamento normal.
+          }
+        }, RECOVERY_DELAY_MS);
+      })();
+    </script>
+
+    <!--
       Este guard precisa existir ANTES do entry module do Vite. Usuários podem
       manter o VendorAI aberto enquanto um deploy troca os hashes em /assets.
       Nesse intervalo o HTML/JS antigo pode tentar buscar chunks que já não
