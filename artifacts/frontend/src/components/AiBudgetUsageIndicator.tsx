@@ -147,7 +147,7 @@ export function AiBudgetUsageIndicator() {
     : "left-3 w-auto rounded-full sm:left-4";
 
   return (
-    <div className={`fixed bottom-4 z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
+    <div className={`fixed bottom-4 sm:bottom-[54px] z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
