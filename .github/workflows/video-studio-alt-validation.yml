@@ -1,0 +1,74 @@
+name: Video Studio Alt Validation
+
+on:
+  push:
+    branches:
+      - feat/video-studio-guided-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend build (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend build
+
+      - name: Verify production bundle
+        run: |
+          test -f artifacts/frontend/dist/public/index.html
+          test -f artifacts/frontend/dist/public/_worker.js
+
+  api:
+    name: Video Studio API typecheck (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/vendorai_ci
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build referenced Anthropic integration
+        run: pnpm exec tsc -b lib/integrations-anthropic-ai/tsconfig.json
+
+      - name: Typecheck Video Studio API surface
+        run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.video-studio-ci.json --noEmit
