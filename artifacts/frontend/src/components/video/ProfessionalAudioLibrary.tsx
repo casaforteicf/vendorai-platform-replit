@@ -9,7 +9,7 @@ import {
   type ProfessionalMediaAsset,
 } from "./professional-video";
 
-type Tab = Exclude<ProfessionalAudioKind, "sonic_identity" | "other"> | "all";
+type Tab = Exclude<ProfessionalAudioKind, "other"> | "all";
 
 type Props = {
   assets: ProfessionalMediaAsset[];
@@ -29,6 +29,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "sound_effect", label: "Efeitos" },
   { id: "voiceover", label: "Locuções" },
   { id: "jingle", label: "Jingles" },
+  { id: "sonic_identity", label: "Assinatura sonora" },
 ];
 
 function assetMeta(asset: ProfessionalMediaAsset): Record<string, unknown> {
@@ -73,7 +74,7 @@ export default function ProfessionalAudioLibrary({
     if (kind === "music") return musicAssetId;
     if (kind === "sound_effect") return effectAssetId;
     if (kind === "voiceover") return voiceoverAssetId;
-    if (kind === "jingle") return jingleAssetId;
+    if (kind === "jingle" || kind === "sonic_identity") return jingleAssetId;
     return "";
   };
 
@@ -82,7 +83,7 @@ export default function ProfessionalAudioLibrary({
     if (kind === "music") onMusicChange(musicAssetId === asset.id ? "" : asset.id);
     if (kind === "sound_effect") onEffectChange(effectAssetId === asset.id ? "" : asset.id);
     if (kind === "voiceover" && onVoiceoverChange) onVoiceoverChange(voiceoverAssetId === asset.id ? "" : asset.id);
-    if (kind === "jingle") onJingleChange(jingleAssetId === asset.id ? "" : asset.id);
+    if (kind === "jingle" || kind === "sonic_identity") onJingleChange(jingleAssetId === asset.id ? "" : asset.id);
   };
 
   return (
@@ -90,7 +91,7 @@ export default function ProfessionalAudioLibrary({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2"><Music2 className="h-4 w-4 text-primary" /><h3 className="font-semibold text-foreground">Biblioteca de áudio</h3></div>
-          <p className="mt-1 text-xs text-muted-foreground">Ouça antes de aplicar. Música, efeitos, locuções e jingles ficam visíveis dentro do projeto.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Ouça antes de aplicar. Música, efeitos, locuções, jingles e assinatura sonora ficam visíveis dentro do projeto.</p>
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -110,7 +111,7 @@ export default function ProfessionalAudioLibrary({
         <div className="grid gap-3 lg:grid-cols-2">
           {filtered.slice(0, 40).map((asset) => {
             const kind = audioKind(asset);
-            const selectable = kind === "music" || kind === "sound_effect" || kind === "jingle" || (kind === "voiceover" && Boolean(onVoiceoverChange));
+            const selectable = kind === "music" || kind === "sound_effect" || kind === "jingle" || kind === "sonic_identity" || (kind === "voiceover" && Boolean(onVoiceoverChange));
             const selected = selectedIdFor(kind) === asset.id;
             return (
               <div key={asset.id} className={cn("rounded-xl border p-3 transition", selected ? "border-primary/45 bg-primary/5" : "border-border bg-background/40")}> 
