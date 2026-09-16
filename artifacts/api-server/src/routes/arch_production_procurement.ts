@@ -2,7 +2,6 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface WorkOrderPayload {
   projectId: string;
   proposalId?: string | null;
@@ -48,7 +47,6 @@ interface SupplierOrderPayload {
   notes?: string | null;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function tenantId(req: any): string | null {
   return req?.user?.tenantId ?? req?.tenantId ?? null;
 }
@@ -70,6 +68,18 @@ async function ownedObra(tid: string, obraId: string) {
   return result.rows[0] ?? null;
 }
 
+async function ownedEtapa(tid: string, obraId: string, etapaId: string) {
+  const result = await pool.query(
+    `SELECT e.*
+       FROM obra_etapas e
+       INNER JOIN obras o ON o.id = e.obra_id
+      WHERE e.id = $1 AND e.obra_id = $2 AND o.tenant_id = $3
+      LIMIT 1`,
+    [etapaId, obraId, tid],
+  );
+  return result.rows[0] ?? null;
+}
+
 async function addEvent(
   projectId: string,
   workOrderId: string | null,
@@ -85,7 +95,6 @@ async function addEvent(
   );
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
 async function getProductionBundle(params: { tenantId?: string | null; projectId: string }) {
   const values: unknown[] = [params.projectId];
   const tenantClause = params.tenantId ? ` AND tenant_id = $${(values.push(params.tenantId), values.length)}` : "";
@@ -109,7 +118,6 @@ async function getProductionBundle(params: { tenantId?: string | null; projectId
 
 async function createWorkOrder(tId: string | null, payload: WorkOrderPayload) {
   const id = crypto.randomUUID();
-
   const result = await pool.query(
     `INSERT INTO arch_work_orders (
       id, tenant_id, project_id, proposal_id, proposal_item_id, budget_item_id, spec_object_id,
@@ -133,11 +141,9 @@ async function createWorkOrder(tId: string | null, payload: WorkOrderPayload) {
       payload.materialName ?? null, payload.productName ?? null,
       payload.supplierName ?? null, payload.manufacturerName ?? null,
       payload.plannedStart ?? null, payload.plannedEnd ?? null,
-      Number(payload.estimatedCost ?? 0), Number(payload.actualCost ?? 0),
-      payload.notes ?? null,
+      Number(payload.estimatedCost ?? 0), Number(payload.actualCost ?? 0), payload.notes ?? null,
     ],
   );
-
   await addEvent(payload.projectId, id, "created", "Ordem de execução criada.", "internal", { title: payload.title });
   return result.rows[0];
 }
@@ -156,66 +162,47 @@ async function updateWorkOrder(id: string, tId: string | null, payload: Partial<
     actualStart: "actual_start", actualEnd: "actual_end",
     estimatedCost: "estimated_cost", actualCost: "actual_cost", notes: "notes",
   };
-
   const sets: string[] = [];
   const values: unknown[] = [];
-
   for (const [key, col] of Object.entries(allowed)) {
     if ((payload as Record<string, unknown>)[key] === undefined) continue;
     values.push((payload as Record<string, unknown>)[key]);
     sets.push(`${col} = $${values.length}`);
   }
-
   if (sets.length === 0) return current;
-
   values.push(new Date()); sets.push(`updated_at = $${values.length}`);
   values.push(id);
   let where = `id = $${values.length}`;
   if (tId) { values.push(tId); where += ` AND tenant_id = $${values.length}`; }
-
-  const result = await pool.query(
-    `UPDATE arch_work_orders SET ${sets.join(", ")} WHERE ${where} RETURNING *`,
-    values,
-  );
-
+  const result = await pool.query(`UPDATE arch_work_orders SET ${sets.join(", ")} WHERE ${where} RETURNING *`, values);
   if (payload.status && payload.status !== current.status) {
     await addEvent(current.project_id, id, "status-change", `Status alterado para ${payload.status}.`, "internal", {
       from: current.status, to: payload.status,
     });
   }
-
   return result.rows[0] ?? null;
 }
 
 async function createSupplierOrder(tId: string | null, payload: SupplierOrderPayload) {
   const id = crypto.randomUUID();
-
   const result = await pool.query(
     `INSERT INTO arch_supplier_orders (
       id, tenant_id, project_id, work_order_id,
       supplier_name, contact_name, contact_phone, contact_email,
       item, quantity, unit, estimated_value, confirmed_value,
       status, requested_at, expected_delivery, notes, created_at, updated_at
-    ) VALUES (
-      $1,$2,$3,$4,
-      $5,$6,$7,$8,
-      $9,$10,$11,$12,$13,
-      $14,now(),$15,$16,now(),now()
-    ) RETURNING *`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),$15,$16,now(),now()) RETURNING *`,
     [
       id, tId, payload.projectId, payload.workOrderId ?? null,
       payload.supplierName, payload.contactName ?? null, payload.contactPhone ?? null, payload.contactEmail ?? null,
       payload.item, Number(payload.quantity ?? 1), payload.unit ?? "un",
       Number(payload.estimatedValue ?? 0), Number(payload.confirmedValue ?? 0),
-      payload.status ?? "quote-requested",
-      payload.expectedDelivery ?? null, payload.notes ?? null,
+      payload.status ?? "quote-requested", payload.expectedDelivery ?? null, payload.notes ?? null,
     ],
   );
-
   await addEvent(payload.projectId, payload.workOrderId ?? null, "supplier-request", "Pedido/cotação enviado ao fornecedor.", "internal", {
     supplierName: payload.supplierName, item: payload.item,
   });
-
   return result.rows[0];
 }
 
@@ -223,41 +210,30 @@ async function updateSupplierOrder(id: string, tId: string | null, payload: Part
   const currentResult = await pool.query(`SELECT * FROM arch_supplier_orders WHERE id = $1`, [id]);
   const current = currentResult.rows[0];
   if (!current) return null;
-
   const allowed: Record<string, string> = {
     supplierName: "supplier_name", contactName: "contact_name", contactPhone: "contact_phone", contactEmail: "contact_email",
     item: "item", quantity: "quantity", unit: "unit",
     estimatedValue: "estimated_value", confirmedValue: "confirmed_value",
     status: "status", expectedDelivery: "expected_delivery", deliveredAt: "delivered_at", notes: "notes",
   };
-
   const sets: string[] = [];
   const values: unknown[] = [];
-
   for (const [key, col] of Object.entries(allowed)) {
     if ((payload as Record<string, unknown>)[key] === undefined) continue;
     values.push((payload as Record<string, unknown>)[key]);
     sets.push(`${col} = $${values.length}`);
   }
-
   if (sets.length === 0) return current;
-
   values.push(new Date()); sets.push(`updated_at = $${values.length}`);
   values.push(id);
   let where = `id = $${values.length}`;
   if (tId) { values.push(tId); where += ` AND tenant_id = $${values.length}`; }
-
-  const result = await pool.query(
-    `UPDATE arch_supplier_orders SET ${sets.join(", ")} WHERE ${where} RETURNING *`,
-    values,
-  );
-
+  const result = await pool.query(`UPDATE arch_supplier_orders SET ${sets.join(", ")} WHERE ${where} RETURNING *`, values);
   if (payload.status && payload.status !== current.status) {
     await addEvent(current.project_id, current.work_order_id ?? null, "supplier-delivery", `Fornecedor atualizado para ${payload.status}.`, "internal", {
       supplierOrderId: id, from: current.status, to: payload.status,
     });
   }
-
   return result.rows[0] ?? null;
 }
 
@@ -268,19 +244,13 @@ async function createOrdersFromApproval(tId: string | null, payload: {
 }) {
   let where = `proposal_id = $1`;
   if (payload.onlyApprovedItems) where += ` AND approval_status = 'approved'`;
-
   const proposalItems = await pool.query(
     `SELECT * FROM arch_proposal_items WHERE ${where} ORDER BY sort_order ASC, created_at ASC`,
     [payload.proposalId],
   );
-
   for (const item of proposalItems.rows) {
-    const exists = await pool.query(
-      `SELECT id FROM arch_work_orders WHERE proposal_item_id = $1 AND deleted_at IS NULL LIMIT 1`,
-      [item.id],
-    );
+    const exists = await pool.query(`SELECT id FROM arch_work_orders WHERE proposal_item_id = $1 AND deleted_at IS NULL LIMIT 1`, [item.id]);
     if (exists.rows[0]) continue;
-
     await createWorkOrder(tId, {
       projectId: payload.projectId,
       proposalId: payload.proposalId,
@@ -300,19 +270,12 @@ async function createOrdersFromApproval(tId: string | null, payload: {
       notes: "Criado automaticamente a partir da aprovação do cliente.",
     });
   }
-
   await addEvent(payload.projectId, null, "created", "Ordens geradas a partir da aprovação do cliente.", "system", { proposalId: payload.proposalId });
-
   return getProductionBundle({ tenantId: tId, projectId: payload.projectId });
 }
 
-// ─── Router ───────────────────────────────────────────────────────────────────
 const archProductionProcurementRouter = Router();
 
-// ─── ARQDOR Construction Bridge ───────────────────────────────────────────────
-// O projeto ARQDOR é o identificador funcional; a obra usa a tabela real `obras`.
-// A ponte fica dentro do Arch Hub para funcionar tanto em tenants de arquitetura
-// quanto de construção, sempre limitada ao tenant autenticado.
 archProductionProcurementRouter.post("/arch/construction/ensure", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
@@ -320,15 +283,11 @@ archProductionProcurementRouter.post("/arch/construction/ensure", async (req, re
     const projectId = String(req.body?.projectId ?? "").trim();
     const name = String(req.body?.name ?? "Projeto ARQDOR").trim() || "Projeto ARQDOR";
     if (!projectId) { res.status(400).json({ error: "projectId é obrigatório" }); return; }
-
     const marker = `[ARQDOR:${projectId}]`;
     let result = await pool.query(
-      `SELECT * FROM obras
-       WHERE tenant_id = $1 AND (descricao LIKE $2 OR lower(nome) = lower($3))
-       ORDER BY created_at DESC LIMIT 1`,
+      `SELECT * FROM obras WHERE tenant_id = $1 AND (descricao LIKE $2 OR lower(nome) = lower($3)) ORDER BY created_at DESC LIMIT 1`,
       [tid, `%${marker}%`, name],
     );
-
     let obra = result.rows[0];
     if (!obra) {
       const id = crypto.randomUUID();
@@ -338,10 +297,7 @@ archProductionProcurementRouter.post("/arch/construction/ensure", async (req, re
           orcamento_total, custo_realizado, created_at, updated_at
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),now()) RETURNING *`,
         [
-          id,
-          tid,
-          name,
-          `${marker} Obra operacional vinculada automaticamente ao projeto ARQDOR.`,
+          id, tid, name, `${marker} Obra operacional vinculada automaticamente ao projeto ARQDOR.`,
           req.body?.clientName ?? null,
           req.body?.status === "em_execucao" ? "em_andamento" : "planejamento",
           req.body?.budget ? String(req.body.budget) : null,
@@ -350,7 +306,6 @@ archProductionProcurementRouter.post("/arch/construction/ensure", async (req, re
       );
       obra = result.rows[0];
     }
-
     res.json({ obra });
   } catch (err) {
     logger.error({ err }, "arch/construction/ensure error");
@@ -365,27 +320,30 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
     const obraId = String(req.params["obraId"] ?? "");
     const obra = await ownedObra(tid, obraId);
     if (!obra) { res.status(404).json({ error: "Obra não encontrada" }); return; }
-
-    const [etapasResult, diarioResult, comprasResult, medicoesResult] = await Promise.all([
+    const [etapasResult, diarioResult, comprasResult, medicoesResult, dependenciasResult] = await Promise.all([
       pool.query(`SELECT * FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`, [obraId]),
       pool.query(`SELECT * FROM obra_diario WHERE obra_id = $1 ORDER BY data DESC, created_at DESC`, [obraId]),
       pool.query(`SELECT * FROM compras_obras WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
       pool.query(
-        `SELECT m.* FROM obra_etapa_medicoes m
-         INNER JOIN obra_etapas e ON e.id = m.etapa_id
-         WHERE e.obra_id = $1 ORDER BY m.created_at DESC`,
+        `SELECT m.* FROM obra_etapa_medicoes m INNER JOIN obra_etapas e ON e.id = m.etapa_id WHERE e.obra_id = $1 ORDER BY m.created_at DESC`,
         [obraId],
       ),
+      pool.query(
+        `SELECT * FROM obra_etapa_dependencias WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at ASC`,
+        [obraId, tid],
+      ),
     ]);
-
     const etapas = etapasResult.rows;
+    const weightedBase = etapas.reduce((sum: number, item: any) => sum + Number(item.peso_fisico ?? 0), 0);
     const percentualGeral = etapas.length
-      ? etapas.reduce((sum: number, item: any) => sum + Number(item.percentual_executado ?? 0), 0) / etapas.length
+      ? weightedBase > 0
+        ? etapas.reduce((sum: number, item: any) => sum + Number(item.percentual_executado ?? 0) * Number(item.peso_fisico ?? 0), 0) / weightedBase
+        : etapas.reduce((sum: number, item: any) => sum + Number(item.percentual_executado ?? 0), 0) / etapas.length
       : 0;
-
     res.json({
       obra: { ...obra, percentualGeral },
       etapas,
+      dependencias: dependenciasResult.rows,
       diario: diarioResult.rows,
       compras: comprasResult.rows,
       medicoes: medicoesResult.rows,
@@ -404,17 +362,142 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas", async 
     if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
     const nome = String(req.body?.nome ?? "").trim();
     if (!nome) { res.status(400).json({ error: "Nome da etapa é obrigatório" }); return; }
-
+    const custoPrevisto = Math.max(0, Number(req.body?.custoPrevisto ?? 0));
+    const pesoFisico = Math.max(0, Math.min(100, Number(req.body?.pesoFisico ?? 0)));
     const result = await pool.query(
       `INSERT INTO obra_etapas (
         id, obra_id, nome, descricao, ordem, data_inicio_prevista, data_fim_prevista,
-        status, percentual_executado, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',now(),now()) RETURNING *`,
-      [crypto.randomUUID(), obraId, nome, req.body?.descricao ?? null, Number(req.body?.ordem ?? 0), req.body?.dataInicioPrevista || null, req.body?.dataFimPrevista || null],
+        status, percentual_executado, responsavel, custo_previsto, peso_fisico, marco,
+        created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,$10,$11,now(),now()) RETURNING *`,
+      [
+        crypto.randomUUID(), obraId, nome, req.body?.descricao ?? null, Number(req.body?.ordem ?? 0),
+        req.body?.dataInicioPrevista || null, req.body?.dataFimPrevista || null,
+        req.body?.responsavel || null, String(custoPrevisto), String(pesoFisico), Boolean(req.body?.marco),
+      ],
     );
     res.status(201).json({ etapa: result.rows[0] });
   } catch (err) {
     logger.error({ err }, "arch/construction etapa error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaId", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const etapaId = String(req.params["etapaId"] ?? "");
+    const current = await ownedEtapa(tid, obraId, etapaId);
+    if (!current) { res.status(404).json({ error: "Etapa não encontrada" }); return; }
+
+    const allowed: Record<string, { col: string; transform?: (value: any) => any }> = {
+      nome: { col: "nome", transform: (value) => String(value).trim() },
+      descricao: { col: "descricao" },
+      ordem: { col: "ordem", transform: (value) => Number(value) },
+      dataInicioPrevista: { col: "data_inicio_prevista", transform: (value) => value || null },
+      dataFimPrevista: { col: "data_fim_prevista", transform: (value) => value || null },
+      dataInicioReal: { col: "data_inicio_real", transform: (value) => value || null },
+      dataFimReal: { col: "data_fim_real", transform: (value) => value || null },
+      status: { col: "status", transform: (value) => String(value) },
+      responsavel: { col: "responsavel", transform: (value) => value ? String(value) : null },
+      custoPrevisto: { col: "custo_previsto", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
+      pesoFisico: { col: "peso_fisico", transform: (value) => String(Math.max(0, Math.min(100, Number(value ?? 0)))) },
+      marco: { col: "marco", transform: (value) => Boolean(value) },
+    };
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, rule] of Object.entries(allowed)) {
+      if (req.body?.[key] === undefined) continue;
+      const transformed = rule.transform ? rule.transform(req.body[key]) : req.body[key];
+      values.push(transformed);
+      sets.push(`${rule.col} = $${values.length}`);
+    }
+    if (!sets.length) { res.json({ etapa: current }); return; }
+    values.push(etapaId);
+    values.push(obraId);
+    const result = await pool.query(
+      `UPDATE obra_etapas SET ${sets.join(", ")}, updated_at = now() WHERE id = $${values.length - 1} AND obra_id = $${values.length} RETURNING *`,
+      values,
+    );
+    res.json({ etapa: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch/construction etapa PATCH error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.delete("/arch/construction/:obraId/etapas/:etapaId", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const etapaId = String(req.params["etapaId"] ?? "");
+    if (!await ownedEtapa(tid, obraId, etapaId)) { res.status(404).json({ error: "Etapa não encontrada" }); return; }
+    await pool.query(`DELETE FROM obra_etapas WHERE id = $1 AND obra_id = $2`, [etapaId, obraId]);
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, "arch/construction etapa DELETE error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId/dependencias", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const etapaId = String(req.params["etapaId"] ?? "");
+    const predecessorId = String(req.body?.dependeDeEtapaId ?? "");
+    if (!predecessorId) { res.status(400).json({ error: "Etapa predecessora é obrigatória" }); return; }
+    if (predecessorId === etapaId) { res.status(400).json({ error: "Uma etapa não pode depender de si mesma" }); return; }
+    if (!await ownedEtapa(tid, obraId, etapaId) || !await ownedEtapa(tid, obraId, predecessorId)) {
+      res.status(404).json({ error: "Etapa não encontrada nesta obra" }); return;
+    }
+    const cycle = await pool.query(
+      `WITH RECURSIVE ancestors(node) AS (
+         SELECT depende_de_etapa_id FROM obra_etapa_dependencias WHERE obra_id = $1 AND etapa_id = $2
+         UNION
+         SELECT d.depende_de_etapa_id
+           FROM obra_etapa_dependencias d
+           INNER JOIN ancestors a ON d.etapa_id = a.node
+          WHERE d.obra_id = $1
+       ) SELECT 1 FROM ancestors WHERE node = $3 LIMIT 1`,
+      [obraId, predecessorId, etapaId],
+    );
+    if (cycle.rows[0]) { res.status(409).json({ error: "Dependência criaria um ciclo no cronograma" }); return; }
+    const tipo = ["FS", "SS", "FF", "SF"].includes(String(req.body?.tipo ?? "FS")) ? String(req.body?.tipo ?? "FS") : "FS";
+    const defasagemDias = Number.isFinite(Number(req.body?.defasagemDias)) ? Number(req.body.defasagemDias) : 0;
+    const result = await pool.query(
+      `INSERT INTO obra_etapa_dependencias (
+         id, tenant_id, obra_id, etapa_id, depende_de_etapa_id, tipo, defasagem_dias, created_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+       ON CONFLICT (etapa_id, depende_de_etapa_id)
+       DO UPDATE SET tipo = EXCLUDED.tipo, defasagem_dias = EXCLUDED.defasagem_dias
+       RETURNING *`,
+      [crypto.randomUUID(), tid, obraId, etapaId, predecessorId, tipo, defasagemDias],
+    );
+    res.status(201).json({ dependencia: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch/construction dependencia POST error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.delete("/arch/construction/:obraId/dependencias/:dependenciaId", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    await pool.query(
+      `DELETE FROM obra_etapa_dependencias WHERE id = $1 AND obra_id = $2 AND tenant_id = $3`,
+      [String(req.params["dependenciaId"] ?? ""), obraId, tid],
+    );
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, "arch/construction dependencia DELETE error");
     next(err);
   }
 });
@@ -428,7 +511,6 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/diario", async 
     const conteudo = String(req.body?.conteudo ?? "").trim();
     const data = String(req.body?.data ?? "").trim();
     if (!conteudo || !data) { res.status(400).json({ error: "Data e conteúdo são obrigatórios" }); return; }
-
     const result = await pool.query(
       `INSERT INTO obra_diario (
         id, obra_id, data, conteudo, responsavel_id, responsavel_nome, status,
@@ -457,11 +539,9 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/compras", async
     if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
     const descricao = String(req.body?.descricao ?? "").trim();
     if (!descricao) { res.status(400).json({ error: "Descrição da compra é obrigatória" }); return; }
-
     const quantidade = Number(req.body?.quantidade ?? 0);
     const valorUnitario = Number(req.body?.valorUnitario ?? 0);
     const valorTotal = req.body?.valorTotal === undefined ? quantidade * valorUnitario : Number(req.body.valorTotal);
-
     const result = await pool.query(
       `INSERT INTO compras_obras (
         id, tenant_id, obra_id, descricao, fornecedor, quantidade, valor_unitario,
@@ -487,17 +567,12 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
     const obraId = String(req.params["obraId"] ?? "");
     const etapaId = String(req.params["etapaId"] ?? "");
     if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
-
-    const etapaResult = await pool.query(`SELECT * FROM obra_etapas WHERE id = $1 AND obra_id = $2 LIMIT 1`, [etapaId, obraId]);
-    const etapa = etapaResult.rows[0];
+    const etapa = await ownedEtapa(tid, obraId, etapaId);
     if (!etapa) { res.status(404).json({ error: "Etapa não encontrada" }); return; }
-
     const novo = Number(req.body?.percentualNovo ?? 0);
     if (!Number.isFinite(novo) || novo < 0 || novo > 100) {
-      res.status(400).json({ error: "Percentual deve estar entre 0 e 100" });
-      return;
+      res.status(400).json({ error: "Percentual deve estar entre 0 e 100" }); return;
     }
-
     const medicaoResult = await pool.query(
       `INSERT INTO obra_etapa_medicoes (
         id, etapa_id, data, percentual_anterior, percentual_novo, responsavel_id,
@@ -509,12 +584,16 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
         req.body?.observacao ?? null,
       ],
     );
-
     await pool.query(
-      `UPDATE obra_etapas SET percentual_executado = $1, status = $2, updated_at = now() WHERE id = $3 AND obra_id = $4`,
+      `UPDATE obra_etapas
+          SET percentual_executado = $1,
+              status = $2,
+              data_inicio_real = CASE WHEN $1::numeric > 0 AND data_inicio_real IS NULL THEN CURRENT_DATE ELSE data_inicio_real END,
+              data_fim_real = CASE WHEN $1::numeric >= 100 THEN CURRENT_DATE ELSE data_fim_real END,
+              updated_at = now()
+        WHERE id = $3 AND obra_id = $4`,
       [String(novo), novo >= 100 ? "concluida" : novo > 0 ? "em_andamento" : "pendente", etapaId, obraId],
     );
-
     res.status(201).json({ medicao: medicaoResult.rows[0] });
   } catch (err) {
     logger.error({ err }, "arch/construction medicao error");
@@ -522,7 +601,6 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
   }
 });
 
-// ─── Production, Procurement & Execution ──────────────────────────────────────
 archProductionProcurementRouter.get("/arch/producao", async (req, res, next) => {
   try {
     const projectId = String(req.query["projectId"] ?? "");
