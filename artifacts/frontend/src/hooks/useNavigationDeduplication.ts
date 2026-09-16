@@ -130,6 +130,39 @@ const COLLAPSIBLE_SECTION_LABELS = [
   "Partner Network",
 ] as const;
 
+const CORE_NAVIGATION_GROUPS = [
+  {
+    key: "crm-atendimento",
+    label: "CRM & Atendimento",
+    hrefs: [
+      "/leads",
+      "/contacts-nonleads",
+      "/app/prospector",
+      "/deals",
+      "/pipeline-operacional",
+      "/conversations",
+      "/agenda",
+    ],
+  },
+  {
+    key: "comercial-gestao",
+    label: "Comercial & Gestão",
+    hrefs: ["/propostas", "/catalogo", "/pacotes", "/erp"],
+  },
+  {
+    key: "ia-administracao",
+    label: "IA, Equipe & Configurações",
+    hrefs: [
+      "/agents/config",
+      "/base-conhecimento",
+      "/analytics",
+      "/organizacao",
+      "/usuarios",
+      "/configuracoes",
+    ],
+  },
+] as const;
+
 const OBRA_CONTEXT_LABELS: Record<string, string> = {
   Financeiro: "Custos da Obra",
   Estoque: "Estoque da Obra",
@@ -260,6 +293,74 @@ function applyCollapsibleSections() {
   });
 }
 
+function setCoreGroupExpanded(button: HTMLButtonElement, links: HTMLAnchorElement[], expanded: boolean) {
+  button.dataset.vendoraiCoreExpanded = expanded ? "true" : "false";
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
+  const indicator = button.querySelector<HTMLElement>("[data-vendorai-core-indicator]");
+  if (indicator) indicator.textContent = expanded ? "⌄" : "›";
+
+  links.forEach((link) => {
+    if (link.dataset.vendoraiCoreOriginalDisplay === undefined) {
+      link.dataset.vendoraiCoreOriginalDisplay = link.style.display;
+    }
+    link.style.display = expanded ? link.dataset.vendoraiCoreOriginalDisplay : "none";
+    link.dataset.vendoraiCoreGroupChild = "true";
+  });
+}
+
+function applyCoreNavigationGroups() {
+  const pathname = window.location.pathname;
+
+  CORE_NAVIGATION_GROUPS.forEach((group) => {
+    document.querySelectorAll<HTMLAnchorElement>(`a[href="${group.hrefs[0]}"]`).forEach((firstLink) => {
+      const container = firstLink.parentElement;
+      if (!container) return;
+
+      const directLinks = Array.from(container.children).filter(
+        (child): child is HTMLAnchorElement => child instanceof HTMLAnchorElement,
+      );
+      const links = group.hrefs
+        .map((href) => directLinks.find((link) => link.getAttribute("href") === href))
+        .filter((link): link is HTMLAnchorElement => Boolean(link));
+      if (links.length < 2) return;
+
+      let button = Array.from(container.children).find(
+        (child): child is HTMLButtonElement =>
+          child instanceof HTMLButtonElement && child.dataset.vendoraiCoreGroup === group.key,
+      );
+
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.dataset.vendoraiCoreGroup = group.key;
+        button.className = "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground";
+
+        const label = document.createElement("span");
+        label.textContent = group.label;
+        label.className = "truncate";
+
+        const indicator = document.createElement("span");
+        indicator.dataset.vendoraiCoreIndicator = "true";
+        indicator.setAttribute("aria-hidden", "true");
+        indicator.className = "ml-2 shrink-0";
+
+        button.append(label, indicator);
+        firstLink.insertAdjacentElement("beforebegin", button);
+        button.addEventListener("click", () => {
+          setCoreGroupExpanded(button!, links, button!.dataset.vendoraiCoreExpanded !== "true");
+        });
+      }
+
+      const containsActiveRoute = links.some((link) => {
+        const href = link.getAttribute("href")?.split("?")[0] ?? "";
+        return Boolean(href) && (pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)));
+      });
+      const persisted = button.dataset.vendoraiCoreExpanded;
+      setCoreGroupExpanded(button, links, containsActiveRoute || persisted === "true");
+    });
+  });
+}
+
 export function useNavigationDeduplication() {
   useEffect(() => {
     const applyPolicy = () => {
@@ -304,6 +405,7 @@ export function useNavigationDeduplication() {
         });
       });
 
+      applyCoreNavigationGroups();
       applyCollapsibleSections();
 
       if (window.location.pathname === "/trabalho") {
@@ -339,6 +441,12 @@ export function useNavigationDeduplication() {
           delete link.dataset.vendoraiCanonicalHref;
           delete link.dataset.vendoraiCanonicalLabel;
         });
+      document.querySelectorAll<HTMLAnchorElement>('a[data-vendorai-core-group-child="true"]').forEach((link) => {
+        link.style.display = link.dataset.vendoraiCoreOriginalDisplay ?? "";
+        delete link.dataset.vendoraiCoreOriginalDisplay;
+        delete link.dataset.vendoraiCoreGroupChild;
+      });
+      document.querySelectorAll<HTMLButtonElement>('button[data-vendorai-core-group]').forEach((button) => button.remove());
       document.querySelectorAll<HTMLAnchorElement>('a[data-vendorai-section-child="true"]').forEach((link) => {
         link.style.display = "";
         delete link.dataset.vendoraiSectionChild;
