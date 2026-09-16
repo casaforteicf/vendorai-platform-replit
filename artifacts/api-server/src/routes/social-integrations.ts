@@ -190,6 +190,11 @@ const publicationSchema = z.object({
   mediaKind: z.enum(["image", "video"]).optional(),
   calendarItemId: z.string().min(1).optional(),
   contentGenerationId: z.string().min(1).optional(),
+  scheduledAt: z.string().min(1).optional(),
+  mediaAssetId: z.string().min(1).optional(),
+  sourceProjectId: z.string().min(1).optional(),
+  sourceSeriesId: z.string().min(1).optional(),
+  sourceVersion: z.number().int().positive().optional(),
 }).refine((data) => Boolean(data.text || data.mediaUrl || data.mediaUrls?.length), "text_or_media_required");
 
 router.post("/tenants/:tenantId/social-publications/:provider", authenticate, async (req, res) => {
@@ -202,6 +207,11 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = publicationSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_publication", details: parsed.error.flatten() });
+
+  const scheduledAt = parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null;
+  if (scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now() + 30_000)) {
+    return res.status(422).json({ error: "schedule_in_past" });
+  }
 
   if (parsed.data.calendarItemId) {
     const [calendarItem] = await db.select({
@@ -224,12 +234,27 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
         ? await createFacebookOrganicPublication(tenantId, parsed.data)
         : await createSocialPublication(tenantId, selected, parsed.data);
 
-    const sourceMetadata = parsed.data.calendarItemId ? {
+    const sourceMetadata: Record<string, unknown> = parsed.data.calendarItemId ? {
       calendarItemId: parsed.data.calendarItemId,
       contentGenerationId: parsed.data.contentGenerationId,
       source: "media-calendar",
     } : {};
+
+    if (parsed.data.mediaAssetId) sourceMetadata.mediaAssetId = parsed.data.mediaAssetId;
+    if (parsed.data.sourceProjectId) sourceMetadata.sourceProjectId = parsed.data.sourceProjectId;
+    if (parsed.data.sourceSeriesId) sourceMetadata.sourceSeriesId = parsed.data.sourceSeriesId;
+    if (parsed.data.sourceVersion) sourceMetadata.sourceVersion = parsed.data.sourceVersion;
+    if (!parsed.data.calendarItemId && (parsed.data.mediaAssetId || parsed.data.sourceProjectId || parsed.data.sourceSeriesId)) {
+      sourceMetadata.source = "video-studio";
+    }
+    if (scheduledAt) {
+      sourceMetadata.scheduleMode = "manual";
+      sourceMetadata.scheduledAt = scheduledAt.toISOString();
+      sourceMetadata.scheduledBy = req.user?.sub ?? null;
+    }
+
     const [linkedPublication] = await db.update(socialPublicationsTable).set({
+      status: scheduledAt ? "scheduled" : publication.status,
       metadata: { ...(publication.metadata || {}), ...sourceMetadata },
       updatedAt: new Date(),
     }).where(and(
@@ -238,10 +263,18 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
     )).returning();
     if (!linkedPublication) throw new Error("publication_link_failed");
 
+    if (scheduledAt) {
+      logger.info(
+        { tenantId, publicationId: linkedPublication.id, provider: selected, scheduledAt: scheduledAt.toISOString() },
+        "Publicação do Video Studio agendada",
+      );
+      return res.status(202).json({ publication: linkedPublication, publishing: false, scheduled: true });
+    }
+
     void publishAnySocialPublication(tenantId, linkedPublication.id).catch((error) => {
       logger.error({ error, tenantId, publicationId: linkedPublication.id, provider: selected }, "Falha assíncrona na publicação social");
     });
-    return res.status(202).json({ publication: linkedPublication, publishing: true });
+    return res.status(202).json({ publication: linkedPublication, publishing: true, scheduled: false });
   } catch (error) {
     const message = error instanceof Error ? error.message : "publication_failed";
     if (["connection_not_found", "meta_not_connected", "meta_token_expired", "instagram_not_connected", "page_permission_missing", "linked_page_not_found"].includes(message)) {
