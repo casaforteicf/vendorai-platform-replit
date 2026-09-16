@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, MessageCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavigationDeduplication } from "@/hooks/useNavigationDeduplication";
 import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentAutopilotMediaPlanBanner";
 import { OrganicCalendarPublisher } from "@/components/marketing/OrganicCalendarPublisher";
 import { MetaGrowthHub } from "@/components/marketing/MetaGrowthHub";
@@ -107,6 +108,8 @@ function buildMessage(channel: "whatsapp" | "email", execution: ExecutionContext
 }
 
 export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
+  useNavigationDeduplication();
+
   const { user, tenantOverride, token } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const [busy, setBusy] = useState<"whatsapp" | "email" | null>(null);
