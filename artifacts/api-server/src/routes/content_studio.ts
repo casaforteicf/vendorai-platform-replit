@@ -137,7 +137,7 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
       hasBrandContext: Boolean(creativeRuntime.creativePlan.brand.logoUrl || creativeRuntime.creativePlan.brand.tone?.length),
       channel: creativeRuntime.brief.channel,
     });
-    res.json({ result, tab: resolvedTab, creativeBrief: creativeRuntime.brief, designQa });
+    res.json({ result, tab: resolvedTab, creativeBrief: creativeRuntime.brief, contextSources: creativeRuntime.contextSources, designQa });
   } catch (err) {
     req.log.error({ err }, "content-studio: generation failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Erro desconhecido" });
@@ -358,7 +358,7 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
       }
 
       if (!shouldRender) {
-        res.json({ result, format: resolvedFormat, generationId, creativeBrief: creativeRuntime.brief, designQa });
+        res.json({ result, format: resolvedFormat, generationId, creativeBrief: creativeRuntime.brief, contextSources: creativeRuntime.contextSources, designQa });
         return;
       }
 
@@ -380,6 +380,7 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
         format: resolvedFormat,
         generationId,
         creativeBrief: creativeRuntime.brief,
+        contextSources: creativeRuntime.contextSources,
         designQa,
         renderStarted: true,
         projectId: render.projectId,
