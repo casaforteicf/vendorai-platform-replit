@@ -51,7 +51,7 @@ const WorkspaceEnhancements = lazy(() => import("./components/runtime/WorkspaceE
 setupApiClient();
 installVisitorTelemetry();
 
-document.documentElement.dataset.vendoraiBuild = "media-library-emergency-20260916a";
+document.documentElement.dataset.vendoraiBuild = "sa-vertical-nav-fix-20260916a";
 
 // O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
 // obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
@@ -90,6 +90,90 @@ if (handoffToken) {
   }
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
+
+const SUPER_ADMIN_USER_CACHE_KEY = "vendorai_user_cache";
+const SUPER_ADMIN_TENANT_OVERRIDE_KEY = "vendorai_sa_tenant_override";
+const GUARDED_VERTICAL_ROUTES = [
+  {
+    matches: (pathname: string) => pathname === "/obras" || pathname.startsWith("/obras/") || pathname === "/insumos" || pathname === "/composicoes",
+    vertical: "Construção & Reforma",
+    name: "Preview — Construção Civil",
+    slug: "construcao",
+  },
+  {
+    matches: (pathname: string) => pathname.startsWith("/varejo/"),
+    vertical: "Varejo de Roupas & Acessórios",
+    name: "Preview — Varejo de Moda",
+    slug: "varejo",
+  },
+  {
+    matches: (pathname: string) => pathname === "/supermercado" || pathname.startsWith("/supermercado/"),
+    vertical: "Supermercado",
+    name: "Preview — Supermercado",
+    slug: "supermercado",
+  },
+] as const;
+
+function installSuperAdminVerticalNavigationBridge() {
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!(event.target instanceof Element)) return;
+
+    const anchor = event.target.closest("a[href]");
+    if (!(anchor instanceof HTMLAnchorElement)) return;
+
+    const targetUrl = new URL(anchor.href, window.location.origin);
+    if (targetUrl.origin !== window.location.origin) return;
+
+    const guarded = GUARDED_VERTICAL_ROUTES.find((entry) => entry.matches(targetUrl.pathname));
+    if (!guarded) return;
+
+    let cachedUser: { platformRole?: string | null; tenantId?: string | null } | null = null;
+    try {
+      const rawUser = localStorage.getItem(SUPER_ADMIN_USER_CACHE_KEY);
+      cachedUser = rawUser ? JSON.parse(rawUser) : null;
+    } catch {
+      return;
+    }
+    if (cachedUser?.platformRole !== "super_admin") return;
+
+    let currentOverride: { vertical?: string | null; preview?: boolean } | null = null;
+    try {
+      const rawOverride = localStorage.getItem(SUPER_ADMIN_TENANT_OVERRIDE_KEY);
+      currentOverride = rawOverride ? JSON.parse(rawOverride) : null;
+    } catch {
+      currentOverride = null;
+    }
+
+    // Um tenant real selecionado nunca é trocado silenciosamente. O bridge só
+    // corrige a navegação do Super Admin puro/preview, que antes caía de volta
+    // em /admin/verticais mesmo quando ele clicava explicitamente em Obras,
+    // Varejo ou Supermercado.
+    if (currentOverride && currentOverride.preview !== true) return;
+    if (currentOverride?.vertical === guarded.vertical) return;
+
+    const previewTenantId = cachedUser.tenantId || `__vertical_preview__:sidebar:${guarded.slug}`;
+    try {
+      localStorage.setItem(SUPER_ADMIN_TENANT_OVERRIDE_KEY, JSON.stringify({
+        id: previewTenantId,
+        name: guarded.name,
+        vertical: guarded.vertical,
+        preview: true,
+      }));
+    } catch {
+      return;
+    }
+
+    // O AuthProvider lê o override no bootstrap. Recarregar apenas nesta troca
+    // de vertical garante que o guard da rota receba o contexto correto antes
+    // de decidir qualquer redirecionamento.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.location.assign(`${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`);
+  }, true);
+}
+
+installSuperAdminVerticalNavigationBridge();
 
 const hostname = window.location.hostname;
 const tenantSiteMatch = hostname.match(/^([a-z0-9-]+)\.appvendorai\.com$/);
