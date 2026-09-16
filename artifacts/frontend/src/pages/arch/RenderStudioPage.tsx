@@ -169,8 +169,8 @@ const SHELL_STYLES = `
     height: 26px;
   }
 
-  /* Hide the central back-step confirmation banner: navigating to an earlier
-     studio step is non-destructive because versions are preserved. */
+  /* The legacy confirmation is auto-confirmed by the shell because returning
+     to an earlier studio step is non-destructive and preserves versions. */
   .arqdor-studio-v2 .arqdor-step-confirm-banner {
     display: none !important;
   }
@@ -276,7 +276,14 @@ function tagStudioChrome(root: HTMLElement) {
   }
 
   const confirmBanner = Array.from(root.querySelectorAll<HTMLElement>('[role="alertdialog"]')).find((el) => textOf(el).startsWith("Voltar para"));
-  confirmBanner?.classList.add("arqdor-step-confirm-banner");
+  if (confirmBanner) {
+    confirmBanner.classList.add("arqdor-step-confirm-banner");
+    if (confirmBanner.dataset.autoConfirmed !== "true") {
+      confirmBanner.dataset.autoConfirmed = "true";
+      const confirmButton = Array.from(confirmBanner.querySelectorAll<HTMLButtonElement>("button")).find((button) => textOf(button) === "Confirmar");
+      window.queueMicrotask(() => confirmButton?.click());
+    }
+  }
 }
 
 function getActiveStudioStep(root: HTMLElement): string {
