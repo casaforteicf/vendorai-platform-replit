@@ -1,0 +1,102 @@
+name: Ops Sync Runtime DB
+
+on:
+  push:
+    branches:
+      - ops/sync-runtime-db-20260916
+    paths:
+      - ".github/workflows/ops-sync-runtime-db.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: 2e7c6350-fe51-44fc-b330-ff385c7b490a
+      RAILWAY_ENVIRONMENT_ID: 77598492-c419-4c65-a903-2e3a5565bfb8
+      RAILWAY_SERVICE_ID: 288a5f79-5756-41c3-a2f0-41e084ff5cea
+    steps:
+      - name: Check protected secrets exist
+        shell: bash
+        run: |
+          test -n "$APP_DATABASE_URL" || (echo "APP_DATABASE_URL_MISSING" && exit 1)
+          if [ -n "$RAILWAY_API_TOKEN" ]; then
+            echo "RAILWAY_AUTH=api_token"
+          elif [ -n "$RAILWAY_TOKEN" ]; then
+            echo "RAILWAY_AUTH=project_token"
+          else
+            echo "RAILWAY_AUTH_MISSING"
+            exit 1
+          fi
+
+      - name: Validate database secret without exposing it
+        shell: bash
+        run: |
+          mkdir -p /tmp/vendorai-db-check
+          cd /tmp/vendorai-db-check
+          npm init -y >/dev/null 2>&1
+          npm install pg@8 --no-audit --no-fund >/dev/null 2>&1
+          node <<'NODE'
+          const { Client } = require('pg');
+          (async () => {
+            const client = new Client({ connectionString: process.env.APP_DATABASE_URL, connectionTimeoutMillis: 10000 });
+            try {
+              await client.connect();
+              const { rows } = await client.query('select current_user as user, current_database() as db');
+              console.log(`DB_CONNECTION_OK user=${rows[0].user} db=${rows[0].db}`);
+            } finally {
+              await client.end().catch(() => {});
+            }
+          })().catch((err) => {
+            console.error(`DB_CONNECTION_FAILED ${err.code || ''} ${err.message}`);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Sync APP_DATABASE_URL to Railway
+        shell: bash
+        run: |
+          node <<'NODE'
+          const token = process.env.RAILWAY_API_TOKEN || process.env.RAILWAY_TOKEN;
+          const query = `mutation variableCollectionUpsert($input: VariableCollectionUpsertInput!) {
+            variableCollectionUpsert(input: $input)
+          }`;
+          (async () => {
+            const response = await fetch('https://backboard.railway.com/graphql/v2', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                query,
+                variables: {
+                  input: {
+                    projectId: process.env.RAILWAY_PROJECT_ID,
+                    environmentId: process.env.RAILWAY_ENVIRONMENT_ID,
+                    serviceId: process.env.RAILWAY_SERVICE_ID,
+                    variables: { APP_DATABASE_URL: process.env.APP_DATABASE_URL },
+                    skipDeploys: false,
+                  },
+                },
+              }),
+            });
+            const body = await response.json();
+            if (!response.ok || body.errors) {
+              console.error(`RAILWAY_SYNC_FAILED status=${response.status}`);
+              if (body.errors) console.error(body.errors.map(e => e.message).join('; '));
+              process.exit(1);
+            }
+            console.log('RAILWAY_SYNC_OK');
+          })().catch((err) => {
+            console.error(`RAILWAY_SYNC_FAILED ${err.message}`);
+            process.exit(1);
+          });
+          NODE
