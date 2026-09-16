@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Package, Plus, Search, Pencil, Trash2, Loader2 } from "lucide-react";
 
-type TipoProduto = "servico" | "produto" | "oferta";
+type TipoProduto = "servico" | "produto" | "oferta" | "etapa";
 
 interface ProdutoInterno {
   id: string;
@@ -28,13 +28,15 @@ interface ProdutoInterno {
 
 const TIPO_LABEL: Record<TipoProduto, string> = {
   servico: "Serviço",
-  produto: "Produto",
+  produto: "Solução",
   oferta: "Oferta",
+  etapa: "Etapa do processo",
 };
 const TIPO_STYLE: Record<TipoProduto, string> = {
   servico: "border-blue-300 text-blue-700 bg-blue-50",
   produto: "border-primary/30 text-primary bg-primary/5",
   oferta: "border-amber-300 text-amber-700 bg-amber-50",
+  etapa: "border-violet-300 text-violet-700 bg-violet-50",
 };
 
 function authHeaders() {
@@ -59,7 +61,7 @@ export default function AdminProdutosInternos() {
       if (!r.ok) throw new Error("Falha ao carregar");
       setProdutos(await r.json());
     } catch {
-      toast({ title: "Erro ao carregar produtos", variant: "destructive" });
+      toast({ title: "Erro ao carregar serviços e etapas", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -85,7 +87,7 @@ export default function AdminProdutosInternos() {
 
   function abrirNovo() {
     setEditando(null);
-    setForm({ categoria: "", nome: "", descricaoUso: "", tipo: "produto", nichosTexto: "" });
+    setForm({ categoria: "", nome: "", descricaoUso: "", tipo: "servico", nichosTexto: "" });
     setModalOpen(true);
   }
 
@@ -115,7 +117,7 @@ export default function AdminProdutosInternos() {
       if (!r.ok) throw new Error("Falha ao salvar");
       setModalOpen(false);
       await carregar();
-      toast({ title: editando ? "Produto atualizado" : "Produto criado" });
+      toast({ title: editando ? "Item atualizado" : "Item criado" });
     } catch {
       toast({ title: "Erro ao salvar", variant: "destructive" });
     } finally {
@@ -129,7 +131,7 @@ export default function AdminProdutosInternos() {
       const r = await fetch(`/api/admin/produtos-internos/${p.id}`, { method: "DELETE", headers: authHeaders() });
       if (!r.ok) throw new Error("Falha ao excluir");
       await carregar();
-      toast({ title: "Produto excluído" });
+      toast({ title: "Item excluído" });
     } catch {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     }
@@ -141,29 +143,30 @@ export default function AdminProdutosInternos() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" />
-            Catálogo de Produtos (interno)
+            Serviços, soluções e etapas
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cada funcionalidade do Vendor.ai como "produto" — nome comercial + descrição pronta pra site, proposta e deck. Visível só pra super admin.
+            Cadastre aqui o que não é um produto direto do catálogo: serviços, soluções, ofertas e etapas do processo. Esses itens ficam junto do catálogo na Biblioteca da Empresa.
           </p>
         </div>
         <Button type="button" onClick={abrirNovo}>
           <Plus className="h-4 w-4 mr-1.5" />
-          Novo produto
+          Novo item
         </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto, categoria ou nicho..." className="pl-9" />
+          <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar serviço, etapa, solução ou categoria..." className="pl-9" />
         </div>
         <Select value={filtroTipo} onValueChange={(v) => setFiltroTipo(v as "todos" | TipoProduto)}>
-          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os tipos</SelectItem>
             <SelectItem value="servico">Serviço</SelectItem>
-            <SelectItem value="produto">Produto</SelectItem>
+            <SelectItem value="etapa">Etapa do processo</SelectItem>
+            <SelectItem value="produto">Solução</SelectItem>
             <SelectItem value="oferta">Oferta</SelectItem>
           </SelectContent>
         </Select>
@@ -174,7 +177,7 @@ export default function AdminProdutosInternos() {
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
       ) : porCategoria.size === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-10">Nenhum produto encontrado.</p>
+        <p className="text-sm text-muted-foreground text-center py-10">Nenhum item encontrado.</p>
       ) : (
         Array.from(porCategoria.entries()).map(([categoria, itens]) => (
           <div key={categoria} className="space-y-2">
@@ -219,13 +222,13 @@ export default function AdminProdutosInternos() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editando ? "Editar produto" : "Novo produto"}</DialogTitle>
+            <DialogTitle>{editando ? "Editar item" : "Novo item"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">Categoria</p>
-                <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} placeholder="Ex: CRM Core, Agentes de IA..." />
+                <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} placeholder="Ex: Atendimento, Obras, Implantação..." />
               </div>
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">Tipo</p>
@@ -233,24 +236,25 @@ export default function AdminProdutosInternos() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="servico">Serviço</SelectItem>
-                    <SelectItem value="produto">Produto</SelectItem>
+                    <SelectItem value="etapa">Etapa do processo</SelectItem>
+                    <SelectItem value="produto">Solução</SelectItem>
                     <SelectItem value="oferta">Oferta</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-1.5">
-              <p className="text-sm font-medium">Nome do produto</p>
-              <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Pipeline de Negócios" />
+              <p className="text-sm font-medium">Nome</p>
+              <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Instalação, Projeto executivo, Agente SDR..." />
             </div>
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Descrição de uso</p>
-              <Textarea value={form.descricaoUso} onChange={(e) => setForm({ ...form, descricaoUso: e.target.value })} rows={3} placeholder="Explicação breve, pronta pra usar em marketing" />
+              <Textarea value={form.descricaoUso} onChange={(e) => setForm({ ...form, descricaoUso: e.target.value })} rows={3} placeholder="Explique objetivamente o serviço, etapa ou solução e quando ela é usada." />
             </div>
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Nichos relacionados (opcional)</p>
-              <Input value={form.nichosTexto} onChange={(e) => setForm({ ...form, nichosTexto: e.target.value })} placeholder="Ex: Farmácia, Supermercado (separado por vírgula)" />
-              <p className="text-xs text-muted-foreground">Deixe em branco se o produto serve pra qualquer nicho (a maioria dos itens genéricos).</p>
+              <Input value={form.nichosTexto} onChange={(e) => setForm({ ...form, nichosTexto: e.target.value })} placeholder="Ex: Farmácia, Construção, Imobiliária (separado por vírgula)" />
+              <p className="text-xs text-muted-foreground">Deixe em branco quando o item puder ser usado em qualquer segmento.</p>
             </div>
           </div>
           <DialogFooter>
