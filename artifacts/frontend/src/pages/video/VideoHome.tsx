@@ -25,6 +25,7 @@ const GraphicDesignTimelineHandoff = lazy(() => import("@/components/video/Graph
 const GuidedVideoCreationPanel = lazy(() => import("@/components/video/GuidedVideoCreationPanel"));
 const VideoProjectsPanel = lazy(() => import("@/components/video/VideoProjectsPanel"));
 const VideoPublishPanel = lazy(() => import("@/components/video/VideoPublishPanel"));
+const VideoPerformancePanel = lazy(() => import("@/components/video/VideoPerformancePanel"));
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
@@ -240,6 +241,10 @@ export default function VideoHome() {
 
       <Suspense fallback={<LoadingPanel label="Carregando publicação e agendamento…" />}>
         <VideoPublishPanel />
+      </Suspense>
+
+      <Suspense fallback={<LoadingPanel label="Carregando resultados e aprendizado…" />}>
+        <VideoPerformancePanel />
       </Suspense>
 
       <section className="overflow-hidden rounded-2xl border border-border bg-card">
