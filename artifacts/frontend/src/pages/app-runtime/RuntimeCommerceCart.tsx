@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Minus, PackageOpen, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { CreditCard, Loader2, Minus, PackageOpen, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import {
   RUNTIME_CART_EVENT,
+  clearRuntimeCheckoutIdempotencyKey,
+  getRuntimeCheckoutIdempotencyKey,
   readRuntimeCart,
   setRuntimeCartQuantity,
   type RuntimeCartItem,
@@ -23,6 +25,7 @@ type CatalogProduct = {
 };
 
 type CatalogPayload = { items?: CatalogProduct[] };
+type BillingType = "PIX" | "BOLETO" | "CREDIT_CARD" | "UNDEFINED";
 
 type Props = { appId: string; lang: "pt" | "es" };
 
@@ -31,19 +34,39 @@ const COPY = {
     empty: "Seu carrinho está vazio.",
     unavailable: "Não foi possível validar o carrinho no catálogo agora.",
     total: "Total",
-    checkout: "Gerar checkout",
-    checkoutPending: "O checkout será gerado automaticamente ao confirmar a compra assim que a integração de pagamento deste app estiver habilitada.",
+    checkout: "Confirmar compra e abrir pagamento",
+    checkoutCreating: "Gerando checkout...",
+    checkoutHelp: "Ao confirmar, o sistema valida preço e estoque novamente, reserva os itens controlados e gera o checkout automaticamente.",
+    checkoutUnavailable: "O checkout deste app ainda não está habilitado.",
     unavailableItem: "Item indisponível",
     noSku: "Produto sem SKU não pode seguir para checkout.",
+    paymentMethod: "Forma de pagamento",
+    cpfCnpj: "CPF/CNPJ para cobrança",
+    cpfCnpjPlaceholder: "Opcional quando o provedor não exigir",
+    methodAny: "Escolher no checkout",
+    pix: "Pix",
+    boleto: "Boleto",
+    card: "Cartão de crédito",
+    genericError: "Não foi possível gerar o checkout. Revise os dados e tente novamente.",
   },
   es: {
     empty: "Tu carrito está vacío.",
     unavailable: "No fue posible validar el carrito con el catálogo ahora.",
     total: "Total",
-    checkout: "Generar checkout",
-    checkoutPending: "El checkout se generará automáticamente al confirmar la compra cuando la integración de pago de esta app esté habilitada.",
+    checkout: "Confirmar compra y abrir pago",
+    checkoutCreating: "Generando checkout...",
+    checkoutHelp: "Al confirmar, el sistema valida precio y stock nuevamente, reserva los artículos controlados y genera el checkout automáticamente.",
+    checkoutUnavailable: "El checkout de esta app todavía no está habilitado.",
     unavailableItem: "Producto no disponible",
     noSku: "Un producto sin SKU no puede continuar al checkout.",
+    paymentMethod: "Forma de pago",
+    cpfCnpj: "CPF/CNPJ para cobro",
+    cpfCnpjPlaceholder: "Opcional cuando el proveedor no lo exige",
+    methodAny: "Elegir en el checkout",
+    pix: "Pix",
+    boleto: "Boleto",
+    card: "Tarjeta de crédito",
+    genericError: "No fue posible generar el checkout. Revisa los datos e inténtalo nuevamente.",
   },
 } as const;
 
@@ -86,6 +109,10 @@ export default function RuntimeCommerceCart({ appId, lang }: Props) {
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [billingType, setBillingType] = useState<BillingType>("UNDEFINED");
+  const [cpfCnpj, setCpfCnpj] = useState("");
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setItems(readRuntimeCart(appId));
@@ -142,7 +169,61 @@ export default function RuntimeCommerceCart({ appId, lang }: Props) {
   }), [catalogById, items]);
 
   const total = rows.reduce((sum, row) => sum + (row.lineTotal ?? 0), 0);
-  const checkoutBlocked = rows.some((row) => !row.available || !row.item.sku || row.price === null);
+  const checkoutBlocked = failed || rows.some((row) => !row.available || !row.item.sku || row.price === null);
+
+  async function startCheckout() {
+    if (checkoutBlocked || checkoutBusy || appId.startsWith("preview-")) return;
+    const token = window.localStorage.getItem(sessionStorageKey(appId));
+    if (!token) {
+      setCheckoutMessage(copy.checkoutUnavailable);
+      return;
+    }
+
+    setCheckoutBusy(true);
+    setCheckoutMessage(null);
+    try {
+      const idempotencyKey = getRuntimeCheckoutIdempotencyKey(appId, items);
+      const response = await fetch(`/api/app-runtime/apps/${encodeURIComponent(appId)}/actions/commerce.checkout.start`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            confirmPurchase: true,
+            idempotencyKey,
+            billingType,
+            ...(cpfCnpj.trim() ? { cpfCnpj: cpfCnpj.trim() } : {}),
+            items: items.map((item) => ({ sku: item.sku, quantity: item.quantity })),
+          },
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({})) as JsonObject;
+      if (!response.ok) {
+        if (payload.error === "checkout_terminal") clearRuntimeCheckoutIdempotencyKey(appId);
+        const message = typeof payload.message === "string"
+          ? payload.message
+          : response.status === 403
+            ? copy.checkoutUnavailable
+            : copy.genericError;
+        throw new Error(message);
+      }
+
+      const data = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+        ? payload.data as JsonObject
+        : {};
+      const paymentUrl = typeof data.paymentUrl === "string" ? data.paymentUrl : "";
+      if (!paymentUrl) throw new Error(copy.genericError);
+      window.location.assign(paymentUrl);
+    } catch (error) {
+      setCheckoutMessage(error instanceof Error ? error.message : copy.genericError);
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
 
   if (loading && items.length > 0) {
     return <section className="rounded-2xl border bg-white p-8 text-center shadow-sm"><Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /></section>;
@@ -192,8 +273,30 @@ export default function RuntimeCommerceCart({ appId, lang }: Props) {
 
       <div className="sticky bottom-24 rounded-2xl border bg-white p-4 shadow-lg sm:static sm:shadow-sm">
         <div className="flex items-center justify-between"><span className="text-sm font-medium text-slate-500">{copy.total}</span><strong className="text-xl text-slate-950">{money(total, lang)}</strong></div>
-        <button type="button" disabled className="mt-4 flex h-12 w-full items-center justify-center rounded-xl text-sm font-bold text-white opacity-60" style={{ backgroundColor: "var(--app-runtime-primary, #0f172a)" }}>{copy.checkout}</button>
-        <p className={`mt-2 text-xs leading-5 ${checkoutBlocked ? "text-amber-700" : "text-slate-500"}`}>{copy.checkoutPending}</p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-semibold text-slate-600">{copy.paymentMethod}</span>
+            <select value={billingType} onChange={(event) => setBillingType(event.target.value as BillingType)} className="h-11 w-full rounded-xl border bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400">
+              <option value="UNDEFINED">{copy.methodAny}</option>
+              <option value="PIX">{copy.pix}</option>
+              <option value="BOLETO">{copy.boleto}</option>
+              <option value="CREDIT_CARD">{copy.card}</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-semibold text-slate-600">{copy.cpfCnpj}</span>
+            <input value={cpfCnpj} onChange={(event) => setCpfCnpj(event.target.value.slice(0, 24))} placeholder={copy.cpfCnpjPlaceholder} className="h-11 w-full rounded-xl border bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-slate-400" />
+          </label>
+        </div>
+
+        {checkoutMessage && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{checkoutMessage}</div>}
+
+        <button type="button" disabled={checkoutBlocked || checkoutBusy || appId.startsWith("preview-")} onClick={() => void startCheckout()} className="mt-4 flex h-12 w-full items-center justify-center rounded-xl text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "var(--app-runtime-primary, #0f172a)" }}>
+          {checkoutBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+          {checkoutBusy ? copy.checkoutCreating : copy.checkout}
+        </button>
+        <p className="mt-2 text-xs leading-5 text-slate-500">{copy.checkoutHelp}</p>
       </div>
     </section>
   );
