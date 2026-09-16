@@ -6,6 +6,10 @@ import {
   db,
 } from "@workspace/db";
 import type { RuntimeViewer } from "./app_runtime_data_sources.js";
+import {
+  AppRuntimeCommerceError,
+  startAppRuntimeCheckout,
+} from "./app_runtime_commerce.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -22,7 +26,8 @@ type ActionExecutor = (
 
 export type RuntimeActionResolution =
   | { actionKey: string; status: "ok"; data: JsonObject }
-  | { actionKey: string; status: "not_found" | "forbidden" | "invalid_input" };
+  | { actionKey: string; status: "not_found" | "forbidden" | "invalid_input" }
+  | { actionKey: string; status: "conflict" | "unavailable"; code: string; message: string };
 
 export type RuntimeActionDescriptor = {
   key: string;
@@ -85,6 +90,19 @@ const ACTION_EXECUTORS: Record<string, ActionExecutor> = {
     if (!updated) throw new RuntimeActionInputError("ACTION_TARGET_UNAVAILABLE");
     return updated;
   },
+
+  "commerce.checkout.start": async (input, { tenantId, appInstanceId, viewer }) => {
+    return startAppRuntimeCheckout(input, {
+      tenantId,
+      appInstanceId,
+      viewer: {
+        id: viewer.id,
+        displayName: viewer.displayName,
+        email: viewer.email,
+        phone: viewer.phone,
+      },
+    });
+  },
 };
 
 export async function loadInteractiveRuntimeActions(
@@ -119,6 +137,8 @@ export async function loadInteractiveRuntimeActions(
   const permissionSet = new Set(permissions);
   return new Map(
     rows.flatMap((row) => {
+      // Somente ações de baixo risco podem virar formulário genérico do Runtime.
+      // Checkout é medium e só é disparado pelo componente de compra, após confirmação explícita.
       if (
         row.riskLevel !== "low" ||
         !row.executorKey ||
@@ -165,7 +185,9 @@ export async function executeRuntimeAction(
     .limit(1);
 
   if (!action?.executorKey) return { actionKey, status: "not_found" };
-  if (action.riskLevel !== "low") return { actionKey, status: "forbidden" };
+  const allowedRisk = action.riskLevel === "low"
+    || (action.riskLevel === "medium" && action.executorKey === "commerce.checkout.start");
+  if (!allowedRisk) return { actionKey, status: "forbidden" };
 
   const permissionSet = new Set(context.viewer.permissions);
   const requiredPermissions = action.requiredPermissions ?? [];
@@ -182,6 +204,15 @@ export async function executeRuntimeAction(
   } catch (error) {
     if (error instanceof RuntimeActionInputError) {
       return { actionKey, status: "invalid_input" };
+    }
+    if (error instanceof AppRuntimeCommerceError) {
+      if (error.kind === "invalid") return { actionKey, status: "invalid_input" };
+      return {
+        actionKey,
+        status: error.kind,
+        code: error.code,
+        message: error.message,
+      };
     }
     throw error;
   }
