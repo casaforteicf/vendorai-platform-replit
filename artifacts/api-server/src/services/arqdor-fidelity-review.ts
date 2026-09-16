@@ -4,6 +4,8 @@ import type OpenAI from "openai";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
+const FIDELITY_MODEL = "gpt-4o-mini";
+
 const fidelityDimensionSchema = z.object({
   score: z.number().min(0).max(100),
   confidence: z.number().min(0).max(1),
@@ -34,17 +36,25 @@ export const arqdorFidelityReviewSchema = z.object({
 
 export type ArqdorFidelityReview = z.infer<typeof arqdorFidelityReviewSchema>;
 
+async function privateObjectToDataUrl(objectPath: string): Promise<string> {
+  const storage = new ObjectStorageService();
+  const file = await storage.getObjectEntityFile(objectPath);
+  const [[buffer], [metadata]] = await Promise.all([file.download(), file.getMetadata()]);
+  const mime = metadata.contentType || "image/png";
+  return `data:${mime};base64,${buffer.toString("base64")}`;
+}
+
 async function toVisionUrl(url: string): Promise<string> {
   if (url.startsWith("data:image/")) return url;
   if (/^https?:\/\//i.test(url)) return url;
 
+  if (url.startsWith("/objects/")) {
+    return privateObjectToDataUrl(url);
+  }
+
   if (url.startsWith("/api/storage/objects/")) {
-    const storage = new ObjectStorageService();
     const objectPath = `/objects/${url.replace(/^\/api\/storage\/objects\//, "")}`;
-    const fetched = await (storage as any).getPrivateBuffer?.(objectPath);
-    if (!fetched?.buf) throw new Error("Não foi possível carregar a imagem privada para análise de fidelidade");
-    const mime = fetched.mime ?? "image/png";
-    return `data:${mime};base64,${Buffer.from(fetched.buf).toString("base64")}`;
+    return privateObjectToDataUrl(objectPath);
   }
 
   throw new Error(`URL de imagem não suportada no Fidelity Review: ${url.slice(0, 80)}`);
@@ -61,7 +71,13 @@ export async function reviewArqdorFidelity(input: {
   renderImageUrl: string;
   requestedChange?: string | null;
   log?: Logger;
-}): Promise<{ review: ArqdorFidelityReview; costUsd: number; inputTokens: number; outputTokens: number }> {
+}): Promise<{
+  review: ArqdorFidelityReview;
+  model: string;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}> {
   const [baseImageUrl, renderImageUrl] = await Promise.all([
     toVisionUrl(input.baseImageUrl),
     toVisionUrl(input.renderImageUrl),
@@ -97,7 +113,7 @@ export async function reviewArqdorFidelity(input: {
       { role: "user", content: userContent } as any,
     ],
     {
-      model: "gpt-4o-mini",
+      model: FIDELITY_MODEL,
       temperature: 0.1,
       maxTokens: 1600,
       responseFormat: { type: "json_object" },
@@ -108,6 +124,7 @@ export async function reviewArqdorFidelity(input: {
   const parsed = arqdorFidelityReviewSchema.parse(parseJsonPayload(result.content));
   return {
     review: parsed,
+    model: FIDELITY_MODEL,
     costUsd: result.costUsd,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
