@@ -12,6 +12,7 @@ import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
 import { MediaSitesBridge } from "./components/media/MediaSitesBridge";
 import { MediaCatalogBridge } from "./components/media/MediaCatalogBridge";
 import { MediaContentStudioBridge } from "./components/media/MediaContentStudioBridge";
+import { MediaContextLibrary } from "./components/media/MediaContextLibrary";
 import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
 import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
 import { MediaAiBaseBridge } from "./components/media/MediaAiBaseBridge";
@@ -178,6 +179,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaSitesBridge />
           <MediaCatalogBridge />
           <MediaContentStudioBridge />
+          <MediaContextLibrary />
           <MediaMarketingContentBridge />
           <MediaConversationsBridge />
           <MediaAiBaseBridge />
