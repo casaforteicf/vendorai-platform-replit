@@ -12,10 +12,9 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ExternalLink, FolderOpen } from "lucide-react";
+import { Plus, ExternalLink, FolderOpen, Search, UserRound, X, Loader2 } from "lucide-react";
 
 function getToken() { return localStorage.getItem("vendorai_token"); }
-function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
 
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -35,6 +34,15 @@ type Projeto = {
   portalToken?: string | null;
   totalAmbientes: number;
   createdAt: string;
+};
+
+type Lead = {
+  id: string;
+  nome: string;
+  email?: string | null;
+  telefone?: string | null;
+  status?: string | null;
+  fonte?: string | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -101,6 +109,12 @@ export default function Projetos() {
   const [form, setForm]             = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving]         = useState(false);
 
+  // Cliente / lead existente
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadResults, setLeadResults] = useState<Lead[]>([]);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+
   function load() {
     if (!tenantId) return;
     setLoading(true);
@@ -117,8 +131,73 @@ export default function Projetos() {
 
   useEffect(() => { load(); }, [tenantId, filterStatus, filterBusca]);
 
+  useEffect(() => {
+    if (!dialogOpen || !tenantId || selectedLead || leadSearch.trim().length < 2) {
+      setLeadResults([]);
+      setLeadsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLeadsLoading(true);
+      try {
+        const res = await fetch(
+          `/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(leadSearch.trim())}`,
+          {
+            headers: { Authorization: `Bearer ${getToken()}` },
+            signal: controller.signal,
+          },
+        );
+        if (!res.ok) throw new Error("Erro ao buscar leads");
+        const data = await res.json();
+        setLeadResults(Array.isArray(data) ? data : Array.isArray(data?.leads) ? data.leads : []);
+      } catch (err: any) {
+        if (err?.name !== "AbortError") setLeadResults([]);
+      } finally {
+        if (!controller.signal.aborted) setLeadsLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [dialogOpen, tenantId, leadSearch, selectedLead]);
+
+  function selectLead(lead: Lead) {
+    setSelectedLead(lead);
+    setLeadSearch("");
+    setLeadResults([]);
+    setForm((f) => ({
+      ...f,
+      clienteNome: lead.nome ?? "",
+      clienteEmail: lead.email ?? "",
+      clienteTelefone: lead.telefone ?? "",
+    }));
+  }
+
+  function clearLead() {
+    setSelectedLead(null);
+    setLeadSearch("");
+    setLeadResults([]);
+    setForm((f) => ({ ...f, clienteNome: "", clienteEmail: "", clienteTelefone: "" }));
+  }
+
+  function resetDialog() {
+    setForm(EMPTY_FORM);
+    setSelectedLead(null);
+    setLeadSearch("");
+    setLeadResults([]);
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!selectedLead) {
+      toast({ title: "Selecione um lead cadastrado", description: "Busque o cliente na base antes de criar o projeto.", variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
@@ -148,7 +227,7 @@ export default function Projetos() {
       const projeto = await res.json();
       toast({ title: "Projeto criado!", description: projeto.titulo });
       setDialogOpen(false);
-      setForm(EMPTY_FORM);
+      resetDialog();
       navigate(`/arch/projetos/${projeto.id}`);
     } catch (err: any) {
       toast({ title: "Erro", description: err.message ?? "Falha ao criar projeto", variant: "destructive" });
@@ -170,7 +249,13 @@ export default function Projetos() {
           <p className="text-sm text-muted-foreground mt-0.5">{projetos.length} projeto{projetos.length !== 1 ? "s" : ""} encontrado{projetos.length !== 1 ? "s" : ""}</p>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetDialog();
+          }}
+        >
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-2" /> Novo Projeto</Button>
           </DialogTrigger>
@@ -180,6 +265,68 @@ export default function Projetos() {
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Cliente / lead cadastrado *</Label>
+
+                  {selectedLead ? (
+                    <div className="rounded-lg border bg-muted/30 px-3 py-3 flex items-start gap-3">
+                      <div className="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+                        <UserRound className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{selectedLead.nome}</p>
+                        <div className="mt-0.5 text-xs text-muted-foreground space-y-0.5">
+                          {selectedLead.telefone && <p>{selectedLead.telefone}</p>}
+                          {selectedLead.email && <p className="truncate">{selectedLead.email}</p>}
+                        </div>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearLead} aria-label="Trocar cliente">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        value={leadSearch}
+                        onChange={(e) => setLeadSearch(e.target.value)}
+                        placeholder="Buscar por nome, telefone ou e-mail..."
+                        className="pl-9 pr-9"
+                        autoComplete="off"
+                      />
+                      {leadsLoading && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
+
+                      {leadSearch.trim().length >= 2 && !leadsLoading && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-md border bg-popover shadow-lg max-h-56 overflow-y-auto">
+                          {leadResults.length > 0 ? (
+                            leadResults.map((lead) => (
+                              <button
+                                key={lead.id}
+                                type="button"
+                                className="w-full px-3 py-2.5 text-left hover:bg-muted transition-colors border-b last:border-b-0"
+                                onClick={() => selectLead(lead)}
+                              >
+                                <p className="text-sm font-medium">{lead.nome}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {[lead.telefone, lead.email].filter(Boolean).join(" · ") || "Sem telefone/e-mail"}
+                                </p>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-3 text-sm">
+                              <p className="font-medium">Nenhum lead encontrado</p>
+                              <p className="text-xs text-muted-foreground mt-1">Cadastre o cliente no CRM e depois selecione aqui.</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">O projeto usa os dados do lead já cadastrado na base do tenant.</p>
+                </div>
+
                 <div className="col-span-2 space-y-1">
                   <Label>Título do projeto *</Label>
                   <Input
@@ -188,20 +335,6 @@ export default function Projetos() {
                     placeholder="Ex: Apartamento Moema"
                     required
                   />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Nome do cliente</Label>
-                  <Input value={form.clienteNome} onChange={(e) => setF("clienteNome", e.target.value)} placeholder="João Silva" />
-                </div>
-                <div className="space-y-1">
-                  <Label>Telefone</Label>
-                  <Input value={form.clienteTelefone} onChange={(e) => setF("clienteTelefone", e.target.value)} placeholder="(11) 99999-9999" />
-                </div>
-
-                <div className="col-span-2 space-y-1">
-                  <Label>E-mail do cliente</Label>
-                  <Input type="email" value={form.clienteEmail} onChange={(e) => setF("clienteEmail", e.target.value)} placeholder="cliente@email.com" />
                 </div>
 
                 <div className="space-y-1">
@@ -226,7 +359,7 @@ export default function Projetos() {
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancelar</Button>
-                <Button type="submit" disabled={saving || !form.titulo}>
+                <Button type="submit" disabled={saving || !form.titulo || !selectedLead}>
                   {saving ? "Criando..." : "Criar Projeto"}
                 </Button>
               </div>
