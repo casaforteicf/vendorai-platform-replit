@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 const GraphicDesignDirectorPanel = lazy(() => import("@/components/video/GraphicDesignDirectorPanel"));
 const GraphicDesignTimelineHandoff = lazy(() => import("@/components/video/GraphicDesignTimelineHandoff"));
 const GuidedVideoCreationPanel = lazy(() => import("@/components/video/GuidedVideoCreationPanel"));
+const VideoProjectsPanel = lazy(() => import("@/components/video/VideoProjectsPanel"));
 const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
@@ -214,6 +215,10 @@ export default function VideoHome() {
           </div>
         </div>
       </section>
+
+      <Suspense fallback={<LoadingPanel label="Carregando projetos de vídeo…" />}>
+        <VideoProjectsPanel />
+      </Suspense>
 
       <section className="space-y-3">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
