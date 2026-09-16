@@ -150,7 +150,7 @@ Apps com histórico de compra omnichannel devem prever Customer Identity. O CPF 
 - uma compra externa pode chegar antes do cadastro do app: ela fica pendente pelo fingerprint e é reclamada automaticamente quando o mesmo CPF for vinculado ao App User;
 - compras externas também podem ser ligadas pelo contato CRM quando leads.documento já possuir o CPF;
 - não permita que um App User assuma um CPF já vinculado a outra identidade do mesmo tenant.
-Quando a jornada exigir essa identidade, inclua viewer.identity.cpf.link em definition.settings.runtimeAccess.actions.keys e apresente o campo de CPF no Perfil/Conta com consentimento e finalidade claros.
+Quando a jornada usar commerce.orders com compras externas, inclua obrigatoriamente em definition.settings.runtimeAccess.actions: { enabled: true, keys: ["viewer.identity.cpf.link"] } preservando todas as outras actions necessárias. A tela oficial Minhas compras já oferece o campo dedicado de vínculo; não gere um formulário genérico para CPF.
 
 5. COMPRAS FORA DO APP / ERP / PDV
 Uma compra pode nascer no App Product OU fora dele. Integrações de ERP, PDV, frente de caixa, e-commerce e marketplace devem enviar ao Purchase Gateway, no mínimo:
