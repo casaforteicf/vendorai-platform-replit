@@ -34,6 +34,8 @@ const CONTEXTUAL_LINK_LABELS = [
   { href: "/usuarios", label: "Equipe & Usuários" },
   { href: "/base-conhecimento", label: "Conhecimento da Empresa" },
   { href: "/configuracoes", label: "Configurações Gerais" },
+  { href: "/faq", label: "Central de Ajuda" },
+  { href: "/onboarding/integracoes", label: "Integrações da Implantação" },
   { href: "/erp", label: "Financeiro & ERP" },
   { href: "/solicitacao-compra", label: "Compras & Fornecedores" },
   { href: "/entregas", label: "Entregas" },
