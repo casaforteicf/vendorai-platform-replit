@@ -10,29 +10,21 @@ O padrão visual parte de uma linguagem de apps de varejo modernos: navegação 
 
 O tenant pode mudar marca, cores, conteúdo, ordem e capacidades habilitadas. Não pode quebrar safe-area, hierarquia, acessibilidade, estados de carregamento, navegação, espaçamento mínimo ou comportamento dos componentes oficiais.
 
-## Shell oficial
+## Shell e IDs canônicos
 
-Header com safe-area, perfil à esquerda, marca ao centro e notificações à direita. Bottom navigation com até 5 destinos, texto + ícone, estado ativo evidente e safe-area obrigatória.
-
-## IDs canônicos
-
-Quando uma tela existir, o Arquiteto IA deve preferir `home`, `catalog`, `search`, `categories`, `product-detail`, `cart`, `checkout`, `orders`, `order-detail`, `promotions`, `stores`, `profile`, `notifications` e `menu`. `catalog`, `cart` e `orders` ativam componentes estruturados do Runtime.
+Header com safe-area, perfil à esquerda, marca ao centro e notificações à direita. Bottom navigation com até 5 destinos. Quando uma tela existir, o Arquiteto IA deve preferir `home`, `catalog`, `search`, `categories`, `product-detail`, `cart`, `checkout`, `orders`, `order-detail`, `promotions`, `stores`, `profile`, `notifications` e `menu`. `catalog`, `cart` e `orders` ativam componentes estruturados do Runtime.
 
 ## Catálogo e checkout
 
-`catalog.products` lê o catálogo real do tenant. O carrinho é persistente por App Product e `commerce.checkout.start` revalida catálogo, promoção e estoque no servidor, usa idempotência, reserva estoque controlado, gera cobrança real no Asaas do tenant e publica o lifecycle no outbox.
-
-A regra comercial é fixa: confirmou a compra, gera checkout automaticamente.
+`catalog.products` lê o catálogo real do tenant. O carrinho é persistente por App Product e `commerce.checkout.start` revalida catálogo, promoção e estoque no servidor, usa idempotência, reserva estoque controlado, gera cobrança real no Asaas do tenant e publica o lifecycle no outbox. Confirmou a compra, o checkout é criado automaticamente.
 
 ## Customer Identity — CPF
 
 O CPF é dado de correspondência, não chave primária técnica. O backend normaliza e valida o documento, cria fingerprint HMAC-SHA256, mantém o CPF bruto cifrado e nunca publica o valor bruto em histórico, analytics ou eventos de commerce.
 
-A action `viewer.identity.cpf.link` permite que o App User solicite o vínculo do próprio CPF. É uma action de risco médio, habilitada explicitamente na versão publicada. Apps com histórico omnichannel devem incluí-la em `definition.settings.runtimeAccess.actions.keys`.
+A action `viewer.identity.cpf.link` permite que o App User solicite o vínculo do próprio CPF. É uma action de risco médio e deve ser explicitamente habilitada na versão publicada. Apps com histórico omnichannel devem incluí-la em `definition.settings.runtimeAccess.actions.keys`.
 
-A tela `orders` possui um componente dedicado para informar CPF e encontrar compras realizadas no caixa, PDV, ERP, e-commerce e demais canais. Compras que chegaram antes do cadastro ficam preservadas pelo fingerprint e são vinculadas ao App User quando o mesmo CPF é informado.
-
-Se o CRM já possuir o CPF em `leads.documento` e houver App User ligado ao contato, o Identity Resolver também consegue associar a compra.
+A tela `orders` possui um componente dedicado para informar CPF e encontrar compras realizadas no caixa, PDV, ERP, e-commerce e demais canais. Compras que chegaram antes do cadastro ficam preservadas pelo fingerprint e são vinculadas ao App User quando o mesmo CPF é informado. Se o CRM já possuir o CPF em `leads.documento` e houver App User ligado ao contato, o Identity Resolver também consegue associar a compra.
 
 ## Purchase Gateway
 
@@ -40,7 +32,7 @@ Uma venda pode nascer no App Product, ERP, PDV/frente de caixa, e-commerce, mark
 
 Cada compra externa carrega `sourceKey`, `sourceKind`, `externalOrderId`, CPF quando fornecido, data/hora, itens, valores, loja, terminal, vendedor, meio de pagamento e status quando disponíveis.
 
-Não existe endpoint público genérico sem autenticação. O adapter específico do fornecedor autentica a origem, transforma o payload e então chama a ingestão canônica.
+Não existe endpoint público genérico sem autenticação. O adapter específico do fornecedor autentica a origem, transforma o payload e então chama a ingestão canônica. Portanto o Builder já nasce preparado para qualquer ERP/PDV, mas a ativação operacional de um fornecedor específico exige o respectivo adapter ou webhook autenticado.
 
 ## Idempotência
 
@@ -52,9 +44,7 @@ Compras externas são únicas por `tenant + sourceKey + externalOrderId`. Reenvi
 
 ## Outbox e VendorAI
 
-Compras internas e externas alimentam `app_runtime_commerce_events`. Eventos externos incluem criação e mudanças de status como `paid`, `cancelled`, `refunded`, `partially_refunded` e `voided`.
-
-Esse outbox é o contrato para CRM, Customer Intelligence, fidelidade/cashback, marketing, financeiro, fiscal, ERP, agentes e automações.
+Compras internas e externas alimentam `app_runtime_commerce_events`. Eventos externos incluem criação e mudanças de status como `paid`, `cancelled`, `refunded`, `partially_refunded` e `voided`. Esse outbox é o contrato para CRM, Customer Intelligence, fidelidade/cashback, marketing, financeiro, fiscal, ERP, agentes e automações.
 
 ## Source of truth
 
