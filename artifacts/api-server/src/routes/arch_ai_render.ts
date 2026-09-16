@@ -17,6 +17,11 @@ function asOptionalString(value: unknown): string | null {
   return normalized || null;
 }
 
+function materialNameFromPrompt(prompt: string): string | null {
+  const match = prompt.match(/Material selecionado:\s*([^\n(]+?)(?:\s*\(|\.|$)/i);
+  return match?.[1]?.trim() || null;
+}
+
 function captureJson(
   req: Request,
   res: Response,
@@ -64,10 +69,10 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, (req, res, next) => {
 
 archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, (req, res, next) => {
   const tid = tenantId(req);
-  const materialId = asOptionalString(req.body?.material_id);
-  const materialName = asOptionalString(req.body?.material_name);
-  const explicitOperation = renderOperationTypeSchema.safeParse(req.body?.operation_type);
   const adjustmentPrompt = asOptionalString(req.body?.ajuste_prompt) ?? "";
+  const materialId = asOptionalString(req.body?.material_id);
+  const materialName = asOptionalString(req.body?.material_name) ?? materialNameFromPrompt(adjustmentPrompt);
+  const explicitOperation = renderOperationTypeSchema.safeParse(req.body?.operation_type);
   const operationType = inferOperationType({
     explicit: explicitOperation.success ? explicitOperation.data : undefined,
     materialId,
