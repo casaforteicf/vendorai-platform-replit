@@ -40,14 +40,14 @@ async function ownedQuote(tid: string, obraId: string, requestId: string, quoteI
   return result.rows[0] ?? null;
 }
 
-function number(value: unknown, fallback = 0) {
+function num(value: unknown, fallback = 0) {
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function totalQuote(quote: any) {
-  const base = number(quote?.confirmed_value || quote?.estimated_value);
-  return Math.max(0, base + number(quote?.freight_value) + number(quote?.tax_value) - number(quote?.discount_value));
+function quoteTotal(quote: any) {
+  const base = num(quote?.confirmed_value || quote?.estimated_value);
+  return Math.max(0, base + num(quote?.freight_value) + num(quote?.tax_value) - num(quote?.discount_value));
 }
 
 function makeCode() {
@@ -71,14 +71,7 @@ router.get("/arch/procurement/:obraId", async (req, res, next) => {
       pool.query(`SELECT id, fornecedor, valor, data_vencimento, status, descricao FROM obra_lancamentos WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
     ]);
 
-    res.json({
-      obra,
-      requests: requests.rows,
-      quotes: quotes.rows,
-      receipts: receipts.rows,
-      stages: stages.rows,
-      finance: finance.rows,
-    });
+    res.json({ obra, requests: requests.rows, quotes: quotes.rows, receipts: receipts.rows, stages: stages.rows, finance: finance.rows });
   } catch (err) {
     logger.error({ err }, "arch procurement GET error");
     next(err);
@@ -94,9 +87,9 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
 
     const descricao = String(req.body?.descricao ?? "").trim();
     if (!descricao) { res.status(400).json({ error: "Item/serviço é obrigatório" }); return; }
-    const quantidade = Math.max(0, number(req.body?.quantidade, 1));
-    const valorUnitario = Math.max(0, number(req.body?.valorUnitario));
-    const valorTotal = req.body?.valorTotal == null ? quantidade * valorUnitario : Math.max(0, number(req.body.valorTotal));
+    const quantidade = Math.max(0, num(req.body?.quantidade, 1));
+    const valorUnitario = Math.max(0, num(req.body?.valorUnitario));
+    const valorTotal = req.body?.valorTotal == null ? quantidade * valorUnitario : Math.max(0, num(req.body.valorTotal));
     const id = crypto.randomUUID();
 
     const result = await pool.query(
@@ -113,9 +106,8 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
         id, tid, obraId, req.body?.insumoId || null, req.body?.codigo || makeCode(), req.body?.etapaId || null,
         descricao, req.body?.ambiente || null, req.body?.disciplina || null, req.body?.categoria || null,
         String(quantidade), String(req.body?.unidade || "un"), String(valorUnitario), String(valorTotal),
-        String(req.body?.prioridade || "media"), String(req.body?.status || "pendente"),
-        req.body?.dataPrevista || null, req.body?.dataNecessidade || null,
-        req.user?.sub ?? null, req.user?.name ?? req.user?.email ?? null,
+        String(req.body?.prioridade || "media"), String(req.body?.status || "pendente"), req.body?.dataPrevista || null,
+        req.body?.dataNecessidade || null, req.user?.sub ?? null, req.user?.name ?? req.user?.email ?? null,
         String(req.body?.origem || "manual"), req.body?.observacoes || null,
       ],
     );
@@ -141,10 +133,10 @@ router.patch("/arch/procurement/:obraId/requests/:requestId", async (req, res, n
       ambiente: { column: "ambiente", transform: (v) => v || null },
       disciplina: { column: "disciplina", transform: (v) => v || null },
       categoria: { column: "categoria", transform: (v) => v || null },
-      quantidade: { column: "quantidade", transform: (v) => String(Math.max(0, number(v))) },
+      quantidade: { column: "quantidade", transform: (v) => String(Math.max(0, num(v))) },
       unidade: { column: "unidade", transform: (v) => String(v || "un") },
-      valorUnitario: { column: "valor_unitario", transform: (v) => String(Math.max(0, number(v))) },
-      valorTotal: { column: "valor_total", transform: (v) => String(Math.max(0, number(v))) },
+      valorUnitario: { column: "valor_unitario", transform: (v) => String(Math.max(0, num(v))) },
+      valorTotal: { column: "valor_total", transform: (v) => String(Math.max(0, num(v))) },
       prioridade: { column: "prioridade", transform: (v) => String(v || "media") },
       status: { column: "status", transform: (v) => String(v) },
       dataPrevista: { column: "data_prevista", transform: (v) => v || null },
@@ -203,9 +195,9 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
     const projectId = String(req.body?.projectId ?? "").trim();
     if (!supplierName || !projectId) { res.status(400).json({ error: "Fornecedor e projectId são obrigatórios" }); return; }
 
-    const quantity = Math.max(0, number(req.body?.quantity, request.quantidade || 1));
-    const estimatedValue = Math.max(0, number(req.body?.estimatedValue, request.valor_total || 0));
-    const confirmedValue = Math.max(0, number(req.body?.confirmedValue, estimatedValue));
+    const quantity = Math.max(0, num(req.body?.quantity, request.quantidade || 1));
+    const estimatedValue = Math.max(0, num(req.body?.estimatedValue, request.valor_total || 0));
+    const confirmedValue = Math.max(0, num(req.body?.confirmedValue, estimatedValue));
     const result = await pool.query(
       `INSERT INTO arch_supplier_orders (
          id, tenant_id, project_id, obra_id, compra_id, work_order_id,
@@ -215,18 +207,17 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
          quote_number, status, requested_at, quoted_at, expected_delivery, notes, documents, created_at, updated_at
        ) VALUES (
          gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5::uuid,
-         $6,$7,$8,$9,
-         $10,$11,$12,$13,$14,
-         $15,$16,$17,$18,$19,$20,
-         $21,$22,now(),now(),$23,$24,'[]'::jsonb,now(),now()
+         $6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+         $21,'quoted',now(),now(),$22,$23,'[]'::jsonb,now(),now()
        ) RETURNING *`,
       [
         tid, projectId, obraId, requestId, req.body?.workOrderId || null,
         supplierName, req.body?.contactName || null, req.body?.contactPhone || null, req.body?.contactEmail || null,
         request.descricao, String(quantity), request.unidade || "un", String(estimatedValue), String(confirmedValue),
-        String(Math.max(0, number(req.body?.freightValue))), String(Math.max(0, number(req.body?.discountValue))), String(Math.max(0, number(req.body?.taxValue))),
-        req.body?.paymentTerms || null, req.body?.quoteValidUntil || null, req.body?.leadTimeDays == null ? null : Math.max(0, Math.round(number(req.body.leadTimeDays))),
-        req.body?.quoteNumber || null, "quoted", req.body?.expectedDelivery || null, req.body?.notes || null,
+        String(Math.max(0, num(req.body?.freightValue))), String(Math.max(0, num(req.body?.discountValue))), String(Math.max(0, num(req.body?.taxValue))),
+        req.body?.paymentTerms || null, req.body?.quoteValidUntil || null,
+        req.body?.leadTimeDays == null ? null : Math.max(0, Math.round(num(req.body.leadTimeDays))),
+        req.body?.quoteNumber || null, req.body?.expectedDelivery || null, req.body?.notes || null,
       ],
     );
     await pool.query(`UPDATE compras_obras SET status = CASE WHEN status IN ('pendente','rascunho') THEN 'cotacao' ELSE status END, updated_at = now() WHERE id = $1 AND obra_id = $2 AND tenant_id = $3`, [requestId, obraId, tid]);
@@ -246,6 +237,7 @@ router.patch("/arch/procurement/:obraId/requests/:requestId/quotes/:quoteId", as
     const quoteId = String(req.params["quoteId"] ?? "");
     const current = await ownedQuote(tid, obraId, requestId, quoteId);
     if (!current) { res.status(404).json({ error: "Cotação não encontrada" }); return; }
+
     const allowed: Record<string, string> = {
       supplierName: "supplier_name", contactName: "contact_name", contactPhone: "contact_phone", contactEmail: "contact_email",
       confirmedValue: "confirmed_value", freightValue: "freight_value", discountValue: "discount_value", taxValue: "tax_value",
@@ -257,7 +249,7 @@ router.patch("/arch/procurement/:obraId/requests/:requestId/quotes/:quoteId", as
     const values: unknown[] = [];
     for (const [key, column] of Object.entries(allowed)) {
       if (req.body?.[key] === undefined) continue;
-      values.push(numericKeys.has(key) ? Math.max(0, number(req.body[key])) : (req.body[key] || null));
+      values.push(numericKeys.has(key) ? Math.max(0, num(req.body[key])) : (req.body[key] || null));
       sets.push(`${column} = $${values.length}`);
     }
     if (!sets.length) { res.json({ quote: current }); return; }
@@ -278,20 +270,20 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes/:quoteId/appro
   const client = await pool.connect();
   try {
     const tid = requireTenant(req, res);
-    if (!tid) { client.release(); return; }
+    if (!tid) return;
     const obraId = String(req.params["obraId"] ?? "");
     const requestId = String(req.params["requestId"] ?? "");
     const quoteId = String(req.params["quoteId"] ?? "");
     const request = await ownedRequest(tid, obraId, requestId);
     const quote = await ownedQuote(tid, obraId, requestId, quoteId);
-    if (!request || !quote) { client.release(); res.status(404).json({ error: "Solicitação ou cotação não encontrada" }); return; }
+    if (!request || !quote) { res.status(404).json({ error: "Solicitação ou cotação não encontrada" }); return; }
 
     await client.query("BEGIN");
     await client.query(`UPDATE arch_supplier_orders SET status = 'rejected', updated_at = now() WHERE compra_id = $1 AND obra_id = $2 AND tenant_id::text = $3 AND id <> $4::uuid AND deleted_at IS NULL`, [requestId, obraId, tid, quoteId]);
     const approved = await client.query(`UPDATE arch_supplier_orders SET status = 'approved', approved_at = now(), updated_at = now() WHERE id = $1::uuid AND compra_id = $2 AND obra_id = $3 AND tenant_id::text = $4 RETURNING *`, [quoteId, requestId, obraId, tid]);
     await client.query(
       `UPDATE compras_obras SET status = 'aprovado', cotacao_selecionada_id = $1::uuid, aprovado_por_id = $2, aprovado_em = now(), fornecedor = $3, valor_total = $4, updated_at = now() WHERE id = $5 AND obra_id = $6 AND tenant_id = $7`,
-      [quoteId, req.user?.sub ?? null, quote.supplier_name, String(totalQuote(quote)), requestId, obraId, tid],
+      [quoteId, req.user?.sub ?? null, quote.supplier_name, String(quoteTotal(quote)), requestId, obraId, tid],
     );
     await client.query("COMMIT");
     res.json({ quote: approved.rows[0] });
@@ -308,16 +300,17 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes/:quoteId/order
   const client = await pool.connect();
   try {
     const tid = requireTenant(req, res);
-    if (!tid) { client.release(); return; }
+    if (!tid) return;
     const obraId = String(req.params["obraId"] ?? "");
     const requestId = String(req.params["requestId"] ?? "");
     const quoteId = String(req.params["quoteId"] ?? "");
     const request = await ownedRequest(tid, obraId, requestId);
     const quote = await ownedQuote(tid, obraId, requestId, quoteId);
-    if (!request || !quote) { client.release(); res.status(404).json({ error: "Solicitação ou cotação não encontrada" }); return; }
-    if (request.cotacao_selecionada_id !== quoteId || quote.status !== "approved") {
-      client.release(); res.status(409).json({ error: "A cotação precisa estar aprovada antes da emissão do pedido" }); return;
+    if (!request || !quote) { res.status(404).json({ error: "Solicitação ou cotação não encontrada" }); return; }
+    if (String(request.cotacao_selecionada_id ?? "") !== quoteId || quote.status !== "approved") {
+      res.status(409).json({ error: "A cotação precisa estar aprovada antes da emissão do pedido" }); return;
     }
+
     await client.query("BEGIN");
     const ordered = await client.query(
       `UPDATE arch_supplier_orders SET status = 'ordered', ordered_at = now(), expected_delivery = COALESCE($1::date, expected_delivery), updated_at = now() WHERE id = $2::uuid AND compra_id = $3 AND obra_id = $4 AND tenant_id::text = $5 RETURNING *`,
@@ -339,20 +332,21 @@ router.post("/arch/procurement/:obraId/requests/:requestId/finance", async (req,
   const client = await pool.connect();
   try {
     const tid = requireTenant(req, res);
-    if (!tid) { client.release(); return; }
+    if (!tid) return;
     const obraId = String(req.params["obraId"] ?? "");
     const requestId = String(req.params["requestId"] ?? "");
     const request = await ownedRequest(tid, obraId, requestId);
-    if (!request) { client.release(); res.status(404).json({ error: "Solicitação não encontrada" }); return; }
-    if (!request.pedido_fornecedor_id) { client.release(); res.status(409).json({ error: "Emita o pedido antes de enviar ao financeiro" }); return; }
+    if (!request) { res.status(404).json({ error: "Solicitação não encontrada" }); return; }
+    if (!request.pedido_fornecedor_id) { res.status(409).json({ error: "Emita o pedido antes de enviar ao financeiro" }); return; }
     if (request.lancamento_financeiro_id) {
-      const existing = await pool.query(`SELECT * FROM obra_lancamentos WHERE id = $1 AND obra_id = $2 AND tenant_id = $3 LIMIT 1`, [request.lancamento_financeiro_id, obraId, tid]);
-      client.release(); res.json({ launch: existing.rows[0], alreadyLinked: true }); return;
+      const existing = await client.query(`SELECT * FROM obra_lancamentos WHERE id = $1 AND obra_id = $2 AND tenant_id = $3 LIMIT 1`, [request.lancamento_financeiro_id, obraId, tid]);
+      res.json({ launch: existing.rows[0], alreadyLinked: true }); return;
     }
     const quote = await ownedQuote(tid, obraId, requestId, String(request.pedido_fornecedor_id));
-    if (!quote) { client.release(); res.status(404).json({ error: "Pedido do fornecedor não encontrado" }); return; }
+    if (!quote) { res.status(404).json({ error: "Pedido do fornecedor não encontrado" }); return; }
+
     const launchId = crypto.randomUUID();
-    const amount = totalQuote(quote);
+    const amount = quoteTotal(quote);
     await client.query("BEGIN");
     const launch = await client.query(
       `INSERT INTO obra_lancamentos (id, obra_id, tenant_id, tipo, fornecedor, numero, valor, data_emissao, data_vencimento, descricao, status, etapa_id, observacoes, created_at, updated_at)
@@ -375,19 +369,20 @@ router.post("/arch/procurement/:obraId/requests/:requestId/receipts", async (req
   const client = await pool.connect();
   try {
     const tid = requireTenant(req, res);
-    if (!tid) { client.release(); return; }
+    if (!tid) return;
     const obraId = String(req.params["obraId"] ?? "");
     const requestId = String(req.params["requestId"] ?? "");
     const request = await ownedRequest(tid, obraId, requestId);
-    if (!request || !request.pedido_fornecedor_id) { client.release(); res.status(409).json({ error: "É necessário um pedido emitido para registrar recebimento" }); return; }
+    if (!request || !request.pedido_fornecedor_id) { res.status(409).json({ error: "É necessário um pedido emitido para registrar recebimento" }); return; }
     const quoteId = String(request.pedido_fornecedor_id);
     const quote = await ownedQuote(tid, obraId, requestId, quoteId);
-    if (!quote) { client.release(); res.status(404).json({ error: "Pedido do fornecedor não encontrado" }); return; }
+    if (!quote) { res.status(404).json({ error: "Pedido do fornecedor não encontrado" }); return; }
 
-    const received = Math.max(0, number(req.body?.quantidadeRecebida));
-    const approved = Math.max(0, number(req.body?.quantidadeAprovada, received));
-    const rejected = Math.max(0, number(req.body?.quantidadeRejeitada, Math.max(0, received - approved)));
-    if (received <= 0) { client.release(); res.status(400).json({ error: "Quantidade recebida deve ser maior que zero" }); return; }
+    const received = Math.max(0, num(req.body?.quantidadeRecebida));
+    const approved = Math.max(0, num(req.body?.quantidadeAprovada, received));
+    const rejected = Math.max(0, num(req.body?.quantidadeRejeitada, Math.max(0, received - approved)));
+    if (received <= 0) { res.status(400).json({ error: "Quantidade recebida deve ser maior que zero" }); return; }
+    if (approved + rejected > received) { res.status(400).json({ error: "A soma aprovada/rejeitada não pode superar a quantidade recebida" }); return; }
 
     await client.query("BEGIN");
     const receipt = await client.query(
@@ -398,9 +393,24 @@ router.post("/arch/procurement/:obraId/requests/:requestId/receipts", async (req
        ) VALUES (gen_random_uuid(),$1,$2,$3,$4::uuid,now(),$5,$6,$7,$8,$9,$10,$11,'[]'::jsonb,now(),now()) RETURNING *`,
       [tid, obraId, requestId, quoteId, String(received), String(approved), String(rejected), rejected > 0 ? "com_ressalva" : "aprovado", req.user?.sub ?? null, req.user?.name ?? req.user?.email ?? null, req.body?.observacoes || null],
     );
+
+    if (request.insumo_id && approved > 0) {
+      const stock = await client.query(`SELECT id FROM estoque_obras WHERE obra_id = $1 AND insumo_id = $2 LIMIT 1 FOR UPDATE`, [obraId, request.insumo_id]);
+      if (stock.rows[0]) {
+        await client.query(`UPDATE estoque_obras SET quantidade_atual = COALESCE(quantidade_atual,0) + $1::numeric, updated_at = now() WHERE id = $2`, [String(approved), stock.rows[0].id]);
+      } else {
+        await client.query(`INSERT INTO estoque_obras (id, obra_id, insumo_id, quantidade_atual, quantidade_minima, updated_at) VALUES ($1,$2,$3,$4,'0',now())`, [crypto.randomUUID(), obraId, request.insumo_id, String(approved)]);
+      }
+      await client.query(
+        `INSERT INTO movimentacoes_estoque_obras (id, tenant_id, insumo_id, tipo, quantia, origem_tipo, destino_tipo, destino_obra_id, responsavel_id, observacao, created_at)
+         VALUES ($1,$2,$3,'entrada',$4,'compra','obra',$5,$6,$7,now())`,
+        [crypto.randomUUID(), tid, request.insumo_id, String(approved), obraId, req.user?.sub ?? null, `Recebimento da compra ${request.codigo || request.id}`],
+      );
+    }
+
     const total = await client.query(`SELECT COALESCE(SUM(quantidade_aprovada),0)::numeric AS approved FROM obra_compra_recebimentos WHERE compra_id = $1 AND obra_id = $2 AND tenant_id = $3`, [requestId, obraId, tid]);
-    const approvedTotal = number(total.rows[0]?.approved);
-    const required = number(request.quantidade);
+    const approvedTotal = num(total.rows[0]?.approved);
+    const required = num(request.quantidade);
     const complete = required > 0 && approvedTotal >= required;
     await client.query(`UPDATE arch_supplier_orders SET status = $1, delivered_at = CASE WHEN $1 = 'delivered' THEN now() ELSE delivered_at END, updated_at = now() WHERE id = $2::uuid AND compra_id = $3 AND obra_id = $4 AND tenant_id::text = $5`, [complete ? "delivered" : "partial", quoteId, requestId, obraId, tid]);
     await client.query(`UPDATE compras_obras SET status = $1, data_efetuada = CASE WHEN $1 = 'recebido' THEN CURRENT_DATE::text ELSE data_efetuada END, updated_at = now() WHERE id = $2 AND obra_id = $3 AND tenant_id = $4`, [complete ? "recebido" : "parcial", requestId, obraId, tid]);
