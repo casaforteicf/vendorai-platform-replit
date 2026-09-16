@@ -6,13 +6,14 @@
  * Ajuste pontual → flux-fill-pro com máscara (segunda chamada separada)
  *
  * POST /api/arch/ai-render               → 202, render_id
+ * GET  /api/arch/ai-renders              → histórico persistente por projeto
  * GET  /api/arch/ai-render/:id           → status + resultado
  * POST /api/arch/ai-render/:id/adjust    → ajuste herdando mode do pai
  * POST /api/arch/project-config          → salvar configuração reutilizável
  * GET  /api/arch/project-config          → listar configs por lead_id
  */
 import { Router, type Request, type Response } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -170,6 +171,58 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   return;
 });
 
+// ── GET /api/arch/ai-renders — Histórico oficial do projeto ──────────────────
+
+archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const projectId = String(req.query["project_id"] ?? "").trim();
+  const ambiente = String(req.query["ambiente"] ?? "").trim();
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "project_id obrigatório" });
+  }
+
+  const conditions = [
+    eq(archAiRendersTable.tenantId, tid),
+    eq(archAiRendersTable.projectId, projectId),
+  ];
+  if (ambiente) conditions.push(eq(archAiRendersTable.ambiente, ambiente));
+
+  const renders = await db
+    .select()
+    .from(archAiRendersTable)
+    .where(and(...conditions))
+    .orderBy(asc(archAiRendersTable.createdAt));
+
+  return res.json({
+    success: true,
+    project_id: projectId,
+    versions: renders.map((render, index) => ({
+      id: render.id,
+      project_id: render.projectId,
+      parent_render_id: render.parentRenderId,
+      ambiente: render.ambiente,
+      mode: render.mode,
+      status: render.status,
+      version_tag: render.versionTag,
+      prompt: render.prompt,
+      motor: render.motor,
+      original_image_url: render.originalImageUrl,
+      result_image_url: render.resultImageUrl,
+      mask_zones: render.maskZones,
+      mask_file_url: render.maskFileUrl,
+      composited: render.composited,
+      segmentation_confidence: render.segmentationConfidence,
+      approved_by: render.approvedBy,
+      approved_at: render.approvedAt,
+      created_at: render.createdAt,
+      concluido_em: render.concluidoEm,
+      version_number: index + 1,
+    })),
+  });
+});
+
 // ── GET /api/arch/ai-render/:id — Status e resultado ─────────────────────────
 
 archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request, res: Response) => {
@@ -190,15 +243,22 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
   return res.json({
     success:                render.status === "concluido",
     render_id:              render.id,
+    project_id:             render.projectId,
+    parent_render_id:       render.parentRenderId,
     status:                 render.status,
     result_image_url:       render.resultImageUrl,
+    original_image_url:     render.originalImageUrl,
     mode:                   render.mode,
+    ambiente:               render.ambiente,
     version_tag:            render.versionTag,
     mask_zones:             render.maskZones,
     composited:             render.composited,
     segmentation_confidence: render.segmentationConfidence,
     erro_msg:               render.erroMsg,
+    prompt:                 render.prompt,
     motor:                  render.motor,
+    approved_by:            render.approvedBy,
+    approved_at:            render.approvedAt,
     created_at:             render.createdAt,
     concluido_em:           render.concluidoEm,
   });
@@ -224,9 +284,11 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req:
     return res.status(400).json({ success: false, error: "Apenas renders concluídos podem ser aprovados" });
   }
 
+  const approvedBy = String((req as any).user?.id ?? "").trim() || null;
+  const approvedAt = new Date();
   const [updated] = await db
     .update(archAiRendersTable)
-    .set({ versionTag: "aprovado" })
+    .set({ versionTag: "aprovado", approvedBy, approvedAt })
     .where(and(
       eq(archAiRendersTable.id,       req.params["id"] as string),
       eq(archAiRendersTable.tenantId, tid as string),
@@ -239,6 +301,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req:
     status:           updated?.status ?? render.status,
     result_image_url: updated?.resultImageUrl ?? render.resultImageUrl,
     version_tag:      updated?.versionTag ?? "aprovado",
+    approved_by:      updated?.approvedBy ?? approvedBy,
+    approved_at:      updated?.approvedAt ?? approvedAt,
   });
 });
 
