@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Library, X } from "lucide-react";
+import { BookOpen, Image as ImageIcon, Library, X } from "lucide-react";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "./MediaAssetPicker";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
@@ -8,6 +8,7 @@ const STORAGE_KEY = "vendorai_content_studio_media_assets_v1";
 
 type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
+type ContextSource = { id: string; type: "library" | "catalog"; kind: string; title: string; summary: string };
 
 function currentTenantId(): string {
   try {
@@ -47,6 +48,7 @@ export function MediaContentStudioBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [assets, setAssets] = useState<MediaPickerAsset[]>(readStoredAssets);
+  const [contextSources, setContextSources] = useState<ContextSource[]>([]);
   const assetsRef = useRef<MediaPickerAsset[]>(assets);
   const tenantId = currentTenantId();
   const onContentStudio = pathname === "/content-studio";
@@ -77,20 +79,27 @@ export function MediaContentStudioBridge() {
         const method = (init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
         const selected = assetsRef.current;
         const isProductVideo = /^\/api\/tenants\/[^/]+\/content-studio\/product-video\/?$/.test(url.pathname);
+        const isGeneration = /^\/api\/tenants\/[^/]+\/content-studio\/(?:generate|product-video)\/?$/.test(url.pathname);
 
+        let nextInit = init;
         if (selected.length && method === "POST" && isProductVideo && init.body instanceof FormData) {
           const form = new FormData();
           init.body.forEach((value, key) => form.append(key, value));
           form.set("imageAssetIds", JSON.stringify(selected.map((asset) => asset.id)));
-
-          const response = await previousFetch(input, { ...init, body: form });
-          if (response.ok) window.setTimeout(() => setAssets([]), 0);
-          return response;
+          nextInit = { ...init, body: form };
         }
+
+        const response = await previousFetch(input, nextInit);
+        if (response.ok && method === "POST" && isGeneration) {
+          void response.clone().json().then((body: { contextSources?: ContextSource[] }) => {
+            setContextSources(Array.isArray(body.contextSources) ? body.contextSources : []);
+          }).catch(() => undefined);
+          if (selected.length && isProductVideo) window.setTimeout(() => setAssets([]), 0);
+        }
+        return response;
       } catch {
-        // Requests não compatíveis seguem sem alteração.
+        return previousFetch(input, init);
       }
-      return previousFetch(input, init);
     };
 
     window.fetch = mediaAwareFetch;
@@ -144,6 +153,16 @@ export function MediaContentStudioBridge() {
         <p className="mt-2 text-[10px] leading-relaxed text-gray-500">
           Pode combinar com o upload atual. O VendorAI usa no máximo 8 fotos no total e valida isso no servidor.
         </p>
+
+        {contextSources.length > 0 && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300"><BookOpen className="h-3.5 w-3.5" /> Fontes usadas pela IA</div>
+            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-gray-400">
+              {contextSources.slice(0, 4).map((source) => source.title).join(" · ")}
+              {contextSources.length > 4 ? ` +${contextSources.length - 4}` : ""}
+            </p>
+          </div>
+        )}
       </div>
 
       <MediaAssetPicker
