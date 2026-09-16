@@ -40,6 +40,8 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
     saving,
     extracting,
     sendingToBudget,
+    financialImpact,
+    clearFinancialImpact,
     error,
     totals,
     reloadCatalog,
@@ -184,6 +186,8 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
               items={specObjects}
               sending={sendingToBudget}
               onSend={sendToBudget}
+              financialImpact={financialImpact}
+              onDismissImpact={clearFinancialImpact}
             />
           </div>
 
