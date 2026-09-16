@@ -186,7 +186,7 @@ function normalizeRuntimeDefinition(
   const rawPages = asObjects(runtime.pages);
   const canUseProfile = actionKeys.has(PROFILE_ACTION_KEY) && dataSourceKeys.has(PROFILE_SOURCE_KEY);
 
-  const pages = rawPages
+  const pages: JsonObject[] = rawPages
     .filter((page) => text(page.id) !== PROFILE_PAGE_ID)
     .map((page) => ({
       ...page,
