@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, Info, LayoutGrid, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
+import {
+  AlertCircle,
+  Bell,
+  CalendarDays,
+  CheckCircle2,
+  Circle,
+  Home,
+  Info,
+  LayoutGrid,
+  Loader2,
+  Menu,
+  Search,
+  ShieldCheck,
+  ShoppingCart,
+  Tag,
+  TriangleAlert,
+  UserRound,
+} from "lucide-react";
 
 type JsonObject = Record<string, unknown>;
 
@@ -100,7 +117,21 @@ function ToneIcon({ tone }: { tone: unknown }) {
   return <Info className="h-5 w-5" />;
 }
 
-function ActionFormBlock({ block, lang, actionClient }: { block: RuntimeBlock; lang: "pt" | "es"; actionClient?: RuntimeActionClient }) {
+function NavigationIcon({ name, className = "h-5 w-5" }: { name?: string; className?: string }) {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  if (["home", "inicio", "início"].includes(normalized)) return <Home className={className} />;
+  if (["search", "buscar", "busca"].includes(normalized)) return <Search className={className} />;
+  if (["cart", "shopping-cart", "compras", "carrinho"].includes(normalized)) return <ShoppingCart className={className} />;
+  if (["tag", "ofertas", "promocoes", "promoções"].includes(normalized)) return <Tag className={className} />;
+  if (["bell", "notificacoes", "notificações"].includes(normalized)) return <Bell className={className} />;
+  if (["calendar", "agenda", "agendar"].includes(normalized)) return <CalendarDays className={className} />;
+  if (["user", "perfil", "profile"].includes(normalized)) return <UserRound className={className} />;
+  if (["menu", "mais", "more"].includes(normalized)) return <Menu className={className} />;
+  if (["grid", "categorias", "catalogo", "catálogo"].includes(normalized)) return <LayoutGrid className={className} />;
+  return <Circle className={className} />;
+}
+
+function ActionFormBlock({ block, lang, actionClient, accent }: { block: RuntimeBlock; lang: "pt" | "es"; actionClient?: RuntimeActionClient; accent?: string }) {
   const copy = COPY[lang];
   const props = block.props ?? {};
   const fields = objectArray(props.fields);
@@ -251,7 +282,7 @@ function ActionFormBlock({ block, lang, actionClient }: { block: RuntimeBlock; l
 
         {message && <div className={`rounded-lg border px-3 py-2 text-xs leading-5 ${success ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{message}</div>}
 
-        <button type="submit" disabled={busy || !actionClient} className="inline-flex h-11 items-center justify-center rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="submit" disabled={busy || !actionClient} style={accent ? { backgroundColor: accent } : undefined} className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
           {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {busy ? copy.actionSending : stringValue(props.submitLabel) ?? "Enviar"}
         </button>
@@ -261,9 +292,9 @@ function ActionFormBlock({ block, lang, actionClient }: { block: RuntimeBlock; l
   );
 }
 
-function RuntimeBlockView({ block, lang, actionClient }: { block: RuntimeBlock; lang: "pt" | "es"; actionClient?: RuntimeActionClient }) {
+function RuntimeBlockView({ block, lang, actionClient, accent }: { block: RuntimeBlock; lang: "pt" | "es"; actionClient?: RuntimeActionClient; accent?: string }) {
   const props = block.props ?? {};
-  if (block.type === "action_form") return <ActionFormBlock block={block} lang={lang} actionClient={actionClient} />;
+  if (block.type === "action_form") return <ActionFormBlock block={block} lang={lang} actionClient={actionClient} accent={accent} />;
 
   if (block.type === "hero") {
     const align = props.align === "center" ? "text-center" : "text-left";
@@ -328,7 +359,7 @@ export default function SchemaRuntimeRenderer({ payload, lang, actionClient }: P
   const navigation = useMemo(() => {
     const configured = (livePayload.app.navigation ?? []).filter((item) => availableIds.has(item.pageId));
     if (configured.length > 0) return configured;
-    return pages.map((page) => ({ id: `page-${page.id}`, label: page.title, pageId: page.id }));
+    return pages.map((page) => ({ id: `page-${page.id}`, label: page.title, pageId: page.id, icon: page.icon }));
   }, [availableIds, livePayload.app.navigation, pages]);
   const initial = livePayload.runtime.defaultPageId && availableIds.has(livePayload.runtime.defaultPageId) ? livePayload.runtime.defaultPageId : pages[0]?.id ?? "";
   const [selectedPageId, setSelectedPageId] = useState(initial);
@@ -340,9 +371,26 @@ export default function SchemaRuntimeRenderer({ payload, lang, actionClient }: P
   const page = pages.find((item) => item.id === selectedPageId) ?? pages[0];
   if (!page) return <div className="rounded-2xl border border-dashed bg-white p-10 text-center text-sm text-slate-500"><LayoutGrid className="mx-auto mb-3 h-6 w-6 text-slate-400" />{copy.empty}</div>;
 
-  return <div className="space-y-5">
-    {navigation.length > 1 && <nav aria-label={copy.navigation} className="overflow-x-auto rounded-2xl border bg-white p-2 shadow-sm"><div className="flex min-w-max gap-1">{navigation.map((item) => <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${item.pageId === page.id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item.label}</button>)}</div></nav>}
+  const theme = livePayload.app.theme ?? {};
+  const accent = stringValue(theme.primary) ?? stringValue(theme.primaryColor);
+  const hasMobileBottomNavigation = navigation.length > 1 && navigation.length <= 5;
+  const isPreview = livePayload.app.id.startsWith("preview-");
+
+  return <div className={hasMobileBottomNavigation ? "space-y-5 pb-20 sm:pb-0" : "space-y-5"}>
+    {navigation.length > 1 && <nav aria-label={copy.navigation} className={`${hasMobileBottomNavigation ? "hidden sm:block" : "block"} overflow-x-auto rounded-2xl border bg-white p-2 shadow-sm`}><div className="flex min-w-max gap-1">{navigation.map((item) => <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} style={item.pageId === page.id && accent ? { backgroundColor: accent } : undefined} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-medium transition ${item.pageId === page.id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item.label}</button>)}</div></nav>}
     <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{page.title}</h1>{page.subtitle && <p className="mt-1 text-sm leading-6 text-slate-500">{page.subtitle}</p>}</div>
-    <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div>}</div>
+    <div className="space-y-5">{page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} lang={lang} actionClient={effectiveActionClient} accent={accent} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div>}</div>
+
+    {hasMobileBottomNavigation && <nav aria-label={copy.navigation} className={`${isPreview ? "sticky" : "fixed"} bottom-0 left-0 right-0 z-40 border-t bg-white/95 px-2 pt-1.5 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden`} style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}>
+      <div className="mx-auto grid max-w-lg" style={{ gridTemplateColumns: `repeat(${navigation.length}, minmax(0, 1fr))` }}>
+        {navigation.map((item) => {
+          const active = item.pageId === page.id;
+          return <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} className="flex min-h-[58px] min-w-11 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition hover:bg-slate-50" style={active && accent ? { color: accent } : active ? { color: "#0f172a" } : { color: "#94a3b8" }} aria-current={active ? "page" : undefined}>
+            <NavigationIcon name={item.icon ?? pages.find((candidate) => candidate.id === item.pageId)?.icon ?? item.label} className="h-5 w-5" />
+            <span className="max-w-full truncate">{item.label}</span>
+          </button>;
+        })}
+      </div>
+    </nav>}
   </div>;
 }
