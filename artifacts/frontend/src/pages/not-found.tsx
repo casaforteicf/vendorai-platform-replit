@@ -4,12 +4,6 @@ import { AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import MediaLibraryV2 from "@/pages/MediaLibraryV2";
-import MediaLibrarySourceGuide from "@/components/media/MediaLibrarySourceGuide";
-import ProductCatalogKnowledgeLibrary from "@/components/media/ProductCatalogKnowledgeLibrary";
-import ProductCatalogSelectionBridge from "@/components/media/ProductCatalogSelectionBridge";
-import ProductCatalogAiAssistBridge from "@/components/media/ProductCatalogAiAssistBridge";
-import ProjectKnowledgeLibrary from "@/components/media/ProjectKnowledgeLibrary";
-import InternalProductsKnowledgeLibrary from "@/components/media/InternalProductsKnowledgeLibrary";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import GrowthLabConnected from "@/pages/GrowthLabConnected";
@@ -56,17 +50,9 @@ export default function NotFound() {
     return (
       <SidebarLayout>
         {isMediaCenter ? (
-          <>
-            <MediaLibrarySourceGuide />
-            <ProductCatalogAiAssistBridge />
-            <div id="biblioteca-midias">
-              <MediaLibraryV2 />
-              <ProductCatalogKnowledgeLibrary />
-              <ProductCatalogSelectionBridge />
-              <ProjectKnowledgeLibrary />
-              <InternalProductsKnowledgeLibrary />
-            </div>
-          </>
+          <div id="biblioteca-midias">
+            <MediaLibraryV2 />
+          </div>
         ) : isConversations ? <Conversations /> : isAiMetrics ? <Analytics /> : <GrowthLabConnected />}
       </SidebarLayout>
     );
