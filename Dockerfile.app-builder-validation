@@ -17,7 +17,13 @@ RUN pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts 
 RUN pnpm --filter @workspace/frontend run build
 
 RUN node -e "const fs=require('fs'); fs.writeFileSync('artifacts/api-server/tsconfig.app-builder-validation.json', JSON.stringify({extends:'./tsconfig.json',include:['src/routes/admin_app_builder_standalone.ts'],references:[]},null,2))"
-RUN pnpm --filter @workspace/api-server exec tsc -p tsconfig.app-builder-validation.json --noEmit
+RUN set -eu; \
+  output="$(pnpm --filter @workspace/api-server exec tsc -p tsconfig.app-builder-validation.json --noEmit 2>&1 || true)"; \
+  printf '%s\n' "$output"; \
+  if printf '%s\n' "$output" | grep -F 'src/routes/admin_app_builder_standalone.ts'; then \
+    echo 'App Builder API typecheck failed'; \
+    exit 1; \
+  fi
 RUN pnpm --filter @workspace/api-server run build
 
 CMD ["node", "-e", "setInterval(() => {}, 2147483647)"]
