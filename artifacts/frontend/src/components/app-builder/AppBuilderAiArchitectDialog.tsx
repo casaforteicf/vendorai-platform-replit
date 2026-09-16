@@ -268,7 +268,7 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.error ?? "Não foi possível criar a nova versão");
-      toast({ title: `Versão ${payload?.version ?? "nova"} criada`, description: "A versão separa App Product, App Admin e VendorAI SaaS, inclui o Agente de Valor + Captação e ficou em rascunho para revisão." });
+      toast({ title: `Versão ${payload?.version ?? "nova"} criada`, description: "A versão usa o padrão Mobile V2.2, separa App Product, App Admin e VendorAI SaaS, inclui o Agente de Valor + Captação e ficou em rascunho para revisão." });
       await onVersionCreated?.();
     } catch (error) {
       toast({ title: "Erro ao aplicar arquitetura", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
@@ -286,10 +286,10 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
     <DialogContent className="max-h-[96vh] overflow-y-auto sm:max-w-[96vw] xl:max-w-6xl">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2"><BrainCircuit className="h-5 w-5 text-primary" />Arquiteto IA · App Builder</DialogTitle>
-        <DialogDescription>Arquitetura em duas passagens, separação App Product / App Admin / VendorAI SaaS, Agente de Valor + Captação obrigatório, registries reais e aplicação somente como nova versão em rascunho.</DialogDescription>
+        <DialogDescription>Arquitetura em duas passagens, Mobile V2.2, separação App Product / App Admin / VendorAI SaaS, Agente de Valor + Captação obrigatório, registries reais e aplicação somente como nova versão em rascunho.</DialogDescription>
       </DialogHeader>
 
-      <div className="flex flex-wrap gap-2"><Badge variant="outline">{targetLabel}</Badge><Badge variant="outline">Template: {template?.name ?? "não selecionado"}</Badge><Badge variant="secondary"><ShieldCheck className="mr-1 h-3 w-3" />Nunca publica sozinho</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />App vendável + SaaS recorrente</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />Valor antes do lead</Badge></div>
+      <div className="flex flex-wrap gap-2"><Badge variant="outline">{targetLabel}</Badge><Badge variant="outline">Template: {template?.name ?? "não selecionado"}</Badge><Badge variant="secondary"><ShieldCheck className="mr-1 h-3 w-3" />Nunca publica sozinho</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />Mobile V2.2</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />App vendável + SaaS recorrente</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />Valor antes do lead</Badge></div>
 
       <div className="grid gap-3 rounded-xl border bg-muted/20 p-3 md:grid-cols-[180px_180px_1fr]">
         <div><p className="mb-1 text-xs font-medium text-muted-foreground">Modo</p><Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="generate">Projetar</SelectItem><SelectItem value="revise">Revisar e melhorar</SelectItem><SelectItem value="analyze">Auditar</SelectItem></SelectContent></Select></div>
