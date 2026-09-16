@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { useLayoutEffect } from "react";
+import { lazy, Suspense, useLayoutEffect } from "react";
 import { useLocation } from "wouter";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
@@ -9,48 +9,6 @@ import { BudgetImportAutofill } from "./components/BudgetImportAutofill";
 import { AiBudgetUsageIndicator } from "./components/AiBudgetUsageIndicator";
 import { GrowthLabMenuInjector } from "./components/GrowthLabMenuInjector";
 import { MediaMenuInjector } from "./components/media/MediaMenuInjector";
-import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
-import { MediaSitesBridge } from "./components/media/MediaSitesBridge";
-import { MediaCatalogBridge } from "./components/media/MediaCatalogBridge";
-import { MediaContentStudioBridge } from "./components/media/MediaContentStudioBridge";
-import { MediaContextLibrary } from "./components/media/MediaContextLibrary";
-import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
-import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
-import { MediaAiBaseBridge } from "./components/media/MediaAiBaseBridge";
-import { MediaAiBaseWorkspaceNav } from "./components/media/MediaAiBaseWorkspaceNav";
-import { MediaDeleteSelectionBridge } from "./components/media/MediaDeleteSelectionBridge";
-import { MediaLibraryWorkflowBridge } from "./components/media/MediaLibraryWorkflowBridge";
-import { MediaIntelligenceIndexBridge } from "./components/media/MediaIntelligenceIndexBridge";
-import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGeneratorQueueUxBridge";
-import { ContentContextSourcesBridge } from "./components/marketing/ContentContextSourcesBridge";
-import { ContentApprovalClarityBridge } from "./components/marketing/ContentApprovalClarityBridge";
-import { ContentProductionClarityBridge } from "./components/marketing/ContentProductionClarityBridge";
-import { MarketingOverviewBridge } from "./components/marketing/MarketingOverviewBridge";
-import { CampaignWorkspaceClarityBridge } from "./components/marketing/CampaignWorkspaceClarityBridge";
-import { PlanningReviewBridge } from "./components/marketing/PlanningReviewBridge";
-import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
-import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/MediaPlanProductionCompatibilityBridge";
-import { MediaPlanProjectKindCompatibilityBridge } from "./components/marketing/MediaPlanProjectKindCompatibilityBridge";
-import { MediaPlanAutoProductionBridge } from "./components/marketing/QuotaSafeMediaPlanAutoProductionBridge";
-import { MediaPlanFailedRetryBridge } from "./components/marketing/MediaPlanFailedRetryBridge";
-import { MediaPlanBatchControl } from "./components/marketing/MediaPlanBatchControl";
-import { MediaPlanPublicationModeControl } from "./components/marketing/MediaPlanPublicationModeControl";
-import { MediaPlanLandingPageStrategy } from "./components/marketing/MediaPlanLandingPageStrategy";
-import { MediaPlanPreparationActionsBridge } from "./components/marketing/MediaPlanPreparationActionsBridge";
-import { MediaPlanLifecycleSummary } from "./components/marketing/MediaPlanLifecycleSummary";
-import { CheckoutConversionFunnel } from "./components/marketing/CheckoutConversionFunnel";
-import { AcquisitionInvestmentIntelligence } from "./components/marketing/AcquisitionInvestmentIntelligence";
-import { AcquisitionMasterOrchestrator } from "./components/marketing/AcquisitionMasterOrchestrator";
-import { MediaPlanPerformanceCommandCenter } from "./components/marketing/MediaPlanPerformanceCommandCenter";
-import { MediaPlanBudgetExecutionBridge } from "./components/marketing/MediaPlanBudgetExecutionBridge";
-import { MarketingAutonomyControl } from "./components/marketing/MarketingAutonomyControl";
-import { MarketingAutonomyAudit } from "./components/marketing/MarketingAutonomyAudit";
-import { CampaignAbTestControl } from "./components/marketing/CampaignAbTestControl";
-import { CampaignAbWinnerApprovalBridge } from "./components/marketing/CampaignAbWinnerApprovalBridge";
-import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPlanProductionRuntimeBridge";
-import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
-import { SearchPerformanceTrackingBridge } from "./components/marketing/SearchPerformanceTrackingBridge";
-import { SeoAuthorityTrackingBridge } from "./components/marketing/SeoAuthorityTrackingBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { JarvisVoiceReplayControl } from "./components/support/JarvisVoiceReplayControl";
 import { JarvisResponseHealthNotice } from "./components/support/JarvisResponseHealthNotice";
@@ -88,10 +46,12 @@ import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 import { installVisitorTelemetry } from "./lib/visitorIntelligence";
 
+const WorkspaceEnhancements = lazy(() => import("./components/runtime/WorkspaceEnhancements"));
+
 setupApiClient();
 installVisitorTelemetry();
 
-document.documentElement.dataset.vendoraiBuild = "media-freeze-20260916";
+document.documentElement.dataset.vendoraiBuild = "media-production-isolation-20260916";
 
 // O parâmetro é acrescentado somente pelo bootstrap quando detecta um chunk
 // obsoleto. Depois que a nova versão conseguiu iniciar, retire-o da URL para
@@ -152,86 +112,31 @@ function CanonicalMarketingRouteBridge() {
   return null;
 }
 
-function EnhancementWorkspaceBridges() {
+function WorkspaceEnhancementsGate() {
   const [location] = useLocation();
   const pathname = location.split("?")[0] || "/";
   const params = new URLSearchParams(window.location.search);
   const contentTab = params.get("tab") ?? "visao-geral";
-  const contentView = params.get("view") ?? "";
+  const isContentProduction = pathname === "/content" && (contentTab === "conteudos" || contentTab === "gerador");
+  const relevantWorkspace =
+    pathname === "/content" ||
+    pathname.startsWith("/marketing") ||
+    pathname.startsWith("/midias") ||
+    pathname.startsWith("/ads") ||
+    pathname.startsWith("/site") ||
+    pathname.startsWith("/catalog") ||
+    pathname.startsWith("/convers") ||
+    pathname.startsWith("/content-studio/video");
 
-  const isContent = pathname === "/content";
-  const isMarketing = isContent || pathname.startsWith("/marketing");
-  const isMediaLibrary = pathname.startsWith("/midias");
-  const isAds = pathname.startsWith("/ads");
-  const isSite = pathname.startsWith("/site") || (isContent && contentView === "lp");
-  const isCatalog = pathname.startsWith("/catalog");
-  const isConversations = pathname.startsWith("/convers");
-  const isVideoStudio = pathname.startsWith("/content-studio/video");
-
-  if (!isMarketing && !isMediaLibrary && !isAds && !isSite && !isCatalog && !isConversations && !isVideoStudio) {
-    return null;
-  }
+  // A tela de geração tem runtime próprio. Não carregamos o pacote legado de
+  // bridges nessa rota, evitando polling duplicado, observadores de DOM e
+  // consultas repetidas exatamente enquanto as peças estão sendo produzidas.
+  if (!relevantWorkspace || isContentProduction) return null;
 
   return (
-    <>
-      {isAds && <MediaAdsBridge />}
-      {isSite && <MediaSitesBridge />}
-      {isCatalog && <MediaCatalogBridge />}
-      {isVideoStudio && <MediaContentStudioBridge />}
-      {isMediaLibrary && <MediaContextLibrary />}
-      {isContent && <MediaMarketingContentBridge />}
-      {isConversations && <MediaConversationsBridge />}
-
-      {isMediaLibrary && (
-        <>
-          <MediaAiBaseBridge />
-          <MediaLibraryWorkflowBridge />
-          <MediaIntelligenceIndexBridge />
-          <MediaAiBaseWorkspaceNav />
-          <MediaDeleteSelectionBridge />
-        </>
-      )}
-
-      {isMarketing && (
-        <>
-          <ContentGeneratorQueueUxBridge />
-          <ContentContextSourcesBridge />
-          <ContentApprovalClarityBridge />
-          <ContentProductionClarityBridge />
-          <MarketingOverviewBridge />
-          <CampaignWorkspaceClarityBridge />
-          <PlanningReviewBridge />
-          <ContentPlanVisualCompletionBridge />
-          <MediaPlanProductionCompatibilityBridge />
-          <MediaPlanProjectKindCompatibilityBridge />
-          <MediaPlanAutoProductionBridge />
-          <MediaPlanFailedRetryBridge />
-          <MediaPlanBatchControl />
-          <MediaPlanLandingPageStrategy />
-          <MediaPlanPublicationModeControl />
-          <MediaPlanPreparationActionsBridge />
-          <MediaPlanLifecycleSummary />
-          <CheckoutConversionFunnel />
-          <AcquisitionInvestmentIntelligence />
-          <AcquisitionMasterOrchestrator />
-          <MediaPlanPerformanceCommandCenter />
-          <MediaPlanBudgetExecutionBridge />
-          <MarketingAutonomyControl />
-          <MarketingAutonomyAudit />
-          <CampaignAbTestControl />
-          <CampaignAbWinnerApprovalBridge />
-          <MediaPlanProductionRuntimeBridge />
-        </>
-      )}
-
-      {isAds && <AdsCreativePreviewBridge />}
-      {isContent && contentTab === "rastreamento" && (
-        <>
-          <SearchPerformanceTrackingBridge />
-          <SeoAuthorityTrackingBridge />
-        </>
-      )}
-    </>
+    <Suspense fallback={null}>
+      <WorkspaceEnhancements />
+    </Suspense>
   );
 }
 
@@ -253,7 +158,7 @@ createRoot(document.getElementById("root")!).render(
           <JarvisResponseHealthNotice />
           <BudgetImportAutofill />
           <MediaMenuInjector />
-          <EnhancementWorkspaceBridges />
+          <WorkspaceEnhancementsGate />
         </>
       )}
     </I18nProvider>
