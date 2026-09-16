@@ -67,7 +67,9 @@ O backend:
 4. faz matching sempre dentro do tenant;
 5. nunca publica CPF bruto no histórico, analytics ou eventos de commerce.
 
-A action oficial `viewer.identity.cpf.link` permite ao App User vincular explicitamente o próprio CPF. A ação é de risco médio e precisa estar habilitada na versão publicada.
+A action oficial `viewer.identity.cpf.link` permite ao App User vincular explicitamente o próprio CPF. A ação é de risco médio e precisa estar habilitada na versão publicada. Apps com `Minhas compras` omnichannel devem incluir essa action em `definition.settings.runtimeAccess.actions.keys`.
+
+A tela oficial `orders` possui um componente dedicado de vínculo de CPF. Por ser uma operação sensível, ela não deve ser transformada em formulário genérico pelo Builder.
 
 Se já houver compras externas com o mesmo fingerprint, elas são associadas ao App User no momento do vínculo e passam a aparecer em `Minhas compras`.
 
