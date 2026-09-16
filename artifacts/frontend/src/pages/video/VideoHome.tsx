@@ -170,7 +170,7 @@ export default function VideoHome() {
         const available = (body.publications ?? []).some((publication) => publication.metadata?.source === "video-studio");
         if (!disposed) setResultsAvailable(available);
       } catch {
-        if (!disposed && resultsAvailable === null) setResultsAvailable(false);
+        if (!disposed) setResultsAvailable((current) => current ?? false);
       }
     };
 
