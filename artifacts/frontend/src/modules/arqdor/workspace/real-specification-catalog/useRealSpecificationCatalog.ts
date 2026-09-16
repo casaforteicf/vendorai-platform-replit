@@ -7,6 +7,7 @@ import {
   fetchSpecObjects,
   sendSpecObjectToBudget,
   updateSpecObject,
+  type FinancialImpact,
 } from "./specCatalogApi";
 import type { CatalogItem, CatalogItemType, SpecObject, SpecObjectPayload } from "./specCatalogTypes";
 
@@ -21,6 +22,7 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [sendingToBudget, setSendingToBudget] = useState(false);
+  const [financialImpact, setFinancialImpact] = useState<FinancialImpact | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const totals = useMemo(() => {
@@ -113,6 +115,7 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
     async (id: string, payload: Partial<SpecObjectPayload>) => {
       setSaving(true);
       setError(null);
+      setFinancialImpact(null);
 
       const result = await updateSpecObject(id, payload);
 
@@ -122,14 +125,18 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
         return null;
       }
 
-      if (result.data) {
-        setSpecObjects((current) => current.map((item) => (item.id === id ? result.data as SpecObject : item)));
-        setSelectedObject(result.data);
+      const item = result.data?.item ?? null;
+      const impact = result.data?.budgetSync?.financialImpact ?? null;
+      if (impact) setFinancialImpact(impact);
+
+      if (item) {
+        setSpecObjects((current) => current.map((currentItem) => (currentItem.id === id ? item : currentItem)));
+        setSelectedObject(item);
       }
 
       setSaving(false);
       await loadSpecObjects();
-      return result.data || null;
+      return item;
     },
     [loadSpecObjects],
   );
@@ -174,6 +181,7 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
     async (object: SpecObject) => {
       setSendingToBudget(true);
       setError(null);
+      setFinancialImpact(null);
 
       const result = await sendSpecObjectToBudget(object.id);
 
@@ -183,11 +191,13 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
         return null;
       }
 
-      await saveObject(object.id, { status: "sent-to-budget" } as any);
+      if (result.data?.financialImpact) setFinancialImpact(result.data.financialImpact);
+
+      await loadSpecObjects();
       setSendingToBudget(false);
       return result.data || null;
     },
-    [saveObject],
+    [loadSpecObjects],
   );
 
   return {
@@ -204,6 +214,8 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
     saving,
     extracting,
     sendingToBudget,
+    financialImpact,
+    clearFinancialImpact: () => setFinancialImpact(null),
     error,
     totals,
     reloadCatalog: loadCatalog,
