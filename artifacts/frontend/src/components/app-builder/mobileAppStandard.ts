@@ -77,9 +77,11 @@ export const MOBILE_APP_STANDARD = {
     "product_grid",
     "product_card",
     "product_detail",
+    "cart",
+    "checkout",
+    "purchase_history",
     "store_card",
     "metric_card",
-    "purchase_history",
     "notification_list",
     "profile_fields",
     "content_carousel",
@@ -101,6 +103,10 @@ export const MOBILE_APP_STANDARD = {
   },
   runtimeDataSources: {
     catalogProducts: "catalog.products",
+    commerceOrders: "commerce.orders",
+  },
+  runtimeActions: {
+    checkoutStart: "commerce.checkout.start",
   },
   integrationRules: {
     sourceOfTruthRequired: true,
@@ -126,10 +132,11 @@ Todo App Product mobile deve usar o padrão oficial VendorAI Mobile V2, mantendo
 2. PADRÕES DE TELA
 Use componentes oficiais e componha, conforme o segmento: Home, Busca, Categorias, Catálogo, Produto/Serviço, Carrinho/Checkout, Pedidos/Compras, Promoções/Conteúdo, Unidades/Mapa, Perfil, Notificações, Menu, Empty/Loading/Error state.
 Não invente uma UI diferente para cada tenant. O tenant muda marca, cores, conteúdo, ordem e funções permitidas; a linguagem de interação permanece consistente.
-Para apps commerce use IDs canônicos quando a tela existir: home, catalog, search, categories, product-detail, cart, checkout, orders, order-detail, promotions, stores, profile, notifications, menu. A tela de catálogo deve usar id="catalog" para ativar o componente runtime oficial.
+Para apps commerce use IDs canônicos quando a tela existir: home, catalog, search, categories, product-detail, cart, checkout, orders, order-detail, promotions, stores, profile, notifications, menu. A tela de catálogo deve usar id="catalog", carrinho id="cart" e histórico id="orders" para ativar os componentes runtime oficiais.
 
-3. CATÁLOGO REAL
+3. CATÁLOGO E PEDIDOS REAIS
 Quando o app precisar de catálogo, use a data source oficial catalog.products. Ela lê produtos ativos do catálogo real do tenant com categoria, imagem, preço, promoção e disponibilidade. Não replique produtos em cards estáticos quando a fonte oficial estiver disponível.
+Quando houver histórico de compras, use commerce.orders, sempre limitado ao App User autenticado e à App Instance atual.
 
 4. INTEGRAÇÕES OBRIGATORIAMENTE PREVISTAS
 Inclua definition.integrationArchitecture com os domínios necessários ao app, mesmo quando algum conector ainda for gap:
@@ -151,10 +158,14 @@ Para cada domínio registre: sourceOfTruth, direction (inbound|outbound|bidirect
 Cada entidade precisa de source-of-truth explícito. Evite duplicidade entre App Product, ERP e VendorAI. Escritas externas devem ser idempotentes; mudanças externas devem preferir webhook/eventos; sincronizações precisam de log e estado de saúde.
 
 6. COMPRAS E CHECKOUT
-Catálogo e disponibilidade podem usar fontes read-only existentes. Carrinho, checkout, pagamento, pedido, reserva de estoque, estorno e devolução só podem ser marcados como executáveis quando houver Actions/workflows/integrações oficiais no registry. Caso contrário, desenhe a jornada e registre os executores faltantes como gaps — nunca simule uma compra como concluída.
+Para apps commerce, a ação oficial de checkout é commerce.checkout.start. Ela é medium risk, exige confirmação explícita do usuário, valida preço/estoque no backend, usa idempotência, reserva estoque controlado e cria cobrança real no provedor configurado.
+Quando o app tiver compra habilitada, inclua em definition.settings.runtimeAccess.actions: { enabled: true, keys: ["commerce.checkout.start"] } preservando outras actions necessárias.
+A regra funcional é: usuário confirma a compra -> checkout é gerado automaticamente. Não crie opção por produto para desligar essa geração.
+Pagamento, estorno, devolução, fiscal e ERP só podem ser marcados como executáveis quando houver integração oficial correspondente; o que não existir continua como gap.
 
 7. APP PRODUCT / APP ADMIN / VENDORAI
 O App Product executa a experiência do usuário final. O App Admin administra o que pertence ao próprio app. O VendorAI SaaS recebe eventos/dados e devolve inteligência, CRM, automações e gestão, sem duplicar ERP ou financeiro.
+Eventos de commerce devem ser publicados no outbox do App Runtime para posterior consumo por adapters de ERP, financeiro, CRM/Customer Intelligence e automações.
 
 8. SAÍDA DA IA
 Além de productModel e valueAgent, inclua em definition:
