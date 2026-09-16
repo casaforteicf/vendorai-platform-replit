@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "composite": false,
+    "noEmit": true,
+    "types": ["node", "pino-http"]
+  },
+  "include": [],
+  "files": [
+    "src/routes/social-integrations.ts",
+    "src/services/social-publication-dispatcher.ts",
+    "src/services/social-publication-worker.ts"
+  ],
+  "references": []
+}
