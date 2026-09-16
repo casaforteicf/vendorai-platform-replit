@@ -9,13 +9,14 @@
  *  - Receita por plano (breakdown Growth/PME+/Enterprise)
  *  - Inadimplência (tenants suspended)
  *  - Custo IA vs receita — margem por tenant (ranking do pior para o melhor)
+ *  - Gestão rápida da mensalidade e condições de cobrança por tenant
  *
  * Prioridade 2 (não incluída nesta rodada por escopo):
  *  - Churn/retenção histórico
  *  - Previsão de receita
  */
 import { Router, type IRouter } from "express";
-import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
+import { eq, gte, ne, sql } from "drizzle-orm";
 import { db, tenantsTable, plansTable, aiUsageLogsTable } from "@workspace/db";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 
@@ -41,6 +42,11 @@ router.get(
         billingCycle: tenantsTable.billingCycle,
         planStartedAt: tenantsTable.planStartedAt,
         mensalidadeValor: tenantsTable.mensalidadeValor,
+        descontoPercentual: tenantsTable.descontoPercentual,
+        formaPagamento: tenantsTable.formaPagamento,
+        statusPagamento: tenantsTable.statusPagamento,
+        diaVencimento: tenantsTable.diaVencimento,
+        contratoInicioEm: tenantsTable.contratoInicioEm,
         isDemo: tenantsTable.isDemo,
         createdAt: tenantsTable.createdAt,
       })
@@ -66,18 +72,19 @@ router.get(
 
     // ── Calcular MRR por tenant ───────────────────────────────────────────────
     // MRR = mensalidadeValor explícito OU plans.monthlyPriceCents/100 se vinculado.
-    // Tenants demo ou sem valor de plano não entram no MRR.
+    // Valor explícito 0 é respeitado (ex.: isenção/cortesia configurada pelo admin).
+    // Tenants demo não entram no MRR.
     function mrrDeTenant(t: typeof tenants[number]): number {
       if (t.isDemo) return 0;
-      if (t.mensalidadeValor && Number(t.mensalidadeValor) > 0) {
-        return Number(t.mensalidadeValor);
+      if (t.mensalidadeValor !== null && t.mensalidadeValor !== undefined) {
+        const customValue = Number(t.mensalidadeValor);
+        if (Number.isFinite(customValue) && customValue >= 0) return customValue;
       }
       if (t.planId) {
         const plan = planMap.get(t.planId);
         if (plan?.monthlyPriceCents) {
           const monthly = plan.monthlyPriceCents / 100;
-          // Plano anual: desconto típico de 15% já refletido no monthlyPriceAnnualCents
-          // Aqui usamos o monthlyPriceCents como referência mesmo no ciclo anual
+          // Plano anual: usamos o equivalente mensal de referência do plano.
           return monthly;
         }
       }
@@ -99,7 +106,12 @@ router.get(
         planNome: plan?.name ?? null,
         billingCycle: t.billingCycle,
         planStartedAt: t.planStartedAt,
-        mensalidadeValor: t.mensalidadeValor ? Number(t.mensalidadeValor) : null,
+        mensalidadeValor: t.mensalidadeValor ? Number(t.mensalidadeValor) : (t.mensalidadeValor === "0" ? 0 : null),
+        descontoPercentual: t.descontoPercentual ? Number(t.descontoPercentual) : null,
+        formaPagamento: t.formaPagamento,
+        statusPagamento: t.statusPagamento,
+        diaVencimento: t.diaVencimento,
+        contratoInicioEm: t.contratoInicioEm,
         mrr,
         custoIaMes,
         margemMes: mrr - custoIaMes,
@@ -152,7 +164,16 @@ router.get(
         custoIaMes: t.custoIaMes,
         margemMes: t.margemMes,
         margemPercent: t.margemPercent,
+        planId: t.planId,
         planNome: t.planNome,
+        billingCycle: t.billingCycle,
+        planStartedAt: t.planStartedAt,
+        mensalidadeValor: t.mensalidadeValor,
+        descontoPercentual: t.descontoPercentual,
+        formaPagamento: t.formaPagamento,
+        statusPagamento: t.statusPagamento,
+        diaVencimento: t.diaVencimento,
+        contratoInicioEm: t.contratoInicioEm,
       }));
 
     // ── Tenants sem plano mas ativos ──────────────────────────────────────────
