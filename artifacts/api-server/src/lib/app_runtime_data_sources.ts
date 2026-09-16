@@ -1,8 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   appDataSourceRegistryTable,
+  categoriasProdutoTable,
   db,
   leadsTable,
+  produtosCatalogoTable,
 } from "@workspace/db";
 
 type JsonObject = Record<string, unknown>;
@@ -88,6 +90,78 @@ const DATA_SOURCE_EXECUTORS: Record<string, DataSourceExecutor> = {
       phone: contact.phone,
       company: contact.company,
       contactKind: contact.nonLeadKind ?? "lead",
+    };
+  },
+
+  "catalog.products": async ({ tenantId }) => {
+    const rows = await db
+      .select({
+        id: produtosCatalogoTable.id,
+        name: produtosCatalogoTable.nome,
+        sku: produtosCatalogoTable.sku,
+        brand: produtosCatalogoTable.marca,
+        description: produtosCatalogoTable.descricao,
+        unit: produtosCatalogoTable.unidade,
+        imageUrl: produtosCatalogoTable.imagemUrl,
+        images: produtosCatalogoTable.imagens,
+        basePrice: produtosCatalogoTable.precoBase,
+        promotionalPrice: produtosCatalogoTable.precoPromocional,
+        promotionEndsAt: produtosCatalogoTable.promocaoAtivaAte,
+        controlsStock: produtosCatalogoTable.controlaEstoque,
+        stockQuantity: produtosCatalogoTable.estoqueQuantidade,
+        categoryId: produtosCatalogoTable.categoriaId,
+        categoryName: categoriasProdutoTable.nome,
+        highlighted: produtosCatalogoTable.destaque,
+        deliveryDays: produtosCatalogoTable.prazoEntregaDias,
+      })
+      .from(produtosCatalogoTable)
+      .leftJoin(
+        categoriasProdutoTable,
+        eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id),
+      )
+      .where(
+        and(
+          eq(produtosCatalogoTable.tenantId, tenantId),
+          eq(produtosCatalogoTable.ativo, true),
+        ),
+      )
+      .orderBy(asc(categoriasProdutoTable.nome), asc(produtosCatalogoTable.nome))
+      .limit(200);
+
+    const items = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      sku: row.sku,
+      brand: row.brand,
+      description: row.description,
+      unit: row.unit,
+      imageUrl: row.imageUrl ?? row.images?.[0] ?? null,
+      images: row.images ?? [],
+      basePrice: row.basePrice,
+      promotionalPrice: row.promotionalPrice,
+      promotionEndsAt: row.promotionEndsAt?.toISOString() ?? null,
+      controlsStock: row.controlsStock,
+      stockQuantity: row.stockQuantity,
+      available: !row.controlsStock || (row.stockQuantity ?? 0) > 0,
+      categoryId: row.categoryId,
+      categoryName: row.categoryName,
+      highlighted: row.highlighted,
+      deliveryDays: row.deliveryDays,
+    }));
+
+    const categories = Array.from(
+      new Map(
+        items
+          .filter((item) => item.categoryId && item.categoryName)
+          .map((item) => [item.categoryId as string, { id: item.categoryId, name: item.categoryName }]),
+      ).values(),
+    );
+
+    return {
+      items,
+      categories,
+      total: items.length,
+      sourceOfTruth: "vendorai.catalog",
     };
   },
 };
