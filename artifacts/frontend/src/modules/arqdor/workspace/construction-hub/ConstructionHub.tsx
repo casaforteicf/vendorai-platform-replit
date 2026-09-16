@@ -5,75 +5,103 @@ import CompleteSiteDiaryPanel from "./CompleteSiteDiaryPanel";
 import RealConstructionFinancePanel from "./RealConstructionFinancePanel";
 import RealConstructionQualityPanel from "./RealConstructionQualityPanel";
 import RealProjectDecisionsPanel from "./RealProjectDecisionsPanel";
+import ConstructionClientPortalButton from "./ConstructionClientPortalButton";
 
 type Props = {
   arqState?: any;
   onNavigate?: (module: string) => void;
 };
 
-type Mode = "planning" | "diary" | "finance" | "quality" | "decisions" | "operation";
+type Mode = "overview" | "planning" | "diary" | "finance" | "quality" | "decisions";
+
+type Tab = {
+  id: Mode | "procurement";
+  label: string;
+  hint: string;
+};
+
+const TABS: Tab[] = [
+  { id: "overview", label: "Visão Geral", hint: "Progresso, custos, compras, diários e medições" },
+  { id: "planning", label: "Cronograma", hint: "Etapas, datas e avanço físico" },
+  { id: "diary", label: "Diário & Fotos", hint: "Registro diário, equipes, materiais, ocorrências e mídia" },
+  { id: "finance", label: "Financeiro", hint: "DRE, pagamentos, compromissos e saldo projetado" },
+  { id: "procurement", label: "Compras", hint: "Solicitações, cotações e fornecedores" },
+  { id: "quality", label: "Qualidade", hint: "Inspeções e não conformidades" },
+  { id: "decisions", label: "Decisões", hint: "Pendências, responsáveis e aprovações" },
+];
 
 export default function ConstructionHub({ arqState, onNavigate }: Props) {
-  const [mode, setMode] = useState<Mode>("planning");
+  const [mode, setMode] = useState<Mode>("overview");
+
+  function openTab(tab: Tab) {
+    if (tab.id === "procurement") {
+      onNavigate?.("procurement");
+      return;
+    }
+    setMode(tab.id);
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f7f8]">
       <div className="mx-auto w-full max-w-[1760px] px-5 pt-5 lg:px-8">
-        <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setMode("planning")}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "planning" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            Planejamento
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("diary")}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "diary" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            Diário de Obra
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("finance")}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "finance" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            Financeiro
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("quality")}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "quality" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            Qualidade
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("decisions")}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "decisions" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            Decisões
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("operation")}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === "operation" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            Acompanhamento & Medições
-          </button>
-          <span className="mx-1 hidden h-6 w-px bg-slate-200 lg:block" />
-          <button
-            type="button"
-            onClick={() => onNavigate?.("procurement")}
-            className="rounded-xl px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-50"
-          >
-            Compras →
-          </button>
+        <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">ARQDOR • Gestão da Obra</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Workspace único da obra</h1>
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                Projeto, cronograma, diário, fotos, financeiro, compras, medições, qualidade e decisões usam a mesma obra vinculada ao projeto.
+              </p>
+            </div>
+            <ConstructionClientPortalButton arqState={arqState} />
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            {TABS.map((tab) => {
+              const active = tab.id !== "procurement" && mode === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => openTab(tab)}
+                  className={`rounded-2xl border px-3 py-3 text-left transition ${active ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"}`}
+                >
+                  <span className="block text-sm font-semibold">{tab.label}</span>
+                  <span className={`mt-1 block text-[11px] leading-4 ${active ? "text-slate-300" : "text-slate-400"}`}>{tab.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              onClick={() => onNavigate?.("cliente")}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Projeto & Aprovações do Cliente
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.("real-budget")}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Orçamento Executivo
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.("execution")}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Produção & Execução
+            </button>
+          </div>
         </div>
       </div>
 
-      {mode === "planning" ? (
+      {mode === "overview" ? (
+        <ArqdorConstructionWorkspace arqState={arqState} onNavigate={onNavigate} />
+      ) : mode === "planning" ? (
         <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
           <AdvancedSchedulePanel arqState={arqState} />
         </div>
@@ -89,12 +117,10 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
         <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
           <RealConstructionQualityPanel arqState={arqState} />
         </div>
-      ) : mode === "decisions" ? (
+      ) : (
         <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
           <RealProjectDecisionsPanel arqState={arqState} onNavigate={onNavigate} />
         </div>
-      ) : (
-        <ArqdorConstructionWorkspace arqState={arqState} onNavigate={onNavigate} />
       )}
     </div>
   );
