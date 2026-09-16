@@ -34,6 +34,39 @@ const PRACA_AI_LINK_SELECTOR = Array.from(PRACA_AI_PATHS)
   .map((href) => `a[href="${href}"]`)
   .join(",");
 
+const SUPERADMIN_GROUPS = [
+  {
+    key: "clientes",
+    label: "Clientes",
+    description: "Tenants e acesso às empresas",
+    hrefs: ["/admin/tenants"],
+  },
+  {
+    key: "plataforma",
+    label: "Plataforma",
+    description: "Segmentos, produtos e superfícies da plataforma",
+    hrefs: ["/admin/verticais", "/admin/app-builder", "/admin/produtos-internos", "/marketplace"],
+  },
+  {
+    key: "ia",
+    label: "IA & Automação",
+    description: "Consumo, modelos e evolução de IA",
+    hrefs: ["/admin/ai-usage", "/admin/ml-status"],
+  },
+  {
+    key: "financeiro",
+    label: "Financeiro & Comercial",
+    description: "Financeiro, parceiros e operação comercial",
+    hrefs: ["/admin/financeiro", "/admin/partners"],
+  },
+  {
+    key: "operacao",
+    label: "Operação & Suporte",
+    description: "Suporte, incidentes, relatos e novidades",
+    hrefs: ["/admin/suporte", "/admin/relatos-tecnicos", "/admin/changelog"],
+  },
+] as const;
+
 function normalizeVertical(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFD")
@@ -64,23 +97,6 @@ function isArqdorEligibleVertical(vertical: string | null | undefined) {
   );
 }
 
-/**
- * Navigation policy wrapper.
- *
- * SidebarLayoutLegacy remains the declarative source of the navigation tree.
- * This wrapper only enforces tenant entitlements and tenant-only branding.
- * Marketing labels and entries must be declared in the sidebar itself instead
- * of being cloned or renamed after render.
- *
- * Branding policy:
- * - regular tenant sessions show only the tenant/client logo;
- * - Configurações → Logo da empresa (`tenant.logoUrl`) is the live source;
- * - Perfil da Empresa (`businessProfile.logoUrl`) remains a legacy fallback;
- * - Super Admin keeps the VendorAI brand in its own environment;
- * - when Super Admin opens a tenant/vertical preview, the preview follows the
- *   tenant-only branding rule;
- * - a missing/broken tenant logo falls back to the company name, never VendorAI.
- */
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, tenantOverride, token } = useAuth();
   const [location, setLocation] = useLocation();
@@ -156,8 +172,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     isArqdorEligibleVertical(effectiveVertical) ||
     isArqdorEligibleVertical(effectiveSegment);
   const arqdorModule = tenantNavModules.find((module) => module.moduleKey === "arch");
-  // Ausência de override não bloqueia um segmento elegível. Um desligamento
-  // explícito por tenant continua sendo respeitado.
   const arqdorDisabledByOverride = arqdorModule?.hasOverride === true && arqdorModule.isEnabled === false;
   const arqdorVisible = !!effectiveTenantId && arqdorEligible && !arqdorDisabledByOverride;
 
@@ -174,9 +188,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
       );
 
-      // O hub atual do Arqdor já contém sua navegação interna. Em tenants de
-      // arquitetura escondemos o grupo legado com cinco links para manter uma
-      // única entrada clara na barra externa.
       document.querySelectorAll<HTMLAnchorElement>('a[href="/arch"]').forEach((archLink) => {
         if (archLink.dataset.arqdorToolEntry === "true") return;
         const group = archLink.parentElement;
@@ -190,10 +201,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Insere o Arqdor perto do topo, logo após Central de Trabalho. Esse
-      // ponto existe no desktop e no drawer mobile e não depende do allowlist
-      // legado da vertical, que era o motivo de Construção & Reforma perder
-      // /arch antes da renderização.
       const anchors = Array.from(
         document.querySelectorAll<HTMLAnchorElement>('a[href="/trabalho"], a[href="/configuracoes"]'),
       );
@@ -519,6 +526,127 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       });
     };
   }, [companyLogoUrl, companyName, tenantOverride, user]);
+
+  useEffect(() => {
+    const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
+
+    const restoreRoot = (root: HTMLElement) => {
+      const header = Array.from(root.children).find(
+        (child) => child instanceof HTMLParagraphElement && child.textContent?.trim() === "Super Admin",
+      );
+      const groups = Array.from(root.querySelectorAll<HTMLElement>(':scope > [data-superadmin-nav-group="true"]'));
+      const anchors = groups.flatMap((group) => Array.from(group.querySelectorAll<HTMLAnchorElement>("a[href]")));
+      groups.forEach((group) => group.remove());
+      anchors.forEach((anchor) => {
+        if (header?.nextSibling) root.insertBefore(anchor, header.nextSibling);
+        else root.appendChild(anchor);
+      });
+      delete root.dataset.superadminNavOrganized;
+    };
+
+    const organizeSuperAdminNavigation = () => {
+      const headers = Array.from(document.querySelectorAll<HTMLParagraphElement>("p")).filter(
+        (paragraph) => paragraph.textContent?.trim() === "Super Admin",
+      );
+
+      headers.forEach((header) => {
+        const root = header.parentElement;
+        if (!root) return;
+
+        if (!isPureSuperAdmin) {
+          if (root.dataset.superadminNavOrganized === "true") restoreRoot(root);
+          return;
+        }
+
+        if (root.dataset.superadminNavOrganized === "true") return;
+
+        const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>(":scope > a[href]"));
+        if (!anchors.some((anchor) => anchor.getAttribute("href") === "/admin/tenants")) return;
+
+        const byHref = new Map(anchors.map((anchor) => [anchor.getAttribute("href") ?? "", anchor]));
+        const claimed = new Set<HTMLAnchorElement>();
+
+        SUPERADMIN_GROUPS.forEach((groupConfig) => {
+          const groupAnchors = groupConfig.hrefs
+            .map((href) => byHref.get(href))
+            .filter((anchor): anchor is HTMLAnchorElement => !!anchor);
+          if (groupAnchors.length === 0) return;
+
+          groupAnchors.forEach((anchor) => claimed.add(anchor));
+
+          const details = document.createElement("details");
+          details.dataset.superadminNavGroup = "true";
+          details.dataset.superadminNavGroupKey = groupConfig.key;
+          details.className = "group/admin rounded-xl";
+          details.title = groupConfig.description;
+
+          const hasActiveRoute = groupAnchors.some((anchor) => {
+            const href = anchor.getAttribute("href") ?? "";
+            return location === href || (href !== "/" && location.startsWith(href));
+          });
+          details.open = hasActiveRoute || groupConfig.key === "clientes";
+
+          const summary = document.createElement("summary");
+          summary.className = [
+            "flex min-h-[42px] cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors",
+            hasActiveRoute
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground",
+          ].join(" ");
+          summary.setAttribute("aria-label", `${groupConfig.label}: ${groupConfig.description}`);
+
+          const label = document.createElement("span");
+          label.textContent = groupConfig.label;
+
+          const chevron = document.createElement("span");
+          chevron.textContent = "›";
+          chevron.setAttribute("aria-hidden", "true");
+          chevron.className = "text-base transition-transform group-open/admin:rotate-90";
+
+          const body = document.createElement("div");
+          body.className = "ml-3 mt-1 space-y-1 border-l border-border/60 pl-2";
+
+          summary.append(label, chevron);
+          groupAnchors.forEach((anchor) => body.appendChild(anchor));
+          details.append(summary, body);
+          root.appendChild(details);
+        });
+
+        const unclaimed = anchors.filter((anchor) => !claimed.has(anchor));
+        if (unclaimed.length > 0) {
+          const details = document.createElement("details");
+          details.dataset.superadminNavGroup = "true";
+          details.dataset.superadminNavGroupKey = "outros";
+          details.className = "group/admin rounded-xl";
+          details.open = unclaimed.some((anchor) => {
+            const href = anchor.getAttribute("href") ?? "";
+            return location === href || location.startsWith(href);
+          });
+
+          const summary = document.createElement("summary");
+          summary.className = "flex min-h-[42px] cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground";
+          summary.textContent = "Outros";
+
+          const body = document.createElement("div");
+          body.className = "ml-3 mt-1 space-y-1 border-l border-border/60 pl-2";
+          unclaimed.forEach((anchor) => body.appendChild(anchor));
+          details.append(summary, body);
+          root.appendChild(details);
+        }
+
+        root.dataset.superadminNavOrganized = "true";
+      });
+    };
+
+    organizeSuperAdminNavigation();
+    const observer = new MutationObserver(organizeSuperAdminNavigation);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      document.querySelectorAll<HTMLElement>('[data-superadmin-nav-organized="true"]').forEach(restoreRoot);
+    };
+  }, [location, tenantOverride, user?.platformRole]);
 
   return (
     <SidebarLayoutLegacy>
