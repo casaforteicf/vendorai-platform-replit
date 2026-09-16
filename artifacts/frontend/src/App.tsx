@@ -185,7 +185,7 @@ function sanitizeDevAgentHistory() {
     try {
       window.localStorage.removeItem(requestKey);
     } catch {
-      // Histórico inválido nunca pode impedir o Dev IA de abrir.
+      // Histórico inválido nunca pode impedir o uso do sistema.
     }
   }
 }
@@ -272,7 +272,9 @@ export default function App() {
   const [devLoading, setDevLoading] = React.useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(isCachedSuperAdmin);
   const [currentPath, setCurrentPath] = React.useState(() => typeof window !== "undefined" ? window.location.pathname : "");
+  const [imagePreview, setImagePreview] = React.useState<{ src: string; alt: string } | null>(null);
   const showDevLauncher = isSuperAdmin && currentPath.startsWith("/admin/");
+  const catalogPreviewEnabled = currentPath.startsWith("/catalogo");
 
   React.useEffect(() => {
     const syncVideoStudioScope = () => {
@@ -311,6 +313,38 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
+    const handleCatalogImageClick = (event: MouseEvent) => {
+      if (!window.location.pathname.startsWith("/catalogo")) return;
+      if (!(event.target instanceof Element)) return;
+      const image = event.target.closest("img");
+      if (!(image instanceof HTMLImageElement)) return;
+      if (image.dataset.noPreview === "true") return;
+      if (!image.closest('[role="dialog"]')) return;
+      const src = image.currentSrc || image.src;
+      if (!src) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setImagePreview({ src, alt: image.alt || "Imagem do produto" });
+    };
+
+    document.addEventListener("click", handleCatalogImageClick);
+    return () => document.removeEventListener("click", handleCatalogImageClick);
+  }, []);
+
+  React.useEffect(() => {
+    if (!imagePreview) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImagePreview(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [imagePreview]);
+
+  React.useEffect(() => {
+    if (!catalogPreviewEnabled && imagePreview) setImagePreview(null);
+  }, [catalogPreviewEnabled, imagePreview]);
+
+  React.useEffect(() => {
     if (!showDevLauncher && devRequested) setDevRequested(false);
   }, [showDevLauncher, devRequested]);
 
@@ -346,6 +380,40 @@ export default function App() {
   return (
     <>
       <AppLegacy />
+
+      {catalogPreviewEnabled && (
+        <style>{`[role="dialog"] img:not([data-no-preview="true"]) { cursor: zoom-in; }`}</style>
+      )}
+
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Visualização ampliada da imagem"
+          onClick={() => setImagePreview(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-2xl text-white hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-white"
+            aria-label="Fechar visualização"
+            onClick={() => setImagePreview(null)}
+          >
+            ×
+          </button>
+          <div className="flex max-h-[92vh] max-w-[94vw] flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={imagePreview.src}
+              alt={imagePreview.alt}
+              data-no-preview="true"
+              className="max-h-[84vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
+            />
+            <p className="max-w-[80vw] truncate rounded-full bg-black/55 px-4 py-2 text-sm text-white">
+              {imagePreview.alt}
+            </p>
+          </div>
+        </div>
+      )}
 
       {showDevLauncher && !devRequested && (
         <button
