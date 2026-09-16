@@ -8,7 +8,7 @@ Este documento define o contrato oficial para consolidar o Render Studio sem cri
 
 Cada registro representa uma versão imutável e deve ser ligado ao projeto e, quando aplicável, à versão pai.
 
-Campos oficiais do histórico:
+Campos oficiais do fluxo:
 
 - `id`
 - `tenantId`
@@ -16,56 +16,53 @@ Campos oficiais do histórico:
 - `parentRenderId`
 - `mode`
 - `ambiente`
-- `operationType`
-- `materialId`
-- `materialName`
-- `selectionMetadata`
 - `originalImageUrl`
 - `resultImageUrl`
 - `maskZones`
 - `prompt`
 - `motor`
-- `costEstimateUsd`
 - `status`
 - `versionTag`
+- `operationType`
+- `materialId`
+- `materialName`
+- `selectionMetadata`
+- `costEstimateUsd`
+- `approvalNote`
 - `approvedBy`
 - `approvedAt`
-- `approvalNote`
 - `createdAt`
 - `concluidoEm`
 
-## Operações de versão
+## Regra do navegador
 
-`operationType` deve identificar por que a versão nasceu:
+`sessionStorage` e `localStorage` não podem ser fonte oficial de versões. Eles podem ser usados apenas para cache/recovery temporário quando:
 
-- `initial` — render inicial;
-- `material` — troca/aplicação de material;
-- `lighting` — ajuste de iluminação;
-- `improve` — melhoria geral ou pontual;
-- `approved` — compatibilidade de leitura para versões antigas; a aprovação oficial é definida por `approvedBy` + `approvedAt`.
+- a API ainda não respondeu;
+- um job foi interrompido durante geração;
+- a sessão caiu antes de o backend devolver o histórico.
 
-## Material e seleção
+Se o backend devolver uma ou mais versões, elas sempre vencem qualquer cache local.
 
-Quando uma alteração vier do catálogo, `materialId` e `materialName` devem permanecer associados à versão gerada. O material não pode existir apenas no estado React/sessionStorage.
+## Adaptador do Render Studio
 
-`selectionMetadata` registra as regiões efetivamente selecionadas no canvas (`x`, `y`, `w`, `h`, `label`) para permitir auditoria, comparação e futura reexecução da alteração.
+`renderStudioPersistentAdapter.ts` é a ponte entre o DTO persistente e o modelo já consumido pela tela atual.
 
-## Aprovação
+Responsabilidades do adaptador:
 
-A aprovação é persistente e auditável:
+- mapear versão persistida para `RenderStudioVersion`;
+- reconstruir o rótulo V1/V2/V3 a partir de `versionNumber` e `operationType`;
+- manter mais recente primeiro apenas na apresentação;
+- converter `selectionMetadata[]` em rótulo de seleção quando necessário;
+- converter `costEstimateUsd` para número de forma segura;
+- localizar a versão aprovada;
+- aplicar cache local somente quando o backend ainda não possui histórico.
 
-- `approvedBy` deve vir do usuário autenticado;
-- `approvedAt` registra o timestamp do backend;
-- `approvalNote` guarda a observação da aprovação;
-- uma versão aprovada nunca é sobrescrita; qualquer mudança gera uma nova versão filha.
-
-## Custo
-
-`costEstimateUsd` registra o custo estimado da geração quando o provedor/motor permitir mensuração. O campo permanece nullable para execuções antigas ou motores sem medição disponível.
+Isso permite conectar a tela sem reescrever o Render Studio inteiro.
 
 ## Regra de evolução
 
-O backend é a fonte oficial. `sessionStorage` pode ser usado somente como cache/recovery temporário e jamais como origem definitiva do histórico.
+Os endpoints de geração e ajuste devem preencher os metadados persistentes no momento da criação da versão. A aprovação deve persistir a observação no mesmo registro aprovado.
 
 Não criar tabela paralela de versões.
 
@@ -75,9 +72,9 @@ Projeto → Ambiente → Render V1 → Ajuste V2/V3/Vn → Aprovação → Espec
 
 - toda alteração cria um novo registro filho;
 - nenhuma versão aprovada é sobrescrita;
-- catálogo/material selecionado permanece associado à versão que o utilizou;
-- especificação aponta para o render aprovado;
-- orçamento deriva da especificação, não do estado local do Studio.
+- catálogo/material selecionado deve permanecer associado à versão que o utilizou;
+- especificação deve apontar para o render aprovado;
+- orçamento deve derivar da especificação, não do estado local do Studio.
 
 ## Estado atual confirmado
 
@@ -85,8 +82,8 @@ Projeto → Ambiente → Render V1 → Ajuste V2/V3/Vn → Aprovação → Espec
 - seleção de material já é enviada para o fluxo de melhoria no frontend;
 - existe sincronização posterior com item da especificação quando possível;
 - especificação já possui ponte para orçamento;
-- endpoint persistente de histórico por projeto foi criado no PR #1528;
-- schema/migração para metadados persistentes de versão foram adicionados no PR #1528;
-- o próximo passo é fazer os endpoints de geração/ajuste preencherem esses campos e conectar o `RenderStudioPage` ao hook persistente.
+- histórico persistente está sendo consolidado no PR #1528;
+- hook `usePersistentRenderHistory` já lê material/operação/seleção/custo/aprovação;
+- adaptador `renderStudioPersistentAdapter.ts` já converte histórico persistente para o modelo atual da tela e mantém cache apenas como recuperação.
 
 Relacionado: #1526, #1528.
