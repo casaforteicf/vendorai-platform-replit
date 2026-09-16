@@ -12,6 +12,7 @@ import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
 import { MediaSitesBridge } from "./components/media/MediaSitesBridge";
 import { MediaCatalogBridge } from "./components/media/MediaCatalogBridge";
 import { MediaContentStudioBridge } from "./components/media/MediaContentStudioBridge";
+import { MediaContextLibrary } from "./components/media/MediaContextLibrary";
 import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
 import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
 import { MediaAiBaseBridge } from "./components/media/MediaAiBaseBridge";
@@ -20,6 +21,7 @@ import { MediaDeleteSelectionBridge } from "./components/media/MediaDeleteSelect
 import { MediaLibraryWorkflowBridge } from "./components/media/MediaLibraryWorkflowBridge";
 import { MediaIntelligenceIndexBridge } from "./components/media/MediaIntelligenceIndexBridge";
 import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGeneratorQueueUxBridge";
+import { ContentContextSourcesBridge } from "./components/marketing/ContentContextSourcesBridge";
 import { ContentApprovalClarityBridge } from "./components/marketing/ContentApprovalClarityBridge";
 import { ContentProductionClarityBridge } from "./components/marketing/ContentProductionClarityBridge";
 import { MarketingOverviewBridge } from "./components/marketing/MarketingOverviewBridge";
@@ -178,6 +180,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaSitesBridge />
           <MediaCatalogBridge />
           <MediaContentStudioBridge />
+          <MediaContextLibrary />
           <MediaMarketingContentBridge />
           <MediaConversationsBridge />
           <MediaAiBaseBridge />
@@ -186,6 +189,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaAiBaseWorkspaceNav />
           <MediaDeleteSelectionBridge />
           <ContentGeneratorQueueUxBridge />
+          <ContentContextSourcesBridge />
           <ContentApprovalClarityBridge />
           <ContentProductionClarityBridge />
           <MarketingOverviewBridge />

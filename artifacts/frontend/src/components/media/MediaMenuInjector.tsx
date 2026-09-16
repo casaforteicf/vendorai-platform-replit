@@ -18,6 +18,7 @@ const MAIN_ITEMS = [
 
 const TOOL_ITEMS = [
   { label: "Mídias", href: "/midias" },
+  { label: "Biblioteca de Informações", href: "/midias/informacoes" },
   { label: "Vídeos com IA", href: "/content-studio/video" },
   { label: "Sites & LPs", href: "/content?tab=campanhas&view=lp" },
   { label: "Anúncios", href: "/ads" },
