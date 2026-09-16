@@ -141,47 +141,36 @@ A identidade é expressa por tokens, não por CSS livre:
 Todo app deve nascer com `definition.integrationArchitecture`, mesmo quando a primeira versão ainda não utiliza todos os domínios.
 
 ### Catálogo
-
 Entidades: produto/serviço, categoria, mídia, atributos, preço, preço promocional e condições comerciais.
 
 ### Estoque
-
 Entidades: saldo, disponibilidade, reserva, depósito/unidade e prazo.
 
 ### Compras / comércio
-
 Entidades: carrinho, checkout, pedido, item, status, entrega/retirada, devolução e cancelamento.
 
 ### Financeiro
-
 Entidades: pagamento, cobrança, contas a receber, estorno, cashback, voucher e conciliação quando aplicável.
 
 ### ERP
-
 Integração por contrato de capacidade, não por telas específicas do fornecedor. Deve permitir mapear pelo menos clientes, produtos, preços, estoque, pedidos, fiscal e financeiro.
 
 ### Fiscal
-
 NF/documento fiscal, status, chave/identificador e comprovantes permitidos.
 
 ### VendorAI
-
 O app publica eventos e dados úteis para CRM, Customer Intelligence, automações, agentes, marketing, suporte e analytics. O VendorAI devolve ações/inteligência sem se tornar fonte duplicada do ERP quando o ERP for a autoridade.
 
 ### Identidade / LGPD
-
 App User, perfil, consentimentos, preferências, exportação quando aplicável e exclusão de conta.
 
 ### Engajamento
-
 Push, in-app, e-mail e WhatsApp conforme consentimento e disponibilidade do canal.
 
 ### Localização
-
 Unidades, distância, mapa, área de atendimento, retirada e disponibilidade local quando aplicável.
 
 ### Analytics
-
 Eventos mínimos: app_open, screen_view, search, category_view, product_view, add_to_cart, checkout_started, purchase_completed, promotion_view, notification_opened, profile_updated e support_requested quando aplicável.
 
 ## Contrato de cada integração
