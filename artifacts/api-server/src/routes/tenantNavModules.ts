@@ -101,7 +101,15 @@ const SALAO_VERTICALS = new Set(
     "Adestramento",
   ].map(normalizeVertical)
 );
-const CLINICA_VERTICALS = new Set(["Clínica"].map(normalizeVertical));
+const CLINICA_VERTICALS = new Set(
+  [
+    "Clínica",
+    // Bloco 2 da proposta de agrupamento (17/09): agenda + profissional de
+    // saúde, mais próximos de atendimento clínico do que de salão.
+    "Odontologia",
+    "Óptica",
+  ].map(normalizeVertical)
+);
 // Pet Shop usa o catálogo de Varejo E as telas de Salão (banho & tosa) ao
 // mesmo tempo — mesma exceção que já existe no frontend (isSalao).
 const PET_SHOP_VERTICAL = normalizeVertical("Pet Shop (Varejo)");
