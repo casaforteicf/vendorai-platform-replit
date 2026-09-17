@@ -1,8 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
-
 // Public catalog allow-list. Pricing/content still comes from produtos_catalogo;
 // the Edge Function only controls which commercial offers are public.
 const ALLOWED_SKUS = new Set([
@@ -39,6 +37,23 @@ const cors = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
+async function resolveCatalogTenantId(supabase: ReturnType<typeof createClient>) {
+  const configuredId = Deno.env.get("VENDORAI_CATALOG_TENANT_ID")?.trim();
+  if (configuredId) return configuredId;
+
+  // Stable fallback: discover the VendorAI catalog through its canonical Growth SKU.
+  // This avoids coupling migrations/deployments to a generated tenant UUID.
+  const { data, error } = await supabase
+    .from("produtos_catalogo")
+    .select("tenant_id")
+    .eq("sku", "vendor-growth-monthly")
+    .eq("ativo", true)
+    .limit(2);
+
+  if (error || !data || data.length !== 1 || !data[0]?.tenant_id) return null;
+  return String(data[0].tenant_id);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "GET") {
@@ -54,10 +69,18 @@ Deno.serve(async (req) => {
     { auth: { persistSession: false } },
   );
 
+  const tenantId = await resolveCatalogTenantId(supabase);
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "catalog_tenant_unresolved" }), {
+      status: 503,
+      headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+    });
+  }
+
   const { data, error } = await supabase
     .from("produtos_catalogo")
     .select("sku,nome,descricao,descricao_longa,preco_base,preco_implantacao,preco_mensalidade,preco_promocional,promocao_ativa_ate,recorrencia,prazo_contrato,imagem_url,imagens,video_url,product_type")
-    .eq("tenant_id", TENANT_ID)
+    .eq("tenant_id", tenantId)
     .eq("ativo", true);
 
   if (error) {
