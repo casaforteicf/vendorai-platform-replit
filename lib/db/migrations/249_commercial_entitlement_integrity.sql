@@ -91,8 +91,7 @@ ON tenant_entitlements
 FOR EACH ROW
 EXECUTE FUNCTION validate_runtime_commercial_entitlement();
 
--- Prevent duplicate active snapshots from the same source while allowing a
--- customer to have, for example, a paid module plus a temporary promotion.
-CREATE UNIQUE INDEX IF NOT EXISTS tenant_entitlements_active_source_uq
-  ON tenant_entitlements(tenant_id, commercial_key, source)
-  WHERE active = true;
+-- We intentionally allow multiple active entitlement rows for the same
+-- commercial key because their independent sources can overlap (for example a
+-- plan-managed Growth subscription plus a temporary promotion/pass window).
+-- Source-specific sync routines own de-duplication of their own snapshots.
