@@ -2,6 +2,7 @@ import { Router } from "express";
 import { and, eq, desc, asc, inArray } from "drizzle-orm";
 import {
   db,
+  pool,
   obrasTable,
   tenantsTable,
   obraEtapasTable,
@@ -163,6 +164,25 @@ router.get("/portal/obra/:token", async (req, res) => {
       }))
     : [];
 
+  let decisions: any[] = [];
+  if (config.showClientDecisions) {
+    const result = await pool.query(
+      `SELECT id, title, description, category, priority, due_date, options, financial_impact, schedule_impact_days
+         FROM arch_project_decisions
+        WHERE obra_id = $1
+          AND tenant_id::text = $2
+          AND decision_type = 'client'
+          AND status = 'pending'
+        ORDER BY
+          CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+          due_date ASC NULLS LAST,
+          created_at DESC
+        LIMIT 30`,
+      [obra.id, obra.tenantId],
+    );
+    decisions = result.rows;
+  }
+
   return res.json({
     publication: config,
     obra: {
@@ -183,7 +203,7 @@ router.get("/portal/obra/:token", async (req, res) => {
     etapas,
     diario,
     ocorrencias,
-    decisions: [],
+    decisions,
   });
 });
 
