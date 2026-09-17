@@ -68,7 +68,7 @@ Growth does not include unlimited implementation labor, custom development, medi
 Canonical VendorAI rows use only three commercial classes in `produtos_catalogo`:
 
 - `saas_plan`: CRM Free and Growth.
-- `saas_addon`: recurring standalone software products and the +5-day access SKU.
+- `saas_addon`: recurring standalone software products, the +5-day access SKU and function-specific consumption packs.
 - `service`: implementation/custom work.
 
 Migration 246 normalizes legacy VendorAI rows that were incorrectly stored as `physical`, `software` or `servico`, while keeping their stable SKUs intact. It also fills `preco_mensalidade` for recurring modules and adopts the public names **Vendor Gestão**, **Vendor Propostas & Catálogo** and **Praça.ai**.
@@ -125,6 +125,25 @@ Vendor Credit weights are read dynamically from `usage_metrics`; triggers do not
 | Vendor Knowledge AI | 500 indexed pages |
 | Vendor Revenue Scout | 250 intelligence analyses |
 
+## Function-specific extra packs V1
+
+Extra capacity is sold in customer-readable units. Internally every pack has a metric, a fixed quantity and its Vendor Credit equivalent in `consumption_pack_definitions`. The purchased quantity is stored in `vendor_credit_transactions.metric_key/quantity_delta`, so a `+20 imagens` purchase cannot silently become generic video/prospect capacity.
+
+Initial pack SKUs are created **inactive and with price pending**. This allows price/margin to be defined after observing real costs without another schema change.
+
+| Commercial key | Customer pack | Metric | Quantity | Initial status |
+|---|---|---|---:|---|
+| `vendor.pack.content.50` | +50 conteúdos | content | 50 | price pending |
+| `vendor.pack.image.20` | +20 imagens | image | 20 | price pending |
+| `vendor.pack.video.5` | +5 vídeos | video | 5 | price pending |
+| `vendor.pack.prospect.500` | +500 prospects | prospect | 500 | price pending |
+| `vendor.pack.agent_interaction.1000` | +1.000 interações IA | agent_interaction | 1,000 | price pending |
+| `vendor.pack.render.10` | +10 renders | render | 10 | price pending |
+| `vendor.pack.site.1` | +1 site | site | 1 | price pending |
+| `vendor.pack.autopilot_article.10` | +10 artigos Autopilot | autopilot_article | 10 | price pending |
+
+A consumption pack is **not** a runtime module entitlement. It only increases the allowance for one metric. Activation is guarded: a pack cannot be enabled while its catalog price is zero, and enabling the commercial product synchronizes the pack definition and catalog visibility.
+
 ## Metering semantics
 
 A quota is debited only on a useful delivered result.
@@ -148,6 +167,7 @@ Upsell must happen in context, not only on a pricing page.
 - User tries centralized WhatsApp/Instagram -> offer Omnichannel.
 - User requests autonomous follow-up -> offer AI Team.
 - User requests content/media -> offer Content/Creative products.
+- User approaches a quota -> offer the matching function-specific pack.
 - When monthly module subscriptions approach/exceed Growth, show the Growth comparison automatically.
 
 ## System architecture
@@ -167,6 +187,8 @@ USAGE METRICS + QUOTAS
         ↓
 USAGE LEDGER
         ↓
+FUNCTION-SPECIFIC TOP-UP WALLET
+        ↓
 VENDOR CREDITS + REAL COST + MARGIN
 ```
 
@@ -174,13 +196,13 @@ Navigation switches are an operational override/diagnostic tool. They must not b
 
 ## Rollout stages
 
-1. Measurement: migrations 240–248; no quota blocking.
+1. Measurement: migrations 240–251; no quota blocking.
 2. Coverage audit: confirm every generator/agent/external API emits a business-unit event.
-3. Margin validation: real provider/API costs in USD/BRL by tenant/product.
-4. Customer usage UI: human units and package purchase CTA.
-5. Super Admin: product/entitlement/quota/cost control instead of raw equal-weight module switches.
-6. Enforcement: activate consumption quotas only after measurement coverage is complete.
-7. Extras: sell function-specific packs that add entitlement/quota/Vendor Credits.
+3. Margin validation: real provider/API costs in USD/BRL by tenant/product/metric.
+4. Customer usage UI: human units, remaining quota and matching pack CTA.
+5. Super Admin: product/entitlement/quota/cost/pack control instead of raw equal-weight module switches.
+6. Pack pricing: approve price/margin and activate only the packs with reliable cost data.
+7. Enforcement: activate consumption quotas only after measurement coverage is complete.
 
 ## Alternative validation while CI runners are unavailable
 
