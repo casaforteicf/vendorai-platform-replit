@@ -4,6 +4,7 @@ import { usePublicCountry } from "@/lib/publicCountry";
 import publicVerticalSlugs from "@/data/publicVerticalSlugs.json";
 import LegacyLpRouter from "./LpPage";
 import OfficialVerticalLp from "./OfficialVerticalLpV2";
+import LpCommercialOffer from "./LpCommercialOffer";
 
 const publicSlugOverrides = publicVerticalSlugs as Record<string, string>;
 
@@ -16,11 +17,10 @@ export default function UnifiedLpRouter() {
     return publicSlug === slug || profile.slug === slug || profile.id === slug;
   });
 
-  if (officialProfile) {
-    return <OfficialVerticalLp profile={officialProfile} />;
-  }
-
-  // Preserve previously published/specialized landing pages that are not part
-  // of the official 50-profile architecture.
-  return <LegacyLpRouter />;
+  return (
+    <>
+      {officialProfile ? <OfficialVerticalLp profile={officialProfile} /> : <LegacyLpRouter />}
+      <LpCommercialOffer />
+    </>
+  );
 }
