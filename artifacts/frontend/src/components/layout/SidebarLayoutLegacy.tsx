@@ -158,7 +158,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   type VerticalBucket =
     | "core" | "construcao" | "varejo" | "supermercado" | "salao" | "clinica"
     | "farmacia" | "imoveis" | "fretes" | "veiculos" | "arquitetura" | "seguros"
-    | "servicos" | "distribuidora";
+    | "servicos" | "distribuidora" | "food_service";
 
   // Fonte única de verdade: TODO nicho cadastrado (100 hoje, ver Admin →
   // Segmentos) precisa estar aqui, mapeado pro balde certo. Nicho sem
@@ -226,17 +226,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Banho e Tosa": "core",
     "Bicicletaria / Oficina de Bike": "core",
     "Buffet / Festas": "core",
-    "Cafeteria": "core",
+    "Cafeteria": "food_service",
     "Casa & Decoração": "core",
     "Chaveiro": "servicos",
     "Comunicação Visual / Sinalização": "core",
     "Confecção / Facção Têxtil": "core",
-    "Confeitaria / Doceria": "core",
+    "Confeitaria / Doceria": "food_service",
     "Consultoria Empresarial": "core",
     "Contabilidade": "core",
     "Decoração de Eventos": "core",
     "Dedetização / Controle de Pragas": "servicos",
-    "Delivery de comida": "core",
+    "Delivery de comida": "food_service",
     "Desenvolvimento de Software / TI": "core",
     "Design Gráfico": "core",
     "Distribuição Técnica": "core",
@@ -244,13 +244,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "DJ / Som para Eventos": "core",
     "Educação": "core",
     "Energia & Climatização": "core",
-    "Food truck": "core",
+    "Food truck": "food_service",
     "Fotografia / Filmagem": "core",
     "Funerária": "core",
     "Funilaria / Pintura": "servicos",
     "Gráfica Industrial": "core",
     "Gráfica Rápida": "core",
-    "Hamburgueria": "core",
+    "Hamburgueria": "food_service",
     "Hotel / Pousada": "core",
     "Jardinagem / Paisagismo": "servicos",
     "Lavajato": "servicos",
@@ -262,15 +262,15 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Loja de Piscinas & Spas": "core",
     "Manutenção Predial": "servicos",
     "Marcenaria Sob Encomenda": "core",
-    "Marmitaria": "core",
+    "Marmitaria": "food_service",
     "Metalúrgica": "core",
     "Mobilidade": "core",
     "Odontologia": "clinica",
     "Óptica": "clinica",
-    "Padaria": "core",
-    "Pizzaria": "core",
+    "Padaria": "food_service",
+    "Pizzaria": "food_service",
     "Recursos Humanos / Recrutamento": "core",
-    "Restaurante": "core",
+    "Restaurante": "food_service",
     "Saúde & Estética": "core",
     "Saúde Animal & Pet": "core",
     "Segurança Eletrônica / CFTV": "servicos",
@@ -295,6 +295,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     seguros: ["/scout/seguros/renovacoes"],
     servicos: ["/servicos", "/servicos/cadastros"],
     distribuidora: ["/estoque", "/entregas", "/vendor-certified-network", "/poe"],
+    food_service: ["/food/pedidos", "/food/cardapio"],
   };
 
   function findVerticalBucket(vertical: string | null | undefined): VerticalBucket | null {

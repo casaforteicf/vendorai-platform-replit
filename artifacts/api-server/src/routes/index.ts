@@ -136,6 +136,7 @@ import mediaEngineRouter from "./media_engine";
 import mediaLipSyncRouter from "./media_lipsync";
 import beautyRouter from "./beauty";
 import servicosRouter from "./servicos";
+import foodRouter from "./food";
 import clinicRouter from "./clinic";
 import scoutRouter from "./scout";
 import intentWebhooksRouter from "./intentWebhooks";
@@ -515,6 +516,7 @@ router.use(archThemePreferencesRouter);
 router.use(sdrTemplatesRouter);
 router.use(beautyRouter);
 router.use(servicosRouter);
+router.use(foodRouter);
 
 // Clínica Hub
 router.use(clinicRouter);

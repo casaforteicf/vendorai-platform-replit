@@ -162,6 +162,8 @@ const ClinicMedicos = lazy(() => import("@/pages/clinic/Medicos"));
 const BeautyDashboard = lazy(() => import("@/pages/beauty/BeautyDashboard"));
 const ServicosOrdens = lazy(() => import("@/pages/servicos/ServicosOrdens"));
 const ServicosCadastros = lazy(() => import("@/pages/servicos/ServicosCadastros"));
+const FoodPedidos = lazy(() => import("@/pages/food/FoodPedidos"));
+const FoodCardapio = lazy(() => import("@/pages/food/FoodCardapio"));
 const FarmaciaProdutos = lazy(() => import("@/pages/farmacia/FarmaciaProdutos"));
 const FarmaciaBulas = lazy(() => import("@/pages/farmacia/FarmaciaBulas"));
 const FarmaciaPedidos = lazy(() => import("@/pages/farmacia/FarmaciaPedidos"));
@@ -698,6 +700,8 @@ function AppRoutes() {
         <Route path="/supermercado">{() => <SupermercadoRoute component={SupermercadoDashboard} />}</Route>
         <Route path="/servicos">{() => <ProtectedRoute component={ServicosOrdens} />}</Route>
         <Route path="/servicos/cadastros">{() => <ProtectedRoute component={ServicosCadastros} />}</Route>
+        <Route path="/food/pedidos">{() => <ProtectedRoute component={FoodPedidos} />}</Route>
+        <Route path="/food/cardapio">{() => <ProtectedRoute component={FoodCardapio} />}</Route>
         <Route path="/farmacia/produtos">{() => <ProtectedRoute component={FarmaciaProdutos} />}</Route>
         <Route path="/farmacia/bulas">{() => <ProtectedRoute component={FarmaciaBulas} />}</Route>
         <Route path="/farmacia">{() => <ProtectedRoute component={FarmaciaOperacao} />}</Route>
