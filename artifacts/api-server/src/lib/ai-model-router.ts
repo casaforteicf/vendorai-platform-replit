@@ -17,8 +17,14 @@ const CHAT_FEATURES = new Set<AiFeature>([
   "agent_cobranca",
 ]);
 
-const STRATEGIC_FEATURES = new Set<AiFeature>([
+// Premium creation is intentionally routed to the strongest reasoning tier.
+// Campaigns and ads currently enter through briefing/content generation, while
+// site_generator covers both full sites and landing pages. image_generator is
+// included for prompt/direction work; final pixels still use the image router.
+const PREMIUM_CREATIVE_FEATURES = new Set<AiFeature>([
   "site_generator",
+  "content_generator",
+  "image_generator",
   "intelligence_analysis",
   "briefing_generator",
   "spin_briefing",
@@ -26,7 +32,6 @@ const STRATEGIC_FEATURES = new Set<AiFeature>([
 
 const PROFESSIONAL_FEATURES = new Set<AiFeature>([
   "proposal_generator",
-  "content_generator",
   "media_interpretation",
   "auto_quote",
   "churn_retention",
@@ -57,7 +62,7 @@ export function textTierForFeature(feature: AiFeature): VendorAITextTier {
   // All conversational agents use Luna so the chat experience has one fast,
   // predictable and low-cost default model across every tenant.
   if (CHAT_FEATURES.has(feature)) return "luna";
-  if (STRATEGIC_FEATURES.has(feature)) return "astra";
+  if (PREMIUM_CREATIVE_FEATURES.has(feature)) return "astra";
   if (PROFESSIONAL_FEATURES.has(feature)) return "sol";
   if (feature === "document_extraction" || feature === "embedding" || feature === "audio_transcription") {
     return "luna";
@@ -92,8 +97,8 @@ export function resolveTextModel(params: {
 }
 
 export function reasoningEffortForFeature(feature: AiFeature): VendorAIReasoningEffort {
-  if (feature === "intelligence_analysis") return "high";
-  if (STRATEGIC_FEATURES.has(feature)) return "medium";
+  if (PREMIUM_CREATIVE_FEATURES.has(feature)) return "high";
+  if (PROFESSIONAL_FEATURES.has(feature)) return "medium";
   return "low";
 }
 
@@ -108,13 +113,22 @@ export function resolveImageModel(tier: VendorAIImageTier): string {
 }
 
 export const AI_ORCHESTRATOR_POLICY = Object.freeze({
-  version: "2.1",
+  version: "2.2",
   text: {
     chat: "gpt-5.6-luna",
-    strategic: "gpt-6-astra",
+    premiumCreative: "gpt-6-astra",
     professional: "gpt-5.6-sol",
     operational: "gpt-5.6-terra",
     highVolume: "gpt-5.6-luna",
+  },
+  premiumCreative: {
+    campaign: "gpt-6-astra",
+    ads: "gpt-6-astra",
+    site: "gpt-6-astra",
+    landingPage: "gpt-6-astra",
+    content: "gpt-6-astra",
+    videoDirector: "gpt-6-astra",
+    renderDirector: "gpt-6-astra",
   },
   image: {
     premium: "gpt-image-2",
