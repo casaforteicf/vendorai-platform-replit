@@ -20,9 +20,18 @@ import {
   hasActiveAccess,
 } from "../services/accessLicense.js";
 import { runAccessLicenseReminders } from "../services/accessLicenseReminders.js";
+import commercialProductsRouter, { commercialProductsPublicRouter } from "./commercial_products.js";
 
 const router: IRouter = Router();
 export const accessLicensePublicRouter: IRouter = Router();
+
+// Keep commercial product/usage endpoints coupled to the access-license surface
+// so they are reachable without changing the large central router. The public
+// catalog is mounted before authentication by accessLicensePublicRouter; tenant
+// summaries/admin economics remain protected by the normal accessLicenseRouter.
+router.use(commercialProductsRouter);
+accessLicensePublicRouter.use(commercialProductsPublicRouter);
+
 const TERMS_VERSION = "vendorai-annual-v1";
 const TERMS_TEXT = "Licença VendorAI por 12 meses, acesso completo, cobrança mensal e aceite eletrônico.";
 const TERMS_HASH = createHash("sha256").update(TERMS_TEXT).digest("hex");
@@ -263,7 +272,7 @@ router.post("/admin/access-license/contracts/:id/activate", async (req, res) => 
 
 accessLicensePublicRouter.post("/internal/access-license/reminders", async (req, res) => {
   const configured = process.env.CRON_SECRET ?? "";
-  const received = String(req.get("authorization") ?? "").replace(/^Bearer\\s+/i, "");
+  const received = String(req.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!configured || !safeEqual(received, configured)) return res.status(401).json({ error: "Invalid cron token." });
   res.json(await runAccessLicenseReminders());
 });
