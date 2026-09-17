@@ -6,7 +6,9 @@ import {
   accessContractAcceptancesTable,
   accessLicensesTable,
   accessPassPurchasesTable,
+  commercialProductProfilesTable,
   db,
+  tenantEntitlementsTable,
   tenantsTable,
 } from "@workspace/db";
 import { createCharge, createOrGetCustomer, getPixQrCode, isAsaasConfigured } from "../lib/asaas.js";
@@ -232,6 +234,85 @@ router.get("/admin/access-license/tenants/:tenantId", async (req, res) => {
   res.json({ license: serialize(license), purchases, contracts });
 });
 
+router.post("/admin/access-license/tenants/:tenantId/entitlements", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  const tenantId = String(req.params.tenantId);
+  const parsed = z.object({
+    commercialKey: z.string().trim().min(3).max(120),
+    source: z.enum(["free", "subscription", "module", "manual", "promotion"]).default("manual"),
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().nullable().optional(),
+    note: z.string().trim().max(500).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "Entitlement inválido.", issues: parsed.error.issues });
+
+  const [[tenant], [product]] = await Promise.all([
+    db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({
+      commercialKey: commercialProductProfilesTable.commercialKey,
+      active: commercialProductProfilesTable.active,
+      offerKind: commercialProductProfilesTable.offerKind,
+    })
+      .from(commercialProductProfilesTable)
+      .where(eq(commercialProductProfilesTable.commercialKey, parsed.data.commercialKey))
+      .limit(1),
+  ]);
+  if (!tenant) return res.status(404).json({ error: "Tenant não encontrado." });
+  if (!product || !product.active) return res.status(404).json({ error: "Produto comercial não encontrado ou inativo." });
+  if (["service", "prepaid_pass", "consumption_pack"].includes(product.offerKind)) {
+    return res.status(422).json({
+      error: "Esta oferta não pode ser liberada como entitlement manual.",
+      code: "OFFER_IS_NOT_RUNTIME_ENTITLEMENT",
+    });
+  }
+
+  const startsAt = parsed.data.startsAt ? new Date(parsed.data.startsAt) : new Date();
+  const endsAt = parsed.data.endsAt ? new Date(parsed.data.endsAt) : null;
+  if (endsAt && endsAt <= startsAt) return res.status(422).json({ error: "A data final precisa ser posterior ao início." });
+
+  const [created] = await db.transaction(async (tx) => {
+    await tx.update(tenantEntitlementsTable)
+      .set({ active: false, updatedAt: new Date() })
+      .where(and(
+        eq(tenantEntitlementsTable.tenantId, tenantId),
+        eq(tenantEntitlementsTable.commercialKey, parsed.data.commercialKey),
+        eq(tenantEntitlementsTable.source, parsed.data.source),
+        eq(tenantEntitlementsTable.active, true),
+      ));
+
+    return tx.insert(tenantEntitlementsTable).values({
+      tenantId,
+      commercialKey: parsed.data.commercialKey,
+      source: parsed.data.source,
+      startsAt,
+      endsAt,
+      active: true,
+      metadata: {
+        adminGranted: true,
+        note: parsed.data.note || undefined,
+      },
+    }).returning();
+  });
+
+  return res.status(201).json(created);
+});
+
+router.delete("/admin/access-license/tenants/:tenantId/entitlements/:entitlementId", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  const tenantId = String(req.params.tenantId);
+  const entitlementId = String(req.params.entitlementId);
+  const [updated] = await db.update(tenantEntitlementsTable)
+    .set({ active: false, updatedAt: new Date() })
+    .where(and(
+      eq(tenantEntitlementsTable.id, entitlementId),
+      eq(tenantEntitlementsTable.tenantId, tenantId),
+      eq(tenantEntitlementsTable.active, true),
+    ))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Entitlement ativo não encontrado." });
+  return res.json({ revoked: true, entitlement: updated });
+});
+
 router.post("/admin/access-license/enroll", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
   const parsed = z.object({ tenantIds: z.array(z.string().min(1)).min(1).max(500) }).safeParse(req.body);
@@ -263,7 +344,7 @@ router.post("/admin/access-license/contracts/:id/activate", async (req, res) => 
 
 accessLicensePublicRouter.post("/internal/access-license/reminders", async (req, res) => {
   const configured = process.env.CRON_SECRET ?? "";
-  const received = String(req.get("authorization") ?? "").replace(/^Bearer\\s+/i, "");
+  const received = String(req.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!configured || !safeEqual(received, configured)) return res.status(401).json({ error: "Invalid cron token." });
   res.json(await runAccessLicenseReminders());
 });

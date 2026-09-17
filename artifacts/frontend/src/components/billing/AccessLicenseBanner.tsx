@@ -99,7 +99,7 @@ export function AccessLicenseBanner() {
           )}
           <Button size="sm" variant={status.readOnly ? "default" : "outline"} onClick={() => buy.mutate()} disabled={buy.isPending}>
             <CreditCard className="mr-2 h-4 w-4" />
-            {buy.isPending ? "Preparando..." : "Mais 5 dias — R$ 399,00"}
+            {buy.isPending ? "Preparando..." : "Comprar mais 5 dias"}
           </Button>
         </div>
       </div>

@@ -91,9 +91,9 @@ const staticPages = {
     type: "collection",
   },
   "/precos": {
-    title: "Preços VendorAI Growth — Plano Completo sem Limite de Usuários",
-    description: "Conheça o VendorAI Growth: 5 dias grátis, usuários ilimitados e acesso ao ecossistema completo de CRM, IA, marketing, prospecção e gestão.",
-    type: "pricing",
+    title: "Como contratar o VendorAI — CRM, Produtos e Growth",
+    description: "Conheça as formas de acesso ao VendorAI. As condições comerciais de cada campanha são apresentadas nas landing pages correspondentes.",
+    type: "webpage",
   },
   "/sobre": {
     title: "Sobre o VendorAI — Inteligência Comercial e Operação de Receita",
@@ -163,19 +163,11 @@ const seoOverrides = {
   implantacao: ["Implantação VendorAI — Configuração Assistida", "Serviço opcional de implantação humana para configuração inicial, integrações, usuários, parametrização e treinamento da equipe VendorAI."],
 };
 
-const productPrices = {
-  crm: 49.9, prospeccao: 399, omnichannel: 199, "agenda-inteligente": 19.9, "agentes-ia": 499,
-  "revenue-scout": 499, "content-planner": 199, "content-studio": 399, "creative-studio": 139,
-  "sites-lp-ecommerce": 499, ads: 199, jarvis: 149, "catalogo-propostas": 99, financeiro: 299,
-  "knowledge-hub": 99, analytics: 149, automacoes: 149, "praca-ai": 299, "app-builder": 299,
-  reputation: 79, "app-personalizado": 4990, implantacao: 1890,
-};
-
 for (const [slug, product] of Object.entries(products)) {
   const override = seoOverrides[slug];
   product.seoTitle = override?.[0] ?? `${product.title} | VendorAI`;
   product.seoDescription = override?.[1] ?? (product.description || `Conheça ${product.title} no ecossistema VendorAI.`);
-  product.price = productPrices[slug] ?? null;
+  product.price = null;
 }
 
 const featurePages = {};
@@ -191,99 +183,118 @@ const agentPages = {};
 for (const [slug, agent] of Object.entries(agents)) {
   agentPages[slug] = {
     ...agent,
-    seoTitle: `${agent.title} com IA | VendorAI`,
-    seoDescription: agent.description || `Conheça ${agent.title}, agente de IA do VendorAI para automatizar etapas da jornada comercial.`,
+    seoTitle: `${agent.title} | Agente de IA VendorAI`,
+    seoDescription: agent.description || `Agente de IA ${agent.title} para automação e execução no VendorAI.`,
   };
 }
 
-const intentLpSegments = [
-  {
-    slug: "academias-studios",
-    name: "Academias e Studios",
-    dorTitle: "CRM para Academia: reduza perdas de leads e matrículas | VendorAI",
-    marketingTitle: "Marketing para Academias com IA, Meta e Google | VendorAI",
-    crmTitle: "CRM com IA para Academias e Studios | VendorAI",
-    description: "VendorAI conecta marketing, WhatsApp, CRM, agenda, follow-up, retenção e reativação para academias e studios.",
-  },
-  {
-    slug: "concessionarias-lojas-veiculos",
-    name: "Concessionárias e Lojas de Veículos",
-    dorTitle: "Como evitar perda de leads em concessionárias | VendorAI",
-    marketingTitle: "Marketing para Concessionárias com IA e CRM | VendorAI",
-    crmTitle: "CRM com IA para Concessionárias e Lojas de Veículos | VendorAI",
-    description: "VendorAI organiza leads, veículo de interesse, troca, financiamento, test-drive, proposta, vendedor e follow-up em concessionárias.",
-  },
-  {
-    slug: "clinicas-odontologicas-esteticas",
-    name: "Clínicas Odontológicas e Estéticas",
-    dorTitle: "Reduza no-show e orçamentos esquecidos em clínicas | VendorAI",
-    marketingTitle: "Marketing para Clínicas Odontológicas e Estéticas | VendorAI",
-    crmTitle: "CRM com IA para Clínicas Odontológicas e Estéticas | VendorAI",
-    description: "VendorAI conecta campanhas, WhatsApp, agenda, avaliação, orçamento, follow-up, Revenue Scout e reativação para clínicas.",
-  },
-  {
-    slug: "imobiliarias-corretores",
-    name: "Imobiliárias e Corretores",
-    dorTitle: "Como parar de perder leads imobiliários antes da visita | VendorAI",
-    marketingTitle: "Marketing para Imobiliárias com Meta, Google e IA | VendorAI",
-    crmTitle: "CRM com IA para Imobiliárias e Corretores | VendorAI",
-    description: "VendorAI organiza leads, preferência de imóvel, corretores, visitas, propostas, WhatsApp, follow-up e inteligência comercial para imobiliárias.",
-  },
-];
+function escapeXml(value) {
+  return String(value).replace(/[<>&'\"]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[char]);
+}
+
+function routePriority(pathname) {
+  if (pathname === "/") return 1;
+  if (pathname === "/produtos" || pathname === "/funcionalidades") return 0.9;
+  if (pathname.startsWith("/produtos/")) return 0.85;
+  if (pathname.startsWith("/funcionalidades/")) return 0.8;
+  return 0.7;
+}
 
 const routes = [];
 for (const [pathname, meta] of Object.entries(staticPages)) routes.push({ pathname, ...meta, priority: pathname === "/" ? 1 : 0.75 });
 for (const [slug, product] of Object.entries(products)) routes.push({ pathname: `/produtos/${slug}`, title: product.seoTitle, description: product.seoDescription, type: "product", name: product.title, price: product.price, priority: 0.9 });
 for (const [slug, feature] of Object.entries(featurePages)) routes.push({ pathname: `/funcionalidades/${slug}`, title: feature.seoTitle, description: feature.seoDescription, type: "feature", name: feature.title, priority: 0.78 });
-for (const [slug, agent] of Object.entries(agentPages)) routes.push({ pathname: `/agentes/${slug}`, title: agent.seoTitle, description: agent.seoDescription, type: "agent", name: agent.title, priority: 0.82 });
-for (const [slug, vertical] of Object.entries(verticals)) routes.push({ pathname: `/lp/${slug}`, title: `VendorAI para ${vertical.title} — CRM, Vendas e IA`, description: vertical.description, type: "vertical", name: vertical.title, priority: 0.8 });
-for (const segment of intentLpSegments) {
-  routes.push({ pathname: `/lp/${segment.slug}/dor`, title: segment.dorTitle, description: segment.description, type: "intent-lp", name: `${segment.name} — Dor`, priority: 0.86 });
-  routes.push({ pathname: `/lp/${segment.slug}/marketing`, title: segment.marketingTitle, description: segment.description, type: "intent-lp", name: `${segment.name} — Marketing`, priority: 0.87 });
-  routes.push({ pathname: `/lp/${segment.slug}/crm`, title: segment.crmTitle, description: segment.description, type: "intent-lp", name: `${segment.name} — CRM`, priority: 0.9 });
+for (const [slug, agent] of Object.entries(agentPages)) routes.push({ pathname: `/agentes/${slug}`, title: agent.seoTitle, description: agent.seoDescription, type: "agent", name: agent.title, priority: 0.76 });
+for (const [slug, vertical] of Object.entries(verticals)) routes.push({ pathname: `/verticais/${slug}`, title: `VendorAI para ${vertical.title}`, description: vertical.description, type: "vertical", name: vertical.title, priority: 0.82 });
+for (const macrosegment of macrosegments) routes.push({ pathname: `/segmentos/${macrosegment}`, title: `VendorAI para ${humanize(macrosegment)}`, description: `Soluções VendorAI para ${humanize(macrosegment).toLowerCase()}, com CRM, IA, marketing, atendimento, automação e inteligência comercial.`, type: "collection", priority: 0.7 });
+
+function socialMeta(title, description, canonical) {
+  return [
+    `<meta property="og:title" content="${escapeXml(title)}">`,
+    `<meta property="og:description" content="${escapeXml(description)}">`,
+    `<meta property="og:url" content="${canonical}">`,
+    `<meta property="og:image" content="${ogImage}">`,
+    `<meta property="og:type" content="website">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
+    `<meta name="twitter:title" content="${escapeXml(title)}">`,
+    `<meta name="twitter:description" content="${escapeXml(description)}">`,
+    `<meta name="twitter:image" content="${ogImage}">`,
+  ].join("\n    ");
 }
-for (const macrosegment of macrosegments) routes.push({ pathname: `/segmentos/${macrosegment}`, title: `VendorAI para ${humanize(macrosegment)} — Soluções por Segmento`, description: `Veja soluções VendorAI para empresas de ${humanize(macrosegment)} com CRM, marketing, prospecção, atendimento e inteligência de receita.`, type: "segment", name: humanize(macrosegment), priority: 0.72 });
 
-const manifest = {
-  generatedAt: new Date().toISOString(),
-  baseUrl,
-  ogImage,
-  staticPages,
-  products,
-  features: featurePages,
-  agents: agentPages,
-  verticals,
-  intentLpSegments,
-  macrosegments: [...macrosegments],
-  routes,
-};
+function jsonLdFor(route, canonical) {
+  const graph = [
+    {
+      "@type": "Organization",
+      "@id": `${baseUrl}/#organization`,
+      name: "VendorAI",
+      url: baseUrl,
+      logo: `${baseUrl}/logo-full-light.svg`,
+    },
+    {
+      "@type": "WebPage",
+      "@id": `${canonical}#webpage`,
+      url: canonical,
+      name: route.title,
+      description: route.description,
+      isPartOf: { "@id": `${baseUrl}/#website` },
+      about: { "@id": `${baseUrl}/#organization` },
+    },
+  ];
 
-fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, "seo-manifest.json"), JSON.stringify(manifest, null, 2));
+  if (route.type === "product") {
+    const product = {
+      "@type": "SoftwareApplication",
+      name: route.name,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      description: route.description,
+      url: canonical,
+      provider: { "@id": `${baseUrl}/#organization` },
+    };
+    graph.push(product);
+  }
 
-const hreflangs = [
-  ["pt-BR", null],
-  ["es-PY", "PY"],
-  ["es-AR", "AR"],
-  ["es-UY", "UY"],
-  ["es-CL", "CL"],
-];
-const xmlEscape = (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const today = new Date().toISOString().slice(0, 10);
-const sitemapEntries = routes
-  .filter((route) => !["/demo", "/contato", "/privacy", "/terms", "/cadastro-praca"].includes(route.pathname))
-  .map((route) => {
-    const loc = `${baseUrl}${route.pathname}`;
-    const alternates = hreflangs.map(([lang, country]) => {
-      const href = country ? `${loc}?country=${country}` : loc;
-      return `    <xhtml:link rel="alternate" hreflang="${lang}" href="${xmlEscape(href)}" />`;
-    }).join("\n");
-    return `  <url>\n    <loc>${xmlEscape(loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${route.type === "blog" ? "weekly" : "monthly"}</changefreq>\n    <priority>${route.priority ?? 0.7}</priority>\n${alternates}\n    <xhtml:link rel="alternate" hreflang="x-default" href="${xmlEscape(loc)}" />\n  </url>`;
-  }).join("\n");
-const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${sitemapEntries}\n</urlset>\n`;
-fs.writeFileSync(path.join(outDir, "sitemap.xml"), sitemap);
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": graph,
+  }).replace(/</g, "\\u003c");
+}
 
-const robots = `User-agent: *\nAllow: /\n\nDisallow: /login\nDisallow: /app\nDisallow: /admin\nDisallow: /crm\nDisallow: /tenants\nDisallow: /settings\nDisallow: /api\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
-fs.writeFileSync(path.join(outDir, "robots.txt"), robots);
+function renderRouteHtml(shell, route) {
+  const canonical = `${baseUrl}${route.pathname === "/" ? "/" : route.pathname}`;
+  let html = shell
+    .replace(/<title>.*?<\/title>/s, `<title>${escapeXml(route.title)}</title>`)
+    .replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i, `<meta name="description" content="${escapeXml(route.description)}">`);
 
-console.log(`[seo] generated ${routes.length} route records, ${Object.keys(products).length} products, ${Object.keys(verticals).length} verticals, ${intentLpSegments.length * 3} intent LPs`);
+  html = html.replace(/<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i, "");
+  html = html.replace(/<meta\s+property="og:[^"]+"[^>]*>/gi, "");
+  html = html.replace(/<meta\s+name="twitter:[^"]+"[^>]*>/gi, "");
+  html = html.replace(/<script\s+type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/gi, "");
+
+  const injection = `\n    <link rel="canonical" href="${canonical}">\n    ${socialMeta(route.title, route.description, canonical)}\n    <script type="application/ld+json">${jsonLdFor(route, canonical)}</script>`;
+  html = html.replace("</head>", `${injection}\n  </head>`);
+  return html;
+}
+
+function writeRoute(route, html) {
+  const target = route.pathname === "/"
+    ? path.resolve(outDir, "index.html")
+    : path.resolve(outDir, `.${route.pathname}/index.html`);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, html);
+}
+
+const shellPath = path.resolve(outDir, "index.html");
+if (!fs.existsSync(shellPath)) {
+  console.error("[postbuild-seo] dist/public/index.html not found");
+  process.exit(1);
+}
+const shell = fs.readFileSync(shellPath, "utf8");
+
+for (const route of routes) writeRoute(route, renderRouteHtml(shell, route));
+
+const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${routes.map((route) => `  <url><loc>${baseUrl}${route.pathname === "/" ? "/" : route.pathname}</loc><priority>${routePriority(route.pathname).toFixed(1)}</priority></url>`).join("\n")}\n</urlset>\n`;
+fs.writeFileSync(path.resolve(outDir, "sitemap.xml"), sitemap);
+
+console.log(`[postbuild-seo] rendered ${routes.length} route(s) with canonical/meta/JSON-LD + sitemap`);

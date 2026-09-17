@@ -12,6 +12,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
+import { VENDORAI_LP_OFFER } from "@workspace/vendor-brain";
 import { MARKETING_VERTICALS } from "@workspace/vendor-brain/marketing-verticals";
 import publicVerticalSlugs from "@/data/publicVerticalSlugs.json";
 import { findWrittenSegment, type IntentKey } from "./intentLpOverrides";
@@ -40,6 +41,10 @@ const INTENT_META: Record<Intent, { label: string; kicker: string; icon: typeof 
   marketing: { label: "Marketing / Crescimento", kicker: "Transforme marketing em oportunidade comercial", icon: Megaphone },
   crm: { label: "CRM / Alta intenção", kicker: "CRM com IA aplicado ao seu processo real", icon: Bot },
 };
+
+function brl(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);
+}
 
 function findCustomSegment(slug: string) {
   return findWrittenSegment(slug) ?? findAdditionalIntentSegment(slug);
@@ -146,15 +151,68 @@ function genericCopy(profile: ViewProfile, intent: Intent) {
   };
 }
 
+function offerHref(profile: ViewProfile) {
+  const params = new URLSearchParams({
+    vertical: profile.slug,
+    intent: "trial-5-dias",
+    offer: VENDORAI_LP_OFFER.campaignCode,
+  });
+  return `/demo?${params.toString()}`;
+}
+
 function Cta({ profile, secondary = false }: { profile: ViewProfile; secondary?: boolean }) {
   const href = secondary
     ? `/demo?vertical=${encodeURIComponent(profile.slug)}`
-    : `/demo?vertical=${encodeURIComponent(profile.slug)}&intent=trial-5-dias`;
+    : offerHref(profile);
   return (
     <a href={href} className={`inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-bold transition ${secondary ? "border border-slate-300 bg-white text-slate-800 hover:border-orange-300 hover:text-orange-700" : "bg-orange-500 text-white shadow-[0_12px_32px_rgba(249,115,22,.22)] hover:bg-orange-600"}`}>
       {secondary ? "Ver demonstração" : "Testar 5 dias grátis"}
       <ArrowRight className="h-4 w-4" />
     </a>
+  );
+}
+
+function CommercialOffer({ profile }: { profile: ViewProfile }) {
+  const offer = VENDORAI_LP_OFFER;
+  return (
+    <section className="border-y border-orange-200 bg-orange-50/60 px-4 py-20 sm:px-6" id="oferta">
+      <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-700">Condição desta landing page</div>
+          <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Comece com {offer.trialDays} dias completos e mantenha a condição desta oferta.</h2>
+          <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-600">Esta condição fica vinculada ao cadastro iniciado por esta LP. O site institucional e as telas genéricas do VendorAI não funcionam como tabela pública de preços.</p>
+        </div>
+
+        <div className="mt-10 grid gap-4 md:grid-cols-4">
+          <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
+            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Experiência inicial</div>
+            <div className="mt-3 text-3xl font-black">{offer.trialDays} dias</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Acesso completo para validar o VendorAI na sua operação.</p>
+          </div>
+          <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
+            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Primeiro período pago</div>
+            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.firstPaidPriceBrl)}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Pelos primeiros {offer.subscription.firstPaidDays} dias pagos, após o trial.</p>
+          </div>
+          <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
+            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Continuidade promocional</div>
+            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.followingMonthlyPriceBrl)}<span className="text-sm font-semibold text-slate-500">/mês</span></div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Durante os {offer.subscription.followingMonths} meses seguintes.</p>
+          </div>
+          <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
+            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Depois da promoção</div>
+            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.regularMonthlyPriceBrl)}<span className="text-sm font-semibold text-slate-500">/mês</span></div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Valor regular da condição comercial desta proposta.</p>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm leading-6 text-slate-600">
+          Prefere usar somente quando precisar? A condição desta campanha também prevê blocos adicionais de <strong>{offer.prepaid.blockDays} dias por {brl(offer.prepaid.blockPriceBrl)}</strong>, preservando seus dados entre os períodos.
+        </div>
+
+        <div className="mt-8 flex justify-center"><Cta profile={profile} /></div>
+      </div>
+    </section>
   );
 }
 
@@ -199,7 +257,7 @@ export default function IntentVerticalLp() {
           </Link>
           <div className="flex items-center gap-3">
             <Link href={`/lp/${profile.publicSlug}`} className="hidden text-xs font-semibold text-slate-500 transition hover:text-orange-600 sm:block">Visão geral</Link>
-            <a href={`/demo?vertical=${encodeURIComponent(profile.slug)}&intent=trial-5-dias`} className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-orange-600">Testar 5 dias</a>
+            <a href={offerHref(profile)} className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-orange-600">Testar 5 dias</a>
           </div>
         </div>
       </header>
@@ -245,6 +303,8 @@ export default function IntentVerticalLp() {
             <FeatureCard icon={Target} title="Próxima melhor ação" description="A equipe trabalha com prioridade clara, em vez de depender de listas e memória." />
           </div>
         </section>
+
+        <CommercialOffer profile={profile} />
 
         <section className="bg-slate-950 px-4 py-20 text-white sm:px-6"><div className="mx-auto max-w-5xl text-center"><Sparkles className="mx-auto h-8 w-8 text-orange-400" /><h2 className="mx-auto mt-5 max-w-3xl text-3xl font-black tracking-tight sm:text-5xl">Transforme a jornada de {profile.name.toLowerCase()} em uma operação acompanhada por IA.</h2><p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-300">Teste com sua própria operação e veja como contexto, automação e inteligência comercial trabalham juntos.</p><div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row"><Cta profile={profile} /><Cta profile={profile} secondary /></div></div></section>
 

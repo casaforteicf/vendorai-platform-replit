@@ -11,7 +11,7 @@ import "@/styles/vendorFonts.css";
 const PT = {
   products: "Produtos",
   features: "Funcionalidades",
-  plans: "Planos",
+  plans: "Como contratar",
   content: "Conteúdo",
   about: "Sobre",
   app: "Baixar app",
@@ -25,7 +25,7 @@ const PT = {
 const ES = {
   products: "Productos",
   features: "Funcionalidades",
-  plans: "Planes",
+  plans: "Cómo contratar",
   content: "Contenido",
   about: "Nosotros",
   app: "Descargar app",

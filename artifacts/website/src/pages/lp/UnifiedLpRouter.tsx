@@ -21,6 +21,7 @@ export default function UnifiedLpRouter() {
   }
 
   // Preserve previously published/specialized landing pages that are not part
-  // of the official 50-profile architecture.
+  // of the official 50-profile architecture. The commercial offer is appended
+  // globally by App.tsx to every /lp/* route.
   return <LegacyLpRouter />;
 }

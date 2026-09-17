@@ -18,6 +18,8 @@ export type {
 export { INTENT_TYPES, AGENT_TYPES } from './types'
 export { resolveBrainVerticalProfile } from './vertical-profiles'
 export type { BrainVerticalProfile } from './vertical-profiles'
+export { VENDORAI_LP_OFFER, isVendorAiLpOfferCode } from './vendorai-commercial-offer'
+export type { VendorAiLpOfferCode } from './vendorai-commercial-offer'
 
 // Platform foundation — modules, agents, skills, channels and vertical blueprints
 export {
