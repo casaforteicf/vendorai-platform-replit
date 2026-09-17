@@ -12,6 +12,7 @@ import {
   type LaunchAttribution,
 } from "@/lib/launchAttribution";
 import { PUBLIC_COUNTRIES, type PublicCountryCode, usePublicCountry } from "@/lib/publicCountry";
+import { VENDORAI_LP_OFFER, isVendorAiLpOfferCode } from "@workspace/vendor-brain";
 import {
   MARKETING_VERTICALS,
   resolveMarketingVertical,
@@ -51,6 +52,7 @@ type EntryContext = {
   macrosegment?: string;
   landingPageSlug?: string;
   entryUrl?: string;
+  offerCode?: string;
 };
 
 const publicSlugOverrides = publicVerticalSlugs as Record<string, string>;
@@ -71,6 +73,7 @@ function readEntryContext(): EntryContext {
   const verticalId = url.searchParams.get("vertical_id");
   const verticalValue = url.searchParams.get("vertical");
   const intent = url.searchParams.get("intent") ?? undefined;
+  const explicitOfferCode = url.searchParams.get("offer") ?? url.searchParams.get("offer_code");
   const attribution = getLaunchAttribution();
 
   let referrerUrl: URL | null = null;
@@ -99,9 +102,15 @@ function readEntryContext(): EntryContext {
       || attribution.gclid
       || attribution.fbclid,
   );
+  const source: EntryContext["source"] = referrerLpSlug || profile ? "vertical-lp" : hasCampaign ? "campaign" : "direct";
+  const offerCode = isVendorAiLpOfferCode(explicitOfferCode)
+    ? explicitOfferCode
+    : referrerLpSlug
+      ? VENDORAI_LP_OFFER.campaignCode
+      : undefined;
 
   return {
-    source: profile ? "vertical-lp" : hasCampaign ? "campaign" : "direct",
+    source,
     intent: intent ?? (profile ? "demo" : undefined),
     verticalId: profile?.id,
     verticalSlug: profile?.slug,
@@ -109,6 +118,7 @@ function readEntryContext(): EntryContext {
     macrosegment: profile?.macrosegment,
     landingPageSlug,
     entryUrl,
+    offerCode,
   };
 }
 
@@ -366,6 +376,7 @@ export default function Demo() {
       entryContext.verticalId && `Vertical ID: ${entryContext.verticalId}`,
       entryContext.intent && `Intenção de entrada: ${entryContext.intent}`,
       `Origem do acesso: ${entryContext.source}`,
+      entryContext.offerCode && `Oferta comercial: ${entryContext.offerCode}`,
       form.segmento && `${copy.details.segment}: ${form.segmento}`,
       form.nicho && `${copy.details.niche}: ${form.nicho}`,
       form.produtosServicos && `${copy.details.products}: ${form.produtosServicos}`,
@@ -455,6 +466,7 @@ export default function Demo() {
           regiaoAtuacao: form.regiaoAtuacao,
           volumeLeads: form.volumeLeads,
           tamanhoEquipe: form.tamanhoEquipe,
+          offerCode: entryContext.offerCode,
           ...attribution,
           adDataConsent: form.adDataConsent,
         }),
@@ -482,6 +494,7 @@ export default function Demo() {
       if (entryContext.macrosegment) handoff.set("onboarding_macrosegment", entryContext.macrosegment);
       if (entryContext.intent) handoff.set("onboarding_intent", entryContext.intent);
       handoff.set("onboarding_source", entryContext.source);
+      if (entryContext.offerCode) handoff.set("onboarding_offer_code", entryContext.offerCode);
       if (entryContext.landingPageSlug) handoff.set("onboarding_landing_page", entryContext.landingPageSlug);
       if (entryContext.entryUrl) handoff.set("onboarding_entry_url", entryContext.entryUrl);
 
