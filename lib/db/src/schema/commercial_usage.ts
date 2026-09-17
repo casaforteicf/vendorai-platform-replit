@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -35,11 +36,7 @@ export type UsageBillingStatus =
   | "non_billable"
   | "reversed";
 
-/**
- * Commercial layer above raw technical modules.
- * The catalog remains the source of name/price/media; this table defines what
- * the sellable item actually unlocks and how it participates in Growth.
- */
+/** Commercial layer above raw technical modules. */
 export const commercialProductProfilesTable = pgTable(
   "commercial_product_profiles",
   {
@@ -48,7 +45,7 @@ export const commercialProductProfilesTable = pgTable(
     catalogProductId: text("catalog_product_id").references(() => produtosCatalogoTable.id, { onDelete: "set null" }),
     offerKind: text("offer_kind").$type<CommercialOfferKind>().notNull(),
     includedInGrowth: boolean("included_in_growth").notNull().default(false),
-    maxUsers: integer("max_users"), // null = unlimited / not applicable
+    maxUsers: integer("max_users"),
     moduleKeys: jsonb("module_keys").$type<string[]>().notNull().default([]),
     segmentKeys: jsonb("segment_keys").$type<string[]>().notNull().default([]),
     benefits: jsonb("benefits").$type<string[]>().notNull().default([]),
@@ -65,11 +62,7 @@ export const commercialProductProfilesTable = pgTable(
   }),
 );
 
-/**
- * One measurable business unit. Customer-facing UIs should display the unit
- * (images, videos, prospects, renders...) while Vendor Credits remain the
- * normalized internal commercial weight.
- */
+/** Customer-facing business unit + internal Vendor Credit weight. */
 export const usageMetricsTable = pgTable("usage_metrics", {
   key: text("key").primaryKey(),
   name: text("name").notNull(),
@@ -84,14 +77,14 @@ export const usageMetricsTable = pgTable("usage_metrics", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-/** Quotas are attached to sellable commercial products, never to raw screens. */
+/** Quotas attach to sellable products, never to raw screens. */
 export const productUsageQuotasTable = pgTable(
   "product_usage_quotas",
   {
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     commercialKey: text("commercial_key").notNull(),
     metricKey: text("metric_key").notNull().references(() => usageMetricsTable.key, { onDelete: "cascade" }),
-    monthlyQuantity: numeric("monthly_quantity", { precision: 14, scale: 3 }), // null = unlimited
+    monthlyQuantity: numeric("monthly_quantity", { precision: 14, scale: 3 }),
     hardCapQuantity: numeric("hard_cap_quantity", { precision: 14, scale: 3 }),
     overageAllowed: boolean("overage_allowed").notNull().default(true),
     active: boolean("active").notNull().default(true),
@@ -104,10 +97,7 @@ export const productUsageQuotasTable = pgTable(
   }),
 );
 
-/**
- * Runtime entitlement. Billing creates/extends this row; the navigation only
- * reflects entitlements and must not be the commercial source of truth.
- */
+/** Runtime entitlement produced by billing/access rules. */
 export const tenantEntitlementsTable = pgTable(
   "tenant_entitlements",
   {
@@ -128,11 +118,7 @@ export const tenantEntitlementsTable = pgTable(
   }),
 );
 
-/**
- * Append-only universal consumption ledger. A provider failure may still have
- * a real technical cost, but it must carry vendorCredits=0 / billable=false
- * when no useful result was delivered to the customer.
- */
+/** Universal append-only consumption/cost ledger. */
 export const usageLedgerTable = pgTable(
   "usage_ledger",
   {
@@ -163,11 +149,13 @@ export const usageLedgerTable = pgTable(
   (table) => ({
     tenantMetricCreatedIdx: index("usage_ledger_tenant_metric_created_idx").on(table.tenantId, table.metricKey, table.createdAt),
     tenantCreatedIdx: index("usage_ledger_tenant_created_idx").on(table.tenantId, table.createdAt),
-    sourceEventUq: uniqueIndex("usage_ledger_source_event_uq").on(table.source, table.sourceEventId),
+    sourceEventUq: uniqueIndex("usage_ledger_source_event_uq")
+      .on(table.source, table.sourceEventId)
+      .where(sql`${table.sourceEventId} is not null`),
   }),
 );
 
-/** Append-only credit wallet for purchased or promotional Vendor Credits. */
+/** Append-only wallet for purchased/promotional Vendor Credits. */
 export const vendorCreditTransactionsTable = pgTable(
   "vendor_credit_transactions",
   {
