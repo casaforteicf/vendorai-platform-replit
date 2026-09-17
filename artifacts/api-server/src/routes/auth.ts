@@ -123,6 +123,7 @@ const demoSignupSchema = z.object({
   pageUrl: optionalTrackingText,
   referrer: optionalTrackingText,
   landingPageSlug: optionalTrackingText,
+  offerCode: z.string().trim().max(160).optional(),
   behaviorSessionId: z.string().trim().max(120).optional(),
   adDataConsent: z.boolean().optional(),
   // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
@@ -191,6 +192,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     pageUrl,
     referrer,
     landingPageSlug,
+    offerCode,
     behaviorSessionId,
     adDataConsent,
   } = parsed.data;
@@ -306,6 +308,7 @@ router.post("/auth/demo-signup", async (req, res) => {
           pageUrl,
           referrer,
           landingPageSlug,
+          offerCode,
           behaviorSessionId,
           adDataConsent,
         });
@@ -898,7 +901,6 @@ router.post("/auth/reset-password", async (req, res) => {
     .select()
     .from(passwordResetTokensTable)
     .where(eq(passwordResetTokensTable.tokenHash, tokenHash));
-
   if (!resetRecord || resetRecord.usedAt || resetRecord.expiresAt < now) {
     res.status(400).json({ error: "Link inválido ou expirado. Solicite um novo link." });
     return;
