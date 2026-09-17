@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
+import { SuperAdminSidebarLayout } from "./SuperAdminSidebarLayout";
 import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
 import { AdsMediaPlanContextBanner } from "@/components/marketing/AdsMediaPlanContextBanner";
 import { MessagingMediaPlanBridge } from "@/components/marketing/MessagingMediaPlanBridge";
@@ -494,12 +495,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, [companyLogoUrl, companyName, tenantOverride, user]);
 
-  return (
-    <SidebarLayoutLegacy>
+  const shellContent = (
+    <>
       <AdsMediaPlanContextBanner pathname={location} />
       <MessagingMediaPlanBridge pathname={location} />
       {children}
       <MarketingAgentDock pathname={location} />
-    </SidebarLayoutLegacy>
+    </>
   );
+
+  if (user?.platformRole === "super_admin" && !tenantOverride) {
+    return <SuperAdminSidebarLayout>{shellContent}</SuperAdminSidebarLayout>;
+  }
+
+  return <SidebarLayoutLegacy>{shellContent}</SidebarLayoutLegacy>;
 }
