@@ -16,7 +16,11 @@ import { tenantsTable } from "./tenants";
 // UI e documentação. Ampliada (17/09, Bloco 3 da proposta de buckets) pros
 // nichos que passaram a usar o módulo Serviços: jardinagem, dedetização,
 // limpeza, manutenção predial, segurança eletrônica, chaveiro, serralheria,
-// assistência técnica, funilaria/pintura, lavajato.
+// assistência técnica, funilaria/pintura, lavajato. Ampliada de novo
+// (Bloco 5) pra produção de eventos: buffet, decoração, DJ, fotografia,
+// locação de espaço e de equipamentos -- mesmo fluxo de orçamento →
+// aprovação → agendamento → execução, "endereço de atendimento" vira o
+// local do evento.
 export const SERVICOS_ESPECIALIDADES = [
   "pedreiro",
   "eletricista",
@@ -31,6 +35,12 @@ export const SERVICOS_ESPECIALIDADES = [
   "tecnico_eletronicos",
   "funileiro",
   "lavador",
+  "buffet",
+  "decorador_eventos",
+  "dj",
+  "fotografo",
+  "locacao_espaco",
+  "locacao_equipamentos",
   "geral",
 ] as const;
 
