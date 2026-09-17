@@ -17,6 +17,7 @@ import {
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { findVerticalBlueprint, resolveVerticalBlueprint, type RegistryCapability } from "../lib/app_vertical_blueprints.js";
 
 const router: IRouter = Router();
 router.use(requireRole("super_admin"));
@@ -35,6 +36,8 @@ const standaloneCreateSchema = z.object({
   ownerCompany: z.string().trim().max(180).nullable().optional(),
   templateId: z.string().min(1),
   templateVersionId: z.string().min(1),
+  verticalKey: z.string().trim().min(2).max(100).optional(),
+  buildBrief: z.string().trim().max(4000).optional(),
   name: z.string().trim().min(2).max(120),
   slug: slugSchema,
 });
@@ -47,6 +50,7 @@ const aiArchitectRequestSchema = z.object({
   depth: z.enum(["fast", "deep"]).default("deep"),
   request: z.string().trim().min(8).max(12000),
   templateId: z.string().min(1).optional(),
+  verticalKey: z.string().trim().min(2).max(100).optional(),
   tenantId: z.string().min(1).optional(),
   appContext: z.object({
     id: z.string().optional(),
@@ -57,6 +61,7 @@ const aiArchitectRequestSchema = z.object({
     ownerCompany: z.string().nullable().optional(),
     ownerEmail: z.string().nullable().optional(),
     status: z.string().optional(),
+    verticalKey: z.string().trim().min(2).max(100).optional(),
   }).optional(),
   currentDefinition: jsonObjectSchema.optional(),
   conversation: z.array(z.object({
@@ -402,6 +407,7 @@ REGRAS INEGOCIÁVEIS
 10. Para apps mobile, definition.designSystem.standard deve ser "vendorai-mobile-v1" e os dados de demonstração devem ser sintéticos.
 11. Quando usar props.variant, use somente os presets oficiais listados acima; se outro componente for necessário, registre gap em vez de inventar variant.
 12. Use navigationEmphasis=true em no máximo uma página e somente quando ela representar uma ação principal real do app.
+13. Quando verticalBlueprint estiver presente, reutilize os itens de reused e crie gaps apenas para os itens de gaps; não reconstrua capacidades já disponíveis.
 
 FORMATO OBRIGATÓRIO
 {"summary":"...","assumptions":[],"questions":[],"warnings":[],"architecture":{"pages":[{"id":"...","title":"...","purpose":"..."}],"roles":[{"key":"...","name":"...","purpose":"..."}],"dataModel":[{"entity":"...","purpose":"...","source":"registry|tenant|planned"}],"integrations":[],"risks":[]},"definition":{"designSystem":{"standard":"vendorai-mobile-v1","principles":[],"theme":{},"navigation":{},"interaction":{},"states":[],"privacy":{}},"settings":{"runtimeAccess":{"actions":{"enabled":false,"keys":[]}}},"runtime":{"version":1,"defaultPageId":"home","pages":[{"id":"home","title":"Início","icon":"home","navigationEmphasis":false,"blocks":[]}]}},"gaps":[{"type":"action|data_source|integration|permission|component|other","key":"opcional","description":"...","severity":"low|medium|high|critical"}],"recommendedActions":[],"quality":{"completeness":0,"ux":0,"security":0,"data":0,"integration":0}}
@@ -422,6 +428,7 @@ router.get("/admin/app-builder/portfolio", async (_req, res) => {
            a.name,
            a.slug,
            a.status,
+           a.settings,
            a.owner_type AS "ownerType",
            a.owner_name AS "ownerName",
            a.owner_email AS "ownerEmail",
@@ -468,7 +475,7 @@ router.post("/admin/app-builder/standalone-apps", async (req, res) => {
         owner_type, owner_name, owner_email, owner_company
       ) VALUES (
         NULL, ${data.templateId}, ${data.templateVersionId}, ${data.name}, ${data.slug}, 'draft',
-        '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb,
+        '{}'::jsonb, '[]'::jsonb, ${JSON.stringify({ verticalKey: data.verticalKey ?? null, buildBrief: data.buildBrief ?? null })}::jsonb, '{}'::jsonb,
         ${data.ownerType}, ${data.ownerName}, ${data.ownerEmail ?? null}, ${data.ownerCompany ?? null}
       )
       RETURNING id, tenant_id AS "tenantId", template_id AS "templateId",
@@ -510,7 +517,7 @@ router.post("/admin/app-builder/ai/architect", async (req, res) => {
   const billingTenantId = typeof (req as any).user?.tenantId === "string" ? (req as any).user.tenantId : parsed.data.tenantId;
   if (!billingTenantId) return res.status(422).json({ error: "O SuperAdmin precisa estar associado a um tenant de cobrança para usar a IA." });
 
-  const { mode, depth, request, templateId, tenantId, appContext, conversation } = parsed.data;
+  const { mode, depth, request, templateId, tenantId, appContext, conversation, verticalKey } = parsed.data;
   let template: { id: string; name: string; slug: string; description: string | null; verticalId: string } | null = null;
   let vertical: { id: string; key: string; name: string } | null = null;
   let baseDefinition = parsed.data.currentDefinition ?? {};
@@ -570,7 +577,16 @@ router.post("/admin/app-builder/ai/architect", async (req, res) => {
   const actions = registeredActions.filter((item) => Boolean(text(item.executorKey)));
   const dataSources = registeredDataSources.filter((item) => Boolean(text(item.executorKey)));
   const registry = { components, features, actions, dataSources, workflows, aiPolicies: policies };
-  const compactContext = { mode, target: targetTenant ?? appContext ?? { ownerType: "internal" }, template, vertical, currentDefinition: baseDefinition, registry };
+  const registryCapabilities: RegistryCapability[] = [
+    ...components.map((item) => ({ ...item, kind: "component" as const })),
+    ...features.map((item) => ({ ...item, kind: "feature" as const })),
+    ...actions.map((item) => ({ ...item, kind: "action" as const })),
+    ...dataSources.map((item) => ({ ...item, kind: "dataSource" as const })),
+    ...workflows.map((item) => ({ ...item, category: null, kind: "workflow" as const })),
+  ];
+  const selectedBlueprint = findVerticalBlueprint(verticalKey ?? appContext?.verticalKey ?? vertical?.key ?? vertical?.name ?? targetTenant?.vertical);
+  const reusePlan = selectedBlueprint ? resolveVerticalBlueprint(selectedBlueprint, registryCapabilities) : null;
+  const compactContext = { mode, target: targetTenant ?? appContext ?? { ownerType: "internal" }, template, vertical, verticalBlueprint: reusePlan, currentDefinition: baseDefinition, registry };
   const historyText = conversation.length ? `\nHISTÓRICO:\n${conversation.map((item) => `${item.role.toUpperCase()}: ${item.content}`).join("\n")}` : "";
 
   const first = await callOpenAI(billingTenantId, "intelligence_analysis", [
@@ -604,7 +620,7 @@ router.post("/admin/app-builder/ai/architect", async (req, res) => {
   }
 
   if (findings.length) proposal.warnings.push(...findings.map((item) => `Validador: ${item}`));
-  return res.json({ proposal, validation: { ok: findings.length === 0, findings }, usage, context: { templateId: template?.id ?? null, tenantId: targetTenant?.id ?? null, vertical: vertical?.name ?? targetTenant?.vertical ?? null, depth, mode } });
+  return res.json({ proposal, validation: { ok: findings.length === 0, findings }, usage, context: { templateId: template?.id ?? null, tenantId: targetTenant?.id ?? null, vertical: selectedBlueprint?.name ?? vertical?.name ?? targetTenant?.vertical ?? null, verticalKey: selectedBlueprint?.key ?? null, reuse: reusePlan?.summary ?? null, depth, mode } });
 });
 
 export default router;

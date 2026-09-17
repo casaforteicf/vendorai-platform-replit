@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,6 +19,7 @@ type AppContext = {
   ownerName?: string | null;
   ownerEmail?: string | null;
   ownerCompany?: string | null;
+  settings?: Record<string, unknown>;
 } | null;
 
 type AiProposal = {
@@ -39,10 +40,13 @@ type AiProposal = {
   quality: { completeness: number; ux: number; security: number; data: number; integration: number };
 };
 
+type BlueprintOption = { blueprint: { key: string; name: string; familyKey: string }; summary: { required: number; reused: number; gaps: number } };
+
 type AiResponse = {
   proposal: AiProposal;
   validation: { ok: boolean; findings: string[] };
   usage: { inputTokens: number; outputTokens: number; costUsd: number; passes: number };
+  context?: { vertical?: string | null; verticalKey?: string | null; reuse?: { required: number; reused: number; gaps: number } | null };
 };
 
 type ValueAgentSpec = {
@@ -90,6 +94,7 @@ type Props = {
   token: string | null | undefined;
   template: TemplateLike;
   app: AppContext;
+  initialRequest?: string;
   onVersionCreated?: () => void | Promise<void>;
 };
 
@@ -163,7 +168,7 @@ function asStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
-export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token, template, app, onVersionCreated }: Props) {
+export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token, template, app, initialRequest, onVersionCreated }: Props) {
   const { toast } = useToast();
   const [mode, setMode] = useState<"generate" | "revise" | "analyze">("generate");
   const [depth, setDepth] = useState<"fast" | "deep">("deep");
@@ -172,7 +177,18 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<AiResponse | null>(null);
   const [conversation, setConversation] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [verticalKey, setVerticalKey] = useState("auto");
+  const [blueprints, setBlueprints] = useState<BlueprintOption[]>([]);
 
+  useEffect(() => {
+    if (!open || !token) return;
+    let active = true;
+    void fetch("/api/admin/app-builder/vertical-blueprints", { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => response.ok ? response.json() as Promise<BlueprintOption[]> : Promise.reject(new Error("Falha ao carregar verticais")))
+      .then((rows) => { if (active) setBlueprints(rows); })
+      .catch(() => { if (active) setBlueprints([]); });
+    return () => { active = false; };
+  }, [open, token]);
   const targetLabel = useMemo(() => {
     if (!app) return "Projeto sem app selecionado";
     if (app.tenantId) return `Tenant · ${app.name ?? "App"}`;
@@ -219,6 +235,7 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
         body: JSON.stringify({
           mode,
           depth,
+          verticalKey: verticalKey === "auto" ? undefined : verticalKey,
           request,
           templateId: template?.id,
           tenantId: app?.tenantId ?? undefined,
@@ -231,6 +248,7 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
             ownerName: app.ownerName,
             ownerEmail: app.ownerEmail,
             ownerCompany: app.ownerCompany,
+            verticalKey: typeof app.settings?.verticalKey === "string" ? app.settings.verticalKey : undefined,
           } : undefined,
           currentDefinition: result?.proposal.definition,
           conversation,
@@ -290,7 +308,8 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
 
       <div className="flex flex-wrap gap-2"><Badge variant="outline">{targetLabel}</Badge><Badge variant="outline">Template: {template?.name ?? "não selecionado"}</Badge><Badge variant="secondary"><ShieldCheck className="mr-1 h-3 w-3" />Nunca publica sozinho</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />App vendável + SaaS recorrente</Badge><Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />Valor antes do lead</Badge></div>
 
-      <div className="grid gap-3 rounded-xl border bg-muted/20 p-3 md:grid-cols-[180px_180px_1fr]">
+      <div className="grid gap-3 rounded-xl border bg-muted/20 p-3 md:grid-cols-[220px_160px_180px_1fr]">
+        <div><p className="mb-1 text-xs font-medium text-muted-foreground">Vertical</p><Select value={verticalKey} onValueChange={setVerticalKey}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="auto">Automática pelo tenant/template</SelectItem>{blueprints.map((item) => <SelectItem key={item.blueprint.key} value={item.blueprint.key}>{item.blueprint.name}</SelectItem>)}</SelectContent></Select></div>
         <div><p className="mb-1 text-xs font-medium text-muted-foreground">Modo</p><Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="generate">Projetar</SelectItem><SelectItem value="revise">Revisar e melhorar</SelectItem><SelectItem value="analyze">Auditar</SelectItem></SelectContent></Select></div>
         <div><p className="mb-1 text-xs font-medium text-muted-foreground">Profundidade</p><Select value={depth} onValueChange={(value) => setDepth(value as typeof depth)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="deep">Profunda · 2 passagens</SelectItem><SelectItem value="fast">Rápida · 1 passagem</SelectItem></SelectContent></Select></div>
         <div className="rounded-lg border bg-background p-3 text-xs leading-5 text-muted-foreground"><Sparkles className="mr-1 inline h-3.5 w-3.5 text-primary" />A IA deve criar um App Product que tenha valor próprio, um App Admin nativo e uma proposta separada de VendorAI SaaS para a recorrência, reutilizando a tecnologia já existente.</div>
@@ -299,6 +318,7 @@ export default function AppBuilderAiArchitectDialog({ open, onOpenChange, token,
       <div className="space-y-2"><p className="text-sm font-semibold">O que vamos construir ou melhorar?</p><Textarea rows={5} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={STARTER} /><div className="flex justify-end"><Button onClick={() => void runArchitect()} disabled={busy || !prompt.trim()}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}{busy ? "Arquitetando..." : result ? "Refinar com IA" : "Arquitetar com IA"}</Button></div></div>
 
       {result && <div className="space-y-4">
+        {result.context?.reuse && <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3 text-xs"><Badge>{result.context.vertical ?? "Vertical"}</Badge><span>{result.context.reuse.reused} capacidades existentes reutilizadas</span><Badge variant={result.context.reuse.gaps > 0 ? "outline" : "secondary"}>{result.context.reuse.gaps} gaps reais</Badge><span className="text-muted-foreground">de {result.context.reuse.required} requisitos analisados</span></div>}
         <div className={`rounded-xl border p-4 ${proposalReady ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/50"}`}><div className="flex items-start gap-3">{proposalReady ? <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" /> : <TriangleAlert className="mt-0.5 h-5 w-5 text-amber-600" />}<div><p className="font-semibold">{proposalReady ? "Arquitetura validada" : "Arquitetura com pendências"}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{result.proposal.summary}</p>{!productModelReady && <p className="mt-2 text-xs font-medium text-amber-800">Falta separar completamente App Product, App Admin e VendorAI SaaS. A versão não pode ser aplicada enquanto o app vendido depender do SaaS para sua função principal.</p>}{!valueAgentReady && <p className="mt-2 text-xs font-medium text-amber-800">Falta completar o Agente de Valor + Captação com valor pré-lead e handoff.</p>}</div></div></div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{qualityRows.map(([label, value]) => <div key={label} className="rounded-xl border p-3 text-center"><p className="text-[11px] text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{Math.round(value)}</p></div>)}</div>

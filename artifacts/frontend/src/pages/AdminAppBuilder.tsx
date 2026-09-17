@@ -16,6 +16,7 @@ import TemplateRuntimePreviewDialog from "@/components/app-builder/TemplateRunti
 import TemplateDataSourceEditorDialog from "@/components/app-builder/TemplateDataSourceEditorDialog";
 import TemplateActionEditorDialog from "@/components/app-builder/TemplateActionEditorDialog";
 import AppActionPolicyDialog from "@/components/app-builder/AppActionPolicyDialog";
+import AppBrandingDialog from "@/components/app-builder/AppBrandingDialog";
 import AdminAppBuilderLegacy from "./AdminAppBuilderLegacy";
 import {
   AppWindow,
@@ -26,6 +27,7 @@ import {
   History,
   Loader2,
   MonitorSmartphone,
+  Palette,
   PencilRuler,
   Plus,
   RefreshCw,
@@ -51,6 +53,7 @@ type AppTemplate = { id: string; name: string; slug: string; status: string; ver
 type AppTemplateVersion = { id: string; templateId: string; version: number; status: string };
 type TenantTarget = { id: string; name: string; status?: string | null };
 type Vertical = { id: string; key: string; name: string };
+type BlueprintOption = { blueprint: { key: string; name: string; familyKey: string }; summary: { required: number; reused: number; gaps: number } };
 type PortfolioApp = {
   id: string;
   tenantId: string | null;
@@ -65,6 +68,7 @@ type PortfolioApp = {
   ownerName?: string | null;
   ownerEmail?: string | null;
   ownerCompany?: string | null;
+  settings?: Record<string, unknown>;
 };
 
 type NewAppForm = {
@@ -79,6 +83,7 @@ type NewAppForm = {
   name: string;
   slug: string;
   objective: string;
+  verticalKey: string;
 };
 
 const EMPTY_FORM: NewAppForm = {
@@ -93,6 +98,7 @@ const EMPTY_FORM: NewAppForm = {
   name: "",
   slug: "",
   objective: "",
+  verticalKey: "",
 };
 
 const STARTER_DEFINITION = {
@@ -104,7 +110,7 @@ const STARTER_DEFINITION = {
         id: "home",
         title: "Início",
         blocks: [
-          { id: "hero-home", type: "hero", props: { title: "Novo app", subtitle: "Estrutura inicial pronta para personalização." } },
+          { id: "hero-home", type: "hero", props: { title: "Novo app", body: "Estrutura inicial pronta para personalização." } },
         ],
       },
     ],
@@ -122,10 +128,12 @@ export default function AdminAppBuilder() {
   const [templates, setTemplates] = useState<AppTemplate[]>([]);
   const [tenants, setTenants] = useState<TenantTarget[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioApp[]>([]);
+  const [blueprints, setBlueprints] = useState<BlueprintOption[]>([]);
   const [selectedAppId, setSelectedAppId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [usersOpen, setUsersOpen] = useState(false);
   const [appActionsOpen, setAppActionsOpen] = useState(false);
+  const [brandingOpen, setBrandingOpen] = useState(false);
   const [aiArchitectOpen, setAiArchitectOpen] = useState(false);
   const [runtimeEditorOpen, setRuntimeEditorOpen] = useState(false);
   const [runtimePreviewOpen, setRuntimePreviewOpen] = useState(false);
@@ -135,6 +143,7 @@ export default function AdminAppBuilder() {
   const [createOpen, setCreateOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncingBlueprints, setSyncingBlueprints] = useState(false);
   const [newApp, setNewApp] = useState<NewAppForm>(EMPTY_FORM);
   const [publishedVersions, setPublishedVersions] = useState<AppTemplateVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -161,11 +170,12 @@ export default function AdminAppBuilder() {
     if (!token) return;
     setLoadingControls(true);
     try {
-      const [appsResponse, templatesResponse, targetsResponse, portfolioResponse] = await Promise.all([
+      const [appsResponse, templatesResponse, targetsResponse, portfolioResponse, blueprintsResponse] = await Promise.all([
         fetch("/api/admin/app-builder/apps", { headers: { Authorization: `Bearer ${token}` } }),
         fetch("/api/admin/app-builder/templates", { headers: { Authorization: `Bearer ${token}` } }),
         fetch("/api/admin/app-builder/app-targets", { headers: { Authorization: `Bearer ${token}` } }),
         fetch("/api/admin/app-builder/portfolio", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/admin/app-builder/vertical-blueprints", { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (appsResponse.ok) {
         const rows = await appsResponse.json() as AppInstance[];
@@ -182,6 +192,7 @@ export default function AdminAppBuilder() {
         setTenants(data.tenants ?? []);
       }
       if (portfolioResponse.ok) setPortfolio(await portfolioResponse.json() as PortfolioApp[]);
+      if (blueprintsResponse.ok) setBlueprints(await blueprintsResponse.json() as BlueprintOption[]);
     } finally {
       setLoadingControls(false);
     }
@@ -260,6 +271,26 @@ export default function AdminAppBuilder() {
     return { templateId: template.id, templateVersionId: version.id };
   }
 
+  async function materializeAllBlueprints() {
+    if (!token || syncingBlueprints) return;
+    setSyncingBlueprints(true);
+    try {
+      const result = await api("/api/admin/app-builder/vertical-blueprints/materialize-all", { method: "POST" }) as { total: number; created: number; reused: number };
+      await loadControls();
+      toast({ title: "Modelos verticais sincronizados", description: `${result.total} modelos disponíveis · ${result.created} criados · ${result.reused} reutilizados.` });
+    } catch (error) {
+      toast({ title: "Erro ao sincronizar modelos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSyncingBlueprints(false);
+    }
+  }
+  async function ensureVerticalTemplate(verticalKey: string) {
+    const result = await api(`/api/admin/app-builder/vertical-blueprints/${encodeURIComponent(verticalKey)}/materialize`, { method: "POST" }) as {
+      templateId: string;
+      templateVersionId: string;
+    };
+    return { templateId: result.templateId, templateVersionId: result.templateVersionId };
+  }
   function startCreate() {
     setNewApp({ ...EMPTY_FORM, tenantId: tenants[0]?.id ?? "" });
     setPublishedVersions([]);
@@ -276,7 +307,9 @@ export default function AdminAppBuilder() {
     try {
       const source = newApp.startMode === "template"
         ? { templateId: newApp.templateId, templateVersionId: newApp.templateVersionId }
-        : await ensureStarterTemplate();
+        : newApp.verticalKey
+          ? await ensureVerticalTemplate(newApp.verticalKey)
+          : await ensureStarterTemplate();
       const standalone = newApp.targetType !== "tenant";
       const endpoint = standalone ? "/api/admin/app-builder/standalone-apps" : "/api/admin/app-builder/apps";
       const body = standalone
@@ -286,16 +319,20 @@ export default function AdminAppBuilder() {
             ownerEmail: newApp.ownerEmail.trim() || null,
             ownerCompany: newApp.ownerCompany.trim() || null,
             ...source,
+            verticalKey: newApp.verticalKey || undefined,
+            buildBrief: newApp.objective.trim() || undefined,
             name: newApp.name.trim(),
             slug: newApp.slug.trim(),
           }
         : {
             tenantId: newApp.tenantId,
             ...source,
+            verticalKey: newApp.verticalKey || undefined,
+            buildBrief: newApp.objective.trim() || undefined,
             name: newApp.name.trim(),
             slug: newApp.slug.trim(),
             status: "draft",
-            theme: {}, navigation: [], settings: {}, whiteLabel: {},
+            theme: {}, navigation: [], settings: { verticalKey: newApp.verticalKey || undefined, buildBrief: newApp.objective.trim() || undefined }, whiteLabel: {},
           };
       const payload = await api(endpoint, { method: "POST", body: JSON.stringify(body) }) as { id?: string };
       setCreateOpen(false);
@@ -362,7 +399,8 @@ export default function AdminAppBuilder() {
   const canCreate = Boolean(
     !saving && newApp.name.trim() && newApp.slug.trim() &&
     (newApp.targetType === "tenant" ? newApp.tenantId : newApp.ownerName.trim()) &&
-    (newApp.startMode !== "template" || newApp.templateVersionId),
+    (newApp.startMode !== "template" || newApp.templateVersionId) &&
+    (newApp.startMode === "template" || newApp.verticalKey),
   );
 
   return (
@@ -373,7 +411,7 @@ export default function AdminAppBuilder() {
             <div className="flex items-center gap-2"><AppWindow className="h-5 w-5 text-primary" /><h1 className="text-2xl font-bold">App Builder</h1><Badge variant="outline">SuperAdmin</Badge></div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Crie o produto que será vendido, o painel administrativo do app e a conexão opcional com o VendorAI SaaS — sem duplicar módulos ou fluxos.</p>
           </div>
-          <div className="flex flex-wrap gap-2"><Button onClick={startCreate}><Plus className="mr-2 h-4 w-4" />Novo app</Button><Button variant="outline" onClick={() => void loadControls()} disabled={loadingControls}><RefreshCw className={`mr-2 h-4 w-4 ${loadingControls ? "animate-spin" : ""}`} />Atualizar</Button></div>
+          <div className="flex flex-wrap gap-2"><Button onClick={startCreate}><Plus className="mr-2 h-4 w-4" />Novo app</Button><Button variant="outline" onClick={() => void materializeAllBlueprints()} disabled={syncingBlueprints || blueprints.length === 0}><DatabaseZap className={`mr-2 h-4 w-4 ${syncingBlueprints ? "animate-pulse" : ""}`} />{syncingBlueprints ? "Sincronizando..." : "Preparar modelos"}</Button><Button variant="outline" onClick={() => void loadControls()} disabled={loadingControls}><RefreshCw className={`mr-2 h-4 w-4 ${loadingControls ? "animate-spin" : ""}`} />Atualizar</Button></div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -384,7 +422,7 @@ export default function AdminAppBuilder() {
         </div>
 
         {portfolio.length > 0 && (
-          <Card><CardContent className="p-4"><div className="mb-3 flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Portfólio de apps</h2></div><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{portfolio.map((app) => <div key={app.id} className={`rounded-xl border p-3 ${selectedAppId === app.id ? "ring-2 ring-primary/30" : ""}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{app.name}</p><p className="truncate text-xs text-muted-foreground">/{app.slug}</p></div><Badge variant="outline">{statusPt(app.status)}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{app.tenantId ? <><Users className="mr-1 inline h-3.5 w-3.5" />{app.tenantName ?? app.tenantCode ?? "Tenant"}</> : <><UserRoundCog className="mr-1 inline h-3.5 w-3.5" />{app.ownerCompany || app.ownerName || "Projeto pré-tenant"}</>}</p><div className="mt-3 grid grid-cols-2 gap-2"><Button size="sm" onClick={() => selectForBuild(app)}><PencilRuler className="mr-1.5 h-3.5 w-3.5" />Construir</Button>{app.tenantId ? <Button size="sm" variant="outline" onClick={() => { setSelectedAppId(app.id); window.open(`/apps/${encodeURIComponent(app.id)}`, "_blank", "noopener,noreferrer"); }}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Abrir</Button> : <Button size="sm" variant="outline" onClick={() => { setLinkingApp(app); setLinkTenantId(tenants[0]?.id ?? ""); }}>Vincular</Button>}</div></div>)}</div></CardContent></Card>
+          <Card><CardContent className="p-4"><div className="mb-3 flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Portfólio de apps</h2></div><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{portfolio.map((app) => <div key={app.id} className={`rounded-xl border p-3 ${selectedAppId === app.id ? "ring-2 ring-primary/30" : ""}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{app.name}</p><p className="truncate text-xs text-muted-foreground">/{app.slug}</p></div><Badge variant="outline">{statusPt(app.status)}</Badge></div><div className="mt-2 flex flex-wrap items-center gap-1.5">{typeof app.settings?.verticalKey === "string" && <Badge variant="secondary" className="text-[9px]">{blueprints.find((item) => item.blueprint.key === app.settings?.verticalKey)?.blueprint.name ?? app.settings.verticalKey}</Badge>}</div><p className="mt-2 text-xs text-muted-foreground">{app.tenantId ? <><Users className="mr-1 inline h-3.5 w-3.5" />{app.tenantName ?? app.tenantCode ?? "Tenant"}</> : <><UserRoundCog className="mr-1 inline h-3.5 w-3.5" />{app.ownerCompany || app.ownerName || "Projeto pré-tenant"}</>}</p><div className="mt-3 grid grid-cols-2 gap-2"><Button size="sm" onClick={() => selectForBuild(app)}><PencilRuler className="mr-1.5 h-3.5 w-3.5" />Construir</Button>{app.tenantId ? <Button size="sm" variant="outline" onClick={() => { setSelectedAppId(app.id); window.open(`/apps/${encodeURIComponent(app.id)}`, "_blank", "noopener,noreferrer"); }}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Abrir</Button> : <Button size="sm" variant="outline" onClick={() => { setLinkingApp(app); setLinkTenantId(tenants[0]?.id ?? ""); }}>Vincular</Button>}</div></div>)}</div></CardContent></Card>
         )}
 
         <Card id="app-builder-workspace" className="scroll-mt-24"><CardContent className="p-4 sm:p-5">
@@ -402,7 +440,7 @@ export default function AdminAppBuilder() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{buildSteps.map((step) => <button key={step.title} type="button" disabled={step.disabled} onClick={step.action} className="group rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.02] disabled:cursor-not-allowed disabled:opacity-45"><div className="flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><step.icon className="h-4 w-4" /></div><div><p className="text-sm font-semibold">{step.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</p></div></div></button>)}</div>
 
-          <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={() => setAppActionsOpen(true)} disabled={!selectedApp?.tenantId}><Workflow className="mr-2 h-4 w-4" />Políticas avançadas</Button><Button variant="outline" onClick={openRuntime} disabled={!selectedApp?.tenantId}><ExternalLink className="mr-2 h-4 w-4" />Abrir app</Button><Button variant="outline" onClick={() => setAdvancedOpen((current) => !current)}><History className="mr-2 h-4 w-4" />{advancedOpen ? "Ocultar engenharia" : "Engenharia avançada"}</Button></div>
+          <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={() => setBrandingOpen(true)} disabled={!selectedApp?.tenantId}><Palette className="mr-2 h-4 w-4" />Identidade visual</Button><Button variant="outline" onClick={() => setAppActionsOpen(true)} disabled={!selectedApp?.tenantId}><Workflow className="mr-2 h-4 w-4" />Políticas avançadas</Button><Button variant="outline" onClick={openRuntime} disabled={!selectedApp?.tenantId}><ExternalLink className="mr-2 h-4 w-4" />Abrir app</Button><Button variant="outline" onClick={() => setAdvancedOpen((current) => !current)}><History className="mr-2 h-4 w-4" />{advancedOpen ? "Ocultar engenharia" : "Engenharia avançada"}</Button></div>
         </CardContent></Card>
       </div>
 
@@ -416,7 +454,8 @@ export default function AdminAppBuilder() {
 
             {newApp.targetType === "tenant" ? <div className="space-y-2"><Label>Tenant</Label><Select value={newApp.tenantId} onValueChange={(tenantId) => setNewApp((current) => ({ ...current, tenantId }))}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione o tenant" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div> : <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="min-w-0 space-y-2"><Label>{newApp.targetType === "prospect" ? "Responsável / prospect" : "Responsável interno"}</Label><Input className="w-full" value={newApp.ownerName} onChange={(e) => setNewApp((current) => ({ ...current, ownerName: e.target.value }))} placeholder="Nome" /></div><div className="min-w-0 space-y-2"><Label>Empresa / projeto</Label><Input className="w-full" value={newApp.ownerCompany} onChange={(e) => setNewApp((current) => ({ ...current, ownerCompany: e.target.value }))} placeholder="Empresa ou projeto" /></div><div className="min-w-0 space-y-2 sm:col-span-2"><Label>E-mail de referência</Label><Input className="w-full" type="email" value={newApp.ownerEmail} onChange={(e) => setNewApp((current) => ({ ...current, ownerEmail: e.target.value }))} placeholder="contato@empresa.com" /></div></div>}
 
-            <div className="space-y-2"><Label>Como quer começar?</Label><div className="grid gap-2 sm:grid-cols-3"><Button type="button" variant={newApp.startMode === "ai" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "ai" }))}><Sparkles className="mr-2 h-4 w-4" />Com IA</Button><Button type="button" variant={newApp.startMode === "blank" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "blank" }))}>Do zero</Button><Button type="button" variant={newApp.startMode === "template" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "template" }))}>Template</Button></div><p className="text-xs text-muted-foreground">IA e Do zero não dependem de um template pré-existente: o sistema prepara automaticamente uma base versionável.</p></div>
+                        {newApp.startMode !== "template" && <div className="space-y-2"><Label>Vertical padrão</Label><Select value={newApp.verticalKey} onValueChange={(verticalKey) => setNewApp((current) => ({ ...current, verticalKey }))}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione a vertical" /></SelectTrigger><SelectContent>{blueprints.map((item) => <SelectItem key={item.blueprint.key} value={item.blueprint.key}>{item.blueprint.name} · {item.summary.reused} reutilizáveis / {item.summary.gaps} gaps</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">O sistema reutiliza o template e as capacidades existentes; cria apenas a base que ainda não estiver materializada.</p></div>}
+            <div className="space-y-2"><Label>Como quer começar?</Label><div className="grid gap-2 sm:grid-cols-3"><Button type="button" variant={newApp.startMode === "ai" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "ai" }))}><Sparkles className="mr-2 h-4 w-4" />Com IA</Button><Button type="button" variant={newApp.startMode === "blank" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "blank" }))}>Do zero</Button><Button type="button" variant={newApp.startMode === "template" ? "default" : "outline"} onClick={() => setNewApp((current) => ({ ...current, startMode: "template", verticalKey: "" }))}>Template</Button></div><p className="text-xs text-muted-foreground">IA e Do zero não dependem de um template pré-existente: o sistema prepara automaticamente uma base versionável.</p></div>
 
             <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="min-w-0 space-y-2"><Label>Nome do app</Label><Input className="w-full" value={newApp.name} onChange={(e) => setNewApp((current) => ({ ...current, name: e.target.value }))} placeholder="Portal do Cliente" /></div><div className="min-w-0 space-y-2"><Label>Slug</Label><Input className="w-full" value={newApp.slug} onChange={(e) => setNewApp((current) => ({ ...current, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-") }))} placeholder="portal-cliente" /></div></div>
 
@@ -432,13 +471,14 @@ export default function AdminAppBuilder() {
 
       <Dialog open={Boolean(linkingApp)} onOpenChange={(open) => { if (!open) setLinkingApp(null); }}><DialogContent><DialogHeader><DialogTitle>Vincular app a um tenant</DialogTitle><DialogDescription>Converte o projeto pré-tenant em app operacional sem perder o histórico.</DialogDescription></DialogHeader><div className="space-y-3"><div className="rounded-lg border p-3"><p className="text-sm font-medium">{linkingApp?.name}</p><p className="text-xs text-muted-foreground">Origem: {linkingApp?.ownerCompany || linkingApp?.ownerName || "pré-tenant"}</p></div><div className="space-y-2"><Label>Tenant de destino</Label><Select value={linkTenantId} onValueChange={setLinkTenantId}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}</SelectItem>)}</SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setLinkingApp(null)}>Cancelar</Button><Button onClick={() => void linkTenant()} disabled={!linkTenantId || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Vincular e preservar histórico</Button></DialogFooter></DialogContent></Dialog>
 
-      <AppBuilderAiArchitectDialog open={aiArchitectOpen} onOpenChange={setAiArchitectOpen} token={token} template={selectedTemplate} app={selectedPortfolioApp ?? selectedApp} onVersionCreated={loadControls} />
-      <AppUsersDialog app={selectedApp} open={usersOpen} token={token} onOpenChange={setUsersOpen} onAppChanged={loadControls} />
+      <AppBuilderAiArchitectDialog open={aiArchitectOpen} onOpenChange={setAiArchitectOpen} token={token} template={selectedTemplate} app={selectedPortfolioApp ? { ...selectedPortfolioApp, settings: selectedApp?.settings } : selectedApp} initialRequest={typeof selectedApp?.settings?.buildBrief === "string" ? selectedApp.settings.buildBrief : newApp.objective} onVersionCreated={loadControls} />
+      <AppUsersDialog app={selectedApp?.tenantId ? { ...selectedApp, tenantId: selectedApp.tenantId } : null} open={usersOpen} token={token} onOpenChange={setUsersOpen} onAppChanged={loadControls} />
+      <AppBrandingDialog app={selectedApp} token={token} open={brandingOpen} onOpenChange={setBrandingOpen} onAppChanged={loadControls} />
       <AppActionPolicyDialog app={selectedApp} token={token} open={appActionsOpen} onOpenChange={setAppActionsOpen} onAppChanged={loadControls} />
       <TemplateRuntimeEditorDialog template={selectedTemplate} token={token} open={runtimeEditorOpen} onOpenChange={setRuntimeEditorOpen} />
       <TemplateDataSourceEditorDialog template={selectedTemplate} token={token} open={dataSourceEditorOpen} onOpenChange={setDataSourceEditorOpen} />
       <TemplateActionEditorDialog template={selectedTemplate} token={token} open={templateActionsOpen} onOpenChange={setTemplateActionsOpen} />
-      <TemplateRuntimePreviewDialog template={selectedTemplate} token={token} open={runtimePreviewOpen} onOpenChange={setRuntimePreviewOpen} />
+      <TemplateRuntimePreviewDialog template={selectedTemplate} app={selectedApp} token={token} open={runtimePreviewOpen} onOpenChange={setRuntimePreviewOpen} />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, max } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, max } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   appActionRegistryTable,
@@ -19,6 +19,8 @@ import {
   db,
   tenantsTable,
 } from "@workspace/db";
+import { resolveAppTenantBranding } from "../lib/app_tenant_branding.js";
+import { buildVerticalStarterDefinition, findVerticalBlueprint, resolveVerticalBlueprint, VERTICAL_BLUEPRINTS, type RegistryCapability } from "../lib/app_vertical_blueprints.js";
 import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
@@ -382,6 +384,8 @@ router.post("/admin/app-builder/apps", async (req, res) => {
   }
 
   try {
+    // Persist only app-level choices. Tenant branding is resolved at read/runtime
+    // so later tenant logo/color changes propagate without rewriting every app.
     const [row] = await db.insert(appInstancesTable).values(parsed.data).returning();
     res.status(201).json(row);
   } catch (error) {
@@ -393,6 +397,26 @@ router.post("/admin/app-builder/apps", async (req, res) => {
   }
 });
 
+router.get("/admin/app-builder/apps/:id/branding", async (req, res) => {
+  const [app] = await db
+    .select()
+    .from(appInstancesTable)
+    .where(eq(appInstancesTable.id, String(req.params.id)));
+  if (!app) {
+    res.status(404).json({ error: "App não encontrado" });
+    return;
+  }
+  const resolved = await resolveAppTenantBranding(
+    app.tenantId,
+    app.name,
+    app.theme,
+    app.whiteLabel,
+  );
+  res.json({
+    stored: { theme: app.theme, whiteLabel: app.whiteLabel },
+    resolved,
+  });
+});
 router.patch("/admin/app-builder/apps/:id", async (req, res) => {
   const parsed = appInstancePatchSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -534,6 +558,138 @@ router.post("/admin/app-builder/apps/:appId/versions/:versionId/publish", async 
   res.json(published);
 });
 
+router.post("/admin/app-builder/vertical-blueprints/materialize-all", async (_req, res) => {
+  const [components, features, actions, workflows, dataSources] = await Promise.all([
+    db.select({ key: appComponentRegistryTable.key, name: appComponentRegistryTable.name, category: appComponentRegistryTable.category }).from(appComponentRegistryTable).where(eq(appComponentRegistryTable.status, "active")),
+    db.select({ key: appFeatureRegistryTable.key, name: appFeatureRegistryTable.name, category: appFeatureRegistryTable.category }).from(appFeatureRegistryTable).where(eq(appFeatureRegistryTable.status, "active")),
+    db.select({ key: appActionRegistryTable.key, name: appActionRegistryTable.name, category: appActionRegistryTable.category, executorKey: appActionRegistryTable.executorKey }).from(appActionRegistryTable).where(and(eq(appActionRegistryTable.status, "active"), isNotNull(appActionRegistryTable.executorKey))),
+    db.select({ key: appWorkflowRegistryTable.key, name: appWorkflowRegistryTable.name }).from(appWorkflowRegistryTable).where(eq(appWorkflowRegistryTable.status, "active")),
+    db.select({ key: appDataSourceRegistryTable.key, name: appDataSourceRegistryTable.name, category: appDataSourceRegistryTable.category }).from(appDataSourceRegistryTable).where(eq(appDataSourceRegistryTable.status, "active")),
+  ]);
+  const registry: RegistryCapability[] = [
+    ...components.map((item) => ({ ...item, kind: "component" as const })),
+    ...features.map((item) => ({ ...item, kind: "feature" as const })),
+    ...actions.map((item) => ({ ...item, kind: "action" as const })),
+    ...workflows.map((item) => ({ ...item, category: null, kind: "workflow" as const })),
+    ...dataSources.map((item) => ({ ...item, kind: "dataSource" as const })),
+  ];
+
+  const materialized = await db.transaction(async (tx) => {
+    const rows: Array<{ key: string; templateId: string; templateVersionId: string; created: boolean }> = [];
+    for (const blueprint of VERTICAL_BLUEPRINTS) {
+      const resolution = resolveVerticalBlueprint(blueprint, registry);
+      let [vertical] = await tx.select().from(appVerticalsTable).where(eq(appVerticalsTable.key, blueprint.key)).limit(1);
+      if (!vertical) {
+        [vertical] = await tx.insert(appVerticalsTable).values({ key: blueprint.key, name: blueprint.name, familyKey: blueprint.familyKey, status: "active", metadata: { system: true, blueprint: true, description: blueprint.description } }).returning();
+      }
+      const slug = `base-${blueprint.key}`;
+      let [template] = await tx.select().from(appTemplatesTable).where(and(eq(appTemplatesTable.verticalId, vertical.id), eq(appTemplatesTable.slug, slug))).limit(1);
+      if (!template) {
+        [template] = await tx.insert(appTemplatesTable).values({ verticalId: vertical.id, name: `Base · ${blueprint.name}`, slug, description: blueprint.description, status: "active", settings: { system: true, blueprintKey: blueprint.key, generated: true } }).returning();
+      }
+      let [version] = await tx.select().from(appTemplateVersionsTable).where(and(eq(appTemplateVersionsTable.templateId, template.id), eq(appTemplateVersionsTable.status, "published"))).orderBy(desc(appTemplateVersionsTable.version)).limit(1);
+      let created = false;
+      if (!version) {
+        const [latest] = await tx.select({ value: max(appTemplateVersionsTable.version) }).from(appTemplateVersionsTable).where(eq(appTemplateVersionsTable.templateId, template.id));
+        [version] = await tx.insert(appTemplateVersionsTable).values({ templateId: template.id, version: (latest?.value ?? 0) + 1, status: "published", definition: buildVerticalStarterDefinition(blueprint, resolution, registry), changeLog: `Base automática do blueprint ${blueprint.name}`, publishedAt: new Date() }).returning();
+        created = true;
+      }
+      rows.push({ key: blueprint.key, templateId: template.id, templateVersionId: version.id, created });
+    }
+    return rows;
+  });
+
+  res.json({ total: materialized.length, created: materialized.filter((item) => item.created).length, reused: materialized.filter((item) => !item.created).length, items: materialized });
+});
+router.post("/admin/app-builder/vertical-blueprints/:key/materialize", async (req, res) => {
+  const blueprint = findVerticalBlueprint(String(req.params.key));
+  if (!blueprint) return void res.status(404).json({ error: "Blueprint de vertical não encontrado" });
+
+  const [components, features, actions, workflows, dataSources] = await Promise.all([
+    db.select({ key: appComponentRegistryTable.key, name: appComponentRegistryTable.name, category: appComponentRegistryTable.category }).from(appComponentRegistryTable).where(eq(appComponentRegistryTable.status, "active")),
+    db.select({ key: appFeatureRegistryTable.key, name: appFeatureRegistryTable.name, category: appFeatureRegistryTable.category }).from(appFeatureRegistryTable).where(eq(appFeatureRegistryTable.status, "active")),
+    db.select({ key: appActionRegistryTable.key, name: appActionRegistryTable.name, category: appActionRegistryTable.category, executorKey: appActionRegistryTable.executorKey }).from(appActionRegistryTable).where(and(eq(appActionRegistryTable.status, "active"), isNotNull(appActionRegistryTable.executorKey))),
+    db.select({ key: appWorkflowRegistryTable.key, name: appWorkflowRegistryTable.name }).from(appWorkflowRegistryTable).where(eq(appWorkflowRegistryTable.status, "active")),
+    db.select({ key: appDataSourceRegistryTable.key, name: appDataSourceRegistryTable.name, category: appDataSourceRegistryTable.category }).from(appDataSourceRegistryTable).where(eq(appDataSourceRegistryTable.status, "active")),
+  ]);
+  const registry: RegistryCapability[] = [
+    ...components.map((item) => ({ ...item, kind: "component" as const })),
+    ...features.map((item) => ({ ...item, kind: "feature" as const })),
+    ...actions.map((item) => ({ ...item, kind: "action" as const })),
+    ...workflows.map((item) => ({ ...item, category: null, kind: "workflow" as const })),
+    ...dataSources.map((item) => ({ ...item, kind: "dataSource" as const })),
+  ];
+  const resolution = resolveVerticalBlueprint(blueprint, registry);
+  const definition = buildVerticalStarterDefinition(blueprint, resolution, registry);
+
+  const result = await db.transaction(async (tx) => {
+    let [vertical] = await tx.select().from(appVerticalsTable).where(eq(appVerticalsTable.key, blueprint.key)).limit(1);
+    if (!vertical) {
+      [vertical] = await tx.insert(appVerticalsTable).values({
+        key: blueprint.key,
+        name: blueprint.name,
+        familyKey: blueprint.familyKey,
+        status: "active",
+        metadata: { system: true, blueprint: true, description: blueprint.description },
+      }).returning();
+    }
+
+    const slug = `base-${blueprint.key}`;
+    let [template] = await tx.select().from(appTemplatesTable).where(and(eq(appTemplatesTable.verticalId, vertical.id), eq(appTemplatesTable.slug, slug))).limit(1);
+    if (!template) {
+      [template] = await tx.insert(appTemplatesTable).values({
+        verticalId: vertical.id,
+        name: `Base · ${blueprint.name}`,
+        slug,
+        description: blueprint.description,
+        status: "active",
+        settings: { system: true, blueprintKey: blueprint.key, generated: true },
+      }).returning();
+    }
+
+    let [version] = await tx.select().from(appTemplateVersionsTable).where(and(eq(appTemplateVersionsTable.templateId, template.id), eq(appTemplateVersionsTable.status, "published"))).orderBy(desc(appTemplateVersionsTable.version)).limit(1);
+    if (!version) {
+      const [latest] = await tx.select({ value: max(appTemplateVersionsTable.version) }).from(appTemplateVersionsTable).where(eq(appTemplateVersionsTable.templateId, template.id));
+      [version] = await tx.insert(appTemplateVersionsTable).values({
+        templateId: template.id,
+        version: (latest?.value ?? 0) + 1,
+        status: "published",
+        definition,
+        changeLog: `Base automática do blueprint ${blueprint.name}`,
+        publishedAt: new Date(),
+      }).returning();
+    }
+    return { vertical, template, version };
+  });
+
+  res.status(201).json({
+    verticalId: result.vertical.id,
+    templateId: result.template.id,
+    templateVersionId: result.version.id,
+    blueprint: resolution.blueprint,
+    reuse: resolution.summary,
+  });
+});
+router.get("/admin/app-builder/vertical-blueprints", async (req, res) => {
+  const [components, features, actions, workflows, dataSources] = await Promise.all([
+    db.select({ key: appComponentRegistryTable.key, name: appComponentRegistryTable.name, category: appComponentRegistryTable.category }).from(appComponentRegistryTable).where(eq(appComponentRegistryTable.status, "active")),
+    db.select({ key: appFeatureRegistryTable.key, name: appFeatureRegistryTable.name, category: appFeatureRegistryTable.category }).from(appFeatureRegistryTable).where(eq(appFeatureRegistryTable.status, "active")),
+    db.select({ key: appActionRegistryTable.key, name: appActionRegistryTable.name, category: appActionRegistryTable.category, executorKey: appActionRegistryTable.executorKey }).from(appActionRegistryTable).where(and(eq(appActionRegistryTable.status, "active"), isNotNull(appActionRegistryTable.executorKey))),
+    db.select({ key: appWorkflowRegistryTable.key, name: appWorkflowRegistryTable.name }).from(appWorkflowRegistryTable).where(eq(appWorkflowRegistryTable.status, "active")),
+    db.select({ key: appDataSourceRegistryTable.key, name: appDataSourceRegistryTable.name, category: appDataSourceRegistryTable.category }).from(appDataSourceRegistryTable).where(eq(appDataSourceRegistryTable.status, "active")),
+  ]);
+  const registry: RegistryCapability[] = [
+    ...components.map((item) => ({ ...item, kind: "component" as const })),
+    ...features.map((item) => ({ ...item, kind: "feature" as const })),
+    ...actions.map((item) => ({ ...item, kind: "action" as const })),
+    ...workflows.map((item) => ({ ...item, category: null, kind: "workflow" as const })),
+    ...dataSources.map((item) => ({ ...item, kind: "dataSource" as const })),
+  ];
+  const requested = typeof req.query.key === "string" ? findVerticalBlueprint(req.query.key) : null;
+  if (typeof req.query.key === "string" && !requested) return void res.status(404).json({ error: "Blueprint de vertical não encontrado" });
+  const blueprints = requested ? [requested] : VERTICAL_BLUEPRINTS;
+  res.json(blueprints.map((item) => resolveVerticalBlueprint(item, registry)));
+});
 router.get("/admin/app-builder/registries", async (_req, res) => {
   const [components, features, actions, workflows, aiPolicies, dataSources] = await Promise.all([
     db.select().from(appComponentRegistryTable).orderBy(asc(appComponentRegistryTable.name)),

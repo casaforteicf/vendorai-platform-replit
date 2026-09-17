@@ -11,6 +11,14 @@ import { useToast } from "@/hooks/use-toast";
 type JsonObject = Record<string, unknown>;
 type Device = "desktop" | "tablet" | "mobile";
 type TemplateLike = { id: string; name: string };
+type AppLike = { id: string; name: string; tenantId?: string | null };
+type BrandingResponse = {
+  resolved: {
+    theme: JsonObject;
+    whiteLabel: JsonObject;
+    source?: JsonObject;
+  };
+};
 type TemplateVersion = {
   id: string;
   templateId: string;
@@ -22,6 +30,7 @@ type TemplateVersion = {
 
 type Props = {
   template: TemplateLike | null;
+  app?: AppLike | null;
   token: string | null | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -60,7 +69,7 @@ function visibleTo(value: unknown, roleKey: string, permissions: string[]): bool
   return mode === "any" ? required.some((permission) => current.has(permission)) : required.every((permission) => current.has(permission));
 }
 
-function previewPayload(template: TemplateLike, version: TemplateVersion, roleKey: string, permissions: string[]): RuntimePayload {
+function previewPayload(template: TemplateLike, version: TemplateVersion, roleKey: string, permissions: string[], app?: AppLike | null, branding?: BrandingResponse | null): RuntimePayload {
   const definition = asObject(version.definition);
   const runtimeSource = asObject(definition.runtime);
   const pages = objects(runtimeSource.pages).flatMap((page, pageIndex) => {
@@ -89,17 +98,19 @@ function previewPayload(template: TemplateLike, version: TemplateVersion, roleKe
     ? requestedDefault
     : pages[0]?.id ?? null;
 
+  const appName = app?.name ?? template.name;
+
   return {
     runtimeVersion: 1,
     publishedVersionId: version.id,
     publishedVersion: version.version,
     publishedAt: version.publishedAt,
     app: {
-      id: `preview-${template.id}`,
-      name: template.name,
+      id: `preview-${app?.id ?? template.id}`,
+      name: appName,
       slug: "preview",
-      theme: {},
-      whiteLabel: { appName: template.name },
+      theme: branding?.resolved.theme ?? {},
+      whiteLabel: branding?.resolved.whiteLabel ?? { appName },
       navigation: pages.map((page) => ({ id: `nav-${page.id}`, label: page.title, pageId: page.id })),
     },
     template: { versionId: version.id, version: version.version },
@@ -107,7 +118,7 @@ function previewPayload(template: TemplateLike, version: TemplateVersion, roleKe
   };
 }
 
-export default function TemplateRuntimePreviewDialog({ template, token, open, onOpenChange }: Props) {
+export default function TemplateRuntimePreviewDialog({ template, app, token, open, onOpenChange }: Props) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [versions, setVersions] = useState<TemplateVersion[]>([]);
@@ -115,17 +126,22 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
   const [roleKey, setRoleKey] = useState("customer");
   const [permissionText, setPermissionText] = useState("");
   const [device, setDevice] = useState<Device>("desktop");
+  const [branding, setBranding] = useState<BrandingResponse | null>(null);
 
   const loadVersions = useCallback(async () => {
     if (!open || !template || !token) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/app-builder/templates/${template.id}/versions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [response, brandingResponse] = await Promise.all([
+        fetch(`/api/admin/app-builder/templates/${template.id}/versions`, { headers }),
+        app?.tenantId ? fetch(`/api/admin/app-builder/apps/${app.id}/branding`, { headers }) : Promise.resolve(null),
+      ]);
       if (!response.ok) throw new Error(`Falha ao carregar versões (${response.status})`);
       const rows = await response.json() as TemplateVersion[];
       setVersions(rows);
+      if (brandingResponse?.ok) setBranding(await brandingResponse.json() as BrandingResponse);
+      else setBranding(null);
       setVersionId((current) => current && rows.some((item) => item.id === current) ? current : rows[0]?.id ?? "");
     } catch (error) {
       toast({
@@ -136,7 +152,7 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
     } finally {
       setLoading(false);
     }
-  }, [open, template, token, toast]);
+  }, [app, open, template, token, toast]);
 
   useEffect(() => {
     if (!open) return;
@@ -149,8 +165,8 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
   const selectedVersion = useMemo(() => versions.find((item) => item.id === versionId) ?? null, [versionId, versions]);
   const permissions = useMemo(() => parsePermissions(permissionText), [permissionText]);
   const payload = useMemo(
-    () => template && selectedVersion ? previewPayload(template, selectedVersion, roleKey.trim() || "customer", permissions) : null,
-    [permissions, roleKey, selectedVersion, template],
+    () => template && selectedVersion ? previewPayload(template, selectedVersion, roleKey.trim() || "customer", permissions, app, branding) : null,
+    [app, branding, permissions, roleKey, selectedVersion, template],
   );
   const previewWidth = device === "mobile" ? "390px" : device === "tablet" ? "768px" : "100%";
 
@@ -196,6 +212,7 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
           <Badge variant="outline">Mesmo renderer do app final</Badge>
           <Badge variant="outline">Navegação funcional</Badge>
           <Badge variant="outline">Actions simuladas</Badge>
+          {branding && <Badge variant="outline">Identidade visual resolvida do tenant</Badge>}
           <span>Formulários validam campos e exibem o resultado esperado, mas não executam efeitos reais nem gravam dados durante a prévia.</span>
         </div>
 

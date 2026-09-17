@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import {
@@ -11,6 +12,7 @@ import appUserAuthRouter from "./app_user_auth";
 import appUserRuntimeRouter from "./app_user_runtime";
 import appUserDataSourcesRouter from "./app_user_data_sources";
 import appUserActionsRouter from "./app_user_actions";
+import { resolveAppTenantBranding } from "../lib/app_tenant_branding.js";
 
 const router: IRouter = Router();
 
@@ -221,9 +223,19 @@ router.get("/app-runtime/apps/:appId/manifest", async (req, res) => {
   const appDefinition = policy.enabled
     ? sanitizePublishedDefinition(snapshot.definition, policy)
     : pickKeys(snapshot.definition, AUTH_SHELL_FIELDS);
+  const publishedDefinition = asObject(snapshot.definition);
+  const branding = await resolveAppTenantBranding(
+    app.tenantId,
+    typeof appDefinition.name === "string" ? appDefinition.name : "Aplicativo",
+    publishedDefinition.theme,
+    publishedDefinition.whiteLabel,
+  );
+  appDefinition.theme = branding.theme;
+  appDefinition.whiteLabel = branding.whiteLabel;
 
   res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-  res.setHeader("ETag", `W/\"app-${app.id}-v${snapshot.version}\"`);
+  const brandingDigest = createHash("sha256").update(JSON.stringify(branding)).digest("hex").slice(0, 12);
+  res.setHeader("ETag", `W/\"app-${app.id}-v${snapshot.version}-${brandingDigest}\"`);
   res.json({
     manifestVersion: 2,
     appInstanceId: app.id,

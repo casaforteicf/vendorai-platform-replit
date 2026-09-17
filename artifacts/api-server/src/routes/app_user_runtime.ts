@@ -23,6 +23,7 @@ import {
   loadInteractiveRuntimeActions,
   type RuntimeActionDescriptor,
 } from "../lib/app_runtime_actions.js";
+import { resolveAppTenantBranding } from "../lib/app_tenant_branding.js";
 
 const router: IRouter = Router();
 type JsonObject = Record<string, unknown>;
@@ -464,6 +465,12 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
   const snapshotDefinition = asObject(snapshot.definition);
   const templateDefinition = asObject(templateVersion.definition);
   const appName = text(snapshotDefinition.name, 120) ?? "Aplicativo";
+  const branding = await resolveAppTenantBranding(
+    app.tenantId,
+    appName,
+    snapshotDefinition.theme,
+    snapshotDefinition.whiteLabel,
+  );
   const permissions = current.permissions ?? [];
   const baseBindings: AppRuntimeBindingContext = {
     "viewer.name": current.displayName ?? "",
@@ -529,8 +536,8 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
       id: app.id,
       name: appName,
       slug: text(snapshotDefinition.slug, 100) ?? "",
-      theme: sanitizeTheme(snapshotDefinition.theme),
-      whiteLabel: sanitizeWhiteLabel(snapshotDefinition.whiteLabel),
+      theme: sanitizeTheme(branding.theme),
+      whiteLabel: sanitizeWhiteLabel(branding.whiteLabel),
       navigation,
     },
     template: { versionId: templateVersion.id, version: templateVersion.version },
