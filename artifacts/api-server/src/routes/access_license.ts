@@ -248,13 +248,23 @@ router.post("/admin/access-license/tenants/:tenantId/entitlements", async (req, 
 
   const [[tenant], [product]] = await Promise.all([
     db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
-    db.select({ commercialKey: commercialProductProfilesTable.commercialKey, active: commercialProductProfilesTable.active })
+    db.select({
+      commercialKey: commercialProductProfilesTable.commercialKey,
+      active: commercialProductProfilesTable.active,
+      offerKind: commercialProductProfilesTable.offerKind,
+    })
       .from(commercialProductProfilesTable)
       .where(eq(commercialProductProfilesTable.commercialKey, parsed.data.commercialKey))
       .limit(1),
   ]);
   if (!tenant) return res.status(404).json({ error: "Tenant não encontrado." });
   if (!product || !product.active) return res.status(404).json({ error: "Produto comercial não encontrado ou inativo." });
+  if (["service", "prepaid_pass", "consumption_pack"].includes(product.offerKind)) {
+    return res.status(422).json({
+      error: "Esta oferta não pode ser liberada como entitlement manual.",
+      code: "OFFER_IS_NOT_RUNTIME_ENTITLEMENT",
+    });
+  }
 
   const startsAt = parsed.data.startsAt ? new Date(parsed.data.startsAt) : new Date();
   const endsAt = parsed.data.endsAt ? new Date(parsed.data.endsAt) : null;
