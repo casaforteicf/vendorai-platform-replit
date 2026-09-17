@@ -8,16 +8,19 @@ import {
   Gauge,
   Layers3,
   Loader2,
+  PlusCircle,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
   Users,
+  XCircle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
 type LicenseStatus = {
@@ -91,6 +94,19 @@ type CommercialUsageResponse = {
   enforcementMode: "measure_only" | string;
 };
 
+type CommercialProductOption = {
+  commercialKey: string;
+  name: string | null;
+  offerKind: string;
+  active: boolean;
+};
+
+type CommercialModelResponse = {
+  products: CommercialProductOption[];
+};
+
+type GrantSource = "free" | "subscription" | "module" | "manual" | "promotion";
+
 const COMMERCIAL_LABELS: Record<string, string> = {
   "vendor.crm.free": "Vendor CRM Free",
   "vendor.crm": "Vendor CRM",
@@ -154,6 +170,11 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [confirmEnrollment, setConfirmEnrollment] = useState(false);
+  const [showGrantForm, setShowGrantForm] = useState(false);
+  const [grantCommercialKey, setGrantCommercialKey] = useState("");
+  const [grantSource, setGrantSource] = useState<GrantSource>("manual");
+  const [grantEndsAt, setGrantEndsAt] = useState("");
+  const [grantNote, setGrantNote] = useState("");
   const queryKey = ["admin-access-license", tenantId];
   const commercialQueryKey = ["admin-commercial-access", tenantId];
 
@@ -181,6 +202,20 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
       return result;
     },
     enabled: Boolean(tenantId && token),
+    retry: false,
+  });
+
+  const commercialModelQuery = useQuery<CommercialModelResponse>({
+    queryKey: ["admin-commercial-model-options"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/commercial-model", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as CommercialModelResponse & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Falha ao carregar produtos comerciais");
+      return result;
+    },
+    enabled: Boolean(token),
     retry: false,
   });
 
@@ -231,6 +266,58 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
     }),
   });
 
+  const grantEntitlement = useMutation({
+    mutationFn: async () => {
+      if (!grantCommercialKey) throw new Error("Selecione um produto comercial.");
+      const response = await fetch(`/api/admin/access-license/tenants/${tenantId}/entitlements`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commercialKey: grantCommercialKey,
+          source: grantSource,
+          endsAt: grantEndsAt ? new Date(grantEndsAt).toISOString() : null,
+          note: grantNote.trim() || undefined,
+        }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Falha ao liberar produto");
+      return result;
+    },
+    onSuccess: async () => {
+      setShowGrantForm(false);
+      setGrantCommercialKey("");
+      setGrantSource("manual");
+      setGrantEndsAt("");
+      setGrantNote("");
+      await queryClient.invalidateQueries({ queryKey: commercialQueryKey });
+      toast({ title: "Acesso comercial liberado" });
+    },
+    onError: (error) => toast({
+      title: error instanceof Error ? error.message : "Falha ao liberar produto",
+      variant: "destructive",
+    }),
+  });
+
+  const revokeEntitlement = useMutation({
+    mutationFn: async (entitlementId: string) => {
+      const response = await fetch(`/api/admin/access-license/tenants/${tenantId}/entitlements/${entitlementId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Falha ao revogar acesso");
+      return result;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: commercialQueryKey });
+      toast({ title: "Acesso comercial revogado" });
+    },
+    onError: (error) => toast({
+      title: error instanceof Error ? error.message : "Falha ao revogar acesso",
+      variant: "destructive",
+    }),
+  });
+
   const data = licenseQuery.data;
   const license = data?.license;
   const pendingContracts = data?.contracts.filter((contract) => contract.status === "pending_payment") ?? [];
@@ -244,6 +331,8 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
     : entitlements.length > 0
       ? entitlements.length === 1 && hasFree ? "CRM Free" : `${entitlements.length} produto(s)`
       : "Sem entitlement novo";
+  const grantableProducts = (commercialModelQuery.data?.products ?? [])
+    .filter((product) => product.active && !["service", "consumption_pack"].includes(product.offerKind));
 
   return (
     <Card>
@@ -332,10 +421,67 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
               <p className="flex items-center gap-2 text-sm font-semibold"><Layers3 className="h-4 w-4 text-blue-600" /> Produtos com acesso efetivo</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Mostra de onde cada acesso veio: Free, assinatura, módulo, passe, promoção ou cortesia.</p>
             </div>
-            {commercial && (
-              <Badge variant="outline" className="gap-1"><Coins className="h-3.5 w-3.5" /> {commercial.vendorCreditsBalance.toLocaleString("pt-BR")} Vendor Credits extras</Badge>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {commercial && (
+                <Badge variant="outline" className="gap-1"><Coins className="h-3.5 w-3.5" /> {commercial.vendorCreditsBalance.toLocaleString("pt-BR")} Vendor Credits extras</Badge>
+              )}
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowGrantForm((value) => !value)}>
+                <PlusCircle className="mr-1.5 h-4 w-4" /> Liberar produto
+              </Button>
+            </div>
           </div>
+
+          {showGrantForm && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+              <div className="grid gap-3 lg:grid-cols-4">
+                <label className="space-y-1.5 text-xs font-medium">
+                  Produto / plano
+                  <select
+                    value={grantCommercialKey}
+                    onChange={(event) => setGrantCommercialKey(event.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-normal"
+                  >
+                    <option value="">Selecionar...</option>
+                    {grantableProducts.map((product) => (
+                      <option key={product.commercialKey} value={product.commercialKey}>
+                        {product.name ?? entitlementLabel(product.commercialKey)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-medium">
+                  Origem do acesso
+                  <select
+                    value={grantSource}
+                    onChange={(event) => setGrantSource(event.target.value as GrantSource)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-normal"
+                  >
+                    <option value="manual">Cortesia / override</option>
+                    <option value="promotion">Promoção</option>
+                    <option value="module">Módulo comprado</option>
+                    <option value="subscription">Assinatura</option>
+                    <option value="free">Free</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-medium">
+                  Válido até (opcional)
+                  <Input type="datetime-local" value={grantEndsAt} onChange={(event) => setGrantEndsAt(event.target.value)} />
+                </label>
+                <label className="space-y-1.5 text-xs font-medium">
+                  Observação
+                  <Input value={grantNote} onChange={(event) => setGrantNote(event.target.value)} placeholder="Ex: cortesia comercial" />
+                </label>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => grantEntitlement.mutate()} disabled={!grantCommercialKey || grantEntitlement.isPending}>
+                  {grantEntitlement.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                  Confirmar liberação
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setShowGrantForm(false)} disabled={grantEntitlement.isPending}>Cancelar</Button>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">Libera o produto comercial sem editar switches técnicos. Passe pré-pago continua sendo controlado pelo motor de 5 dias.</p>
+            </div>
+          )}
 
           {commercialQuery.isLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
@@ -349,20 +495,35 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
             </div>
           ) : (
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {entitlements.map((entitlement) => (
-                <div key={entitlement.id} className="rounded-lg border bg-muted/15 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium">{entitlementLabel(entitlement.commercialKey)}</p>
-                    <Badge variant="outline" className="text-[10px]">{SOURCE_LABELS[entitlement.source] ?? entitlement.source}</Badge>
+              {entitlements.map((entitlement) => {
+                const adminGranted = entitlement.metadata?.adminGranted === true;
+                return (
+                  <div key={entitlement.id} className="rounded-lg border bg-muted/15 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{entitlementLabel(entitlement.commercialKey)}</p>
+                      <Badge variant="outline" className="text-[10px]">{SOURCE_LABELS[entitlement.source] ?? entitlement.source}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Desde {formatDate(entitlement.startsAt)} · {entitlement.endsAt ? `até ${formatDate(entitlement.endsAt)}` : "sem vencimento definido"}
+                    </p>
+                    {entitlement.commercialKey === "vendor.growth" && (
+                      <p className="mt-2 flex items-center gap-1 text-xs font-medium text-orange-700"><Users className="h-3.5 w-3.5" /> Usuários ilimitados</p>
+                    )}
+                    {adminGranted && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="mt-2 h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        onClick={() => revokeEntitlement.mutate(entitlement.id)}
+                        disabled={revokeEntitlement.isPending}
+                      >
+                        <XCircle className="mr-1 h-3.5 w-3.5" /> Revogar liberação manual
+                      </Button>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Desde {formatDate(entitlement.startsAt)} · {entitlement.endsAt ? `até ${formatDate(entitlement.endsAt)}` : "sem vencimento definido"}
-                  </p>
-                  {entitlement.commercialKey === "vendor.growth" && (
-                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-orange-700"><Users className="h-3.5 w-3.5" /> Usuários ilimitados</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
