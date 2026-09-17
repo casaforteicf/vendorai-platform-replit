@@ -105,6 +105,34 @@ type CommercialModelResponse = {
   products: CommercialProductOption[];
 };
 
+type ProvisioningPreview = {
+  growthActive: boolean;
+  effectiveProducts: Array<{
+    commercialKey: string;
+    includedVia: "direct_entitlement" | "growth" | string;
+    segmentKeys: string[];
+    moduleKeys: string[];
+  }>;
+  expectedNavModules: Array<{
+    moduleKey: string;
+    moduleName: string;
+    sources: string[];
+    persistedOverride: boolean | null;
+    state: "expected" | "blocked_by_override" | string;
+  }>;
+  technicalCapabilities: Array<{ moduleKey: string; sources: string[]; note: string }>;
+  conflicts: {
+    blockedExpected: string[];
+    enabledOutsideCommercialModel: string[];
+  };
+  recommendation: {
+    enable: string[];
+    reviewBeforeDisabling: string[];
+    automaticChangesApplied: boolean;
+  };
+  mode: "preview_only" | string;
+};
+
 type GrantSource = "free" | "subscription" | "module" | "manual" | "promotion";
 
 const COMMERCIAL_LABELS: Record<string, string> = {
@@ -125,13 +153,13 @@ const COMMERCIAL_LABELS: Record<string, string> = {
   "vendor.jarvis": "Vendor JARVIS",
   "vendor.proposals_catalog": "Vendor Propostas & Catálogo",
   "vendor.management": "Vendor Gestão",
-  "vendor.praca_ai": "Praça.ai",
+  "vendor.praca": "Praça.ai",
   "vendor.app_builder": "Vendor App Builder",
   "vendor.automations": "Vendor Automations",
-  "vendor.bi_analytics": "Vendor BI & Analytics",
-  "vendor.knowledge_ai": "Vendor Knowledge AI",
+  "vendor.bi": "Vendor BI & Analytics",
+  "vendor.knowledge": "Vendor Knowledge AI",
   "vendor.reputation": "Vendor Reputation",
-  "vendor.arqdor": "arqdor.ai",
+  "arqdor.ai": "arqdor.ai",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -177,6 +205,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
   const [grantNote, setGrantNote] = useState("");
   const queryKey = ["admin-access-license", tenantId];
   const commercialQueryKey = ["admin-commercial-access", tenantId];
+  const provisioningQueryKey = ["admin-commercial-provisioning-preview", tenantId];
 
   const licenseQuery = useQuery<AdminLicenseResponse>({
     queryKey,
@@ -219,6 +248,20 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
     retry: false,
   });
 
+  const provisioningQuery = useQuery<ProvisioningPreview>({
+    queryKey: provisioningQueryKey,
+    queryFn: async () => {
+      const response = await fetch(`/api/admin/tenants/${tenantId}/commercial-provisioning-preview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as ProvisioningPreview & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Falha ao comparar provisionamento");
+      return result;
+    },
+    enabled: Boolean(tenantId && token),
+    retry: false,
+  });
+
   const enroll = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/admin/access-license/enroll", {
@@ -235,6 +278,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: commercialQueryKey }),
+        queryClient.invalidateQueries({ queryKey: provisioningQueryKey }),
       ]);
       toast({ title: "Empresa matriculada no acesso pré-pago" });
     },
@@ -257,6 +301,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: commercialQueryKey }),
+        queryClient.invalidateQueries({ queryKey: provisioningQueryKey }),
       ]);
       toast({ title: "Contrato anual ativado por 12 meses" });
     },
@@ -289,7 +334,10 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
       setGrantSource("manual");
       setGrantEndsAt("");
       setGrantNote("");
-      await queryClient.invalidateQueries({ queryKey: commercialQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: commercialQueryKey }),
+        queryClient.invalidateQueries({ queryKey: provisioningQueryKey }),
+      ]);
       toast({ title: "Acesso comercial liberado" });
     },
     onError: (error) => toast({
@@ -309,7 +357,10 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
       return result;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: commercialQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: commercialQueryKey }),
+        queryClient.invalidateQueries({ queryKey: provisioningQueryKey }),
+      ]);
       toast({ title: "Acesso comercial revogado" });
     },
     onError: (error) => toast({
@@ -332,7 +383,8 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
       ? entitlements.length === 1 && hasFree ? "CRM Free" : `${entitlements.length} produto(s)`
       : "Sem entitlement novo";
   const grantableProducts = (commercialModelQuery.data?.products ?? [])
-    .filter((product) => product.active && !["service", "consumption_pack"].includes(product.offerKind));
+    .filter((product) => product.active && !["service", "consumption_pack", "prepaid_pass"].includes(product.offerKind));
+  const provisioning = provisioningQuery.data;
 
   return (
     <Card>
@@ -479,7 +531,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setShowGrantForm(false)} disabled={grantEntitlement.isPending}>Cancelar</Button>
               </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">Libera o produto comercial sem editar switches técnicos. Passe pré-pago continua sendo controlado pelo motor de 5 dias.</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">Libera produto/plano que gera acesso contínuo. Growth +5 dias e serviços são controlados pelos fluxos próprios, não por override manual.</p>
             </div>
           )}
 
@@ -571,6 +623,56 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
             </div>
           </>
         )}
+
+        <Separator />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold"><Layers3 className="h-4 w-4 text-emerald-600" /> Preview de provisionamento técnico</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Compara Produto → Entitlement → módulos esperados com overrides técnicos atuais. Nenhuma alteração é aplicada automaticamente.</p>
+            </div>
+            <Badge variant="outline">Preview somente</Badge>
+          </div>
+
+          {provisioningQuery.isLoading ? (
+            <div className="flex justify-center py-5"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : provisioningQuery.isError || !provisioning ? (
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">Preview ainda não disponível neste ambiente.</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Produtos efetivos</p><p className="mt-1 text-xl font-semibold">{provisioning.effectiveProducts.length}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Módulos de navegação esperados</p><p className="mt-1 text-xl font-semibold">{provisioning.expectedNavModules.length}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Conflitos a revisar</p><p className={`mt-1 text-xl font-semibold ${provisioning.conflicts.blockedExpected.length > 0 ? "text-orange-700" : "text-emerald-700"}`}>{provisioning.conflicts.blockedExpected.length + provisioning.conflicts.enabledOutsideCommercialModel.length}</p></div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/10 p-3">
+                <p className="text-xs font-semibold">Módulos esperados pelo acesso comercial</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {provisioning.expectedNavModules.map((module) => (
+                    <Badge key={module.moduleKey} variant={module.state === "blocked_by_override" ? "destructive" : "secondary"} className="text-[10px]">
+                      {module.moduleName}{module.state === "blocked_by_override" ? " · bloqueado manualmente" : ""}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {provisioning.technicalCapabilities.length > 0 && (
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-semibold">Capacidades técnicas sem switch próprio</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">{provisioning.technicalCapabilities.map((item) => <Badge key={item.moduleKey} variant="outline" className="font-mono text-[10px]">{item.moduleKey}</Badge>)}</div>
+                </div>
+              )}
+
+              {(provisioning.conflicts.blockedExpected.length > 0 || provisioning.conflicts.enabledOutsideCommercialModel.length > 0) && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 text-xs text-orange-900">
+                  {provisioning.conflicts.blockedExpected.length > 0 && <p><strong>Esperados, mas bloqueados por override:</strong> {provisioning.conflicts.blockedExpected.join(", ")}.</p>}
+                  {provisioning.conflicts.enabledOutsideCommercialModel.length > 0 && <p className={provisioning.conflicts.blockedExpected.length > 0 ? "mt-1" : ""}><strong>Ativos fora do modelo comercial:</strong> {provisioning.conflicts.enabledOutsideCommercialModel.join(", ")}. Revisar antes de desligar.</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {pendingContracts.length > 0 && (
           <>
