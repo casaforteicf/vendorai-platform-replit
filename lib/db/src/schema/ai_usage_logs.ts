@@ -16,6 +16,8 @@ export const AI_FEATURES = [
   "agent_relacionamento",
   "agent_financeiro",
   "agent_cobranca",
+  "agent_recepcao",
+  "agent_expansao_conta",
   "proposal_generator",
   "briefing_generator",
   "site_generator",
