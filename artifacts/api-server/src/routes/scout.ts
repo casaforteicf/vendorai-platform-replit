@@ -387,6 +387,14 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, re
     const rendered = renderTemplate(acao.mensagem ?? "Olá {nome}, temos uma novidade para você!", { nome: lead.nome ?? "", nome_cliente: lead.nome ?? "" });
     if (!rendered.ok) return res.status(422).json({ error: `Mensagem com placeholder quebrado: ${rendered.motivoFalha}` });
     mensagem = rendered.mensagem;
+  } else {
+    // Mensagem editada manualmente pelo admin também passa pela mesma
+    // validação do caminho automático — sem isso, um {placeholder} que
+    // sobrou sem querer (ex: admin não preencheu {nome} ao editar o
+    // preview) ia direto pro WhatsApp do cliente sem trava nenhuma.
+    const rendered = renderTemplate(mensagem, { nome: lead.nome ?? "", nome_cliente: lead.nome ?? "" });
+    if (!rendered.ok) return res.status(422).json({ error: `Mensagem com placeholder quebrado: ${rendered.motivoFalha}` });
+    mensagem = rendered.mensagem;
   }
 
   await sendDirectWhatsAppMessage(tenantId, lead.telefone, mensagem, req.log as any);

@@ -474,6 +474,19 @@ export async function analisarCliente(
     // virou venda nem foi recusado) há X dias. Universal, qualquer vertical
     // que use o módulo de Propostas — não precisa de catálogo nem histórico
     // de compra, só um orçamento parado no funil.
+    //
+    // Detecta tanto "enviada" quanto "pendente" (17/09 — corrigido: só
+    // detectava "enviada", oportunidade nunca era criada pra propostas em
+    // "pendente" mesmo esse sendo o status seguinte de "enviada" no fluxo
+    // real). Isso é seguro mesmo "pendente" tecnicamente sendo alcançável
+    // também a partir de "rascunho" na máquina de estados (PROPOSTA_TRANSITIONS
+    // em routes/propostas.ts) — hoje nenhum caminho real (UI ou backend) usa
+    // esse atalho, só "enviada → pendente" é exercitado. Mesmo assim, o
+    // envio automático de mensagem citando o orçamento continua exigindo
+    // "enviada" estrito via isSentProposalStatus (scoutBudgetGuard.ts) — não
+    // relaxado aqui — então mesmo se algum dia esse atalho passar a ser
+    // usado, o pior caso é a oportunidade ser criada e depois marcada
+    // "ignorado" no envio, nunca uma mensagem indevida.
     if (regra.tipo === "orcamento_parado") {
       const diasParado = cond.diasParado ?? 7;
       const cutoffParado = new Date(Date.now() - diasParado * 24 * 60 * 60 * 1000);
@@ -490,7 +503,7 @@ export async function analisarCliente(
           and(
             eq(propostasTable.tenantId, tenantId),
             eq(propostasTable.leadId, clienteId),
-            eq(propostasTable.status, "enviada"),
+            or(eq(propostasTable.status, "enviada"), eq(propostasTable.status, "pendente")),
             lte(propostasTable.updatedAt, cutoffParado),
           ),
         )
