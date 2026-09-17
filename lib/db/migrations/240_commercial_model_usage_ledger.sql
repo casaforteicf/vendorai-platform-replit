@@ -129,8 +129,8 @@ WITH vendor_catalog_tenant AS (
   LIMIT 1
 )
 INSERT INTO produtos_catalogo
-  (tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
-SELECT tenant_id, 'Vendor CRM Free', 'vendor-crm-free', 'saas_plan',
+  (id, tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
+SELECT gen_random_uuid()::text, tenant_id, 'Vendor CRM Free', 'vendor-crm-free', 'saas_plan',
        'CRM completo para 1 usuário. Porta de entrada gratuita do ecossistema VendorAI.',
        0, 0, 'un', true, true, 'mensal'
 FROM vendor_catalog_tenant
@@ -145,8 +145,8 @@ WITH vendor_catalog_tenant AS (
   LIMIT 1
 )
 INSERT INTO produtos_catalogo
-  (tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
-SELECT tenant_id, 'VendorAI Growth', 'vendor-growth-monthly', 'saas_plan',
+  (id, tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
+SELECT gen_random_uuid()::text, tenant_id, 'VendorAI Growth', 'vendor-growth-monthly', 'saas_plan',
        'Ecossistema VendorAI completo para o segmento do cliente, com usuários ilimitados e franquias mensais de consumo.',
        1490, 1490, 'un', true, true, 'mensal'
 FROM vendor_catalog_tenant
@@ -161,8 +161,8 @@ WITH vendor_catalog_tenant AS (
   LIMIT 1
 )
 INSERT INTO produtos_catalogo
-  (tenant_id, nome, sku, product_type, descricao, preco_base, unidade, ativo, destaque)
-SELECT tenant_id, 'Growth +5 dias', 'vendor-growth-5d', 'saas_addon',
+  (id, tenant_id, nome, sku, product_type, descricao, preco_base, unidade, ativo, destaque)
+SELECT gen_random_uuid()::text, tenant_id, 'Growth +5 dias', 'vendor-growth-5d', 'saas_addon',
        'Bloco adicional de 5 dias de acesso Growth.', 399, 'un', true, false
 FROM vendor_catalog_tenant
 WHERE NOT EXISTS (SELECT 1 FROM produtos_catalogo WHERE sku = 'vendor-growth-5d');
