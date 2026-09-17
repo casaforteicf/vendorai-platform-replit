@@ -24,7 +24,7 @@ function canAccess(req: Express.Request, tenantId: string) {
 // ─── Cardápio ───────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/food/cardapio", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(foodCardapioItensTable.tenantId, tenantId)];
@@ -41,7 +41,7 @@ router.get("/tenants/:tenantId/food/cardapio", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/food/cardapio", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db
@@ -52,7 +52,7 @@ router.post("/tenants/:tenantId/food/cardapio", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/food/cardapio/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -68,7 +68,7 @@ router.patch("/tenants/:tenantId/food/cardapio/:id", async (req, res) => {
 // Soft delete — disponivel = false (mantém histórico dos pedidos antigos
 // que referenciam esse item)
 router.delete("/tenants/:tenantId/food/cardapio/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
@@ -86,7 +86,7 @@ router.delete("/tenants/:tenantId/food/cardapio/:id", async (req, res) => {
 //        | cancelado a qualquer momento
 
 router.get("/tenants/:tenantId/food/pedidos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const filters = [eq(foodPedidosTable.tenantId, tenantId)];
@@ -131,7 +131,7 @@ router.get("/tenants/:tenantId/food/pedidos", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/food/pedidos", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { itens, ...pedidoBody } = req.body as {
@@ -165,7 +165,7 @@ router.post("/tenants/:tenantId/food/pedidos", async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId/food/pedidos/:id/status", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = req.params.tenantId as string; // tenant-audit: reviewed — checado por canAccess() logo abaixo, mesmo padrão de servicos.ts/varejo.ts/etc.
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
