@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
+import { SuperAdminSidebarLayout } from "./SuperAdminSidebarLayout";
 import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
 import { AdsMediaPlanContextBanner } from "@/components/marketing/AdsMediaPlanContextBanner";
 import { MessagingMediaPlanBridge } from "@/components/marketing/MessagingMediaPlanBridge";
@@ -33,39 +34,6 @@ const PRACA_AI_PATHS = new Set([
 const PRACA_AI_LINK_SELECTOR = Array.from(PRACA_AI_PATHS)
   .map((href) => `a[href="${href}"]`)
   .join(",");
-
-const SUPERADMIN_GROUPS = [
-  {
-    key: "clientes",
-    label: "Clientes",
-    description: "Tenants e acesso às empresas",
-    hrefs: ["/admin/tenants"],
-  },
-  {
-    key: "plataforma",
-    label: "Plataforma",
-    description: "Segmentos, produtos e superfícies da plataforma",
-    hrefs: ["/admin/verticais", "/admin/app-builder", "/admin/produtos-internos", "/marketplace"],
-  },
-  {
-    key: "ia",
-    label: "IA & Automação",
-    description: "Consumo, modelos e evolução de IA",
-    hrefs: ["/admin/ai-usage", "/admin/ml-status"],
-  },
-  {
-    key: "financeiro",
-    label: "Financeiro & Comercial",
-    description: "Financeiro, parceiros e operação comercial",
-    hrefs: ["/admin/financeiro", "/admin/partners"],
-  },
-  {
-    key: "operacao",
-    label: "Operação & Suporte",
-    description: "Suporte, incidentes, relatos e novidades",
-    hrefs: ["/admin/suporte", "/admin/relatos-tecnicos", "/admin/changelog"],
-  },
-] as const;
 
 function normalizeVertical(value: string | null | undefined) {
   return (value ?? "")
@@ -527,133 +495,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, [companyLogoUrl, companyName, tenantOverride, user]);
 
-  useEffect(() => {
-    const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
-
-    const restoreRoot = (root: HTMLElement) => {
-      const header = Array.from(root.children).find(
-        (child) => child instanceof HTMLParagraphElement && child.textContent?.trim() === "Super Admin",
-      );
-      const groups = Array.from(root.querySelectorAll<HTMLElement>(':scope > [data-superadmin-nav-group="true"]'));
-      const anchors = groups.flatMap((group) => Array.from(group.querySelectorAll<HTMLAnchorElement>("a[href]")));
-      groups.forEach((group) => group.remove());
-      anchors.forEach((anchor) => {
-        if (header?.nextSibling) root.insertBefore(anchor, header.nextSibling);
-        else root.appendChild(anchor);
-      });
-      delete root.dataset.superadminNavOrganized;
-    };
-
-    const organizeSuperAdminNavigation = () => {
-      const headers = Array.from(document.querySelectorAll<HTMLParagraphElement>("p")).filter(
-        (paragraph) => paragraph.textContent?.trim() === "Super Admin",
-      );
-
-      headers.forEach((header) => {
-        const root = header.parentElement;
-        if (!root) return;
-
-        if (!isPureSuperAdmin) {
-          if (root.dataset.superadminNavOrganized === "true") restoreRoot(root);
-          return;
-        }
-
-        if (root.dataset.superadminNavOrganized === "true") return;
-
-        const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>(":scope > a[href]"));
-        if (!anchors.some((anchor) => anchor.getAttribute("href") === "/admin/tenants")) return;
-
-        const byHref = new Map(anchors.map((anchor) => [anchor.getAttribute("href") ?? "", anchor]));
-        const claimed = new Set<HTMLAnchorElement>();
-
-        SUPERADMIN_GROUPS.forEach((groupConfig) => {
-          const groupAnchors = groupConfig.hrefs
-            .map((href) => byHref.get(href))
-            .filter((anchor): anchor is HTMLAnchorElement => !!anchor);
-          if (groupAnchors.length === 0) return;
-
-          groupAnchors.forEach((anchor) => claimed.add(anchor));
-
-          const details = document.createElement("details");
-          details.dataset.superadminNavGroup = "true";
-          details.dataset.superadminNavGroupKey = groupConfig.key;
-          details.className = "group/admin rounded-xl";
-          details.title = groupConfig.description;
-
-          const hasActiveRoute = groupAnchors.some((anchor) => {
-            const href = anchor.getAttribute("href") ?? "";
-            return location === href || (href !== "/" && location.startsWith(href));
-          });
-          details.open = hasActiveRoute || groupConfig.key === "clientes";
-
-          const summary = document.createElement("summary");
-          summary.className = [
-            "flex min-h-[42px] cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors",
-            hasActiveRoute
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground",
-          ].join(" ");
-          summary.setAttribute("aria-label", `${groupConfig.label}: ${groupConfig.description}`);
-
-          const label = document.createElement("span");
-          label.textContent = groupConfig.label;
-
-          const chevron = document.createElement("span");
-          chevron.textContent = "›";
-          chevron.setAttribute("aria-hidden", "true");
-          chevron.className = "text-base transition-transform group-open/admin:rotate-90";
-
-          const body = document.createElement("div");
-          body.className = "ml-3 mt-1 space-y-1 border-l border-border/60 pl-2";
-
-          summary.append(label, chevron);
-          groupAnchors.forEach((anchor) => body.appendChild(anchor));
-          details.append(summary, body);
-          root.appendChild(details);
-        });
-
-        const unclaimed = anchors.filter((anchor) => !claimed.has(anchor));
-        if (unclaimed.length > 0) {
-          const details = document.createElement("details");
-          details.dataset.superadminNavGroup = "true";
-          details.dataset.superadminNavGroupKey = "outros";
-          details.className = "group/admin rounded-xl";
-          details.open = unclaimed.some((anchor) => {
-            const href = anchor.getAttribute("href") ?? "";
-            return location === href || location.startsWith(href);
-          });
-
-          const summary = document.createElement("summary");
-          summary.className = "flex min-h-[42px] cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground";
-          summary.textContent = "Outros";
-
-          const body = document.createElement("div");
-          body.className = "ml-3 mt-1 space-y-1 border-l border-border/60 pl-2";
-          unclaimed.forEach((anchor) => body.appendChild(anchor));
-          details.append(summary, body);
-          root.appendChild(details);
-        }
-
-        root.dataset.superadminNavOrganized = "true";
-      });
-    };
-
-    organizeSuperAdminNavigation();
-    const observer = new MutationObserver(organizeSuperAdminNavigation);
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      observer.disconnect();
-      document.querySelectorAll<HTMLElement>('[data-superadmin-nav-organized="true"]').forEach(restoreRoot);
-    };
-  }, [location, tenantOverride, user?.platformRole]);
-
-  return (
-    <SidebarLayoutLegacy>
+  const shellContent = (
+    <>
       <AdsMediaPlanContextBanner pathname={location} />
       <MessagingMediaPlanBridge pathname={location} />
       {children}
       <MarketingAgentDock pathname={location} />
-    </SidebarLayoutLegacy>
+    </>
   );
+
+  if (user?.platformRole === "super_admin" && !tenantOverride) {
+    return <SuperAdminSidebarLayout>{shellContent}</SuperAdminSidebarLayout>;
+  }
+
+  return <SidebarLayoutLegacy>{shellContent}</SidebarLayoutLegacy>;
 }
