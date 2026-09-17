@@ -1,0 +1,111 @@
+name: Temporary audit cleanup
+
+on:
+  push:
+    branches:
+      - fix/agent-engine-gateway-only
+    paths:
+      - .github/workflows/audit-cleanup-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/agent-engine-gateway-only
+          fetch-depth: 0
+
+      - name: Apply targeted cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # 1) agent-engine: require gateway context and remove direct provider fallback.
+          agent = Path('artifacts/api-server/src/lib/agent-engine.ts')
+          text = agent.read_text()
+          pattern = re.compile(
+              r'// ── OpenAI call ─+\nexport async function callOpenAI\([\s\S]*?\n}\n\n// ── Counter updater ─+',
+              re.M,
+          )
+          replacement = '''// ── OpenAI call — gateway only ─────────────────────────────────────────────────\nexport async function callOpenAI(\n  messages: OpenAI.Chat.ChatCompletionMessageParam[],\n  tenantId: string,\n  agentName: AgentName,\n  log?: Logger\n): Promise<{ resposta: string; tokensUsed: number }> {\n  const feature = AGENT_FEATURE_MAP[agentName];\n  const { content, inputTokens, outputTokens } = await gatewayCallOpenAI(\n    tenantId,\n    feature,\n    messages,\n    { model: "gpt-4o-mini", temperature: 0.7, maxTokens: 600, log }\n  );\n  return { resposta: content, tokensUsed: inputTokens + outputTokens };\n}\n\n// ── Counter updater ───────────────────────────────────────────────────────────'''
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'agent-engine callOpenAI block: expected exactly 1 replacement, got {count}')
+          if 'Fallback: direct call' in updated or 'until full migration' in updated:
+              raise SystemExit('agent-engine: direct fallback marker still present')
+          agent.write_text(updated)
+
+          # 2) arch.ts: remove only the second duplicate prompt-variations CRUD block.
+          arch = Path('artifacts/api-server/src/routes/arch.ts')
+          text = arch.read_text()
+          start_marker = '// GET /arch/prompt-variations — list all for tenant'
+          next_marker = '// GET /arqdor/projects/:id — load a full ProjectContext blob for this tenant'
+          start = text.find(start_marker)
+          if start == -1:
+              raise SystemExit('arch.ts: duplicate prompt-variations block marker not found')
+          sep = '// ─────────────────────────────────────────────────────────────────────────────\n'
+          sep_start = text.rfind(sep, 0, start)
+          if sep_start != -1 and start - sep_start < 220:
+              start = sep_start
+          end = text.find(next_marker, start)
+          if end == -1:
+              raise SystemExit('arch.ts: next arqdor project marker not found')
+          next_sep = text.rfind(sep, start, end)
+          if next_sep != -1:
+              end = next_sep
+          updated = text[:start] + text[end:]
+          checks = {
+              'GET': 'router.get("/arch/prompt-variations"',
+              'POST': 'router.post("/arch/prompt-variations"',
+              'PATCH': 'router.patch("/arch/prompt-variations/:id"',
+              'DELETE': 'router.delete("/arch/prompt-variations/:id"',
+          }
+          for method, needle in checks.items():
+              c = updated.count(needle)
+              if c != 1:
+                  raise SystemExit(f'arch.ts {method} prompt-variations: expected 1 handler, got {c}')
+          if updated.count('router.post("/arch/prompt-variations/bulk"') != 1:
+              raise SystemExit('arch.ts: bulk prompt-variations handler must remain exactly once')
+          arch.write_text(updated)
+
+          # 3) Promote both integrity warnings to enforced errors.
+          audit = Path('artifacts/api-server/src/scripts/audit-production-integrity.ts')
+          audit_text = audit.read_text()
+          audit_text = audit_text.replace(
+              'if (count > 1) warnings.push(`arch.ts: ${route} registrado ${count} vezes; consolidar em um único handler.`);',
+              'if (count > 1) errors.push(`arch.ts: ${route} registrado ${count} vezes; deve existir um único handler.`);',
+          )
+          old_agent = '''const agentEngine = read("artifacts/api-server/src/lib/agent-engine.ts");\nif (/until full migration|Fallback:\\s*direct call/i.test(agentEngine)) {\n  warnings.push("agent-engine.ts: migração para ai-gateway ainda possui fallback direto; manter como dívida rastreada até remoção.");\n}'''
+          new_agent = '''const agentEngine = read("artifacts/api-server/src/lib/agent-engine.ts");\nif (/until full migration|Fallback:\\s*direct call/i.test(agentEngine)) {\n  errors.push("agent-engine.ts: chamadas de agentes devem usar somente o ai-gateway; fallback direto não é permitido.");\n}'''
+          if old_agent not in audit_text and new_agent not in audit_text:
+              raise SystemExit('audit: agent-engine fallback rule not found')
+          audit_text = audit_text.replace(old_agent, new_agent)
+          audit.write_text(audit_text)
+          PY
+
+      - name: Validate targeted checks
+        shell: bash
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @workspace/api-server exec vitest run src/__tests__/arch-prompt-variations.test.ts
+          pnpm --filter @workspace/api-server run audit:production-integrity
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "vendorai-audit-bot"
+          git config user.email "vendorai@appvendorai.com"
+          git add artifacts/api-server/src/lib/agent-engine.ts artifacts/api-server/src/routes/arch.ts artifacts/api-server/src/scripts/audit-production-integrity.ts
+          git commit -m "fix: finish AI gateway and prompt variations cleanup"
+          git push origin HEAD:fix/agent-engine-gateway-only
