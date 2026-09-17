@@ -1,31 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, ChevronDown, ChevronUp, Loader2, ShoppingCart, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Gauge, Sparkles } from "lucide-react";
 import "./marketing/MarketingResponsiveFocusBridge";
 import "./marketing/MarketingResultsTrackingBridge";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 
-type Budget = {
-  tenantId: string;
-  planName: string | null;
-  percentUsed: number;
-  alertPercent: 0 | 50 | 75 | 90 | 100;
-  blocked: boolean;
-  baseCredits: number;
-  extraCreditsRemaining: number;
-  usedCredits: number;
-  remainingCredits: number;
-  totalCycleCredits: number;
-  pack: { priceBrl: number; credits: number };
+type UsageQuota = {
+  metricKey: string;
+  name: string;
+  unitSingular: string;
+  unitPlural: string;
+  monthlyQuantity: number | null;
+  usedQuantity: number;
+  remainingQuantity: number | null;
+  percentUsed: number | null;
+  overageAllowed: boolean;
+  vendorCreditsUsed: number;
 };
 
-type PopoverPosition = {
-  left: number;
-  bottom: number;
-  width: number;
+type CommercialUsage = {
+  tenantId: string;
+  commercialKey: string;
+  vendorCreditsBalance: number;
+  quotas: UsageQuota[];
+  enforcementMode: "measure_only" | string;
 };
+
+type PopoverPosition = { left: number; bottom: number; width: number };
 
 function tenantIdFromStorage() {
   try {
@@ -40,81 +43,60 @@ function tenantIdFromStorage() {
   }
 }
 
-function headers(json = false): Record<string, string> {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token") ?? "";
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(json ? { "Content-Type": "application/json" } : {}),
-  };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function formatCredits(value: number) {
-  return Math.max(0, Math.round(value)).toLocaleString("pt-BR");
+function formatQuantity(value: number) {
+  return Math.max(0, value).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 }
 
-function monthKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+function planLabel(key: string) {
+  if (key === "vendor.growth") return "Growth";
+  if (key === "vendor.crm.free") return "CRM Free";
+  return key.replace(/^vendor\./, "").replaceAll("_", " ");
 }
 
 export function AiBudgetUsageIndicator() {
-  const [budget, setBudget] = useState<Budget | null>(null);
+  const [usage, setUsage] = useState<CommercialUsage | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [purchaseBusy, setPurchaseBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [tenantId, setTenantId] = useState(() => tenantIdFromStorage());
   const [sidebarSlot, setSidebarSlot] = useState<HTMLElement | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
-    const currentTenant = tenantIdFromStorage();
-    if (currentTenant !== tenantId) setTenantId(currentTenant);
-    if (!currentTenant || !localStorage.getItem("vendorai_token")) {
-      setBudget(null);
+    const tenantId = tenantIdFromStorage();
+    if (!tenantId || !localStorage.getItem("vendorai_token")) {
+      setUsage(null);
       return;
     }
-
     try {
-      const response = await fetch(`/api/tenants/${currentTenant}/ai-budget`, {
-        headers: headers(),
+      const response = await fetch(`/api/tenants/${tenantId}/commercial-usage`, {
+        headers: authHeaders(),
         cache: "no-store",
       });
       if (!response.ok) return;
-
-      const next = await response.json() as Budget;
-      setBudget(next);
-
-      if (next.alertPercent > 0) {
-        const alertKey = `vendorai_ai_budget_alert:${currentTenant}:${monthKey()}:${next.alertPercent}`;
-        if (!localStorage.getItem(alertKey)) {
-          localStorage.setItem(alertKey, new Date().toISOString());
-          setExpanded(true);
-          setNotice(
-            next.alertPercent >= 100
-              ? "Limite de IA atingido. Novas chamadas com a chave compartilhada ficam bloqueadas até a renovação ou compra de créditos."
-              : `Alerta: ${next.alertPercent}% da franquia de IA deste ciclo já foi utilizada.`,
-          );
-        }
-      }
+      setUsage(await response.json() as CommercialUsage);
     } catch {
-      // O indicador não pode interromper o restante do aplicativo.
+      // Medição comercial nunca pode interromper a navegação principal.
     }
-  }, [tenantId]);
+  }, []);
 
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => void load(), 30_000);
     const refresh = () => void load();
-    window.addEventListener("popstate", refresh);
     window.addEventListener("focus", refresh);
+    window.addEventListener("popstate", refresh);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("popstate", refresh);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("popstate", refresh);
     };
   }, [load]);
 
+  // Mantém o acionador pequeno ao lado de Novidades, sem cobrir o botão Sair.
   useEffect(() => {
     let createdSlot: HTMLElement | null = null;
     let utilitiesContainer: HTMLElement | null = null;
@@ -124,33 +106,21 @@ export function AiBudgetUsageIndicator() {
         setSidebarSlot(null);
         return;
       }
-
       const desktopSidebar = document.querySelector(".hidden.md\\:flex.sticky.top-0.h-screen");
-      if (!desktopSidebar) {
-        setSidebarSlot(null);
-        return;
-      }
-
-      const footer = desktopSidebar.querySelector(".p-4.border-t") as HTMLElement | null;
+      const footer = desktopSidebar?.querySelector(".p-4.border-t") as HTMLElement | null;
       const utilities = footer?.querySelector(".mb-1.space-y-1") as HTMLElement | null;
-      if (!utilities) {
-        setSidebarSlot(null);
-        return;
-      }
+      if (!utilities) return setSidebarSlot(null);
 
       const novidadesButton = Array.from(utilities.querySelectorAll("button")).find((button) =>
         /novidades/i.test(button.textContent ?? ""),
       ) as HTMLButtonElement | undefined;
-      if (!novidadesButton) {
-        setSidebarSlot(null);
-        return;
-      }
+      if (!novidadesButton) return setSidebarSlot(null);
 
       let slot = utilities.querySelector<HTMLElement>("[data-ai-budget-sidebar-slot]");
       if (!slot) {
         slot = document.createElement("div");
         slot.dataset.aiBudgetSidebarSlot = "true";
-        slot.setAttribute("aria-label", "Consumo de IA");
+        slot.setAttribute("aria-label", "Consumo VendorAI");
         slot.style.position = "absolute";
         slot.style.right = "36px";
         slot.style.bottom = "4px";
@@ -160,167 +130,91 @@ export function AiBudgetUsageIndicator() {
         createdSlot = slot;
         utilitiesContainer = utilities;
       }
-
       setSidebarSlot((current) => current === slot ? current : slot);
     };
 
     attachBesideNovidades();
     const timer = window.setInterval(attachBesideNovidades, 750);
     window.addEventListener("resize", attachBesideNovidades);
-    window.addEventListener("popstate", attachBesideNovidades);
-
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("resize", attachBesideNovidades);
-      window.removeEventListener("popstate", attachBesideNovidades);
       if (createdSlot?.isConnected) createdSlot.remove();
       if (utilitiesContainer?.isConnected) utilitiesContainer.style.position = "";
     };
   }, []);
 
   useEffect(() => {
-    if (!expanded || !sidebarSlot) {
-      setPopoverPosition(null);
-      return;
-    }
-
-    const updatePopoverPosition = () => {
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-
-      const rect = trigger.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const width = Math.min(390, Math.max(280, viewportWidth - 24));
-      const left = Math.max(12, Math.min(rect.right - width, viewportWidth - width - 12));
-      const bottom = Math.max(12, window.innerHeight - rect.top + 8);
-      setPopoverPosition({ left, bottom, width });
+    if (!expanded || !sidebarSlot) return setPopoverPosition(null);
+    const update = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(420, Math.max(300, window.innerWidth - 24));
+      setPopoverPosition({
+        left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
+        bottom: Math.max(12, window.innerHeight - rect.top + 8),
+        width,
+      });
     };
-
-    updatePopoverPosition();
-    window.addEventListener("resize", updatePopoverPosition);
-    window.addEventListener("scroll", updatePopoverPosition, true);
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
     return () => {
-      window.removeEventListener("resize", updatePopoverPosition);
-      window.removeEventListener("scroll", updatePopoverPosition, true);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
     };
   }, [expanded, sidebarSlot]);
 
   useEffect(() => {
     if (!expanded) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExpanded(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setExpanded(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [expanded]);
 
-  const tone = useMemo(() => {
-    const p = budget?.percentUsed ?? 0;
-    if (p >= 100) return "border-red-300 bg-red-50 text-red-900";
-    if (p >= 90) return "border-orange-300 bg-orange-50 text-orange-900";
-    if (p >= 75) return "border-amber-300 bg-amber-50 text-amber-900";
-    if (p >= 50) return "border-yellow-300 bg-yellow-50 text-yellow-900";
-    return "border-border bg-background text-foreground";
-  }, [budget?.percentUsed]);
+  const maxPercent = useMemo(() => Math.max(0, ...((usage?.quotas ?? [])
+    .map((q) => q.percentUsed ?? 0))), [usage?.quotas]);
+  const visible = useMemo(() => (usage?.quotas ?? []).filter((q) => q.monthlyQuantity !== null), [usage?.quotas]);
+  const tone = maxPercent >= 100
+    ? "border-red-300 bg-red-50 text-red-900"
+    : maxPercent >= 80
+      ? "border-amber-300 bg-amber-50 text-amber-900"
+      : "border-border bg-background text-foreground";
 
-  const buyCredits = async () => {
-    if (!budget || purchaseBusy) return;
-    setPurchaseBusy(true);
-    setNotice("Criando cobrança segura...");
+  if (!usage) return null;
 
-    try {
-      const response = await fetch(`/api/tenants/${budget.tenantId}/ai-credit-pack-purchases`, {
-        method: "POST",
-        headers: headers(true),
-        body: JSON.stringify({}),
-      });
-      const payload = await response.json().catch(() => ({})) as { invoiceUrl?: string; error?: string };
-      if (!response.ok || !payload.invoiceUrl) {
-        throw new Error(payload.error ?? "Não foi possível abrir a cobrança.");
-      }
-
-      let checkoutUrl: URL;
-      try {
-        checkoutUrl = new URL(payload.invoiceUrl, window.location.origin);
-      } catch {
-        throw new Error("A cobrança foi criada, mas o endereço de pagamento retornado é inválido.");
-      }
-
-      if (checkoutUrl.protocol !== "https:" && checkoutUrl.protocol !== "http:") {
-        throw new Error("A cobrança foi criada, mas o endereço de pagamento retornado não é seguro.");
-      }
-
-      setNotice("Abrindo pagamento...");
-      window.location.assign(checkoutUrl.href);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Não foi possível comprar créditos agora.");
-      setPurchaseBusy(false);
-    }
-  };
-
-  if (!budget) return null;
-
-  const percent = Math.max(0, Math.min(100, budget.percentUsed));
-
-  const details = (
-    <div className="border-t border-black/10 px-3 pb-3 pt-2 text-xs">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-        <span className="opacity-70">Plano</span><span className="text-right font-medium">{budget.planName ?? "Sem plano"}</span>
-        <span className="opacity-70">Franquia mensal</span><span className="text-right font-medium">{formatCredits(budget.baseCredits)} créditos</span>
-        <span className="opacity-70">Créditos extras</span><span className="text-right font-medium">{formatCredits(budget.extraCreditsRemaining)}</span>
-        <span className="opacity-70">Consumidos no ciclo</span><span className="text-right font-medium">{formatCredits(budget.usedCredits)}</span>
-      </div>
-
-      {budget.alertPercent >= 50 ? (
-        <div className="mt-2 flex gap-2 rounded-lg bg-black/5 p-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            {budget.blocked
-              ? "Franquia esgotada. O backend bloqueia novas chamadas compartilhadas antes de enviá-las ao provedor."
-              : `Alerta de consumo: ${budget.alertPercent}% utilizado.`}
-          </p>
-        </div>
-      ) : null}
-
-      {notice ? <p className="mt-2 rounded-lg bg-black/5 p-2">{notice}</p> : null}
-
-      <button
-        type="button"
-        onClick={() => void buyCredits()}
-        disabled={purchaseBusy}
-        className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-center font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-      >
-        {purchaseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-        {purchaseBusy
-          ? "Preparando pagamento..."
-          : `Comprar +${formatCredits(budget.pack.credits)} créditos · R$ ${budget.pack.priceBrl.toFixed(2).replace(".", ",")}`}
-      </button>
-      <p className="mt-1.5 text-[10px] opacity-65">Alertas automáticos em 50%, 75%, 90% e 100% por tenant.</p>
-    </div>
-  );
-
-  const expandedPanel = (
+  const panel = (
     <div className={`overflow-hidden rounded-xl border shadow-xl ${tone}`}>
-      <button
-        type="button"
-        onClick={() => setExpanded(false)}
-        className="flex w-full items-center gap-3 px-3 py-2 text-left"
-        aria-expanded="true"
-        aria-label="Fechar consumo de IA"
-      >
-        <span className="rounded-full bg-black/5 p-1.5"><Sparkles className="h-4 w-4" /></span>
+      <button type="button" onClick={() => setExpanded(false)} className="flex w-full items-center gap-3 px-3 py-2 text-left">
+        <span className="rounded-full bg-black/5 p-1.5"><Gauge className="h-4 w-4" /></span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center justify-between gap-3 text-xs font-semibold">
-            <span>Consumo de IA · {percent.toFixed(0)}%</span>
-            <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
-          </span>
-          <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
-            <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
-          </span>
+          <span className="block text-xs font-semibold">Consumo · {planLabel(usage.commercialKey)}</span>
+          <span className="block text-[11px] opacity-70">Franquias por função, não por usuário</span>
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0" />
+        <ChevronDown className="h-4 w-4" />
       </button>
-      {details}
+
+      <div className="max-h-[60vh] overflow-y-auto border-t border-black/10 px-3 py-3">
+        {visible.length === 0 ? (
+          <p className="rounded-lg bg-black/5 p-3 text-xs">Este produto não possui franquias mensais configuradas.</p>
+        ) : (
+          <div className="space-y-3">
+            {visible.map((quota) => {
+              const pct = Math.max(0, Math.min(100, quota.percentUsed ?? 0));
+              return (
+                <div key={quota.metricKey}>
+                  <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
+                    <span className="font-medium">{quota.name}</span>
+                    <span className="whitespace-nowrap opacity-75">{formatQuantity(quota.usedQuantity)} / {formatQuantity(quota.monthlyQuantity ?? 0)} {quota.unitPlural}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full bg-current transition-[width]" style={{ width: `${pct}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="mt-3 text-[10px] leading-4 opacity-65">Operações normais do CRM não consomem franquia. Falhas técnicas não descontam unidades. A nova medição está em modo de acompanhamento antes da ativação de bloqueios comerciais.</p>
+      </div>
     </div>
   );
 
@@ -332,78 +226,27 @@ export function AiBudgetUsageIndicator() {
         onClick={() => setExpanded((value) => !value)}
         className={`flex h-7 items-center gap-1 rounded-full border px-2 text-left shadow-sm ${tone}`}
         aria-expanded={expanded}
-        aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
+        aria-label="Abrir consumo do plano"
       >
-        <Sparkles className="h-3 w-3 shrink-0" />
-        <span className="text-[9px] font-semibold leading-none tracking-tight">IA · {percent.toFixed(0)}%</span>
-        {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
-          : <ChevronUp className="h-3 w-3 shrink-0 opacity-70" />
-        }
+        <Sparkles className="h-3 w-3" />
+        <span className="text-[9px] font-semibold leading-none">Uso · {maxPercent.toFixed(0)}%</span>
+        {expanded ? <ChevronDown className="h-3 w-3 opacity-70" /> : <ChevronUp className="h-3 w-3 opacity-70" />}
       </button>,
       sidebarSlot,
     );
-
     const popover = expanded && popoverPosition
-      ? createPortal(
-          <div
-            className="fixed z-[1000] max-h-[calc(100vh-24px)] overflow-y-auto"
-            style={{
-              left: popoverPosition.left,
-              bottom: popoverPosition.bottom,
-              width: popoverPosition.width,
-            }}
-          >
-            {expandedPanel}
-          </div>,
-          document.body,
-        )
+      ? createPortal(<div className="fixed z-[1000] max-h-[calc(100vh-24px)] overflow-y-auto" style={popoverPosition}>{panel}</div>, document.body)
       : null;
-
     return <>{trigger}{popover}</>;
   }
 
-  const mobileContainer = expanded
-    ? "left-3 right-3 w-auto rounded-xl sm:left-4 sm:right-auto sm:w-[min(390px,calc(100vw-2rem))]"
-    : "left-3 w-auto rounded-full sm:left-4";
-
   return (
-    <div className={`fixed bottom-4 z-[125] border shadow-lg ${mobileContainer} ${tone}`}>
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className={expanded
-          ? "flex w-full items-center gap-3 px-3 py-2 text-left"
-          : "flex h-8 items-center gap-1.5 px-2.5 text-left"
-        }
-        aria-expanded={expanded}
-        aria-label={expanded ? "Fechar consumo de IA" : `Consumo de IA: ${percent.toFixed(0)}%`}
-      >
-        <span className={expanded ? "rounded-full bg-black/5 p-1.5" : "rounded-full bg-black/5 p-1"}>
-          <Sparkles className={expanded ? "h-4 w-4" : "h-3 w-3"} />
-        </span>
-
-        {expanded ? (
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center justify-between gap-3 text-xs font-semibold">
-              <span>Consumo de IA · {percent.toFixed(0)}%</span>
-              <span className="text-[11px] font-medium opacity-75">{formatCredits(budget.remainingCredits)} restantes</span>
-            </span>
-            <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-black/10">
-              <span className="block h-full rounded-full bg-current transition-[width]" style={{ width: `${percent}%` }} />
-            </span>
-          </span>
-        ) : (
-          <span className="text-[10px] font-semibold leading-none tracking-tight">IA · {percent.toFixed(0)}%</span>
-        )}
-
-        {expanded
-          ? <ChevronDown className="h-4 w-4 shrink-0" />
-          : <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-70" />
-        }
-      </button>
-
-      {expanded ? details : null}
+    <div className={`fixed bottom-4 left-3 z-[125] ${expanded ? "right-3" : ""} sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]`}>
+      {expanded ? panel : (
+        <button type="button" onClick={() => setExpanded(true)} className={`flex h-8 items-center gap-1.5 rounded-full border px-2.5 shadow-lg ${tone}`}>
+          <Sparkles className="h-3.5 w-3.5" /><span className="text-[10px] font-semibold">Uso · {maxPercent.toFixed(0)}%</span><ChevronUp className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }
