@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Cpu,
   HelpCircle,
+  LayoutDashboard,
   LogOut,
   Menu,
   Package,
@@ -43,8 +44,8 @@ type AdminNavGroup = {
 const SIDEBAR_STORAGE_KEY = "vendorai_superadmin_sidebar_expanded";
 
 export function SuperAdminSidebarLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout, token } = useAuth();
-  const [location] = useLocation();
+  const { user, logout, token, setTenantOverride } = useAuth();
+  const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -126,6 +127,16 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
     });
   };
 
+  const openTenantWorkspace = () => {
+    if (!user?.tenantId) return;
+    setTenantOverride({
+      id: user.tenantId,
+      name: "Vendor.ai",
+      vertical: user.tenantVertical ?? "",
+    });
+    setLocation("/");
+  };
+
   const isActive = (href: string) =>
     location === href || (href !== "/" && location.startsWith(href));
 
@@ -160,6 +171,22 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
         <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Super Admin
         </p>
+
+        <button
+          type="button"
+          onClick={() => {
+            openTenantWorkspace();
+            onNavigate?.();
+          }}
+          disabled={!user?.tenantId}
+          className="mb-2 flex min-h-[44px] w-full items-center gap-3 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Abrir o mesmo ambiente operacional usado pelos tenants"
+        >
+          <LayoutDashboard className="h-4 w-4 shrink-0" />
+          <span className="flex-1">Ambiente operacional</span>
+          <ChevronRight className="h-4 w-4 shrink-0" />
+        </button>
+
         {groups.map((group) => {
           const active = group.items.some((item) => isActive(item.href));
           return (
