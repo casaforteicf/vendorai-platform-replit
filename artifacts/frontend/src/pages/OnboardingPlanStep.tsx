@@ -11,19 +11,19 @@ type Props = {
 };
 
 const MONTHLY_FEATURES = [
-  "Os 5 dias grátis atuais continuam ativos",
-  "1º mês pago por R$ 497,00",
-  "A partir do 2º mês: R$ 990,00/mês",
-  "Todos os módulos Growth e usuários ilimitados",
-  "Acesso contínuo, sem precisar renovar blocos manualmente",
-  "Sem fidelidade: cancele quando quiser",
+  "Os dias grátis atuais continuam ativos",
+  "A condição comercial segue a oferta que trouxe você ao VendorAI",
+  "Todos os módulos Growth aplicáveis ao seu segmento",
+  "Usuários ilimitados durante o Growth",
+  "Acesso contínuo, sem renovar blocos manualmente",
+  "Sem alterar a origem comercial registrada no cadastro",
 ];
 
 const PERIOD_FEATURES = [
-  "Os 5 dias grátis atuais continuam ativos",
-  "Depois, compre somente quando precisar",
-  "Blocos adicionais de 5 dias por R$ 399,00",
-  "Mesma experiência completa do Growth durante o período ativo",
+  "Os dias grátis atuais continuam ativos",
+  "Depois, use blocos adicionais quando precisar",
+  "A condição de cada bloco segue a oferta comercial válida",
+  "Mesma experiência Growth durante o período ativo",
   "Seus dados continuam disponíveis entre os períodos",
 ];
 
@@ -32,11 +32,11 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
     <div className="space-y-6">
       <div className="text-center">
         <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-          Seus 5 dias grátis já estão ativos
+          Seu período de experiência está ativo
         </span>
         <h2 className="mt-4 text-2xl font-bold tracking-tight">Escolha como continuar com o VendorAI</h2>
         <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Você não paga nada agora pelos dias de teste. Escolha a modalidade que deve ficar preparada para sua conta quando o período gratuito terminar.
+          Nenhuma tabela pública de preços é aplicada nesta etapa. A condição comercial registrada na landing page ou campanha de origem acompanha sua conta.
         </p>
       </div>
 
@@ -44,14 +44,14 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
         <Card className="relative border-primary/60 shadow-sm ring-2 ring-primary/10">
           <CardContent className="flex h-full flex-col p-6">
             <span className="absolute right-5 top-5 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">
-              Recomendado
+              Acesso contínuo
             </span>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assinatura contínua</p>
             <h3 className="mt-2 text-2xl font-bold">Growth mensal</h3>
-            <p className="mt-2 text-sm text-muted-foreground">Acesso completo sem precisar renovar blocos manualmente.</p>
-            <div className="mt-4">
-              <div className="text-3xl font-bold">R$ 497 <span className="text-sm font-medium text-muted-foreground">no 1º mês pago</span></div>
-              <p className="mt-1 text-sm font-medium text-muted-foreground">Depois, R$ 990/mês</p>
+            <p className="mt-2 text-sm text-muted-foreground">Continuidade completa do ecossistema conforme a condição comercial vinculada à sua oferta.</p>
+            <div className="mt-4 rounded-xl border bg-muted/30 px-4 py-3">
+              <div className="text-sm font-semibold">Condição da sua oferta preservada</div>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">O valor aplicável é confirmado no momento comercial/checkout da oferta, não em uma tabela genérica da plataforma.</p>
             </div>
             <ul className="mt-5 flex-1 space-y-3 border-t pt-5">
               {MONTHLY_FEATURES.map((item) => (
@@ -63,7 +63,7 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
             </ul>
             <Button className="mt-6 w-full" disabled={submitting} onClick={() => onSelect("subscription")}>
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Continuar com plano mensal
+              Continuar com Growth mensal
             </Button>
           </CardContent>
         </Card>
@@ -71,9 +71,12 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
         <Card className="border-border shadow-sm">
           <CardContent className="flex h-full flex-col p-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Uso por períodos</p>
-            <h3 className="mt-2 text-2xl font-bold">Growth por 5 dias</h3>
-            <p className="mt-2 text-sm text-muted-foreground">Use por blocos quando sua empresa precisar.</p>
-            <div className="mt-4 text-3xl font-bold">R$ 399 <span className="text-sm font-medium text-muted-foreground">/ +5 dias</span></div>
+            <h3 className="mt-2 text-2xl font-bold">Growth por blocos</h3>
+            <p className="mt-2 text-sm text-muted-foreground">Use o Growth quando sua empresa precisar, preservando a mesma conta e os mesmos dados.</p>
+            <div className="mt-4 rounded-xl border bg-muted/30 px-4 py-3">
+              <div className="text-sm font-semibold">Condição por período conforme a oferta</div>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">A quantidade de dias e o valor aplicável vêm da condição comercial registrada para sua origem.</p>
+            </div>
             <ul className="mt-5 flex-1 space-y-3 border-t pt-5">
               {PERIOD_FEATURES.map((item) => (
                 <li key={item} className="flex gap-2.5 text-sm leading-5">
@@ -91,7 +94,7 @@ export default function OnboardingPlanStep({ submitting, onBack, onSelect }: Pro
       </div>
 
       <div className="rounded-xl border bg-muted/30 px-4 py-3 text-center text-xs leading-5 text-muted-foreground">
-        Nenhuma cobrança será feita durante os 5 dias grátis. Seus dados permanecem na conta e, no modo por períodos, novas automações ficam pausadas quando não houver um período ativo.
+        O histórico da oferta deve permanecer associado ao cadastro para que proposta, aceite, checkout e cobrança usem a mesma condição comercial.
       </div>
 
       <div className="flex justify-center">
