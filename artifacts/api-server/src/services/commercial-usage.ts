@@ -176,6 +176,7 @@ export async function getTenantUsageSnapshot(
         eq(usageLedgerTable.tenantId, tenantId),
         eq(usageLedgerTable.metricKey, quota.metricKey),
         eq(usageLedgerTable.success, true),
+        eq(usageLedgerTable.billable, true),
         gte(usageLedgerTable.createdAt, start),
       ));
 
