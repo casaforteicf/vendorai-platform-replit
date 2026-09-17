@@ -50,12 +50,24 @@ describe("VendorAI AI model router V2", () => {
     })).toBe("gpt-5.6-luna");
   });
 
-  it("routes complex site and intelligence work to Astra when enabled", () => {
+  it("routes premium creative work to Astra when enabled", () => {
     process.env["VENDORAI_AI_ROUTER_V2"] = "true";
     process.env["VENDORAI_AI_ROUTER_TENANTS"] = "tenant-internal";
-    expect(resolveTextModel({ feature: "site_generator", tenantId: "tenant-internal" })).toBe("gpt-6-astra");
-    expect(resolveTextModel({ feature: "intelligence_analysis", tenantId: "tenant-internal" })).toBe("gpt-6-astra");
-    expect(reasoningEffortForFeature("intelligence_analysis")).toBe("high");
+
+    const premiumFeatures = [
+      "site_generator",
+      "content_generator",
+      "image_generator",
+      "briefing_generator",
+      "spin_briefing",
+      "intelligence_analysis",
+    ] as const;
+
+    for (const feature of premiumFeatures) {
+      expect(textTierForFeature(feature)).toBe("astra");
+      expect(resolveTextModel({ feature, tenantId: "tenant-internal" })).toBe("gpt-6-astra");
+      expect(reasoningEffortForFeature(feature)).toBe("high");
+    }
   });
 
   it("fails closed for non-chat tenants outside the rollout allowlist", () => {
@@ -65,10 +77,10 @@ describe("VendorAI AI model router V2", () => {
     expect(resolveTextModel({ feature: "site_generator", tenantId: "tenant-customer" })).toBe("gpt-4o-mini");
   });
 
-  it("uses Sol and Luna according to workload", () => {
+  it("keeps professional work on Sol and high-volume work on Luna", () => {
     process.env["VENDORAI_AI_ROUTER_V2"] = "true";
     process.env["VENDORAI_AI_ROUTER_TENANTS"] = "tenant-internal";
-    expect(textTierForFeature("content_generator")).toBe("sol");
+    expect(textTierForFeature("proposal_generator")).toBe("sol");
     expect(textTierForFeature("agent_sdr")).toBe("luna");
     expect(textTierForFeature("document_extraction")).toBe("luna");
   });
@@ -90,6 +102,7 @@ describe("VendorAI AI model router V2", () => {
     process.env["VENDORAI_MODEL_LUNA"] = "future-luna-snapshot";
     process.env["VENDORAI_IMAGE_MODEL_PREMIUM"] = "premium-image-snapshot";
     expect(resolveTextModel({ feature: "site_generator", tenantId: "tenant-internal" })).toBe("future-astra-snapshot");
+    expect(resolveTextModel({ feature: "content_generator", tenantId: "tenant-internal" })).toBe("future-astra-snapshot");
     expect(resolveTextModel({ feature: "agent_service", tenantId: "tenant-internal" })).toBe("future-luna-snapshot");
     expect(resolveImageModel("premium")).toBe("premium-image-snapshot");
   });
