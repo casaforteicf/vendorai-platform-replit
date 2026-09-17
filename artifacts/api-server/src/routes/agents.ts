@@ -229,7 +229,7 @@ async function handleAgentProcess(
   let resposta: string;
   let tokensUsed: number;
   try {
-    ({ resposta, tokensUsed } = await callOpenAI(openaiMessages, tenantId));
+    ({ resposta, tokensUsed } = await callOpenAI(openaiMessages, tenantId, agentName, req.log));
     req.log.info({ leadId, agentName, tokensUsed }, `${agentName}: openai call succeeded`);
   } catch (err) {
     req.log.error({ err, leadId, agentName }, `${agentName}: openai call failed`);
@@ -411,7 +411,7 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
   let resposta: string;
   let tokensUsed: number;
   try {
-    ({ resposta, tokensUsed } = await callOpenAI(openaiMessages, tenantId));
+    ({ resposta, tokensUsed } = await callOpenAI(openaiMessages, tenantId, "scheduler", req.log));
     req.log.info({ leadId, tokensUsed }, "scheduler: openai call succeeded");
   } catch (err) {
     req.log.error({ err, leadId }, "scheduler: openai call failed");
