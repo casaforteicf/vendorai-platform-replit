@@ -1,0 +1,94 @@
+name: Temporary dedup prompt variations
+
+on:
+  push:
+    branches:
+      - fix/prompt-variations-dedup
+    paths:
+      - .github/workflows/dedup-prompt-variations-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  dedup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/prompt-variations-dedup
+          fetch-depth: 0
+      - name: Remove duplicate prompt variation handlers
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('artifacts/api-server/src/routes/arch.ts')
+          text = path.read_text()
+
+          start_marker = '// GET /arch/prompt-variations — list all for tenant'
+          next_marker = '// GET /arqdor/projects/:id — load a full ProjectContext blob for this tenant'
+
+          start = text.find(start_marker)
+          if start == -1:
+              raise SystemExit('Second prompt-variations block not found')
+
+          # Include the separator immediately before the duplicate block when present.
+          sep = '// ─────────────────────────────────────────────────────────────────────────────\n'
+          sep_start = text.rfind(sep, 0, start)
+          if sep_start != -1 and start - sep_start < 200:
+              start = sep_start
+
+          end = text.find(next_marker, start)
+          if end == -1:
+              raise SystemExit('Arqdor projects marker not found')
+
+          # Preserve the separator preceding the next valid route block.
+          next_sep = text.rfind(sep, start, end)
+          if next_sep != -1:
+              end = next_sep
+
+          updated = text[:start] + text[end:]
+
+          # Verify exactly one handler remains for the four canonical routes.
+          checks = {
+              'GET /arch/prompt-variations': 'router.get("/arch/prompt-variations"',
+              'POST /arch/prompt-variations': 'router.post("/arch/prompt-variations"',
+              'PATCH /arch/prompt-variations/:id': 'router.patch("/arch/prompt-variations/:id"',
+              'DELETE /arch/prompt-variations/:id': 'router.delete("/arch/prompt-variations/:id"',
+          }
+          for label, needle in checks.items():
+              count = updated.count(needle)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 handler after dedup, got {count}')
+
+          if updated.count('router.post("/arch/prompt-variations/bulk"') != 1:
+              raise SystemExit('bulk handler must remain exactly once')
+
+          path.write_text(updated)
+
+          audit = Path('artifacts/api-server/src/scripts/audit-production-integrity.ts')
+          audit_text = audit.read_text()
+          old = 'if (count > 1) warnings.push(`arch.ts: ${route} registrado ${count} vezes; consolidar em um único handler.`);'
+          new = 'if (count > 1) errors.push(`arch.ts: ${route} registrado ${count} vezes; deve existir um único handler.`);'
+          if old in audit_text:
+              audit.write_text(audit_text.replace(old, new))
+          elif new not in audit_text:
+              raise SystemExit('production integrity duplicate-route rule not found')
+      - name: Validate targeted tests
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @workspace/api-server exec vitest run src/__tests__/arch-prompt-variations.test.ts
+          pnpm --filter @workspace/api-server run audit:production-integrity
+      - name: Commit generated fix
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "vendorai-audit-bot"
+          git config user.email "vendorai@appvendorai.com"
+          git add artifacts/api-server/src/routes/arch.ts artifacts/api-server/src/scripts/audit-production-integrity.ts
+          git commit -m "fix: remove duplicate prompt variations handlers"
+          git push origin HEAD:fix/prompt-variations-dedup
