@@ -46,7 +46,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
-  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null }>({
+  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null; verticalSecundaria?: string | null }>({
     queryKey: ["tenant-plan", user?.tenantId],
     enabled: !!user?.tenantId && !!token,
     staleTime: 5 * 60_000,
@@ -148,6 +148,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const effectiveVertical = isSuperAdmin && tenantOverride
     ? tenantOverride.vertical
     : tenantData?.vertical ?? user?.tenantVertical;
+  // Vertical secundária: ainda não existe no preview de Super Admin
+  // (TenantOverride não carrega esse campo hoje) -- só se aplica no tenant
+  // real logado. Generaliza o mesmo padrão de "2 baldes ao mesmo tempo"
+  // que já existia só pro Pet Shop.
+  const effectiveVerticalSecundaria = isSuperAdmin && tenantOverride
+    ? null
+    : tenantData?.verticalSecundaria ?? null;
   type VerticalBucket =
     | "core" | "construcao" | "varejo" | "supermercado" | "salao" | "clinica"
     | "farmacia" | "imoveis" | "fretes" | "veiculos" | "arquitetura" | "seguros"
@@ -301,13 +308,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   const effectiveBucket = findVerticalBucket(effectiveVertical);
-  const isConstrucao = effectiveBucket === "construcao";
-  const isVarejo = effectiveBucket === "varejo";
-  const isSupermercado = effectiveBucket === "supermercado";
-  const isSalao = effectiveBucket === "salao" || effectiveVertical === "Pet Shop (Varejo)";
+  const effectiveSecondaryBucket = findVerticalBucket(effectiveVerticalSecundaria);
+  const isConstrucao = effectiveBucket === "construcao" || effectiveSecondaryBucket === "construcao";
+  const isVarejo = effectiveBucket === "varejo" || effectiveSecondaryBucket === "varejo";
+  const isSupermercado = effectiveBucket === "supermercado" || effectiveSecondaryBucket === "supermercado";
+  const isSalao = effectiveBucket === "salao" || effectiveSecondaryBucket === "salao" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
-  const isClinica = effectiveBucket === "clinica";
-  const isFarmacia = effectiveBucket === "farmacia";
+  const isClinica = effectiveBucket === "clinica" || effectiveSecondaryBucket === "clinica";
+  const isFarmacia = effectiveBucket === "farmacia" || effectiveSecondaryBucket === "farmacia";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -401,11 +409,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   // Baldes de nicho já cobrem o que os antigos allowlists cobriam --
   // computa direto a partir de VERTICAL_BUCKET (fonte única). Pet Shop é
-  // caso especial: usa 2 baldes ao mesmo tempo (varejo + salão/banho&tosa).
+  // caso especial histórico: usa 2 baldes ao mesmo tempo (varejo +
+  // salão/banho&tosa). Vertical secundária (campo genérico, qualquer
+  // tenant pode ter) soma o balde dela do mesmo jeito.
   const activeVerticalAllowlist = effectiveVertical
     ? new Set([
         ...CORE_VERTICAL_HREFS,
         ...BUCKET_EXTRA_HREFS[effectiveBucket ?? "core"],
+        ...(effectiveSecondaryBucket ? BUCKET_EXTRA_HREFS[effectiveSecondaryBucket] : []),
         ...(effectiveVertical === "Pet Shop (Varejo)" ? BUCKET_EXTRA_HREFS.salao : []),
       ])
     : undefined;

@@ -51,6 +51,7 @@ type TenantDetail = {
   demoExpiresAt?: string | null;
   demoConvertedAt?: string | null;
   vertical?: string | null;
+  verticalSecundaria?: string | null;
   planId?: string | null;
   comissaoPracaAiPercentual?: string | null;
   vendeNoPracaAi?: boolean | null;
@@ -249,6 +250,31 @@ export default function AdminTenantDetail() {
       return result;
     }, enabled: !!id && !!token, retry: false,
   });
+  const { data: segmentTemplates = [] } = useQuery<{ id: string; nome: string }[]>({
+    queryKey: ["segment-templates", "tenant-admin-detail"],
+    queryFn: async () => {
+      const r = await fetch("/api/segment-templates", { headers: authHeaders });
+      if (!r.ok) return [];
+      return r.json() as Promise<{ id: string; nome: string }[]>;
+    },
+    enabled: !!token,
+  });
+  const [verticalSecundariaDraft, setVerticalSecundariaDraft] = useState<string | null>(null);
+  const [savingVerticalSecundaria, setSavingVerticalSecundaria] = useState(false);
+  const verticalSecundariaValue = verticalSecundariaDraft ?? tenant?.verticalSecundaria ?? "";
+
+  async function saveVerticalSecundaria() {
+    setSavingVerticalSecundaria(true);
+    try {
+      await patchTenant({ verticalSecundaria: verticalSecundariaValue || null });
+      toast({ title: "Vertical secundária atualizada" });
+      setVerticalSecundariaDraft(null);
+    } catch (err) {
+      toast({ title: "Erro ao salvar vertical secundária", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setSavingVerticalSecundaria(false);
+    }
+  }
 
   async function patchTenant(payload: Record<string, unknown>) {
     const r = await fetch(`/api/tenants/${id}`, { method: "PATCH", headers: { ...authHeaders, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -411,6 +437,27 @@ export default function AdminTenantDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Resumo do tenant</CardTitle></CardHeader><CardContent className="space-y-2.5">
             <InfoRow label="Código" value={tenant.tenantCode ?? "—"} /><InfoRow label="Status" value={STATUS_LABELS[tenant.status] ?? tenant.status} /><InfoRow label="Tipo" value={tenant.isDemo ? `Demo até ${fmt(tenant.demoExpiresAt)}` : "Cliente"} /><InfoRow label="Segmento" value={tenant.vertical ?? "CRM Geral"} /><InfoRow label="Origem" value={tenant.provisioningMethod ? PROV_LABELS[tenant.provisioningMethod] ?? tenant.provisioningMethod : "—"} /><InfoRow label="Criado em" value={fmt(tenant.createdAt)} />
+            <div className="pt-1.5 border-t">
+              <p className="text-xs text-muted-foreground mb-1">Vertical secundária (opcional)</p>
+              <p className="text-[11px] text-muted-foreground mb-1.5">Soma módulos das duas verticais — ex: uma padaria que também é confeitaria.</p>
+              <div className="flex gap-1.5">
+                <select
+                  className="flex-1 h-8 text-xs rounded-md border border-input bg-background px-2"
+                  value={verticalSecundariaValue}
+                  onChange={(e) => setVerticalSecundariaDraft(e.target.value)}
+                >
+                  <option value="">Nenhuma</option>
+                  {segmentTemplates.filter((s) => s.nome !== tenant.vertical).map((s) => (
+                    <option key={s.id} value={s.nome}>{s.nome}</option>
+                  ))}
+                </select>
+                {verticalSecundariaDraft !== null && verticalSecundariaDraft !== (tenant.verticalSecundaria ?? "") && (
+                  <Button size="sm" className="h-8 text-xs px-2.5" disabled={savingVerticalSecundaria} onClick={() => void saveVerticalSecundaria()}>
+                    {savingVerticalSecundaria ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Salvar"}
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardContent></Card>
           <Card className="lg:col-span-2"><CardHeader className="pb-3"><CardTitle className="text-sm">Estado operacional</CardTitle></CardHeader><CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-lg bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Módulos ativos</p><p className="text-xl font-semibold mt-1">{enabledModules}</p></div>
