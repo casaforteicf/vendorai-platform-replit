@@ -239,6 +239,139 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, [arqdorVisible, location, setLocation]);
 
+  // Dentro do Arqdor, a navegação vira um workspace curto. CRM, agenda,
+  // conversas, catálogo global, ERP e marketing continuam sendo os mesmos
+  // módulos do Vendor.ai; não são clonados no menu nem no domínio do Arqdor.
+  useEffect(() => {
+    const pathname = location.split("?")[0];
+    const inArqdorContext = pathname === "/arch" || pathname.startsWith("/arch/");
+    if (user?.platformRole === "super_admin") return;
+
+    const restoreContext = () => {
+      document
+        .querySelectorAll<HTMLElement>('[data-arqdor-context-hidden="true"]')
+        .forEach((element) => {
+          element.style.display = element.dataset.arqdorPreviousDisplay ?? "";
+          delete element.dataset.arqdorPreviousDisplay;
+          delete element.dataset.arqdorContextHidden;
+        });
+      document
+        .querySelectorAll<HTMLElement>('[data-arqdor-context-entry="true"], [data-arqdor-context-back="true"]')
+        .forEach((element) => element.remove());
+      document
+        .querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]')
+        .forEach((root) => {
+          const label = root.querySelector<HTMLElement>("span.flex-1");
+          if (label) label.textContent = "Arqdor.ai";
+          root.setAttribute("aria-label", "Arqdor.ai");
+          root.title = "Arqdor.ai — Projetos, arquitetura, interiores e obra";
+        });
+    };
+
+    if (!inArqdorContext || !arqdorVisible) {
+      restoreContext();
+      return;
+    }
+
+    const entries = [
+      { href: "/arch/projetos", label: "Projetos", glyph: "P" },
+      { href: "/arch/render", label: "Render IA", glyph: "R" },
+      { href: "/arch/catalogo", label: "Biblioteca do Projeto", glyph: "B" },
+      { href: "/arch/marketplace", label: "Marketplace", glyph: "M" },
+    ];
+
+    const enforceArqdorContext = () => {
+      const roots = Array.from(
+        document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
+      );
+
+      roots.forEach((root) => {
+        const navContainer = root.parentElement;
+        if (!navContainer) return;
+
+        const rootLabel = root.querySelector<HTMLElement>("span.flex-1");
+        if (rootLabel) rootLabel.textContent = "Visão Geral";
+        root.setAttribute("aria-label", "Visão Geral do Arqdor.ai");
+        root.title = "Visão Geral do Arqdor.ai";
+
+        let insertAfter: Element = root;
+        entries.forEach((entry) => {
+          let link = navContainer.querySelector<HTMLAnchorElement>(
+            `a[data-arqdor-context-entry="true"][href="${entry.href}"]`,
+          );
+          if (!link) {
+            link = document.createElement("a");
+            link.href = entry.href;
+            link.dataset.arqdorContextEntry = "true";
+            link.title = entry.label;
+            link.setAttribute("aria-label", entry.label);
+
+            const icon = document.createElement("span");
+            icon.setAttribute("aria-hidden", "true");
+            icon.className = "h-4 w-4 shrink-0 grid place-items-center text-[11px] font-bold";
+            icon.textContent = entry.glyph;
+
+            const label = document.createElement("span");
+            label.className = "flex-1";
+            label.textContent = entry.label;
+            link.append(icon, label);
+            link.addEventListener("click", (event) => {
+              event.preventDefault();
+              setLocation(entry.href);
+            });
+            insertAfter.insertAdjacentElement("afterend", link);
+          }
+
+          const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
+          link.className = [
+            "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+            active
+              ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+              : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground",
+          ].join(" ");
+          insertAfter = link;
+        });
+
+        let back = navContainer.querySelector<HTMLAnchorElement>('a[data-arqdor-context-back="true"]');
+        if (!back) {
+          back = document.createElement("a");
+          back.href = "/";
+          back.dataset.arqdorContextBack = "true";
+          back.className = "mt-2 flex min-h-[40px] items-center gap-3 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground";
+          back.innerHTML = '<span aria-hidden="true" class="h-4 w-4 shrink-0 grid place-items-center">←</span><span class="flex-1">Voltar ao Vendor.ai</span>';
+          back.addEventListener("click", (event) => {
+            event.preventDefault();
+            setLocation("/");
+          });
+          insertAfter.insertAdjacentElement("afterend", back);
+        }
+
+        navContainer.querySelectorAll<HTMLElement>("a, button").forEach((element) => {
+          if (
+            element === root ||
+            element.dataset.arqdorContextEntry === "true" ||
+            element.dataset.arqdorContextBack === "true"
+          ) {
+            return;
+          }
+          if (element.dataset.arqdorContextHidden === "true") return;
+          element.dataset.arqdorPreviousDisplay = element.style.display;
+          element.dataset.arqdorContextHidden = "true";
+          element.style.display = "none";
+        });
+      });
+    };
+
+    enforceArqdorContext();
+    const observer = new MutationObserver(enforceArqdorContext);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      restoreContext();
+    };
+  }, [arqdorVisible, location, setLocation, user?.platformRole]);
+
   useEffect(() => {
     const isPureSuperAdmin = user?.platformRole === "super_admin" && !tenantOverride;
     if (isPureSuperAdmin || tenantNavModulesLoading || tenantQuery.isLoading) return;
