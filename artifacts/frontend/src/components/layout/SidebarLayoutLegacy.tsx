@@ -469,7 +469,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         : item
     );
 
-  const adminNavigation = isSuperAdmin
+  const adminNavigation = isSuperAdmin && !tenantOverride
     ? [
         { name: "Tenants",     href: "/admin/tenants",    icon: Briefcase,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "Segmentos",   href: "/admin/verticais",  icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
