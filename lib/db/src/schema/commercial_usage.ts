@@ -97,6 +97,25 @@ export const productUsageQuotasTable = pgTable(
   }),
 );
 
+/** Human-readable packs such as +20 images or +500 prospects. */
+export const consumptionPackDefinitionsTable = pgTable(
+  "consumption_pack_definitions",
+  {
+    commercialKey: text("commercial_key").primaryKey(),
+    metricKey: text("metric_key").notNull().references(() => usageMetricsTable.key, { onDelete: "restrict" }),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    vendorCredits: integer("vendor_credits").notNull(),
+    expiresAfterDays: integer("expires_after_days"),
+    active: boolean("active").notNull().default(false),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    metricIdx: index("consumption_pack_definitions_metric_idx").on(table.metricKey),
+  }),
+);
+
 /** Runtime entitlement produced by billing/access rules. */
 export const tenantEntitlementsTable = pgTable(
   "tenant_entitlements",
@@ -155,27 +174,35 @@ export const usageLedgerTable = pgTable(
   }),
 );
 
-/** Append-only wallet for purchased/promotional Vendor Credits. */
+/** Append-only wallet for generic or metric-specific purchased/promotional capacity. */
 export const vendorCreditTransactionsTable = pgTable(
   "vendor_credit_transactions",
   {
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
     creditsDelta: integer("credits_delta").notNull(),
+    metricKey: text("metric_key").references(() => usageMetricsTable.key, { onDelete: "restrict" }),
+    quantityDelta: numeric("quantity_delta", { precision: 14, scale: 3 }),
     reason: text("reason").notNull(),
     commercialKey: text("commercial_key"),
     referenceId: text("reference_id"),
+    expiresAt: timestamp("expires_at"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     tenantCreatedIdx: index("vendor_credit_transactions_tenant_created_idx").on(table.tenantId, table.createdAt),
+    tenantMetricIdx: index("vendor_credit_transactions_tenant_metric_idx").on(table.tenantId, table.metricKey),
+    referenceUq: uniqueIndex("vendor_credit_transactions_reference_uq")
+      .on(table.commercialKey, table.referenceId)
+      .where(sql`${table.referenceId} is not null`),
   }),
 );
 
 export type CommercialProductProfile = typeof commercialProductProfilesTable.$inferSelect;
 export type UsageMetric = typeof usageMetricsTable.$inferSelect;
 export type ProductUsageQuota = typeof productUsageQuotasTable.$inferSelect;
+export type ConsumptionPackDefinition = typeof consumptionPackDefinitionsTable.$inferSelect;
 export type TenantEntitlement = typeof tenantEntitlementsTable.$inferSelect;
 export type UsageLedgerEntry = typeof usageLedgerTable.$inferSelect;
 export type VendorCreditTransaction = typeof vendorCreditTransactionsTable.$inferSelect;
