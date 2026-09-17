@@ -4,6 +4,19 @@ export type VendorAITextTier = "astra" | "sol" | "terra" | "luna";
 export type VendorAIImageTier = "premium" | "fast";
 export type VendorAIReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
+const CHAT_FEATURES = new Set<AiFeature>([
+  "agent_sdr",
+  "agent_closer",
+  "agent_followup",
+  "agent_reactivation",
+  "agent_scheduler",
+  "agent_service",
+  "agent_onboarding",
+  "agent_relacionamento",
+  "agent_financeiro",
+  "agent_cobranca",
+]);
+
 const STRATEGIC_FEATURES = new Set<AiFeature>([
   "site_generator",
   "intelligence_analysis",
@@ -41,6 +54,9 @@ export function aiRouterV2Enabled(tenantId?: string): boolean {
 }
 
 export function textTierForFeature(feature: AiFeature): VendorAITextTier {
+  // All conversational agents use Luna so the chat experience has one fast,
+  // predictable and low-cost default model across every tenant.
+  if (CHAT_FEATURES.has(feature)) return "luna";
   if (STRATEGIC_FEATURES.has(feature)) return "astra";
   if (PROFESSIONAL_FEATURES.has(feature)) return "sol";
   if (feature === "document_extraction" || feature === "embedding" || feature === "audio_transcription") {
@@ -62,7 +78,11 @@ export function resolveTextModel(params: {
   requestedModel?: string;
   legacyDefault?: string;
 }): string {
-  // A model explicitly selected by a caller is always respected.
+  // Chat traffic is intentionally standardized on Luna. This also overrides
+  // older callers that still explicitly request gpt-4o-mini.
+  if (CHAT_FEATURES.has(params.feature)) return modelForTextTier("luna");
+
+  // Non-chat features may still select a model explicitly.
   if (params.requestedModel?.trim()) return params.requestedModel.trim();
 
   // Safe rollout: production behavior remains unchanged until the flag is enabled.
@@ -88,8 +108,9 @@ export function resolveImageModel(tier: VendorAIImageTier): string {
 }
 
 export const AI_ORCHESTRATOR_POLICY = Object.freeze({
-  version: "2.0",
+  version: "2.1",
   text: {
+    chat: "gpt-5.6-luna",
     strategic: "gpt-6-astra",
     professional: "gpt-5.6-sol",
     operational: "gpt-5.6-terra",
