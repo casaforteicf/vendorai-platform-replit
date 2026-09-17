@@ -5,33 +5,7 @@ import { tenantsTable } from "./tenants";
 
 export const aiProviderEnum = pgEnum("ai_provider", ["openai", "anthropic"]);
 
-export type AiFeature =
-  | "agent_sdr"
-  | "agent_closer"
-  | "agent_followup"
-  | "agent_reactivation"
-  | "agent_scheduler"
-  | "agent_service"
-  | "agent_onboarding"
-  | "agent_relacionamento"
-  | "agent_financeiro"
-  | "agent_cobranca"
-  | "proposal_generator"
-  | "briefing_generator"
-  | "site_generator"
-  | "content_generator"
-  | "image_generator"
-  | "audio_transcription"
-  | "intelligence_analysis"
-  | "document_extraction"
-  | "embedding"
-  | "web_search"
-  | "media_interpretation"
-  | "auto_quote"
-  | "spin_briefing"
-  | "churn_retention";
-
-export const aiFeatureEnum = pgEnum("ai_feature", [
+export const AI_FEATURES = [
   "agent_sdr",
   "agent_closer",
   "agent_followup",
@@ -40,6 +14,8 @@ export const aiFeatureEnum = pgEnum("ai_feature", [
   "agent_service",
   "agent_onboarding",
   "agent_relacionamento",
+  "agent_financeiro",
+  "agent_cobranca",
   "proposal_generator",
   "briefing_generator",
   "site_generator",
@@ -52,7 +28,12 @@ export const aiFeatureEnum = pgEnum("ai_feature", [
   "web_search",
   "media_interpretation",
   "auto_quote",
-]);
+  "spin_briefing",
+  "churn_retention",
+] as const;
+
+export type AiFeature = (typeof AI_FEATURES)[number];
+export const aiFeatureEnum = pgEnum("ai_feature", AI_FEATURES);
 
 export const aiUsageLogsTable = pgTable("ai_usage_logs", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
