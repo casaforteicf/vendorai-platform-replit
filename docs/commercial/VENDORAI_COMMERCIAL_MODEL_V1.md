@@ -142,7 +142,9 @@ Initial pack SKUs are created **inactive and with price pending**. This allows p
 | `vendor.pack.site.1` | +1 site | site | 1 | price pending |
 | `vendor.pack.autopilot_article.10` | +10 artigos Autopilot | autopilot_article | 10 | price pending |
 
-A consumption pack is **not** a runtime module entitlement. It only increases the allowance for one metric. Activation is guarded: a pack cannot be enabled while its catalog price is zero, and enabling the commercial product synchronizes the pack definition and catalog visibility.
+A consumption pack is **not** a runtime module entitlement. It only increases the allowance for one metric. Activation is guarded: a pack cannot be enabled while its catalog price is zero. After a positive price is defined, enabling the commercial product synchronizes the resource definition and the catalog `ativo` flag.
+
+`grantConsumptionPack()` is the idempotent runtime entry point for confirmed payments/promotions. It writes the resource-specific quantity and its Vendor Credit equivalent to the wallet using the payment/provider reference as idempotency key. The customer quota snapshot exposes the extra purchased quantity alongside the monthly allowance; enforcement remains disabled for now.
 
 ## Metering semantics
 
