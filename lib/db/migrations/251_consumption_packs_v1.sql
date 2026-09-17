@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS consumption_pack_definitions_metric_idx
 
 -- Resolve institutional VendorAI catalog tenant from canonical products.
 WITH vendor_catalog_tenant AS (
-  SELECT tenant_id
+  SELECT tenant_id, categoria_id
   FROM produtos_catalogo
   WHERE tenant_id IS NOT NULL
     AND sku IN ('vendor-crm-monthly','vendor-growth-monthly','vendor-prospector-monthly')
@@ -51,8 +51,8 @@ WITH vendor_catalog_tenant AS (
     ('+10 artigos Autopilot', 'vendor-pack-autopilot-10', 'Pacote extra de 10 artigos do Content Autopilot.')
 )
 INSERT INTO produtos_catalogo
-  (id, tenant_id, nome, sku, product_type, descricao, preco_base, unidade, ativo, destaque)
-SELECT gen_random_uuid()::text, v.tenant_id, p.nome, p.sku, 'saas_addon', p.descricao, 0, 'pacote', false, false
+  (id, tenant_id, categoria_id, nome, sku, product_type, descricao, preco_base, unidade, ativo, destaque)
+SELECT gen_random_uuid()::text, v.tenant_id, v.categoria_id, p.nome, p.sku, 'saas_addon', p.descricao, 0, 'pacote', false, false
 FROM vendor_catalog_tenant v
 CROSS JOIN packs p
 WHERE NOT EXISTS (SELECT 1 FROM produtos_catalogo c WHERE c.sku = p.sku);
