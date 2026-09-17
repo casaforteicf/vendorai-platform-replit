@@ -1,21 +1,39 @@
-import ArqdorPage from '../../../../pages/arch/ArqdorPage'
+import { RealDataUnavailable } from '@/components/RealDataUnavailable'
 import { useWorkspaceProject } from '../WorkspaceContext'
-import { archProjectToContext } from '../../engines/aie/arch-project-to-context'
-import type { ArchProject } from '../../../../pages/arch/arqdor-types'
 
-// ProjectModule embeds the full ArqdorPage (Modelagem + Projeto Inteligente)
-// inside the workspace content area. It bridges real project state into the
-// shared WorkspaceContext so AIE scores stay live.
+/**
+ * The previous ProjectModule mounted ArqdorPage, whose initial state was a
+ * hard-coded demo project (Apartamento Alpha / Família Oliveira). That could
+ * overwrite WorkspaceContext and present simulated project data to a real
+ * tenant. Until the intelligent editor accepts the persisted project as its
+ * source of truth, keep this surface protected instead of showing fake data.
+ */
 export function ProjectModule() {
-  const { setProjectCtx } = useWorkspaceProject()
+  const { projectCtx, isRealProject, isInitializing, loadError } = useWorkspaceProject()
 
-  function handleProjectChange(project: ArchProject) {
-    setProjectCtx(archProjectToContext(project))
+  if (isInitializing) {
+    return <div className="p-6 text-sm text-muted-foreground">Carregando projeto real…</div>
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
+          {loadError}
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div style={{ position:'absolute', inset:0, overflow:'hidden' }}>
-      <ArqdorPage standalone={false} onProjectChange={handleProjectChange} />
-    </div>
+    <RealDataUnavailable
+      title={isRealProject && projectCtx.name ? `Projeto Inteligente — ${projectCtx.name}` : 'Projeto Inteligente temporariamente protegido'}
+      description={
+        isRealProject
+          ? 'O projeto real foi carregado, mas o editor inteligente antigo ainda inicializa dados simulados. O editor foi protegido até consumir o projeto real como única fonte de verdade.'
+          : 'Nenhum projeto real está carregado. A versão anterior desta área abria automaticamente um projeto fictício; esse comportamento foi removido.'
+      }
+      backHref="/arch"
+    />
   )
 }
