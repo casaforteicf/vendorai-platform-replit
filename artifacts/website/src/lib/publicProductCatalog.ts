@@ -16,12 +16,17 @@ export type PublicCatalogProduct = {
   product_type: string | null;
 };
 
+export type PublicOfferGroup = "entry" | "module" | "growth" | "consumption" | "service";
+
 const ENDPOINT = "https://gfocphuiyyufwzcyihbk.supabase.co/functions/v1/vendor-public-products";
 
-// Mapeia as páginas públicas aos SKUs comerciais oficiais.
-// Growth não entra aqui porque possui régua progressiva própria em /precos.
+// Páginas públicas -> SKUs do catálogo oficial. Preço, descrição e mídia vêm
+// sempre do catálogo; a camada pública não mantém uma segunda tabela de preços.
 export const productSkuBySlug: Record<string, string> = {
+  "crm-free": "vendor-crm-free",
   crm: "vendor-crm-monthly",
+  growth: "vendor-growth-monthly",
+  "growth-5-dias": "vendor-growth-5d",
   jarvis: "vendor-jarvis-monthly",
   "agentes-ia": "vendor-ai-team-10-monthly",
   prospeccao: "vendor-prospector-monthly",
@@ -43,6 +48,15 @@ export const productSkuBySlug: Record<string, string> = {
   reputation: "vendor-reputation-monthly",
   "app-personalizado": "vendor-custom-app-cash",
   implantacao: "vendor-implementation-cash",
+};
+
+export const offerGroupBySku: Record<string, PublicOfferGroup> = {
+  "vendor-crm-free": "entry",
+  "vendor-crm-monthly": "entry",
+  "vendor-growth-monthly": "growth",
+  "vendor-growth-5d": "growth",
+  "vendor-custom-app-cash": "service",
+  "vendor-implementation-cash": "service",
 };
 
 let cache: Promise<PublicCatalogProduct[]> | null = null;
@@ -91,7 +105,8 @@ export function formatCatalogPrice(product: PublicCatalogProduct | null): string
   const monthly = Number(product.preco_mensalidade ?? 0);
   const base = Number(product.preco_base ?? 0);
   const value = promo > 0 ? promo : monthly > 0 ? monthly : base;
-  if (!Number.isFinite(value) || value <= 0) return null;
+  if (!Number.isFinite(value) || value < 0) return null;
+  if (value === 0) return "Grátis";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
@@ -101,4 +116,9 @@ export function recurrenceLabel(product: PublicCatalogProduct | null): string {
   if (recurrence === "mensal") return "/mês";
   if (recurrence === "anual") return "/ano";
   return `/${product.recorrencia}`;
+}
+
+export function offerGroup(product: PublicCatalogProduct): PublicOfferGroup {
+  return offerGroupBySku[product.sku]
+    ?? (product.product_type === "service" || product.product_type === "servico" ? "service" : "module");
 }
