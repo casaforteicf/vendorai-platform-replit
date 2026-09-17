@@ -1,8 +1,28 @@
-import { pgTable, text, timestamp, numeric, integer, date, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, integer, date, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
+
+export type ObraPortalConfig = {
+  showOverview: boolean;
+  showSchedule: boolean;
+  showBudget: boolean;
+  showDiary: boolean;
+  showDiaryPhotos: boolean;
+  showFinancialSummary: boolean;
+  showClientDecisions: boolean;
+};
+
+export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
+  showOverview: true,
+  showSchedule: true,
+  showBudget: true,
+  showDiary: true,
+  showDiaryPhotos: true,
+  showFinancialSummary: false,
+  showClientDecisions: true,
+};
 
 export const obrasTable = pgTable("obras", {
   id: text("id")
@@ -25,6 +45,7 @@ export const obrasTable = pgTable("obras", {
   responsavelId: text("responsavel_id").references(() => usersTable.id, { onDelete: "set null" }),
   linkCliente: text("link_cliente"),
   portalToken: text("portal_token").unique().$defaultFn(() => crypto.randomUUID()),
+  portalConfig: jsonb("portal_config").$type<ObraPortalConfig>().notNull().default(DEFAULT_OBRA_PORTAL_CONFIG),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -51,15 +72,9 @@ export type InsertObra = z.infer<typeof insertObraSchema>;
 export type UpdateObra = z.infer<typeof updateObraSchema>;
 export type Obra = typeof obrasTable.$inferSelect;
 
-// ─── Etapas ──────────────────────────────────────────────────────────────────
-
 export const obraEtapasTable = pgTable("obra_etapas", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  obraId: text("obra_id")
-    .notNull()
-    .references(() => obrasTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   descricao: text("descricao"),
   ordem: integer("ordem").notNull().default(0),
@@ -95,44 +110,24 @@ export type InsertObraEtapa = z.infer<typeof insertObraEtapaSchema>;
 export type UpdateObraEtapa = z.infer<typeof updateObraEtapaSchema>;
 export type ObraEtapa = typeof obraEtapasTable.$inferSelect;
 
-// ─── Dependências do Cronograma ──────────────────────────────────────────────
-
 export const obraEtapaDependenciasTable = pgTable("obra_etapa_dependencias", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  tenantId: text("tenant_id")
-    .notNull()
-    .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  obraId: text("obra_id")
-    .notNull()
-    .references(() => obrasTable.id, { onDelete: "cascade" }),
-  etapaId: text("etapa_id")
-    .notNull()
-    .references(() => obraEtapasTable.id, { onDelete: "cascade" }),
-  dependeDeEtapaId: text("depende_de_etapa_id")
-    .notNull()
-    .references(() => obraEtapasTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
+  etapaId: text("etapa_id").notNull().references(() => obraEtapasTable.id, { onDelete: "cascade" }),
+  dependeDeEtapaId: text("depende_de_etapa_id").notNull().references(() => obraEtapasTable.id, { onDelete: "cascade" }),
   tipo: text("tipo").notNull().default("FS"),
   defasagemDias: integer("defasagem_dias").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertObraEtapaDependenciaSchema = createInsertSchema(obraEtapaDependenciasTable)
-  .omit({ id: true, createdAt: true });
-
+export const insertObraEtapaDependenciaSchema = createInsertSchema(obraEtapaDependenciasTable).omit({ id: true, createdAt: true });
 export type InsertObraEtapaDependencia = z.infer<typeof insertObraEtapaDependenciaSchema>;
 export type ObraEtapaDependencia = typeof obraEtapaDependenciasTable.$inferSelect;
 
-// ─── Medições ─────────────────────────────────────────────────────────────────
-
 export const obraEtapaMedicoesTable = pgTable("obra_etapa_medicoes", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  etapaId: text("etapa_id")
-    .notNull()
-    .references(() => obraEtapasTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  etapaId: text("etapa_id").notNull().references(() => obraEtapasTable.id, { onDelete: "cascade" }),
   data: date("data", { mode: "string" }).notNull(),
   percentualAnterior: numeric("percentual_anterior", { precision: 5, scale: 2 }).notNull().default("0"),
   percentualNovo: numeric("percentual_novo", { precision: 5, scale: 2 }).notNull(),
@@ -143,27 +138,16 @@ export const obraEtapaMedicoesTable = pgTable("obra_etapa_medicoes", {
 
 export const insertObraEtapaMedicaoSchema = createInsertSchema(obraEtapaMedicoesTable, {
   percentualAnterior: decimalOptional,
-  percentualNovo: z
-    .union([z.string(), z.number()])
-    .transform((v) => String(v))
-    .pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal")),
+  percentualNovo: z.union([z.string(), z.number()]).transform((v) => String(v)).pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal")),
 }).omit({ id: true, createdAt: true });
 
 export type InsertObraEtapaMedicao = z.infer<typeof insertObraEtapaMedicaoSchema>;
 export type ObraEtapaMedicao = typeof obraEtapaMedicoesTable.$inferSelect;
 
-// ─── Orçamentos de Obra ───────────────────────────────────────────────────────
-
 export const obraOrcamentosTable = pgTable("obra_orcamentos", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  tenantId: text("tenant_id")
-    .notNull()
-    .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  obraId: text("obra_id")
-    .notNull()
-    .references(() => obrasTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
   versao: integer("versao").notNull().default(1),
   titulo: text("titulo"),
   descricao: text("descricao"),
@@ -179,48 +163,30 @@ export const insertObraOrcamentoSchema = createInsertSchema(obraOrcamentosTable,
 
 export const updateObraOrcamentoSchema = createSelectSchema(obraOrcamentosTable, {
   bdiGlobal: decimalOptional,
-})
-  .omit({ id: true, tenantId: true, obraId: true, createdAt: true, updatedAt: true })
-  .partial();
+}).omit({ id: true, tenantId: true, obraId: true, createdAt: true, updatedAt: true }).partial();
 
 export type InsertObraOrcamento = z.infer<typeof insertObraOrcamentoSchema>;
 export type UpdateObraOrcamento = z.infer<typeof updateObraOrcamentoSchema>;
 export type ObraOrcamento = typeof obraOrcamentosTable.$inferSelect;
 
-// ─── Etapas do Orçamento ──────────────────────────────────────────────────────
-
 export const obraOrcamentoEtapasTable = pgTable("obra_orcamento_etapas", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  orcamentoId: text("orcamento_id")
-    .notNull()
-    .references(() => obraOrcamentosTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  orcamentoId: text("orcamento_id").notNull().references(() => obraOrcamentosTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   ordem: integer("ordem").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const insertObraOrcamentoEtapaSchema = createInsertSchema(obraOrcamentoEtapasTable)
-  .omit({ id: true, createdAt: true, updatedAt: true });
-
-export const updateObraOrcamentoEtapaSchema = createSelectSchema(obraOrcamentoEtapasTable)
-  .omit({ id: true, orcamentoId: true, createdAt: true, updatedAt: true })
-  .partial();
-
+export const insertObraOrcamentoEtapaSchema = createInsertSchema(obraOrcamentoEtapasTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const updateObraOrcamentoEtapaSchema = createSelectSchema(obraOrcamentoEtapasTable).omit({ id: true, orcamentoId: true, createdAt: true, updatedAt: true }).partial();
 export type InsertObraOrcamentoEtapa = z.infer<typeof insertObraOrcamentoEtapaSchema>;
+export type UpdateObraOrcamentoEtapa = z.infer<typeof updateObraOrcamentoEtapaSchema>;
 export type ObraOrcamentoEtapa = typeof obraOrcamentoEtapasTable.$inferSelect;
 
-// ─── Itens do Orçamento ───────────────────────────────────────────────────────
-
 export const obraOrcamentoItensTable = pgTable("obra_orcamento_itens", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  etapaId: text("etapa_id")
-    .notNull()
-    .references(() => obraOrcamentoEtapasTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  etapaId: text("etapa_id").notNull().references(() => obraOrcamentoEtapasTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   unidade: text("unidade").notNull().default("un"),
   quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull().default("1"),
@@ -241,9 +207,8 @@ export const updateObraOrcamentoItemSchema = createSelectSchema(obraOrcamentoIte
   quantidade: decimalOptional,
   custoUnitario: decimalOptional,
   bdi: decimalOptional,
-})
-  .omit({ id: true, etapaId: true, createdAt: true, updatedAt: true })
-  .partial();
+}).omit({ id: true, etapaId: true, createdAt: true, updatedAt: true }).partial();
 
 export type InsertObraOrcamentoItem = z.infer<typeof insertObraOrcamentoItemSchema>;
+export type UpdateObraOrcamentoItem = z.infer<typeof updateObraOrcamentoItemSchema>;
 export type ObraOrcamentoItem = typeof obraOrcamentoItensTable.$inferSelect;
