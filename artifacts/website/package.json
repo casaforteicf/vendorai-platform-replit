@@ -73,6 +73,7 @@
     "vite": "catalog:",
     "web-vitals": "^6.2.1",
     "wouter": "^3.3.5",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@workspace/vendor-brain": "workspace:*"
   }
 }
