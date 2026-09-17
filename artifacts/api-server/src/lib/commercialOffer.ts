@@ -1,4 +1,6 @@
-export const VENDORAI_LAUNCH_CAMPAIGN = "vendorai_growth_5d_497_990_1490_v2";
+import { VENDORAI_LP_OFFER } from "@workspace/vendor-brain";
+
+export const VENDORAI_LAUNCH_CAMPAIGN = VENDORAI_LP_OFFER.campaignCode;
 export const VENDORAI_TERMS_VERSION = "vendorai-commercial-2026-09-11";
 
 export type CommercialBillingPhase = "trial" | "promo_1" | "promo_2" | "regular";
@@ -29,26 +31,26 @@ function addCalendarMonths(date: Date, months: number): Date {
 }
 
 /**
- * Growth subscription accepted on signup:
- * - 5 full days free
- * - R$ 497 for the first 30 paid days
- * - R$ 990/month for the following 5 calendar months
- * - then the regular Growth price (R$ 1.490/month today), snapshotted at transition
+ * Oferta comercial apresentada pelas LPs da campanha:
+ * - 5 dias completos grátis
+ * - R$ 497 pelos primeiros 30 dias pagos
+ * - R$ 990/mês pelos 5 meses seguintes
+ * - depois, R$ 1.490/mês
  *
- * The separate prepaid mode grants 5 free days once per calendar month and lets
- * the customer add further 5-day blocks for R$ 399.00 each.
+ * A condição comercial nasce na LP/campanha. O site institucional e as telas
+ * genéricas da plataforma não são fonte de preço.
  */
 export function buildVendorAiLaunchOffer(startedAt = new Date()): CommercialOfferSchedule {
-  const trialEndsAt = new Date(startedAt.getTime() + 5 * DAY_MS);
-  const promoPhase1EndsAt = new Date(trialEndsAt.getTime() + 30 * DAY_MS);
-  const promoPhase2EndsAt = addCalendarMonths(promoPhase1EndsAt, 5);
+  const trialEndsAt = new Date(startedAt.getTime() + VENDORAI_LP_OFFER.trialDays * DAY_MS);
+  const promoPhase1EndsAt = new Date(trialEndsAt.getTime() + VENDORAI_LP_OFFER.subscription.firstPaidDays * DAY_MS);
+  const promoPhase2EndsAt = addCalendarMonths(promoPhase1EndsAt, VENDORAI_LP_OFFER.subscription.followingMonths);
 
   return {
     campaignCode: VENDORAI_LAUNCH_CAMPAIGN,
     trialEndsAt,
-    promoPhase1Price: "497.00",
+    promoPhase1Price: VENDORAI_LP_OFFER.subscription.firstPaidPriceBrl.toFixed(2),
     promoPhase1EndsAt,
-    promoPhase2Price: "990.00",
+    promoPhase2Price: VENDORAI_LP_OFFER.subscription.followingMonthlyPriceBrl.toFixed(2),
     promoPhase2EndsAt,
     regularPriceAtTransition: null,
     billingPhase: "trial",
