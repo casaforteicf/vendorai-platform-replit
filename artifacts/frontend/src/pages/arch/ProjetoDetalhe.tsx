@@ -39,6 +39,10 @@ type Projeto = {
   orcamentoTotal: string | null;
   portalAtivo: boolean;
   portalToken: string | null;
+  leadId: string | null;
+  dealId: string | null;
+  propostaId: string | null;
+  obraId: string | null;
 };
 
 type Cena = {
@@ -727,6 +731,86 @@ export default function ProjetoDetalhe() {
         </div>
         <StatusBadge status={projeto.status} />
       </div>
+
+      {/* Fluxo integrado Vendor.ai */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Fluxo integrado Vendor.ai</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Cliente, negócio, proposta e obra usam os mesmos registros do Vendor.ai.
+              </p>
+            </div>
+            <Link2 className="h-5 w-5 text-muted-foreground" />
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Cliente / CRM</p>
+            <p className="mt-1 text-sm font-semibold truncate">{projeto.clienteNome || "Cliente"}</p>
+            {projeto.leadId ? (
+              <Link href={`/leads/${projeto.leadId}`}>
+                <Button variant="outline" size="sm" className="mt-3 w-full">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir cliente
+                </Button>
+              </Link>
+            ) : (
+              <p className="mt-3 text-xs text-amber-700">Ainda não vinculado ao CRM.</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Negócio</p>
+            <p className="mt-1 text-sm font-semibold">{projeto.dealId ? "Negócio vinculado" : "Sem negócio"}</p>
+            {projeto.dealId ? (
+              projeto.leadId ? (
+                <Link href={`/trabalho/${projeto.leadId}?dealId=${projeto.dealId}&from=arqdor`}>
+                  <Button variant="outline" size="sm" className="mt-3 w-full">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir negócio
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/deals">
+                  <Button variant="outline" size="sm" className="mt-3 w-full">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir pipeline
+                  </Button>
+                </Link>
+              )
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">Será ligado ao fluxo comercial quando houver negócio.</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Proposta</p>
+            <p className="mt-1 text-sm font-semibold">{projeto.propostaId ? "Proposta vinculada" : "Sem proposta"}</p>
+            {projeto.propostaId ? (
+              <Link href="/propostas">
+                <Button variant="outline" size="sm" className="mt-3 w-full">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir propostas
+                </Button>
+              </Link>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">A proposta pode ser vinculada sem duplicar o orçamento.</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Obra / execução</p>
+            <p className="mt-1 text-sm font-semibold">{projeto.obraId ? "Obra vinculada" : "Sem obra"}</p>
+            {projeto.obraId ? (
+              <Link href={`/obras/${projeto.obraId}`}>
+                <Button variant="outline" size="sm" className="mt-3 w-full">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir obra
+                </Button>
+              </Link>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">Quando aprovada, a execução pode continuar na Gestão de Obras.</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
       <Tabs defaultValue="orcamento">
