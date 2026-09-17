@@ -217,6 +217,7 @@ Corrections made from this validation:
 - aligned the TypeScript `ai_feature` enum with live values including `agent_recepcao` and `agent_expansao_conta`;
 - quota snapshots now count only successful customer-billable business events, never raw cost-only provider calls;
 - canonical VendorAI SKUs were audited against the live catalog before normalization;
-- current Start/Growth plan assignments were audited before entitlement backfill and user-limit enforcement.
+- current Start/Growth plan assignments were audited before entitlement backfill and user-limit enforcement;
+- migration 251 was preflighted against the live `produtos_catalogo` pricing/status columns without applying DDL to production.
 
 The system remains in `measure_only`; production permissions and consumption quota enforcement are unchanged until migrations and runtime are promoted deliberately.
