@@ -99,6 +99,15 @@ export class MockVehicleProvider implements VehicleLookupProvider {
   async lookupByChassis(chassis: string) { return MOCKS[chassis] ?? null; }
 }
 
+class UnavailableVehicleProvider implements VehicleLookupProvider {
+  readonly name = "unconfigured";
+  private fail(): Promise<ProviderResult | null> {
+    return Promise.reject(Object.assign(new Error("VEHICLE_LOOKUP_PROVIDER_NOT_CONFIGURED"), { code: "PROVIDER_NOT_CONFIGURED" }));
+  }
+  lookupByPlate() { return this.fail(); }
+  lookupByChassis() { return this.fail(); }
+}
+
 export class SenatranVehicleProvider implements VehicleLookupProvider {
   readonly name = "senatran";
   private certificate(): Buffer {
@@ -165,8 +174,10 @@ export class SenatranVehicleProvider implements VehicleLookupProvider {
 }
 
 function providerFromEnv(): VehicleLookupProvider {
-  return (process.env.VEHICLE_LOOKUP_PROVIDER ?? "mock").toLowerCase() === "senatran"
-    ? new SenatranVehicleProvider() : new MockVehicleProvider();
+  const configured = (process.env.VEHICLE_LOOKUP_PROVIDER ?? "").trim().toLowerCase();
+  if (configured === "senatran") return new SenatranVehicleProvider();
+  if (configured === "mock" && process.env.NODE_ENV !== "production") return new MockVehicleProvider();
+  return new UnavailableVehicleProvider();
 }
 const mask = (value: string) => value.length <= 4 ? "****" : `${value.slice(0, 2)}${"*".repeat(value.length - 4)}${value.slice(-2)}`;
 
