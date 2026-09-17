@@ -16,7 +16,6 @@ import {
   LogOut,
   Menu,
   Package,
-  Store,
   Users,
   X,
 } from "lucide-react";
@@ -86,7 +85,6 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
         { name: "Segmentos", href: "/admin/verticais", icon: Building2 },
         { name: "App Builder", href: "/admin/app-builder", icon: Cpu },
         { name: "Produtos da Plataforma", href: "/admin/produtos-internos", icon: Package },
-        { name: "Marketplace", href: "/marketplace", icon: Store },
       ],
     },
     {
