@@ -164,6 +164,13 @@ async function checkNuvemFiscal(): Promise<RawCheck> {
     : { configured: false, auth: 0, message: "Nuvem Fiscal não configurada." };
 }
 
+// Provedores de nível PLATAFORMA, não do tenant -- checam só uma variável
+// de ambiente global, igual pra todo mundo. Exportado pra
+// routes/finance_integrations.ts poder excluir esses do cálculo de
+// "cobertura" por tenant (achado real de auditoria: antes inflava a
+// cobertura de todo tenant igual, sem relação com o que ele configurou).
+export const PLATFORM_LEVEL_PROVIDER_KEYS = new Set(["openai", "cloudflare", "railway", "supabase", "n8n"]);
+
 function checkPlatformProvider(providerKey: string): RawCheck | null {
   const platform: Record<string, { configured: boolean; message: string }> = {
     openai: { configured: Boolean(process.env.OPENAI_API_KEY), message: "OpenAI configurada no ambiente da plataforma." },

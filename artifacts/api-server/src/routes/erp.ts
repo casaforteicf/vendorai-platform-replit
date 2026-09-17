@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod/v4";
-import multer from "multer";
 import {
   db, erpTitulosTable, erpPagamentosTable, erpDocumentosFiscaisTable,
   insertErpTituloSchema, updateErpTituloSchema, insertErpPagamentoSchema, insertErpDocumentoFiscalSchema,
@@ -12,13 +11,9 @@ import {
 } from "@workspace/db";
 import { createCharge, createOrGetCustomer, getTenantAsaasApiKey } from "../lib/asaas.js";
 import { emitirDocumentoFiscal, isNuvemFiscalConfigured } from "../lib/nuvem-fiscal.js";
-import { extractLancamentoData } from "../lib/document-extraction.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
 import { evaluateCommission, resolveDealIdFromFinancialOrigin } from "../services/commission-engine.js";
 
 const router: IRouter = Router();
-const objectStorageService = new ObjectStorageService();
-const uploadLancamento = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 function canAccess(req: Express.Request, tenantId: string) {
   return (req as any).user?.platformRole === "super_admin" || (req as any).user?.tenantId === tenantId;
@@ -117,18 +112,11 @@ router.delete("/tenants/:tenantId/erp/titulos/:id", async (req, res) => {
   res.json({ mode: "deleted", id });
 });
 
-router.post("/tenants/:tenantId/erp/extrair-lancamento", uploadLancamento.single("file"), async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied" });
-  if (!req.file) return void res.status(400).json({ error: "Nenhum arquivo enviado" });
-  try {
-    const [result, documentoUrl] = await Promise.all([
-      extractLancamentoData([{ buffer: req.file.buffer, mimeType: req.file.mimetype, originalName: req.file.originalname }], tenantId),
-      objectStorageService.savePrivateBuffer(req.file.buffer, req.file.mimetype, req.file.originalname).catch((err) => { req.log.warn({ err }, "extrair-lancamento: falha ao salvar arquivo no storage, seguindo sem ele"); return null; }),
-    ]);
-    res.json({ ...result, documentoUrl, originalName: req.file.originalname });
-  } catch (err) { req.log.error({ err }, "Falha ao extrair dados do lançamento"); res.status(500).json({ error: "Erro ao processar o arquivo" }); }
-});
+// Achado real de auditoria (removido 17/09): existia aqui uma rota
+// /erp/extrair-lancamento dedicada, com upload pro storage, que nenhuma
+// tela do frontend chamava — a captura de documento real
+// (ErpCaptureContent.tsx) sempre usou /deals/extract-quote, um endpoint
+// diferente e preexistente. Código duplicado morto, removido.
 
 router.post("/tenants/:tenantId/erp/titulos/:id/cobranca", async (req,res)=>{
   const tenantId=String(req.params.tenantId); if(!canAccess(req,tenantId)) return void res.status(403).json({error:"Access denied"});
@@ -185,13 +173,15 @@ router.get("/tenants/:tenantId/erp/extratos",async(req,res)=>{const tenantId=Str
 router.post("/tenants/:tenantId/erp/extratos/:id/conciliar",async(req,res)=>{
   const tenantId=String(req.params.tenantId); if(!canAccess(req,tenantId)) return void res.status(403).json({error:"Access denied"});
   const parsed=z.object({pagamentoId:z.string()}).safeParse(req.body); if(!parsed.success) return void res.status(422).json({error:"Pagamento obrigatório"});
+  // Achado real de auditoria: antes marcava o extrato como conciliado sem
+  // confirmar que o pagamento existia de verdade -- um pagamentoId inválido
+  // deixava o extrato "conciliado" apontando pra nada, sem erro nenhum.
+  const [payment]=await db.select().from(erpPagamentosTable).where(and(eq(erpPagamentosTable.id,parsed.data.pagamentoId),eq(erpPagamentosTable.tenantId,tenantId))).limit(1);
+  if (!payment) return void res.status(404).json({ error: "Pagamento não encontrado" });
   const [row]=await db.update(erpExtratosBancariosTable).set({status:"conciliado",pagamentoId:parsed.data.pagamentoId}).where(and(eq(erpExtratosBancariosTable.id,String(req.params.id)),eq(erpExtratosBancariosTable.tenantId,tenantId))).returning();
   if (!row) return void res.status(404).json({ error: "Extrato não encontrado" });
-  const [payment]=await db.select().from(erpPagamentosTable).where(and(eq(erpPagamentosTable.id,parsed.data.pagamentoId),eq(erpPagamentosTable.tenantId,tenantId))).limit(1);
-  if (payment) {
-    const [title]=await db.select().from(erpTitulosTable).where(and(eq(erpTitulosTable.id,payment.tituloId),eq(erpTitulosTable.tenantId,tenantId))).limit(1);
-    if (title) await emitCommissionForPayment(tenantId,title,payment,"payment_reconciled",`erp:reconciliation:${row.id}:${payment.id}`,{extratoId:row.id}).catch((error)=>req.log.error({error,tenantId,extratoId:row.id},"Falha ao processar comissão da conciliação"));
-  }
+  const [title]=await db.select().from(erpTitulosTable).where(and(eq(erpTitulosTable.id,payment.tituloId),eq(erpTitulosTable.tenantId,tenantId))).limit(1);
+  if (title) await emitCommissionForPayment(tenantId,title,payment,"payment_reconciled",`erp:reconciliation:${row.id}:${payment.id}`,{extratoId:row.id}).catch((error)=>req.log.error({error,tenantId,extratoId:row.id},"Falha ao processar comissão da conciliação"));
   await audit(req,tenantId,"conciliar","extrato",row.id,row); res.json(row);
 });
 

@@ -11,6 +11,7 @@ import {
 import {
   runAllFinanceIntegrationHealthChecks,
   runFinanceIntegrationHealthCheck,
+  PLATFORM_LEVEL_PROVIDER_KEYS,
 } from "../services/finance-integration-health.js";
 import financeContractsRouter from "./finance_contracts.js";
 
@@ -76,11 +77,17 @@ router.get("/tenants/:tenantId/finance-integrations", async (req, res) => {
     overallHealthPercent: asPercent(row.overallHealthPercent),
   }));
 
-  const configured = integrations.filter((item) => item.status !== "not_configured" && item.status !== "disabled");
-  const healthy = configured.filter((item) => item.status === "connected" && item.overallHealthPercent >= 80);
-  const error = configured.filter((item) => item.status === "error" || item.status === "expired" || item.overallHealthPercent < 50);
-  const total = integrations.length || 1;
-  const configuredCount = configured.length;
+  // Achado real de auditoria: os provedores de nível PLATAFORMA (mesmo
+  // resultado idêntico pra todo tenant, não medem nada que o tenant
+  // configurou) entravam na "cobertura" de cada tenant, inflando o número
+  // igual pra todo mundo. Excluídos do denominador -- continuam visíveis
+  // na lista completa de `integrations`, só não contam pra esse cálculo.
+  const tenantSpecific = integrations.filter((item) => !PLATFORM_LEVEL_PROVIDER_KEYS.has(item.providerKey));
+  const tenantSpecificConfigured = tenantSpecific.filter((item) => item.status !== "not_configured" && item.status !== "disabled");
+  const healthy = tenantSpecificConfigured.filter((item) => item.status === "connected" && item.overallHealthPercent >= 80);
+  const error = tenantSpecificConfigured.filter((item) => item.status === "error" || item.status === "expired" || item.overallHealthPercent < 50);
+  const total = tenantSpecific.length || 1;
+  const configuredCount = tenantSpecificConfigured.length;
 
   res.json({
     integrations,

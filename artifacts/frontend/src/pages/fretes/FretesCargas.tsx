@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useListTenantUsers, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -510,6 +511,7 @@ export default function FretesCargas() {
         <DialogContent>
           <DialogHeader><DialogTitle>Criar rota com {selectedIds.size} cargas</DialogTitle></DialogHeader>
           <RouteCreateForm
+            tenantId={tenantId}
             veiculos={veiculos}
             cargas={cargas.filter((c: any) => selectedIds.has(c.id))}
             isPending={criarRota.isPending}
@@ -521,12 +523,25 @@ export default function FretesCargas() {
   );
 }
 
-function RouteCreateForm({ veiculos, cargas, isPending, onSubmit }: {
-  veiculos: any[]; cargas: any[]; isPending: boolean;
+function RouteCreateForm({ tenantId, veiculos, cargas, isPending, onSubmit }: {
+  tenantId: string; veiculos: any[]; cargas: any[]; isPending: boolean;
   onSubmit: (body: { nome?: string; motoristaId?: string; veiculoId?: string }) => void;
 }) {
   const [nome, setNome] = useState("");
   const [veiculoId, setVeiculoId] = useState("");
+  const [motoristaId, setMotoristaId] = useState("");
+
+  // Achado real de auditoria: esse formulário não tinha campo de motorista,
+  // então toda rota nascia sem ninguém designado -- as cargas ficavam
+  // agrupadas só na sequência (ordemNaRota), mas cada motorista via elas
+  // separadas em "Disponíveis", quebrando o propósito de rota única.
+  const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
+    query: {
+      enabled: !!tenantId,
+      queryKey: getListTenantUsersQueryKey(tenantId),
+      staleTime: 60_000,
+    },
+  });
 
   return (
     <div className="space-y-4">
@@ -538,6 +553,16 @@ function RouteCreateForm({ veiculos, cargas, isPending, onSubmit }: {
         <Input placeholder="Ex: Rota manhã — zona norte" value={nome} onChange={(e) => setNome(e.target.value)} />
       </div>
       <div className="space-y-1.5">
+        <Label>Motorista <span className="text-destructive">*</span></Label>
+        <Select value={motoristaId} onValueChange={setMotoristaId}>
+          <SelectTrigger><SelectValue placeholder="Selecione o motorista" /></SelectTrigger>
+          <SelectContent>
+            {(tenantUsers as any[]).map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">Sem motorista, as cargas ficam separadas em "Disponíveis" em vez de uma rota única.</p>
+      </div>
+      <div className="space-y-1.5">
         <Label>Veículo</Label>
         <Select value={veiculoId} onValueChange={setVeiculoId}>
           <SelectTrigger><SelectValue placeholder="Selecione o veículo" /></SelectTrigger>
@@ -546,7 +571,7 @@ function RouteCreateForm({ veiculos, cargas, isPending, onSubmit }: {
           </SelectContent>
         </Select>
       </div>
-      <Button className="w-full" disabled={isPending} onClick={() => onSubmit({ nome: nome || undefined, veiculoId: veiculoId || undefined })}>
+      <Button className="w-full" disabled={isPending} onClick={() => onSubmit({ nome: nome || undefined, motoristaId: motoristaId || undefined, veiculoId: veiculoId || undefined })}>
         {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
         Criar rota
       </Button>

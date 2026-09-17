@@ -298,6 +298,16 @@ router.post("/tenants/:tenantId/fretes/cargas", async (req, res) => {
     }
   }
 
+  // O frontend decide um status inicial (cotado/cotacao_pendente) baseado no
+  // que ele sabe ANTES de mandar a requisição, mas a cotação automática
+  // acima só roda aqui no backend -- sem essa correção, uma carga podia
+  // nascer com valorCotado preenchido e status ainda "cotacao_pendente"
+  // (achado real de auditoria). A verdade final é sempre "tem valorCotado
+  // ou não", então normaliza aqui antes de gravar.
+  if (!body.status || body.status === "cotacao_pendente" || body.status === "cotado") {
+    body.status = body.valorCotado ? "cotado" : "cotacao_pendente";
+  }
+
   const [carga] = await db.insert(fretesCargasTable)
     .values(body as any)
     .returning();
@@ -428,7 +438,7 @@ fretesPublicRouter.get("/public/fretes/:id", async (req, res) => {
   }).from(tenantsTable).where(eq(tenantsTable.id, row.tenantId));
 
   const { motoristaId, tenantId, ...safeRow } = row;
-  return res.json({ ...withEta({ ...safeRow, motoristaId } as any), motoristaNome, tenant });
+  return res.json({ ...withEta(safeRow as any), motoristaNome, tenant });
 });
 
 // Avaliação só é aceita depois de entregue, e só uma vez.
