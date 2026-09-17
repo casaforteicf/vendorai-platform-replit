@@ -49,7 +49,8 @@
     "puppeteer-core": "^25.1.0",
     "resend": "^6.12.4",
     "sharp": "^0.35.3",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@workspace/vendor-brain": "workspace:*"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
