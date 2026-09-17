@@ -3872,6 +3872,7 @@ export type PublicSiteResponseProdutosItem = {
   descricao?: string | null;
   precoBase: string;
   unidade: string;
+  sku?: string | null;
 };
 
 export interface PublicSiteResponse {

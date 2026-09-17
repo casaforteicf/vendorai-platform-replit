@@ -1,12 +1,14 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   generatedSitesTable,
   produtosCatalogoTable,
+  siteConfigTable,
   tenantsTable,
   usersTable,
+  type SiteGeneratorConfig,
 } from "@workspace/db";
 import {
   createCharge,
@@ -125,7 +127,9 @@ tenantStoreCheckoutRouter.post("/public/tenant-commerce/checkout", async (req, r
   }
 
   const data = parsed.data;
-  const [site] = await db
+
+  // Caminho normal: site gerado por IA (generated_sites) já existe pra esse slug.
+  let [site] = await db
     .select({
       id: generatedSitesTable.id,
       tenantId: generatedSitesTable.tenantId,
@@ -136,12 +140,70 @@ tenantStoreCheckoutRouter.post("/public/tenant-commerce/checkout", async (req, r
     .where(eq(generatedSitesTable.siteSlug, data.siteSlug))
     .limit(1);
 
+  if (site) {
+    if (!site.published) {
+      res.status(409).json({ error: "Publique o site antes de receber pagamentos", code: "site_not_published" });
+      return;
+    }
+  } else {
+    // Fallback: tenant ainda usa o site simples (siteConfigTable), sem nenhum
+    // registro em generated_sites. site_checkout_orders.site_id é NOT NULL
+    // e referencia generated_sites — criamos aqui uma linha "sombra",
+    // nunca publicada (published:false), só pra satisfazer essa referência.
+    // Ela nunca é servida como HTML (a rota /site-html exige published:true),
+    // então não interfere em nada do que já está no ar.
+    const [fallbackTenant] = await db
+      .select({ id: tenantsTable.id, name: tenantsTable.name })
+      .from(tenantsTable)
+      .where(or(eq(tenantsTable.slug, data.siteSlug), eq(tenantsTable.subdomainSlug, data.siteSlug)))
+      .limit(1);
+
+    if (!fallbackTenant) {
+      res.status(404).json({ error: "Loja não encontrada" });
+      return;
+    }
+
+    const [config] = await db
+      .select({ ativo: siteConfigTable.ativo })
+      .from(siteConfigTable)
+      .where(eq(siteConfigTable.tenantId, fallbackTenant.id))
+      .limit(1);
+
+    if (!config?.ativo) {
+      res.status(409).json({ error: "Publique o site antes de receber pagamentos", code: "site_not_published" });
+      return;
+    }
+
+    const shadowSlug = `${data.siteSlug}__checkout-shadow`;
+    const shadowConfig: SiteGeneratorConfig = { type: "ecommerce" } as SiteGeneratorConfig;
+
+    await db
+      .insert(generatedSitesTable)
+      .values({
+        tenantId: fallbackTenant.id,
+        name: fallbackTenant.name ?? "Loja",
+        siteType: "ecommerce",
+        siteSlug: shadowSlug,
+        config: shadowConfig,
+        html: "",
+        published: false,
+      })
+      .onConflictDoNothing({ target: generatedSitesTable.siteSlug });
+
+    [site] = await db
+      .select({
+        id: generatedSitesTable.id,
+        tenantId: generatedSitesTable.tenantId,
+        siteSlug: generatedSitesTable.siteSlug,
+        published: generatedSitesTable.published,
+      })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.siteSlug, shadowSlug))
+      .limit(1);
+  }
+
   if (!site || !site.siteSlug) {
     res.status(404).json({ error: "Loja não encontrada" });
-    return;
-  }
-  if (!site.published) {
-    res.status(409).json({ error: "Publique o site antes de receber pagamentos", code: "site_not_published" });
     return;
   }
 
@@ -265,7 +327,7 @@ tenantStoreCheckoutRouter.post("/public/tenant-commerce/checkout", async (req, r
       customer_phone, customer_cpf_cnpj, billing_type, items,
       one_time_total, recurring_total, first_charge_total, status, page_url
     ) VALUES (
-      ${orderId}, ${tenant.id}, ${site.id}, ${site.siteSlug}, ${data.customer.name}, ${data.customer.email.toLowerCase()},
+      ${orderId}, ${tenant.id}, ${site.id}, ${data.siteSlug}, ${data.customer.name}, ${data.customer.email.toLowerCase()},
       ${data.customer.phone ?? null}, ${data.customer.cpfCnpj ?? null}, ${data.billingType}, ${JSON.stringify(itemSnapshot)}::jsonb,
       ${money(oneTimeTotal)}, ${money(recurringTotal)}, ${money(firstChargeTotal)}, 'created', ${data.pageUrl ?? null}
     )

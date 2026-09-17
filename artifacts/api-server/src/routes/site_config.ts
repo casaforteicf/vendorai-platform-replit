@@ -93,6 +93,7 @@ publicSiteRouter.get("/public/:tenantSlug/site", async (req, res) => {
         descricao: produtosCatalogoTable.descricao,
         precoBase: produtosCatalogoTable.precoBase,
         unidade: produtosCatalogoTable.unidade,
+        sku: produtosCatalogoTable.sku,
       })
       .from(produtosCatalogoTable)
       .where(
@@ -143,6 +144,7 @@ publicSiteRouter.get("/public/site", async (req, res) => {
         descricao: produtosCatalogoTable.descricao,
         precoBase: produtosCatalogoTable.precoBase,
         unidade: produtosCatalogoTable.unidade,
+        sku: produtosCatalogoTable.sku,
       })
       .from(produtosCatalogoTable)
       .where(

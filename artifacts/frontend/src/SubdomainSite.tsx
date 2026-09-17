@@ -1,9 +1,135 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useGetPublicSite, getGetPublicSiteQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
-import { MessageCircle, Phone, Mail, Star, ChevronDown, ShoppingCart } from "lucide-react";
+import { MessageCircle, Phone, Mail, Star, ChevronDown, ShoppingCart, X, Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
+
+type CheckoutProduct = { sku: string | null | undefined; nome: string; precoBase: string; unidade: string };
+
+function CheckoutModal({
+  produto,
+  siteSlug,
+  primaryColor,
+  whatsappUrl,
+  onClose,
+}: {
+  produto: CheckoutProduct;
+  siteSlug: string;
+  primaryColor: string;
+  whatsappUrl: string | null;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!produto.sku) {
+      setStatus("error");
+      setErrorMsg("Este produto não está disponível para compra online no momento.");
+      return;
+    }
+    setStatus("loading");
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/public/tenant-commerce/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteSlug,
+          customer: { name, email, phone: phone || undefined },
+          billingType: "UNDEFINED",
+          items: [{ sku: produto.sku, quantity: 1 }],
+          pageUrl: window.location.href,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.paymentUrl) {
+        setStatus("error");
+        setErrorMsg(json.error || "Não foi possível iniciar o pagamento. Tente novamente.");
+        return;
+      }
+      window.location.href = json.paymentUrl;
+    } catch {
+      setStatus("error");
+      setErrorMsg("Não foi possível conectar ao servidor de pagamento. Tente novamente.");
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h3 className="font-bold text-gray-900">Finalizar compra</h3>
+          <button onClick={onClose} aria-label="Fechar" className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm text-gray-500 mb-1">{produto.nome}</p>
+          <p className="text-2xl font-extrabold mb-4" style={{ color: primaryColor }}>
+            R$ {parseFloat(produto.precoBase).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            <span className="text-xs font-normal text-gray-400 ml-1">/ {produto.unidade}</span>
+          </p>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <input
+              required
+              type="text"
+              placeholder="Seu nome completo"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-gray-400"
+            />
+            <input
+              required
+              type="email"
+              placeholder="Seu e-mail"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-gray-400"
+            />
+            <input
+              type="tel"
+              placeholder="Telefone (opcional)"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-gray-400"
+            />
+            {errorMsg && <p className="text-xs text-red-500">{errorMsg}</p>}
+            <button
+              type="submit"
+              disabled={status === "loading"}
+              className="flex items-center justify-center gap-2 text-white font-semibold py-3 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {status === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {status === "loading" ? "Preparando pagamento..." : "Ir para o pagamento"}
+            </button>
+            {whatsappUrl && (
+              <a
+                href={`${whatsappUrl}?text=${encodeURIComponent(`Olá! Tenho interesse no produto: ${produto.nome}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-center text-xs text-gray-400 hover:text-gray-600 mt-1"
+              >
+                Prefiro combinar pelo WhatsApp
+              </a>
+            )}
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Stars({ n }: { n: number }) {
   return (
@@ -33,6 +159,7 @@ function FaqItem({ pergunta, resposta, color }: { pergunta: string; resposta: st
 
 function TenantSite({ slug }: { slug: string }) {
   const [htmlStatus, setHtmlStatus] = useState<"checking" | "available" | "unavailable">("checking");
+  const [checkoutProduto, setCheckoutProduto] = useState<CheckoutProduct | null>(null);
 
   useEffect(() => {
     fetch(`/api/public/${slug}/site-html`, { method: "HEAD" })
@@ -207,11 +334,13 @@ function TenantSite({ slug }: { slug: string }) {
                         <span className="text-xl font-extrabold" style={{ color: primaryColor }}>{parseFloat(produto.precoBase).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                         <span className="text-xs text-gray-400 ml-1">/ {produto.unidade}</span>
                       </div>
-                      {whatsappUrl && (
-                        <a href={`${whatsappUrl}?text=${encodeURIComponent(`Olá! Tenho interesse no produto: ${produto.nome}`)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-white text-xs font-semibold px-4 py-2 rounded-full transition-opacity hover:opacity-90" style={{ backgroundColor: primaryColor }}>
-                          <ShoppingCart className="h-3 w-3" /> Comprar
-                        </a>
-                      )}
+                      <button
+                        onClick={() => setCheckoutProduto({ sku: produto.sku, nome: produto.nome, precoBase: produto.precoBase, unidade: produto.unidade })}
+                        className="flex items-center gap-1.5 text-white text-xs font-semibold px-4 py-2 rounded-full transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        <ShoppingCart className="h-3 w-3" /> Comprar
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -310,6 +439,16 @@ function TenantSite({ slug }: { slug: string }) {
         <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 bg-green-500 hover:bg-green-600 text-white rounded-full p-4 shadow-2xl hover:shadow-3xl transition-all hover:scale-110 z-50" aria-label="WhatsApp">
           <MessageCircle className="h-6 w-6" />
         </a>
+      )}
+
+      {checkoutProduto && (
+        <CheckoutModal
+          produto={checkoutProduto}
+          siteSlug={slug}
+          primaryColor={primaryColor}
+          whatsappUrl={whatsappUrl}
+          onClose={() => setCheckoutProduto(null)}
+        />
       )}
     </div>
   );
