@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, desc, asc, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, desc, asc, inArray } from "drizzle-orm";
 import {
   db,
   obrasTable,
@@ -14,8 +14,15 @@ import {
   archAiRendersTable,
   archRenderSolicitacoesTable,
 } from "@workspace/db";
+import type { ObraPortalConfig } from "@workspace/db/src/schema/obras";
+import { DEFAULT_OBRA_PORTAL_CONFIG } from "@workspace/db/src/schema/obras";
 
 const router = Router();
+
+function portalConfig(raw: unknown): ObraPortalConfig {
+  const value = raw && typeof raw === "object" ? raw as Partial<ObraPortalConfig> : {};
+  return { ...DEFAULT_OBRA_PORTAL_CONFIG, ...value };
+}
 
 async function getArqdorPortalProject(token: string) {
   const [project] = await db
@@ -26,7 +33,6 @@ async function getArqdorPortalProject(token: string) {
   return project ?? null;
 }
 
-// GET /api/portal/arqdor/:token/versions — official persistent Render Studio history
 router.get("/portal/arqdor/:token/versions", async (req, res) => {
   const token = String(req.params.token ?? "");
   const project = await getArqdorPortalProject(token);
@@ -71,8 +77,6 @@ router.get("/portal/arqdor/:token/versions", async (req, res) => {
   });
 });
 
-// POST /api/portal/arqdor/:token/revisions — records a real client revision request
-// linked to the exact official Render Studio version being reviewed.
 router.post("/portal/arqdor/:token/revisions", async (req, res) => {
   const token = String(req.params.token ?? "");
   const project = await getArqdorPortalProject(token);
@@ -126,151 +130,115 @@ router.post("/portal/arqdor/:token/revisions", async (req, res) => {
     } as any)
     .returning();
 
-  return res.status(201).json({
-    revision,
-    projectId: project.id,
-    sourceAiRenderId,
-    nextAction: "revisao_pendente",
-  });
+  return res.status(201).json({ revision, projectId: project.id, sourceAiRenderId, nextAction: "revisao_pendente" });
 });
 
-// GET /api/portal/obra/:token — public, no auth required
 router.get("/portal/obra/:token", async (req, res) => {
   const { token } = req.params;
 
-  const [obra] = await db
-    .select()
-    .from(obrasTable)
-    .where(eq(obrasTable.portalToken, token));
-
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+
+  const config = portalConfig(obra.portalConfig);
 
   const [tenant] = await db
     .select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, obra.tenantId));
 
-  // Cronograma etapas
-  const etapas = await db
-    .select()
-    .from(obraEtapasTable)
-    .where(eq(obraEtapasTable.obraId, obra.id))
-    .orderBy(asc(obraEtapasTable.ordem));
+  const etapas = config.showSchedule
+    ? await db.select().from(obraEtapasTable).where(eq(obraEtapasTable.obraId, obra.id)).orderBy(asc(obraEtapasTable.ordem))
+    : [];
 
-  // Latest orcamento — prefer 'aprovado', then 'enviado'
-  const orcamentos = await db
-    .select()
-    .from(obraOrcamentosTable)
-    .where(
-      and(
-        eq(obraOrcamentosTable.obraId, obra.id),
-        eq(obraOrcamentosTable.tenantId, obra.tenantId),
-      ),
-    )
-    .orderBy(desc(obraOrcamentosTable.versao));
-
-  const orcamento =
-    orcamentos.find((o) => o.status === "aprovado") ??
-    orcamentos.find((o) => o.status === "enviado") ??
-    null;
-
-  let orcamentoComEtapas = null;
-  if (orcamento) {
-    const orcEtapas = await db
+  let orcamentoComEtapas: any = null;
+  if (config.showBudget) {
+    const orcamentos = await db
       .select()
-      .from(obraOrcamentoEtapasTable)
-      .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamento.id))
-      .orderBy(asc(obraOrcamentoEtapasTable.ordem));
+      .from(obraOrcamentosTable)
+      .where(and(eq(obraOrcamentosTable.obraId, obra.id), eq(obraOrcamentosTable.tenantId, obra.tenantId)))
+      .orderBy(desc(obraOrcamentosTable.versao));
 
-    const etapaIds = orcEtapas.map((e) => e.id);
-    const allItens =
-      etapaIds.length > 0
-        ? await db
-            .select()
-            .from(obraOrcamentoItensTable)
-            .where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
-            .orderBy(asc(obraOrcamentoItensTable.ordem))
+    const orcamento = orcamentos.find((o) => o.status === "aprovado") ?? orcamentos.find((o) => o.status === "enviado") ?? null;
+    if (orcamento) {
+      const orcEtapas = await db
+        .select()
+        .from(obraOrcamentoEtapasTable)
+        .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamento.id))
+        .orderBy(asc(obraOrcamentoEtapasTable.ordem));
+      const etapaIds = orcEtapas.map((e) => e.id);
+      const allItens = etapaIds.length > 0
+        ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, etapaIds)).orderBy(asc(obraOrcamentoItensTable.ordem))
         : [];
-
-    const byEtapa: Record<string, typeof allItens> = {};
-    for (const item of allItens) {
-      if (!byEtapa[item.etapaId]) byEtapa[item.etapaId] = [];
-      byEtapa[item.etapaId]!.push(item);
+      const byEtapa: Record<string, typeof allItens> = {};
+      for (const item of allItens) (byEtapa[item.etapaId] ??= []).push(item);
+      orcamentoComEtapas = { ...orcamento, etapas: orcEtapas.map((e) => ({ ...e, itens: byEtapa[e.id] ?? [] })) };
     }
-
-    orcamentoComEtapas = {
-      ...orcamento,
-      etapas: orcEtapas.map((e) => ({ ...e, itens: byEtapa[e.id] ?? [] })),
-    };
   }
 
-  // Last 5 diario entries ordered by date desc
-  const diario = await db
-    .select()
-    .from(obraDiarioTable)
-    .where(eq(obraDiarioTable.obraId, obra.id))
-    .orderBy(desc(obraDiarioTable.data))
-    .limit(5);
+  let diario: any[] = [];
+  if (config.showDiary) {
+    diario = await db
+      .select()
+      .from(obraDiarioTable)
+      .where(and(eq(obraDiarioTable.obraId, obra.id), eq(obraDiarioTable.status, "aprovado")))
+      .orderBy(desc(obraDiarioTable.data))
+      .limit(12);
 
-  // Ocorrências: non-approved entries with observacoes filled
-  const ocorrencias = await db
-    .select()
-    .from(obraDiarioTable)
-    .where(
-      and(
-        eq(obraDiarioTable.obraId, obra.id),
-        isNotNull(obraDiarioTable.observacoes),
-      ),
-    )
-    .orderBy(desc(obraDiarioTable.data))
-    .limit(10)
-    .then((rows) => rows.filter((r) => r.status !== "aprovado"));
+    if (!config.showDiaryPhotos) {
+      diario = diario.map((entry) => ({ ...entry, fotos: [], videos: [], anexos: [] }));
+    }
+  }
+
+  const ocorrencias = config.showDiary
+    ? diario
+        .filter((entry) => Boolean(entry.observacoes))
+        .slice(0, 10)
+        .map((entry) => ({
+          id: entry.id,
+          data: entry.data,
+          observacoes: entry.observacoes,
+          status: entry.status,
+          responsavelNome: entry.responsavelNome,
+        }))
+    : [];
 
   return res.json({
+    publication: config,
     obra: {
       id: obra.id,
       nome: obra.nome,
-      descricao: obra.descricao,
+      descricao: config.showOverview ? obra.descricao : null,
       clienteNome: obra.clienteNome,
-      endereco: obra.endereco,
+      endereco: config.showOverview ? obra.endereco : null,
       status: obra.status,
-      dataInicio: obra.dataInicio,
-      dataFimPrevista: obra.dataFimPrevista,
-      dataFimReal: obra.dataFimReal,
-      orcamentoTotal: obra.orcamentoTotal,
-      custoRealizado: obra.custoRealizado,
+      dataInicio: config.showOverview ? obra.dataInicio : null,
+      dataFimPrevista: config.showOverview ? obra.dataFimPrevista : null,
+      dataFimReal: config.showOverview ? obra.dataFimReal : null,
+      orcamentoTotal: config.showFinancialSummary ? obra.orcamentoTotal : null,
+      custoRealizado: config.showFinancialSummary ? obra.custoRealizado : null,
     },
     tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
     orcamento: orcamentoComEtapas,
     etapas,
     diario,
     ocorrencias,
+    decisions: [],
   });
 });
 
-// POST /api/portal/obra/:token/aprovar-orcamento — client approves the budget
 router.post("/portal/obra/:token/aprovar-orcamento", async (req, res) => {
   const { token } = req.params;
-
-  const [obra] = await db
-    .select()
-    .from(obrasTable)
-    .where(eq(obrasTable.portalToken, token));
-
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showBudget) return res.status(403).json({ error: "Orçamento não está publicado neste portal." });
 
   const [orcamento] = await db
     .select()
     .from(obraOrcamentosTable)
-    .where(
-      and(
-        eq(obraOrcamentosTable.obraId, obra.id),
-        eq(obraOrcamentosTable.status, "enviado"),
-      ),
-    );
+    .where(and(eq(obraOrcamentosTable.obraId, obra.id), eq(obraOrcamentosTable.status, "enviado")));
 
-  if (!orcamento)
-    return res.status(404).json({ error: "Nenhum orçamento aguardando aprovação." });
+  if (!orcamento) return res.status(404).json({ error: "Nenhum orçamento aguardando aprovação." });
 
   const [updated] = await db
     .update(obraOrcamentosTable)
