@@ -207,6 +207,63 @@ router.get("/portal/obra/:token", async (req, res) => {
   });
 });
 
+router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const decisionId = String(req.params.decisionId ?? "");
+  const action = String(req.body?.action ?? "");
+  const comment = typeof req.body?.comment === "string" ? req.body.comment.trim().slice(0, 15000) : "";
+  const selectedOption = typeof req.body?.selectedOption === "string" ? req.body.selectedOption.trim().slice(0, 1000) : "";
+
+  if (!decisionId) return res.status(400).json({ error: "decisionId é obrigatório." });
+  if (!['approve', 'reject'].includes(action)) return res.status(422).json({ error: "Ação inválida." });
+  if (action === 'reject' && !comment) return res.status(422).json({ error: "Informe o motivo da rejeição." });
+
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showClientDecisions) return res.status(403).json({ error: "Decisões do cliente não estão publicadas neste portal." });
+
+  const current = await pool.query(
+    `SELECT id, status, decision_type, options
+       FROM arch_project_decisions
+      WHERE id = $1::uuid
+        AND obra_id = $2
+        AND tenant_id::text = $3
+      LIMIT 1`,
+    [decisionId, obra.id, obra.tenantId],
+  );
+  const decision = current.rows[0];
+  if (!decision) return res.status(404).json({ error: "Decisão não encontrada neste portal." });
+  if (decision.decision_type !== 'client') return res.status(403).json({ error: "Esta decisão não está disponível para o cliente." });
+  if (decision.status !== 'pending') return res.status(409).json({ error: "Esta decisão já foi respondida." });
+
+  const options = Array.isArray(decision.options) ? decision.options : [];
+  if (selectedOption && options.length > 0 && !options.includes(selectedOption)) {
+    return res.status(422).json({ error: "Opção selecionada não pertence a esta decisão." });
+  }
+
+  const status = action === 'approve' ? 'approved' : 'rejected';
+  const result = await pool.query(
+    `UPDATE arch_project_decisions
+        SET status = $1,
+            selected_option = $2::jsonb,
+            decision_comment = $3,
+            decided_by_name = $4,
+            decided_at = now(),
+            updated_at = now()
+      WHERE id = $5::uuid
+        AND obra_id = $6
+        AND tenant_id::text = $7
+        AND decision_type = 'client'
+        AND status = 'pending'
+      RETURNING id, status, selected_option, decision_comment, decided_at`,
+    [status, selectedOption ? JSON.stringify(selectedOption) : null, comment || null, obra.clienteNome ?? 'Cliente', decisionId, obra.id, obra.tenantId],
+  );
+  if (!result.rows[0]) return res.status(409).json({ error: "A decisão foi alterada antes desta resposta. Atualize o portal." });
+
+  return res.json({ ok: true, decision: result.rows[0] });
+});
+
 router.post("/portal/obra/:token/aprovar-orcamento", async (req, res) => {
   const { token } = req.params;
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
