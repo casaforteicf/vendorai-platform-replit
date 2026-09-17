@@ -6,13 +6,14 @@ import RealConstructionFinancePanel from "./RealConstructionFinancePanel";
 import RealConstructionQualityPanel from "./RealConstructionQualityPanel";
 import RealProjectDecisionsPanel from "./RealProjectDecisionsPanel";
 import ConstructionClientPortalButton from "./ConstructionClientPortalButton";
+import ConstructionPortalSettings from "./ConstructionPortalSettings";
 
 type Props = {
   arqState?: any;
   onNavigate?: (module: string) => void;
 };
 
-type Mode = "overview" | "planning" | "diary" | "finance" | "quality" | "decisions";
+type Mode = "overview" | "planning" | "diary" | "finance" | "quality" | "decisions" | "portal";
 
 type Tab = {
   id: Mode | "procurement";
@@ -28,6 +29,7 @@ const TABS: Tab[] = [
   { id: "procurement", label: "Compras", hint: "Solicitações, cotações e fornecedores" },
   { id: "quality", label: "Qualidade", hint: "Inspeções e não conformidades" },
   { id: "decisions", label: "Decisões", hint: "Pendências, responsáveis e aprovações" },
+  { id: "portal", label: "Portal do Cliente", hint: "Controle exatamente o que o cliente pode visualizar" },
 ];
 
 export default function ConstructionHub({ arqState, onNavigate }: Props) {
@@ -56,7 +58,7 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
             <ConstructionClientPortalButton arqState={arqState} />
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
             {TABS.map((tab) => {
               const active = tab.id !== "procurement" && mode === tab.id;
               return (
@@ -74,25 +76,13 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-            <button
-              type="button"
-              onClick={() => onNavigate?.("cliente")}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
+            <button type="button" onClick={() => onNavigate?.("cliente")} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
               Projeto & Aprovações do Cliente
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigate?.("real-budget")}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
+            <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
               Orçamento Executivo
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigate?.("execution")}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
+            <button type="button" onClick={() => onNavigate?.("execution")} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
               Produção & Execução
             </button>
           </div>
@@ -102,25 +92,17 @@ export default function ConstructionHub({ arqState, onNavigate }: Props) {
       {mode === "overview" ? (
         <ArqdorConstructionWorkspace arqState={arqState} onNavigate={onNavigate} />
       ) : mode === "planning" ? (
-        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
-          <AdvancedSchedulePanel arqState={arqState} />
-        </div>
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8"><AdvancedSchedulePanel arqState={arqState} /></div>
       ) : mode === "diary" ? (
-        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
-          <CompleteSiteDiaryPanel arqState={arqState} />
-        </div>
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8"><CompleteSiteDiaryPanel arqState={arqState} /></div>
       ) : mode === "finance" ? (
-        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
-          <RealConstructionFinancePanel arqState={arqState} />
-        </div>
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8"><RealConstructionFinancePanel arqState={arqState} /></div>
       ) : mode === "quality" ? (
-        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
-          <RealConstructionQualityPanel arqState={arqState} />
-        </div>
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8"><RealConstructionQualityPanel arqState={arqState} /></div>
+      ) : mode === "decisions" ? (
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8"><RealProjectDecisionsPanel arqState={arqState} onNavigate={onNavigate} /></div>
       ) : (
-        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8">
-          <RealProjectDecisionsPanel arqState={arqState} onNavigate={onNavigate} />
-        </div>
+        <div className="mx-auto w-full max-w-[1760px] px-5 py-5 lg:px-8"><ConstructionPortalSettings arqState={arqState} /></div>
       )}
     </div>
   );
