@@ -144,6 +144,7 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
 
 /** Customer view: human units + Vendor Credits + entitlements. */
 router.get("/tenants/:tenantId/commercial-usage", authenticate, async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against signed-in tenant or super_admin
   const tenantId = req.params.tenantId;
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Access denied" });
 
@@ -166,6 +167,7 @@ router.get("/tenants/:tenantId/commercial-usage", authenticate, async (req, res)
  * reviewed before any automatic cut-over.
  */
 router.get("/admin/tenants/:tenantId/commercial-provisioning-preview", authenticate, requireRole("super_admin"), async (req, res) => {
+  // tenant-audit: reviewed cross-tenant preview is protected by requireRole("super_admin")
   const tenantId = String(req.params.tenantId);
   const [tenant] = await db.select({
     id: tenantsTable.id,
