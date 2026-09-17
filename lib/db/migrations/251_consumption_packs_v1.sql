@@ -119,6 +119,85 @@ ON CONFLICT (commercial_key) DO UPDATE SET
   vendor_credits = EXCLUDED.vendor_credits,
   updated_at = now();
 
+-- A pack cannot be turned on accidentally with price zero/pending. One product
+-- activation becomes the operational source: it synchronizes pack definition
+-- and catalog visibility after validation.
+CREATE OR REPLACE FUNCTION validate_and_sync_consumption_pack_activation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_price numeric;
+  v_has_definition boolean;
+BEGIN
+  IF NEW.offer_kind <> 'consumption_pack' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.active = true THEN
+    SELECT COALESCE(NULLIF(preco_promocional, 0), NULLIF(preco_mensalidade, 0), NULLIF(preco_base, 0), 0)
+      INTO v_price
+    FROM produtos_catalogo
+    WHERE id = NEW.catalog_product_id;
+
+    SELECT EXISTS(
+      SELECT 1
+      FROM consumption_pack_definitions d
+      WHERE d.commercial_key = NEW.commercial_key
+        AND d.quantity > 0
+    ) INTO v_has_definition;
+
+    IF COALESCE(v_price, 0) <= 0 THEN
+      RAISE EXCEPTION USING
+        ERRCODE = 'P0001',
+        MESSAGE = 'CONSUMPTION_PACK_PRICE_REQUIRED',
+        HINT = 'Defina um preço positivo no catálogo antes de ativar o pacote.';
+    END IF;
+    IF NOT v_has_definition THEN
+      RAISE EXCEPTION USING
+        ERRCODE = 'P0001',
+        MESSAGE = 'CONSUMPTION_PACK_DEFINITION_REQUIRED';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_validate_consumption_pack_activation ON commercial_product_profiles;
+CREATE TRIGGER trg_validate_consumption_pack_activation
+BEFORE UPDATE OF active ON commercial_product_profiles
+FOR EACH ROW
+EXECUTE FUNCTION validate_and_sync_consumption_pack_activation();
+
+CREATE OR REPLACE FUNCTION sync_consumption_pack_activation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.offer_kind = 'consumption_pack' THEN
+    UPDATE consumption_pack_definitions
+       SET active = NEW.active,
+           updated_at = now()
+     WHERE commercial_key = NEW.commercial_key;
+
+    IF NEW.catalog_product_id IS NOT NULL THEN
+      UPDATE produtos_catalogo
+         SET ativo = NEW.active,
+             updated_at = now()
+       WHERE id = NEW.catalog_product_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_consumption_pack_activation ON commercial_product_profiles;
+CREATE TRIGGER trg_sync_consumption_pack_activation
+AFTER UPDATE OF active ON commercial_product_profiles
+FOR EACH ROW
+EXECUTE FUNCTION sync_consumption_pack_activation();
+
 -- Packs deliberately remain unavailable to customers until their price and
--- margin are approved. Activating a pack later means updating both the catalog
--- item and commercial/pack profiles; no schema change is required.
+-- margin are approved. After pricing, activating the commercial product also
+-- activates the resource definition and catalog row; no schema change is needed.
