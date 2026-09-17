@@ -208,6 +208,21 @@ for (const [slug, agent] of Object.entries(agentPages)) routes.push({ pathname: 
 for (const [slug, vertical] of Object.entries(verticals)) routes.push({ pathname: `/verticais/${slug}`, title: `VendorAI para ${vertical.title}`, description: vertical.description, type: "vertical", name: vertical.title, priority: 0.82 });
 for (const macrosegment of macrosegments) routes.push({ pathname: `/segmentos/${macrosegment}`, title: `VendorAI para ${humanize(macrosegment)}`, description: `Soluções VendorAI para ${humanize(macrosegment).toLowerCase()}, com CRM, IA, marketing, atendimento, automação e inteligência comercial.`, type: "collection", priority: 0.7 });
 
+const manifest = {
+  generatedAt: new Date().toISOString(),
+  baseUrl,
+  ogImage,
+  staticPages,
+  products,
+  features: featurePages,
+  agents: agentPages,
+  verticals,
+  macrosegments: [...macrosegments],
+  routes,
+};
+fs.mkdirSync(outDir, { recursive: true });
+fs.writeFileSync(path.join(outDir, "seo-manifest.json"), JSON.stringify(manifest, null, 2));
+
 function socialMeta(title, description, canonical) {
   return [
     `<meta property="og:title" content="${escapeXml(title)}">`,
@@ -294,7 +309,17 @@ const shell = fs.readFileSync(shellPath, "utf8");
 
 for (const route of routes) writeRoute(route, renderRouteHtml(shell, route));
 
-const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${routes.map((route) => `  <url><loc>${baseUrl}${route.pathname === "/" ? "/" : route.pathname}</loc><priority>${routePriority(route.pathname).toFixed(1)}</priority></url>`).join("\n")}\n</urlset>\n`;
+const today = new Date().toISOString().slice(0, 10);
+const sitemapEntries = routes
+  .filter((route) => !["/demo", "/contato", "/privacy", "/terms", "/cadastro-praca"].includes(route.pathname))
+  .map((route) => {
+    const loc = `${baseUrl}${route.pathname === "/" ? "/" : route.pathname}`;
+    return `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>${routePriority(route.pathname).toFixed(1)}</priority>\n    <xhtml:link rel="alternate" hreflang="pt-BR" href="${escapeXml(loc)}" />\n    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(loc)}" />\n  </url>`;
+  }).join("\n");
+const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${sitemapEntries}\n</urlset>\n`;
 fs.writeFileSync(path.resolve(outDir, "sitemap.xml"), sitemap);
 
-console.log(`[postbuild-seo] rendered ${routes.length} route(s) with canonical/meta/JSON-LD + sitemap`);
+const robots = `User-agent: *\nAllow: /\n\nDisallow: /login\nDisallow: /app\nDisallow: /admin\nDisallow: /crm\nDisallow: /tenants\nDisallow: /settings\nDisallow: /api\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
+fs.writeFileSync(path.resolve(outDir, "robots.txt"), robots);
+
+console.log(`[postbuild-seo] rendered ${routes.length} route(s) with canonical/meta/JSON-LD + manifest + sitemap`);
