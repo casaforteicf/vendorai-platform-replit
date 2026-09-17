@@ -38,13 +38,13 @@ function buildReminder(license: typeof accessLicensesTable.$inferSelect, now: Da
     if (hours <= 24) return {
       type: "access_ending_24h", cycleKey: license.accessEndsAt.toISOString(),
       title: "Seu acesso termina em menos de 24 horas",
-      message: `Seu VendorAI Growth completo termina em ${date}. Continue por mais 5 dias por R$ 399,00 ou escolha a assinatura contínua Growth: ${APP_URL}/dashboard`,
+      message: `Seu VendorAI Growth completo termina em ${date}. Abra o VendorAI para continuar por mais um período ou seguir com a condição comercial vinculada à sua oferta: ${APP_URL}/dashboard`,
       emailSubject: "Seu acesso VendorAI termina em menos de 24 horas",
     };
     if (hours <= 48) return {
       type: "access_ending_48h", cycleKey: license.accessEndsAt.toISOString(),
       title: "Faltam 2 dias para o fim do acesso",
-      message: `Seu acesso completo termina em ${date}. Antecipe mais 5 dias por R$ 399,00 sem perder o prazo atual ou escolha a assinatura contínua Growth: ${APP_URL}/dashboard`,
+      message: `Seu acesso completo termina em ${date}. Antecipe a continuidade sem perder o prazo atual. A condição comercial válida é a registrada na sua oferta: ${APP_URL}/dashboard`,
       emailSubject: "Faltam 2 dias para o fim do seu acesso VendorAI",
     };
     return null;
@@ -64,7 +64,7 @@ function buildReminder(license: typeof accessLicensesTable.$inferSelect, now: Da
   return {
     type: "access_expired", cycleKey: month,
     title: "VendorAI em modo somente consulta",
-    message: `Seu período terminou. Seus dados estão preservados. Compre mais 5 dias por R$ 399,00 ou escolha a assinatura contínua Growth: ${APP_URL}/dashboard`,
+    message: `Seu período terminou. Seus dados estão preservados. Abra o VendorAI para continuar conforme a condição comercial vinculada à sua oferta: ${APP_URL}/dashboard`,
     emailSubject: "Continue usando o VendorAI completo",
   };
 }
