@@ -236,6 +236,7 @@ router.get("/admin/access-license/tenants/:tenantId", async (req, res) => {
 
 router.post("/admin/access-license/tenants/:tenantId/entitlements", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  // tenant-audit: reviewed cross-tenant entitlement grant is restricted to authenticated super_admin
   const tenantId = String(req.params.tenantId);
   const parsed = z.object({
     commercialKey: z.string().trim().min(3).max(120),
@@ -299,6 +300,7 @@ router.post("/admin/access-license/tenants/:tenantId/entitlements", async (req, 
 
 router.delete("/admin/access-license/tenants/:tenantId/entitlements/:entitlementId", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  // tenant-audit: reviewed cross-tenant entitlement revoke is restricted to authenticated super_admin
   const tenantId = String(req.params.tenantId);
   const entitlementId = String(req.params.entitlementId);
   const [updated] = await db.update(tenantEntitlementsTable)
