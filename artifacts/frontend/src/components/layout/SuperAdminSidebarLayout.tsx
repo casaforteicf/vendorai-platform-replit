@@ -92,9 +92,10 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
     {
       key: "ia",
       label: "IA & Automação",
-      description: "Consumo, modelos e evolução da inteligência artificial",
+      description: "Consumo, modelos, prompts e evolução da inteligência artificial",
       items: [
         { name: "Consumo de IA", href: "/admin/ai-usage", icon: BrainCircuit },
+        { name: "Prompts Padrão", href: "/admin/agent-defaults", icon: BrainCircuit },
         { name: "Progresso de ML", href: "/admin/ml-status", icon: BrainCircuit },
       ],
     },
