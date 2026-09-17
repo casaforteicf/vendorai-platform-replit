@@ -19,8 +19,9 @@ jobs:
           ref: fix/prompt-variations-dedup
           fetch-depth: 0
       - name: Remove duplicate prompt variation handlers
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path('artifacts/api-server/src/routes/arch.ts')
@@ -33,7 +34,6 @@ jobs:
           if start == -1:
               raise SystemExit('Second prompt-variations block not found')
 
-          # Include the separator immediately before the duplicate block when present.
           sep = '// ─────────────────────────────────────────────────────────────────────────────\n'
           sep_start = text.rfind(sep, 0, start)
           if sep_start != -1 and start - sep_start < 200:
@@ -43,14 +43,12 @@ jobs:
           if end == -1:
               raise SystemExit('Arqdor projects marker not found')
 
-          # Preserve the separator preceding the next valid route block.
           next_sep = text.rfind(sep, start, end)
           if next_sep != -1:
               end = next_sep
 
           updated = text[:start] + text[end:]
 
-          # Verify exactly one handler remains for the four canonical routes.
           checks = {
               'GET /arch/prompt-variations': 'router.get("/arch/prompt-variations"',
               'POST /arch/prompt-variations': 'router.post("/arch/prompt-variations"',
@@ -75,6 +73,7 @@ jobs:
               audit.write_text(audit_text.replace(old, new))
           elif new not in audit_text:
               raise SystemExit('production integrity duplicate-route rule not found')
+          PY
       - name: Validate targeted tests
         run: |
           corepack enable
