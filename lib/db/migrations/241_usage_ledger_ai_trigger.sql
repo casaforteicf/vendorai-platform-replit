@@ -3,6 +3,42 @@
 -- Business-unit debit events (image, video, prospect, render, site...) are emitted
 -- separately when the final useful result is delivered.
 
+-- Attribute technical AI cost to the closest commercial product whenever the
+-- feature has a stable business owner. Ambiguous shared features remain NULL.
+CREATE OR REPLACE FUNCTION commercial_key_for_ai_feature(p_feature text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_feature
+    WHEN 'content_generator' THEN 'vendor.content_studio'
+    WHEN 'image_generator' THEN 'vendor.creative_studio'
+    WHEN 'proposal_generator' THEN 'vendor.proposals_catalog'
+    WHEN 'auto_quote' THEN 'vendor.proposals_catalog'
+    WHEN 'site_generator' THEN 'vendor.sites_autopilot'
+    WHEN 'briefing_generator' THEN 'vendor.content_planner'
+    WHEN 'spin_briefing' THEN 'vendor.content_planner'
+    WHEN 'intelligence_analysis' THEN 'vendor.revenue_scout'
+    WHEN 'churn_retention' THEN 'vendor.revenue_scout'
+    WHEN 'document_extraction' THEN 'vendor.management'
+    WHEN 'media_interpretation' THEN 'vendor.knowledge'
+    WHEN 'embedding' THEN 'vendor.knowledge'
+    WHEN 'agent_sdr' THEN 'vendor.ai_team'
+    WHEN 'agent_closer' THEN 'vendor.ai_team'
+    WHEN 'agent_followup' THEN 'vendor.ai_team'
+    WHEN 'agent_reactivation' THEN 'vendor.ai_team'
+    WHEN 'agent_scheduler' THEN 'vendor.ai_team'
+    WHEN 'agent_service' THEN 'vendor.ai_team'
+    WHEN 'agent_onboarding' THEN 'vendor.ai_team'
+    WHEN 'agent_relacionamento' THEN 'vendor.ai_team'
+    WHEN 'agent_financeiro' THEN 'vendor.ai_team'
+    WHEN 'agent_cobranca' THEN 'vendor.ai_team'
+    WHEN 'agent_recepcao' THEN 'vendor.ai_team'
+    WHEN 'agent_expansao_conta' THEN 'vendor.ai_team'
+    ELSE NULL
+  END;
+$$;
+
 CREATE OR REPLACE FUNCTION mirror_ai_usage_to_usage_ledger()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -30,7 +66,7 @@ BEGIN
     created_at
   ) VALUES (
     NEW.tenant_id,
-    NULL,
+    commercial_key_for_ai_feature(NEW.feature::text),
     'ai_assist',
     1,
     0,
@@ -89,7 +125,7 @@ INSERT INTO usage_ledger (
 )
 SELECT
   l.tenant_id,
-  NULL,
+  commercial_key_for_ai_feature(l.feature::text),
   'ai_assist',
   1,
   0,
