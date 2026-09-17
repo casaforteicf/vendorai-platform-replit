@@ -49,6 +49,17 @@ for (const [route, count] of counts) {
   if (count > 1) warnings.push(`arch.ts: ${route} registrado ${count} vezes; consolidar em um único handler.`);
 }
 
+const agentRoutes = read("artifacts/api-server/src/routes/agents.ts");
+if (/callOpenAI\(openaiMessages,\s*tenantId\s*\)/.test(agentRoutes)) {
+  errors.push("agents.ts: toda chamada ao wrapper de IA deve informar agentName para passar pelo ai-gateway com feature/billing corretos.");
+}
+if (!agentRoutes.includes("callOpenAI(openaiMessages, tenantId, agentName, req.log)")) {
+  errors.push("agents.ts: handler genérico deve encaminhar agentName e logger ao ai-gateway.");
+}
+if (!agentRoutes.includes('callOpenAI(openaiMessages, tenantId, "scheduler", req.log)')) {
+  errors.push("agents.ts: scheduler deve ser atribuído explicitamente ao feature agent_scheduler no ai-gateway.");
+}
+
 const agentEngine = read("artifacts/api-server/src/lib/agent-engine.ts");
 if (/until full migration|Fallback:\s*direct call/i.test(agentEngine)) {
   warnings.push("agent-engine.ts: migração para ai-gateway ainda possui fallback direto; manter como dívida rastreada até remoção.");
