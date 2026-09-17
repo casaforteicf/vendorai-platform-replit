@@ -6,6 +6,11 @@ import { parseJarvisEmailIntent, emailIntentMissingFields } from "../services/ja
 import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
 import jarvisFastLiveCapabilitiesRouter from "./jarvis_fast_live_capabilities.js";
 import jarvisDeviceActionsRouter from "./jarvis_device_actions.js";
+import jarvisExternalActionsRouter from "./jarvis_external_actions.js";
+import jarvisNaturalActionsRouter from "./jarvis_natural_actions.js";
+import jarvisActionPlansRouter from "./jarvis_action_plans.js";
+import jarvisMissionsRouter from "./jarvis_missions.js";
+import supportRouter from "./support.js";
 
 const router: IRouter = Router();
 router.use(jarvisFastLiveCapabilitiesRouter);
@@ -244,6 +249,31 @@ router.post("/support/chat", async (req, res, next) => {
     `Mensagem:\n${intent.body}`,
     "Nada foi enviado ainda. O e-mail está aguardando sua aprovação; diga “aprova o e-mail” ou use a fila de aprovações.",
   ].join("\n\n"), { agentTaskId: task.id, actionType: task.actionType, status: task.status });
+});
+
+const downstreamChatRouters: IRouter[] = [
+  jarvisExternalActionsRouter,
+  jarvisNaturalActionsRouter,
+  jarvisActionPlansRouter,
+  jarvisMissionsRouter,
+  supportRouter,
+];
+
+router.post("/support/chat", (req, res, next) => {
+  let index = 0;
+  const runNextStage = (err?: unknown): void => {
+    if (err) {
+      next(err);
+      return;
+    }
+    const stage = downstreamChatRouters[index++];
+    if (!stage) {
+      next();
+      return;
+    }
+    stage.handle(req, res, runNextStage);
+  };
+  runNextStage();
 });
 
 export default router;
