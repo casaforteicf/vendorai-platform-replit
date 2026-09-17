@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 export const PRODUTO_INTERNO_TIPOS = ["servico", "produto", "oferta", "etapa"] as const;
 export type ProdutoInternoTipo = (typeof PRODUTO_INTERNO_TIPOS)[number];
 
-export type ProdutoInternoDetalhes = Record<string, string | boolean | string[] | null | undefined>;
+export type ProdutoInternoDetalhes = Record<string, unknown>;
 export type ProdutoInternoAnexo = {
   id: string;
   nome: string;
@@ -16,30 +16,51 @@ export type ProdutoInternoAnexo = {
   uploadedAt?: string | null;
 };
 
-// Catálogo complementar de soluções do Vendor.ai para itens que não são um
-// produto direto de estoque/catálogo: serviços, ferramentas/soluções, ofertas
-// e etapas do processo. Uso de marketing/vendas do próprio time; não controla
-// acesso de tenant (isso continua sendo tenant_nav_modules). Visível só pra
-// super_admin.
+export type ProdutoUsoPolicy = {
+  version?: string;
+  enforcement?: "measure_only" | "warn" | "enforce";
+  quotaMode?: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Fonte comercial mestre do ecossistema VendorAI.
+ *
+ * A tabela continua servindo a Biblioteca da Empresa/marketing, mas os itens da
+ * categoria "Produtos Comerciais VendorAI" também passam a concentrar a
+ * definição comercial que alimenta catálogo, site, checkout, entitlements e
+ * franquias. O acesso técnico continua materializado em tenant_nav_modules;
+ * product/module/segment são conceitos diferentes.
+ */
 export const produtosInternosTable = pgTable("produtos_internos", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   categoria: text("categoria").notNull(),
   nome: text("nome").notNull(),
   descricaoUso: text("descricao_uso").notNull(),
-  // Classifica o tipo da referência complementar: serviço (execução), produto
-  // interno/solução (ferramenta/recurso), oferta (arranjo comercial) ou etapa
-  // do processo (atividade/fase que precisa de conteúdo e conhecimento).
   tipo: text("tipo").$type<ProdutoInternoTipo>().notNull().default("produto"),
-  // Nichos/segmentos (nomes iguais aos de segment_templates) em que esse
-  // item faz mais sentido como oferta de marketing -- padrão pra
-  // filtrar/relacionar ao gerar conteúdo voltado a um nicho específico.
   nichosRelacionados: jsonb("nichos_relacionados").$type<string[]>().notNull().default([]),
-  // Complemento estruturado usado pela Biblioteca da Empresa, agentes e
-  // geradores de materiais. Mantém o cadastro comercial principal enxuto.
   detalhes: jsonb("detalhes").$type<ProdutoInternoDetalhes>().notNull().default({}),
-  // Referências enviadas pela Biblioteca (imagem, vídeo, áudio ou documento).
-  // O arquivo continua no object storage; aqui ficam somente metadados/URL.
   anexos: jsonb("anexos").$type<ProdutoInternoAnexo[]>().notNull().default([]),
+
+  // Contrato comercial estável. Nomes e textos podem mudar sem quebrar billing.
+  commercialKey: text("commercial_key"),
+  sku: text("sku"),
+  billingModel: text("billing_model"),
+  publicSlug: text("public_slug"),
+  monthlyPriceCents: integer("monthly_price_cents"),
+  oneTimePriceCents: integer("one_time_price_cents"),
+  maxUsers: integer("max_users"),
+  unlimitedUsers: boolean("unlimited_users").notNull().default(false),
+  includedInGrowth: boolean("included_in_growth").notNull().default(false),
+  standalonePurchase: boolean("standalone_purchase").notNull().default(true),
+  publicVisible: boolean("public_visible").notNull().default(true),
+
+  // Mapeia o produto comercial para os módulos técnicos. Não é a fonte de
+  // navegação em runtime; serve ao provisionamento/diagnóstico do entitlement.
+  moduleKeys: jsonb("module_keys").$type<string[]>().notNull().default([]),
+  usagePolicy: jsonb("usage_policy").$type<ProdutoUsoPolicy>().notNull().default({}),
+  commercialMetadata: jsonb("commercial_metadata").$type<Record<string, unknown>>().notNull().default({}),
+
   ordem: integer("ordem").notNull().default(0),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -53,6 +74,7 @@ export const insertProdutoInternoSchema = createInsertSchema(produtosInternosTab
   createdAt: true,
   updatedAt: true,
 });
+
 export const updateProdutoInternoSchema = createSelectSchema(produtosInternosTable, {
   tipo: z.enum(PRODUTO_INTERNO_TIPOS),
 })
