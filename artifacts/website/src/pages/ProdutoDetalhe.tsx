@@ -18,9 +18,7 @@ import { getProductVisuals, type ProductVisual } from "@/data/productVisuals";
 import {
   catalogImages,
   fetchPublicVendorProductBySlug,
-  formatCatalogPrice,
   productSkuBySlug,
-  recurrenceLabel,
   type PublicCatalogProduct,
 } from "@/lib/publicProductCatalog";
 
@@ -88,20 +86,16 @@ export default function ProdutoDetalhe() {
   const sales = getProductSalesContent(slug);
   const linked = Boolean(productSkuBySlug[slug]);
   const [catalog, setCatalog] = useState<PublicCatalogProduct | null>(null);
-  const [loading, setLoading] = useState(linked);
 
   useEffect(() => {
     let cancelled = false;
     if (!linked) {
       setCatalog(null);
-      setLoading(false);
       return;
     }
-    setLoading(true);
     fetchPublicVendorProductBySlug(slug)
       .then((value) => { if (!cancelled) setCatalog(value); })
-      .catch(() => { if (!cancelled) setCatalog(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch(() => { if (!cancelled) setCatalog(null); });
     return () => { cancelled = true; };
   }, [slug, linked]);
 
@@ -135,10 +129,7 @@ export default function ProdutoDetalhe() {
   const name = catalog?.nome ?? product.name;
   const summary = catalog?.descricao ?? product.summary;
   const description = catalog?.descricao_longa ?? product.description;
-  const price = formatCatalogPrice(catalog);
-  const recurrence = recurrenceLabel(catalog);
   const media = useMemo(() => resolveMedia(catalog, slug, name), [catalog, slug, name]);
-  const hasCommercialInfo = linked || Boolean(sales?.commercialNote);
 
   return (
     <div className="bg-[#f7f8fa] text-slate-950">
@@ -159,22 +150,10 @@ export default function ProdutoDetalhe() {
                 </div>
               )}
 
-              {hasCommercialInfo && (
-                <div className="mt-7 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">Valor da solução</p>
-                  {linked && loading ? (
-                    <div className="mt-2 h-10 w-44 animate-pulse rounded-lg bg-orange-100" />
-                  ) : price ? (
-                    <div className="mt-2 flex items-end gap-2"><span className="text-4xl font-bold text-slate-950">{price}</span><span className="pb-1 text-slate-500">{recurrence}</span></div>
-                  ) : sales?.commercialNote ? (
-                    <p className="mt-2 text-sm leading-6 text-slate-700">{sales.commercialNote}</p>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-600">Consulte o valor no catálogo comercial.</p>
-                  )}
-                  {price && <p className="mt-2 text-xs text-slate-500">Preço sincronizado com o catálogo oficial do VendorAI.</p>}
-                  {price && sales?.commercialNote && <p className="mt-2 text-xs leading-5 text-slate-500">{sales.commercialNote}</p>}
-                </div>
-              )}
+              <div className="mt-7 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">Condição comercial</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">As condições desta solução são apresentadas nas landing pages e campanhas correspondentes. O site institucional não publica uma tabela genérica de preços.</p>
+              </div>
 
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link href="/demo" className="inline-flex h-12 items-center rounded-xl bg-orange-600 px-6 font-semibold text-white shadow-sm transition hover:bg-orange-500">Testar 5 dias grátis <ArrowRight className="ml-2 h-4 w-4" /></Link>
@@ -295,7 +274,7 @@ export default function ProdutoDetalhe() {
         <div className="rounded-[2rem] border border-orange-200 bg-[linear-gradient(135deg,#fff7ed,#ffffff_55%,#eff6ff)] px-6 py-12 text-center shadow-sm md:py-16">
           <Sparkles className="mx-auto h-7 w-7 text-orange-600" />
           <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-bold md:text-4xl">Veja o {name} funcionando dentro do VendorAI</h2>
-          {price && <p className="mt-4 text-xl text-slate-800"><strong>{price}{recurrence}</strong></p>}
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-600">A condição comercial é apresentada na LP/campanha correspondente e segue com o cadastro.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link href="/demo" className="inline-flex h-12 items-center rounded-xl bg-orange-600 px-6 font-semibold text-white transition hover:bg-orange-500">Começar teste grátis <ArrowRight className="ml-2 h-4 w-4" /></Link>
             <Link href="/contato" className="inline-flex h-12 items-center rounded-xl border border-slate-300 bg-white px-6 font-semibold text-slate-800 transition hover:bg-slate-50">Solicitar demonstração</Link>
