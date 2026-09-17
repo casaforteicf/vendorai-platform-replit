@@ -11,6 +11,11 @@ import {
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { encrypt } from "../lib/crypto.js";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import {
+  getActiveEntitlements,
+  getTenantUsageSnapshot,
+  getVendorCreditBalance,
+} from "../services/commercial-usage.js";
 import { z } from "zod/v4";
 
 const router: IRouter = Router();
@@ -144,6 +149,37 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
     },
     featureBreakdown: featureRows,
     recentLogs,
+  });
+});
+
+/**
+ * Customer/commercial view: human units + Vendor Credits + active entitlements.
+ * This endpoint is measurement-only in the first rollout; it does not block use.
+ */
+router.get("/tenants/:tenantId/commercial-usage", authenticate, async (req, res) => {
+  const tenantId = req.params.tenantId;
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  const entitlements = await getActiveEntitlements(tenantId);
+  const requestedCommercialKey = typeof req.query.commercialKey === "string" ? req.query.commercialKey : null;
+  const commercialKey = requestedCommercialKey
+    ?? (entitlements.some((item) => item.commercialKey === "vendor.growth") ? "vendor.growth" : entitlements[0]?.commercialKey)
+    ?? "vendor.crm.free";
+
+  const [quotas, creditBalance] = await Promise.all([
+    getTenantUsageSnapshot(tenantId, commercialKey),
+    getVendorCreditBalance(tenantId),
+  ]);
+
+  return res.json({
+    tenantId,
+    commercialKey,
+    entitlements,
+    vendorCreditsBalance: creditBalance,
+    quotas,
+    enforcementMode: "measure_only",
   });
 });
 
