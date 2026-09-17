@@ -12,7 +12,6 @@ import { requireRole } from "./index.js";
 const router: IRouter = Router();
 const ERP_MODULE_KEY: NavModuleKey = "financeiro";
 const PRACA_AI_MODULE_KEY: NavModuleKey = "praca_ai";
-const ARQDOR_MODULE_KEY: NavModuleKey = "arch";
 const SUPERADMIN_ONLY_MODULE_KEYS = new Set<NavModuleKey>([
   ERP_MODULE_KEY,
   PRACA_AI_MODULE_KEY,
@@ -49,6 +48,59 @@ function isArqdorEligibleVertical(vertical: string | null | undefined) {
     normalized.includes("designer de interiores") ||
     normalized.includes("design de interiores")
   );
+}
+
+// As quatro listas abaixo espelham EXATAMENTE o VERTICAL_BUCKET de
+// SidebarLayoutLegacy.tsx (buckets "varejo", "supermercado", "salao",
+// "clinica") — fonte única de verdade é o frontend; mantemos essa cópia em
+// sincronia manual até existir um pacote compartilhado de mapeamento de
+// vertical. Alterar um lado sem o outro reintroduz a divergência que este
+// alinhamento corrige.
+const VAREJO_VERTICALS = new Set(
+  [
+    "Varejo de Roupas & Acessórios",
+    "Varejo de Eletroeletrônicos",
+    "Varejo de Decoração, Variedades & Utilidades",
+    "Bebês e Crianças",
+    "Esportes e Lazer",
+    "Automotivo — Acessórios e Som",
+    "Papelaria e Livraria",
+    "Joias, Relógios e Óticas",
+    "Calçados",
+    "Móveis",
+    "Cama, Mesa e Banho",
+    "Brinquedos",
+    "Instrumentos Musicais",
+    "Perfumaria e Cosméticos",
+    "Floricultura",
+    "Adega e Bebidas",
+    "Produtos Naturais e Suplementos",
+    "Armarinho e Tecidos",
+    "Papelaria Criativa e Artesanato",
+    "Games e Informática",
+    "Pet Shop (Varejo)",
+    "Material de Construção — Varejo",
+  ].map(normalizeVertical)
+);
+const SUPERMERCADO_VERTICALS = new Set(["Supermercado"].map(normalizeVertical));
+const SALAO_VERTICALS = new Set(["Salão de Beleza", "Barbearia"].map(normalizeVertical));
+const CLINICA_VERTICALS = new Set(["Clínica"].map(normalizeVertical));
+// Pet Shop usa o catálogo de Varejo E as telas de Salão (banho & tosa) ao
+// mesmo tempo — mesma exceção que já existe no frontend (isSalao).
+const PET_SHOP_VERTICAL = normalizeVertical("Pet Shop (Varejo)");
+
+function isVarejoEligibleVertical(vertical: string | null | undefined) {
+  return VAREJO_VERTICALS.has(normalizeVertical(vertical));
+}
+function isSupermercadoEligibleVertical(vertical: string | null | undefined) {
+  return SUPERMERCADO_VERTICALS.has(normalizeVertical(vertical));
+}
+function isSalaoEligibleVertical(vertical: string | null | undefined) {
+  const normalized = normalizeVertical(vertical);
+  return SALAO_VERTICALS.has(normalized) || normalized === PET_SHOP_VERTICAL;
+}
+function isClinicaEligibleVertical(vertical: string | null | undefined) {
+  return CLINICA_VERTICALS.has(normalizeVertical(vertical));
 }
 
 function superAdminOnlyModuleMessage(moduleKey: string) {
@@ -111,6 +163,17 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     .limit(1);
 
   const arqdorEligible = isArqdorEligibleVertical(tenant?.vertical);
+  const varejoEligible = isVarejoEligibleVertical(tenant?.vertical);
+  const supermercadoEligible = isSupermercadoEligibleVertical(tenant?.vertical);
+  const salaoEligible = isSalaoEligibleVertical(tenant?.vertical);
+  const clinicaEligible = isClinicaEligibleVertical(tenant?.vertical);
+  const VERTICAL_GATED_ELIGIBILITY: Partial<Record<NavModuleKey, boolean>> = {
+    arch: arqdorEligible,
+    varejo: varejoEligible,
+    supermercado: supermercadoEligible,
+    beauty: salaoEligible,
+    clinic: clinicaEligible,
+  };
 
   const overrides = await db
     .select({ moduleKey: tenantNavModulesTable.moduleKey, isEnabled: tenantNavModulesTable.isEnabled })
@@ -123,19 +186,23 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     const hasPersistedOverride = overrideMap.has(entry.moduleKey);
     const hasEffectiveDefaultOff = EFFECTIVE_DEFAULT_OFF_MODULE_KEYS.has(entry.moduleKey);
     const persistedValue = hasPersistedOverride ? overrideMap.get(entry.moduleKey)! : undefined;
-    const isArqdor = entry.moduleKey === ARQDOR_MODULE_KEY;
+    const verticalEligible = VERTICAL_GATED_ELIGIBILITY[entry.moduleKey];
+    const isVerticalGated = verticalEligible !== undefined;
 
     return {
       moduleKey:   entry.moduleKey,
       moduleName:  entry.moduleName,
       icon:        entry.icon,
       description: entry.description,
-      isDefault:   isArqdor ? arqdorEligible : entry.isDefault,
-      isEnabled:   isArqdor
-        ? arqdorEligible && (hasPersistedOverride ? persistedValue === true : true)
-        : hasPersistedOverride
-          ? persistedValue!
-          : entry.isDefault,
+      isDefault:   isVerticalGated ? verticalEligible! : entry.isDefault,
+      // Escolha explícita do tenant sempre vence sobre o padrão da vertical
+      // — a vertical só decide o que vem ligado/desligado quando ninguém
+      // mexeu no toggle ainda. Um admin que ligou/desligou manualmente
+      // (ex: Shopping da Piscina usando Varejo mesmo fora da lista de
+      // verticais elegíveis) não pode ser silenciosamente sobrescrito.
+      isEnabled:   hasPersistedOverride
+        ? persistedValue!
+        : (isVerticalGated ? verticalEligible! : entry.isDefault),
       // O menu legado só esconde módulos quando hasOverride=true. Para
       // entitlements que devem falhar fechados, o default false já é efetivo
       // mesmo antes de existir uma linha tenant_nav_modules.
