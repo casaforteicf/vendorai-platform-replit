@@ -84,13 +84,13 @@ BEGIN
      AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'concluido') THEN
     INSERT INTO usage_ledger (
       tenant_id, commercial_key, metric_key, quantity, vendor_credits,
-      billing_status, billable, success, provider, total_cost_usd,
+      billing_status, billable, success, provider,
       source, source_event_id, metadata, created_at
     ) VALUES (
       NEW.tenant_id, 'arqdor.ai', 'render', 1, 25,
-      'measured', true, true, NEW.motor, COALESCE(NEW.cost_estimate_usd, 0),
+      'measured', true, true, NEW.motor,
       'arch_ai_renders', NEW.id,
-      jsonb_build_object('mode', NEW.mode, 'operationType', NEW.operation_type, 'projectId', NEW.project_id),
+      jsonb_build_object('mode', NEW.mode, 'projectId', NEW.project_id),
       COALESCE(NEW.concluido_em, NEW.created_at)
     ) ON CONFLICT (source, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
   END IF;
@@ -180,8 +180,7 @@ CREATE TRIGGER trg_record_ai_business_unit_usage
 AFTER INSERT ON ai_usage_logs
 FOR EACH ROW EXECUTE FUNCTION record_ai_business_unit_usage();
 
--- Backfill business units only for reliable event tables. We intentionally do
--- not infer historical sites/videos from ambiguous failed jobs beyond success states.
+-- Backfill business units only for reliable event tables.
 INSERT INTO usage_ledger
 (tenant_id, commercial_key, metric_key, quantity, vendor_credits, billing_status, billable, success, source, source_event_id, metadata, created_at)
 SELECT tenant_id, 'vendor.content_studio', 'content', 1, 5, 'measured', true, true,
