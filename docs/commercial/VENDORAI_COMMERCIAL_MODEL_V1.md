@@ -20,7 +20,7 @@ Status: implementation baseline, 2026-09-17.
 | Offer | Commercial role | Users | Access |
 |---|---|---:|---|
 | Vendor CRM Free | acquisition | 1 | complete CRM, no artificial feature degradation |
-| Vendor CRM | first paid conversion | commercial policy | complete CRM + team use |
+| Vendor CRM | first paid conversion | 5 | complete CRM + team use |
 | Individual modules | expansion | follows tenant/account | purchased capability only |
 | Growth free access | product experience | unlimited while Growth is active | 5 free access days/month |
 | Growth +5 days | prepaid | unlimited while pass is active | R$399 per additional 5-day block |
@@ -63,6 +63,26 @@ Growth does not include unlimited implementation labor, custom development, medi
 
 `Obras`, `Churn`, `Vendor Brain`, `Knowledge Graph`, `Financeiro`, `Inventory`, `Reports`, `Clinic`, `Beauty`, `Supermercado`, etc. are not automatically sellable products. They are technical modules, infrastructure or segment contexts activated by commercial products/segment rules.
 
+## Catalog taxonomy
+
+Canonical VendorAI rows use only three commercial classes in `produtos_catalogo`:
+
+- `saas_plan`: CRM Free and Growth.
+- `saas_addon`: recurring standalone software products and the +5-day access SKU.
+- `service`: implementation/custom work.
+
+Migration 246 normalizes legacy VendorAI rows that were incorrectly stored as `physical`, `software` or `servico`, while keeping their stable SKUs intact. It also fills `preco_mensalidade` for recurring modules and adopts the public names **Vendor Gestão**, **Vendor Propostas & Catálogo** and **Praça.ai**.
+
+## User policy
+
+User limits are enforced at the database boundary so every current/future user creation path obeys the same commercial rule:
+
+- CRM Free: 1 active user.
+- Vendor CRM: 5 active users.
+- Growth: unlimited users.
+
+Growth has precedence over CRM limits. Existing legacy `plan_id` remains a compatibility fallback during rollout.
+
 ## Growth Quota V1
 
 Users and normal software operations are unlimited. Only marginal-cost/high-value automated operations are metered.
@@ -88,6 +108,8 @@ Users and normal software operations are unlimited. Only marginal-cost/high-valu
 
 Quota V1 is configurable and must be reviewed against observed real cost/margin after sufficient usage data.
 
+Vendor Credit weights are read dynamically from `usage_metrics`; triggers do not hard-code the commercial weight. This allows Super Admin to tune weights without code changes.
+
 ## Individual module quotas V1
 
 | Product | Included monthly quantity |
@@ -110,10 +132,13 @@ A quota is debited only on a useful delivered result.
 - New full generation: consumes.
 - Manual edit, view, download, crop or simple metadata update: does not consume.
 - Failed provider call: technical cost may be recorded, customer quota is not consumed.
+- Cost-only provider rows use `billable=false` and never count against customer quotas.
 - Duplicate prospect/failure: should not consume a prospect unit.
 - Site title/phone edit: does not consume another site.
 - Full site regeneration: consumes another site.
 - New render: consumes; viewing/downloading does not.
+
+Technical provider cost is recorded separately from customer-visible usage. Stable AI features are attributed to their owning commercial product so Super Admin can calculate cost/margin by product without double-debiting customer quota.
 
 ## Revenue expansion inside the product
 
@@ -149,12 +174,12 @@ Navigation switches are an operational override/diagnostic tool. They must not b
 
 ## Rollout stages
 
-1. Measurement: migrations 240–245; no blocking.
+1. Measurement: migrations 240–248; no quota blocking.
 2. Coverage audit: confirm every generator/agent/external API emits a business-unit event.
 3. Margin validation: real provider/API costs in USD/BRL by tenant/product.
 4. Customer usage UI: human units and package purchase CTA.
 5. Super Admin: product/entitlement/quota/cost control instead of raw equal-weight module switches.
-6. Enforcement: activate quotas only after measurement coverage is complete.
+6. Enforcement: activate consumption quotas only after measurement coverage is complete.
 7. Extras: sell function-specific packs that add entitlement/quota/Vendor Credits.
 
 ## Alternative validation while CI runners are unavailable
@@ -165,6 +190,9 @@ Corrections made from this validation:
 - removed the fixed VendorAI tenant UUID from migration 240 and now resolve the institutional catalog from canonical existing SKUs;
 - removed nonexistent `arch_ai_renders.cost_estimate_usd` and `arch_ai_renders.operation_type` references from the render usage trigger;
 - aligned the plan migration with the real `plans.is_active` column;
-- final dependency preflight returned no missing referenced columns.
+- aligned the TypeScript `ai_feature` enum with live values including `agent_recepcao` and `agent_expansao_conta`;
+- quota snapshots now count only successful customer-billable business events, never raw cost-only provider calls;
+- canonical VendorAI SKUs were audited against the live catalog before normalization;
+- current Start/Growth plan assignments were audited before entitlement backfill and user-limit enforcement.
 
-The system remains in `measure_only`; production permissions and quota enforcement are unchanged until migrations and runtime are promoted deliberately.
+The system remains in `measure_only`; production permissions and consumption quota enforcement are unchanged until migrations and runtime are promoted deliberately.
