@@ -18,14 +18,40 @@ ON CONFLICT (commercial_key) DO UPDATE SET
   metadata = EXCLUDED.metadata,
   updated_at = now();
 
+-- Vendor Credits are configuration, not hard-coded billing constants. Runtime
+-- events always read the current weight from usage_metrics so Super Admin can
+-- tune weights without changing trigger code.
+CREATE OR REPLACE FUNCTION usage_vendor_credits(p_metric_key text, p_quantity numeric DEFAULT 1)
+RETURNS integer
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT CEIL(GREATEST(p_quantity, 0) * vendor_credits_per_unit)::integer
+      FROM usage_metrics
+      WHERE key = p_metric_key
+        AND active = true
+      LIMIT 1
+    ),
+    0
+  );
+$$;
+
 CREATE OR REPLACE FUNCTION record_delivered_content_usage()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- content_generations has no status column; only rows with an actual result are
+  -- considered delivered customer value.
+  IF NEW.result IS NULL THEN
+    RETURN NEW;
+  END IF;
+
   INSERT INTO usage_ledger (
     tenant_id, commercial_key, metric_key, quantity, vendor_credits,
     billing_status, billable, success, source, source_event_id, metadata, created_at
   ) VALUES (
-    NEW.tenant_id, 'vendor.content_studio', 'content', 1, 5,
+    NEW.tenant_id, 'vendor.content_studio', 'content', 1, usage_vendor_credits('content', 1),
     'measured', true, true, 'content_generations', NEW.id,
     jsonb_build_object('type', NEW.type, 'format', NEW.content_format), NEW.created_at
   ) ON CONFLICT (source, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
@@ -44,7 +70,7 @@ BEGIN
     tenant_id, commercial_key, metric_key, quantity, vendor_credits,
     billing_status, billable, success, source, source_event_id, metadata, created_at
   ) VALUES (
-    NEW.tenant_id, 'vendor.prospector', 'prospect', 1, 2,
+    NEW.tenant_id, 'vendor.prospector', 'prospect', 1, usage_vendor_credits('prospect', 1),
     'measured', true, true, 'prospect_enrichments', NEW.id,
     jsonb_build_object('leadId', NEW.lead_id, 'hasContact', NEW.tem_contato), NEW.created_at
   ) ON CONFLICT (source, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
@@ -64,7 +90,7 @@ BEGIN
       tenant_id, commercial_key, metric_key, quantity, vendor_credits,
       billing_status, billable, success, source, source_event_id, metadata, created_at
     ) VALUES (
-      NEW.tenant_id, 'vendor.sites_autopilot', 'site', 1, 100,
+      NEW.tenant_id, 'vendor.sites_autopilot', 'site', 1, usage_vendor_credits('site', 1),
       'measured', true, true, 'site_generation_jobs', NEW.id,
       jsonb_build_object('baseOrigin', NEW.base_origin), COALESCE(NEW.updated_at, NEW.created_at)
     ) ON CONFLICT (source, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
@@ -87,7 +113,7 @@ BEGIN
       billing_status, billable, success, provider,
       source, source_event_id, metadata, created_at
     ) VALUES (
-      NEW.tenant_id, 'arqdor.ai', 'render', 1, 25,
+      NEW.tenant_id, 'arqdor.ai', 'render', 1, usage_vendor_credits('render', 1),
       'measured', true, true, NEW.motor,
       'arch_ai_renders', NEW.id,
       jsonb_build_object('mode', NEW.mode, 'projectId', NEW.project_id),
@@ -113,7 +139,7 @@ BEGIN
       billing_status, billable, success, provider,
       source, source_event_id, metadata, created_at
     ) VALUES (
-      NEW.tenant_id, 'vendor.creative_studio', 'video', 1, 200,
+      NEW.tenant_id, 'vendor.creative_studio', 'video', 1, usage_vendor_credits('video', 1),
       'measured', true, true, NEW.provider,
       'media_jobs', NEW.id,
       jsonb_build_object('operation', NEW.operation, 'projectId', NEW.project_id),
@@ -141,23 +167,29 @@ BEGIN
   END IF;
 
   CASE NEW.feature::text
-    WHEN 'image_generator' THEN v_metric := 'image'; v_commercial_key := 'vendor.creative_studio'; v_credits := 10;
-    WHEN 'proposal_generator' THEN v_metric := 'proposal'; v_commercial_key := 'vendor.proposals_catalog'; v_credits := 5;
-    WHEN 'auto_quote' THEN v_metric := 'proposal'; v_commercial_key := 'vendor.proposals_catalog'; v_credits := 5;
-    WHEN 'document_extraction' THEN v_metric := 'document'; v_commercial_key := 'vendor.management'; v_credits := 2;
-    WHEN 'media_interpretation' THEN v_metric := 'media_interpretation'; v_commercial_key := 'vendor.knowledge'; v_credits := 3;
-    WHEN 'intelligence_analysis' THEN v_metric := 'intelligence_analysis'; v_commercial_key := 'vendor.revenue_scout'; v_credits := 2;
-    WHEN 'churn_retention' THEN v_metric := 'intelligence_analysis'; v_commercial_key := 'vendor.revenue_scout'; v_credits := 2;
-    WHEN 'agent_sdr' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_closer' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_followup' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_reactivation' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_scheduler' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_service' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_onboarding' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
-    WHEN 'agent_relacionamento' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team'; v_credits := 1;
+    WHEN 'image_generator' THEN v_metric := 'image'; v_commercial_key := 'vendor.creative_studio';
+    WHEN 'proposal_generator' THEN v_metric := 'proposal'; v_commercial_key := 'vendor.proposals_catalog';
+    WHEN 'auto_quote' THEN v_metric := 'proposal'; v_commercial_key := 'vendor.proposals_catalog';
+    WHEN 'document_extraction' THEN v_metric := 'document'; v_commercial_key := 'vendor.management';
+    WHEN 'media_interpretation' THEN v_metric := 'media_interpretation'; v_commercial_key := 'vendor.knowledge';
+    WHEN 'intelligence_analysis' THEN v_metric := 'intelligence_analysis'; v_commercial_key := 'vendor.revenue_scout';
+    WHEN 'churn_retention' THEN v_metric := 'intelligence_analysis'; v_commercial_key := 'vendor.revenue_scout';
+    WHEN 'agent_sdr' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_closer' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_followup' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_reactivation' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_scheduler' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_service' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_onboarding' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_relacionamento' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_financeiro' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_cobranca' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_recepcao' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
+    WHEN 'agent_expansao_conta' THEN v_metric := 'agent_interaction'; v_commercial_key := 'vendor.ai_team';
     ELSE RETURN NEW;
   END CASE;
+
+  v_credits := usage_vendor_credits(v_metric, 1);
 
   INSERT INTO usage_ledger (
     tenant_id, commercial_key, metric_key, quantity, vendor_credits,
@@ -183,14 +215,15 @@ FOR EACH ROW EXECUTE FUNCTION record_ai_business_unit_usage();
 -- Backfill business units only for reliable event tables.
 INSERT INTO usage_ledger
 (tenant_id, commercial_key, metric_key, quantity, vendor_credits, billing_status, billable, success, source, source_event_id, metadata, created_at)
-SELECT tenant_id, 'vendor.content_studio', 'content', 1, 5, 'measured', true, true,
+SELECT tenant_id, 'vendor.content_studio', 'content', 1, usage_vendor_credits('content', 1), 'measured', true, true,
        'content_generations', id, jsonb_build_object('type', type, 'format', content_format), created_at
 FROM content_generations
+WHERE result IS NOT NULL
 ON CONFLICT (source, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
 
 INSERT INTO usage_ledger
 (tenant_id, commercial_key, metric_key, quantity, vendor_credits, billing_status, billable, success, source, source_event_id, metadata, created_at)
-SELECT tenant_id, 'vendor.prospector', 'prospect', 1, 2, 'measured', true, true,
+SELECT tenant_id, 'vendor.prospector', 'prospect', 1, usage_vendor_credits('prospect', 1), 'measured', true, true,
        'prospect_enrichments', id, jsonb_build_object('leadId', lead_id, 'hasContact', tem_contato), created_at
 FROM prospect_enrichments
 ON CONFLICT (source, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
