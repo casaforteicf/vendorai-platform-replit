@@ -65,9 +65,6 @@ if (/until full migration|Fallback:\s*direct call/i.test(agentEngine)) {
   warnings.push("agent-engine.ts: migração para ai-gateway ainda possui fallback direto; manter como dívida rastreada até remoção.");
 }
 
-// JARVIS chat precedence contract. Until #1615 replaces the chained routers with
-// one explicit orchestrator, lock the current effective order so a harmless-looking
-// router move cannot silently change which capability handles /support/chat first.
 const routeIndex = read("artifacts/api-server/src/routes/index.ts");
 function assertOrdered(source: string, needles: string[], label: string) {
   let cursor = -1;
@@ -105,6 +102,21 @@ assertOrdered(jarvisEmail, [
   'router.post("/support/chat"',
 ], "jarvis_email_actions.ts");
 
+const explicitJarvisPipeline = [
+  "jarvisExternalActionsRouter",
+  "jarvisNaturalActionsRouter",
+  "jarvisActionPlansRouter",
+  "jarvisMissionsRouter",
+  "supportRouter",
+];
+assertOrdered(jarvisEmail, explicitJarvisPipeline, "jarvis_email_actions.ts/orquestrador explícito");
+if (!jarvisEmail.includes("const downstreamChatRouters: IRouter[]")) {
+  errors.push("JARVIS: /support/chat deve possuir pipeline downstream explícito e centralizado.");
+}
+if (!jarvisEmail.includes("stage.handle(req, res, runNextStage)")) {
+  errors.push("JARVIS: orquestrador deve encaminhar cada etapa pelo mesmo request/response/next controlado.");
+}
+
 const jarvisMissions = read("artifacts/api-server/src/routes/jarvis_missions.ts");
 assertOrdered(jarvisMissions, [
   'router.post("/support/chat"',
@@ -126,10 +138,10 @@ const currentJarvisHandlers = jarvisChatFiles.reduce((total, file) => {
   const source = read(file);
   return total + (source.match(/router\.post\(["']\/support\/chat["']/g)?.length ?? 0);
 }, 0);
-if (currentJarvisHandlers !== 9) {
-  warnings.push(`JARVIS: baseline transitório esperava 9 handlers /support/chat e encontrou ${currentJarvisHandlers}. Ao reduzir para um orquestrador único, atualize este contrato junto com #1615.`);
+if (currentJarvisHandlers < 9) {
+  warnings.push(`JARVIS: limpeza física dos handlers avançou para ${currentJarvisHandlers}; revise este baseline e mantenha o orquestrador como única entrada efetiva.`);
 } else {
-  warnings.push("JARVIS: ainda existem 9 handlers encadeados para /support/chat; precedência está protegida, mas #1615 deve consolidar para um único orquestrador.");
+  warnings.push(`JARVIS: orquestrador explícito ativo; ainda existem ${currentJarvisHandlers} registros físicos de /support/chat a consolidar sem remover endpoints auxiliares.`);
 }
 
 if (warnings.length) {
