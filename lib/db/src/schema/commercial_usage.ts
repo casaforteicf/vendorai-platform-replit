@@ -101,7 +101,9 @@ export const productUsageQuotasTable = pgTable(
 export const consumptionPackDefinitionsTable = pgTable(
   "consumption_pack_definitions",
   {
-    commercialKey: text("commercial_key").primaryKey(),
+    commercialKey: text("commercial_key")
+      .primaryKey()
+      .references(() => commercialProductProfilesTable.commercialKey, { onUpdate: "cascade", onDelete: "cascade" }),
     metricKey: text("metric_key").notNull().references(() => usageMetricsTable.key, { onDelete: "restrict" }),
     quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
     vendorCredits: integer("vendor_credits").notNull(),
