@@ -86,6 +86,28 @@ router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
   return next();
 });
 
+// ─── Gate de posse: toda rota com :obraId precisa confirmar que a obra é
+// desse tenant ────────────────────────────────────────────────────────────────
+// ACHADO REAL DE AUDITORIA (17/09): quase toda rota abaixo checava só
+// "o chamador pertence a ALGUM tenant" (canAccessTenant) e depois buscava
+// etapas/diário/orçamento por obraId sozinho, sem nunca confirmar que essa
+// obra é do tenant da URL. Um usuário de um tenant conseguia ler/editar/
+// apagar dado de obra de OUTRO tenant só sabendo o obraId (UUID). Esse
+// param handler fecha isso de uma vez pra todas as rotas com :obraId, em
+// vez de precisar corrigir dezenas de handlers um por um. Confirmado no
+// banco: nenhum tenant real tinha obra cadastrada ainda, então não houve
+// exposição de dado de verdade — mas o buraco era real.
+router.param("obraId", async (req: any, res: any, next: any, obraId: string) => {
+  if (isSuperAdmin(req)) return next();
+  const tid = req.params.tenantId; // tenant-audit: reviewed — é exatamente essa comparação (obra.tenantId === tid) que fecha o buraco de isolamento corrigido aqui
+  const [obra] = await db
+    .select({ id: obrasTable.id })
+    .from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra not found" });
+  return next();
+});
+
 // ─── SINAPI search (public lookup, auth-only) ──────────────────────────────────
 
 router.get("/obras/sinapi/search", (req, res) => {
@@ -216,6 +238,15 @@ router.put("/tenants/:tenantId/obras/etapas/:etapaId", async (req, res) => {
   const parsed = updateObraEtapaSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
+  // obra_etapas não tem tenant_id próprio, só obra_id -- SEM esse join,
+  // qualquer tenant autenticado conseguia editar a etapa de OUTRO tenant só
+  // sabendo o id (achado real de auditoria, corrigido aqui).
+  const [owned] = await db.select({ id: obraEtapasTable.id })
+    .from(obraEtapasTable)
+    .innerJoin(obrasTable, eq(obrasTable.id, obraEtapasTable.obraId))
+    .where(and(eq(obraEtapasTable.id, etapaId), eq(obrasTable.tenantId, tid)));
+  if (!owned) return res.status(404).json({ error: "Etapa not found" });
+
   const [etapa] = await db.update(obraEtapasTable)
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(obraEtapasTable.id, etapaId))
@@ -227,6 +258,13 @@ router.put("/tenants/:tenantId/obras/etapas/:etapaId", async (req, res) => {
 router.delete("/tenants/:tenantId/obras/etapas/:etapaId", async (req, res) => {
   const { tenantId: tid, etapaId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  // Mesma correção do PUT acima -- confirmar posse antes de apagar.
+  const [owned] = await db.select({ id: obraEtapasTable.id })
+    .from(obraEtapasTable)
+    .innerJoin(obrasTable, eq(obrasTable.id, obraEtapasTable.obraId))
+    .where(and(eq(obraEtapasTable.id, etapaId), eq(obrasTable.tenantId, tid)));
+  if (!owned) return res.status(404).json({ error: "Etapa not found" });
 
   await db.delete(obraEtapasTable).where(eq(obraEtapasTable.id, etapaId));
   return res.status(204).end();
@@ -411,7 +449,13 @@ router.get("/tenants/:tenantId/obras/diario/:diarioId", async (req, res) => {
   const { tenantId: tid, diarioId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [entry] = await db.select().from(obraDiarioTable).where(eq(obraDiarioTable.id, diarioId));
+  // obra_diario não tem tenant_id próprio, só obra_id -- mesma correção de
+  // isolamento já aplicada nas rotas de etapas acima.
+  const [entry] = await db.select({ diario: obraDiarioTable })
+    .from(obraDiarioTable)
+    .innerJoin(obrasTable, eq(obrasTable.id, obraDiarioTable.obraId))
+    .where(and(eq(obraDiarioTable.id, diarioId), eq(obrasTable.tenantId, tid)))
+    .then((rows) => rows.map((r) => r.diario));
   if (!entry) return res.status(404).json({ error: "Diário not found" });
   return res.json(entry);
 });
@@ -423,6 +467,12 @@ router.put("/tenants/:tenantId/obras/diario/:diarioId", async (req, res) => {
 
   const parsed = updateObraDiarioSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [owned] = await db.select({ id: obraDiarioTable.id })
+    .from(obraDiarioTable)
+    .innerJoin(obrasTable, eq(obrasTable.id, obraDiarioTable.obraId))
+    .where(and(eq(obraDiarioTable.id, diarioId), eq(obrasTable.tenantId, tid)));
+  if (!owned) return res.status(404).json({ error: "Diário not found" });
 
   const extra: Record<string, unknown> = {};
   if (req.body.status === "aprovado") {
@@ -730,6 +780,21 @@ router.post("/tenants/:tenantId/estoque-obras/movimentacoes", async (req, res) =
 
   const { insumoId, tipo, quantia, origemTipo, origemObraId, destinoTipo, destinoObraId, observacao } = parsed.data;
   const qty = parseFloat(quantia);
+
+  // estoque_obras não tem tenant_id próprio, só obra_id -- e origemObraId/
+  // destinoObraId vêm do CORPO da requisição, não da URL, então
+  // canAccessTenant(tid) sozinho não impede mandar o obraId de outro
+  // tenant aqui (achado real de auditoria). Confirma posse de qualquer
+  // obraId envolvido antes de mexer em qualquer estoque.
+  const obraIdsEnvolvidos = [origemTipo === "obra" ? origemObraId : null, destinoTipo === "obra" ? destinoObraId : null]
+    .filter((v): v is string => !!v);
+  if (obraIdsEnvolvidos.length > 0) {
+    const obrasDoTenant = await db.select({ id: obrasTable.id }).from(obrasTable)
+      .where(and(inArray(obrasTable.id, obraIdsEnvolvidos), eq(obrasTable.tenantId, tid)));
+    if (obrasDoTenant.length !== new Set(obraIdsEnvolvidos).size) {
+      return res.status(404).json({ error: "Obra not found" });
+    }
+  }
 
   // Atualiza estoques envolvidos
   if (origemTipo === "central") {
