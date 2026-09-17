@@ -18,18 +18,22 @@ const AGENT_TO_MODULE: Record<string, ModuleKey> = {
   pharmacy: "agent_service",
 };
 
+// Product-led upgrade language. We no longer direct customers to retired
+// Starter/PME+/Enterprise tiers; capabilities are sold as products or Growth.
 export const PLAN_UPGRADE_HINT: Partial<Record<ModuleKey, string>> = {
-  agent_scheduler: "Disponível a partir do plano PME+",
-  agent_service: "Disponível a partir do plano PME+",
-  agent_onboarding: "Disponível a partir do plano PME+",
-  intelligence_full: "Inteligência completa disponível a partir do plano PME+",
-  prospector_alpha: "Prospector Alpha disponível no plano PME+ ou como add-on",
-  google_calendar: "Google Calendar disponível a partir do plano PME+",
-  google_sheets: "Google Sheets disponível no plano Enterprise",
-  knowledge_base: "Base de conhecimento disponível no plano Enterprise",
-  byok: "BYOK disponível no plano Enterprise",
-  partner_portal: "Portal de parceiros disponível no plano Enterprise",
-  executive_report: "Relatório executivo disponível no plano Enterprise",
+  agent_sdr: "Ative o Vendor AI Team ou o Growth para usar agentes de IA.",
+  agent_closer: "Ative o Vendor AI Team ou o Growth para usar agentes de IA.",
+  agent_followup: "Ative o Vendor AI Team ou o Growth para automatizar follow-up.",
+  agent_reactivation: "Ative o Vendor AI Team ou o Growth para automatizar reativação.",
+  agent_scheduler: "Ative o Vendor AI Team ou o Growth para automação de agenda.",
+  agent_service: "Ative o Vendor AI Team ou o Growth para atendimento automatizado.",
+  agent_onboarding: "Ative o Vendor AI Team ou o Growth para onboarding automatizado.",
+  customer_intelligence: "Ative o Vendor Revenue Scout ou o Growth.",
+  intelligence_full: "Ative o Vendor JARVIS/Revenue Scout ou o Growth.",
+  prospector_alpha: "Ative o Vendor Prospector ou o Growth.",
+  google_calendar: "Ative o Vendor Agenda ou o Growth.",
+  knowledge_base: "Ative o Vendor Knowledge AI ou o Growth.",
+  executive_report: "Ative o Vendor BI & Analytics ou o Growth.",
 };
 
 export function agentNameToModuleKey(agentName: string): ModuleKey | undefined {
@@ -53,7 +57,7 @@ export async function checkPlanModule(
   }
 
   if (!tenant.planId) {
-    // Legacy mode: allow all tenants without a plan (gradual migration)
+    // Legacy mode remains permissive during the commercial migration.
     log.debug({ tenantId }, "plan-guard: no plan assigned — allowing (legacy mode)");
     return { allowed: true };
   }
@@ -70,8 +74,11 @@ export async function checkPlanModule(
     .limit(1);
 
   if (!moduleRow) {
-    log.warn({ tenantId, moduleKey, planId: tenant.planId }, "plan-guard: module not in plan");
-    return { allowed: false, reason: `Este módulo não está disponível no seu plano atual` };
+    log.warn({ tenantId, moduleKey, planId: tenant.planId }, "plan-guard: module not in base plan");
+    return {
+      allowed: false,
+      reason: PLAN_UPGRADE_HINT[moduleKey] ?? "Este recurso requer um produto adicional ou o Growth.",
+    };
   }
 
   return { allowed: true };
@@ -101,10 +108,7 @@ export async function checkAgentPlan(
   leadId?: string,
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   const moduleKey = agentNameToModuleKey(agentName);
-  if (!moduleKey) {
-    // Unknown agent name — allow (developer error, not plan issue)
-    return { allowed: true };
-  }
+  if (!moduleKey) return { allowed: true };
 
   const result = await checkPlanModule(tenantId, moduleKey, log);
   if (!result.allowed) {
