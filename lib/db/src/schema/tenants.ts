@@ -55,6 +55,11 @@ export const tenantsTable = pgTable(
     slug: text("slug").notNull().unique(),
     status: tenantStatusEnum("status").notNull().default("active"),
     vertical: text("vertical"),
+    // Opcional -- segunda vertical do mesmo tenant (ex: padaria que também
+    // é confeitaria, ótica que também é clínica). Generaliza o padrão que
+    // antes só existia pro Pet Shop via exceção escrita na mão no código
+    // de elegibilidade de módulos. Nulo pra maioria dos tenants.
+    verticalSecundaria: text("vertical_secundaria"),
     countryCode: varchar("country_code", { length: 2 })
       .$type<(typeof supportedCountryCodes)[number]>()
       .notNull()

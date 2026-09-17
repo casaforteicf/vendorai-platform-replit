@@ -157,16 +157,19 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   }
 
   const [tenant] = await db
-    .select({ vertical: tenantsTable.vertical })
+    .select({ vertical: tenantsTable.vertical, verticalSecundaria: tenantsTable.verticalSecundaria })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
 
-  const arqdorEligible = isArqdorEligibleVertical(tenant?.vertical);
-  const varejoEligible = isVarejoEligibleVertical(tenant?.vertical);
-  const supermercadoEligible = isSupermercadoEligibleVertical(tenant?.vertical);
-  const salaoEligible = isSalaoEligibleVertical(tenant?.vertical);
-  const clinicaEligible = isClinicaEligibleVertical(tenant?.vertical);
+  // Vertical secundária conta igual à principal pra elegibilidade de
+  // módulo — um tenant "Padaria" com secundária "Confeitaria / Doceria"
+  // deve ganhar os módulos de ambas, não só da primeira.
+  const arqdorEligible = isArqdorEligibleVertical(tenant?.vertical) || isArqdorEligibleVertical(tenant?.verticalSecundaria);
+  const varejoEligible = isVarejoEligibleVertical(tenant?.vertical) || isVarejoEligibleVertical(tenant?.verticalSecundaria);
+  const supermercadoEligible = isSupermercadoEligibleVertical(tenant?.vertical) || isSupermercadoEligibleVertical(tenant?.verticalSecundaria);
+  const salaoEligible = isSalaoEligibleVertical(tenant?.vertical) || isSalaoEligibleVertical(tenant?.verticalSecundaria);
+  const clinicaEligible = isClinicaEligibleVertical(tenant?.vertical) || isClinicaEligibleVertical(tenant?.verticalSecundaria);
   const VERTICAL_GATED_ELIGIBILITY: Partial<Record<NavModuleKey, boolean>> = {
     arch: arqdorEligible,
     varejo: varejoEligible,
