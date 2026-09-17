@@ -23,7 +23,7 @@ import { startMediaVideoGenerateRunner } from "./services/media-video-generate.j
 import { startDevAgentSupportHandoff } from "./services/dev-agent-support-handoff.js";
 import { startVieIntelligenceCycle } from "./services/vie-intelligence-cycle.js";
 import { startProductionSentinel } from "./routes/dev_agent_operational_context.js";
-import { applyPendingMigrations } from "@workspace/db";
+import { applyPendingMigrations, pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -85,6 +85,10 @@ app.get(
   },
 );
 
+function isDuplicateMigrationCatalogError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("Duplicate migration version(s) detected");
+}
+
 async function runStartupMigrations(): Promise<boolean> {
   try {
     const result = await applyPendingMigrations(logger);
@@ -96,9 +100,27 @@ async function runStartupMigrations(): Promise<boolean> {
     }
     return true;
   } catch (err) {
+    if (isDuplicateMigrationCatalogError(err)) {
+      logger.warn(
+        { err },
+        "startup migrations: catálogo contém versões duplicadas; pulando auto-migration e validando conectividade do banco",
+      );
+      try {
+        await pool.query("select 1");
+        logger.info("startup migrations: banco acessível; workers serão iniciados apesar do conflito de numeração das migrations");
+        return true;
+      } catch (databaseErr) {
+        logger.error(
+          { err: databaseErr },
+          "startup migrations: catálogo duplicado e banco indisponível; API continuará em modo degradado",
+        );
+        return false;
+      }
+    }
+
     logger.error(
       { err },
-      "startup migrations: banco indisponível; API continuará em modo degradado sem workers dependentes do banco",
+      "startup migrations: falha ao aplicar migrations; API continuará em modo degradado sem workers dependentes do banco",
     );
     return false;
   }
@@ -121,7 +143,7 @@ async function start() {
 
     if (!databaseReady) {
       logger.warn(
-        "Database unavailable at startup; schedulers, social workers and lifecycle jobs were not started. Fix APP_DATABASE_URL and redeploy to restore full operation.",
+        "Database/schema startup validation failed; schedulers, social workers and lifecycle jobs were not started. Review migration and database logs before redeploying.",
       );
       return;
     }
