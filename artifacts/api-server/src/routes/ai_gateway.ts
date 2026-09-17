@@ -12,6 +12,8 @@ import {
   usageMetricsTable,
   usageLedgerTable,
   produtosCatalogoTable,
+  tenantNavModulesTable,
+  NAV_MODULE_CATALOG,
 } from "@workspace/db";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { encrypt } from "../lib/crypto.js";
@@ -46,6 +48,20 @@ function secureTokenEquals(received: string | undefined, expected: string): bool
   const receivedBuffer = Buffer.from(received, "utf8");
   const expectedBuffer = Buffer.from(expected, "utf8");
   return receivedBuffer.length === expectedBuffer.length && timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+function normalizeCommercialSegment(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function profileAppliesToTenantSegments(segmentKeys: string[], tenantSegments: string[]) {
+  if (segmentKeys.length === 0) return true;
+  const normalizedKeys = new Set(segmentKeys.map(normalizeCommercialSegment).filter(Boolean));
+  return tenantSegments.some((segment) => normalizedKeys.has(segment));
 }
 
 router.post("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, res) => {
@@ -141,6 +157,109 @@ router.get("/tenants/:tenantId/commercial-usage", authenticate, async (req, res)
     getVendorCreditBalance(tenantId),
   ]);
   return res.json({ tenantId, commercialKey, entitlements, vendorCreditsBalance: creditBalance, quotas, enforcementMode: "measure_only" });
+});
+
+/**
+ * Safe commercial -> technical provisioning preview.
+ * It never mutates tenant_nav_modules. We compare the access the tenant should
+ * receive against persisted technical overrides so legacy/manual choices can be
+ * reviewed before any automatic cut-over.
+ */
+router.get("/admin/tenants/:tenantId/commercial-provisioning-preview", authenticate, requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const [tenant] = await db.select({
+    id: tenantsTable.id,
+    name: tenantsTable.name,
+    vertical: tenantsTable.vertical,
+    verticalSecundaria: tenantsTable.verticalSecundaria,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+
+  const [entitlements, profiles, overrides] = await Promise.all([
+    getActiveEntitlements(tenantId),
+    db.select().from(commercialProductProfilesTable).where(eq(commercialProductProfilesTable.active, true)),
+    db.select({ moduleKey: tenantNavModulesTable.moduleKey, isEnabled: tenantNavModulesTable.isEnabled })
+      .from(tenantNavModulesTable)
+      .where(eq(tenantNavModulesTable.tenantId, tenantId)),
+  ]);
+
+  const tenantSegments = [tenant.vertical, tenant.verticalSecundaria]
+    .map(normalizeCommercialSegment)
+    .filter(Boolean);
+  const entitlementKeys = new Set(entitlements.map((item) => item.commercialKey));
+  const growthActive = entitlementKeys.has("vendor.growth");
+
+  const effectiveProfiles = profiles.filter((profile) => {
+    if (entitlementKeys.has(profile.commercialKey)) return true;
+    if (!growthActive || !profile.includedInGrowth) return false;
+    return profileAppliesToTenantSegments(profile.segmentKeys ?? [], tenantSegments);
+  });
+
+  const navCatalogKeys = new Set(NAV_MODULE_CATALOG.map((entry) => entry.moduleKey as string));
+  const expectedNavModules = new Set<string>(["dashboard", "settings"]);
+  const technicalCapabilities = new Set<string>();
+  const moduleSources = new Map<string, string[]>();
+
+  for (const profile of effectiveProfiles) {
+    for (const moduleKey of profile.moduleKeys ?? []) {
+      const target = navCatalogKeys.has(moduleKey) ? expectedNavModules : technicalCapabilities;
+      target.add(moduleKey);
+      const sources = moduleSources.get(moduleKey) ?? [];
+      if (!sources.includes(profile.commercialKey)) sources.push(profile.commercialKey);
+      moduleSources.set(moduleKey, sources);
+    }
+  }
+
+  const overrideMap = new Map(overrides.map((item) => [item.moduleKey as string, item.isEnabled]));
+  const blockedExpected = [...expectedNavModules]
+    .filter((moduleKey) => overrideMap.get(moduleKey) === false)
+    .sort();
+  const enabledOutsideCommercialModel = overrides
+    .filter((item) => item.isEnabled && !expectedNavModules.has(item.moduleKey as string))
+    .map((item) => item.moduleKey as string)
+    .sort();
+
+  const expected = [...expectedNavModules].sort().map((moduleKey) => ({
+    moduleKey,
+    moduleName: NAV_MODULE_CATALOG.find((entry) => entry.moduleKey === moduleKey)?.moduleName ?? moduleKey,
+    sources: moduleSources.get(moduleKey) ?? (moduleKey === "dashboard" || moduleKey === "settings" ? ["essential_core"] : []),
+    persistedOverride: overrideMap.has(moduleKey) ? overrideMap.get(moduleKey) : null,
+    state: overrideMap.get(moduleKey) === false ? "blocked_by_override" : "expected",
+  }));
+
+  return res.json({
+    tenant: {
+      id: tenant.id,
+      name: tenant.name,
+      vertical: tenant.vertical,
+      verticalSecundaria: tenant.verticalSecundaria,
+    },
+    growthActive,
+    entitlements,
+    effectiveProducts: effectiveProfiles.map((profile) => ({
+      commercialKey: profile.commercialKey,
+      includedVia: entitlementKeys.has(profile.commercialKey) ? "direct_entitlement" : "growth",
+      segmentKeys: profile.segmentKeys,
+      moduleKeys: profile.moduleKeys,
+    })),
+    expectedNavModules: expected,
+    technicalCapabilities: [...technicalCapabilities].sort().map((moduleKey) => ({
+      moduleKey,
+      sources: moduleSources.get(moduleKey) ?? [],
+      note: "Technical capability is not a tenant_nav_modules navigation key.",
+    })),
+    persistedOverrides: overrides,
+    conflicts: {
+      blockedExpected,
+      enabledOutsideCommercialModel,
+    },
+    recommendation: {
+      enable: blockedExpected,
+      reviewBeforeDisabling: enabledOutsideCommercialModel,
+      automaticChangesApplied: false,
+    },
+    mode: "preview_only",
+  });
 });
 
 /** Canonical Super Admin commercial model. Prices remain sourced from catalog. */
