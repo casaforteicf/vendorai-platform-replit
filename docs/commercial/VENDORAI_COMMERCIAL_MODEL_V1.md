@@ -149,10 +149,22 @@ Navigation switches are an operational override/diagnostic tool. They must not b
 
 ## Rollout stages
 
-1. Measurement: migrations 240–242; no blocking.
+1. Measurement: migrations 240–245; no blocking.
 2. Coverage audit: confirm every generator/agent/external API emits a business-unit event.
 3. Margin validation: real provider/API costs in USD/BRL by tenant/product.
 4. Customer usage UI: human units and package purchase CTA.
 5. Super Admin: product/entitlement/quota/cost control instead of raw equal-weight module switches.
 6. Enforcement: activate quotas only after measurement coverage is complete.
 7. Extras: sell function-specific packs that add entitlement/quota/Vendor Credits.
+
+## Alternative validation while CI runners are unavailable
+
+The branch is also checked directly against the live Supabase schema without applying the new migrations to production. This preflight verifies every existing table/column referenced by the new migrations.
+
+Corrections made from this validation:
+- removed the fixed VendorAI tenant UUID from migration 240 and now resolve the institutional catalog from canonical existing SKUs;
+- removed nonexistent `arch_ai_renders.cost_estimate_usd` and `arch_ai_renders.operation_type` references from the render usage trigger;
+- aligned the plan migration with the real `plans.is_active` column;
+- final dependency preflight returned no missing referenced columns.
+
+The system remains in `measure_only`; production permissions and quota enforcement are unchanged until migrations and runtime are promoted deliberately.
