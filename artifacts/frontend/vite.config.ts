@@ -26,6 +26,8 @@ const superAdminFullVisibilityPlugin = {
   transform(code: string, id: string) {
     const normalizedId = id.split("?")[0]?.replace(/\\/g, "/") ?? id;
 
+    code = code.replace(/\r\n/g, "\n");
+
     const replaceExact = (value: string, from: string, to: string, label: string) => {
       const first = value.indexOf(from);
       if (first < 0 || value.indexOf(from, first + from.length) >= 0) {
@@ -167,7 +169,9 @@ const mediaPlanAvailableQuotaPlugin = {
       return value.replace(from, to);
     };
 
-    let contents = code;
+    // Vite preserves the checkout's line endings here. Normalize them so the
+    // guarded transforms behave identically on Windows and Linux runners.
+    let contents = code.replace(/\r\n/g, "\n");
     contents = replaceExact(
       contents,
       `  const [results, setResults] = useState<ProductionResult[]>([]);\n  const startingRef = useRef(false);`,
