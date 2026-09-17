@@ -1,5 +1,5 @@
 -- VendorAI commercial model + universal usage ledger
--- Safe foundation: creates metadata/measurement only. It does NOT block tenants.
+-- Safe foundation: metadata/measurement only. It does NOT block tenants.
 
 CREATE TABLE IF NOT EXISTS commercial_product_profiles (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS commercial_product_profiles (
   created_at timestamp NOT NULL DEFAULT now(),
   updated_at timestamp NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS commercial_product_profiles_catalog_idx ON commercial_product_profiles(catalog_product_id);
+CREATE INDEX IF NOT EXISTS commercial_product_profiles_catalog_idx
+  ON commercial_product_profiles(catalog_product_id);
 
 CREATE TABLE IF NOT EXISTS usage_metrics (
   key text PRIMARY KEY,
@@ -60,8 +61,10 @@ CREATE TABLE IF NOT EXISTS tenant_entitlements (
   created_at timestamp NOT NULL DEFAULT now(),
   updated_at timestamp NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS tenant_entitlements_tenant_key_idx ON tenant_entitlements(tenant_id, commercial_key);
-CREATE INDEX IF NOT EXISTS tenant_entitlements_tenant_active_idx ON tenant_entitlements(tenant_id, active);
+CREATE INDEX IF NOT EXISTS tenant_entitlements_tenant_key_idx
+  ON tenant_entitlements(tenant_id, commercial_key);
+CREATE INDEX IF NOT EXISTS tenant_entitlements_tenant_active_idx
+  ON tenant_entitlements(tenant_id, active);
 
 CREATE TABLE IF NOT EXISTS usage_ledger (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -88,9 +91,13 @@ CREATE TABLE IF NOT EXISTS usage_ledger (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS usage_ledger_tenant_metric_created_idx ON usage_ledger(tenant_id, metric_key, created_at);
-CREATE INDEX IF NOT EXISTS usage_ledger_tenant_created_idx ON usage_ledger(tenant_id, created_at);
-CREATE UNIQUE INDEX IF NOT EXISTS usage_ledger_source_event_uq ON usage_ledger(source, source_event_id) WHERE source_event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS usage_ledger_tenant_metric_created_idx
+  ON usage_ledger(tenant_id, metric_key, created_at);
+CREATE INDEX IF NOT EXISTS usage_ledger_tenant_created_idx
+  ON usage_ledger(tenant_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS usage_ledger_source_event_uq
+  ON usage_ledger(source, source_event_id)
+  WHERE source_event_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS vendor_credit_transactions (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -102,27 +109,67 @@ CREATE TABLE IF NOT EXISTS vendor_credit_transactions (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS vendor_credit_transactions_tenant_created_idx ON vendor_credit_transactions(tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS vendor_credit_transactions_tenant_created_idx
+  ON vendor_credit_transactions(tenant_id, created_at);
 
--- Ensure the new acquisition/umbrella offers exist in the official VendorAI catalog.
-INSERT INTO produtos_catalogo (tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
-SELECT '1d4ea673-58d0-413a-a554-c9aca72a3121', 'Vendor CRM Free', 'vendor-crm-free', 'saas_plan',
-       'CRM completo para 1 usuário. Porta de entrada gratuita do ecossistema VendorAI.', 0, 0, 'un', true, true, 'mensal'
+-- Resolve the institutional VendorAI catalog from existing canonical SKUs.
+-- This removes the old dependency on a hard-coded tenant UUID and keeps the
+-- migration portable across staging/production environments.
+WITH vendor_catalog_tenant AS (
+  SELECT tenant_id
+  FROM produtos_catalogo
+  WHERE tenant_id IS NOT NULL
+    AND sku IN (
+      'vendor-crm-monthly',
+      'vendor-growth-monthly',
+      'vendor-prospector-monthly',
+      'vendor-omnichannel-monthly'
+    )
+  ORDER BY CASE WHEN sku = 'vendor-crm-monthly' THEN 0 ELSE 1 END, created_at DESC
+  LIMIT 1
+)
+INSERT INTO produtos_catalogo
+  (tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
+SELECT tenant_id, 'Vendor CRM Free', 'vendor-crm-free', 'saas_plan',
+       'CRM completo para 1 usuário. Porta de entrada gratuita do ecossistema VendorAI.',
+       0, 0, 'un', true, true, 'mensal'
+FROM vendor_catalog_tenant
 WHERE NOT EXISTS (SELECT 1 FROM produtos_catalogo WHERE sku = 'vendor-crm-free');
 
-INSERT INTO produtos_catalogo (tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
-SELECT '1d4ea673-58d0-413a-a554-c9aca72a3121', 'VendorAI Growth', 'vendor-growth-monthly', 'saas_plan',
-       'Ecossistema VendorAI completo para o segmento do cliente, com usuários ilimitados e franquias mensais de consumo.', 1490, 1490, 'un', true, true, 'mensal'
+WITH vendor_catalog_tenant AS (
+  SELECT tenant_id
+  FROM produtos_catalogo
+  WHERE tenant_id IS NOT NULL
+    AND sku IN ('vendor-crm-monthly','vendor-growth-monthly','vendor-prospector-monthly','vendor-omnichannel-monthly')
+  ORDER BY CASE WHEN sku = 'vendor-crm-monthly' THEN 0 ELSE 1 END, created_at DESC
+  LIMIT 1
+)
+INSERT INTO produtos_catalogo
+  (tenant_id, nome, sku, product_type, descricao, preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia)
+SELECT tenant_id, 'VendorAI Growth', 'vendor-growth-monthly', 'saas_plan',
+       'Ecossistema VendorAI completo para o segmento do cliente, com usuários ilimitados e franquias mensais de consumo.',
+       1490, 1490, 'un', true, true, 'mensal'
+FROM vendor_catalog_tenant
 WHERE NOT EXISTS (SELECT 1 FROM produtos_catalogo WHERE sku = 'vendor-growth-monthly');
 
-INSERT INTO produtos_catalogo (tenant_id, nome, sku, product_type, descricao, preco_base, unidade, ativo, destaque)
-SELECT '1d4ea673-58d0-413a-a554-c9aca72a3121', 'Growth +5 dias', 'vendor-growth-5d', 'saas_addon',
+WITH vendor_catalog_tenant AS (
+  SELECT tenant_id
+  FROM produtos_catalogo
+  WHERE tenant_id IS NOT NULL
+    AND sku IN ('vendor-crm-monthly','vendor-growth-monthly','vendor-prospector-monthly','vendor-omnichannel-monthly')
+  ORDER BY CASE WHEN sku = 'vendor-crm-monthly' THEN 0 ELSE 1 END, created_at DESC
+  LIMIT 1
+)
+INSERT INTO produtos_catalogo
+  (tenant_id, nome, sku, product_type, descricao, preco_base, unidade, ativo, destaque)
+SELECT tenant_id, 'Growth +5 dias', 'vendor-growth-5d', 'saas_addon',
        'Bloco adicional de 5 dias de acesso Growth.', 399, 'un', true, false
+FROM vendor_catalog_tenant
 WHERE NOT EXISTS (SELECT 1 FROM produtos_catalogo WHERE sku = 'vendor-growth-5d');
 
 -- Canonical commercial profiles. Raw nav modules remain implementation details.
 INSERT INTO commercial_product_profiles
-(commercial_key, catalog_product_id, offer_kind, included_in_growth, max_users, module_keys, benefits, display_order, metadata)
+  (commercial_key, catalog_product_id, offer_kind, included_in_growth, max_users, module_keys, benefits, display_order, metadata)
 VALUES
 ('vendor.crm.free', (SELECT id FROM produtos_catalogo WHERE sku='vendor-crm-free' ORDER BY created_at DESC LIMIT 1), 'free', false, 1,
  '["dashboard","leads","deals","scheduler","settings"]', '["CRM completo","1 usuário","Leads, contatos, pipeline, tarefas e histórico"]', 10, '{"acquisition":true}'),
@@ -185,10 +232,9 @@ ON CONFLICT (commercial_key) DO UPDATE SET
   metadata = EXCLUDED.metadata,
   updated_at = now();
 
--- Usage units and Vendor Credit weights. Weights are commercial normalization,
--- not raw provider tokens and can be changed without changing customer pricing.
+-- Usage units and Vendor Credit weights. These are commercial units, not raw provider tokens.
 INSERT INTO usage_metrics
-(key, name, unit_singular, unit_plural, vendor_credits_per_unit, customer_visible, only_charge_on_success)
+  (key, name, unit_singular, unit_plural, vendor_credits_per_unit, customer_visible, only_charge_on_success)
 VALUES
 ('ai_assist', 'Assistência de IA', 'assistência', 'assistências', 1, true, true),
 ('content', 'Conteúdo gerado', 'conteúdo', 'conteúdos', 5, true, true),
@@ -216,9 +262,9 @@ ON CONFLICT (key) DO UPDATE SET
   only_charge_on_success = EXCLUDED.only_charge_on_success,
   updated_at = now();
 
--- Growth Quota V1. Monthly quantities are intentionally configurable data,
--- never hard-coded in feature code. NULL would mean unlimited.
-INSERT INTO product_usage_quotas (commercial_key, metric_key, monthly_quantity, overage_allowed)
+-- Growth Quota V1 + standalone product quotas. NULL would mean unlimited.
+INSERT INTO product_usage_quotas
+  (commercial_key, metric_key, monthly_quantity, overage_allowed)
 VALUES
 ('vendor.growth','content',300,true),
 ('vendor.growth','image',100,true),
@@ -253,5 +299,5 @@ ON CONFLICT (commercial_key, metric_key) DO UPDATE SET
   overage_allowed = EXCLUDED.overage_allowed,
   updated_at = now();
 
--- No blocking, no automatic debits and no current-tenant rewrites in this migration.
+-- No blocking, automatic debits or current-tenant permission rewrites here.
 -- Runtime cut-over happens only after ledger coverage is validated per feature.
