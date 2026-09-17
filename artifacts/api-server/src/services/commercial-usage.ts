@@ -1,5 +1,6 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
 import {
+  consumptionPackDefinitionsTable,
   db,
   productUsageQuotasTable,
   tenantEntitlementsTable,
@@ -36,7 +37,9 @@ export type UsageQuotaSnapshot = {
   unitSingular: string;
   unitPlural: string;
   monthlyQuantity: number | null;
+  extraPurchasedQuantity: number;
   usedQuantity: number;
+  monthlyRemainingQuantity: number | null;
   remainingQuantity: number | null;
   percentUsed: number | null;
   overageAllowed: boolean;
@@ -142,6 +145,79 @@ export async function recordAiGatewayCost(input: {
   });
 }
 
+/**
+ * Grants a resource-specific pack after a confirmed payment/promotion.
+ * It does not create a runtime entitlement: it increases the metric allowance.
+ * referenceId should be the provider/payment id so retries stay idempotent.
+ */
+export async function grantConsumptionPack(input: {
+  tenantId: string;
+  commercialKey: string;
+  referenceId: string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+  allowInactive?: boolean;
+}) {
+  const [pack] = await db
+    .select()
+    .from(consumptionPackDefinitionsTable)
+    .where(and(
+      eq(consumptionPackDefinitionsTable.commercialKey, input.commercialKey),
+      input.allowInactive ? sql`true` : eq(consumptionPackDefinitionsTable.active, true),
+    ))
+    .limit(1);
+
+  if (!pack) throw new Error("CONSUMPTION_PACK_NOT_AVAILABLE");
+
+  const expiresAt = pack.expiresAfterDays == null
+    ? null
+    : new Date(Date.now() + pack.expiresAfterDays * 86_400_000);
+
+  const [row] = await db
+    .insert(vendorCreditTransactionsTable)
+    .values({
+      tenantId: input.tenantId,
+      creditsDelta: pack.vendorCredits,
+      metricKey: pack.metricKey,
+      quantityDelta: String(pack.quantity),
+      reason: input.reason ?? "consumption_pack_grant",
+      commercialKey: pack.commercialKey,
+      referenceId: input.referenceId,
+      expiresAt,
+      metadata: {
+        ...(input.metadata ?? {}),
+        packQuantity: Number(pack.quantity),
+        packMetricKey: pack.metricKey,
+      },
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  return row ?? null;
+}
+
+export async function getMetricTopupBalance(tenantId: string, metricKey: string, now = new Date()) {
+  const [row] = await db
+    .select({
+      quantity: sql<number>`coalesce(sum(${vendorCreditTransactionsTable.quantityDelta}), 0)`,
+      credits: sql<number>`coalesce(sum(${vendorCreditTransactionsTable.creditsDelta}), 0)`,
+    })
+    .from(vendorCreditTransactionsTable)
+    .where(and(
+      eq(vendorCreditTransactionsTable.tenantId, tenantId),
+      eq(vendorCreditTransactionsTable.metricKey, metricKey),
+      or(
+        isNull(vendorCreditTransactionsTable.expiresAt),
+        gt(vendorCreditTransactionsTable.expiresAt, now),
+      ),
+    ));
+
+  return {
+    quantity: Number(row?.quantity ?? 0),
+    credits: Number(row?.credits ?? 0),
+  };
+}
+
 export async function getTenantUsageSnapshot(
   tenantId: string,
   commercialKey: string,
@@ -166,23 +242,30 @@ export async function getTenantUsageSnapshot(
 
   const start = monthStart(now);
   return Promise.all(quotas.map(async (quota) => {
-    const [usage] = await db
-      .select({
-        usedQuantity: sql<number>`coalesce(sum(${usageLedgerTable.quantity}), 0)`,
-        vendorCreditsUsed: sql<number>`coalesce(sum(${usageLedgerTable.vendorCredits}), 0)`,
-      })
-      .from(usageLedgerTable)
-      .where(and(
-        eq(usageLedgerTable.tenantId, tenantId),
-        eq(usageLedgerTable.metricKey, quota.metricKey),
-        eq(usageLedgerTable.success, true),
-        eq(usageLedgerTable.billable, true),
-        gte(usageLedgerTable.createdAt, start),
-      ));
+    const [[usage], topup] = await Promise.all([
+      db
+        .select({
+          usedQuantity: sql<number>`coalesce(sum(${usageLedgerTable.quantity}), 0)`,
+          vendorCreditsUsed: sql<number>`coalesce(sum(${usageLedgerTable.vendorCredits}), 0)`,
+        })
+        .from(usageLedgerTable)
+        .where(and(
+          eq(usageLedgerTable.tenantId, tenantId),
+          eq(usageLedgerTable.metricKey, quota.metricKey),
+          eq(usageLedgerTable.success, true),
+          eq(usageLedgerTable.billable, true),
+          gte(usageLedgerTable.createdAt, start),
+        )),
+      getMetricTopupBalance(tenantId, quota.metricKey, now),
+    ]);
 
     const usedQuantity = Number(usage?.usedQuantity ?? 0);
     const monthlyQuantity = quota.monthlyQuantity == null ? null : Number(quota.monthlyQuantity);
-    const remainingQuantity = monthlyQuantity == null ? null : Math.max(0, monthlyQuantity - usedQuantity);
+    const extraPurchasedQuantity = Math.max(0, topup.quantity);
+    const monthlyRemainingQuantity = monthlyQuantity == null ? null : Math.max(0, monthlyQuantity - usedQuantity);
+    const remainingQuantity = monthlyQuantity == null
+      ? null
+      : Math.max(0, monthlyQuantity + extraPurchasedQuantity - usedQuantity);
     const percentUsed = monthlyQuantity == null || monthlyQuantity <= 0
       ? null
       : Math.min(100, (usedQuantity / monthlyQuantity) * 100);
@@ -193,7 +276,9 @@ export async function getTenantUsageSnapshot(
       unitSingular: quota.unitSingular,
       unitPlural: quota.unitPlural,
       monthlyQuantity,
+      extraPurchasedQuantity,
       usedQuantity,
+      monthlyRemainingQuantity,
       remainingQuantity,
       percentUsed,
       overageAllowed: quota.overageAllowed,
@@ -206,7 +291,10 @@ export async function getVendorCreditBalance(tenantId: string) {
   const [row] = await db
     .select({ balance: sql<number>`coalesce(sum(${vendorCreditTransactionsTable.creditsDelta}), 0)` })
     .from(vendorCreditTransactionsTable)
-    .where(eq(vendorCreditTransactionsTable.tenantId, tenantId));
+    .where(and(
+      eq(vendorCreditTransactionsTable.tenantId, tenantId),
+      isNull(vendorCreditTransactionsTable.metricKey),
+    ));
   return Number(row?.balance ?? 0);
 }
 
