@@ -10,7 +10,7 @@ SET
   implantation_price_cents = 0,
   max_users = 1,
   ai_quota_usd = 1.00,
-  active = true,
+  is_active = true,
   updated_at = now()
 WHERE slug = 'start';
 
@@ -19,6 +19,6 @@ SET
   name = 'VendorAI Growth',
   monthly_price_cents = 149000,
   max_users = NULL,
-  active = true,
+  is_active = true,
   updated_at = now()
 WHERE slug = 'growth';
