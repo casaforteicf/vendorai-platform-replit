@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or, count, gte } from "drizzle-orm";
+import { and, eq, or, count, gte, sql } from "drizzle-orm";
 import {
   db,
   siteConfigTable,
@@ -12,7 +12,6 @@ import {
   dealsTable,
   leadsTable,
 } from "@workspace/db";
-import { count, gte, sql } from "drizzle-orm";
 import type { GeneratedSiteContent } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import express from "express";
