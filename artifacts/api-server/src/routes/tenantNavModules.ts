@@ -83,7 +83,24 @@ const VAREJO_VERTICALS = new Set(
   ].map(normalizeVertical)
 );
 const SUPERMERCADO_VERTICALS = new Set(["Supermercado"].map(normalizeVertical));
-const SALAO_VERTICALS = new Set(["Salão de Beleza", "Barbearia"].map(normalizeVertical));
+const SALAO_VERTICALS = new Set(
+  [
+    "Salão de Beleza",
+    "Barbearia",
+    // Bloco 1 da proposta de agrupamento (17/09): nichos "core" com o
+    // mesmo padrão de agenda + profissional + serviço de preço fixo, sem
+    // visita técnica — encaixam no bucket "salao" já existente, sem
+    // precisar de tela nova.
+    "Academia / Personal Trainer",
+    "Estúdio de Pilates / Yoga",
+    "Escolinha Esportiva / Artes Marciais",
+    "Nutricionista",
+    "Escola de Idiomas",
+    "Creche / Berçário",
+    "Hospedagem/Creche Pet",
+    "Adestramento",
+  ].map(normalizeVertical)
+);
 const CLINICA_VERTICALS = new Set(["Clínica"].map(normalizeVertical));
 // Pet Shop usa o catálogo de Varejo E as telas de Salão (banho & tosa) ao
 // mesmo tempo — mesma exceção que já existe no frontend (isSalao).
