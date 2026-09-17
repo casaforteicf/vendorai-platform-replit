@@ -39,6 +39,7 @@ export const pool = new Pool({
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
+export * from "./schema/commercial_monetization";
 export * from "./schema/growth_lab";
 export * from "./schema/seo_backlink_opportunities";
 export * from "./schema/jarvis_continuity";
