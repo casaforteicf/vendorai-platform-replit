@@ -17,7 +17,7 @@ import {
   Trees,
   Waves,
 } from "lucide-react";
-import { buildConceptGeometry, generateLayoutVariant } from "./conceptGeometry";
+import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 
 type RoomKind =
   | "sala"
@@ -145,6 +145,8 @@ export default function ConceptPlanner() {
   ]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [openingOverrides, setOpeningOverrides] = useState<Record<string, { x: number; y: number; type: "door" | "window" }>>({});
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
   const visibleRooms = rooms.filter((r) => r.floor === activeFloor);
@@ -179,10 +181,43 @@ export default function ConceptPlanner() {
 
   const scaleX = 100 / lotWidth;
   const scaleY = 100 / lotDepth;
-  const geometry = useMemo(
+  const baseGeometry = useMemo(
     () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
   );
+  const geometry = useMemo(
+    () => ({
+      ...baseGeometry,
+      openings: baseGeometry.openings.map((opening) => {
+        const override = openingOverrides[opening.id];
+        return override ? { ...opening, ...override } : opening;
+      }),
+    }),
+    [baseGeometry, openingOverrides],
+  );
+  const layoutIssues = useMemo(
+    () => validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
+    [rooms, lotWidth, lotDepth, activeFloor],
+  );
+  const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
+
+  const moveOpening = (amount: number) => {
+    if (!selectedOpening) return;
+    const next = nudgeOpening(selectedOpening, amount, lotWidth, lotDepth);
+    setOpeningOverrides((prev) => ({
+      ...prev,
+      [selectedOpening.id]: { x: next.x, y: next.y, type: next.type },
+    }));
+  };
+
+  const toggleOpeningType = () => {
+    if (!selectedOpening) return;
+    const nextType = selectedOpening.type === "door" ? "window" : "door";
+    setOpeningOverrides((prev) => ({
+      ...prev,
+      [selectedOpening.id]: { x: selectedOpening.x, y: selectedOpening.y, type: nextType },
+    }));
+  };
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -525,10 +560,62 @@ export default function ConceptPlanner() {
                     </div>
                   </div>
                   <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-xs leading-relaxed text-orange-950">
-                    <strong>Paredes automáticas:</strong> o cliente organiza espaços; o sistema transforma os limites dos ambientes em paredes no próximo motor geométrico.
+                    <strong>Geometria automática ativa:</strong> ao mover ou redimensionar ambientes, o sistema recalcula paredes e sugere vãos.
                   </div>
                 </div>
               )}
+              <div className="mt-5 rounded-2xl border p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold">Checagem do layout</div>
+                  <span className={layoutIssues.some((issue) => issue.severity === "error") ? "rounded-full bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700" : layoutIssues.length ? "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700" : "rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700"}>
+                    {layoutIssues.some((issue) => issue.severity === "error") ? "Corrigir" : layoutIssues.length ? "Atenção" : "Tudo certo"}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {layoutIssues.length === 0 ? (
+                    <div className="text-xs text-emerald-700">Sem colisões ou problemas básicos detectados neste pavimento.</div>
+                  ) : (
+                    layoutIssues.slice(0, 5).map((issue) => (
+                      <button
+                        key={issue.id}
+                        type="button"
+                        onClick={() => issue.roomId && setSelectedId(issue.roomId)}
+                        className={issue.severity === "error" ? "block w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs text-red-800" : "block w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"}
+                      >
+                        {issue.message}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border p-4">
+                <div className="font-semibold">Portas e janelas</div>
+                <p className="mt-1 text-xs text-muted-foreground">Selecione um vão sugerido para mover ou trocar o tipo.</p>
+                <div className="mt-3 max-h-44 space-y-2 overflow-auto">
+                  {geometry.openings
+                    .filter((opening) => !selected || opening.roomId === selected.id)
+                    .map((opening) => (
+                      <button
+                        key={opening.id}
+                        type="button"
+                        onClick={() => setSelectedOpeningId(opening.id)}
+                        className={selectedOpeningId === opening.id ? "flex w-full items-center justify-between rounded-lg border border-orange-500 bg-orange-500/5 px-3 py-2 text-left text-xs" : "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs"}
+                      >
+                        <span>{opening.type === "door" ? "Porta" : "Janela"}</span>
+                        <span className="text-muted-foreground">{opening.orientation === "horizontal" ? "horizontal" : "vertical"}</span>
+                      </button>
+                    ))}
+                </div>
+                {selectedOpening && (
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => moveOpening(-0.25)} className="rounded-lg border px-2 py-2 text-xs font-semibold">← 25 cm</button>
+                    <button type="button" onClick={toggleOpeningType} className="rounded-lg border px-2 py-2 text-xs font-semibold">Trocar tipo</button>
+                    <button type="button" onClick={() => moveOpening(0.25)} className="rounded-lg border px-2 py-2 text-xs font-semibold">25 cm →</button>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-5 rounded-2xl border p-4">
                 <div className="flex items-center gap-2 font-semibold"><Maximize2 className="h-4 w-4" /> Resumo</div>
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">
