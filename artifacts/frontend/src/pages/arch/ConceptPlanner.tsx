@@ -17,6 +17,7 @@ import {
   Trees,
   Waves,
 } from "lucide-react";
+import { buildConceptGeometry, generateLayoutVariant } from "./conceptGeometry";
 
 type RoomKind =
   | "sala"
@@ -143,6 +144,7 @@ export default function ConceptPlanner() {
     createRoom("piscina"),
   ]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [layoutVariant, setLayoutVariant] = useState(0);
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
   const visibleRooms = rooms.filter((r) => r.floor === activeFloor);
@@ -162,8 +164,9 @@ export default function ConceptPlanner() {
     setRooms((prev) => prev.map((room) => (room.id === selectedId ? { ...room, ...patch } : room)));
   };
 
-  const organize = () => {
-    setRooms((prev) => autoArrange(prev, lotWidth, lotDepth, activeFloor));
+  const organize = (variant = layoutVariant) => {
+    setLayoutVariant(variant);
+    setRooms((prev) => generateLayoutVariant(prev, lotWidth, lotDepth, activeFloor, variant));
   };
 
   const swapPosition = (room: Room, direction: "left" | "right" | "up" | "down") => {
@@ -176,6 +179,10 @@ export default function ConceptPlanner() {
 
   const scaleX = 100 / lotWidth;
   const scaleY = 100 / lotDepth;
+  const geometry = useMemo(
+    () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
+    [rooms, lotWidth, lotDepth, activeFloor],
+  );
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -397,11 +404,28 @@ export default function ConceptPlanner() {
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="font-semibold">Planta conceitual — {activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}</div>
-                  <div className="text-xs text-muted-foreground">Terreno {lotWidth} × {lotDepth} m · paredes serão formadas a partir dos blocos.</div>
+                  <div className="text-xs text-muted-foreground">Terreno {lotWidth} × {lotDepth} m · paredes, portas e janelas são calculadas a partir dos ambientes.</div>
                 </div>
-                <button type="button" onClick={organize} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white">
+                <button type="button" onClick={() => organize()} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white">
                   <Sparkles className="h-4 w-4" /> Organizar para mim
                 </button>
+              </div>
+              <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                {[
+                  ["Opção A", "Social integrada"],
+                  ["Opção B", "Mais privacidade"],
+                  ["Opção C", "Lazer central"],
+                ].map(([title, subtitle], index) => (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() => organize(index)}
+                    className={layoutVariant === index ? "rounded-xl border border-orange-500 bg-orange-500/5 p-3 text-left ring-2 ring-orange-500/10" : "rounded-xl border p-3 text-left hover:bg-muted/50"}
+                  >
+                    <div className="text-sm font-semibold">{title}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>
+                  </button>
+                ))}
               </div>
               <div className="relative mx-auto h-[560px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
                 {visibleRooms.map((room) => {
@@ -426,6 +450,46 @@ export default function ConceptPlanner() {
                     </button>
                   );
                 })}
+                <svg
+                  className="pointer-events-none absolute inset-2 z-20 h-[calc(100%-1rem)] w-[calc(100%-1rem)] overflow-visible"
+                  viewBox={`0 0 ${lotWidth} ${lotDepth}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  {geometry.walls.map((wall) => (
+                    <line
+                      key={wall.id}
+                      x1={wall.x1}
+                      y1={wall.y1}
+                      x2={wall.x2}
+                      y2={wall.y2}
+                      stroke={wall.exterior ? "#0f172a" : "#334155"}
+                      strokeWidth={wall.exterior ? 5 : 3}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                  {geometry.openings.map((opening) => {
+                    const half = opening.type === "door" ? 0.45 : 0.6;
+                    const horizontal = opening.orientation === "horizontal";
+                    return (
+                      <line
+                        key={opening.id}
+                        x1={horizontal ? opening.x - half : opening.x}
+                        y1={horizontal ? opening.y : opening.y - half}
+                        x2={horizontal ? opening.x + half : opening.x}
+                        y2={horizontal ? opening.y : opening.y + half}
+                        stroke={opening.type === "door" ? "#f97316" : "#0284c7"}
+                        strokeWidth={opening.type === "door" ? 5 : 4}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
+                </svg>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
+                <span><strong className="text-slate-900">Parede externa</strong> linha escura</span>
+                <span><strong className="text-orange-600">Porta sugerida</strong> laranja</span>
+                <span><strong className="text-sky-600">Janela sugerida</strong> azul</span>
               </div>
             </div>
 
