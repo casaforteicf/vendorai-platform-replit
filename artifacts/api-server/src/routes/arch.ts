@@ -274,6 +274,14 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   let leadId: string | null = null;
   let dealId: string | null = null;
 
+  const hasCustomerName = Boolean(customer.name?.trim());
+  const hasCustomerContact = Boolean(customer.phone?.trim() || customer.email?.trim());
+  if (!hasCustomerName || !hasCustomerContact) {
+    return res.status(400).json({
+      error: "Informe nome e pelo menos um contato (telefone ou e-mail) antes de enviar ao profissional.",
+    });
+  }
+
   if (customer.name?.trim()) {
     if (customer.email?.trim()) {
       const [byEmail] = await db
@@ -297,7 +305,6 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         customer.name.trim(),
       );
       if (match.found) leadId = match.lead.id;
-      else if (match.similar) leadId = match.similar.id;
     }
 
     if (!leadId) {
