@@ -54,6 +54,8 @@ import {
   archOfficeTemplatesTable,
   archAiRendersTable,
   archConceptProjectsTable,
+  leadsTable,
+  dealsTable,
   insertArchConceptProjectSchema,
   updateArchConceptProjectSchema,
 } from "@workspace/db";
@@ -67,6 +69,8 @@ import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { callReplicateFlux, callOpenAI } from "../lib/ai-gateway.js";
 import { arqOrchestrator } from "../lib/arqdor/orchestrator/index.js";
 import { automationLogsTable } from "@workspace/db";
+import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { pickNextVendedor } from "../lib/round-robin.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -242,6 +246,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         ok: true,
         alreadyPromoted: true,
         project: existingProject,
+        leadId: existingProject.leadId,
+        dealId: existingProject.dealId,
       });
     }
   }
@@ -249,6 +255,14 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
   const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
+  const customer = (concept.customerProfile ?? {}) as {
+    name?: string;
+    phone?: string;
+    email?: string;
+    budgetRange?: string;
+    timeframe?: string;
+    notes?: string;
+  };
   const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
   const roomSummary = rooms
     .map((room: any) => {
@@ -256,6 +270,93 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       return `${room.label ?? room.kind ?? "Ambiente"} (${area.toFixed(1)} m²)`;
     })
     .join(", ");
+
+  let leadId: string | null = null;
+  let dealId: string | null = null;
+
+  if (customer.name?.trim()) {
+    if (customer.email?.trim()) {
+      const [byEmail] = await db
+        .select()
+        .from(leadsTable)
+        .where(
+          and(
+            eq(leadsTable.tenantId, tid),
+            eq(leadsTable.email, customer.email.trim()),
+          ),
+        )
+        .limit(1);
+      if (byEmail) leadId = byEmail.id;
+    }
+
+    if (!leadId) {
+      const match = await findLeadByDedup(
+        tid,
+        customer.phone?.trim() || null,
+        null,
+        customer.name.trim(),
+      );
+      if (match.found) leadId = match.lead.id;
+      else if (match.similar) leadId = match.similar.id;
+    }
+
+    if (!leadId) {
+      const assignedTo = await pickNextVendedor(tid, {});
+      const [lead] = await db
+        .insert(leadsTable)
+        .values({
+          tenantId: tid,
+          nome: customer.name.trim(),
+          telefone: storePhone(customer.phone?.trim() || null),
+          email: customer.email?.trim() || null,
+          source: "arqdor_concept",
+          objetivo: "Projeto residencial",
+          orcamento: customer.budgetRange?.trim() || null,
+          urgencia: customer.timeframe?.trim() || null,
+          notasNutricao: customer.notes?.trim() || null,
+          assignedTo,
+          metadata: {
+            arqdorConceptId: concept.id,
+            desiredArea: config.desiredArea ?? null,
+            floors: config.floors ?? null,
+            facadeStyle: facade.style ?? null,
+          },
+        })
+        .returning();
+      leadId = lead?.id ?? null;
+    }
+
+    if (leadId) {
+      const [existingDeal] = await db
+        .select()
+        .from(dealsTable)
+        .where(and(eq(dealsTable.tenantId, tid), eq(dealsTable.leadId, leadId)))
+        .orderBy(desc(dealsTable.updatedAt))
+        .limit(1);
+
+      if (existingDeal) {
+        dealId = existingDeal.id;
+      } else {
+        const [lead] = await db
+          .select({ assignedTo: leadsTable.assignedTo })
+          .from(leadsTable)
+          .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tid)))
+          .limit(1);
+
+        const [deal] = await db
+          .insert(dealsTable)
+          .values({
+            tenantId: tid,
+            leadId,
+            titulo: `Projeto residencial — ${customer.name.trim()}`,
+            etapa: "em_aquecimento",
+            assignedTo: lead?.assignedTo ?? null,
+          })
+          .returning();
+        dealId = deal?.id ?? null;
+      }
+    }
+  }
 
   const description = [
     "Pré-projeto originado no Arqdor Concept.",
@@ -267,12 +368,20 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     facade.roof ? `Cobertura: ${facade.roof}.` : null,
     facade.primaryMaterial ? `Material principal: ${facade.primaryMaterial}.` : null,
     facade.accentMaterial ? `Destaque: ${facade.accentMaterial}.` : null,
+    customer.budgetRange ? `Faixa de investimento informada: ${customer.budgetRange}.` : null,
+    customer.timeframe ? `Prazo desejado: ${customer.timeframe}.` : null,
+    customer.notes ? `Observações do cliente: ${customer.notes}.` : null,
   ].filter(Boolean).join("\n");
 
   const [project] = await db
     .insert(archProjetosTable)
     .values({
       tenantId: tid,
+      leadId,
+      dealId,
+      clienteNome: customer.name?.trim() || null,
+      clienteEmail: customer.email?.trim() || null,
+      clienteTelefone: customer.phone?.trim() || null,
       titulo: concept.title || "Projeto originado do Arqdor Concept",
       descricao: description,
       status: "briefing",
@@ -313,6 +422,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     ok: true,
     alreadyPromoted: false,
     project,
+    leadId,
+    dealId,
   });
 });
 
