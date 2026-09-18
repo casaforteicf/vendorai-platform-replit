@@ -281,6 +281,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
     const entries = [
       { href: "/arch/projetos", label: "Projetos", glyph: "P" },
+      { href: "/arch/concept", label: "Pré-Projeto", glyph: "C" },
       { href: "/arch/render", label: "Render IA", glyph: "R" },
       { href: "/arch/catalogo", label: "Biblioteca do Projeto", glyph: "B" },
       { href: "/arch/marketplace", label: "Marketplace", glyph: "M" },
