@@ -815,8 +815,18 @@ export default function ConceptPlanner() {
               Continuar <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">
-              <Sparkles className="h-4 w-4" /> Gerar próxima etapa
+            <button
+              type="button"
+              onClick={() => {
+                if (viewMode === "2d") {
+                  setViewMode("3d");
+                  return;
+                }
+                void saveConcept();
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
+            >
+              <Sparkles className="h-4 w-4" /> {viewMode === "2d" ? "Ver volumetria 3D" : "Salvar volumetria"}
             </button>
           )}
         </div>
