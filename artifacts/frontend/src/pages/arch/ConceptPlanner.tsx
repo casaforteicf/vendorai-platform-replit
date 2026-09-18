@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
+import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 
 type RoomKind =
   | "sala"
@@ -58,6 +59,13 @@ type ConceptDraftResponse = {
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
   facadePreferences?: ConceptFacadePreferences;
+  conceptRender?: {
+    renderId?: string;
+    status?: "idle" | "processing" | "completed" | "error";
+    resultImageUrl?: string;
+    generatedAt?: string;
+    error?: string;
+  };
   selectedVariant: number;
 };
 
@@ -181,6 +189,8 @@ export default function ConceptPlanner() {
   const [rotation, setRotation] = useState(45);
   const [exploded3d, setExploded3d] = useState(false);
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
+  const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,6 +214,7 @@ export default function ConceptPlanner() {
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? draft.rooms : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
+        setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
       } catch {
@@ -228,6 +239,7 @@ export default function ConceptPlanner() {
       rooms,
       openingOverrides,
       facadePreferences,
+      conceptRender,
       selectedVariant: layoutVariant,
     };
 
@@ -244,10 +256,10 @@ export default function ConceptPlanner() {
       const saved = (await response.json()) as ConceptDraftResponse;
       setConceptId(saved.id);
       setSaveState("saved");
-      return true;
+      return saved.id;
     } catch {
       setSaveState("error");
-      return false;
+      return null;
     }
   };
 
@@ -320,6 +332,108 @@ export default function ConceptPlanner() {
       ...prev,
       [selectedOpening.id]: { x: selectedOpening.x, y: selectedOpening.y, type: nextType },
     }));
+  };
+
+  const generateConceptRender = async () => {
+    let renderProjectId = conceptId;
+    if (!renderProjectId) {
+      renderProjectId = await saveConcept(5);
+      if (!renderProjectId) return;
+    }
+
+    setRenderError(null);
+    setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
+
+    try {
+      const svg = document.querySelector<SVGSVGElement>("[data-concept-render-source='true'] svg");
+      if (!svg) throw new Error("Não foi possível localizar a volumetria para gerar o render.");
+
+      const originalImage = await svgElementToPngDataUrl(svg);
+      const brief = buildConceptRenderBrief({
+        lotWidth,
+        lotDepth,
+        floors,
+        desiredArea,
+        rooms,
+        facade: facadePreferences,
+      });
+
+      const response = await fetch("/api/arch/ai-render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: renderProjectId,
+          original_image_url: originalImage,
+          mode: "preservar",
+          ambiente: "fachada",
+          user_notes: brief,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `Erro ${response.status} ao iniciar render.`);
+      }
+
+      const { render_id } = (await response.json()) as { render_id: string };
+      const processing = { renderId: render_id, status: "processing" as const };
+      setConceptRender(processing);
+
+      let attempts = 0;
+      while (attempts < 90) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const poll = await fetch(`/api/arch/ai-render/${render_id}`);
+        if (!poll.ok) throw new Error("Não foi possível acompanhar o render.");
+
+        const data = (await poll.json()) as {
+          status?: string;
+          result_image_url?: string;
+          erro_msg?: string;
+        };
+
+        if (data.status === "concluido" && data.result_image_url) {
+          const completed = {
+            renderId: render_id,
+            status: "completed" as const,
+            resultImageUrl: data.result_image_url,
+            generatedAt: new Date().toISOString(),
+          };
+          setConceptRender(completed);
+
+          const payload = {
+            title: "Meu pré-projeto",
+            status: "draft",
+            currentStep: 5,
+            lot: { width: lotWidth, depth: lotDepth },
+            configuration: { floors, desiredArea },
+            rooms,
+            openingOverrides,
+            facadePreferences,
+            conceptRender: completed,
+            selectedVariant: layoutVariant,
+          };
+          if (renderProjectId) {
+            await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+          }
+          return;
+        }
+
+        if (data.status === "erro") {
+          throw new Error(data.erro_msg ?? "O render não pôde ser concluído.");
+        }
+        attempts += 1;
+      }
+
+      throw new Error("Tempo esgotado aguardando o render conceitual.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao gerar render conceitual.";
+      setRenderError(message);
+      setConceptRender((prev) => ({ ...prev, status: "error", error: message }));
+    }
   };
 
   return (
@@ -965,7 +1079,7 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <div className="mt-4 h-[590px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
+              <div data-concept-render-source="true" className="mt-4 h-[590px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
                 <ConceptVolumetry
                   rooms={rooms}
                   lotWidth={lotWidth}
@@ -992,8 +1106,58 @@ export default function ConceptPlanner() {
                   />
                 </label>
                 <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-                  Próxima etapa: usar essas preferências + a volumetria como briefing estruturado para o render conceitual.
+                  O render usa esta mesma câmera, volumetria e preferências para preservar a ideia aprovada.
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">Render conceitual</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Gera uma imagem fotorrealista mantendo a geometria do pré-projeto.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void generateConceptRender()}
+                    disabled={conceptRender?.status === "processing"}
+                    className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {conceptRender?.status === "processing"
+                      ? "Gerando render..."
+                      : conceptRender?.resultImageUrl
+                        ? "Gerar nova versão"
+                        : "Gerar render conceitual"}
+                  </button>
+                </div>
+
+                {renderError && (
+                  <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{renderError}</div>
+                )}
+
+                {conceptRender?.status === "processing" && (
+                  <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+                    Render em processamento. A geometria, fachada e materiais selecionados estão sendo usados como base.
+                  </div>
+                )}
+
+                {conceptRender?.resultImageUrl && (
+                  <div className="mt-4 overflow-hidden rounded-2xl border bg-muted">
+                    <img
+                      src={conceptRender.resultImageUrl}
+                      alt="Render conceitual do pré-projeto"
+                      className="max-h-[640px] w-full object-contain"
+                    />
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-background p-3 text-xs text-muted-foreground">
+                      <span>Render vinculado a este pré-projeto</span>
+                      {conceptRender.generatedAt && (
+                        <span>{new Date(conceptRender.generatedAt).toLocaleString("pt-BR")}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -1013,7 +1177,7 @@ export default function ConceptPlanner() {
               onClick={() => void saveConcept()}
               className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
             >
-              <Sparkles className="h-4 w-4" /> Salvar fachada
+              <Sparkles className="h-4 w-4" /> {conceptRender?.resultImageUrl ? "Salvar pré-projeto" : "Salvar fachada"}
             </button>
           )}
         </div>
