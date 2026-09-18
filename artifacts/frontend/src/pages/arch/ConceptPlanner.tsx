@@ -363,7 +363,7 @@ export default function ConceptPlanner() {
                 </label>
               ))}
             </div>
-            <button type="button" onClick={organize} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white">
+            <button type="button" onClick={() => organize()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white">
               <Sparkles className="h-4 w-4" />
               Organizar para mim
             </button>
@@ -378,7 +378,7 @@ export default function ConceptPlanner() {
                   <h2 className="font-semibold">5. Layout</h2>
                   <p className="text-xs text-muted-foreground">Selecione um ambiente para ajustar.</p>
                 </div>
-                <button type="button" onClick={organize} className="rounded-lg border p-2" title="Organizar novamente"><RotateCcw className="h-4 w-4" /></button>
+                <button type="button" onClick={() => organize()} className="rounded-lg border p-2" title="Organizar novamente"><RotateCcw className="h-4 w-4" /></button>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {Array.from({ length: floors }).map((_, floor) => (
@@ -517,7 +517,7 @@ export default function ConceptPlanner() {
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "up")} className="rounded-lg border p-2 disabled:opacity-40">↑</button>
                       <span />
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "left")} className="rounded-lg border p-2 disabled:opacity-40">←</button>
-                      <button type="button" onClick={organize} className="rounded-lg border p-2 text-xs font-semibold">IA</button>
+                      <button type="button" onClick={() => organize()} className="rounded-lg border p-2 text-xs font-semibold">IA</button>
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "right")} className="rounded-lg border p-2 disabled:opacity-40">→</button>
                       <span />
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "down")} className="rounded-lg border p-2 disabled:opacity-40">↓</button>
