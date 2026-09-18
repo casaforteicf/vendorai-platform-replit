@@ -29,22 +29,10 @@ export function addCalendarYear(date: Date, anchorDay = date.getUTCDate()): Date
 
 export function resolveVendorAiSubscriptionPrice(input: {
   phase: CommercialBillingPhase;
-  promoPhase1Price: string | number | null;
-  promoPhase2Price: string | number | null;
   regularPriceAtTransition: string | number | null;
   catalogMonthlyPriceCents?: number | null;
 }): { price: string; regularSnapshot: string | null } {
   if (input.phase === "trial") return { price: "0.00", regularSnapshot: null };
-  if (input.phase === "promo_1") {
-    const price = Number(input.promoPhase1Price ?? 0);
-    if (!(price > 0)) throw new Error("VendorAI subscription promo_1 price is invalid");
-    return { price: price.toFixed(2), regularSnapshot: null };
-  }
-  if (input.phase === "promo_2") {
-    const price = Number(input.promoPhase2Price ?? 0);
-    if (!(price > 0)) throw new Error("VendorAI subscription promo_2 price is invalid");
-    return { price: price.toFixed(2), regularSnapshot: null };
-  }
 
   const persisted = Number(input.regularPriceAtTransition ?? 0);
   if (persisted > 0) return { price: persisted.toFixed(2), regularSnapshot: persisted.toFixed(2) };
