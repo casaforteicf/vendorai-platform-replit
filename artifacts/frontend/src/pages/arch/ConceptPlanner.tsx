@@ -55,6 +55,15 @@ type OpeningOverride = {
   type: "door" | "window";
 };
 
+type CustomerProfile = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  budgetRange?: string;
+  timeframe?: string;
+  notes?: string;
+};
+
 type ConceptDraftResponse = {
   id: string;
   status?: string;
@@ -64,6 +73,7 @@ type ConceptDraftResponse = {
   configuration: { floors: number; desiredArea: number };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
+  customerProfile?: CustomerProfile;
   facadePreferences?: ConceptFacadePreferences;
   conceptRender?: {
     renderId?: string;
@@ -194,6 +204,7 @@ export default function ConceptPlanner() {
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
   const [rotation, setRotation] = useState(45);
   const [exploded3d, setExploded3d] = useState(false);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -224,6 +235,7 @@ export default function ConceptPlanner() {
         setDesiredArea(draft.configuration?.desiredArea ?? 180);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? draft.rooms : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
+        setCustomerProfile(draft.customerProfile ?? {});
         setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
         setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
@@ -249,6 +261,7 @@ export default function ConceptPlanner() {
       configuration: { floors, desiredArea },
       rooms,
       openingOverrides,
+      customerProfile,
       facadePreferences,
       conceptRender,
       selectedVariant: layoutVariant,
@@ -366,7 +379,7 @@ export default function ConceptPlanner() {
         throw new Error((body as { error?: string }).error ?? "Não foi possível enviar ao profissional.");
       }
 
-      const data = (await response.json()) as { project?: { id?: string } };
+      const data = (await response.json()) as { project?: { id?: string }; leadId?: string | null; dealId?: string | null };
       const projectId = data.project?.id;
       if (!projectId) throw new Error("Projeto criado sem identificador.");
 
@@ -1351,6 +1364,84 @@ export default function ConceptPlanner() {
                   </div>
                 </div>
 
+                <div className="rounded-3xl border bg-card p-5 shadow-sm print:hidden">
+                  <h3 className="font-semibold">Dados do cliente</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Essas informações qualificam o contato e entram no CRM quando o pré-projeto for enviado.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold">
+                      Nome
+                      <input
+                        value={customerProfile.name ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.target.value }))}
+                        placeholder="Nome do cliente"
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold">
+                      WhatsApp / telefone
+                      <input
+                        value={customerProfile.phone ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.target.value }))}
+                        placeholder="(49) 99999-9999"
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold">
+                      E-mail
+                      <input
+                        type="email"
+                        value={customerProfile.email ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.target.value }))}
+                        placeholder="cliente@email.com"
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold">
+                      Faixa de investimento
+                      <select
+                        value={customerProfile.budgetRange ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, budgetRange: event.target.value }))}
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                      >
+                        <option value="">Ainda não definido</option>
+                        <option value="até R$ 500 mil">Até R$ 500 mil</option>
+                        <option value="R$ 500 mil a R$ 1 milhão">R$ 500 mil a R$ 1 milhão</option>
+                        <option value="R$ 1 milhão a R$ 2 milhões">R$ 1 milhão a R$ 2 milhões</option>
+                        <option value="acima de R$ 2 milhões">Acima de R$ 2 milhões</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold">
+                      Quando pretende começar?
+                      <select
+                        value={customerProfile.timeframe ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, timeframe: event.target.value }))}
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                      >
+                        <option value="">Ainda não definido</option>
+                        <option value="até 3 meses">Até 3 meses</option>
+                        <option value="3 a 6 meses">3 a 6 meses</option>
+                        <option value="6 a 12 meses">6 a 12 meses</option>
+                        <option value="mais de 12 meses">Mais de 12 meses</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold sm:col-span-2">
+                      Observações
+                      <textarea
+                        value={customerProfile.notes ?? ""}
+                        onChange={(event) => setCustomerProfile((prev) => ({ ...prev, notes: event.target.value }))}
+                        placeholder="Preferências, prioridades, limitações ou qualquer detalhe importante."
+                        rows={3}
+                        className="mt-1 w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-3 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Ao enviar, o sistema procura um lead já existente antes de criar outro. Se não encontrar, cria o lead canônico no CRM e um negócio em aquecimento.
+                  </div>
+                </div>
+
                 <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5 shadow-sm print:hidden">
                   <div className="flex items-start gap-3">
                     <Send className="mt-0.5 h-5 w-5 text-orange-600" />
@@ -1363,6 +1454,12 @@ export default function ConceptPlanner() {
                       {handoffError && (
                         <div className="mt-3 rounded-xl bg-red-100 px-3 py-2 text-xs text-red-700">{handoffError}</div>
                       )}
+                      {handoffState !== "sent" &&
+                        (!customerProfile.name?.trim() || !(customerProfile.phone?.trim() || customerProfile.email?.trim())) && (
+                          <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-orange-900">
+                            Informe o nome e pelo menos um contato (WhatsApp/telefone ou e-mail) para habilitar o envio ao profissional.
+                          </div>
+                        )}
 
                       {handoffState === "sent" && archProjetoId ? (
                         <div className="mt-4 space-y-3">
@@ -1381,7 +1478,11 @@ export default function ConceptPlanner() {
                         <button
                           type="button"
                           onClick={() => void promoteToProject()}
-                          disabled={handoffState === "sending"}
+                          disabled={
+                          handoffState === "sending" ||
+                          !customerProfile.name?.trim() ||
+                          !(customerProfile.phone?.trim() || customerProfile.email?.trim())
+                        }
                           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           <Send className="h-4 w-4" />

@@ -32,6 +32,15 @@ export type ArchConceptOpeningOverride = Record<
   { x: number; y: number; type: "door" | "window" }
 >;
 
+export type ArchConceptCustomerProfile = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  budgetRange?: string;
+  timeframe?: string;
+  notes?: string;
+};
+
 export type ArchConceptFacadePreferences = {
   style: "contemporaneo" | "minimalista" | "classico_contemporaneo" | "tropical" | "industrial" | "rustico_contemporaneo";
   roof: "platibanda" | "aparente" | "misto";
@@ -59,6 +68,7 @@ export const archConceptProjectsTable = pgTable("arch_concept_projects", {
   configuration: jsonb("configuration").$type<ArchConceptConfiguration>().notNull(),
   rooms: jsonb("rooms").$type<ArchConceptRoom[]>().notNull(),
   openingOverrides: jsonb("opening_overrides").$type<ArchConceptOpeningOverride>().notNull().default({}),
+  customerProfile: jsonb("customer_profile").$type<ArchConceptCustomerProfile>().notNull().default({}),
   facadePreferences: jsonb("facade_preferences").$type<ArchConceptFacadePreferences>().notNull().default({
     style: "contemporaneo",
     roof: "platibanda",
