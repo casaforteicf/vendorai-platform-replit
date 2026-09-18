@@ -202,7 +202,7 @@ function CommercialOffer({ profile }: { profile: ViewProfile }) {
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm leading-6 text-slate-600">
-          Após o teste não existe etapa intermediária de R$ 497 ou R$ 990: o Growth contínuo é <strong>{brl(offer.subscription.monthlyPriceBrl)}/mês</strong>.
+          Após o teste, o Growth contínuo é <strong>{brl(offer.subscription.monthlyPriceBrl)}/mês</strong>; quem preferir pode continuar por blocos adicionais de uso.
         </div>
 
         <div className="mt-8 flex justify-center"><Cta profile={profile} /></div>
