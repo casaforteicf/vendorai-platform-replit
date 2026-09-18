@@ -200,12 +200,12 @@ export default function ConceptPlanner() {
     };
   }, []);
 
-  const saveConcept = async () => {
+  const saveConcept = async (stepOverride?: number) => {
     setSaveState("saving");
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",
-      currentStep: step,
+      currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: { floors, desiredArea },
       rooms,
@@ -743,7 +743,7 @@ export default function ConceptPlanner() {
             <ArrowLeft className="h-4 w-4" /> Voltar
           </button>
           {step < STEPS.length - 1 ? (
-            <button type="button" onClick={() => { if (step === 3) organize(); setStep((s) => Math.min(STEPS.length - 1, s + 1)); void saveConcept(); }} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white">
+            <button type="button" onClick={() => { if (step === 3) organize(); const nextStep = Math.min(STEPS.length - 1, step + 1); setStep(nextStep); void saveConcept(nextStep); }} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white">
               Continuar <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
