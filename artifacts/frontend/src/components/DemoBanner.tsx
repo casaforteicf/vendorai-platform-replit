@@ -45,8 +45,11 @@ function getLegacyDemoDaysLeft(): number | null {
 }
 
 export function DemoBanner() {
-  const { user, tenantOverride } = useAuth();
-  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";
+  const { user } = useAuth();
+  // user.tenantId já reflete o tenantOverride quando o logado é super_admin
+  // (ver AuthContext) — não ler tenantOverride de novo aqui, sem checar o
+  // role, evita herdar um override antigo preso no localStorage.
+  const effectiveTenantId = user?.tenantId ?? "";
   const legacyDaysLeft = useMemo(() => getLegacyDemoDaysLeft(), []);
   const [trial, setTrial] = useState<TrialStatus | null>(null);
   const [renewal, setRenewal] = useState<RenewalState | null>(null);

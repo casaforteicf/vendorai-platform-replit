@@ -68,7 +68,13 @@ function isArqdorEligibleVertical(vertical: string | null | undefined) {
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, tenantOverride, token } = useAuth();
   const [location, setLocation] = useLocation();
-  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";
+  // user.tenantId já reflete o tenantOverride quando o logado é super_admin
+  // (ver AuthContext) — ler tenantOverride de novo aqui, sem checar o role,
+  // fazia contas não-super-admin herdarem um override sintético/antigo que
+  // ficou preso no localStorage (ex: preview "Visualizar layout" em
+  // AdminVerticais), pedindo nav-modules com um tenantId que não bate com
+  // o token, e voltando 403 (tela em branco no app).
+  const effectiveTenantId = user?.tenantId ?? "";
 
   const { data: tenantNavModules = [], isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
     queryKey: ["tenant-nav-modules", effectiveTenantId],
