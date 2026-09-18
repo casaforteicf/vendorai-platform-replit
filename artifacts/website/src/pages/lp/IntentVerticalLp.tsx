@@ -179,35 +179,30 @@ function CommercialOffer({ profile }: { profile: ViewProfile }) {
       <div className="mx-auto max-w-6xl">
         <div className="mx-auto max-w-3xl text-center">
           <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-700">Condição desta landing page</div>
-          <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Comece com {offer.trialDays} dias completos e mantenha a condição desta oferta.</h2>
-          <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-600">Esta condição fica vinculada ao cadastro iniciado por esta LP. O site institucional e as telas genéricas do VendorAI não funcionam como tabela pública de preços.</p>
+          <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Teste {offer.trialDays} dias e escolha a forma de continuar.</h2>
+          <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-600">Depois do teste, você pode manter o Growth contínuo ou usar blocos adicionais de acesso, sempre preservando a mesma conta e os dados.</p>
         </div>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-4">
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
             <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Experiência inicial</div>
-            <div className="mt-3 text-3xl font-black">{offer.trialDays} dias</div>
+            <div className="mt-3 text-3xl font-black">{offer.trialDays} dias grátis</div>
             <p className="mt-2 text-sm leading-6 text-slate-600">Acesso completo para validar o VendorAI na sua operação.</p>
           </div>
           <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
-            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Primeiro período pago</div>
-            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.firstPaidPriceBrl)}</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Pelos primeiros {offer.subscription.firstPaidDays} dias pagos, após o trial.</p>
+            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Growth contínuo</div>
+            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.monthlyPriceBrl)}<span className="text-sm font-semibold text-slate-500">/mês</span></div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Acesso contínuo aos módulos aplicáveis ao segmento, com franquias para recursos de consumo.</p>
           </div>
           <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
-            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Continuidade promocional</div>
-            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.followingMonthlyPriceBrl)}<span className="text-sm font-semibold text-slate-500">/mês</span></div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Durante os {offer.subscription.followingMonths} meses seguintes.</p>
-          </div>
-          <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
-            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Depois da promoção</div>
-            <div className="mt-3 text-3xl font-black">{brl(offer.subscription.regularMonthlyPriceBrl)}<span className="text-sm font-semibold text-slate-500">/mês</span></div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Valor regular da condição comercial desta proposta.</p>
+            <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Uso por períodos</div>
+            <div className="mt-3 text-3xl font-black">+{offer.prepaid.blockDays} dias por {brl(offer.prepaid.blockPriceBrl)}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Compre blocos adicionais quando precisar, sem perder seu CRM nem os dados.</p>
           </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm leading-6 text-slate-600">
-          Prefere usar somente quando precisar? A condição desta campanha também prevê blocos adicionais de <strong>{offer.prepaid.blockDays} dias por {brl(offer.prepaid.blockPriceBrl)}</strong>, preservando seus dados entre os períodos.
+          Após o teste não existe etapa intermediária de R$ 497 ou R$ 990: o Growth contínuo é <strong>{brl(offer.subscription.monthlyPriceBrl)}/mês</strong>.
         </div>
 
         <div className="mt-8 flex justify-center"><Cta profile={profile} /></div>
