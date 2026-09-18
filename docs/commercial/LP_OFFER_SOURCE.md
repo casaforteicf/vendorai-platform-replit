@@ -8,13 +8,12 @@ A condição comercial é apresentada por uma Landing Page/campanha e acompanha 
 
 ## Oferta LP atual
 
-Código: `vendorai_growth_5d_497_990_1490_v2`
+Código: `vendorai_growth_5d_399_1490_v3`
 
-- 5 dias completos grátis.
-- R$ 497 pelos primeiros 30 dias pagos.
-- R$ 990/mês pelos 5 meses seguintes.
-- R$ 1.490/mês após a fase promocional.
+- 5 dias completos grátis para validar o VendorAI.
+- Growth contínuo: R$ 1.490/mês.
 - Alternativa pré-paga: +5 dias por R$ 399.
+- Não existe sequência intermediária de R$ 497 ou R$ 990 nesta oferta.
 
 A fonte numérica única em código é `VENDORAI_LP_OFFER` (`lib/vendor-brain/src/vendorai-commercial-offer.ts`). LP e backend devem consumir esse objeto e não repetir valores localmente.
 
@@ -29,6 +28,6 @@ A fonte numérica única em código é `VENDORAI_LP_OFFER` (`lib/vendor-brain/sr
 
 ## Regra de atribuição
 
-A assinatura promocional automática só é preparada para um trial com origem comercial de LP/campanha. Um trial direto do site não deve receber silenciosamente uma condição promocional que não foi apresentada ao lead.
+A assinatura Growth só é preparada para um trial com origem comercial de LP/campanha e seleção explícita do plano. Um trial direto do site não deve criar silenciosamente compromisso pago.
 
 Cada alteração futura de oferta deve gerar um novo `campaignCode`. Condições aceitas nunca devem ser reescritas retroativamente; o snapshot da assinatura/proposta preserva os valores aceitos pelo cliente.
