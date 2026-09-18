@@ -18,6 +18,8 @@ import {
   renderSurfaceMaterialsTable,
   notificationsTable,
   tenantsTable,
+  obrasTable,
+  obraEtapasTable,
   insertArchProjetoSchema,
   updateArchProjetoSchema,
   insertArchAmbienteSchema,
@@ -139,7 +141,7 @@ router.get("/arch/portal/:token", async (req, res) => {
     return res.status(404).json({ error: "Portal não encontrado ou inativo." });
   }
 
-  const [ambientes, orcamento, cenas, tenantRow] = await Promise.all([
+  const [ambientes, orcamento, cenas, tenantRow, obraRow] = await Promise.all([
     db
       .select()
       .from(archAmbientesTable)
@@ -163,9 +165,49 @@ router.get("/arch/portal/:token", async (req, res) => {
       .from(tenantsTable)
       .where(eq(tenantsTable.id, projeto.tenantId))
       .limit(1),
+    projeto.obraId
+      ? db
+          .select({
+            id: obrasTable.id,
+            nome: obrasTable.nome,
+            status: obrasTable.status,
+            dataInicio: obrasTable.dataInicio,
+            dataFimPrevista: obrasTable.dataFimPrevista,
+            orcamentoTotal: obrasTable.orcamentoTotal,
+            custoRealizado: obrasTable.custoRealizado,
+          })
+          .from(obrasTable)
+          .where(and(eq(obrasTable.id, projeto.obraId), eq(obrasTable.tenantId, projeto.tenantId)))
+          .limit(1)
+      : Promise.resolve([]),
   ]);
 
-  return res.json({ projeto, ambientes, orcamento, cenas, tenant: tenantRow[0] ?? null });
+  const obra = obraRow[0] ?? null;
+  const etapas = obra
+    ? await db
+        .select({
+          id: obraEtapasTable.id,
+          nome: obraEtapasTable.nome,
+          ordem: obraEtapasTable.ordem,
+          status: obraEtapasTable.status,
+          percentualExecutado: obraEtapasTable.percentualExecutado,
+          dataInicioPrevista: obraEtapasTable.dataInicioPrevista,
+          dataFimPrevista: obraEtapasTable.dataFimPrevista,
+        })
+        .from(obraEtapasTable)
+        .where(eq(obraEtapasTable.obraId, obra.id))
+        .orderBy(obraEtapasTable.ordem)
+    : [];
+
+  return res.json({
+    projeto,
+    ambientes,
+    orcamento,
+    cenas,
+    tenant: tenantRow[0] ?? null,
+    obra,
+    etapas,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
