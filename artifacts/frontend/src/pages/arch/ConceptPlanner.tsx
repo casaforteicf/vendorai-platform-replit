@@ -16,6 +16,10 @@ import {
   Sparkles,
   Trees,
   Waves,
+  ExternalLink,
+  FileText,
+  Printer,
+  Send,
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -53,6 +57,8 @@ type OpeningOverride = {
 
 type ConceptDraftResponse = {
   id: string;
+  status?: string;
+  archProjetoId?: string | null;
   currentStep: number;
   lot: { width: number; depth: number };
   configuration: { floors: number; desiredArea: number };
@@ -69,7 +75,7 @@ type ConceptDraftResponse = {
   selectedVariant: number;
 };
 
-const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada"];
+const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada", "Resultado"];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
   style: "contemporaneo",
@@ -191,6 +197,9 @@ export default function ConceptPlanner() {
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
+  const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [handoffError, setHandoffError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +215,8 @@ export default function ConceptPlanner() {
         }
 
         setConceptId(draft.id);
+        setArchProjetoId(draft.archProjetoId ?? null);
+        if (draft.archProjetoId) setHandoffState("sent");
         setStep(Math.max(0, Math.min(STEPS.length - 1, draft.currentStep ?? 0)));
         setLotWidth(draft.lot?.width ?? 12);
         setLotDepth(draft.lot?.depth ?? 30);
@@ -332,6 +343,42 @@ export default function ConceptPlanner() {
       ...prev,
       [selectedOpening.id]: { x: selectedOpening.x, y: selectedOpening.y, type: nextType },
     }));
+  };
+
+  const promoteToProject = async () => {
+    let projectConceptId = conceptId;
+    if (!projectConceptId) {
+      projectConceptId = await saveConcept(6);
+      if (!projectConceptId) return;
+    }
+
+    setHandoffState("sending");
+    setHandoffError(null);
+
+    try {
+      const response = await fetch(`/api/arch/concept-projects/${projectConceptId}/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Não foi possível enviar ao profissional.");
+      }
+
+      const data = (await response.json()) as { project?: { id?: string } };
+      const projectId = data.project?.id;
+      if (!projectId) throw new Error("Projeto criado sem identificador.");
+
+      setArchProjetoId(projectId);
+      setHandoffState("sent");
+      return projectId;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao enviar ao profissional.";
+      setHandoffError(message);
+      setHandoffState("error");
+      return null;
+    }
   };
 
   const generateConceptRender = async () => {
@@ -1163,6 +1210,197 @@ export default function ConceptPlanner() {
           </section>
         )}
 
+        {step === 6 && (
+          <section className="mx-auto max-w-6xl space-y-5 print:max-w-none">
+            <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+                    <FileText className="h-4 w-4" />
+                    Resultado do pré-projeto
+                  </div>
+                  <h2 className="mt-2 text-2xl font-bold">Sua ideia organizada para seguir com o profissional</h2>
+                  <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                    Este material reúne programa de necessidades, dimensões, implantação conceitual, volumetria, fachada e render.
+                    É um pré-projeto conceitual e precisa de validação técnica antes de qualquer execução.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold"
+                  >
+                    <Printer className="h-4 w-4" /> Imprimir / PDF
+                  </button>
+                  {archProjetoId && (
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = `/arch/projetos/${archProjetoId}`; }}
+                      className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold"
+                    >
+                      Abrir projeto <ExternalLink className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+              <div className="space-y-5">
+                {conceptRender?.resultImageUrl ? (
+                  <div className="overflow-hidden rounded-3xl border bg-card shadow-sm">
+                    <img
+                      src={conceptRender.resultImageUrl}
+                      alt="Render conceitual final"
+                      className="max-h-[680px] w-full object-contain bg-muted/30"
+                    />
+                    <div className="border-t p-4">
+                      <div className="font-semibold">Render conceitual</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Visualização baseada na volumetria e preferências selecionadas.</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-dashed bg-card p-8 text-center">
+                    <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
+                    <div className="mt-3 font-semibold">Render ainda não gerado</div>
+                    <p className="mt-1 text-sm text-muted-foreground">Volte à etapa Fachada para gerar a imagem conceitual.</p>
+                  </div>
+                )}
+
+                <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">Volumetria aprovada</h3>
+                      <p className="text-xs text-muted-foreground">Mesma geometria usada como base para o render.</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
+                  </div>
+                  <div className="mt-4 h-[460px] overflow-hidden rounded-2xl border bg-gradient-to-b from-slate-50 to-slate-100">
+                    <ConceptVolumetry
+                      rooms={rooms}
+                      lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                      floors={floors}
+                      rotation={rotation}
+                      exploded={false}
+                      facade={facadePreferences}
+                      showLabels={false}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                  <h3 className="font-semibold">Resumo</h3>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {[
+                      ["Terreno", `${lotWidth} × ${lotDepth} m`],
+                      ["Pavimentos", String(floors)],
+                      ["Área desejada", `${desiredArea} m²`],
+                      ["Área dos ambientes", `${currentArea.toFixed(0)} m²`],
+                      ["Ambientes", String(rooms.length)],
+                      ["Layout", ["Opção A", "Opção B", "Opção C"][layoutVariant] ?? "Personalizado"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-2xl bg-muted/50 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                        <div className="mt-1 text-sm font-semibold">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                  <h3 className="font-semibold">Programa de necessidades</h3>
+                  <div className="mt-4 max-h-[360px] space-y-2 overflow-auto pr-1">
+                    {rooms.map((room) => (
+                      <div key={room.id} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+                        <div>
+                          <div className="text-sm font-semibold">{room.label}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {room.floor === 0 ? "Térreo" : room.floor === 1 ? "Superior" : `Pavimento ${room.floor + 1}`}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold">{room.width.toFixed(1)} × {room.depth.toFixed(1)} m</div>
+                          <div className="text-xs text-muted-foreground">{(room.width * room.depth).toFixed(1)} m²</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                  <h3 className="font-semibold">Preferências de fachada</h3>
+                  <div className="mt-4 space-y-2 text-sm">
+                    {[
+                      ["Estilo", facadePreferences.style.replaceAll("_", " ")],
+                      ["Cobertura", facadePreferences.roof],
+                      ["Material principal", facadePreferences.primaryMaterial],
+                      ["Material de destaque", facadePreferences.accentMaterial],
+                      ["Tom", facadePreferences.facadeTone],
+                      ["Esquadrias", facadePreferences.frameTone],
+                      ["Paisagismo", facadePreferences.landscaping],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-center justify-between gap-4 border-b py-2 last:border-b-0">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="font-medium capitalize">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5 shadow-sm print:hidden">
+                  <div className="flex items-start gap-3">
+                    <Send className="mt-0.5 h-5 w-5 text-orange-600" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-orange-950">Enviar para o profissional</h3>
+                      <p className="mt-1 text-sm text-orange-900/80">
+                        Cria um Projeto Arqdor canônico com este briefing, sem duplicar CRM, orçamento ou obra.
+                      </p>
+
+                      {handoffError && (
+                        <div className="mt-3 rounded-xl bg-red-100 px-3 py-2 text-xs text-red-700">{handoffError}</div>
+                      )}
+
+                      {handoffState === "sent" && archProjetoId ? (
+                        <div className="mt-4 space-y-3">
+                          <div className="rounded-xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-800">
+                            Pré-projeto enviado e vinculado ao Projeto Arqdor.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { window.location.href = `/arch/projetos/${archProjetoId}`; }}
+                            className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+                          >
+                            Abrir projeto profissional <ExternalLink className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void promoteToProject()}
+                          disabled={handoffState === "sending"}
+                          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          <Send className="h-4 w-4" />
+                          {handoffState === "sending" ? "Enviando..." : "Enviar ao profissional"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">
+              Este resultado é um estudo conceitual para briefing, visualização e tomada de decisão. Dimensões, implantação,
+              estrutura, instalações, recuos, acessibilidade e demais requisitos técnicos ou legais devem ser verificados pelo profissional responsável.
+            </div>
+          </section>
+        )}
+
         <div className="mx-auto mt-6 flex max-w-4xl items-center justify-between gap-3">
           <button type="button" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))} className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40">
             <ArrowLeft className="h-4 w-4" /> Voltar
@@ -1177,7 +1415,7 @@ export default function ConceptPlanner() {
               onClick={() => void saveConcept()}
               className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
             >
-              <Sparkles className="h-4 w-4" /> {conceptRender?.resultImageUrl ? "Salvar pré-projeto" : "Salvar fachada"}
+              <Sparkles className="h-4 w-4" /> Salvar resultado
             </button>
           )}
         </div>
