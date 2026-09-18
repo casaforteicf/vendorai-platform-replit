@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -41,6 +41,22 @@ type Room = {
   x: number;
   y: number;
   locked?: boolean;
+};
+
+type OpeningOverride = {
+  x: number;
+  y: number;
+  type: "door" | "window";
+};
+
+type ConceptDraftResponse = {
+  id: string;
+  currentStep: number;
+  lot: { width: number; depth: number };
+  configuration: { floors: number; desiredArea: number };
+  rooms: Room[];
+  openingOverrides: Record<string, OpeningOverride>;
+  selectedVariant: number;
 };
 
 const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout"];
@@ -146,7 +162,76 @@ export default function ConceptPlanner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
-  const [openingOverrides, setOpeningOverrides] = useState<Record<string, { x: number; y: number; type: "door" | "window" }>>({});
+  const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
+  const [conceptId, setConceptId] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLatest = async () => {
+      try {
+        const response = await fetch("/api/arch/concept-projects/latest");
+        if (!response.ok) throw new Error("Falha ao carregar pré-projeto");
+        const draft = (await response.json()) as ConceptDraftResponse | null;
+        if (cancelled || !draft) {
+          if (!cancelled) setSaveState("idle");
+          return;
+        }
+
+        setConceptId(draft.id);
+        setStep(Math.max(0, Math.min(STEPS.length - 1, draft.currentStep ?? 0)));
+        setLotWidth(draft.lot?.width ?? 12);
+        setLotDepth(draft.lot?.depth ?? 30);
+        setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
+        setDesiredArea(draft.configuration?.desiredArea ?? 180);
+        setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? draft.rooms : []);
+        setOpeningOverrides(draft.openingOverrides ?? {});
+        setLayoutVariant(draft.selectedVariant ?? 0);
+        setSaveState("saved");
+      } catch {
+        if (!cancelled) setSaveState("error");
+      }
+    };
+
+    void loadLatest();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveConcept = async (stepOverride?: number) => {
+    setSaveState("saving");
+    const payload = {
+      title: "Meu pré-projeto",
+      status: "draft",
+      currentStep: stepOverride ?? step,
+      lot: { width: lotWidth, depth: lotDepth },
+      configuration: { floors, desiredArea },
+      rooms,
+      openingOverrides,
+      selectedVariant: layoutVariant,
+    };
+
+    try {
+      const response = await fetch(
+        conceptId ? `/api/arch/concept-projects/${conceptId}` : "/api/arch/concept-projects",
+        {
+          method: conceptId ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!response.ok) throw new Error("Falha ao salvar pré-projeto");
+      const saved = (await response.json()) as ConceptDraftResponse;
+      setConceptId(saved.id);
+      setSaveState("saved");
+      return true;
+    } catch {
+      setSaveState("error");
+      return false;
+    }
+  };
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
   const visibleRooms = rooms.filter((r) => r.floor === activeFloor);
@@ -234,10 +319,33 @@ export default function ConceptPlanner() {
                 Você escolhe ambientes, medidas e prioridades. O sistema organiza paredes e posições.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              {STEPS.map((label, index) => (
-                <StepPill key={label} index={index} current={step} label={label} />
-              ))}
+            <div className="flex flex-col items-end gap-3">
+              <div className="flex flex-wrap gap-3">
+                {STEPS.map((label, index) => (
+                  <StepPill key={label} index={index} current={step} label={label} />
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={saveState === "error" ? "text-xs text-red-600" : "text-xs text-muted-foreground"}>
+                  {saveState === "loading"
+                    ? "Carregando..."
+                    : saveState === "saving"
+                      ? "Salvando..."
+                      : saveState === "saved"
+                        ? "Pré-projeto salvo"
+                        : saveState === "error"
+                          ? "Não foi possível salvar"
+                          : "Ainda não salvo"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void saveConcept()}
+                  disabled={saveState === "saving" || saveState === "loading"}
+                  className="rounded-xl border bg-background px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                >
+                  Salvar pré-projeto
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -635,7 +743,7 @@ export default function ConceptPlanner() {
             <ArrowLeft className="h-4 w-4" /> Voltar
           </button>
           {step < STEPS.length - 1 ? (
-            <button type="button" onClick={() => { if (step === 3) organize(); setStep((s) => Math.min(STEPS.length - 1, s + 1)); }} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white">
+            <button type="button" onClick={() => { if (step === 3) organize(); const nextStep = Math.min(STEPS.length - 1, step + 1); setStep(nextStep); void saveConcept(nextStep); }} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white">
               Continuar <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
