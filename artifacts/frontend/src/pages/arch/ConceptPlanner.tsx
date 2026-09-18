@@ -18,6 +18,7 @@ import {
   Waves,
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
+import ConceptVolumetry from "./ConceptVolumetry";
 
 type RoomKind =
   | "sala"
@@ -165,6 +166,9 @@ export default function ConceptPlanner() {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+  const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
+  const [rotation, setRotation] = useState(45);
+  const [exploded3d, setExploded3d] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -546,12 +550,34 @@ export default function ConceptPlanner() {
             <div className="rounded-3xl border bg-card p-4 shadow-sm">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-semibold">Planta conceitual — {activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}</div>
-                  <div className="text-xs text-muted-foreground">Terreno {lotWidth} × {lotDepth} m · paredes, portas e janelas são calculadas a partir dos ambientes.</div>
+                  <div className="font-semibold">{viewMode === "2d" ? `Planta conceitual — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}` : "Volumetria 3D conceitual"}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {viewMode === "2d"
+                      ? `Terreno ${lotWidth} × ${lotDepth} m · paredes, portas e janelas são calculadas a partir dos ambientes.`
+                      : "A volumetria usa exatamente os pavimentos, posições e dimensões da planta — sem inventar outra geometria."}
+                  </div>
                 </div>
-                <button type="button" onClick={() => organize()} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white">
-                  <Sparkles className="h-4 w-4" /> Organizar para mim
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-xl border bg-background p-1">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("2d")}
+                      className={viewMode === "2d" ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                    >
+                      2D
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("3d")}
+                      className={viewMode === "3d" ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                    >
+                      3D
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => organize()} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white">
+                    <Sparkles className="h-4 w-4" /> Organizar para mim
+                  </button>
+                </div>
               </div>
               <div className="mb-4 grid gap-2 sm:grid-cols-3">
                 {[
@@ -570,70 +596,112 @@ export default function ConceptPlanner() {
                   </button>
                 ))}
               </div>
-              <div className="relative mx-auto h-[560px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
-                {visibleRooms.map((room) => {
-                  const left = room.x * scaleX;
-                  const top = room.y * scaleY;
-                  const width = Math.max(10, room.width * scaleX);
-                  const height = Math.max(8, room.depth * scaleY);
-                  return (
-                    <button
-                      key={room.id}
-                      type="button"
-                      onClick={() => setSelectedId(room.id)}
-                      className={[
-                        "absolute overflow-hidden rounded-md border-2 px-2 py-1 text-left shadow-sm transition",
-                        room.kind === "piscina" ? "border-sky-400 bg-sky-100" : "border-slate-500 bg-white",
-                        selectedId === room.id ? "ring-4 ring-orange-400/40" : "",
-                      ].join(" ")}
-                      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
-                    >
-                      <div className="truncate text-[11px] font-bold text-slate-800">{room.label}</div>
-                      <div className="truncate text-[9px] text-slate-500">{room.width.toFixed(1)} × {room.depth.toFixed(1)} m</div>
-                    </button>
-                  );
-                })}
-                <svg
-                  className="pointer-events-none absolute inset-2 z-20 h-[calc(100%-1rem)] w-[calc(100%-1rem)] overflow-visible"
-                  viewBox={`0 0 ${lotWidth} ${lotDepth}`}
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                >
-                  {geometry.walls.map((wall) => (
-                    <line
-                      key={wall.id}
-                      x1={wall.x1}
-                      y1={wall.y1}
-                      x2={wall.x2}
-                      y2={wall.y2}
-                      stroke={wall.exterior ? "#0f172a" : "#334155"}
-                      strokeWidth={wall.exterior ? 5 : 3}
-                      vectorEffect="non-scaling-stroke"
+              {viewMode === "2d" ? (
+                <div className="space-y-3">
+                  <div className="relative mx-auto h-[560px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
+                                {visibleRooms.map((room) => {
+                                  const left = room.x * scaleX;
+                                  const top = room.y * scaleY;
+                                  const width = Math.max(10, room.width * scaleX);
+                                  const height = Math.max(8, room.depth * scaleY);
+                                  return (
+                                    <button
+                                      key={room.id}
+                                      type="button"
+                                      onClick={() => setSelectedId(room.id)}
+                                      className={[
+                                        "absolute overflow-hidden rounded-md border-2 px-2 py-1 text-left shadow-sm transition",
+                                        room.kind === "piscina" ? "border-sky-400 bg-sky-100" : "border-slate-500 bg-white",
+                                        selectedId === room.id ? "ring-4 ring-orange-400/40" : "",
+                                      ].join(" ")}
+                                      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
+                                    >
+                                      <div className="truncate text-[11px] font-bold text-slate-800">{room.label}</div>
+                                      <div className="truncate text-[9px] text-slate-500">{room.width.toFixed(1)} × {room.depth.toFixed(1)} m</div>
+                                    </button>
+                                  );
+                                })}
+                                <svg
+                                  className="pointer-events-none absolute inset-2 z-20 h-[calc(100%-1rem)] w-[calc(100%-1rem)] overflow-visible"
+                                  viewBox={`0 0 ${lotWidth} ${lotDepth}`}
+                                  preserveAspectRatio="none"
+                                  aria-hidden="true"
+                                >
+                                  {geometry.walls.map((wall) => (
+                                    <line
+                                      key={wall.id}
+                                      x1={wall.x1}
+                                      y1={wall.y1}
+                                      x2={wall.x2}
+                                      y2={wall.y2}
+                                      stroke={wall.exterior ? "#0f172a" : "#334155"}
+                                      strokeWidth={wall.exterior ? 5 : 3}
+                                      vectorEffect="non-scaling-stroke"
+                                    />
+                                  ))}
+                                  {geometry.openings.map((opening) => {
+                                    const half = opening.type === "door" ? 0.45 : 0.6;
+                                    const horizontal = opening.orientation === "horizontal";
+                                    return (
+                                      <line
+                                        key={opening.id}
+                                        x1={horizontal ? opening.x - half : opening.x}
+                                        y1={horizontal ? opening.y : opening.y - half}
+                                        x2={horizontal ? opening.x + half : opening.x}
+                                        y2={horizontal ? opening.y : opening.y + half}
+                                        stroke={opening.type === "door" ? "#f97316" : "#0284c7"}
+                                        strokeWidth={opening.type === "door" ? 5 : 4}
+                                        vectorEffect="non-scaling-stroke"
+                                      />
+                                    );
+                                  })}
+                                </svg>
+                              </div>
+                  <div className="flex flex-wrap gap-4 text-[11px] text-muted-foreground">
+                    <span><strong className="text-slate-900">Parede externa</strong> linha escura</span>
+                    <span><strong className="text-orange-600">Porta sugerida</strong> laranja</span>
+                    <span><strong className="text-sky-600">Janela sugerida</strong> azul</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative mx-auto h-[560px] max-w-[820px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
+                    <ConceptVolumetry
+                      rooms={rooms}
+                      lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                      floors={floors}
+                      rotation={rotation}
+                      exploded={exploded3d}
                     />
-                  ))}
-                  {geometry.openings.map((opening) => {
-                    const half = opening.type === "door" ? 0.45 : 0.6;
-                    const horizontal = opening.orientation === "horizontal";
-                    return (
-                      <line
-                        key={opening.id}
-                        x1={horizontal ? opening.x - half : opening.x}
-                        y1={horizontal ? opening.y : opening.y - half}
-                        x2={horizontal ? opening.x + half : opening.x}
-                        y2={horizontal ? opening.y : opening.y + half}
-                        stroke={opening.type === "door" ? "#f97316" : "#0284c7"}
-                        strokeWidth={opening.type === "door" ? 5 : 4}
-                        vectorEffect="non-scaling-stroke"
+                    <div className="absolute left-3 top-3 rounded-xl border bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
+                      <div className="font-semibold text-slate-900">Volumetria vinculada à planta</div>
+                      <div className="mt-0.5 text-slate-500">{floors} pavimento{floors > 1 ? "s" : ""} · pé-direito conceitual 2,80 m</div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 rounded-2xl border bg-muted/30 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Girar visualização
+                      <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        step="5"
+                        value={rotation}
+                        onChange={(event) => setRotation(Number(event.target.value))}
+                        className="mt-2 w-full accent-orange-500"
                       />
-                    );
-                  })}
-                </svg>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
-                <span><strong className="text-slate-900">Parede externa</strong> linha escura</span>
-                <span><strong className="text-orange-600">Porta sugerida</strong> laranja</span>
-                <span><strong className="text-sky-600">Janela sugerida</strong> azul</span>
-              </div>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setExploded3d((value) => !value)}
+                      className={exploded3d ? "rounded-xl border border-orange-500 bg-orange-500/5 px-4 py-2 text-xs font-semibold text-orange-700" : "rounded-xl border bg-background px-4 py-2 text-xs font-semibold"}
+                    >
+                      {exploded3d ? "Unir pavimentos" : "Separar pavimentos"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <aside className="rounded-3xl border bg-card p-4 shadow-sm">
@@ -747,8 +815,18 @@ export default function ConceptPlanner() {
               Continuar <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">
-              <Sparkles className="h-4 w-4" /> Gerar próxima etapa
+            <button
+              type="button"
+              onClick={() => {
+                if (viewMode === "2d") {
+                  setViewMode("3d");
+                  return;
+                }
+                void saveConcept();
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
+            >
+              <Sparkles className="h-4 w-4" /> {viewMode === "2d" ? "Ver volumetria 3D" : "Salvar volumetria"}
             </button>
           )}
         </div>
