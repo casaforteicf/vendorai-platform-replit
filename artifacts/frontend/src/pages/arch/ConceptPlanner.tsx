@@ -1454,11 +1454,12 @@ export default function ConceptPlanner() {
                       {handoffError && (
                         <div className="mt-3 rounded-xl bg-red-100 px-3 py-2 text-xs text-red-700">{handoffError}</div>
                       )}
-                      {!customerProfile.name?.trim() && handoffState !== "sent" && (
-                        <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-orange-900">
-                          Informe o nome do cliente acima para habilitar o envio ao profissional.
-                        </div>
-                      )}
+                      {handoffState !== "sent" &&
+                        (!customerProfile.name?.trim() || !(customerProfile.phone?.trim() || customerProfile.email?.trim())) && (
+                          <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-orange-900">
+                            Informe o nome e pelo menos um contato (WhatsApp/telefone ou e-mail) para habilitar o envio ao profissional.
+                          </div>
+                        )}
 
                       {handoffState === "sent" && archProjetoId ? (
                         <div className="mt-4 space-y-3">
@@ -1477,7 +1478,11 @@ export default function ConceptPlanner() {
                         <button
                           type="button"
                           onClick={() => void promoteToProject()}
-                          disabled={handoffState === "sending" || !customerProfile.name?.trim()}
+                          disabled={
+                          handoffState === "sending" ||
+                          !customerProfile.name?.trim() ||
+                          !(customerProfile.phone?.trim() || customerProfile.email?.trim())
+                        }
                           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           <Send className="h-4 w-4" />
