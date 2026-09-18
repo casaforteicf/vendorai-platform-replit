@@ -256,10 +256,10 @@ export default function ConceptPlanner() {
       const saved = (await response.json()) as ConceptDraftResponse;
       setConceptId(saved.id);
       setSaveState("saved");
-      return true;
+      return saved.id;
     } catch {
       setSaveState("error");
-      return false;
+      return null;
     }
   };
 
@@ -335,9 +335,10 @@ export default function ConceptPlanner() {
   };
 
   const generateConceptRender = async () => {
-    if (!conceptId) {
-      const saved = await saveConcept(5);
-      if (!saved) return;
+    let renderProjectId = conceptId;
+    if (!renderProjectId) {
+      renderProjectId = await saveConcept(5);
+      if (!renderProjectId) return;
     }
 
     setRenderError(null);
@@ -361,7 +362,7 @@ export default function ConceptPlanner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          project_id: conceptId ?? undefined,
+          project_id: renderProjectId,
           original_image_url: originalImage,
           mode: "preservar",
           ambiente: "fachada",
@@ -411,8 +412,8 @@ export default function ConceptPlanner() {
             conceptRender: completed,
             selectedVariant: layoutVariant,
           };
-          if (conceptId) {
-            await fetch(`/api/arch/concept-projects/${conceptId}`, {
+          if (renderProjectId) {
+            await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),
