@@ -22,28 +22,15 @@ describe("VendorAI Growth offer phases", () => {
     expect(resolveCommercialBillingPhase(offer, new Date("2026-01-05T12:00:00.000Z"))).toBe("trial");
   });
 
-  it("moves to promo_1 exactly at the end of day 5", () => {
+  it("moves directly to regular Growth exactly at the end of day 5", () => {
     expect(offer.trialEndsAt.toISOString()).toBe("2026-01-06T12:00:00.000Z");
-    expect(resolveCommercialBillingPhase(offer, offer.trialEndsAt)).toBe("promo_1");
-  });
-
-  it("moves to promo_2 exactly after the 30-day first paid window", () => {
-    expect(offer.promoPhase1EndsAt.toISOString()).toBe("2026-02-05T12:00:00.000Z");
-    expect(resolveCommercialBillingPhase(offer, new Date(offer.promoPhase1EndsAt.getTime() - 1))).toBe("promo_1");
-    expect(resolveCommercialBillingPhase(offer, offer.promoPhase1EndsAt)).toBe("promo_2");
-  });
-
-  it("moves to regular exactly after the five-month second promotional window", () => {
-    expect(offer.promoPhase2EndsAt.toISOString()).toBe("2026-07-05T12:00:00.000Z");
-    expect(resolveCommercialBillingPhase(offer, new Date(offer.promoPhase2EndsAt.getTime() - 1))).toBe("promo_2");
-    expect(resolveCommercialBillingPhase(offer, offer.promoPhase2EndsAt)).toBe("regular");
+    expect(resolveCommercialBillingPhase(offer, offer.trialEndsAt)).toBe("regular");
+    expect(offer.regularPriceAtTransition).toBe("1490.00");
   });
 });
 
 describe("VendorAI subscription pricing", () => {
   const common = {
-    promoPhase1Price: "497.00",
-    promoPhase2Price: "990.00",
     regularPriceAtTransition: null,
   };
 
@@ -52,11 +39,6 @@ describe("VendorAI subscription pricing", () => {
       price: "0.00",
       regularSnapshot: null,
     });
-  });
-
-  it("uses 497 in promo_1 and 990 in promo_2", () => {
-    expect(resolveVendorAiSubscriptionPrice({ phase: "promo_1", ...common }).price).toBe("497.00");
-    expect(resolveVendorAiSubscriptionPrice({ phase: "promo_2", ...common }).price).toBe("990.00");
   });
 
   it("captures the R$1.490 Growth catalog price once and preserves the snapshot", () => {
