@@ -32,6 +32,16 @@ export type ArchConceptOpeningOverride = Record<
   { x: number; y: number; type: "door" | "window" }
 >;
 
+export type ArchConceptFacadePreferences = {
+  style: "contemporaneo" | "minimalista" | "classico_contemporaneo" | "tropical" | "industrial" | "rustico_contemporaneo";
+  roof: "platibanda" | "aparente" | "misto";
+  primaryMaterial: "pintura" | "madeira" | "pedra" | "concreto";
+  accentMaterial: "nenhum" | "madeira" | "pedra" | "concreto";
+  facadeTone: "claro" | "medio" | "escuro";
+  frameTone: "preto" | "branco" | "bronze";
+  landscaping: "leve" | "medio" | "intenso";
+};
+
 export const archConceptProjectsTable = pgTable("arch_concept_projects", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id")
@@ -49,6 +59,15 @@ export const archConceptProjectsTable = pgTable("arch_concept_projects", {
   configuration: jsonb("configuration").$type<ArchConceptConfiguration>().notNull(),
   rooms: jsonb("rooms").$type<ArchConceptRoom[]>().notNull(),
   openingOverrides: jsonb("opening_overrides").$type<ArchConceptOpeningOverride>().notNull().default({}),
+  facadePreferences: jsonb("facade_preferences").$type<ArchConceptFacadePreferences>().notNull().default({
+    style: "contemporaneo",
+    roof: "platibanda",
+    primaryMaterial: "pintura",
+    accentMaterial: "madeira",
+    facadeTone: "claro",
+    frameTone: "preto",
+    landscaping: "medio",
+  }),
   selectedVariant: integer("selected_variant").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
