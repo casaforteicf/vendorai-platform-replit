@@ -43,10 +43,8 @@ function maxToday(date: Date): Date {
 }
 
 function phaseLabel(phase: string, annual: boolean): string {
-  if (phase === "promo_1") return "promocional 1 (R$ 497)";
-  if (phase === "promo_2") return "promocional 2 (R$ 990)";
   if (phase === "regular" && annual) return "plano anual (preço regular anual do catálogo)";
-  if (phase === "regular") return "preço regular do plano";
+  if (phase === "regular") return "Growth mensal";
   return phase;
 }
 
@@ -63,9 +61,8 @@ function localStatusFromAsaas(charge: AsaasChargeOutput): "pending" | "paid" | "
  * contracts keep using tenant.mensalidadeValor. Only subscriptions carrying the
  * launch campaign code enter this worker.
  *
- * Annual is explicit opt-in through tenant.billingCycle and never interrupts
- * promo_1/promo_2. It starts only at the regular phase, snapshots the catalog's
- * monthly-equivalent annual price, and charges exactly 12 equivalents at once.
+ * Annual remains supported only for legacy/explicit annual contracts. The
+ * current LP offer transitions directly from the 5-day trial to Growth regular.
  *
  * Safety:
  * - disabled by default (`VENDORAI_SUBSCRIPTION_BILLING_ENABLED=true` to enable);
@@ -93,10 +90,6 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       status: subscriptionsTable.status,
       proximaCobranca: subscriptionsTable.proximaCobranca,
       trialEndsAt: subscriptionsTable.trialEndsAt,
-      promoPhase1Price: subscriptionsTable.promoPhase1Price,
-      promoPhase1EndsAt: subscriptionsTable.promoPhase1EndsAt,
-      promoPhase2Price: subscriptionsTable.promoPhase2Price,
-      promoPhase2EndsAt: subscriptionsTable.promoPhase2EndsAt,
       regularPriceAtTransition: subscriptionsTable.regularPriceAtTransition,
       annualPriceAtTransition: subscriptionsTable.annualPriceAtTransition,
       asaasCustomerId: subscriptionsTable.asaasCustomerId,
@@ -122,7 +115,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
   let failed = 0;
 
   for (const sub of dueSubscriptions) {
-    if (!sub.proximaCobranca || !sub.trialEndsAt || !sub.promoPhase1EndsAt || !sub.promoPhase2EndsAt) {
+    if (!sub.proximaCobranca || !sub.trialEndsAt) {
       log.error({ subscriptionId: sub.id }, "vendorai-subscription-billing: schedule incompleto");
       failed++;
       continue;
@@ -132,8 +125,6 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       const logicalDue = sub.proximaCobranca;
       const phase = resolveCommercialBillingPhase({
         trialEndsAt: sub.trialEndsAt,
-        promoPhase1EndsAt: sub.promoPhase1EndsAt,
-        promoPhase2EndsAt: sub.promoPhase2EndsAt,
       }, logicalDue);
 
       if (phase === "trial") {
@@ -148,8 +139,6 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       const annualRegular = phase === "regular" && sub.billingCycle === "annual";
       const monthlyPricing = annualRegular ? null : resolveVendorAiSubscriptionPrice({
         phase,
-        promoPhase1Price: sub.promoPhase1Price,
-        promoPhase2Price: sub.promoPhase2Price,
         regularPriceAtTransition: sub.regularPriceAtTransition,
         catalogMonthlyPriceCents: sub.catalogMonthlyPriceCents,
       });
