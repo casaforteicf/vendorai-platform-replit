@@ -68,6 +68,13 @@ export const archConceptProjectsTable = pgTable("arch_concept_projects", {
     frameTone: "preto",
     landscaping: "medio",
   }),
+  conceptRender: jsonb("concept_render").$type<{
+    renderId?: string;
+    status?: "idle" | "processing" | "completed" | "error";
+    resultImageUrl?: string;
+    generatedAt?: string;
+    error?: string;
+  }>().notNull().default({}),
   selectedVariant: integer("selected_variant").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
