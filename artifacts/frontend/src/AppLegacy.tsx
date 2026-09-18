@@ -129,6 +129,7 @@ const ArchCatalogo = lazy(() => import("@/pages/arch/Catalogo"));
 const ArchMarketplace = lazy(() => import("@/pages/arch/Marketplace"));
 const ArchPortalCliente = lazy(() => import("@/pages/arch/PortalCliente"));
 const ArchRender = lazy(() => import("@/pages/arch/RenderStudioPage"));
+const ArchConcept = lazy(() => import("@/pages/arch/ConceptPlanner"));
 
 // Construção
 const Obras = lazy(() => import("@/pages/Obras"));
@@ -672,6 +673,7 @@ function AppRoutes() {
         <Route path="/arch/catalogo">{() => <ProtectedRoute component={ArchCatalogo} />}</Route>
         <Route path="/arch/marketplace">{() => <ProtectedRoute component={ArchMarketplace} />}</Route>
         <Route path="/arch/render">{() => <FullscreenProtectedRoute component={ArchRender} />}</Route>
+        <Route path="/arch/concept">{() => <ProtectedRoute component={ArchConcept} />}</Route>
         <Route path="/arch/portal/:token">{() => <ArchPortalCliente />}</Route>
         <Route path="/obras">{() => <ConstrucaoRoute component={Obras} />}</Route>
         <Route path="/obras/:obraId">{() => <ConstrucaoRoute component={ObraDetalhe} />}</Route>
