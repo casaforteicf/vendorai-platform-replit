@@ -306,6 +306,21 @@ archProductionProcurementRouter.post("/arch/construction/ensure", async (req, re
       );
       obra = result.rows[0];
     }
+
+    await pool.query(
+      `UPDATE arch_projetos
+          SET obra_id = $1,
+              status = CASE
+                WHEN $2 = 'em_execucao' THEN 'em_execucao'
+                WHEN status IN ('briefing','orcamento') THEN 'aprovado'
+                ELSE status
+              END,
+              portal_ativo = true,
+              updated_at = now()
+        WHERE id = $3 AND tenant_id = $4`,
+      [obra.id, req.body?.status ?? null, projectId, tid],
+    );
+
     res.json({ obra });
   } catch (err) {
     logger.error({ err }, "arch/construction/ensure error");

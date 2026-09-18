@@ -13,6 +13,8 @@ import {
   notificationsTable,
   usersTable,
   erpTitulosTable,
+  archProjetosTable,
+  obrasTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { analyzeLeadIntelligence } from "./analyze-intelligence.js";
@@ -64,6 +66,94 @@ export interface ProposalAcceptedOptions {
    * already ran once and the designated user already confirmed availability.
    */
   skipStockCheck?: boolean;
+}
+
+async function syncAcceptedProposalToArqdor(proposta: typeof propostasTable.$inferSelect) {
+  try {
+    let [project] = await db
+      .select()
+      .from(archProjetosTable)
+      .where(and(
+        eq(archProjetosTable.tenantId, proposta.tenantId),
+        eq(archProjetosTable.propostaId, proposta.id),
+      ))
+      .limit(1);
+
+    if (!project && proposta.dealId) {
+      [project] = await db
+        .select()
+        .from(archProjetosTable)
+        .where(and(
+          eq(archProjetosTable.tenantId, proposta.tenantId),
+          eq(archProjetosTable.dealId, proposta.dealId),
+        ))
+        .limit(1);
+    }
+
+    if (!project && proposta.leadId) {
+      const leadProjects = await db
+        .select()
+        .from(archProjetosTable)
+        .where(and(
+          eq(archProjetosTable.tenantId, proposta.tenantId),
+          eq(archProjetosTable.leadId, proposta.leadId),
+        ))
+        .limit(2);
+      if (leadProjects.length === 1) project = leadProjects[0];
+    }
+
+    if (!project) return;
+
+    let obraId = project.obraId;
+    if (!obraId) {
+      const [obra] = await db
+        .insert(obrasTable)
+        .values({
+          tenantId: proposta.tenantId,
+          nome: project.titulo,
+          descricao: `[ARQDOR:${project.id}] Obra criada automaticamente após aprovação da proposta ${proposta.numero ?? proposta.id}.`,
+          clienteNome: project.clienteNome,
+          clienteContato: project.clienteTelefone ?? project.clienteEmail,
+          status: "planejamento",
+          orcamentoTotal: proposta.valorTotal ? String(proposta.valorTotal) : project.orcamentoTotal,
+          custoRealizado: "0",
+          linkCliente: project.portalToken ? `/arch/portal/${project.portalToken}` : null,
+        })
+        .returning({ id: obrasTable.id });
+      obraId = obra?.id ?? null;
+    } else {
+      await db
+        .update(obrasTable)
+        .set({
+          orcamentoTotal: proposta.valorTotal ? String(proposta.valorTotal) : project.orcamentoTotal,
+          clienteNome: project.clienteNome,
+          clienteContato: project.clienteTelefone ?? project.clienteEmail,
+          linkCliente: project.portalToken ? `/arch/portal/${project.portalToken}` : null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, proposta.tenantId)));
+    }
+
+    await db
+      .update(archProjetosTable)
+      .set({
+        leadId: proposta.leadId ?? project.leadId,
+        dealId: proposta.dealId ?? project.dealId,
+        propostaId: proposta.id,
+        obraId,
+        status: "aprovado",
+        portalAtivo: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(archProjetosTable.id, project.id));
+
+    logger.info(
+      { projectId: project.id, propostaId: proposta.id, obraId },
+      "proposalAccepted: Arqdor project synced to accepted proposal and obra",
+    );
+  } catch (err) {
+    logger.warn({ err, propostaId: proposta.id }, "proposalAccepted: failed to sync Arqdor project (non-fatal)");
+  }
 }
 
 /**
@@ -121,6 +211,8 @@ export async function proposalAccepted(
     })
     .where(eq(propostasTable.id, propostaId))
     .returning();
+
+  await syncAcceptedProposalToArqdor(updatedProposta ?? proposta);
 
   // 3. Resolve deal & idempotency check
   if (!proposta.dealId) {

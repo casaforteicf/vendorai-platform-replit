@@ -4,7 +4,7 @@ import PortalOfficialRenderHistory from "./PortalOfficialRenderHistory";
 import {
   MessageCircle, ImageIcon, DollarSign, Building2, ExternalLink,
   Download, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertCircle,
-  Sparkles,
+  Sparkles, HardHat, CalendarDays,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -18,7 +18,20 @@ type Ambiente  = { id: string; nome: string; areaM2: string | null; ordem: numbe
 type OrcItem   = { id: string; ambienteId: string | null; categoria: string | null; descricao: string; quantidade: string | null; unidade: string | null; valorTotal: string | null };
 type Cena      = { id: string; nome: string | null; renderUrl: string | null; status: string | null; ambienteId?: string | null };
 type Tenant    = { name: string; nomeEmpresa: string | null; logoUrl: string | null; site: string | null };
-type PortalData = { projeto: Projeto; ambientes: Ambiente[]; orcamento: OrcItem[]; cenas: Cena[]; tenant: Tenant | null };
+type Obra = {
+  id: string; nome: string; status: string;
+  dataInicio: string | null; dataFimPrevista: string | null;
+  orcamentoTotal: string | null; custoRealizado: string | null;
+};
+type EtapaObra = {
+  id: string; nome: string; ordem: number; status: string;
+  percentualExecutado: string | null;
+  dataInicioPrevista: string | null; dataFimPrevista: string | null;
+};
+type PortalData = {
+  projeto: Projeto; ambientes: Ambiente[]; orcamento: OrcItem[]; cenas: Cena[];
+  tenant: Tenant | null; obra: Obra | null; etapas: EtapaObra[];
+};
 
 type LocalVersao = { id: string; imageUrl: string; versao: number; origem: "original" | "solicitacao" };
 type ItemKey      = "sofa" | "mesa" | "cadeira" | "cama" | "armario" | "luminaria" | "janela" | "porta";
@@ -357,7 +370,7 @@ export default function PortalCliente() {
     </div>
   );
 
-  const { projeto, ambientes, orcamento, cenas, tenant } = data;
+  const { projeto, ambientes, orcamento, cenas, tenant, obra, etapas } = data;
   const tenantNome = tenant?.nomeEmpresa ?? tenant?.name ?? "Arquiteto";
   const byAmbiente: Record<string, { nome: string; itens: OrcItem[]; total: number }> = {};
   for (const item of orcamento) {
@@ -398,6 +411,82 @@ export default function PortalCliente() {
             {projeto.arquitetoResponsavel && <span>🎨 {projeto.arquitetoResponsavel}</span>}
           </div>
         </section>
+
+        {obra && (
+          <section className="rounded-2xl border bg-white p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                  <HardHat className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Execução da obra</p>
+                  <h2 className="text-lg font-semibold text-gray-900 mt-0.5">{obra.nome}</h2>
+                </div>
+              </div>
+              <span className="inline-flex rounded-full bg-amber-50 text-amber-700 px-3 py-1 text-xs font-medium">
+                {obra.status === "em_andamento" ? "Em andamento" : obra.status === "concluida" ? "Concluída" : "Planejamento"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Progresso geral</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">
+                  {etapas.length
+                    ? Math.round(etapas.reduce((acc, etapa) => acc + Number(etapa.percentualExecutado ?? 0), 0) / etapas.length)
+                    : 0}%
+                </p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Etapas</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">{etapas.length}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Previsão</p>
+                <p className="text-sm font-semibold text-gray-900 mt-1">
+                  {obra.dataFimPrevista ? new Date(`${obra.dataFimPrevista}T12:00:00`).toLocaleDateString("pt-BR") : "A definir"}
+                </p>
+              </div>
+            </div>
+
+            {etapas.length > 0 && (
+              <div className="mt-5 space-y-3">
+                {etapas.map((etapa) => {
+                  const pct = Math.max(0, Math.min(100, Number(etapa.percentualExecutado ?? 0)));
+                  return (
+                    <div key={etapa.id}>
+                      <div className="flex items-center justify-between gap-3 text-sm mb-1.5">
+                        <span className="font-medium text-gray-700">{etapa.nome}</span>
+                        <span className="text-gray-500">{Math.round(pct)}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-violet-600 transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {(obra.dataInicio || obra.dataFimPrevista) && (
+              <div className="mt-5 pt-4 border-t flex flex-wrap gap-4 text-xs text-gray-500">
+                {obra.dataInicio && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Início {new Date(`${obra.dataInicio}T12:00:00`).toLocaleDateString("pt-BR")}
+                  </span>
+                )}
+                {obra.dataFimPrevista && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Previsão {new Date(`${obra.dataFimPrevista}T12:00:00`).toLocaleDateString("pt-BR")}
+                  </span>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
         <PortalOfficialRenderHistory token={token} cenas={cenas} />
 
