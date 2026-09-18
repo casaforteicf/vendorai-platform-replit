@@ -53,6 +53,9 @@ import {
   archKnowledgeTagsTable,
   archOfficeTemplatesTable,
   archAiRendersTable,
+  archConceptProjectsTable,
+  insertArchConceptProjectSchema,
+  updateArchConceptProjectSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -106,6 +109,101 @@ function isSuperAdmin(req: Request) {
 function canAccessTenant(req: Request, tid: string) {
   return isSuperAdmin(req) || tenantId(req) === tid;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Arqdor Concept — drafts persistidos por usuário
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/concept-projects/latest", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [row] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .orderBy(desc(archConceptProjectsTable.updatedAt))
+    .limit(1);
+
+  return res.json(row ?? null);
+});
+
+router.get("/arch/concept-projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [row] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  return res.json(row);
+});
+
+router.post("/arch/concept-projects", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const parsed = insertArchConceptProjectSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    ownerUserId: userId,
+  });
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
+  }
+
+  const [created] = await db
+    .insert(archConceptProjectsTable)
+    .values(parsed.data)
+    .returning();
+
+  return res.status(201).json(created);
+});
+
+router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const parsed = updateArchConceptProjectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
+  }
+
+  const [updated] = await db
+    .update(archConceptProjectsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .returning();
+
+  if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  return res.json(updated);
+});
 
 function getPortalBaseUrl(req: Request): string {
   // Mesmo achado do reset de senha: REPLIT_DOMAINS aponta pro backend
