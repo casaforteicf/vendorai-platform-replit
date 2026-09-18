@@ -81,8 +81,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     enabled: !!effectiveTenantId && !!token,
     staleTime: 60_000,
     queryFn: async () => {
+      // Lê o token direto do localStorage (mesma fonte usada por authHeaders()
+      // e pelo cliente de API gerado) em vez do estado do React (`token`),
+      // que pode ficar um passo atrás logo após login/troca de tenant e
+      // mandar um Bearer de um tenantId diferente do que a URL está pedindo.
+      const freshToken = localStorage.getItem("vendorai_token") ?? token;
       const response = await fetch(`/api/tenants/${effectiveTenantId}/nav-modules`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${freshToken}` },
       });
       if (!response.ok) return [];
       return response.json();
