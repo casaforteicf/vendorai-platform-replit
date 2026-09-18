@@ -13,6 +13,16 @@ export type VolumetryRoom = {
 
 type Point = { x: number; y: number };
 
+export type ConceptFacadePreferences = {
+  style: "contemporaneo" | "minimalista" | "classico_contemporaneo" | "tropical" | "industrial" | "rustico_contemporaneo";
+  roof: "platibanda" | "aparente" | "misto";
+  primaryMaterial: "pintura" | "madeira" | "pedra" | "concreto";
+  accentMaterial: "nenhum" | "madeira" | "pedra" | "concreto";
+  facadeTone: "claro" | "medio" | "escuro";
+  frameTone: "preto" | "branco" | "bronze";
+  landscaping: "leve" | "medio" | "intenso";
+};
+
 type Props = {
   rooms: VolumetryRoom[];
   lotWidth: number;
@@ -21,10 +31,43 @@ type Props = {
   rotation: number;
   exploded?: boolean;
   showLabels?: boolean;
+  facade?: ConceptFacadePreferences;
 };
 
 const FLOOR_HEIGHT = 2.8;
 const SLAB_THICKNESS = 0.18;
+
+function materialPalette(facade?: ConceptFacadePreferences) {
+  const tone = facade?.facadeTone ?? "claro";
+  const primary = facade?.primaryMaterial ?? "pintura";
+  const base =
+    primary === "madeira"
+      ? { top: "#d8c3a5", sideA: "#9f7e58", sideB: "#b18c63", sideC: "#c5a77e", sideD: "#8d6d4e" }
+      : primary === "pedra"
+        ? { top: "#e7e3dc", sideA: "#aaa59c", sideB: "#bbb5ab", sideC: "#cec9c1", sideD: "#98938b" }
+        : primary === "concreto"
+          ? { top: "#e2e8f0", sideA: "#94a3b8", sideB: "#a7b3c2", sideC: "#c2cad4", sideD: "#7f8ea0" }
+          : { top: "#f8fafc", sideA: "#cbd5e1", sideB: "#dbe3ec", sideC: "#e5e7eb", sideD: "#b8c4d1" };
+
+  const shift = tone === "escuro" ? 0.72 : tone === "medio" ? 0.88 : 1;
+  const shade = (hex: string) => {
+    const clean = hex.replace("#", "");
+    const n = Number.parseInt(clean, 16);
+    const r = Math.max(0, Math.min(255, Math.round(((n >> 16) & 255) * shift)));
+    const g = Math.max(0, Math.min(255, Math.round(((n >> 8) & 255) * shift)));
+    const b = Math.max(0, Math.min(255, Math.round((n & 255) * shift)));
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  };
+
+  return {
+    top: shade(base.top),
+    sideA: shade(base.sideA),
+    sideB: shade(base.sideB),
+    sideC: shade(base.sideC),
+    sideD: shade(base.sideD),
+    frame: facade?.frameTone === "branco" ? "#f8fafc" : facade?.frameTone === "bronze" ? "#7c5a3b" : "#111827",
+  };
+}
 
 function polygon(points: Point[]) {
   return points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
@@ -48,7 +91,9 @@ function IsoScene({
   rotation,
   exploded = false,
   showLabels = true,
+  facade,
 }: Props) {
+  const palette = materialPalette(facade);
   const scene = useMemo(() => {
     const width = 900;
     const height = 650;
@@ -146,6 +191,15 @@ function IsoScene({
         strokeWidth="1.5"
       />
 
+      {facade?.landscaping !== "leve" && (
+        <g opacity={facade?.landscaping === "intenso" ? 0.95 : 0.72}>
+          <circle cx="130" cy="500" r="18" fill="#86efac" />
+          <circle cx="160" cy="520" r="12" fill="#4ade80" />
+          <circle cx="760" cy="470" r="20" fill="#86efac" />
+          {facade?.landscaping === "intenso" && <circle cx="720" cy="520" r="14" fill="#22c55e" />}
+        </g>
+      )}
+
       {scene.poolShapes.map(({ room, points }) => (
         <polygon
           key={room.id}
@@ -160,11 +214,34 @@ function IsoScene({
       <g filter="url(#concept-shadow)">
         {scene.roomShapes.map(({ room, top, sideA, sideB, sideC, sideD, label }) => (
           <g key={room.id}>
-            <polygon points={polygon(sideD)} fill="#cbd5e1" stroke="#64748b" strokeWidth="1.25" />
-            <polygon points={polygon(sideC)} fill="#dbe3ec" stroke="#64748b" strokeWidth="1.25" />
-            <polygon points={polygon(sideA)} fill="#b8c4d1" stroke="#64748b" strokeWidth="1.25" />
-            <polygon points={polygon(sideB)} fill="#c7d2df" stroke="#64748b" strokeWidth="1.25" />
-            <polygon points={polygon(top)} fill="#f8fafc" stroke="#475569" strokeWidth="1.35" />
+            <polygon points={polygon(sideD)} fill={palette.sideD} stroke="#64748b" strokeWidth="1.25" />
+            <polygon points={polygon(sideC)} fill={palette.sideC} stroke="#64748b" strokeWidth="1.25" />
+            <polygon points={polygon(sideA)} fill={palette.sideA} stroke="#64748b" strokeWidth="1.25" />
+            <polygon points={polygon(sideB)} fill={palette.sideB} stroke="#64748b" strokeWidth="1.25" />
+            <polygon points={polygon(top)} fill={palette.top} stroke="#475569" strokeWidth="1.35" />
+            {facade?.roof !== "platibanda" && room.floor === floors - 1 && (
+              <polygon
+                points={polygon(top.map((point, index) => ({
+                  x: point.x,
+                  y: point.y - (index === 0 || index === 1 ? 14 : 4),
+                })))}
+                fill={facade?.roof === "aparente" ? "#6b4f3a" : "#475569"}
+                opacity="0.92"
+                stroke="#334155"
+                strokeWidth="1.2"
+              />
+            )}
+            {room.floor === 0 && (
+              <line
+                x1={(sideA[0].x + sideA[1].x) / 2 - 10}
+                y1={(sideA[0].y + sideA[1].y) / 2}
+                x2={(sideA[0].x + sideA[1].x) / 2 + 10}
+                y2={(sideA[0].y + sideA[1].y) / 2}
+                stroke={palette.frame}
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+            )}
             {showLabels && (
               <g>
                 <rect

@@ -18,7 +18,7 @@ import {
   Waves,
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
-import ConceptVolumetry from "./ConceptVolumetry";
+import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
 
 type RoomKind =
   | "sala"
@@ -57,10 +57,21 @@ type ConceptDraftResponse = {
   configuration: { floors: number; desiredArea: number };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
+  facadePreferences?: ConceptFacadePreferences;
   selectedVariant: number;
 };
 
-const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout"];
+const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada"];
+
+const DEFAULT_FACADE: ConceptFacadePreferences = {
+  style: "contemporaneo",
+  roof: "platibanda",
+  primaryMaterial: "pintura",
+  accentMaterial: "madeira",
+  facadeTone: "claro",
+  frameTone: "preto",
+  landscaping: "medio",
+};
 
 const roomDefaults: Record<RoomKind, Omit<Room, "id" | "x" | "y" | "floor">> = {
   sala: { kind: "sala", label: "Sala + jantar", width: 5.5, depth: 4.5 },
@@ -169,6 +180,7 @@ export default function ConceptPlanner() {
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
   const [rotation, setRotation] = useState(45);
   const [exploded3d, setExploded3d] = useState(false);
+  const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +203,7 @@ export default function ConceptPlanner() {
         setDesiredArea(draft.configuration?.desiredArea ?? 180);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? draft.rooms : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
+        setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
       } catch {
@@ -214,6 +227,7 @@ export default function ConceptPlanner() {
       configuration: { floors, desiredArea },
       rooms,
       openingOverrides,
+      facadePreferences,
       selectedVariant: layoutVariant,
     };
 
@@ -673,6 +687,7 @@ export default function ConceptPlanner() {
                       floors={floors}
                       rotation={rotation}
                       exploded={exploded3d}
+                      facade={facadePreferences}
                     />
                     <div className="absolute left-3 top-3 rounded-xl border bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
                       <div className="font-semibold text-slate-900">Volumetria vinculada à planta</div>
@@ -806,6 +821,184 @@ export default function ConceptPlanner() {
           </section>
         )}
 
+        {step === 5 && (
+          <section className="grid gap-5 xl:grid-cols-[360px_1fr]">
+            <aside className="rounded-3xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-orange-500" />
+                <div>
+                  <h2 className="text-lg font-semibold">6. Fachada e estilo</h2>
+                  <p className="text-xs text-muted-foreground">Escolha a direção visual. A geometria da casa continua a mesma.</p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-5">
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estilo</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ["contemporaneo", "Contemporâneo"],
+                      ["minimalista", "Minimalista"],
+                      ["classico_contemporaneo", "Clássico atual"],
+                      ["tropical", "Tropical"],
+                      ["industrial", "Industrial"],
+                      ["rustico_contemporaneo", "Rústico atual"],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFacadePreferences((prev) => ({ ...prev, style: value }))}
+                        className={facadePreferences.style === value ? "rounded-xl border border-orange-500 bg-orange-500/5 p-3 text-left text-xs font-semibold" : "rounded-xl border p-3 text-left text-xs font-semibold"}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cobertura</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ["platibanda", "Platibanda"],
+                      ["aparente", "Telhado"],
+                      ["misto", "Misto"],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFacadePreferences((prev) => ({ ...prev, roof: value }))}
+                        className={facadePreferences.roof === value ? "rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold" : "rounded-xl border px-3 py-2 text-xs font-semibold"}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="block text-xs font-semibold">
+                  Material principal
+                  <select
+                    value={facadePreferences.primaryMaterial}
+                    onChange={(event) => setFacadePreferences((prev) => ({ ...prev, primaryMaterial: event.target.value as ConceptFacadePreferences["primaryMaterial"] }))}
+                    className="mt-2 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                  >
+                    <option value="pintura">Pintura / reboco</option>
+                    <option value="madeira">Madeira</option>
+                    <option value="pedra">Pedra</option>
+                    <option value="concreto">Concreto aparente</option>
+                  </select>
+                </label>
+
+                <label className="block text-xs font-semibold">
+                  Material de destaque
+                  <select
+                    value={facadePreferences.accentMaterial}
+                    onChange={(event) => setFacadePreferences((prev) => ({ ...prev, accentMaterial: event.target.value as ConceptFacadePreferences["accentMaterial"] }))}
+                    className="mt-2 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                  >
+                    <option value="nenhum">Sem destaque</option>
+                    <option value="madeira">Madeira</option>
+                    <option value="pedra">Pedra</option>
+                    <option value="concreto">Concreto</option>
+                  </select>
+                </label>
+
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tom da fachada</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["claro", "medio", "escuro"] as const).map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFacadePreferences((prev) => ({ ...prev, facadeTone: value }))}
+                        className={facadePreferences.facadeTone === value ? "rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold capitalize" : "rounded-xl border px-3 py-2 text-xs font-semibold capitalize"}
+                      >
+                        {value === "medio" ? "Médio" : value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Esquadrias</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["preto", "branco", "bronze"] as const).map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFacadePreferences((prev) => ({ ...prev, frameTone: value }))}
+                        className={facadePreferences.frameTone === value ? "rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold capitalize" : "rounded-xl border px-3 py-2 text-xs font-semibold capitalize"}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Paisagismo</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["leve", "medio", "intenso"] as const).map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFacadePreferences((prev) => ({ ...prev, landscaping: value }))}
+                        className={facadePreferences.landscaping === value ? "rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold capitalize" : "rounded-xl border px-3 py-2 text-xs font-semibold capitalize"}
+                      >
+                        {value === "medio" ? "Médio" : value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <div className="rounded-3xl border bg-card p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">Prévia da fachada</h3>
+                  <p className="text-sm text-muted-foreground">A prévia aplica a linguagem visual sem alterar a planta aprovada.</p>
+                </div>
+                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-700">
+                  {facadePreferences.style.replaceAll("_", " ")}
+                </div>
+              </div>
+
+              <div className="mt-4 h-[590px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
+                <ConceptVolumetry
+                  rooms={rooms}
+                  lotWidth={lotWidth}
+                  lotDepth={lotDepth}
+                  floors={floors}
+                  rotation={rotation}
+                  exploded={false}
+                  facade={facadePreferences}
+                  showLabels={false}
+                />
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Girar fachada
+                  <input
+                    type="range"
+                    min="0"
+                    max="360"
+                    step="5"
+                    value={rotation}
+                    onChange={(event) => setRotation(Number(event.target.value))}
+                    className="mt-2 w-full accent-orange-500"
+                  />
+                </label>
+                <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  Próxima etapa: usar essas preferências + a volumetria como briefing estruturado para o render conceitual.
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         <div className="mx-auto mt-6 flex max-w-4xl items-center justify-between gap-3">
           <button type="button" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))} className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40">
             <ArrowLeft className="h-4 w-4" /> Voltar
@@ -817,16 +1010,10 @@ export default function ConceptPlanner() {
           ) : (
             <button
               type="button"
-              onClick={() => {
-                if (viewMode === "2d") {
-                  setViewMode("3d");
-                  return;
-                }
-                void saveConcept();
-              }}
+              onClick={() => void saveConcept()}
               className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
             >
-              <Sparkles className="h-4 w-4" /> {viewMode === "2d" ? "Ver volumetria 3D" : "Salvar volumetria"}
+              <Sparkles className="h-4 w-4" /> Salvar fachada
             </button>
           )}
         </div>
