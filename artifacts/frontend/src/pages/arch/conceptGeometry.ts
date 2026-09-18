@@ -203,13 +203,13 @@ function sortForVariant<T extends ConceptRoomShape>(rooms: T[], variant: number)
   });
 }
 
-export function generateLayoutVariant(
-  rooms: ConceptRoomShape[],
+export function generateLayoutVariant<T extends ConceptRoomShape>(
+  rooms: T[],
   lotWidth: number,
   lotDepth: number,
   floor: number,
   variant: number,
-) {
+): T[] {
   const current = rooms.filter((room) => room.floor === floor);
   const others = rooms.filter((room) => room.floor !== floor);
   const fixed = current.filter((room) => room.locked);
@@ -272,4 +272,143 @@ export function generateLayoutVariant(
   }
 
   return [...others, ...placed];
+}
+
+
+export type LayoutIssue = {
+  id: string;
+  severity: "error" | "warning";
+  roomId?: string;
+  message: string;
+};
+
+export function validateConceptLayout(
+  rooms: ConceptRoomShape[],
+  lotWidth: number,
+  lotDepth: number,
+  floor: number,
+): LayoutIssue[] {
+  const current = rooms.filter((room) => room.floor === floor);
+  const issues: LayoutIssue[] = [];
+
+  for (const room of current) {
+    if (room.x < -EPS || room.y < -EPS || room.x + room.width > lotWidth + EPS || room.y + room.depth > lotDepth + EPS) {
+      issues.push({
+        id: `outside-${room.id}`,
+        severity: "error",
+        roomId: room.id,
+        message: `${room.label} ultrapassa o limite do terreno.`,
+      });
+    }
+
+    if (room.kind !== "piscina" && (room.width < 1.2 || room.depth < 1.2)) {
+      issues.push({
+        id: `small-${room.id}`,
+        severity: "warning",
+        roomId: room.id,
+        message: `${room.label} ficou muito estreito para uma distribuição confortável.`,
+      });
+    }
+  }
+
+  for (let i = 0; i < current.length; i += 1) {
+    const a = current[i];
+    for (let j = i + 1; j < current.length; j += 1) {
+      const b = current[j];
+      const ox = overlap(a.x, a.x + a.width, b.x, b.x + b.width);
+      const oy = overlap(a.y, a.y + a.depth, b.y, b.y + b.depth);
+      if (ox > EPS && oy > EPS) {
+        issues.push({
+          id: `overlap-${a.id}-${b.id}`,
+          severity: "error",
+          roomId: a.id,
+          message: `${a.label} está sobrepondo ${b.label}.`,
+        });
+      }
+    }
+  }
+
+  const indoor = current.filter((room) => room.kind !== "piscina");
+  if (indoor.length > 1) {
+    const connected = new Set<string>();
+    connected.add(indoor[0].id);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      for (const a of indoor) {
+        if (!connected.has(a.id)) continue;
+        for (const b of indoor) {
+          if (connected.has(b.id)) continue;
+          const verticalTouch =
+            (nearly(a.x + a.width, b.x) || nearly(b.x + b.width, a.x)) &&
+            overlap(a.y, a.y + a.depth, b.y, b.y + b.depth) >= 0.8;
+          const horizontalTouch =
+            (nearly(a.y + a.depth, b.y) || nearly(b.y + b.depth, a.y)) &&
+            overlap(a.x, a.x + a.width, b.x, b.x + b.width) >= 0.8;
+          if (verticalTouch || horizontalTouch) {
+            connected.add(b.id);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    for (const room of indoor) {
+      if (!connected.has(room.id)) {
+        issues.push({
+          id: `isolated-${room.id}`,
+          severity: "warning",
+          roomId: room.id,
+          message: `${room.label} está isolado; aproxime-o de outro ambiente para criar circulação.`,
+        });
+      }
+    }
+  }
+
+  const garage = current.find((room) => room.kind === "garagem");
+  if (garage && garage.y > 3) {
+    issues.push({
+      id: `garage-access-${garage.id}`,
+      severity: "warning",
+      roomId: garage.id,
+      message: "A garagem está distante da frente do terreno.",
+    });
+  }
+
+  const gourmet = current.find((room) => room.kind === "gourmet");
+  const pool = current.find((room) => room.kind === "piscina");
+  if (gourmet && pool) {
+    const dx = Math.max(0, Math.max(gourmet.x, pool.x) - Math.min(gourmet.x + gourmet.width, pool.x + pool.width));
+    const dy = Math.max(0, Math.max(gourmet.y, pool.y) - Math.min(gourmet.y + gourmet.depth, pool.y + pool.depth));
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > 5) {
+      issues.push({
+        id: `gourmet-pool-distance`,
+        severity: "warning",
+        roomId: gourmet.id,
+        message: "Gourmet e piscina ficaram muito afastados.",
+      });
+    }
+  }
+
+  return issues;
+}
+
+export function nudgeOpening(
+  opening: OpeningMarker,
+  amount: number,
+  lotWidth: number,
+  lotDepth: number,
+): OpeningMarker {
+  if (opening.orientation === "horizontal") {
+    return {
+      ...opening,
+      x: Math.max(0, Math.min(lotWidth, opening.x + amount)),
+    };
+  }
+  return {
+    ...opening,
+    y: Math.max(0, Math.min(lotDepth, opening.y + amount)),
+  };
 }
