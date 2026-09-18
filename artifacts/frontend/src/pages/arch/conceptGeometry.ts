@@ -175,7 +175,7 @@ export function buildConceptGeometry(
   return { walls, openings };
 }
 
-function sortForVariant(rooms: ConceptRoomShape[], variant: number) {
+function sortForVariant<T extends ConceptRoomShape>(rooms: T[], variant: number): T[] {
   const social = new Set(["sala", "cozinha", "gourmet"]);
   const privateKinds = new Set(["suite", "quarto", "banheiro"]);
   const service = new Set(["garagem", "lavanderia"]);
@@ -223,7 +223,7 @@ export function generateLayoutVariant(
     y2: room.y + room.depth,
   }));
 
-  const placed: ConceptRoomShape[] = [...fixed];
+  const placed: T[] = [...fixed];
 
   const fits = (room: ConceptRoomShape, x: number, y: number) => {
     if (x < 0 || y < 0 || x + room.width > lotWidth || y + room.depth > lotDepth) return false;
