@@ -51,8 +51,8 @@ const superAdminFullVisibilityPlugin = {
     let contents = code;
     contents = replaceExact(
       contents,
-      `  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";`,
-      `  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";\n  const isSuperAdmin = user?.platformRole === "super_admin";`,
+      `  const effectiveTenantId = user?.tenantId ?? "";`,
+      `  const effectiveTenantId = user?.tenantId ?? "";\n  const isSuperAdmin = user?.platformRole === "super_admin";`,
       "wrapper super admin flag",
     );
     contents = replaceExact(
