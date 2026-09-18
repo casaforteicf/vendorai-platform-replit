@@ -1,18 +1,14 @@
 import { VENDORAI_LP_OFFER } from "@workspace/vendor-brain";
 
 export const VENDORAI_LAUNCH_CAMPAIGN = VENDORAI_LP_OFFER.campaignCode;
-export const VENDORAI_TERMS_VERSION = "vendorai-commercial-2026-09-11";
+export const VENDORAI_TERMS_VERSION = "vendorai-commercial-2026-09-17";
 
-export type CommercialBillingPhase = "trial" | "promo_1" | "promo_2" | "regular";
+export type CommercialBillingPhase = "trial" | "regular";
 
 export interface CommercialOfferSchedule {
   campaignCode: string;
   trialEndsAt: Date;
-  promoPhase1Price: string;
-  promoPhase1EndsAt: Date;
-  promoPhase2Price: string;
-  promoPhase2EndsAt: Date;
-  regularPriceAtTransition: null;
+  regularPriceAtTransition: string;
   billingPhase: CommercialBillingPhase;
   valorMensal: string;
   nextBillingAt: Date;
@@ -20,39 +16,21 @@ export interface CommercialOfferSchedule {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function addCalendarMonths(date: Date, months: number): Date {
-  const result = new Date(date);
-  const originalDay = result.getUTCDate();
-  result.setUTCDate(1);
-  result.setUTCMonth(result.getUTCMonth() + months);
-  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
-  result.setUTCDate(Math.min(originalDay, lastDay));
-  return result;
-}
-
 /**
- * Oferta comercial apresentada pelas LPs da campanha:
- * - 5 dias completos grátis
- * - R$ 497 pelos primeiros 30 dias pagos
- * - R$ 990/mês pelos 5 meses seguintes
- * - depois, R$ 1.490/mês
+ * Oferta comercial atual apresentada pelas LPs:
+ * - 5 dias completos grátis para validar a operação;
+ * - Growth contínuo por R$ 1.490/mês;
+ * - alternativa pré-paga de +5 dias por R$ 399.
  *
- * A condição comercial nasce na LP/campanha. O site institucional e as telas
- * genéricas da plataforma não são fonte de preço.
+ * O bloco pré-pago é uma forma de acesso separada da assinatura mensal.
+ * Não existem fases promocionais de R$ 497 ou R$ 990 nesta oferta.
  */
 export function buildVendorAiLaunchOffer(startedAt = new Date()): CommercialOfferSchedule {
   const trialEndsAt = new Date(startedAt.getTime() + VENDORAI_LP_OFFER.trialDays * DAY_MS);
-  const promoPhase1EndsAt = new Date(trialEndsAt.getTime() + VENDORAI_LP_OFFER.subscription.firstPaidDays * DAY_MS);
-  const promoPhase2EndsAt = addCalendarMonths(promoPhase1EndsAt, VENDORAI_LP_OFFER.subscription.followingMonths);
-
   return {
     campaignCode: VENDORAI_LAUNCH_CAMPAIGN,
     trialEndsAt,
-    promoPhase1Price: VENDORAI_LP_OFFER.subscription.firstPaidPriceBrl.toFixed(2),
-    promoPhase1EndsAt,
-    promoPhase2Price: VENDORAI_LP_OFFER.subscription.followingMonthlyPriceBrl.toFixed(2),
-    promoPhase2EndsAt,
-    regularPriceAtTransition: null,
+    regularPriceAtTransition: VENDORAI_LP_OFFER.subscription.monthlyPriceBrl.toFixed(2),
     billingPhase: "trial",
     valorMensal: "0.00",
     nextBillingAt: trialEndsAt,
@@ -60,11 +38,8 @@ export function buildVendorAiLaunchOffer(startedAt = new Date()): CommercialOffe
 }
 
 export function resolveCommercialBillingPhase(
-  subscription: Pick<CommercialOfferSchedule, "trialEndsAt" | "promoPhase1EndsAt" | "promoPhase2EndsAt">,
+  subscription: Pick<CommercialOfferSchedule, "trialEndsAt">,
   now = new Date(),
 ): CommercialBillingPhase {
-  if (now < subscription.trialEndsAt) return "trial";
-  if (now < subscription.promoPhase1EndsAt) return "promo_1";
-  if (now < subscription.promoPhase2EndsAt) return "promo_2";
-  return "regular";
+  return now < subscription.trialEndsAt ? "trial" : "regular";
 }
