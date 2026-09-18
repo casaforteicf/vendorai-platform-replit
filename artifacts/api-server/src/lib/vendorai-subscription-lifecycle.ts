@@ -37,9 +37,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 /**
- * A proposta promocional é uma condição de aquisição da LP/campanha, não um
+ * A condição comercial da LP/campanha é uma origem de aquisição, não um
  * preço genérico da plataforma. O trial direto continua existindo, porém sem
- * receber automaticamente a campanha promocional se não houver origem LP.
+ * preparar automaticamente uma assinatura Growth se não houver origem LP.
  */
 function hasLpCommercialOffer(discoveryData: unknown): boolean {
   const discovery = asRecord(discoveryData);
@@ -93,10 +93,7 @@ export async function ensureVendorAiLaunchSubscription(params: {
           sourceDealId: existing.sourceDealId ?? params.dealId,
           campaignCode: existing.campaignCode ?? VENDORAI_LAUNCH_CAMPAIGN,
           trialEndsAt: existing.trialEndsAt ?? offer.trialEndsAt,
-          promoPhase1Price: existing.promoPhase1Price ?? offer.promoPhase1Price,
-          promoPhase1EndsAt: existing.promoPhase1EndsAt ?? offer.promoPhase1EndsAt,
-          promoPhase2Price: existing.promoPhase2Price ?? offer.promoPhase2Price,
-          promoPhase2EndsAt: existing.promoPhase2EndsAt ?? offer.promoPhase2EndsAt,
+          regularPriceAtTransition: existing.regularPriceAtTransition ?? offer.regularPriceAtTransition,
           acceptedOfferAt: existing.acceptedOfferAt ?? params.trialStartedAt,
           acceptedTermsAt: existing.acceptedTermsAt ?? params.trialStartedAt,
           acceptedTermsVersion: existing.acceptedTermsVersion ?? VENDORAI_TERMS_VERSION,
@@ -122,11 +119,7 @@ export async function ensureVendorAiLaunchSubscription(params: {
       sourceDealId: params.dealId,
       billingPhase: "trial",
       trialEndsAt: offer.trialEndsAt,
-      promoPhase1Price: offer.promoPhase1Price,
-      promoPhase1EndsAt: offer.promoPhase1EndsAt,
-      promoPhase2Price: offer.promoPhase2Price,
-      promoPhase2EndsAt: offer.promoPhase2EndsAt,
-      regularPriceAtTransition: null,
+      regularPriceAtTransition: offer.regularPriceAtTransition,
       acceptedOfferAt: params.trialStartedAt,
       acceptedTermsAt: params.trialStartedAt,
       acceptedTermsVersion: VENDORAI_TERMS_VERSION,
