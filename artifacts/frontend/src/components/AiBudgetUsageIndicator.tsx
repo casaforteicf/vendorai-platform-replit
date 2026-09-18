@@ -31,16 +31,23 @@ type CommercialUsage = {
 type PopoverPosition = { left: number; bottom: number; width: number };
 
 function tenantIdFromStorage() {
+  let cachedUser: { tenantId?: string; platformRole?: string } | null = null;
   try {
-    const override = JSON.parse(localStorage.getItem(OVERRIDE_KEY) ?? "null") as { id?: string } | null;
-    if (override?.id) return override.id;
-  } catch {}
-  try {
-    const user = JSON.parse(localStorage.getItem(USER_CACHE_KEY) ?? "null") as { tenantId?: string } | null;
-    return user?.tenantId ?? "";
+    cachedUser = JSON.parse(localStorage.getItem(USER_CACHE_KEY) ?? "null") as { tenantId?: string; platformRole?: string } | null;
   } catch {
-    return "";
+    cachedUser = null;
   }
+  // O override de "visualizar como tenant" só vale pra super_admin (ver
+  // AuthContext). Sem essa checagem, um override antigo preso no
+  // localStorage fazia o widget pedir /commercial-usage com um tenantId
+  // que não batia com o token de contas comuns — 403 silencioso.
+  if (cachedUser?.platformRole === "super_admin") {
+    try {
+      const override = JSON.parse(localStorage.getItem(OVERRIDE_KEY) ?? "null") as { id?: string } | null;
+      if (override?.id) return override.id;
+    } catch {}
+  }
+  return cachedUser?.tenantId ?? "";
 }
 
 function authHeaders(): Record<string, string> {

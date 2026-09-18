@@ -177,15 +177,7 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     return;
   }
   if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
-    // eslint-disable-next-line no-console
-    console.log(
-      "DIAG nav-modules-403",
-      JSON.stringify({ paramTenantId: tenantId, jwtTenantId: user.tenantId, platformRole: user.platformRole, sub: user.sub }),
-    );
-    res.status(403).json({
-      error: "Forbidden",
-      diag: { paramTenantId: tenantId, jwtTenantId: user.tenantId, platformRole: user.platformRole },
-    });
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 
