@@ -177,6 +177,10 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     return;
   }
   if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
+    req.log?.warn(
+      { diag: "nav-modules-403", paramTenantId: tenantId, jwtTenantId: user.tenantId, platformRole: user.platformRole, sub: user.sub },
+      "DIAG nav-modules tenant mismatch",
+    );
     res.status(403).json({ error: "Forbidden" });
     return;
   }
