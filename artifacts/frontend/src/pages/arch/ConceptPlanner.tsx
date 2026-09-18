@@ -597,7 +597,8 @@ export default function ConceptPlanner() {
                 ))}
               </div>
               {viewMode === "2d" ? (
-                              <div className="relative mx-auto h-[560px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
+                <div className="space-y-3">
+                  <div className="relative mx-auto h-[560px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
                                 {visibleRooms.map((room) => {
                                   const left = room.x * scaleX;
                                   const top = room.y * scaleY;
@@ -656,11 +657,12 @@ export default function ConceptPlanner() {
                                   })}
                                 </svg>
                               </div>
-                              <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
-                                <span><strong className="text-slate-900">Parede externa</strong> linha escura</span>
-                                <span><strong className="text-orange-600">Porta sugerida</strong> laranja</span>
-                                <span><strong className="text-sky-600">Janela sugerida</strong> azul</span>
-                              </div>
+                  <div className="flex flex-wrap gap-4 text-[11px] text-muted-foreground">
+                    <span><strong className="text-slate-900">Parede externa</strong> linha escura</span>
+                    <span><strong className="text-orange-600">Porta sugerida</strong> laranja</span>
+                    <span><strong className="text-sky-600">Janela sugerida</strong> azul</span>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <div className="relative mx-auto h-[560px] max-w-[820px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
