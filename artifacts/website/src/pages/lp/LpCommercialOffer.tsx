@@ -18,22 +18,21 @@ export default function LpCommercialOffer() {
       <div className="mx-auto max-w-6xl">
         <div className="mx-auto max-w-3xl text-center">
           <div className="text-xs font-black uppercase tracking-[0.18em] text-orange-700">Condição desta landing page</div>
-          <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Uma proposta clara para experimentar, validar e continuar.</h2>
+          <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Teste primeiro. Depois escolha como continuar.</h2>
           <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-600">
-            Esta condição fica vinculada ao cadastro iniciado por uma LP VendorAI. O site institucional e as telas genéricas da plataforma não publicam tabela de preços.
+            A oferta atual mantém o acesso simples: teste completo por 5 dias e, depois, escolha Growth mensal ou blocos adicionais de uso.
           </p>
         </div>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-4">
-          <OfferCard kicker="Experiência inicial" value={`${offer.trialDays} dias`} text="Acesso completo para validar o VendorAI na sua operação." />
-          <OfferCard kicker="Primeiro período pago" value={brl(offer.subscription.firstPaidPriceBrl)} text={`Primeiros ${offer.subscription.firstPaidDays} dias pagos após o trial.`} />
-          <OfferCard kicker="Continuidade promocional" value={`${brl(offer.subscription.followingMonthlyPriceBrl)}/mês`} text={`Durante os ${offer.subscription.followingMonths} meses seguintes.`} />
-          <OfferCard kicker="Depois da promoção" value={`${brl(offer.subscription.regularMonthlyPriceBrl)}/mês`} text="Condição regular desta proposta." />
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
+          <OfferCard kicker="Experiência inicial" value={`${offer.trialDays} dias grátis`} text="Acesso completo para validar o VendorAI na sua operação." />
+          <OfferCard kicker="Growth contínuo" value={`${brl(offer.subscription.monthlyPriceBrl)}/mês`} text="Acesso contínuo ao ecossistema VendorAI, conforme os módulos aplicáveis ao seu segmento e as franquias contratadas." />
+          <OfferCard kicker="Uso por períodos" value={`+${offer.prepaid.blockDays} dias por ${brl(offer.prepaid.blockPriceBrl)}`} text="Compre blocos adicionais quando precisar, preservando a mesma conta e os dados." />
         </div>
 
         <div className="mx-auto mt-6 max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm leading-6 text-slate-600">
           <CheckCircle2 className="mr-2 inline h-4 w-4 text-emerald-600" />
-          Alternativa por períodos: blocos adicionais de <strong>{offer.prepaid.blockDays} dias por {brl(offer.prepaid.blockPriceBrl)}</strong>, preservando a mesma conta e os dados.
+          Sem sequência promocional intermediária: após o teste, a assinatura Growth é <strong>{brl(offer.subscription.monthlyPriceBrl)}/mês</strong>.
         </div>
 
         <div className="mt-8 flex justify-center">

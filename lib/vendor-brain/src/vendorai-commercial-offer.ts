@@ -1,12 +1,8 @@
 export const VENDORAI_LP_OFFER = {
-  campaignCode: "vendorai_growth_5d_497_990_1490_v2",
+  campaignCode: "vendorai_growth_5d_399_1490_v3",
   trialDays: 5,
   subscription: {
-    firstPaidDays: 30,
-    firstPaidPriceBrl: 497,
-    followingMonths: 5,
-    followingMonthlyPriceBrl: 990,
-    regularMonthlyPriceBrl: 1490,
+    monthlyPriceBrl: 1490,
   },
   prepaid: {
     blockDays: 5,
