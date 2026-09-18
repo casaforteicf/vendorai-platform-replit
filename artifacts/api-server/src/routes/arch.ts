@@ -205,6 +205,117 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   return res.json(updated);
 });
 
+router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  if (concept.archProjetoId) {
+    const [existingProject] = await db
+      .select()
+      .from(archProjetosTable)
+      .where(
+        and(
+          eq(archProjetosTable.id, concept.archProjetoId),
+          eq(archProjetosTable.tenantId, tid),
+        ),
+      )
+      .limit(1);
+
+    if (existingProject) {
+      return res.json({
+        ok: true,
+        alreadyPromoted: true,
+        project: existingProject,
+      });
+    }
+  }
+
+  const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
+  const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
+  const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
+  const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
+  const roomSummary = rooms
+    .map((room: any) => {
+      const area = Number(room.width ?? 0) * Number(room.depth ?? 0);
+      return `${room.label ?? room.kind ?? "Ambiente"} (${area.toFixed(1)} m²)`;
+    })
+    .join(", ");
+
+  const description = [
+    "Pré-projeto originado no Arqdor Concept.",
+    `Terreno: ${lot.width ?? "—"} × ${lot.depth ?? "—"} m.`,
+    `Pavimentos: ${config.floors ?? "—"}.`,
+    `Área desejada: ${config.desiredArea ?? "—"} m².`,
+    roomSummary ? `Ambientes: ${roomSummary}.` : null,
+    facade.style ? `Estilo: ${facade.style}.` : null,
+    facade.roof ? `Cobertura: ${facade.roof}.` : null,
+    facade.primaryMaterial ? `Material principal: ${facade.primaryMaterial}.` : null,
+    facade.accentMaterial ? `Destaque: ${facade.accentMaterial}.` : null,
+  ].filter(Boolean).join("\n");
+
+  const [project] = await db
+    .insert(archProjetosTable)
+    .values({
+      tenantId: tid,
+      titulo: concept.title || "Projeto originado do Arqdor Concept",
+      descricao: description,
+      status: "briefing",
+      pipelineStage: "briefing",
+      tipoObra: "Residencial",
+      areaM2: config.desiredArea != null ? String(config.desiredArea) : null,
+      portalToken: crypto.randomUUID(),
+      portalAtivo: false,
+    })
+    .returning();
+
+  await db
+    .update(archConceptProjectsTable)
+    .set({
+      archProjetoId: project.id,
+      status: "submitted",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ),
+    );
+
+  await db
+    .update(archAiRendersTable)
+    .set({ projectId: project.id })
+    .where(
+      and(
+        eq(archAiRendersTable.tenantId, tid),
+        eq(archAiRendersTable.projectId, id),
+      ),
+    );
+
+  return res.status(201).json({
+    ok: true,
+    alreadyPromoted: false,
+    project,
+  });
+});
+
 function getPortalBaseUrl(req: Request): string {
   // Mesmo achado do reset de senha: REPLIT_DOMAINS aponta pro backend
   // (Railway), não pro site (Vercel) -- link de portal do cliente
