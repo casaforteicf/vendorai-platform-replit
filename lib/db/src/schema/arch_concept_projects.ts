@@ -57,6 +57,27 @@ export type ArchConceptConfiguration = {
     centroid: { x: number; y: number };
     area: number;
   }>;
+  objects?: Array<{
+    id: string;
+    presetId?: string;
+    name: string;
+    category: "estar" | "dormitorio" | "jantar" | "cozinha" | "banheiro" | "armazenamento" | "trabalho" | "decoracao" | "eletro";
+    symbol: "sofa" | "chair" | "table" | "bed" | "wardrobe" | "counter" | "island" | "toilet" | "sink" | "desk" | "appliance" | "plant" | "generic";
+    floor: number;
+    x: number;
+    y: number;
+    width: number;
+    depth: number;
+    height: number;
+    rotationDeg: number;
+    locked?: boolean;
+    material?: string;
+    finish?: string;
+    color?: string;
+    componentId?: string;
+    manufacturerId?: string;
+    catalogProductId?: string;
+  }>;
 };
 
 export type ArchConceptRoom = {

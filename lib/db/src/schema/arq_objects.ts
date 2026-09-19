@@ -29,7 +29,13 @@ export const arqObjectsTable = pgTable("arq_objects", {
     depth: number;
     unit: string;
   }>(),
-  position: jsonb("position").$type<{ x: number; y: number; z: number }>(),
+  position: jsonb("position").$type<{
+    x: number;
+    y: number;
+    z: number;
+    rotationDeg?: number;
+    floor?: number;
+  }>(),
   visualWeight: real("visual_weight"),
   designIntent: jsonb("design_intent").$type<string[]>(),
   componentId: text("component_id"),
