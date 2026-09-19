@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
-import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace } from "./conceptWallNetwork";
+import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 type Props = {
   rooms: ConceptRoomShape[];
@@ -28,6 +28,8 @@ type Props = {
   onSelectCustomWall?: (wallId: string | null) => void;
   onDeleteCustomWall?: (wallId: string) => void;
   onUpdateCustomWall?: (wallId: string, patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>) => void;
+  topologyNodes?: WallTopologyNode[];
+  onMoveTopologyJunction?: (refs: WallTopologyEndpointRef[], point: { x: number; y: number }) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
   interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall" | "navigate";
@@ -142,6 +144,8 @@ export default function ConceptPlan2D({
   onSelectCustomWall,
   onDeleteCustomWall,
   onUpdateCustomWall,
+  topologyNodes = [],
+  onMoveTopologyJunction,
   onEditStart,
   onEditEnd,
   interactionMode = "room",
@@ -154,7 +158,8 @@ export default function ConceptPlan2D({
     openingId?: string;
     wallId?: string;
     customWallId?: string;
-    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    junctionRefs?: WallTopologyEndpointRef[];
+    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -304,6 +309,14 @@ export default function ConceptPlan2D({
       return;
     }
     const point = toSvgPoint(event.clientX, event.clientY);
+    if (
+      gesture?.mode === "topology-junction" &&
+      gesture.junctionRefs?.length &&
+      onMoveTopologyJunction
+    ) {
+      onMoveTopologyJunction(gesture.junctionRefs, clampPoint(point));
+      return;
+    }
     if (interactionMode === "draw-wall" && wallDrawStart) {
       const clamped = clampPoint(point);
       const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
@@ -982,6 +995,49 @@ export default function ConceptPlan2D({
             </g>
           );
         })}
+
+        {interactionMode === "wall" && topologyNodes
+          .filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2)
+          .map((node) => {
+            const editable = node.endpointRefs.length >= 2;
+            return (
+              <g
+                key={node.id}
+                className={editable ? "cursor-move" : ""}
+                onPointerDown={(event) => {
+                  if (!editable || !onMoveTopologyJunction) return;
+                  event.stopPropagation();
+                  onEditStart?.();
+                  const point = toSvgPoint(event.clientX, event.clientY);
+                  setGesture({
+                    roomId: "",
+                    junctionRefs: node.endpointRefs,
+                    mode: "topology-junction",
+                    startX: point.x,
+                    startY: point.y,
+                    roomX: 0,
+                    roomY: 0,
+                    roomWidth: 0,
+                    roomDepth: 0,
+                  });
+                }}
+              >
+                <circle cx={node.x} cy={node.y} r={editable ? "0.42" : "0.34"} fill="transparent" />
+                <rect
+                  x={node.x - 0.13}
+                  y={node.y - 0.13}
+                  width="0.26"
+                  height="0.26"
+                  rx="0.04"
+                  fill={editable ? "#7c3aed" : "#64748b"}
+                  stroke="#fff"
+                  strokeWidth="0.045"
+                  transform={`rotate(45 ${node.x} ${node.y})`}
+                  pointerEvents="none"
+                />
+              </g>
+            );
+          })}
 
         {wallDrawStart && wallDrawPreview && (
           <g pointerEvents="none">
