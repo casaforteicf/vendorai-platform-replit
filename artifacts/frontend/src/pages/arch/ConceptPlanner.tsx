@@ -95,6 +95,7 @@ type EditorSnapshot = {
   rooms: Room[];
   customWalls: CustomWall[];
   customOpenings: CustomOpening[];
+  wallFirstFloors: number[];
   openingOverrides: Record<string, OpeningOverride>;
 };
 
@@ -118,6 +119,7 @@ type ConceptDraftResponse = {
     desiredArea: number;
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
+    wallFirstFloors?: number[];
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
@@ -259,6 +261,7 @@ export default function ConceptPlanner() {
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
   const customOpeningsRef = useRef<CustomOpening[]>([]);
+  const wallFirstFloorsRef = useRef<number[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
@@ -271,6 +274,7 @@ export default function ConceptPlanner() {
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
+  const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([]);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
@@ -294,6 +298,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     customOpeningsRef.current = customOpenings;
   }, [customOpenings]);
+
+  useEffect(() => {
+    wallFirstFloorsRef.current = wallFirstFloors;
+  }, [wallFirstFloors]);
 
   useEffect(() => {
     openingOverridesRef.current = openingOverrides;
@@ -323,6 +331,7 @@ export default function ConceptPlanner() {
         setDesiredArea(draft.configuration?.desiredArea ?? 145);
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
+        setWallFirstFloors(Array.isArray(draft.configuration?.wallFirstFloors) ? draft.configuration.wallFirstFloors : []);
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
         setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
@@ -351,7 +360,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, customWalls, customOpenings, spaceProfiles },
       rooms,
       openingOverrides,
       customerProfile,
@@ -420,6 +429,7 @@ export default function ConceptPlanner() {
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
     customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
+    wallFirstFloors: [...wallFirstFloorsRef.current],
     openingOverrides: Object.fromEntries(
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
@@ -429,6 +439,7 @@ export default function ConceptPlanner() {
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
     customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
+    wallFirstFloors: [...snapshot.wallFirstFloors],
     openingOverrides: Object.fromEntries(
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
@@ -439,6 +450,7 @@ export default function ConceptPlanner() {
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
     setCustomOpenings(cloned.customOpenings);
+    setWallFirstFloors(cloned.wallFirstFloors);
     setOpeningOverrides(cloned.openingOverrides);
     setSelectedId(null);
     setSelectedWallId(null);
