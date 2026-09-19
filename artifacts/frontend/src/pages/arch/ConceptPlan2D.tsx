@@ -544,14 +544,20 @@ export default function ConceptPlan2D({
     const focusX = view.x + ((midX - rect.left) / Math.max(1, rect.width)) * view.width;
     const focusY = view.y + ((midY - rect.top) / Math.max(1, rect.height)) * view.height;
 
+    event.preventDefault();
+    event.stopPropagation();
     pinchGestureRef.current = {
       startDistance: distance,
       startView: { ...view },
       worldFocus: { x: focusX, y: focusY },
     };
     setPanGesture(null);
-    if (gesture) onEditEnd?.();
+    onEditEnd?.();
     setGesture(null);
+    if (interactionMode === "draw-wall") {
+      setWallDrawStart(null);
+      setWallDrawPreview(null);
+    }
   };
 
   const handleTouchPointerMoveCapture = (event: ReactPointerEvent<SVGSVGElement>) => {

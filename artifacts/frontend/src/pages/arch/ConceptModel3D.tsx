@@ -616,6 +616,8 @@ export default function ConceptModel3D({
     const points = [...touchPointersRef.current.values()];
     if (points.length < 2) return;
     const [first, second] = points;
+    event.preventDefault();
+    event.stopPropagation();
     pinchZoomRef.current = {
       startDistance: Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)),
       startZoom: zoom,
