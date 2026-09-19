@@ -73,9 +73,10 @@ import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import {
   collectConceptMaterials,
-  conceptFloorElevation,
   conceptMaterialRows,
+  conceptObjectRows,
   type ConceptPromotedMaterialScheme,
+  type ConceptPromotedObject,
   type ConceptPromotionRoom,
 } from "../lib/arch-concept-promotion.js";
 
@@ -216,28 +217,6 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   return res.json(updated);
 });
 
-type ConceptPromotedObject = {
-  id: string;
-  presetId?: string;
-  name: string;
-  category: string;
-  symbol?: string;
-  floor: number;
-  x: number;
-  y: number;
-  width: number;
-  depth: number;
-  height: number;
-  rotationDeg: number;
-  material?: string;
-  finish?: string;
-  color?: string;
-  componentId?: string;
-  manufacturerId?: string;
-  catalogProductId?: string;
-  locked?: boolean;
-};
-
 async function syncConceptObjectsToProject(
   projectId: string,
   objects: ConceptPromotedObject[],
@@ -252,37 +231,12 @@ async function syncConceptObjectsToProject(
 
   if (!objects.length) return;
 
-  await db.insert(arqObjectsTable).values(objects.map((object) => ({
-    projetoId: projectId,
-    objectClientId: object.id,
-    name: object.name || "Objeto",
-    category: object.category || "decoracao",
-    material: object.material || null,
-    finish: object.finish || null,
-    color: object.color || null,
-    dimensions: {
-      width: object.width,
-      height: object.height,
-      depth: object.depth,
-      unit: "m",
-    },
-    position: {
-      x: object.x,
-      y: object.y,
-      z: conceptFloorElevation(rooms, object.floor),
-      rotationDeg: object.rotationDeg,
-      floor: object.floor,
-    },
-    componentId: object.componentId || object.presetId || null,
-    manufacturerId: object.manufacturerId || null,
-    designIntent: [
-      "source:arqdor_concept",
-      ...(object.presetId ? [`preset:${object.presetId}`] : []),
-      ...(object.symbol ? [`symbol:${object.symbol}`] : []),
-      ...(object.catalogProductId ? [`catalog_product:${object.catalogProductId}`] : []),
-    ],
-    locked: object.locked ?? false,
-  })));
+  await db.insert(arqObjectsTable).values(
+    conceptObjectRows(objects, rooms).map((object) => ({
+      projetoId: projectId,
+      ...object,
+    })),
+  );
 }
 
 async function syncConceptMaterialsToProject(
