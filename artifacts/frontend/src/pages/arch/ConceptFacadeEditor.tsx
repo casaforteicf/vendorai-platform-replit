@@ -81,6 +81,25 @@ export default function ConceptFacadeEditor({
     [design.volumes, selectedVolumeId],
   );
 
+  const facadeMetrics = useMemo(() => {
+    const builtRooms = rooms.filter((room) => room.kind !== "piscina");
+    if (!builtRooms.length) {
+      return {
+        width: Math.max(6, lotWidth * 0.78),
+        height: Math.max(2.8, Math.max(1, levels.length) * 2.96),
+      };
+    }
+    const minX = Math.min(...builtRooms.map((room) => room.x));
+    const maxX = Math.max(...builtRooms.map((room) => room.x + room.width));
+    return {
+      width: Math.max(4, maxX - minX),
+      height: Math.max(2.8, Math.max(1, levels.length) * 2.96),
+    };
+  }, [rooms, lotWidth, levels.length]);
+
+  const metricToPercent = (value: number, total: number, maxPercent = 100) =>
+    clamp((value / Math.max(0.01, total)) * 100, 0, maxPercent);
+
   const updateDesign = (patch: Partial<FacadeDesignState>) => {
     onDesignChange({ ...design, ...patch });
   };
@@ -187,7 +206,9 @@ export default function ConceptFacadeEditor({
                     <Box className="h-5 w-5 text-slate-600" />
                   </div>
                   <div className="mt-2 text-xs font-semibold">{preset.label}</div>
-                  <div className="mt-0.5 text-[10px] text-slate-400">{preset.depth.toFixed(1)} m prof.</div>
+                  <div className="mt-0.5 text-[10px] text-slate-400">
+                    ≈ {(facadeMetrics.width * preset.width / 100).toFixed(1)} × {(facadeMetrics.height * preset.height / 100).toFixed(1)} m
+                  </div>
                 </button>
               ))}
             </div>
@@ -385,7 +406,7 @@ export default function ConceptFacadeEditor({
       </div>
 
       {selectedVolume && (
-        <div className="absolute bottom-4 left-1/2 z-40 w-[min(920px,calc(100vw-120px))] -translate-x-1/2 rounded-2xl border bg-white/95 p-3 shadow-2xl backdrop-blur">
+        <div className="absolute bottom-4 left-1/2 z-40 w-[min(980px,calc(100vw-120px))] -translate-x-1/2 rounded-2xl border bg-white/96 p-3 shadow-2xl backdrop-blur">
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-[150px]">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Selecionado</div>
@@ -397,27 +418,41 @@ export default function ConceptFacadeEditor({
             </div>
 
             {([
-              ["x", "X", 0, 96, 1],
-              ["y", "Y", 0, 96, 1],
-              ["width", "Largura", 4, 100, 1],
-              ["height", "Altura", 4, 100, 1],
-              ["depth", "Prof.", 0, 3, 0.1],
-            ] as const).map(([key, label, min, max, step]) => (
+              ["x", "Pos. X", facadeMetrics.width, 0, facadeMetrics.width * 0.96, 0.1, 96],
+              ["y", "Pos. Y", facadeMetrics.height, 0, facadeMetrics.height * 0.96, 0.05, 96],
+              ["width", "Largura", facadeMetrics.width, 0.2, facadeMetrics.width, 0.1, 100],
+              ["height", "Altura", facadeMetrics.height, 0.2, facadeMetrics.height, 0.05, 100],
+            ] as const).map(([key, label, total, min, max, step, maxPercent]) => (
               <label key={key} className="text-[10px] font-semibold text-slate-500">
-                {label}
+                {label} (m)
                 <input
                   type="number"
                   min={min}
                   max={max}
                   step={step}
-                  value={selectedVolume[key]}
+                  value={((selectedVolume[key] / 100) * total).toFixed(2)}
                   onChange={(event) => updateVolume(selectedVolume.id, {
-                    [key]: clamp(Number(event.target.value) || 0, min, max),
+                    [key]: metricToPercent(Number(event.target.value) || 0, total, maxPercent),
                   } as Partial<FacadeVolume>)}
                   className="mt-1 h-9 w-[82px] rounded-lg border px-2 text-xs font-semibold text-slate-800"
                 />
               </label>
             ))}
+
+            <label className="text-[10px] font-semibold text-slate-500">
+              Prof. (m)
+              <input
+                type="number"
+                min={0}
+                max={3}
+                step={0.05}
+                value={selectedVolume.depth.toFixed(2)}
+                onChange={(event) => updateVolume(selectedVolume.id, {
+                  depth: clamp(Number(event.target.value) || 0, 0, 3),
+                })}
+                className="mt-1 h-9 w-[82px] rounded-lg border px-2 text-xs font-semibold text-slate-800"
+              />
+            </label>
 
             <label className="min-w-[145px] text-[10px] font-semibold text-slate-500">
               Material
