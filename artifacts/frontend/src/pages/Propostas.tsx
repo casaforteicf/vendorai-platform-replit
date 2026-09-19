@@ -144,6 +144,8 @@ import {
   MessageCircle,
   Star,
   Clock,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1950,6 +1952,15 @@ function newFreeItem(): FreeItem {
 }
  
   function removeCatLine(i: number) { setCartLines((p) => p.filter((_, j) => j !== i)); }
+  function moveCatLine(i: number, direction: -1 | 1) {
+    setCartLines((prev) => {
+      const target = i + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[target]] = [next[target], next[i]];
+      return next;
+    });
+  }
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
@@ -2345,8 +2356,11 @@ function newFreeItem(): FreeItem {
             {/* ── CATALOG MODE ──────────────────────────────────────────────── */}
             {mode === "catalogo" && (
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Itens do Orçamento</p>
+                <div className="flex items-center justify-between mb-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Itens do Orçamento</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">A ordem abaixo define a sequência das etapas de execução.</p>
+                  </div>
                   <Button type="button" variant="outline" size="sm" onClick={addCatLine}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
                   </Button>
@@ -2355,6 +2369,7 @@ function newFreeItem(): FreeItem {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="text-xs py-2 w-28">Etapa</TableHead>
                         <TableHead className="text-xs py-2">Produto / Composição</TableHead>
                         <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
@@ -2378,6 +2393,37 @@ function newFreeItem(): FreeItem {
                             : "";
                         return (
                           <TableRow key={idx}>
+                            <TableCell className="py-1.5 align-top">
+                              <div className="flex items-center gap-1.5">
+                                <span className="min-w-12 rounded-md bg-muted px-2 py-1 text-center text-xs font-semibold">
+                                  {idx + 1}
+                                </span>
+                                <div className="flex gap-0.5">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    disabled={idx === 0}
+                                    onClick={() => moveCatLine(idx, -1)}
+                                    title="Mover etapa para cima"
+                                  >
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    disabled={idx === cartLines.length - 1}
+                                    onClick={() => moveCatLine(idx, 1)}
+                                    title="Mover etapa para baixo"
+                                  >
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </TableCell>
                             <TableCell className="py-1.5">
                               <Select value={selectValue} onValueChange={(value) => selectBudgetItem(idx, value)}>
                                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione produto ou composição…" /></SelectTrigger>
