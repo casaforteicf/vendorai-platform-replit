@@ -7,6 +7,7 @@ import {
   useUpdateComposicao,
   useDeleteComposicao,
   useListInsumos,
+  useCreateInsumo,
   useUpdateInsumo,
   getListComposicoesQueryKey,
   getGetComposicaoQueryKey,
@@ -130,8 +131,17 @@ function ComposicaoForm({
   const [insumoSearch, setInsumoSearch] = useState("");
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [savingPrices, setSavingPrices] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [newInsumo, setNewInsumo] = useState({
+    nome: "",
+    unidade: "un",
+    codigo: "",
+    categoria: "",
+    precoUnitario: "",
+  });
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { mutateAsync: createInsumo, isPending: isCreatingInsumo } = useCreateInsumo();
   const { mutateAsync: updateInsumo } = useUpdateInsumo();
 
   const { data: allInsumos = [] } = useListInsumos(tenantId, {}, { query: { enabled: !!tenantId, queryKey: getListInsumosQueryKey(tenantId) } });
@@ -141,6 +151,80 @@ function ComposicaoForm({
     if (itens.find((i) => i.insumoId === insumoId)) return;
     setItens((prev) => [...prev, { insumoId, quantidade: "1" }]);
     setInsumoSearch("");
+  }
+
+  function openQuickCreate() {
+    setNewInsumo((current) => ({
+      ...current,
+      nome: insumoSearch.trim() || current.nome,
+    }));
+    setQuickCreateOpen(true);
+  }
+
+  async function handleQuickCreateInsumo() {
+    const nome = newInsumo.nome.trim();
+    if (!nome) {
+      toast({ title: "Informe o nome do insumo", variant: "destructive" });
+      return;
+    }
+
+    const duplicated = allInsumos.find((item) => {
+      const sameCode = newInsumo.codigo.trim()
+        && item.codigo?.trim().toLowerCase() === newInsumo.codigo.trim().toLowerCase();
+      const sameName = item.nome.trim().toLowerCase() === nome.toLowerCase();
+      return sameCode || sameName;
+    });
+
+    if (duplicated) {
+      addInsumo(duplicated.id);
+      setQuickCreateOpen(false);
+      setNewInsumo({ nome: "", unidade: "un", codigo: "", categoria: "", precoUnitario: "" });
+      toast({
+        title: "Insumo já cadastrado",
+        description: `${duplicated.nome} foi adicionado à composição.`,
+      });
+      return;
+    }
+
+    try {
+      const created = await createInsumo({
+        tenantId,
+        data: {
+          nome,
+          unidade: newInsumo.unidade,
+          ...(newInsumo.codigo.trim() ? { codigo: newInsumo.codigo.trim() } : {}),
+          ...(newInsumo.categoria.trim() ? { categoria: newInsumo.categoria.trim() } : {}),
+          ...(newInsumo.precoUnitario.trim() ? { precoUnitario: newInsumo.precoUnitario.trim() } : {}),
+        } as any,
+      });
+
+      qc.setQueryData(getListInsumosQueryKey(tenantId), (current: any) => {
+        const rows = Array.isArray(current) ? current : [];
+        return rows.some((item: any) => item.id === created.id) ? rows : [...rows, created];
+      });
+      await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
+
+      setItens((prev) => prev.some((item) => item.insumoId === created.id)
+        ? prev
+        : [...prev, { insumoId: created.id, quantidade: "1" }]);
+      if (created.precoUnitario != null) {
+        setPriceDrafts((prev) => ({ ...prev, [created.id]: String(Number(created.precoUnitario)) }));
+      }
+
+      setInsumoSearch("");
+      setQuickCreateOpen(false);
+      setNewInsumo({ nome: "", unidade: "un", codigo: "", categoria: "", precoUnitario: "" });
+      toast({
+        title: "Insumo cadastrado",
+        description: `${created.nome} foi salvo na Tabela Mestre e adicionado à composição.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível cadastrar o insumo",
+        description: error instanceof Error ? error.message : "Confira os dados e tente novamente.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -236,17 +320,113 @@ function ComposicaoForm({
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar insumo..." className="pl-8" value={insumoSearch} onChange={(e) => setInsumoSearch(e.target.value)} />
         </div>
-        {insumoSearch && filteredInsumos.length > 0 && (
-          <div className="border rounded-md max-h-40 overflow-y-auto">
-            {filteredInsumos.slice(0, 8).map((ins) => (
-              <button key={ins.id} type="button" onClick={() => addInsumo(ins.id)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between">
-                <span>{ins.nome}</span>
-                <span className="text-xs text-muted-foreground font-mono">{ins.unidade}</span>
-              </button>
-            ))}
+        {insumoSearch && (
+          <div className="border rounded-md overflow-hidden">
+            {filteredInsumos.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto">
+                {filteredInsumos.slice(0, 8).map((ins) => (
+                  <button key={ins.id} type="button" onClick={() => addInsumo(ins.id)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between">
+                    <span>{ins.nome}</span>
+                    <span className="text-xs text-muted-foreground font-mono">{ins.unidade}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                Nenhum insumo encontrado com “{insumoSearch}”.
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={openQuickCreate}
+              className="w-full border-t bg-muted/30 px-3 py-2 text-left text-sm font-medium hover:bg-muted flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Cadastrar novo insumo “{insumoSearch.trim()}”
+            </button>
           </div>
         )}
+
+        {quickCreateOpen && (
+          <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Novo insumo</p>
+                <p className="text-xs text-muted-foreground">
+                  Será salvo na Tabela Mestre e adicionado automaticamente à composição.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setQuickCreateOpen(false)}
+                title="Fechar cadastro"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="sm:col-span-2 space-y-1">
+                <Label className="text-xs">Nome *</Label>
+                <Input
+                  autoFocus
+                  value={newInsumo.nome}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, nome: e.target.value }))}
+                  placeholder="Ex.: Arame recozido"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Unidade *</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  value={newInsumo.unidade}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, unidade: e.target.value }))}
+                >
+                  {UNIDADES.map((unidade) => <option key={unidade} value={unidade}>{unidade}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Preço na Tabela Mestre</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={newInsumo.precoUnitario}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, precoUnitario: e.target.value }))}
+                  placeholder="R$ 0,00"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Código</Label>
+                <Input
+                  value={newInsumo.codigo}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, codigo: e.target.value }))}
+                  placeholder="Ex.: MAT-001"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Categoria</Label>
+                <Input
+                  value={newInsumo.categoria}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, categoria: e.target.value }))}
+                  placeholder="Ex.: Estrutura"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setQuickCreateOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" size="sm" onClick={handleQuickCreateInsumo} disabled={isCreatingInsumo}>
+                {isCreatingInsumo ? "Cadastrando..." : "Cadastrar e adicionar"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {itens.length > 0 && (
           <div className="space-y-2 mt-2">
             {itens.map((item, idx) => {
