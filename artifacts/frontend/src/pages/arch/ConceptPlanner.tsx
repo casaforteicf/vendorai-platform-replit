@@ -831,6 +831,14 @@ export default function ConceptPlanner() {
               </div>
             </div>
 
+            <div
+              data-concept-render-source="true"
+              className="fixed -left-[9999px] top-0 h-[650px] w-[900px] overflow-hidden"
+              aria-hidden="true"
+            >
+              <ConceptFacadeElevation rooms={rooms} floors={floors} lotWidth={lotWidth} facade={facadePreferences} />
+            </div>
+
             <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
               <aside className="border-r bg-muted/20 p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
