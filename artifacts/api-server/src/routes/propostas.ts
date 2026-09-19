@@ -14,6 +14,7 @@ import {
   tenantsTable,
   dealsTable,
   leadsTable,
+  type PropostaItem,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
@@ -25,6 +26,14 @@ import { buildProposalProductContext, proposalProductPromptRules } from "../lib/
 const router: IRouter = Router();
 
 // ── Proposal number generation ────────────────────────────────────────────────
+function normalizarItensExecucao(itens: PropostaItem[]): PropostaItem[] {
+  return itens.map((item, index) => ({
+    ...item,
+    ordemExecucao: item.ordemExecucao ?? index + 1,
+    statusExecucao: item.statusExecucao ?? "pendente",
+  }));
+}
+
 async function generateNumero(tenantId: string): Promise<string> {
   const now = new Date();
   const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -64,9 +73,11 @@ router.post("/propostas", async (req, res) => {
 
   const numero = await generateNumero(parsed.data.tenantId);
 
+  const itensNormalizados = normalizarItensExecucao((parsed.data.itens ?? []) as PropostaItem[]);
+
   const [proposta] = await db
     .insert(propostasTable)
-    .values({ ...parsed.data, numero })
+    .values({ ...parsed.data, itens: itensNormalizados, numero })
     .returning();
   res.status(201).json(proposta);
 });
@@ -223,6 +234,121 @@ router.patch("/propostas/:id", async (req, res) => {
     .returning();
 
   res.json(proposta);
+});
+
+const propostaItemExecucaoBodySchema = z.object({
+  status: z.enum(["em_execucao", "concluida"]),
+});
+
+router.patch("/propostas/:id/execucao/:itemIndex", async (req, res) => {
+  const parsed = propostaItemExecucaoBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const itemIndex = Number.parseInt(String(req.params.itemIndex), 10);
+  if (!Number.isInteger(itemIndex) || itemIndex < 0) {
+    res.status(422).json({ error: "itemIndex inválido" });
+    return;
+  }
+
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (proposta.status !== "aceita") {
+    res.status(422).json({ error: "A execução só pode avançar depois que o orçamento estiver vendido/aceito." });
+    return;
+  }
+
+  const itens = normalizarItensExecucao((proposta.itens ?? []) as PropostaItem[]);
+  if (itemIndex >= itens.length) {
+    res.status(404).json({ error: "Item do orçamento não encontrado." });
+    return;
+  }
+
+  const fila = itens
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.statusExecucao !== "concluida")
+    .sort((a, b) => (a.item.ordemExecucao ?? a.index + 1) - (b.item.ordemExecucao ?? b.index + 1));
+
+  const etapaAtual = fila[0];
+  if (!etapaAtual) {
+    res.status(422).json({ error: "Todas as etapas deste orçamento já foram concluídas." });
+    return;
+  }
+
+  if (etapaAtual.index !== itemIndex) {
+    res.status(409).json({
+      error: `Conclua primeiro a etapa ${etapaAtual.item.ordemExecucao ?? etapaAtual.index + 1}: ${etapaAtual.item.nome}.`,
+    });
+    return;
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const itensAtualizados = itens.map((item, index) => {
+    if (index !== itemIndex) return item;
+
+    if (parsed.data.status === "em_execucao") {
+      return {
+        ...item,
+        statusExecucao: "em_execucao" as const,
+        iniciadoEm: item.iniciadoEm ?? nowIso,
+      };
+    }
+
+    return {
+      ...item,
+      statusExecucao: "concluida" as const,
+      iniciadoEm: item.iniciadoEm ?? nowIso,
+      executadoEm: nowIso,
+    };
+  });
+
+  const [updated] = await db
+    .update(propostasTable)
+    .set({ itens: itensAtualizados, updatedAt: now })
+    .where(eq(propostasTable.id, proposta.id))
+    .returning();
+
+  const restantes = itensAtualizados.filter((item) => item.statusExecucao !== "concluida");
+  const concluidas = itensAtualizados.length - restantes.length;
+
+  if (proposta.dealId) {
+    const targetEtapa = restantes.length === 0 ? "entregue" : "em_execucao";
+    await db
+      .update(dealsTable)
+      .set({
+        etapa: targetEtapa as typeof dealsTable.$inferSelect.etapa,
+        updatedAt: now,
+      })
+      .where(eq(dealsTable.id, proposta.dealId));
+  }
+
+  res.json({
+    proposta: updated,
+    execucao: {
+      concluidas,
+      restantes: restantes.length,
+      finalizada: restantes.length === 0,
+      proximaOrdem: restantes.length
+        ? Math.min(...restantes.map((item, index) => item.ordemExecucao ?? index + 1))
+        : null,
+    },
+  });
 });
 
 const PROPOSTA_TRANSITIONS: Record<string, string[]> = {
@@ -482,7 +608,7 @@ router.post(
             comprovanteUrl: pc.comprovanteUrl ?? null,
           })),
         } : {}),
-        itens: propostaItens,
+        itens: normalizarItensExecucao(propostaItens as PropostaItem[]),
         valorTotal: valorTotal.toFixed(2),
       })
       .returning();
@@ -823,7 +949,7 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
       dealId: dealId ?? null,
       titulo: `${template.name} — ${lead.nome}`,
       numero,
-      itens,
+      itens: normalizarItensExecucao(itens as PropostaItem[]),
       valorTotal: String(valorTotal.toFixed(2)),
       status: "rascunho",
       validadeAte,
