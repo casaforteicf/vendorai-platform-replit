@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveAIKey } from "../lib/ai-gateway.js";
+import { generateConstructionComposition } from "../services/construction-composition-ai.js";
 import { and, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
@@ -869,6 +870,88 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
 
   const rows = await db.select().from(composicoesTable).where(and(...filters)).orderBy(asc(composicoesTable.nome));
   return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/composicoes/gerar-ia", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const requestSchema = z.object({
+    pedido: z.string().trim().min(5).max(4000),
+    unidadePreferida: z.string().trim().max(20).optional(),
+  });
+  const parsed = requestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const catalogo = await db
+    .select({
+      id: insumosTable.id,
+      nome: insumosTable.nome,
+      unidade: insumosTable.unidade,
+      codigo: insumosTable.codigo,
+      categoria: insumosTable.categoria,
+      precoUnitario: insumosTable.precoUnitario,
+    })
+    .from(insumosTable)
+    .where(eq(insumosTable.tenantId, tid))
+    .orderBy(asc(insumosTable.nome));
+
+  if (catalogo.length === 0) {
+    return res.status(422).json({
+      error: "Cadastre ou importe os insumos antes de gerar uma composição. A IA não cria preços sem base.",
+    });
+  }
+
+  try {
+    const draft = await generateConstructionComposition({
+      tenantId: tid,
+      pedido: parsed.data.pedido,
+      unidadePreferida: parsed.data.unidadePreferida,
+      catalogo,
+    });
+
+    const byId = new Map(catalogo.map((item) => [item.id, item]));
+    const itens = draft.itens.map((item) => {
+      const insumo = item.insumoId ? byId.get(item.insumoId) : undefined;
+      const precoUnitario = insumo?.precoUnitario == null ? null : Number(insumo.precoUnitario);
+      const subtotal = precoUnitario == null ? null : item.quantidade * precoUnitario;
+      const status = !insumo ? "nao_cadastrado" : precoUnitario == null || precoUnitario <= 0 ? "sem_preco" : "ok";
+      return {
+        ...item,
+        insumoId: insumo?.id ?? null,
+        nome: insumo?.nome ?? item.nomeSugerido,
+        unidade: insumo?.unidade ?? item.unidade,
+        codigo: insumo?.codigo ?? null,
+        categoria: insumo?.categoria ?? null,
+        precoUnitario,
+        subtotal,
+        status,
+      };
+    });
+
+    const custoTotalConhecido = itens.reduce((sum, item) => sum + (item.subtotal ?? 0), 0);
+    const itensPendentes = itens.filter((item) => item.status !== "ok").length;
+    const coberturaPct = itens.length > 0
+      ? Math.round(((itens.length - itensPendentes) / itens.length) * 10000) / 100
+      : 0;
+
+    return res.json({
+      nome: draft.nome,
+      descricao: draft.descricao ?? null,
+      unidade: draft.unidade,
+      itens,
+      custoTotalConhecido,
+      itensPendentes,
+      coberturaPct,
+      podeSalvarCompleta: itens.every((item) => item.insumoId != null),
+      aviso: itensPendentes > 0
+        ? "A composição possui itens sem cadastro ou sem preço. A IA não inventou valores; revise as pendências antes de usar o preço como referência."
+        : null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível gerar a composição.";
+    return res.status(502).json({ error: message });
+  }
 });
 
 router.post("/tenants/:tenantId/composicoes", async (req, res) => {
