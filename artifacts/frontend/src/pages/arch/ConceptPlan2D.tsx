@@ -9,6 +9,10 @@ type Props = {
   selectedId: string | null;
   onSelect: (roomId: string) => void;
   onRoomChange?: (roomId: string, patch: Partial<Pick<ConceptRoomShape, "x" | "y" | "width" | "depth">>) => void;
+  selectedOpeningId?: string | null;
+  onSelectOpening?: (openingId: string | null) => void;
+  onOpeningChange?: (openingId: string, patch: { x: number; y: number; type: "door" | "window" }) => void;
+  interactionMode?: "room" | "opening";
 };
 
 function formatMeters(value: number) {
@@ -103,11 +107,16 @@ export default function ConceptPlan2D({
   selectedId,
   onSelect,
   onRoomChange,
+  selectedOpeningId = null,
+  onSelectOpening,
+  onOpeningChange,
+  interactionMode = "room",
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [gesture, setGesture] = useState<null | {
     roomId: string;
-    mode: "move" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    openingId?: string;
+    mode: "move" | "opening" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     startX: number;
     startY: number;
     roomX: number;
@@ -141,6 +150,32 @@ export default function ConceptPlan2D({
     const point = toSvgPoint(event.clientX, event.clientY);
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
+
+    if (gesture.mode === "opening" && gesture.openingId && onOpeningChange) {
+      const opening = geometry.openings.find((item) => item.id === gesture.openingId);
+      if (!opening) return;
+      const owner = rooms.find((room) => room.id === opening.roomId);
+      if (!owner) return;
+      const pad = 0.55;
+      if (opening.orientation === "horizontal") {
+        const minX = owner.x + Math.min(pad, owner.width / 3);
+        const maxX = owner.x + owner.width - Math.min(pad, owner.width / 3);
+        onOpeningChange(opening.id, {
+          x: snap(Math.max(minX, Math.min(maxX, opening.x + dx))),
+          y: opening.y,
+          type: opening.type,
+        });
+      } else {
+        const minY = owner.y + Math.min(pad, owner.depth / 3);
+        const maxY = owner.y + owner.depth - Math.min(pad, owner.depth / 3);
+        onOpeningChange(opening.id, {
+          x: opening.x,
+          y: snap(Math.max(minY, Math.min(maxY, opening.y + dy))),
+          type: opening.type,
+        });
+      }
+      return;
+    }
 
     if (gesture.mode === "move") {
       const room = rooms.find((item) => item.id === gesture.roomId);
@@ -182,18 +217,19 @@ export default function ConceptPlan2D({
     let width = gesture.roomWidth;
     let depth = gesture.roomDepth;
 
-    if (gesture.mode.includes("e")) {
+    const resizeDirection = gesture.mode.startsWith("resize-") ? gesture.mode.slice("resize-".length) : "";
+    if (resizeDirection.includes("e")) {
       width = snap(Math.max(minSize, Math.min(lotWidth - x, gesture.roomWidth + dx)));
     }
-    if (gesture.mode.includes("s")) {
+    if (resizeDirection.includes("s")) {
       depth = snap(Math.max(minSize, Math.min(lotDepth - y, gesture.roomDepth + dy)));
     }
-    if (gesture.mode.includes("w")) {
+    if (resizeDirection.includes("w")) {
       const nextX = snap(Math.max(0, Math.min(gesture.roomX + gesture.roomWidth - minSize, gesture.roomX + dx)));
       width = snap(gesture.roomWidth + (gesture.roomX - nextX));
       x = nextX;
     }
-    if (gesture.mode.includes("n")) {
+    if (resizeDirection.includes("n")) {
       const nextY = snap(Math.max(0, Math.min(gesture.roomY + gesture.roomDepth - minSize, gesture.roomY + dy)));
       depth = snap(gesture.roomDepth + (gesture.roomY - nextY));
       y = nextY;
@@ -270,6 +306,7 @@ export default function ConceptPlan2D({
               role="button"
               tabIndex={0}
               onPointerDown={(event) => {
+                if (interactionMode === "opening") return;
                 onSelect(room.id);
                 if (!onRoomChange || room.locked) return;
                 const point = toSvgPoint(event.clientX, event.clientY);
@@ -365,7 +402,7 @@ export default function ConceptPlan2D({
                   )}
                 </>
               )}
-              {selected && onRoomChange && !room.locked && (
+              {interactionMode === "room" && selected && onRoomChange && !room.locked && (
                 <>
                   {([
                     ["resize-nw", room.x, room.y, "cursor-nwse-resize"],
@@ -397,13 +434,15 @@ export default function ConceptPlan2D({
                         });
                       }}
                     >
+                      <circle cx={hx} cy={hy} r="0.52" fill="transparent" />
                       <circle
                         cx={hx}
                         cy={hy}
-                        r="0.22"
+                        r="0.20"
                         fill="#f97316"
                         stroke="#ffffff"
                         strokeWidth="0.06"
+                        pointerEvents="none"
                       />
                     </g>
                   ))}
@@ -451,27 +490,86 @@ export default function ConceptPlan2D({
         ))}
 
         {geometry.openings.map((opening) => {
-          if (opening.type === "door") return doorGlyph(opening);
-          const half = 0.62;
+          const selectedOpening = selectedOpeningId === opening.id;
+          const half = opening.type === "door" ? 0.48 : 0.62;
           const horizontal = opening.orientation === "horizontal";
           return (
-            <g key={opening.id} pointerEvents="none">
+            <g
+              key={opening.id}
+              className={interactionMode === "opening" ? "cursor-grab" : ""}
+              onPointerDown={(event) => {
+                if (interactionMode !== "opening" || !onSelectOpening || !onOpeningChange) return;
+                event.stopPropagation();
+                onSelectOpening(opening.id);
+                const point = toSvgPoint(event.clientX, event.clientY);
+                setGesture({
+                  roomId: opening.roomId,
+                  openingId: opening.id,
+                  mode: "opening",
+                  startX: point.x,
+                  startY: point.y,
+                  roomX: 0,
+                  roomY: 0,
+                  roomWidth: 0,
+                  roomDepth: 0,
+                });
+              }}
+              onClick={(event) => {
+                if (interactionMode !== "opening" || !onSelectOpening) return;
+                event.stopPropagation();
+                onSelectOpening(opening.id);
+              }}
+            >
               <line
                 x1={horizontal ? opening.x - half : opening.x}
                 y1={horizontal ? opening.y : opening.y - half}
                 x2={horizontal ? opening.x + half : opening.x}
                 y2={horizontal ? opening.y : opening.y + half}
-                stroke="#ffffff"
-                strokeWidth="0.18"
+                stroke="transparent"
+                strokeWidth="0.72"
               />
-              <line
-                x1={horizontal ? opening.x - half : opening.x}
-                y1={horizontal ? opening.y : opening.y - half}
-                x2={horizontal ? opening.x + half : opening.x}
-                y2={horizontal ? opening.y : opening.y + half}
-                stroke="#0284c7"
-                strokeWidth="0.07"
-              />
+              {opening.type === "door" ? (
+                <g pointerEvents="none" opacity={selectedOpening ? 1 : 0.92}>
+                  <line
+                    x1={horizontal ? opening.x - half : opening.x}
+                    y1={horizontal ? opening.y : opening.y - half}
+                    x2={horizontal ? opening.x + half : opening.x}
+                    y2={horizontal ? opening.y : opening.y + half}
+                    stroke="#ffffff"
+                    strokeWidth="0.22"
+                  />
+                  <line
+                    x1={horizontal ? opening.x - half : opening.x}
+                    y1={horizontal ? opening.y : opening.y - half}
+                    x2={horizontal ? opening.x - half : opening.x + half}
+                    y2={horizontal ? opening.y + 0.82 : opening.y - half}
+                    stroke={selectedOpening ? "#f97316" : "#475569"}
+                    strokeWidth="0.06"
+                  />
+                </g>
+              ) : (
+                <g pointerEvents="none">
+                  <line
+                    x1={horizontal ? opening.x - half : opening.x}
+                    y1={horizontal ? opening.y : opening.y - half}
+                    x2={horizontal ? opening.x + half : opening.x}
+                    y2={horizontal ? opening.y : opening.y + half}
+                    stroke="#ffffff"
+                    strokeWidth="0.18"
+                  />
+                  <line
+                    x1={horizontal ? opening.x - half : opening.x}
+                    y1={horizontal ? opening.y : opening.y - half}
+                    x2={horizontal ? opening.x + half : opening.x}
+                    y2={horizontal ? opening.y : opening.y + half}
+                    stroke={selectedOpening ? "#f97316" : "#0284c7"}
+                    strokeWidth={selectedOpening ? "0.11" : "0.07"}
+                  />
+                </g>
+              )}
+              {selectedOpening && (
+                <circle cx={opening.x} cy={opening.y} r="0.26" fill="#f97316" stroke="#fff" strokeWidth="0.06" pointerEvents="none" />
+              )}
             </g>
           );
         })}

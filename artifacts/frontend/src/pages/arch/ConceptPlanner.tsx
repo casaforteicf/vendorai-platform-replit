@@ -209,6 +209,7 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
+  const [interactionMode, setInteractionMode] = useState<"room" | "opening">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
@@ -370,6 +371,13 @@ export default function ConceptPlanner() {
 
   const updateRoomById = (roomId: string, patch: Partial<Room>) => {
     setRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, ...patch } : room)));
+  };
+
+  const updateOpeningById = (openingId: string, patch: OpeningOverride) => {
+    setOpeningOverrides((prev) => ({
+      ...prev,
+      [openingId]: patch,
+    }));
   };
 
   const organize = (variant = layoutVariant) => {
@@ -972,7 +980,27 @@ export default function ConceptPlanner() {
                       </div>
                     </div>
                     {editorView === "plan" && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex rounded-lg border bg-background p-1">
+                          <button
+                            type="button"
+                            onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); }}
+                            className={interactionMode === "room"
+                              ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Ambientes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setInteractionMode("opening"); setSelectedId(null); }}
+                            className={interactionMode === "opening"
+                              ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Portas e janelas
+                          </button>
+                        </div>
                         {[
                           ["A", "Social"],
                           ["B", "Privacidade"],
@@ -1001,11 +1029,23 @@ export default function ConceptPlanner() {
                         lotDepth={lotDepth}
                         geometry={geometry}
                         selectedId={selectedId}
-                        onSelect={setSelectedId}
+                        onSelect={(roomId) => {
+                          setSelectedId(roomId);
+                          setSelectedOpeningId(null);
+                        }}
                         onRoomChange={updateRoomById}
+                        selectedOpeningId={selectedOpeningId}
+                        onSelectOpening={(openingId) => {
+                          setSelectedOpeningId(openingId);
+                          setSelectedId(null);
+                        }}
+                        onOpeningChange={updateOpeningById}
+                        interactionMode={interactionMode}
                       />
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
-                        Arrastar = mover · 8 alças laranja = ajustar paredes · snap magnético + grade de 25 cm · paredes e vãos recalculam automaticamente.
+                        {interactionMode === "room"
+                          ? "Ambientes: arraste para mover · 8 alças laranja ajustam paredes · snap magnético + grade de 25 cm."
+                          : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
                       </div>
                     </>
                   )}
@@ -1051,7 +1091,52 @@ export default function ConceptPlanner() {
 
                 {editorView === "plan" && (
                   <>
-                    {!selected ? (
+                    {interactionMode === "opening" ? (
+                      !selectedOpening ? (
+                        <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                          Selecione uma porta ou janela na planta para mover ou alterar o tipo.
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-4">
+                          <div className="rounded-xl bg-muted p-3">
+                            <div className="font-semibold">{selectedOpening.type === "door" ? "Porta" : "Janela"}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Arraste na planta ou use o ajuste fino abaixo.
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => moveOpening(-0.25)}
+                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                            >
+                              − 25 cm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveOpening(0.25)}
+                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                            >
+                              + 25 cm
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={toggleOpeningType}
+                            className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                          >
+                            Trocar para {selectedOpening.type === "door" ? "janela" : "porta"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOpeningId(null)}
+                            className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold text-muted-foreground"
+                          >
+                            Fechar seleção
+                          </button>
+                        </div>
+                      )
+                    ) : !selected ? (
                       <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                         Selecione um ambiente na planta para editar medidas, posição e bloqueio.
                       </div>
@@ -1113,6 +1198,7 @@ export default function ConceptPlanner() {
                       </div>
                     )}
 
+                    {interactionMode === "room" && (
                     <div className="mt-5 border-t pt-4">
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-semibold">Validação</div>
@@ -1140,6 +1226,7 @@ export default function ConceptPlanner() {
                         {layoutIssues.length === 0 && <div className="text-xs text-emerald-700">Sem conflitos básicos detectados.</div>}
                       </div>
                     </div>
+                    )}
                   </>
                 )}
 
