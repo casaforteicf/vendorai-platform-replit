@@ -24,6 +24,14 @@ export const formaPagamentoPropostaEnum = pgEnum("forma_pagamento_proposta", [
   "a_combinar",
 ]);
 
+export const propostaItemExecucaoStatusSchema = z.enum([
+  "pendente",
+  "em_execucao",
+  "concluida",
+]);
+
+export type PropostaItemExecucaoStatus = z.infer<typeof propostaItemExecucaoStatusSchema>;
+
 export const propostaItemSchema = z.object({
   nome: z.string().min(1),
   quantidade: z.number().positive(),
@@ -31,6 +39,13 @@ export const propostaItemSchema = z.object({
   sku: z.string().optional(),
   descricao: z.string().optional(),
   unidade: z.string().optional(),
+  // Ordem operacional do item depois que o orçamento é vendido.
+  // O orçamento comercial continua sendo o snapshot original; a execução
+  // avança item a item sem apagar histórico.
+  ordemExecucao: z.number().int().positive().optional(),
+  statusExecucao: propostaItemExecucaoStatusSchema.optional(),
+  iniciadoEm: z.string().datetime().optional(),
+  executadoEm: z.string().datetime().optional(),
   // Referência opcional à composição de obra que originou o item.
   // O preço do orçamento é um snapshot e não muda quando a composição muda depois.
   composicaoId: z.string().optional(),
