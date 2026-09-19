@@ -204,7 +204,6 @@ export default function ConceptPlan2D({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!gesture || !onRoomChange) return;
     const point = toSvgPoint(event.clientX, event.clientY);
     if (interactionMode === "draw-wall" && wallDrawStart) {
       const snapped = clampPoint(point);
@@ -214,6 +213,7 @@ export default function ConceptPlan2D({
         ? { x: snapped.x, y: wallDrawStart.y }
         : { x: wallDrawStart.x, y: snapped.y });
     }
+    if (!gesture || !onRoomChange) return;
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
 
