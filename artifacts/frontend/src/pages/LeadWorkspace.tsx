@@ -108,7 +108,22 @@ export default function LeadWorkspace() {
   const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId) } });
   const createDeal = useCreateDeal({ request });
   const updateStage = useUpdatePipelineStage();
-  const deal = useMemo(() => deals.find((d) => d.id === requestedDealId) ?? deals.find((d) => !["ganho", "perdido", "entregue", "concluido", "cancelado"].includes(d.etapa)) ?? deals[0] ?? null, [deals, requestedDealId]);
+  const deal = useMemo(() => {
+    const requested = deals.find((d) => d.id === requestedDealId);
+    if (requested) return requested;
+
+    // A API retorna por createdAt crescente. Depois de retomar Aquecimento,
+    // o card antigo continua no histórico e um novo deal comercial é criado.
+    // Preferimos o ciclo comercial ativo mais recente para não reabrir o
+    // aquecimento já concluído e criar ciclos duplicados.
+    const newestFirst = [...deals].reverse();
+    const terminal = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
+    return newestFirst.find((d) => !terminal.has(d.etapa) && !["em_aquecimento", "parceiro"].includes(d.etapa))
+      ?? newestFirst.find((d) => d.etapa === "em_aquecimento" && d.relationshipStage !== "aquecimento_retomado")
+      ?? newestFirst.find((d) => !terminal.has(d.etapa))
+      ?? newestFirst[0]
+      ?? null;
+  }, [deals, requestedDealId]);
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
