@@ -283,6 +283,25 @@ export default function ConceptDerivedFacade({
   const buildingHeight = STORY_HEIGHT * floors;
   const buildingTop = groundY - buildingHeight;
 
+  const groundLevel = levels.find((level) => level.floor === 0);
+  const frontWallCandidates = [
+    ...(groundLevel?.walls ?? []).filter((wall) => Math.abs(wall.y1 - wall.y2) < 0.05),
+    ...(groundLevel?.customWalls ?? []).filter((wall) => Math.abs(wall.y1 - wall.y2) < 0.05),
+  ];
+  const frontY = frontWallCandidates.length
+    ? Math.min(...frontWallCandidates.map((wall) => (wall.y1 + wall.y2) / 2))
+    : groundLevel?.closedSpaces.length
+      ? Math.min(...groundLevel.closedSpaces.map((space) => space.bounds.y))
+      : null;
+  const frontOpenings = frontY == null
+    ? []
+    : (groundLevel?.openings ?? [])
+        .filter((opening) => opening.orientation === "horizontal" && Math.abs(opening.y - frontY) <= 0.45)
+        .sort((a, b) => a.x - b.x);
+  const frontDoors = frontOpenings.filter((opening) => opening.type === "door");
+  const frontWindows = frontOpenings.filter((opening) => opening.type === "window");
+  const verticalScale = STORY_HEIGHT / 2.8;
+
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!drag || drag.pointerId !== event.pointerId || !onVolumeChange) return;
     const rect = svgRef.current?.getBoundingClientRect();
@@ -598,54 +617,62 @@ export default function ConceptDerivedFacade({
           <line x1={garageDoorX + garageW / 2} y1={groundTop + 5.1} x2={garageDoorX + garageW / 2} y2={groundY} />
         </g>
 
-        <rect
-          x={entryX}
-          y={groundY - 14.8}
-          width={entryW}
-          height="14.8"
-          rx="0.35"
-          fill={entranceFill}
-          stroke={selectedSurface === "entrance" ? "#f97316" : colors.frame}
-          strokeWidth={selectedSurface === "entrance" ? "1.05" : "0.65"}
-          className={onSelectSurface ? "cursor-pointer" : undefined}
-          onClick={(event) => {
-            if (!onSelectSurface) return;
-            event.stopPropagation();
-            onSelectSurface("entrance");
-            onSelectVolume?.(null);
-          }}
-        />
-        <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill="#43545d" opacity="0.78" />
-        <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill="#d9c7b2" />
-
-        <Window
-          x={socialGlassX}
-          y={groundTop + 5.1}
-          width={socialGlassW}
-          height="8.8"
-          frame={colors.frame}
-          id="derived-facade-glass"
-        />
-        {onSelectSurface && (
-          <rect
-            x={socialGlassX - 0.5}
-            y={groundTop + 4.6}
-            width={socialGlassW + 1}
-            height="9.8"
-            rx="0.35"
-            fill="transparent"
-            stroke={selectedSurface === "frames" ? "#f97316" : "transparent"}
-            strokeWidth={selectedSurface === "frames" ? "0.9" : "0"}
-            className="cursor-pointer"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelectSurface("frames");
-              onSelectVolume?.(null);
-            }}
-          />
+        {frontDoors.length === 0 && (
+          <>
+            <rect
+              x={entryX}
+              y={groundY - 14.8}
+              width={entryW}
+              height="14.8"
+              rx="0.35"
+              fill={entranceFill}
+              stroke={selectedSurface === "entrance" ? "#f97316" : colors.frame}
+              strokeWidth={selectedSurface === "entrance" ? "1.05" : "0.65"}
+              className={onSelectSurface ? "cursor-pointer" : undefined}
+              onClick={(event) => {
+                if (!onSelectSurface) return;
+                event.stopPropagation();
+                onSelectSurface("entrance");
+                onSelectVolume?.(null);
+              }}
+            />
+            <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill="#43545d" opacity="0.78" />
+            <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill="#d9c7b2" />
+          </>
         )}
 
-        {floors === 1 && privateGround.map((room, index) => {
+        {frontWindows.length === 0 && (
+          <>
+            <Window
+              x={socialGlassX}
+              y={groundTop + 5.1}
+              width={socialGlassW}
+              height="8.8"
+              frame={colors.frame}
+              id="derived-facade-glass"
+            />
+            {onSelectSurface && (
+              <rect
+                x={socialGlassX - 0.5}
+                y={groundTop + 4.6}
+                width={socialGlassW + 1}
+                height="9.8"
+                rx="0.35"
+                fill="transparent"
+                stroke={selectedSurface === "frames" ? "#f97316" : "transparent"}
+                strokeWidth={selectedSurface === "frames" ? "0.9" : "0"}
+                className="cursor-pointer"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectSurface("frames");
+                  onSelectVolume?.(null);
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {frontWindows.length === 0 && floors === 1 && privateGround.map((room, index) => {
           const width = clamp(mapW(room.width) * 0.52, 9, 15);
           const x = clamp(mapX(room.x) + mapW(room.width) / 2 - width / 2, baseX + 3, baseX + facadeWidth - width - 3);
           const overlapsMain = x < socialGlassX + socialGlassW + 2 && x + width > socialGlassX - 2;
@@ -678,6 +705,63 @@ export default function ConceptDerivedFacade({
               frame={colors.frame}
               id="derived-facade-glass"
             />
+          );
+        })}
+
+        {frontOpenings.map((opening) => {
+          const widthMeters = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
+          const heightMeters = Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
+          const sillMeters = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
+          const width = clamp(mapW(widthMeters), opening.type === "door" ? 5 : 6, opening.type === "door" ? 18 : 22);
+          const height = Math.max(4.2, heightMeters * verticalScale);
+          const x = clamp(mapX(opening.x) - width / 2, baseX + 1, baseX + facadeWidth - width - 1);
+          const y = groundY - (sillMeters + heightMeters) * verticalScale;
+
+          if (opening.type === "door") {
+            return (
+              <g
+                key={opening.id}
+                className={onSelectSurface ? "cursor-pointer" : undefined}
+                onClick={(event) => {
+                  if (!onSelectSurface) return;
+                  event.stopPropagation();
+                  onSelectSurface("entrance");
+                  onSelectVolume?.(null);
+                }}
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={width}
+                  height={height}
+                  rx="0.28"
+                  fill={entranceFill}
+                  stroke={selectedSurface === "entrance" ? "#f97316" : frameColor}
+                  strokeWidth={selectedSurface === "entrance" ? "1" : "0.62"}
+                />
+                {opening.openingStyle === "sliding" && (
+                  <line x1={x + width / 2} y1={y} x2={x + width / 2} y2={y + height} stroke={frameColor} strokeWidth="0.4" />
+                )}
+              </g>
+            );
+          }
+
+          return (
+            <g
+              key={opening.id}
+              className={onSelectSurface ? "cursor-pointer" : undefined}
+              onClick={(event) => {
+                if (!onSelectSurface) return;
+                event.stopPropagation();
+                onSelectSurface("frames");
+                onSelectVolume?.(null);
+              }}
+            >
+              <Window x={x} y={y} width={width} height={height} frame={frameColor} id="derived-facade-glass" />
+              {selectedSurface === "frames" && (
+                <rect x={x - 0.35} y={y - 0.35} width={width + 0.7} height={height + 0.7} rx="0.35" fill="none" stroke="#f97316" strokeWidth="0.75" />
+              )}
+            </g>
           );
         })}
 
