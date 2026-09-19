@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as XLSX from "xlsx";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListInsumos,
@@ -14,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet, AlertCircle } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet, AlertCircle, Maximize2, Minimize2 } from "lucide-react";
 import type { Insumo } from "@workspace/api-client-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +24,80 @@ const CATEGORIAS_PADRAO = ["Alvenaria", "Concreto", "Cobertura", "Elétrica", "H
 const NOVA_CATEGORIA_VALUE = "__nova_categoria__";
 
 const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx"];
+
+type ImportRow = {
+  codigo?: string;
+  nome: string;
+  descricao?: string;
+  unidade: string;
+  precoUnitario?: string;
+  categoria?: string;
+};
+
+function authHeaders() {
+  const token = localStorage.getItem("vendorai_token");
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function normalizeImportRows(rows: Record<string, string>[]): ImportRow[] {
+  return rows
+    .map((row) => {
+      const nome = row.nome?.trim() ?? "";
+      const unidade = row.unidade?.trim() ?? "";
+      const precoUnitario = csvDecimal(row.preco_unitario);
+      return {
+        ...(row.codigo?.trim() ? { codigo: row.codigo.trim() } : {}),
+        nome,
+        ...(row.descricao?.trim() ? { descricao: row.descricao.trim() } : {}),
+        unidade,
+        ...(precoUnitario ? { precoUnitario } : {}),
+        ...(row.categoria?.trim() ? { categoria: row.categoria.trim() } : {}),
+      };
+    })
+    .filter((row) => row.nome && row.unidade);
+}
+
+async function readSpreadsheet(file: File): Promise<ImportRow[]> {
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  const rows = isExcel
+    ? (() => {
+        const workbookPromise = file.arrayBuffer().then((buffer) => XLSX.read(buffer, { type: "array" }));
+        return workbookPromise.then((workbook) => {
+          const sheetName = workbook.SheetNames[0];
+          if (!sheetName) return [];
+          const sheet = workbook.Sheets[sheetName];
+          return parseConstructionCsv(XLSX.utils.sheet_to_csv(sheet, { FS: ";" }));
+        });
+      })()
+    : Promise.resolve(parseConstructionCsv(await file.text()));
+
+  return normalizeImportRows(await rows);
+}
+
+function exportInsumos(items: Insumo[], format: "csv" | "xlsx") {
+  const data = items.map((item) => ({
+    codigo: item.codigo ?? "",
+    nome: item.nome,
+    descricao: item.descricao ?? "",
+    unidade: item.unidade,
+    preco_unitario: item.precoUnitario ?? "",
+    categoria: item.categoria ?? "",
+  }));
+  const sheet = XLSX.utils.json_to_sheet(data);
+  const date = new Date().toISOString().slice(0, 10);
+
+  if (format === "xlsx") {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Insumos");
+    XLSX.writeFile(workbook, `insumos-${date}.xlsx`);
+    return;
+  }
+
+  downloadCsvTemplate(`insumos-${date}.csv`, XLSX.utils.sheet_to_csv(sheet, { FS: ";" }));
+}
 
 function InsumoForm({
   initial,
@@ -161,8 +236,12 @@ export default function Insumos() {
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [priceTableOpen, setPriceTableOpen] = useState(false);
+  const [priceTableFullscreen, setPriceTableFullscreen] = useState(false);
+  const [priceSearch, setPriceSearch] = useState("");
+  const [priceCategory, setPriceCategory] = useState("all");
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [priceSaving, setPriceSaving] = useState(false);
   const { toast } = useToast();
@@ -186,37 +265,35 @@ export default function Insumos() {
     await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
   }
 
-  async function handleCsvImport() {
-    if (!importFile || !tenantId) return;
-    setImporting(true);
+  async function handleImportFile(file: File | null) {
+    setImportFile(file);
+    setImportPreview([]);
+    if (!file) return;
+
     try {
-      const rows = parseConstructionCsv(await importFile.text());
-      if (!rows.length) throw new Error("O CSV está vazio ou não possui cabeçalho.");
-
-      const normalizedRows = rows
-        .map((row) => {
-          const nome = row.nome?.trim() ?? "";
-          const unidade = row.unidade?.trim() ?? "";
-          const precoUnitario = csvDecimal(row.preco_unitario);
-          return {
-            ...(row.codigo?.trim() ? { codigo: row.codigo.trim() } : {}),
-            nome,
-            ...(row.descricao?.trim() ? { descricao: row.descricao.trim() } : {}),
-            unidade,
-            ...(precoUnitario ? { precoUnitario } : {}),
-            ...(row.categoria?.trim() ? { categoria: row.categoria.trim() } : {}),
-          };
-        })
-        .filter((row) => row.nome && row.unidade);
-
-      if (!normalizedRows.length) {
+      const rows = await readSpreadsheet(file);
+      if (!rows.length) {
         throw new Error("Nenhuma linha válida encontrada. Confira as colunas nome e unidade.");
       }
+      setImportPreview(rows);
+    } catch (error) {
+      setImportFile(null);
+      toast({
+        title: "Não foi possível ler a planilha",
+        description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.",
+        variant: "destructive",
+      });
+    }
+  }
 
+  async function handleSpreadsheetImport() {
+    if (!importFile || !tenantId || !importPreview.length) return;
+    setImporting(true);
+    try {
       const response = await fetch(`/api/tenants/${tenantId}/insumos/importar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: normalizedRows }),
+        headers: authHeaders(),
+        body: JSON.stringify({ rows: importPreview }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -238,9 +315,10 @@ export default function Insumos() {
       });
       setImportOpen(false);
       setImportFile(null);
+      setImportPreview([]);
     } catch (error) {
       toast({
-        title: "Não foi possível importar o CSV",
+        title: "Não foi possível importar a planilha",
         description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.",
         variant: "destructive",
       });
@@ -300,11 +378,26 @@ export default function Insumos() {
 
   const filtered = insumos.filter((i) => {
     if (catFilter !== "all" && i.categoria !== catFilter) return false;
-    if (search && !i.nome.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const term = search.toLowerCase();
+      if (
+        !i.nome.toLowerCase().includes(term)
+        && !(i.codigo ?? "").toLowerCase().includes(term)
+        && !(i.descricao ?? "").toLowerCase().includes(term)
+      ) return false;
+    }
     return true;
   });
 
   const categorias = [...new Set(insumos.map((i) => i.categoria).filter(Boolean))] as string[];
+  const priceFiltered = insumos.filter((i) => {
+    if (priceCategory !== "all" && i.categoria !== priceCategory) return false;
+    if (priceSearch) {
+      const term = priceSearch.toLowerCase();
+      if (!i.nome.toLowerCase().includes(term) && !(i.codigo ?? "").toLowerCase().includes(term)) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -318,41 +411,101 @@ export default function Insumos() {
         </div>
         <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" className="gap-2" onClick={openPriceTable}>
-          <FileSpreadsheet className="h-4 w-4" />Tabela mestre de preços
+          <FileSpreadsheet className="h-4 w-4" />Tabela mestre
         </Button>
-        <Dialog open={priceTableOpen} onOpenChange={setPriceTableOpen}>
-          <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Tabela Mestre de Preços</DialogTitle>
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => exportInsumos(filtered, "csv")} disabled={!filtered.length}>
+          <Download className="h-4 w-4" />Exportar CSV
+        </Button>
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => exportInsumos(filtered, "xlsx")} disabled={!filtered.length}>
+          <FileSpreadsheet className="h-4 w-4" />Exportar Excel
+        </Button>
+        <Dialog open={priceTableOpen} onOpenChange={(open) => {
+          setPriceTableOpen(open);
+          if (!open) setPriceTableFullscreen(false);
+        }}>
+          <DialogContent
+            className={priceTableFullscreen
+              ? "!w-screen !h-screen !max-w-none !max-h-none rounded-none overflow-hidden flex flex-col"
+              : "!w-[96vw] !max-w-[1500px] h-[88vh] max-h-[92vh] overflow-hidden flex flex-col"}
+          >
+            <DialogHeader className="pr-10">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <DialogTitle>Tabela Mestre de Preços</DialogTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">{priceFiltered.length} de {insumos.length} insumos</p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => setPriceTableFullscreen((value) => !value)}>
+                  {priceTableFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  {priceTableFullscreen ? "Restaurar" : "Tela cheia"}
+                </Button>
+              </div>
             </DialogHeader>
             <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-              Alterar um preço aqui atualiza o custo do insumo, recalcula as composições dependentes e os orçamentos em rascunho.
+              Alterar um preço atualiza o custo do insumo, recalcula composições dependentes e orçamentos em rascunho.
               Orçamentos enviados recebem aviso de preço desatualizado; aprovados permanecem congelados.
             </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(260px,1fr)_240px_auto_auto_auto]">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome ou código..."
+                  className="pl-8"
+                  value={priceSearch}
+                  onChange={(e) => setPriceSearch(e.target.value)}
+                />
+              </div>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={priceCategory}
+                onChange={(e) => setPriceCategory(e.target.value)}
+              >
+                <option value="all">Todas as categorias</option>
+                {categorias.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+              </select>
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => exportInsumos(priceFiltered, "csv")} disabled={!priceFiltered.length}>
+                <Download className="h-4 w-4" />CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => exportInsumos(priceFiltered, "xlsx")} disabled={!priceFiltered.length}>
+                <FileSpreadsheet className="h-4 w-4" />Excel
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => {
+                setPriceTableOpen(false);
+                setImportOpen(true);
+              }}>
+                <Upload className="h-4 w-4" />Importar
+              </Button>
+            </div>
             <div className="overflow-auto border rounded-lg flex-1 min-h-0">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-background border-b">
+              <table className="w-full min-w-[980px] text-sm">
+                <thead className="sticky top-0 z-10 bg-background border-b shadow-sm">
                   <tr>
-                    <th className="text-left px-3 py-2">Código</th>
-                    <th className="text-left px-3 py-2">Insumo</th>
-                    <th className="text-left px-3 py-2">Un.</th>
-                    <th className="text-left px-3 py-2">Categoria</th>
-                    <th className="text-right px-3 py-2 w-44">Preço mestre (R$)</th>
+                    <th className="text-left px-4 py-3 w-32">Código</th>
+                    <th className="text-left px-4 py-3 min-w-72">Insumo</th>
+                    <th className="text-left px-4 py-3 w-24">Un.</th>
+                    <th className="text-left px-4 py-3 min-w-52">Categoria</th>
+                    <th className="text-left px-4 py-3 w-40">Atualizado</th>
+                    <th className="text-right px-4 py-3 w-56">Preço mestre (R$)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {insumos.map((item) => (
-                    <tr key={item.id} className="border-b last:border-0">
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{item.codigo ?? "—"}</td>
-                      <td className="px-3 py-2 font-medium">{item.nome}</td>
-                      <td className="px-3 py-2">{item.unidade}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{item.categoria ?? "—"}</td>
-                      <td className="px-3 py-2">
+                  {priceFiltered.map((item) => (
+                    <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.codigo ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{item.nome}</div>
+                        {item.descricao && <div className="max-w-xl truncate text-xs text-muted-foreground">{item.descricao}</div>}
+                      </td>
+                      <td className="px-4 py-3">{item.unidade}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{item.categoria ?? "—"}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {(item as any).updatedAt ? new Date((item as any).updatedAt).toLocaleDateString("pt-BR") : "—"}
+                      </td>
+                      <td className="px-4 py-3">
                         <Input
                           type="number"
                           min="0"
                           step="0.0001"
-                          className="h-8 text-right font-mono"
+                          className="h-9 text-right font-mono"
                           value={priceDrafts[item.id] ?? ""}
                           onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                           placeholder="0,00"
@@ -363,23 +516,87 @@ export default function Insumos() {
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setPriceTableOpen(false)} disabled={priceSaving}>Cancelar</Button>
-              <Button onClick={savePriceTable} disabled={priceSaving}>
-                {priceSaving ? "Atualizando preços..." : "Salvar e recalcular"}
-              </Button>
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <p className="text-xs text-muted-foreground">Alterações só são aplicadas ao clicar em “Salvar e recalcular”.</p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setPriceTableOpen(false)} disabled={priceSaving}>Cancelar</Button>
+                <Button onClick={savePriceTable} disabled={priceSaving}>
+                  {priceSaving ? "Atualizando preços..." : "Salvar e recalcular"}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
-        <Dialog open={importOpen} onOpenChange={setImportOpen}>
-          <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar CSV</Button></DialogTrigger>
-          <DialogContent className="w-full max-w-lg">
-            <DialogHeader><DialogTitle>Importar insumos por CSV</DialogTitle></DialogHeader>
-            <div className="space-y-4 text-sm">
-              <p className="text-muted-foreground">Use uma linha por insumo. Separadores vírgula, ponto e vírgula e tabulação são aceitos.</p>
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-insumos.csv", "codigo;nome;descricao;unidade;preco_unitario;categoria\nMAT-001;Cimento CP II;Saco 50 kg;sc;39,90;Concreto\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
-              <Input type="file" accept=".csv,text/csv" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
-              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setImportOpen(false)}>Cancelar</Button><Button onClick={handleCsvImport} disabled={!importFile || importing}>{importing ? "Importando..." : "Importar"}</Button></div>
+        <Dialog open={importOpen} onOpenChange={(open) => {
+          setImportOpen(open);
+          if (!open) {
+            setImportFile(null);
+            setImportPreview([]);
+          }
+        }}>
+          <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar planilha</Button></DialogTrigger>
+          <DialogContent className="!w-[92vw] !max-w-5xl max-h-[88vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Importar insumos e preços</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Aceita CSV, XLSX e XLS. O código é a chave principal: código existente atualiza o insumo; código novo cria um novo cadastro.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-insumos.csv", "codigo;nome;descricao;unidade;preco_unitario;categoria\nMAT-001;Cimento CP II;Saco 50 kg;sc;39,90;Concreto\n")}>
+                  <Download className="h-4 w-4" />Baixar modelo CSV
+                </Button>
+                <span className="text-xs text-muted-foreground">Campos: código, nome, descrição, unidade, preço unitário e categoria.</span>
+              </div>
+              <Input
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={(e) => void handleImportFile(e.target.files?.[0] ?? null)}
+              />
+              {importFile && (
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <span className="font-medium">{importFile.name}</span>
+                  <span className="ml-2 text-muted-foreground">• {importPreview.length} linha(s) válida(s)</span>
+                </div>
+              )}
+            </div>
+            {importPreview.length > 0 && (
+              <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-lg border">
+                <table className="w-full min-w-[760px] text-xs">
+                  <thead className="sticky top-0 bg-background border-b">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Código</th>
+                      <th className="px-3 py-2 text-left">Nome</th>
+                      <th className="px-3 py-2 text-left">Un.</th>
+                      <th className="px-3 py-2 text-left">Categoria</th>
+                      <th className="px-3 py-2 text-right">Preço</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.slice(0, 50).map((row, index) => (
+                      <tr key={`${row.codigo ?? row.nome}-${index}`} className="border-b last:border-0">
+                        <td className="px-3 py-2 font-mono text-muted-foreground">{row.codigo ?? "—"}</td>
+                        <td className="px-3 py-2 font-medium">{row.nome}</td>
+                        <td className="px-3 py-2">{row.unidade}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{row.categoria ?? "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono">{row.precoUnitario ? `R$ ${Number(row.precoUnitario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {importPreview.length > 50 && (
+                  <div className="border-t bg-muted/20 px-3 py-2 text-center text-xs text-muted-foreground">
+                    Prévia das primeiras 50 linhas. Serão processadas {importPreview.length} linhas.
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-3">
+              <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancelar</Button>
+              <Button onClick={handleSpreadsheetImport} disabled={!importFile || !importPreview.length || importing}>
+                {importing ? "Importando..." : `Importar ${importPreview.length || ""} linha(s)`}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -396,19 +613,20 @@ export default function Insumos() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-56">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_260px_auto] md:items-center">
+        <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar insumo..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder="Buscar por nome, código ou descrição..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {[{ value: "all", label: "Todos" }, ...categorias.map((c) => ({ value: c, label: c }))].map((opt) => (
-            <button key={opt.value} onClick={() => setCatFilter(opt.value)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${catFilter === opt.value ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <select
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+          value={catFilter}
+          onChange={(e) => setCatFilter(e.target.value)}
+        >
+          <option value="all">Todas as categorias</option>
+          {categorias.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+        </select>
+        <div className="text-sm text-muted-foreground md:text-right">{filtered.length} de {insumos.length}</div>
       </div>
 
       {/* Table / Cards */}
@@ -431,7 +649,7 @@ export default function Insumos() {
           <p className="font-medium">Nenhum insumo encontrado</p>
         </div>
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <CardContent className="p-0">
             {/* Mobile cards */}
             <div className="md:hidden divide-y">
@@ -483,10 +701,10 @@ export default function Insumos() {
               ))}
             </div>
             {/* Desktop table */}
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block max-h-[calc(100vh-315px)] min-h-[420px] overflow-auto">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
+                <thead className="sticky top-0 z-10 bg-background">
+                  <tr className="border-b bg-muted/30 shadow-sm">
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nome</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Categoria</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Unidade</th>
