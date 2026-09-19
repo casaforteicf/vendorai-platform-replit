@@ -1882,7 +1882,7 @@ export default function ConceptPlanner() {
               className="fixed -left-[9999px] top-0 h-[650px] w-[900px] overflow-hidden"
               aria-hidden="true"
             >
-              <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+              <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={rooms} facade={facadePreferences} />
             </div>
 
             <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
