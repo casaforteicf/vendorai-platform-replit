@@ -1,0 +1,19 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY artifacts/frontend/package.json artifacts/frontend/package.json
+COPY lib/api-client-react/package.json lib/api-client-react/package.json
+COPY lib/vendor-brain/package.json lib/vendor-brain/package.json
+
+RUN pnpm install --no-frozen-lockfile
+
+COPY . .
+
+RUN pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/components/ui/dialog.test.tsx
+RUN pnpm --filter @workspace/frontend build
+
+CMD ["sh", "-c", "pnpm --filter @workspace/frontend serve --host 0.0.0.0 --port ${PORT:-3000}"]
