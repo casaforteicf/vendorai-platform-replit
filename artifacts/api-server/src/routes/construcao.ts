@@ -11,7 +11,6 @@ import {
   db,
   obrasTable,
   tenantsTable,
-  usersTable,
   obraEtapasTable,
   obraEtapaMedicoesTable,
   obraDiarioTable,
@@ -74,36 +73,26 @@ function canAccessTenant(req: Express.Request, tid: string) {
   return isSuperAdmin(req) || tenantId(req) === tid;
 }
 
-// ─── Gate de vertical e posse: todas as rotas com :tenantId exigem
-// vertical de construção e confirmam o tenant ATUAL do usuário no banco.
-// Isso também corrige sessões cujo JWT ainda carrega um tenantId antigo após
-// migração/troca de tenant: a posse é validada no banco antes de sincronizar
-// o contexto da requisição, sem ampliar acesso entre empresas.
+// ─── Gate de vertical e escopo: todas as rotas com :tenantId exigem
+// vertical de construção e respeitam o tenant autenticado no JWT.
+// O tenant-path-guard já rejeita qualquer tenant diferente do token antes
+// de chegar aqui. Não validamos users.tenantId porque a troca oficial de
+// tenant em /auth/switch-tenant emite um novo JWT sem regravar o tenant-base
+// do usuário; exigir igualdade com users.tenantId quebrava todo tenant alternado.
 router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
   if (isSuperAdmin(req)) return next();
 
+  if (!canAccessTenant(req, tid)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   const [scope] = await db
-    .select({
-      vertical: tenantsTable.vertical,
-      userTenantId: usersTable.tenantId,
-      userActive: usersTable.active,
-    })
+    .select({ vertical: tenantsTable.vertical })
     .from(tenantsTable)
-    .leftJoin(usersTable, eq(usersTable.id, req.user?.sub ?? ""))
     .where(eq(tenantsTable.id, tid));
 
   if (!scope?.vertical || !scope.vertical.toLowerCase().includes("constru")) {
     return res.status(403).json({ error: "Acesso restrito à vertical de construção civil." });
-  }
-
-  // tenant-audit: reviewed — o usuário autenticado precisa pertencer no banco
-  // exatamente ao tenant da URL; JWT antigo só é sincronizado depois dessa prova.
-  if (!scope.userActive || scope.userTenantId !== tid) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  if (req.user?.tenantId !== tid) {
-    req.user.tenantId = tid;
   }
 
   return next();
@@ -1014,8 +1003,8 @@ const importInsumosEmLoteSchema = z.object({
 });
 
 router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
-  // router.param("tenantId") confirma vertical e posse atual no banco.
-  // tenant-audit: reviewed tenant da rota já foi validado contra o usuário atual no banco antes deste handler
+  // router.param("tenantId") confirma vertical e escopo do tenant autenticado.
+  // tenant-audit: reviewed — o tenant da rota já foi validado contra o JWT antes deste handler
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
