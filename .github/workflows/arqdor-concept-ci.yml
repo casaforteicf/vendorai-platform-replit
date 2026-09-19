@@ -58,24 +58,61 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        id: install
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --no-frozen-lockfile 2>&1 | tee arqdor-concept-install.log
 
       - name: Concept frontend tests
-        run: >-
-          pnpm --filter @workspace/frontend exec vitest run
-          --config vitest.config.ts
-          src/pages/arch/ConceptPlanner.integration.test.tsx
-          src/pages/arch/conceptEditorState.test.ts
-          src/pages/arch/conceptMaterials.test.ts
-          src/pages/arch/conceptModel.test.ts
-          src/pages/arch/conceptObjects.test.ts
-          src/pages/arch/conceptOpenings.test.ts
-          src/pages/arch/conceptRoof.test.ts
-          src/pages/arch/conceptStairs.test.ts
-          src/pages/arch/conceptValidation.test.ts
-          src/pages/arch/conceptViewport.test.ts
+        id: frontend
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @workspace/frontend exec vitest run \
+            --config vitest.config.ts \
+            src/pages/arch/ConceptPlanner.integration.test.tsx \
+            src/pages/arch/conceptEditorState.test.ts \
+            src/pages/arch/conceptMaterials.test.ts \
+            src/pages/arch/conceptModel.test.ts \
+            src/pages/arch/conceptObjects.test.ts \
+            src/pages/arch/conceptOpenings.test.ts \
+            src/pages/arch/conceptRoof.test.ts \
+            src/pages/arch/conceptStairs.test.ts \
+            src/pages/arch/conceptValidation.test.ts \
+            src/pages/arch/conceptViewport.test.ts \
+            2>&1 | tee arqdor-concept-frontend.log
 
       - name: Concept promotion tests
-        run: >-
-          pnpm --filter @workspace/api-server exec vitest run
-          src/lib/arch-concept-promotion.test.ts
+        id: promotion
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @workspace/api-server exec vitest run \
+            src/lib/arch-concept-promotion.test.ts \
+            2>&1 | tee arqdor-concept-promotion.log
+
+      - name: Upload Concept CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arqdor-concept-ci-logs
+          path: |
+            arqdor-concept-install.log
+            arqdor-concept-frontend.log
+            arqdor-concept-promotion.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Enforce Concept gate
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.frontend.outcome }}" = "success"
+          test "${{ steps.promotion.outcome }}" = "success"
