@@ -281,16 +281,33 @@ function createRoom(kind: RoomKind, floor = 0): Room {
 
 const SINGLETON_ROOM_KINDS = new Set<RoomKind>(["sala", "cozinha", "garagem", "lavanderia", "gourmet", "piscina"]);
 
+function normalizeStairRoom(room: Room): Room {
+  if (room.kind !== "escada") return room;
+  const params = normalizeStairParameters(room);
+  return {
+    ...room,
+    stairShape: params.stairShape,
+    stairDirection: params.stairDirection,
+    stairFloorToFloorHeight: params.stairFloorToFloorHeight,
+    stairRiserCount: params.stairRiserCount,
+    stairTreadDepth: params.stairTreadDepth,
+    stairFlightWidth: params.stairFlightWidth,
+    stairLandingDepth: params.stairLandingDepth,
+  };
+}
+
 function normalizeDraftRooms(input: Room[]) {
   const singletonKinds = SINGLETON_ROOM_KINDS;
   const seen = new Set<string>();
-  return input.filter((room) => {
-    if (!singletonKinds.has(room.kind)) return true;
-    const key = `${room.floor}:${room.kind}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return input
+    .map(normalizeStairRoom)
+    .filter((room) => {
+      if (!singletonKinds.has(room.kind)) return true;
+      const key = `${room.floor}:${room.kind}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function autoArrange(rooms: Room[], lotWidth: number, lotDepth: number, floor: number) {
@@ -355,7 +372,7 @@ export default function ConceptPlanner() {
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("room");
-  const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
+  const [rooms, setRooms] = useState<Room[]>(() => normalizeDraftRooms(buildTypologyRooms("terrea_3q") as Room[]));
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
   const customOpeningsRef = useRef<CustomOpening[]>([]);
@@ -463,6 +480,7 @@ export default function ConceptPlanner() {
   const saveConcept = async (stepOverride?: number) => {
     setSaveState("saving");
     const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
+    const persistedRooms = normalizeDraftRooms(rooms);
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",
@@ -479,7 +497,7 @@ export default function ConceptPlanner() {
         customOpenings: persistedCustomOpenings,
         spaceProfiles,
       },
-      rooms,
+      rooms: persistedRooms,
       openingOverrides,
       customerProfile,
       facadePreferences,
@@ -555,7 +573,7 @@ export default function ConceptPlanner() {
     setCustomWalls([]);
     setCustomOpenings([]);
     setSpaceProfiles([]);
-    setRooms(nextRooms);
+    setRooms(normalizeDraftRooms(nextRooms));
   };
 
   const toggleLayoutPreference = (key: LayoutPreferenceKey) => {

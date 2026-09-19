@@ -33,6 +33,11 @@ describe("concept stairs", () => {
     expect(params.treadCount).toBe(16);
   });
 
+  it("limita a largura do lance ao envelope disponível", () => {
+    const params = normalizeStairParameters({ ...stair, width: 0.9, depth: 1.2, stairFlightWidth: 2 });
+    expect(params.stairFlightWidth).toBe(0.9);
+  });
+
   it("não permite altura piso a piso menor que a altura estrutural atual", () => {
     expect(normalizeStairParameters({ ...stair, stairFloorToFloorHeight: 2.4 }).stairFloorToFloorHeight).toBe(2.96);
   });
