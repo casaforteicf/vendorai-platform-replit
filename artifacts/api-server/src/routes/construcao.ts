@@ -1014,8 +1014,8 @@ const importInsumosEmLoteSchema = z.object({
 });
 
 router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
-  // tenant-audit: reviewed — router.param("tenantId") confirma vertical e
-  // posse atual no banco; canAccessTenant confirma o contexto sincronizado.
+  // router.param("tenantId") confirma vertical e posse atual no banco.
+  // tenant-audit: reviewed tenant da rota já foi validado contra o usuário atual no banco antes deste handler
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
