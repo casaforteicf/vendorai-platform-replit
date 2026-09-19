@@ -27,7 +27,7 @@ const router: IRouter = Router();
 
 // App Builder é uma ferramenta de autoria da plataforma. Tenants recebem
 // instâncias configuradas, mas não administram templates/registries globais.
-router.use(requireRole("super_admin"));
+router.use("/admin/app-builder", requireRole("super_admin"));
 
 const slugSchema = z
   .string()
