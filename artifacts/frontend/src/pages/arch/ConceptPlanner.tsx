@@ -2367,10 +2367,10 @@ export default function ConceptPlanner() {
                       <div className="text-xs text-muted-foreground">
                         {editorView === "plan"
                           ? wallFirstActive
-                            ? "Modo wall-first ativo: ambientes, 3D e fachada são derivados da rede de paredes."
+                            ? "Desenhe as paredes e feche os ambientes. O 3D acompanha a planta automaticamente."
                             : "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
                           : editorView === "model3d"
-                            ? "O 3D é reconstruído automaticamente a partir da mesma rede de paredes e espaços fechados."
+                            ? "Veja em 3D exatamente o que foi desenhado na planta, sem criar um modelo separado."
                             : editorView === "facade"
                               ? "A fachada é derivada da mesma geometria 2D/3D, incluindo pavimentos e vãos do projeto."
                               : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
@@ -2447,143 +2447,6 @@ export default function ConceptPlanner() {
                         >
                           Cotas {showDimensions ? "✓" : ""}
                         </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {editorView === "plan" && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className={closedSpaces.length
-                          ? "rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
-                          : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground"}
-                        >
-                          {closedSpaces.length
-                            ? `${closedSpaces.length} área${closedSpaces.length > 1 ? "s" : ""} fechada${closedSpaces.length > 1 ? "s" : ""} · ${closedArea.toFixed(1)} m²`
-                            : "Nenhuma área fechada"}
-                        </div>
-                        <div className="rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
-                          {customWallTopology.nodes.filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2).length} junções · {customWallTopology.segments.length} segmentos topológicos
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setShowDimensions((value) => !value)}
-                          className={showDimensions
-                            ? "rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800"
-                            : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground"}
-                        >
-                          Cotas {showDimensions ? "ligadas" : "desligadas"}
-                        </button>
-                        {wallFirstActive ? (
-                          <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
-                            <span>Rede de paredes = modelo principal</span>
-                            <button
-                              type="button"
-                              onClick={deactivateWallFirstFloor}
-                              className="rounded-md border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
-                            >
-                              Reverter
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={activateWallFirstFloor}
-                            className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
-                          >
-                            Usar paredes como modelo principal
-                          </button>
-                        )}
-                        <div className="inline-flex rounded-lg border bg-background p-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setInteractionMode("navigate");
-                              setSelectedId(null);
-                              setSelectedClosedSpaceId(null);
-                              setSelectedOpeningId(null);
-                              setSelectedWallId(null);
-                              setSelectedCustomWallId(null);
-                            }}
-                            className={interactionMode === "navigate"
-                              ? "rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
-                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
-                          >
-                            Navegar
-                          </button>
-                          {!wallFirstActive && (
-                          <button
-                            type="button"
-                            onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
-                            className={interactionMode === "room"
-                              ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
-                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
-                          >
-                            Ambientes
-                          </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setInteractionMode("space");
-                              setSelectedId(null);
-                              setSelectedOpeningId(null);
-                              setSelectedWallId(null);
-                              setSelectedCustomWallId(null);
-                            }}
-                            className={interactionMode === "space"
-                              ? "rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
-                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
-                          >
-                            Espaços
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setInteractionMode("wall"); setSelectedId(null); setSelectedOpeningId(null); }}
-                            className={interactionMode === "wall"
-                              ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
-                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
-                          >
-                            Paredes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setInteractionMode("draw-wall"); setSelectedId(null); setSelectedWallId(null); setSelectedCustomWallId(null); setSelectedOpeningId(null); }}
-                            className={interactionMode === "draw-wall"
-                              ? "rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white"
-                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
-                          >
-                            Desenhar parede
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setInteractionMode("opening"); setSelectedId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
-                            className={interactionMode === "opening"
-                              ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
-                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
-                          >
-                            Portas e janelas
-                          </button>
-                        </div>
-                        {!wallFirstActive && (
-                          <>
-                        {[
-                          ["A", "Social"],
-                          ["B", "Privacidade"],
-                          ["C", "Lazer"],
-                        ].map(([label, subtitle], index) => (
-                          <button
-                            key={label}
-                            type="button"
-                            onClick={() => organize(index)}
-                            className={layoutVariant === index
-                              ? "rounded-lg border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold"
-                              : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold"}
-                          >
-                            {label} · {subtitle}
-                          </button>
-                        ))}
-                          </>
-                        )}
                       </div>
                     )}
                   </div>
