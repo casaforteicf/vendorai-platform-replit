@@ -1492,11 +1492,23 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos", async (req, res) => {
     .where(and(eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   const nextVersao = (maxRow?.v ?? 0) + 1;
 
+  const [tabelaPadrao] = await db
+    .select({ id: tabelasPrecosObrasTable.id })
+    .from(tabelasPrecosObrasTable)
+    .where(and(
+      eq(tabelasPrecosObrasTable.tenantId, tid),
+      eq(tabelasPrecosObrasTable.isPadrao, true),
+      eq(tabelasPrecosObrasTable.ativo, true),
+    ));
+
   const parsed = insertObraOrcamentoSchema.safeParse({
     ...req.body,
     tenantId: tid,
     obraId,
     versao: nextVersao,
+    tabelaPrecoId: tabelaPadrao?.id ?? null,
+    precosDesatualizados: false,
+    precosAtualizadosEm: new Date(),
   });
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
