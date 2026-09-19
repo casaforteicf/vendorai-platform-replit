@@ -209,6 +209,29 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   return res.json(updated);
 });
 
+type ConceptPromotedMaterialRef = {
+  id: string;
+  name: string;
+  category: string;
+  manufacturer?: string;
+  finish?: string;
+  color: string;
+  secondaryColor?: string;
+  edgeColor?: string;
+  gloss?: number;
+  pattern: string;
+  libraryMaterialId?: string;
+};
+
+type ConceptPromotedMaterialScheme = {
+  floor: ConceptPromotedMaterialRef;
+  floorByLevel?: Record<string, ConceptPromotedMaterialRef>;
+  interiorWall: ConceptPromotedMaterialRef;
+  exteriorWall: ConceptPromotedMaterialRef;
+  roof: ConceptPromotedMaterialRef;
+  stair: ConceptPromotedMaterialRef;
+};
+
 type ConceptPromotedObject = {
   id: string;
   presetId?: string;
@@ -287,6 +310,64 @@ async function syncConceptObjectsToProject(
     locked: object.locked ?? false,
   })));
 }
+
+function collectConceptMaterials(scheme: ConceptPromotedMaterialScheme | undefined) {
+  if (!scheme) return [] as Array<{ material: ConceptPromotedMaterialRef; usedBy: string[] }>;
+  const entries = new Map<string, { material: ConceptPromotedMaterialRef; usedBy: string[] }>();
+  const add = (material: ConceptPromotedMaterialRef | undefined, usedBy: string) => {
+    if (!material?.id || !material?.name) return;
+    const existing = entries.get(material.id);
+    if (existing) {
+      if (!existing.usedBy.includes(usedBy)) existing.usedBy.push(usedBy);
+      return;
+    }
+    entries.set(material.id, { material, usedBy: [usedBy] });
+  };
+
+  add(scheme.floor, "surface:floor:default");
+  for (const [floor, material] of Object.entries(scheme.floorByLevel ?? {})) {
+    add(material, `surface:floor:${floor}`);
+  }
+  add(scheme.interiorWall, "surface:interior_wall");
+  add(scheme.exteriorWall, "surface:exterior_wall");
+  add(scheme.roof, "surface:roof");
+  add(scheme.stair, "surface:stair");
+
+  return [...entries.values()];
+}
+
+async function syncConceptMaterialsToProject(
+  projectId: string,
+  scheme: ConceptPromotedMaterialScheme | undefined,
+) {
+  await db
+    .delete(arqMaterialsTable)
+    .where(and(
+      eq(arqMaterialsTable.projetoId, projectId),
+      ilike(arqMaterialsTable.materialClientId, "concept-material-%"),
+    ));
+
+  const materials = collectConceptMaterials(scheme);
+  if (!materials.length) return;
+
+  await db.insert(arqMaterialsTable).values(materials.map(({ material, usedBy }) => ({
+    projetoId: projectId,
+    materialClientId: `concept-material-${material.id}`,
+    name: material.name,
+    category: material.category,
+    manufacturer: material.manufacturer ?? "",
+    finish: material.finish ?? "",
+    gloss: material.gloss ?? 0,
+    palette: [material.color, material.secondaryColor, material.edgeColor].filter((value): value is string => Boolean(value)),
+    usedByObjects: [
+      "source:arqdor_concept",
+      `pattern:${material.pattern}`,
+      ...(material.libraryMaterialId ? [`library_material:${material.libraryMaterialId}`] : []),
+      ...usedBy,
+    ],
+  })));
+}
+
 router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
@@ -311,9 +392,11 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     floors?: number;
     desiredArea?: number;
     objects?: ConceptPromotedObject[];
+    materials?: ConceptPromotedMaterialScheme;
   };
   const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
   const conceptObjects = Array.isArray(config.objects) ? config.objects : [];
+  const conceptMaterials = config.materials;
 
   if (concept.archProjetoId) {
     const [existingProject] = await db
@@ -328,7 +411,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       .limit(1);
 
     if (existingProject) {
-      await syncConceptObjectsToProject(existingProject.id, conceptObjects, rooms);
+      await Promise.all([
+        syncConceptObjectsToProject(existingProject.id, conceptObjects, rooms),
+        syncConceptMaterialsToProject(existingProject.id, conceptMaterials),
+      ]);
       return res.json({
         ok: true,
         alreadyPromoted: true,
@@ -360,6 +446,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     .filter(Boolean)
     .slice(0, 30)
     .join(", ");
+  const materialSummary = collectConceptMaterials(conceptMaterials)
+    .map(({ material, usedBy }) => `${material.name} [${usedBy.join(", ")}]`)
+    .join("; ");
 
   let leadId: string | null = null;
   let dealId: string | null = null;
@@ -465,6 +554,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `Área desejada: ${config.desiredArea ?? "—"} m².`,
     roomSummary ? `Ambientes: ${roomSummary}.` : null,
     objectSummary ? `Móveis/objetos do Concept: ${objectSummary}.` : null,
+    materialSummary ? `Materialidade do Concept: ${materialSummary}.` : null,
     typeof facade.style === "string" ? `Estilo: ${facade.style}.` : null,
     typeof facade.roof === "string"
       ? [
@@ -502,7 +592,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     })
     .returning();
 
-  await syncConceptObjectsToProject(project.id, conceptObjects, rooms);
+  await Promise.all([
+    syncConceptObjectsToProject(project.id, conceptObjects, rooms),
+    syncConceptMaterialsToProject(project.id, conceptMaterials),
+  ]);
 
   await db
     .update(archConceptProjectsTable)

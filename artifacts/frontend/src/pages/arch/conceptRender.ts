@@ -1,5 +1,11 @@
 import type { ConceptFacadePreferences, VolumetryRoom } from "./ConceptVolumetry";
 import { normalizeRoofParameters } from "./conceptRoof";
+import {
+  conceptFloorMaterial,
+  materialPrompt,
+  normalizeConceptMaterialScheme,
+  type ConceptMaterialScheme,
+} from "./conceptMaterials";
 
 export type ConceptRenderBriefInput = {
   lotWidth: number;
@@ -8,6 +14,7 @@ export type ConceptRenderBriefInput = {
   desiredArea: number;
   rooms: VolumetryRoom[];
   facade: ConceptFacadePreferences;
+  materials: ConceptMaterialScheme;
 };
 
 const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
@@ -54,6 +61,10 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
   const pool = input.rooms.find((room) => room.kind === "piscina");
   const facade = input.facade;
   const roof = normalizeRoofParameters(facade);
+  const materials = normalizeConceptMaterialScheme(input.materials);
+  const floorMaterials = Array.from({ length: input.floors }, (_, floor) =>
+    `floor ${floor + 1}: ${materialPrompt(conceptFloorMaterial(materials, floor))}`
+  ).join("; ");
   const roofDetails = roof.roof === "platibanda"
     ? `parapet height ${roof.roofParapetHeight.toFixed(2)} m`
     : [
@@ -76,6 +87,8 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     `Roof: ${roofLabel[facade.roof]}; ${roofDetails}.`,
     `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
     `Facade tone: ${facade.facadeTone}. Frames: ${frameLabel[facade.frameTone]}.`,
+    `Material scheme — floors: ${floorMaterials}. Interior walls: ${materialPrompt(materials.interiorWall)}. Exterior walls: ${materialPrompt(materials.exteriorWall)}. Stairs: ${materialPrompt(materials.stair)}. Roof finish: ${materialPrompt(materials.roof)}.`,
+    "Respect these specified materials and colors wherever their corresponding modeled surfaces are visible. Do not substitute unrelated finishes.",
     `Landscaping intensity: ${facade.landscaping}. Use realistic Brazilian residential landscaping without blocking the architecture.`,
     pool
       ? `Preserve the pool exactly at its modeled position and approximate size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m.`
