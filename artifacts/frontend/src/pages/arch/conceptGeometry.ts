@@ -182,6 +182,7 @@ function sortForVariant<T extends ConceptRoomShape>(rooms: T[], variant: number)
 
   return [...rooms].sort((a, b) => {
     const score = (room: ConceptRoomShape) => {
+      if (room.kind === "garagem") return -10;
       if (variant === 0) {
         if (service.has(room.kind)) return 0;
         if (social.has(room.kind)) return 1;
@@ -235,6 +236,19 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
     ));
   };
 
+  const touchesBuilding = (room: ConceptRoomShape, x: number, y: number) => {
+    if (occupied.length === 0) return true;
+    return occupied.some((box) => {
+      const verticalTouch =
+        (nearly(x + room.width, box.x1) || nearly(x, box.x2)) &&
+        overlap(y, y + room.depth, box.y1, box.y2) >= 0.8;
+      const horizontalTouch =
+        (nearly(y + room.depth, box.y1) || nearly(y, box.y2)) &&
+        overlap(x, x + room.width, box.x1, box.x2) >= 0.8;
+      return verticalTouch || horizontalTouch;
+    });
+  };
+
   const targetFor = (room: ConceptRoomShape) => {
     const front = 0.6;
     const middle = Math.max(1, lotDepth * 0.34);
@@ -261,7 +275,7 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
 
     for (let y = 0; y <= Math.max(0, lotDepth - room.depth) + EPS; y += candidateStep) {
       for (let x = 0; x <= Math.max(0, lotWidth - room.width) + EPS; x += candidateStep) {
-        if (!fits(room, x, y)) continue;
+        if (!fits(room, x, y) || !touchesBuilding(room, x, y)) continue;
         const dx = x - target.x;
         const dy = y - target.y;
         candidates.push({ x, y, distance: dx * dx + dy * dy });
