@@ -62,6 +62,22 @@ type OpeningOverride = {
   type: "door" | "window";
 };
 
+type CustomWall = {
+  id: string;
+  floor: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness?: number;
+};
+
+type EditorSnapshot = {
+  rooms: Room[];
+  customWalls: CustomWall[];
+  openingOverrides: Record<string, OpeningOverride>;
+};
+
 type CustomerProfile = {
   name?: string;
   phone?: string;
@@ -219,15 +235,17 @@ export default function ConceptPlanner() {
   const [interactionMode, setInteractionMode] = useState<"room" | "wall" | "opening" | "draw-wall">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
-  const editStartRef = useRef<Room[] | null>(null);
-  const [roomHistory, setRoomHistory] = useState<Room[][]>([]);
-  const [roomFuture, setRoomFuture] = useState<Room[][]>([]);
+  const customWallsRef = useRef<CustomWall[]>([]);
+  const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
+  const editStartRef = useRef<EditorSnapshot | null>(null);
+  const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
+  const [roomFuture, setRoomFuture] = useState<EditorSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
-  const [customWalls, setCustomWalls] = useState<Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>>([]);
+  const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -242,6 +260,14 @@ export default function ConceptPlanner() {
   useEffect(() => {
     roomsRef.current = rooms;
   }, [rooms]);
+
+  useEffect(() => {
+    customWallsRef.current = customWalls;
+  }, [customWalls]);
+
+  useEffect(() => {
+    openingOverridesRef.current = openingOverrides;
+  }, [openingOverrides]);
 
   useEffect(() => {
     let cancelled = false;
@@ -358,23 +384,47 @@ export default function ConceptPlanner() {
     setLayoutPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const snapshotRooms = (source: Room[] = roomsRef.current) =>
-    source.map((room) => ({ ...room }));
+  const snapshotEditor = (): EditorSnapshot => ({
+    rooms: roomsRef.current.map((room) => ({ ...room })),
+    customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
+    openingOverrides: Object.fromEntries(
+      Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
+    ),
+  });
 
-  const pushRoomHistory = (before: Room[]) => {
-    setRoomHistory((history) => [...history.slice(-39), snapshotRooms(before)]);
+  const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
+    rooms: snapshot.rooms.map((room) => ({ ...room })),
+    customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
+    openingOverrides: Object.fromEntries(
+      Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
+    ),
+  });
+
+  const restoreSnapshot = (snapshot: EditorSnapshot) => {
+    const cloned = cloneSnapshot(snapshot);
+    setRooms(cloned.rooms);
+    setCustomWalls(cloned.customWalls);
+    setOpeningOverrides(cloned.openingOverrides);
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedOpeningId(null);
+  };
+
+  const pushRoomHistory = (before: EditorSnapshot) => {
+    setRoomHistory((history) => [...history.slice(-39), cloneSnapshot(before)]);
     setRoomFuture([]);
   };
 
   const beginRoomEdit = () => {
-    if (!editStartRef.current) editStartRef.current = snapshotRooms();
+    if (!editStartRef.current) editStartRef.current = snapshotEditor();
   };
 
   const endRoomEdit = () => {
     const before = editStartRef.current;
     editStartRef.current = null;
     if (!before) return;
-    const after = roomsRef.current;
+    const after = snapshotEditor();
     if (JSON.stringify(before) !== JSON.stringify(after)) pushRoomHistory(before);
   };
 
@@ -382,11 +432,8 @@ export default function ConceptPlanner() {
     setRoomHistory((history) => {
       const previous = history[history.length - 1];
       if (!previous) return history;
-      setRoomFuture((future) => [snapshotRooms(), ...future].slice(0, 40));
-      setRooms(snapshotRooms(previous));
-      setSelectedId(null);
-      setSelectedWallId(null);
-      setSelectedOpeningId(null);
+      setRoomFuture((future) => [snapshotEditor(), ...future].slice(0, 40));
+      restoreSnapshot(previous);
       return history.slice(0, -1);
     });
   };
@@ -395,11 +442,8 @@ export default function ConceptPlanner() {
     setRoomFuture((future) => {
       const next = future[0];
       if (!next) return future;
-      setRoomHistory((history) => [...history.slice(-39), snapshotRooms()]);
-      setRooms(snapshotRooms(next));
-      setSelectedId(null);
-      setSelectedWallId(null);
-      setSelectedOpeningId(null);
+      setRoomHistory((history) => [...history.slice(-39), snapshotEditor()]);
+      restoreSnapshot(next);
       return future.slice(1);
     });
   };
@@ -510,8 +554,10 @@ export default function ConceptPlanner() {
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
 
-  const addCustomWall = (wall: { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }) => {
+  const addCustomWall = (wall: CustomWall) => {
+    const before = snapshotEditor();
     setCustomWalls((prev) => [...prev, wall]);
+    pushRoomHistory(before);
     setSelectedCustomWallId(wall.id);
     setSelectedWallId(null);
   };
@@ -524,7 +570,9 @@ export default function ConceptPlanner() {
   };
 
   const deleteCustomWall = (wallId: string) => {
+    const before = snapshotEditor();
     setCustomWalls((prev) => prev.filter((wall) => wall.id !== wallId));
+    pushRoomHistory(before);
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
 
@@ -586,20 +634,24 @@ export default function ConceptPlanner() {
 
   const moveOpening = (amount: number) => {
     if (!selectedOpening) return;
+    const before = snapshotEditor();
     const next = nudgeOpening(selectedOpening, amount, lotWidth, lotDepth);
     setOpeningOverrides((prev) => ({
       ...prev,
       [selectedOpening.id]: { x: next.x, y: next.y, type: next.type },
     }));
+    pushRoomHistory(before);
   };
 
   const toggleOpeningType = () => {
     if (!selectedOpening) return;
+    const before = snapshotEditor();
     const nextType = selectedOpening.type === "door" ? "window" : "door";
     setOpeningOverrides((prev) => ({
       ...prev,
       [selectedOpening.id]: { x: selectedOpening.x, y: selectedOpening.y, type: nextType },
     }));
+    pushRoomHistory(before);
   };
 
   const promoteToProject = async () => {
@@ -1203,6 +1255,7 @@ export default function ConceptPlanner() {
                         rooms={visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
+                        activeFloor={activeFloor}
                         geometry={geometry}
                         selectedId={selectedId}
                         onSelect={(roomId) => {
