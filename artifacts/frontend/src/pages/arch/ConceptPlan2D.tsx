@@ -107,7 +107,7 @@ export default function ConceptPlan2D({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [gesture, setGesture] = useState<null | {
     roomId: string;
-    mode: "move" | "resize";
+    mode: "move" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     startX: number;
     startY: number;
     roomX: number;
@@ -145,17 +145,61 @@ export default function ConceptPlan2D({
     if (gesture.mode === "move") {
       const room = rooms.find((item) => item.id === gesture.roomId);
       if (!room || room.locked) return;
-      onRoomChange(gesture.roomId, {
-        x: snap(Math.max(0, Math.min(lotWidth - room.width, gesture.roomX + dx))),
-        y: snap(Math.max(0, Math.min(lotDepth - room.depth, gesture.roomY + dy))),
-      });
+
+      let nextX = snap(Math.max(0, Math.min(lotWidth - room.width, gesture.roomX + dx)));
+      let nextY = snap(Math.max(0, Math.min(lotDepth - room.depth, gesture.roomY + dy)));
+
+      const snapDistance = 0.3;
+      const others = rooms.filter((item) => item.id !== room.id);
+      for (const other of others) {
+        const xCandidates = [
+          other.x,
+          other.x + other.width,
+          other.x - room.width,
+          other.x + other.width - room.width,
+        ];
+        const yCandidates = [
+          other.y,
+          other.y + other.depth,
+          other.y - room.depth,
+          other.y + other.depth - room.depth,
+        ];
+        for (const candidate of xCandidates) {
+          if (Math.abs(nextX - candidate) <= snapDistance) nextX = snap(candidate);
+        }
+        for (const candidate of yCandidates) {
+          if (Math.abs(nextY - candidate) <= snapDistance) nextY = snap(candidate);
+        }
+      }
+
+      onRoomChange(gesture.roomId, { x: nextX, y: nextY });
       return;
     }
 
-    onRoomChange(gesture.roomId, {
-      width: snap(Math.max(1, Math.min(lotWidth - gesture.roomX, gesture.roomWidth + dx))),
-      depth: snap(Math.max(1, Math.min(lotDepth - gesture.roomY, gesture.roomDepth + dy))),
-    });
+    const minSize = 1;
+    let x = gesture.roomX;
+    let y = gesture.roomY;
+    let width = gesture.roomWidth;
+    let depth = gesture.roomDepth;
+
+    if (gesture.mode.includes("e")) {
+      width = snap(Math.max(minSize, Math.min(lotWidth - x, gesture.roomWidth + dx)));
+    }
+    if (gesture.mode.includes("s")) {
+      depth = snap(Math.max(minSize, Math.min(lotDepth - y, gesture.roomDepth + dy)));
+    }
+    if (gesture.mode.includes("w")) {
+      const nextX = snap(Math.max(0, Math.min(gesture.roomX + gesture.roomWidth - minSize, gesture.roomX + dx)));
+      width = snap(gesture.roomWidth + (gesture.roomX - nextX));
+      x = nextX;
+    }
+    if (gesture.mode.includes("n")) {
+      const nextY = snap(Math.max(0, Math.min(gesture.roomY + gesture.roomDepth - minSize, gesture.roomY + dy)));
+      depth = snap(gesture.roomDepth + (gesture.roomY - nextY));
+      y = nextY;
+    }
+
+    onRoomChange(gesture.roomId, { x, y, width, depth });
   };
 
   return (
@@ -322,36 +366,48 @@ export default function ConceptPlan2D({
                 </>
               )}
               {selected && onRoomChange && !room.locked && (
-                <g
-                  role="button"
-                  aria-label="Redimensionar ambiente"
-                  className="cursor-nwse-resize"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                    const point = toSvgPoint(event.clientX, event.clientY);
-                    setGesture({
-                      roomId: room.id,
-                      mode: "resize",
-                      startX: point.x,
-                      startY: point.y,
-                      roomX: room.x,
-                      roomY: room.y,
-                      roomWidth: room.width,
-                      roomDepth: room.depth,
-                    });
-                  }}
-                >
-                  <rect
-                    x={room.x + room.width - 0.22}
-                    y={room.y + room.depth - 0.22}
-                    width="0.44"
-                    height="0.44"
-                    rx="0.08"
-                    fill="#f97316"
-                    stroke="#ffffff"
-                    strokeWidth="0.05"
-                  />
-                </g>
+                <>
+                  {([
+                    ["resize-nw", room.x, room.y, "cursor-nwse-resize"],
+                    ["resize-n", room.x + room.width / 2, room.y, "cursor-ns-resize"],
+                    ["resize-ne", room.x + room.width, room.y, "cursor-nesw-resize"],
+                    ["resize-e", room.x + room.width, room.y + room.depth / 2, "cursor-ew-resize"],
+                    ["resize-se", room.x + room.width, room.y + room.depth, "cursor-nwse-resize"],
+                    ["resize-s", room.x + room.width / 2, room.y + room.depth, "cursor-ns-resize"],
+                    ["resize-sw", room.x, room.y + room.depth, "cursor-nesw-resize"],
+                    ["resize-w", room.x, room.y + room.depth / 2, "cursor-ew-resize"],
+                  ] as const).map(([mode, hx, hy, cursor]) => (
+                    <g
+                      key={mode}
+                      role="button"
+                      aria-label="Redimensionar ambiente"
+                      className={cursor}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        const point = toSvgPoint(event.clientX, event.clientY);
+                        setGesture({
+                          roomId: room.id,
+                          mode,
+                          startX: point.x,
+                          startY: point.y,
+                          roomX: room.x,
+                          roomY: room.y,
+                          roomWidth: room.width,
+                          roomDepth: room.depth,
+                        });
+                      }}
+                    >
+                      <circle
+                        cx={hx}
+                        cy={hy}
+                        r="0.22"
+                        fill="#f97316"
+                        stroke="#ffffff"
+                        strokeWidth="0.06"
+                      />
+                    </g>
+                  ))}
+                </>
               )}
               {isPool && (
                 <>
