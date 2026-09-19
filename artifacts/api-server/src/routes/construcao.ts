@@ -1033,6 +1033,7 @@ router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
 // ─── Tabelas de Preços de Obras ───────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately by canAccessTenant before any tenant-scoped data access
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
@@ -1045,6 +1046,7 @@ router.get("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately by canAccessTenant before any tenant-scoped data access
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
@@ -1063,6 +1065,7 @@ router.post("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately by canAccessTenant before any tenant-scoped data access
   const { tenantId: tid, tabelaId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
@@ -1103,6 +1106,7 @@ router.get("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens", async (req
 });
 
 router.put("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens/:insumoId", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately by canAccessTenant before any tenant-scoped data access
   const { tenantId: tid, tabelaId, insumoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
@@ -1181,6 +1185,7 @@ router.put("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens/:insumoId", 
 });
 
 router.post("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/ativar", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately by canAccessTenant before any tenant-scoped data access
   const { tenantId: tid, tabelaId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
@@ -1237,6 +1242,7 @@ router.post("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/ativar", async (r
 });
 
 router.get("/tenants/:tenantId/insumos/:insumoId/precos-historico", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated immediately by canAccessTenant before any tenant-scoped data access
   const { tenantId: tid, insumoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
@@ -1535,6 +1541,7 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (re
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/recalcular-precos", async (req, res) => {
+  // tenant-audit: reviewed route tenant is validated by canAccessTenant and obra ownership before recalculation
   const { tenantId: tid, obraId, orcamentoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
