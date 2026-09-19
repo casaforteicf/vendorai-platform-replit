@@ -21,11 +21,12 @@ import {
   Printer,
   Send,
 } from "lucide-react";
-import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
+import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptFacadeElevation from "./ConceptFacadeElevation";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
+import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 
 type RoomKind =
@@ -309,11 +310,12 @@ export default function ConceptPlanner() {
 
     let nextRooms = buildTypologyRooms(nextTypology) as Room[];
     for (let floor = 0; floor < template.floors; floor += 1) {
-      nextRooms = generateLayoutVariant(
+      nextRooms = generateTypologyLayout(
         nextRooms,
         lotWidth,
         lotDepth,
         floor,
+        nextTypology,
         layoutVariant,
         layoutPreferences,
       ) as Room[];
@@ -344,7 +346,17 @@ export default function ConceptPlanner() {
 
   const organize = (variant = layoutVariant) => {
     setLayoutVariant(variant);
-    setRooms((prev) => generateLayoutVariant(prev, lotWidth, lotDepth, activeFloor, variant, layoutPreferences));
+    setRooms((prev) =>
+      generateTypologyLayout(
+        prev,
+        lotWidth,
+        lotDepth,
+        activeFloor,
+        typology,
+        variant,
+        layoutPreferences,
+      ),
+    );
   };
 
   const swapPosition = (room: Room, direction: "left" | "right" | "up" | "down") => {
