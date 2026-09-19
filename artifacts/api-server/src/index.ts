@@ -91,6 +91,17 @@ function isDuplicateMigrationCatalogError(err: unknown): boolean {
 
 async function runStartupMigrations(): Promise<boolean> {
   try {
+    const roleResult = await pool.query<{ current_user: string }>("select current_user");
+    const currentRole = roleResult.rows[0]?.current_user;
+
+    if (currentRole === "vendorai_app") {
+      await pool.query("select 1");
+      logger.info(
+        "startup migrations: runtime restrito vendorai_app detectado; migrations ficam a cargo do pipeline privilegiado",
+      );
+      return true;
+    }
+
     const result = await applyPendingMigrations(logger);
     if (result.applied.length > 0) {
       logger.info(
