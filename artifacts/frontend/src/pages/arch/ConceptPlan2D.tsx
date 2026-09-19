@@ -157,7 +157,6 @@ export default function ConceptPlan2D({
         onPointerMove={handlePointerMove}
         onPointerUp={() => setGesture(null)}
         onPointerCancel={() => setGesture(null)}
-        onPointerLeave={() => gesture && setGesture(null)}
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -378,6 +377,7 @@ export default function ConceptPlan2D({
             stroke={wall.exterior ? "#111827" : "#334155"}
             strokeWidth={wall.exterior ? "0.16" : "0.095"}
             strokeLinecap="square"
+            pointerEvents="none"
           />
         ))}
 
@@ -386,7 +386,7 @@ export default function ConceptPlan2D({
           const half = 0.62;
           const horizontal = opening.orientation === "horizontal";
           return (
-            <g key={opening.id}>
+            <g key={opening.id} pointerEvents="none">
               <line
                 x1={horizontal ? opening.x - half : opening.x}
                 y1={horizontal ? opening.y : opening.y - half}
@@ -407,7 +407,7 @@ export default function ConceptPlan2D({
           );
         })}
 
-        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" />
+        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" pointerEvents="none" />
       </svg>
     </div>
   );
