@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveAIKey } from "../lib/ai-gateway.js";
-import { and, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
+import { and, or, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
