@@ -27,7 +27,18 @@ function normalizeRuntimeConnectionString(value: string): string {
   if (!process.env.APP_DATABASE_URL) return value;
 
   try {
-    const url = new URL(value);
+    // Defensively recover from accidental copy/paste where two complete
+    // connection URLs were concatenated in the environment variable.
+    const firstSchemeEnd = value.indexOf("://");
+    const secondPostgresql = value.indexOf("postgresql://", firstSchemeEnd + 3);
+    const secondPostgres = value.indexOf("postgres://", firstSchemeEnd + 3);
+    const duplicateIndexes = [secondPostgresql, secondPostgres].filter((index) => index > 0);
+    const sanitizedValue =
+      duplicateIndexes.length > 0
+        ? value.slice(0, Math.min(...duplicateIndexes))
+        : value;
+
+    const url = new URL(sanitizedValue);
     let projectRef: string | null = null;
 
     if (url.username === "postgres") {
@@ -54,19 +65,6 @@ function normalizeRuntimeConnectionString(value: string): string {
 
 const connectionString = normalizeRuntimeConnectionString(rawConnectionString);
 
-try {
-  const diagnosticUrl = new URL(connectionString);
-  console.info("[db] connection target", {
-    protocol: diagnosticUrl.protocol,
-    username: diagnosticUrl.username,
-    hostname: diagnosticUrl.hostname,
-    port: diagnosticUrl.port || "(default)",
-    database: diagnosticUrl.pathname,
-    hasPassword: diagnosticUrl.password.length > 0,
-  });
-} catch {
-  console.info("[db] connection target could not be parsed");
-}
 
 // Pool sem `max` explícito cai no default do node-postgres (10 conexões
 // simultâneas). O front dispara ~10-15 chamadas em paralelo por troca de
