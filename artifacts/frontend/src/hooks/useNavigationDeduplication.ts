@@ -379,8 +379,12 @@ export function useNavigationDeduplication() {
         });
       });
 
-      applyCoreNavigationGroups();
-      applyCollapsibleSections();
+      // Desativado: o agrupamento sintético (criar botões/expandir seções
+      // via DOM direto) estava deixando os links reais de navegação
+      // inconsistentes/inclicáveis para alguns usuários. Os links originais,
+      // sem agrupamento visual, continuam funcionando normalmente.
+      // applyCoreNavigationGroups();
+      // applyCollapsibleSections();
 
       if (window.location.pathname === "/trabalho") {
         document.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
