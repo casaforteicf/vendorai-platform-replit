@@ -32,6 +32,8 @@ import {
   useCreateOrcamentoItem,
   useUpdateOrcamentoItem,
   useDeleteOrcamentoItem,
+  useListInsumos,
+  useListComposicoes,
   getGetObraQueryKey,
   getListObraEtapasQueryKey,
   getListObraDiarioQueryKey,
@@ -1648,8 +1650,17 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   const [editEtapaNome, setEditEtapaNome] = useState("");
 
   const [addingItemEtapaId, setAddingItemEtapaId] = useState<string | null>(null);
-  const [newItem, setNewItem] = useState({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" });
+  const [newItem, setNewItem] = useState({
+    nome: "",
+    unidade: "un",
+    quantidade: "1",
+    custoUnitario: "0",
+    bdi: "",
+    insumoId: "",
+    composicaoId: "",
+  });
   const [editingItem, setEditingItem] = useState<{ id: string; nome: string; unidade: string; quantidade: string; custoUnitario: string; bdi: string } | null>(null);
+  const [recalculatingPrices, setRecalculatingPrices] = useState(false);
 
   const [sinapiQuery, setSinapiQuery] = useState("");
   const [sinapiResults, setSinapiResults] = useState<Array<{ codigo: string; descricao: string; unidade: string; preco: number }>>([]);
@@ -1682,6 +1693,13 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
     setSinapiResults([]);
   }
 
+  const { data: insumosBase = [] } = useListInsumos(tenantId, {}, {
+    query: { enabled: !!tenantId },
+  });
+  const { data: composicoesBase = [] } = useListComposicoes(tenantId, {}, {
+    query: { enabled: !!tenantId },
+  });
+
   const { data: orcamentos = [] } = useListObraOrcamentos(tenantId, obraId, {
     query: { enabled: !!tenantId && !!obraId, queryKey: getListObraOrcamentosQueryKey(tenantId, obraId) },
   });
@@ -1706,7 +1724,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   const updateItem = useUpdateOrcamentoItem();
   const deleteItem = useDeleteOrcamentoItem();
 
-  const locked = orcamento?.status === "aprovado";
+  const locked = orcamento?.status === "aprovado" || orcamento?.status === "contratado";
 
   function handleCreateOrcamento() {
     createOrcamento.mutate(
@@ -1781,10 +1799,83 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
 
   function handleCreateItem(etapaId: string) {
     if (!selectedId) return;
+    const data = {
+      nome: newItem.nome,
+      unidade: newItem.unidade,
+      quantidade: newItem.quantidade,
+      custoUnitario: newItem.custoUnitario,
+      bdi: newItem.bdi || undefined,
+      ...(newItem.insumoId ? { insumoId: newItem.insumoId } : {}),
+      ...(newItem.composicaoId ? { composicaoId: newItem.composicaoId } : {}),
+    };
     createItem.mutate(
-      { tenantId, obraId, orcamentoId: selectedId, etapaId, data: { ...newItem, bdi: newItem.bdi || undefined } },
-      { onSuccess: () => { invalidateOrcamentos(); setAddingItemEtapaId(null); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }
+      { tenantId, obraId, orcamentoId: selectedId, etapaId, data: data as any },
+      {
+        onSuccess: () => {
+          invalidateOrcamentos();
+          setAddingItemEtapaId(null);
+          setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "", insumoId: "", composicaoId: "" });
+        },
+      }
     );
+  }
+
+  function applyMasterSource(value: string) {
+    if (!value || value === "manual") {
+      setNewItem((prev) => ({ ...prev, insumoId: "", composicaoId: "" }));
+      return;
+    }
+
+    const [kind, id] = value.split(":");
+    if (kind === "insumo") {
+      const item = insumosBase.find((entry) => entry.id === id);
+      if (!item) return;
+      setNewItem((prev) => ({
+        ...prev,
+        nome: item.nome,
+        unidade: item.unidade,
+        custoUnitario: item.precoUnitario ?? "0",
+        insumoId: item.id,
+        composicaoId: "",
+      }));
+    } else if (kind === "composicao") {
+      const item = composicoesBase.find((entry) => entry.id === id);
+      if (!item) return;
+      setNewItem((prev) => ({
+        ...prev,
+        nome: item.nome,
+        unidade: item.unidade,
+        custoUnitario: item.custoTotal ?? "0",
+        insumoId: "",
+        composicaoId: item.id,
+      }));
+    }
+  }
+
+  async function handleRecalculatePrices() {
+    if (!selectedId) return;
+    setRecalculatingPrices(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${selectedId}/recalcular-precos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || "Não foi possível recalcular os preços.");
+      invalidateOrcamentos();
+      toast({
+        title: "Preços do orçamento atualizados",
+        description: `${body.itensAtualizados ?? 0} item(ns) sincronizado(s) com a tabela mestre.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível atualizar os preços",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setRecalculatingPrices(false);
+    }
   }
 
   function handleSaveEditItem() {
@@ -2092,7 +2183,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
 
                   {/* Dialog: Adicionar item */}
                   {!locked && (
-                    <Dialog open={addingItemEtapaId === etapa.id} onOpenChange={(open) => { if (!open) { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }}>
+                    <Dialog open={addingItemEtapaId === etapa.id} onOpenChange={(open) => { if (!open) { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "", insumoId: "", composicaoId: "" }); } }}>
                       <DialogTrigger asChild>
                         <Button
                           size="sm"
@@ -2173,7 +2264,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                             </div>
                           </div>
                           <div className="flex justify-end gap-2 pt-1">
-                            <Button variant="outline" onClick={() => { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); }}>Cancelar</Button>
+                            <Button variant="outline" onClick={() => { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "", insumoId: "", composicaoId: "" }); }}>Cancelar</Button>
                             <Button onClick={() => handleCreateItem(etapa.id)} disabled={!newItem.nome.trim() || createItem.isPending}>
                               {createItem.isPending ? "Salvando…" : "Adicionar"}
                             </Button>
