@@ -1522,6 +1522,29 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (re
   return res.json({ ...orcamento, etapas });
 });
 
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/recalcular-precos", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [owned] = await db
+    .select({ id: obraOrcamentosTable.id })
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!owned) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  const result = await recalcularOrcamentoComTabelaAtual(tid, orcamentoId);
+  if (!result.ok && result.motivo === "locked") {
+    return res.status(409).json({ error: "Orçamento aprovado/contratado mantém o snapshot de preços e não pode ser recalculado." });
+  }
+  if (!result.ok) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  return res.json(result);
+});
+
 // GET /tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc
 router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc", async (req, res) => {
   const { tenantId: tid, obraId, orcamentoId } = req.params;
