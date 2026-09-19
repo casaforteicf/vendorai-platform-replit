@@ -7,6 +7,8 @@ import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlab
 
 export type ConceptModelLevel = {
   floor: number;
+  elevation: number;
+  floorToFloorHeight: number;
   walls: WallSegment[];
   customWalls: Array<{
     id: string;
@@ -37,7 +39,6 @@ type Point2 = { x: number; y: number };
 
 const WALL_HEIGHT = OPENING_WALL_HEIGHT;
 const FLOOR_THICKNESS = 0.16;
-const LEVEL_HEIGHT = WALL_HEIGHT + FLOOR_THICKNESS;
 
 function rotatePoint(x: number, y: number, rotationDegrees: number, lotWidth: number, lotDepth: number) {
   const cx = lotWidth / 2;
@@ -288,11 +289,14 @@ export default function ConceptModel3D({
     undefined,
   );
   const topBounds = roofBounds(topLevel);
-  const topZ = ((topLevel?.floor ?? 0) * LEVEL_HEIGHT) + WALL_HEIGHT + FLOOR_THICKNESS;
+  const topZ = (topLevel?.elevation ?? 0) + WALL_HEIGHT + FLOOR_THICKNESS;
 
-  const maxLevel = Math.max(0, ...levels.map((level) => level.floor));
+  const maxElevation = Math.max(
+    WALL_HEIGHT + FLOOR_THICKNESS,
+    ...levels.map((level) => level.elevation + WALL_HEIGHT + FLOOR_THICKNESS),
+  );
   const sceneWidth = Math.max(lotWidth, lotDepth) * 2.9 * zoom + 22;
-  const sceneHeight = Math.max(lotWidth, lotDepth) * 1.9 * zoom + (maxLevel + 1) * LEVEL_HEIGHT * 2.1 + 22;
+  const sceneHeight = Math.max(lotWidth, lotDepth) * 1.9 * zoom + maxElevation * 2.1 + 22;
 
   const wallCount = visibleLevels.reduce(
     (sum, level) => sum + level.walls.length + level.customWalls.length,
@@ -376,7 +380,7 @@ export default function ConceptModel3D({
         <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" stroke="#475569" strokeWidth="0.08" />
 
         {visibleLevels.map((level) => {
-          const levelBase = level.floor * LEVEL_HEIGHT;
+          const levelBase = level.elevation;
           const allWalls = [
             ...level.walls.map((wall) => ({
               id: wall.id,

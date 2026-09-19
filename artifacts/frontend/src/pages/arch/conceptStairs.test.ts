@@ -18,6 +18,11 @@ const stair = {
 };
 
 describe("concept stairs", () => {
+  it("usa U como configuração inicial para o envelope padrão da escada", () => {
+    const params = normalizeStairParameters(stair);
+    expect(params.stairShape).toBe("u");
+  });
+
   it("deriva espelho e quantidade de pisos do mesmo contrato", () => {
     const params = normalizeStairParameters({
       ...stair,
@@ -26,6 +31,10 @@ describe("concept stairs", () => {
     });
     expect(params.riserHeight).toBeCloseTo(2.96 / 17, 6);
     expect(params.treadCount).toBe(16);
+  });
+
+  it("não permite altura piso a piso menor que a altura estrutural atual", () => {
+    expect(normalizeStairParameters({ ...stair, stairFloorToFloorHeight: 2.4 }).stairFloorToFloorHeight).toBe(2.96);
   });
 
   it("recalcula degraus a partir de um espelho desejado", () => {

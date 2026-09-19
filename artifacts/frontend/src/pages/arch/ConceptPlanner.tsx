@@ -46,6 +46,7 @@ import {
   type OpeningParameters,
 } from "./conceptOpenings";
 import {
+  STAIR_LEVEL_HEIGHT,
   buildStairSlabOpenings,
   defaultStairSourceParameters,
   normalizeStairParameters,
@@ -969,6 +970,20 @@ export default function ConceptPlanner() {
   }, [closedSpaces, spaceProfiles, activeFloor]);
 
   const modelLevels = useMemo<ConceptModelLevel[]>(() => {
+    const floorToFloorHeight = (floorIndex: number) => {
+      const stair = rooms.find((room) => room.floor === floorIndex && room.kind === "escada");
+      return stair
+        ? normalizeStairParameters(stair).stairFloorToFloorHeight
+        : STAIR_LEVEL_HEIGHT;
+    };
+    const elevationAt = (floorIndex: number) => {
+      let elevation = 0;
+      for (let index = 0; index < floorIndex; index += 1) {
+        elevation += floorToFloorHeight(index);
+      }
+      return elevation;
+    };
+
     return Array.from({ length: floors }, (_, floorIndex) => {
       const base = buildConceptGeometry(rooms, lotWidth, lotDepth, floorIndex);
       const floorGeometry = {
@@ -1032,6 +1047,8 @@ export default function ConceptPlanner() {
 
       return {
         floor: floorIndex,
+        elevation: elevationAt(floorIndex),
+        floorToFloorHeight: floorToFloorHeight(floorIndex),
         walls: legacyWalls,
         customWalls: floorCustomWalls,
         closedSpaces: floorClosedSpaces,
@@ -2863,7 +2880,7 @@ export default function ConceptPlanner() {
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                               <label className="text-xs font-medium">Piso a piso (m)
-                                <input type="number" min="2.4" max="4.5" step="0.01" value={selectedStairParams.stairFloorToFloorHeight.toFixed(2)} onChange={(event) => updateSelected({ stairFloorToFloorHeight: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                                <input type="number" min="2.96" max="4.5" step="0.01" value={selectedStairParams.stairFloorToFloorHeight.toFixed(2)} onChange={(event) => updateSelected({ stairFloorToFloorHeight: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
                               </label>
                               <label className="text-xs font-medium">Nº de espelhos
                                 <input type="number" min="12" max="30" step="1" value={selectedStairParams.stairRiserCount} onChange={(event) => updateSelected({ stairRiserCount: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />

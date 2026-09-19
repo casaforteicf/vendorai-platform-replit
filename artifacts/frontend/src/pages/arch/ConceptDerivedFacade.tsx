@@ -9,7 +9,6 @@ type Props = {
 };
 
 const EPS = 0.08;
-const LEVEL_HEIGHT = 2.96;
 const WALL_HEIGHT = 2.8;
 
 function facadePalette(facade: ConceptFacadePreferences) {
@@ -150,7 +149,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
     : lotWidth;
   const roofX = baseX + topMinX * scaleX;
   const roofWidth = Math.max(16, (topMaxX - topMinX) * scaleX);
-  const roofY = groundY - maxFloor * LEVEL_HEIGHT * pxPerMeterY - WALL_HEIGHT * pxPerMeterY;
+  const roofY = groundY - (topLevel?.level.elevation ?? 0) * pxPerMeterY - WALL_HEIGHT * pxPerMeterY;
 
   return (
     <svg viewBox="0 0 120 76" className="block h-auto w-full" role="img" aria-label="Fachada derivada da geometria do pré-projeto">
@@ -179,7 +178,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
 
       <g filter="url(#derived-facade-shadow)">
         {usable.map(({ level, segments, frontY }) => {
-          const levelBottom = groundY - level.floor * LEVEL_HEIGHT * pxPerMeterY;
+          const levelBottom = groundY - level.elevation * pxPerMeterY;
           const levelTop = levelBottom - WALL_HEIGHT * pxPerMeterY;
           const minX = Math.min(...segments.flatMap((wall) => [wall.x1, wall.x2]));
           const maxX = Math.max(...segments.flatMap((wall) => [wall.x1, wall.x2]));

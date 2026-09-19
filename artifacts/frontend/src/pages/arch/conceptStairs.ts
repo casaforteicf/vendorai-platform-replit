@@ -76,7 +76,7 @@ function finiteOr(value: number | undefined, fallback: number) {
 
 export function defaultStairSourceParameters(): Required<StairParameters> {
   return {
-    stairShape: "straight",
+    stairShape: "u",
     stairDirection: "north",
     stairFloorToFloorHeight: STAIR_LEVEL_HEIGHT,
     stairRiserCount: 17,
@@ -99,7 +99,7 @@ export function normalizeStairParameters(source: StairParameters & Partial<Pick<
   const defaults = defaultStairParameters();
   const stairFloorToFloorHeight = clamp(
     finiteOr(source.stairFloorToFloorHeight, defaults.stairFloorToFloorHeight),
-    2.4,
+    STAIR_LEVEL_HEIGHT,
     4.5,
   );
   const stairRiserCount = Math.round(clamp(
@@ -139,7 +139,7 @@ export function normalizeStairParameters(source: StairParameters & Partial<Pick<
 }
 
 export function riserCountForTargetHeight(floorToFloorHeight: number, targetRiserHeight: number) {
-  const height = clamp(finiteOr(floorToFloorHeight, STAIR_LEVEL_HEIGHT), 2.4, 4.5);
+  const height = clamp(finiteOr(floorToFloorHeight, STAIR_LEVEL_HEIGHT), STAIR_LEVEL_HEIGHT, 4.5);
   const target = clamp(finiteOr(targetRiserHeight, 0.175), 0.12, 0.24);
   return Math.round(clamp(Math.round(height / target), 12, 30));
 }
