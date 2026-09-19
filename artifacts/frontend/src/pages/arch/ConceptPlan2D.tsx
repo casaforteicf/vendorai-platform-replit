@@ -279,17 +279,98 @@ export default function ConceptPlan2D({
     }
   }, [interactionMode]);
 
-  const margin = 2.4;
-  const fitView = useMemo(
-    () => ({
-      x: -margin,
-      y: -margin,
-      width: lotWidth + margin * 2,
-      height: lotDepth + margin * 2,
-    }),
-    [lotWidth, lotDepth],
-  );
-  const [view, setView] = useState(fitView);
+  const [viewportAspect, setViewportAspect] = useState(16 / 9);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || typeof ResizeObserver === "undefined") return;
+    const updateAspect = () => {
+      const rect = svg.getBoundingClientRect();
+      if (rect.width > 20 && rect.height > 20) {
+        setViewportAspect(Math.max(0.7, Math.min(3.2, rect.width / rect.height)));
+      }
+    };
+    updateAspect();
+    const observer = new ResizeObserver(updateAspect);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
+
+  const projectBounds = useMemo(() => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const include = (x: number, y: number) => {
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        xs.push(x);
+        ys.push(y);
+      }
+    };
+
+    rooms.forEach((room) => {
+      include(room.x, room.y);
+      include(room.x + room.width, room.y + room.depth);
+    });
+    geometry.walls.forEach((wall) => {
+      include(wall.x1, wall.y1);
+      include(wall.x2, wall.y2);
+    });
+    customWalls.forEach((wall) => {
+      include(wall.x1, wall.y1);
+      include(wall.x2, wall.y2);
+    });
+    closedSpaces.forEach((space) => {
+      include(space.bounds.x, space.bounds.y);
+      include(space.bounds.x + space.bounds.width, space.bounds.y + space.bounds.height);
+    });
+
+    if (!xs.length || !ys.length) {
+      return { minX: 0, minY: 0, maxX: lotWidth, maxY: lotDepth, hasProject: false };
+    }
+
+    return {
+      minX: Math.max(0, Math.min(...xs)),
+      minY: Math.max(0, Math.min(...ys)),
+      maxX: Math.min(lotWidth, Math.max(...xs)),
+      maxY: Math.min(lotDepth, Math.max(...ys)),
+      hasProject: true,
+    };
+  }, [rooms, geometry.walls, customWalls, closedSpaces, lotWidth, lotDepth]);
+
+  const fitView = useMemo(() => {
+    const margin = projectBounds.hasProject ? 1.35 : 2.4;
+    const centerX = (projectBounds.minX + projectBounds.maxX) / 2;
+    const centerY = (projectBounds.minY + projectBounds.maxY) / 2;
+    let width = Math.max(4, projectBounds.maxX - projectBounds.minX + margin * 2);
+    let height = Math.max(4, projectBounds.maxY - projectBounds.minY + margin * 2);
+
+    if (width / height > viewportAspect) {
+      height = width / viewportAspect;
+    } else {
+      width = height * viewportAspect;
+    }
+
+    return {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width,
+      height,
+    };
+  }, [projectBounds, viewportAspect]);
+
+  const workingView = useMemo(() => {
+    if (!projectBounds.hasProject) return fitView;
+    const rawWidth = Math.max(1, projectBounds.maxX - projectBounds.minX);
+    const rawHeight = Math.max(1, projectBounds.maxY - projectBounds.minY);
+    const tallRatio = rawHeight / rawWidth;
+    const scale = tallRatio > 2.2 ? 0.58 : tallRatio > 1.55 ? 0.7 : 0.88;
+    const width = fitView.width * scale;
+    const height = fitView.height * scale;
+    const centerX = (projectBounds.minX + projectBounds.maxX) / 2;
+    const centerY = (projectBounds.minY + projectBounds.maxY) / 2;
+    return { x: centerX - width / 2, y: centerY - height / 2, width, height };
+  }, [fitView, projectBounds]);
+
+  const [view, setView] = useState(workingView);
   const [panGesture, setPanGesture] = useState<null | {
     pointerId: number;
     startClientX: number;
@@ -298,14 +379,15 @@ export default function ConceptPlan2D({
     startViewY: number;
   }>(null);
 
+  const autoFitKey = `${activeFloor}:${rooms.length}:${customWalls.length}:${closedSpaces.length}:${geometry.walls.length}:${lotWidth}:${lotDepth}`;
   useEffect(() => {
-    setView(fitView);
-  }, [fitView.x, fitView.y, fitView.width, fitView.height]);
+    setView(workingView);
+  }, [autoFitKey, viewportAspect]);
 
   const zoomView = (factor: number, anchor?: { x: number; y: number }) => {
     setView((current) => {
-      const minWidth = Math.max(3, fitView.width * 0.18);
-      const maxWidth = fitView.width * 2.4;
+      const minWidth = Math.max(2.5, fitView.width * 0.16);
+      const maxWidth = Math.max(fitView.width * 2.8, lotWidth + 8);
       const nextWidth = Math.max(minWidth, Math.min(maxWidth, current.width * factor));
       const ratio = nextWidth / current.width;
       const nextHeight = current.height * ratio;
@@ -324,7 +406,7 @@ export default function ConceptPlan2D({
     });
   };
 
-  const resetView = () => setView(fitView);
+  const resetView = () => setView(workingView);
 
   const toSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -626,7 +708,7 @@ export default function ConceptPlan2D({
           type="button"
           onClick={resetView}
           className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-          title="Enquadrar planta"
+          title="Enquadrar construção"
         >
           <Maximize2 className="h-4 w-4" />
         </button>
