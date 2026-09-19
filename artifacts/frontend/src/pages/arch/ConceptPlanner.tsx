@@ -22,7 +22,7 @@ import {
   Send,
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
-import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
+import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptFacadeElevation from "./ConceptFacadeElevation";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
@@ -207,9 +207,6 @@ export default function ConceptPlanner() {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
-  const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
-  const [rotation, setRotation] = useState(45);
-  const [exploded3d, setExploded3d] = useState(false);
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
@@ -810,40 +807,25 @@ export default function ConceptPlanner() {
             <div className="rounded-3xl border bg-card p-4 shadow-sm">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-semibold">{viewMode === "2d" ? `Planta conceitual — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}` : "Volumetria 3D conceitual"}</div>
+                  <div className="font-semibold">Planta conceitual — {activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}</div>
                   <div className="text-xs text-muted-foreground">
-                    {viewMode === "2d"
-                      ? `Terreno ${lotWidth} × ${lotDepth} m · paredes, portas e janelas são calculadas a partir dos ambientes.`
-                      : "A volumetria usa exatamente os pavimentos, posições e dimensões da planta — sem inventar outra geometria."}
+                    Terreno {lotWidth} × {lotDepth} m · planta vetorial, cotas, portas, janelas e paredes.
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex rounded-xl border bg-background p-1">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("2d")}
-                      className={viewMode === "2d" ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
-                    >
-                      2D
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("3d")}
-                      className={viewMode === "3d" ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
-                    >
-                      3D
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => organize()} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white">
-                    <Sparkles className="h-4 w-4" /> Organizar para mim
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => organize()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  <Sparkles className="h-4 w-4" /> Recalcular
+                </button>
               </div>
+
               <div className="mb-4 grid gap-2 sm:grid-cols-3">
                 {[
                   ["Opção A", "Social integrada"],
                   ["Opção B", "Mais privacidade"],
-                  ["Opção C", "Lazer central"],
+                  ["Opção C", "Lazer valorizado"],
                 ].map(([title, subtitle], index) => (
                   <button
                     key={title}
@@ -856,63 +838,22 @@ export default function ConceptPlanner() {
                   </button>
                 ))}
               </div>
-              {viewMode === "2d" ? (
-                <div className="space-y-3">
-                  <ConceptPlan2D
-                    rooms={visibleRooms}
-                    lotWidth={lotWidth}
-                    lotDepth={lotDepth}
-                    geometry={geometry}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                  />
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-                    <span><strong className="text-slate-900">Planta conceitual</strong> cotas, paredes e ambientes</span>
-                    <span><strong className="text-slate-700">Portas</strong> com arco de abertura</span>
-                    <span><strong className="text-sky-700">Janelas</strong> em azul</span>
-                    <span><strong className="text-orange-600">Seleção</strong> ambiente em ajuste</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="relative mx-auto h-[560px] max-w-[820px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
-                    <ConceptVolumetry
-                      rooms={rooms}
-                      lotWidth={lotWidth}
-                      lotDepth={lotDepth}
-                      floors={floors}
-                      rotation={rotation}
-                      exploded={exploded3d}
-                      facade={facadePreferences}
-                    />
-                    <div className="absolute left-3 top-3 rounded-xl border bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-                      <div className="font-semibold text-slate-900">Volumetria vinculada à planta</div>
-                      <div className="mt-0.5 text-slate-500">{floors} pavimento{floors > 1 ? "s" : ""} · pé-direito conceitual 2,80 m</div>
-                    </div>
-                  </div>
-                  <div className="grid gap-3 rounded-2xl border bg-muted/30 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <label className="text-xs font-semibold text-muted-foreground">
-                      Girar visualização
-                      <input
-                        type="range"
-                        min="0"
-                        max="360"
-                        step="5"
-                        value={rotation}
-                        onChange={(event) => setRotation(Number(event.target.value))}
-                        className="mt-2 w-full accent-orange-500"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setExploded3d((value) => !value)}
-                      className={exploded3d ? "rounded-xl border border-orange-500 bg-orange-500/5 px-4 py-2 text-xs font-semibold text-orange-700" : "rounded-xl border bg-background px-4 py-2 text-xs font-semibold"}
-                    >
-                      {exploded3d ? "Unir pavimentos" : "Separar pavimentos"}
-                    </button>
-                  </div>
-                </div>
-              )}
+
+              <ConceptPlan2D
+                rooms={visibleRooms}
+                lotWidth={lotWidth}
+                lotDepth={lotDepth}
+                geometry={geometry}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                <span><strong className="text-slate-900">Planta conceitual</strong> cotas, paredes e ambientes</span>
+                <span><strong className="text-slate-700">Portas</strong> com arco de abertura</span>
+                <span><strong className="text-sky-700">Janelas</strong> integradas às paredes</span>
+                <span><strong className="text-orange-600">Seleção</strong> ambiente em ajuste</span>
+              </div>
             </div>
 
             <aside className="rounded-3xl border bg-card p-4 shadow-sm">
@@ -1293,22 +1234,13 @@ export default function ConceptPlanner() {
                 <div className="rounded-3xl border bg-card p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold">Volumetria aprovada</h3>
-                      <p className="text-xs text-muted-foreground">Mesma geometria usada como base para o render.</p>
+                      <h3 className="font-semibold">Fachada conceitual</h3>
+                      <p className="text-xs text-muted-foreground">Elevação frontal derivada da tipologia e das preferências aprovadas.</p>
                     </div>
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
-                  <div className="mt-4 h-[360px] overflow-hidden rounded-2xl border bg-gradient-to-b from-slate-50 to-slate-100 sm:h-[460px]">
-                    <ConceptVolumetry
-                      rooms={rooms}
-                      lotWidth={lotWidth}
-                      lotDepth={lotDepth}
-                      floors={floors}
-                      rotation={rotation}
-                      exploded={false}
-                      facade={facadePreferences}
-                      showLabels={false}
-                    />
+                  <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
+                    <ConceptFacadeElevation rooms={rooms} floors={floors} facade={facadePreferences} />
                   </div>
                 </div>
               </div>
