@@ -25,6 +25,7 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   tenantId:         text("tenant_id").notNull(),
   leadId:           text("lead_id"),
   projectId:        text("project_id"),
+  conceptProjectId: text("concept_project_id"),
   parentRenderId:   text("parent_render_id"),
   // 'preservar' = inpainting estrutural | 'criar' = geração livre
   mode:             varchar("mode", { length: 20 }).notNull().default("criar"),
