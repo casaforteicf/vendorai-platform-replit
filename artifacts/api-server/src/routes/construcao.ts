@@ -1589,7 +1589,11 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const { itens, ...rest } = req.body as { itens?: unknown[]; [key: string]: unknown };
+  const { itens: rawItens, ...rest } = req.body as { itens?: unknown; [key: string]: unknown };
+  if (rawItens !== undefined && !Array.isArray(rawItens)) {
+    return res.status(422).json({ error: "itens deve ser uma lista." });
+  }
+  const itens = rawItens as unknown[] | undefined;
 
   const parsedComposicao = insertComposicaoSchema.safeParse({ ...rest, tenantId: tid });
   if (!parsedComposicao.success) return res.status(422).json({ error: parsedComposicao.error.message });
@@ -1676,7 +1680,11 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
   if (!owned) return res.status(404).json({ error: "Not found" });
 
-  const { itens, ...rest } = req.body as { itens?: unknown[]; [key: string]: unknown };
+  const { itens: rawItens, ...rest } = req.body as { itens?: unknown; [key: string]: unknown };
+  if (rawItens !== undefined && !Array.isArray(rawItens)) {
+    return res.status(422).json({ error: "itens deve ser uma lista." });
+  }
+  const itens = rawItens as unknown[] | undefined;
   const parsedComposicao = updateComposicaoSchema.safeParse(rest);
   if (!parsedComposicao.success) return res.status(422).json({ error: parsedComposicao.error.message });
 
