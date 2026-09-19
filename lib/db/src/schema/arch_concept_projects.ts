@@ -24,6 +24,13 @@ export type ArchConceptConfiguration = {
     y2: number;
     thickness?: number;
   }>;
+  customOpenings?: Array<{
+    id: string;
+    wallId: string;
+    floor: number;
+    type: "door" | "window";
+    offset: number;
+  }>;
   spaceProfiles?: Array<{
     id: string;
     floor: number;
