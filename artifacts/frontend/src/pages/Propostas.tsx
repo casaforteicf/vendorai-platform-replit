@@ -2255,7 +2255,7 @@ function newFreeItem(): FreeItem {
                 onClick={() => setMode("catalogo")}
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "catalogo" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
-                Catálogo
+                Catálogo + Composições
               </button>
               <button
                 type="button"
