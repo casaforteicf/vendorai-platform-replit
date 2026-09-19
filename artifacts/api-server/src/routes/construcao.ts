@@ -917,12 +917,26 @@ router.put("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
   const { tenantId: tid, insumoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = updateInsumoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  let impactoPreco: Awaited<ReturnType<typeof aplicarPrecoMestre>> | null = null;
+  if (parsed.data.precoUnitario !== undefined) {
+    impactoPreco = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId,
+      precoNovo: numberOrZero(parsed.data.precoUnitario),
+      origem: "cadastro_insumo",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+  }
+
   const [insumo] = await db.update(insumosTable)
-    .set({ ...req.body, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() })
     .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)))
     .returning();
   if (!insumo) return res.status(404).json({ error: "Not found" });
-  return res.json(insumo);
+  return res.json({ ...insumo, impactoPreco });
 });
 
 router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
@@ -931,6 +945,228 @@ router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
 
   await db.delete(insumosTable).where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
   return res.status(204).end();
+});
+
+// ─── Tabelas de Preços de Obras ───────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(eq(tabelasPrecosObrasTable.tenantId, tid))
+    .orderBy(desc(tabelasPrecosObrasTable.isPadrao), desc(tabelasPrecosObrasTable.updatedAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertTabelaPrecosObrasSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.isPadrao) {
+    await db
+      .update(tabelasPrecosObrasTable)
+      .set({ isPadrao: false, updatedAt: new Date() })
+      .where(eq(tabelasPrecosObrasTable.tenantId, tid));
+  }
+
+  const [row] = await db.insert(tabelasPrecosObrasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens", async (req, res) => {
+  const { tenantId: tid, tabelaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tabela] = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(and(eq(tabelasPrecosObrasTable.id, tabelaId), eq(tabelasPrecosObrasTable.tenantId, tid)));
+  if (!tabela) return res.status(404).json({ error: "Tabela de preços não encontrada" });
+
+  const itens = await db
+    .select({
+      id: tabelaPrecosObrasItensTable.id,
+      tabelaPrecoId: tabelaPrecosObrasItensTable.tabelaPrecoId,
+      insumoId: tabelaPrecosObrasItensTable.insumoId,
+      precoBase: tabelaPrecosObrasItensTable.precoBase,
+      freteUnitario: tabelaPrecosObrasItensTable.freteUnitario,
+      impostosPercentual: tabelaPrecosObrasItensTable.impostosPercentual,
+      descontoPercentual: tabelaPrecosObrasItensTable.descontoPercentual,
+      precoFinal: tabelaPrecosObrasItensTable.precoFinal,
+      fornecedor: tabelaPrecosObrasItensTable.fornecedor,
+      marca: tabelaPrecosObrasItensTable.marca,
+      regiao: tabelaPrecosObrasItensTable.regiao,
+      dataCotacao: tabelaPrecosObrasItensTable.dataCotacao,
+      validade: tabelaPrecosObrasItensTable.validade,
+      observacoes: tabelaPrecosObrasItensTable.observacoes,
+      updatedAt: tabelaPrecosObrasItensTable.updatedAt,
+      insumo: insumosTable,
+    })
+    .from(tabelaPrecosObrasItensTable)
+    .innerJoin(insumosTable, eq(tabelaPrecosObrasItensTable.insumoId, insumosTable.id))
+    .where(and(
+      eq(tabelaPrecosObrasItensTable.tabelaPrecoId, tabelaId),
+      eq(insumosTable.tenantId, tid),
+    ))
+    .orderBy(asc(insumosTable.nome));
+
+  return res.json({ tabela, itens });
+});
+
+router.put("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens/:insumoId", async (req, res) => {
+  const { tenantId: tid, tabelaId, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tabela] = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(and(eq(tabelasPrecosObrasTable.id, tabelaId), eq(tabelasPrecosObrasTable.tenantId, tid)));
+  if (!tabela) return res.status(404).json({ error: "Tabela de preços não encontrada" });
+
+  const [insumo] = await db
+    .select({ id: insumosTable.id })
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+  if (!insumo) return res.status(404).json({ error: "Insumo não encontrado" });
+
+  const precoBaseRaw = Number(req.body.precoBase);
+  if (!Number.isFinite(precoBaseRaw) || precoBaseRaw < 0) {
+    return res.status(422).json({ error: "precoBase inválido" });
+  }
+
+  const frete = Math.max(0, numberOrZero(req.body.freteUnitario));
+  const impostos = Math.max(0, numberOrZero(req.body.impostosPercentual));
+  const desconto = Math.max(0, Math.min(100, numberOrZero(req.body.descontoPercentual)));
+  const precoFinal = (precoBaseRaw + frete) * (1 + impostos / 100) * (1 - desconto / 100);
+
+  const payload = {
+    tabelaPrecoId: tabelaId,
+    insumoId,
+    precoBase: precoBaseRaw.toFixed(4),
+    freteUnitario: frete.toFixed(4),
+    impostosPercentual: impostos.toFixed(4),
+    descontoPercentual: desconto.toFixed(4),
+    precoFinal: precoFinal.toFixed(4),
+    fornecedor: req.body.fornecedor ?? tabela.fornecedor ?? null,
+    marca: req.body.marca ?? null,
+    regiao: req.body.regiao ?? tabela.regiao ?? null,
+    dataCotacao: req.body.dataCotacao ?? null,
+    validade: req.body.validade ?? null,
+    observacoes: req.body.observacoes ?? null,
+  };
+
+  const parsed = insertTabelaPrecosObrasItemSchema.safeParse(payload);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [existing] = await db
+    .select({ id: tabelaPrecosObrasItensTable.id })
+    .from(tabelaPrecosObrasItensTable)
+    .where(and(
+      eq(tabelaPrecosObrasItensTable.tabelaPrecoId, tabelaId),
+      eq(tabelaPrecosObrasItensTable.insumoId, insumoId),
+    ));
+
+  const [row] = existing
+    ? await db
+        .update(tabelaPrecosObrasItensTable)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(eq(tabelaPrecosObrasItensTable.id, existing.id))
+        .returning()
+    : await db.insert(tabelaPrecosObrasItensTable).values(parsed.data).returning();
+
+  let impacto = null;
+  if (tabela.isPadrao && tabela.ativo) {
+    impacto = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId,
+      precoNovo: precoFinal,
+      tabelaPrecoId: tabelaId,
+      fornecedor: payload.fornecedor,
+      regiao: payload.regiao,
+      origem: "tabela_precos",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+  }
+
+  return res.json({ ...row, impacto });
+});
+
+router.post("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/ativar", async (req, res) => {
+  const { tenantId: tid, tabelaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tabela] = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(and(eq(tabelasPrecosObrasTable.id, tabelaId), eq(tabelasPrecosObrasTable.tenantId, tid)));
+  if (!tabela) return res.status(404).json({ error: "Tabela de preços não encontrada" });
+
+  await db
+    .update(tabelasPrecosObrasTable)
+    .set({ isPadrao: false, updatedAt: new Date() })
+    .where(eq(tabelasPrecosObrasTable.tenantId, tid));
+
+  await db
+    .update(tabelasPrecosObrasTable)
+    .set({ isPadrao: true, ativo: true, updatedAt: new Date() })
+    .where(eq(tabelasPrecosObrasTable.id, tabelaId));
+
+  const itens = await db
+    .select()
+    .from(tabelaPrecosObrasItensTable)
+    .where(eq(tabelaPrecosObrasItensTable.tabelaPrecoId, tabelaId));
+
+  let composicoesRecalculadas = 0;
+  const rascunhos = new Set<string>();
+  const enviados = new Set<string>();
+
+  for (const item of itens) {
+    const impacto = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId: item.insumoId,
+      precoNovo: numberOrZero(item.precoFinal),
+      tabelaPrecoId: tabelaId,
+      fornecedor: item.fornecedor ?? tabela.fornecedor,
+      regiao: item.regiao ?? tabela.regiao,
+      origem: "ativacao_tabela_precos",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+    if (impacto) {
+      composicoesRecalculadas += impacto.composicoesRecalculadas;
+      if (impacto.orcamentosRecalculados > 0) rascunhos.add(item.insumoId);
+      if (impacto.orcamentosComAviso > 0) enviados.add(item.insumoId);
+    }
+  }
+
+  return res.json({
+    tabelaId,
+    itensAplicados: itens.length,
+    composicoesRecalculadas,
+    insumosComImpactoEmRascunhos: rascunhos.size,
+    insumosComImpactoEmEnviados: enviados.size,
+  });
+});
+
+router.get("/tenants/:tenantId/insumos/:insumoId/precos-historico", async (req, res) => {
+  const { tenantId: tid, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(insumoPrecoHistoricoTable)
+    .where(and(
+      eq(insumoPrecoHistoricoTable.tenantId, tid),
+      eq(insumoPrecoHistoricoTable.insumoId, insumoId),
+    ))
+    .orderBy(desc(insumoPrecoHistoricoTable.createdAt));
+
+  return res.json(rows);
 });
 
 // ─── Estoque Central ──────────────────────────────────────────────────────────
