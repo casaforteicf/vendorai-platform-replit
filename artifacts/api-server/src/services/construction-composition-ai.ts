@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callOpenAI } from "../lib/ai-gateway.js";
 
 export type ConstructionCompositionCatalogItem = {
   id: string;
@@ -45,15 +45,13 @@ export async function generateConstructionComposition(input: {
   const pedido = input.pedido.trim();
   if (!pedido) throw new Error("Descreva o serviço que deve ser composto.");
 
-  const openai = await getOpenAIForTenant(input.tenantId);
-  const model = process.env.CONSTRUCTION_COMPOSITION_MODEL?.trim() || "gpt-5.6-luna";
+  const model = process.env.CONSTRUCTION_COMPOSITION_MODEL?.trim() || "gpt-5.6-sol";
   const catalogo = compactCatalog(input.catalogo);
 
-  const completion = await openai.chat.completions.create({
-    model,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
+  const completion = await callOpenAI(
+    input.tenantId,
+    "auto_quote",
+    [
       {
         role: "system",
         content: [
@@ -79,10 +77,15 @@ export async function generateConstructionComposition(input: {
         ].filter(Boolean).join("\n\n"),
       },
     ],
-    max_tokens: 5000,
-  });
+    {
+      model,
+      temperature: 0.1,
+      maxTokens: 5000,
+      responseFormat: { type: "json_object" },
+    },
+  );
 
-  const raw = completion.choices[0]?.message?.content?.trim();
+  const raw = completion.content.trim();
   if (!raw) throw new Error("A IA não retornou uma composição.");
 
   let parsedJson: unknown;
