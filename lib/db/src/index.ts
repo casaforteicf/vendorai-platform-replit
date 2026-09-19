@@ -28,11 +28,24 @@ function normalizeRuntimeConnectionString(value: string): string {
 
   try {
     const url = new URL(value);
+    let projectRef: string | null = null;
+
     if (url.username === "postgres") {
       url.username = "vendorai_app";
     } else if (url.username.startsWith("postgres.")) {
-      url.username = `vendorai_app.${url.username.slice("postgres.".length)}`;
+      projectRef = url.username.slice("postgres.".length);
+      url.username = `vendorai_app.${projectRef}`;
     }
+
+    if (projectRef && url.hostname.endsWith(".pooler.supabase.com")) {
+      url.hostname = `db.${projectRef}.supabase.co`;
+      url.port = "5432";
+      url.username = "vendorai_app";
+      if (!url.searchParams.has("sslmode")) {
+        url.searchParams.set("sslmode", "require");
+      }
+    }
+
     return url.toString();
   } catch {
     return value;
