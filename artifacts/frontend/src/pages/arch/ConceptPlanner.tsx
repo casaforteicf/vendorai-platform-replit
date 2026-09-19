@@ -25,6 +25,7 @@ import {
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
+import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
@@ -145,7 +146,7 @@ type ConceptDraftResponse = {
 };
 
 const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada", "Resultado"];
-const FLOW_STEPS = ["Terreno", "Modelo", "Editor", "Resultado"];
+const FLOW_STEPS = ["Lote", "Propostas", "Personalizar", "Resultado"];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
   style: "contemporaneo",
@@ -1480,9 +1481,9 @@ export default function ConceptPlanner() {
                 <Sparkles className="h-4 w-4" />
                 Arqdor Concept
               </div>
-              <h1 className="mt-1 text-2xl font-bold">Monte a ideia da sua casa</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Você escolhe ambientes, medidas e prioridades. O sistema organiza paredes e posições.
+              <h1 className="mt-1 text-2xl font-bold">Crie o conceito da sua casa</h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                Defina o lote e escolha uma proposta visual. Depois personalize a planta, a fachada e o 3D no mesmo workspace.
               </p>
             </div>
             <div className="flex flex-col items-end gap-3">
@@ -1520,32 +1521,119 @@ export default function ConceptPlanner() {
 
       <main className="mx-auto max-w-[1500px] p-4 sm:p-6">
         {step === 0 && (
-          <section className="mx-auto max-w-3xl rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <Trees className="h-7 w-7 text-orange-500" />
-              <div>
-                <h2 className="text-xl font-semibold">1. Seu terreno</h2>
-                <p className="text-sm text-muted-foreground">Começamos pelas dimensões básicas.</p>
+          <section className="grid gap-5 xl:grid-cols-[380px_1fr]">
+            <aside className="rounded-3xl border bg-card p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-orange-500/10 text-orange-600">
+                  <Trees className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold">Defina o lote</h2>
+                  <p className="text-sm text-muted-foreground">Só precisamos das medidas para começar.</p>
+                </div>
               </div>
-            </div>
-            <div className="mt-7 grid gap-5 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-medium">
-                Largura do terreno
-                <div className="flex items-center rounded-xl border bg-background px-3">
-                  <input className="h-12 w-full bg-transparent outline-none" type="number" min={5} value={lotWidth} onChange={(e) => setLotWidth(Math.max(5, Number(e.target.value) || 5))} />
-                  <span className="text-muted-foreground">m</span>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <label className="space-y-2 text-sm font-medium">
+                  Largura
+                  <div className="flex items-center rounded-xl border bg-background px-3">
+                    <input
+                      className="h-12 w-full bg-transparent text-lg font-semibold outline-none"
+                      type="number"
+                      min={5}
+                      value={lotWidth}
+                      onChange={(e) => setLotWidth(Math.max(5, Number(e.target.value) || 5))}
+                    />
+                    <span className="text-sm text-muted-foreground">m</span>
+                  </div>
+                </label>
+                <label className="space-y-2 text-sm font-medium">
+                  Comprimento
+                  <div className="flex items-center rounded-xl border bg-background px-3">
+                    <input
+                      className="h-12 w-full bg-transparent text-lg font-semibold outline-none"
+                      type="number"
+                      min={10}
+                      value={lotDepth}
+                      onChange={(e) => setLotDepth(Math.max(10, Number(e.target.value) || 10))}
+                    />
+                    <span className="text-sm text-muted-foreground">m</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Área do terreno</div>
+                <div className="mt-1 text-2xl font-bold text-slate-900">{(lotWidth * lotDepth).toFixed(0)} m²</div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">
+                  Na próxima etapa você compara propostas de planta geradas para este lote.
                 </div>
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Comprimento
-                <div className="flex items-center rounded-xl border bg-background px-3">
-                  <input className="h-12 w-full bg-transparent outline-none" type="number" min={10} value={lotDepth} onChange={(e) => setLotDepth(Math.max(10, Number(e.target.value) || 10))} />
-                  <span className="text-muted-foreground">m</span>
+              </div>
+
+              <div className="mt-5 border-t pt-4 text-xs leading-5 text-muted-foreground">
+                Terreno irregular, esquina, recuos e topografia entram como parâmetros avançados sem ocupar esta etapa inicial.
+              </div>
+            </aside>
+
+            <div className="rounded-3xl border bg-card p-5 shadow-sm sm:p-7">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Implantação</div>
+                  <h3 className="mt-1 text-lg font-semibold">Veja o lote enquanto informa as medidas</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">A frente fica na base do desenho e as cotas atualizam em tempo real.</p>
                 </div>
-              </label>
-            </div>
-            <div className="mt-5 rounded-2xl border border-dashed p-5 text-sm text-muted-foreground">
-              Primeira versão: terreno retangular. Depois entram esquina, irregular, aclive/declive e leitura de levantamento.
+                <div className="rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-slate-600">
+                  {lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m
+                </div>
+              </div>
+
+              <div className="mt-5 flex min-h-[430px] items-center justify-center rounded-2xl border bg-slate-50/80 p-6">
+                <svg
+                  className="h-[390px] w-full max-w-3xl"
+                  viewBox={`0 0 ${Math.max(16, lotWidth + 8)} ${Math.max(24, lotDepth + 8)}`}
+                  preserveAspectRatio="xMidYMid meet"
+                  role="img"
+                  aria-label="Representação do terreno"
+                >
+                  <rect
+                    x="4"
+                    y="3"
+                    width={lotWidth}
+                    height={lotDepth}
+                    fill="#ffffff"
+                    stroke="#64748b"
+                    strokeWidth="0.12"
+                    strokeDasharray="0.35 0.22"
+                  />
+                  <line x1="4" y1="1.8" x2={4 + lotWidth} y2="1.8" stroke="#0f766e" strokeWidth="0.06" />
+                  <line x1="2.7" y1="3" x2="2.7" y2={3 + lotDepth} stroke="#0f766e" strokeWidth="0.06" />
+                  <text x={4 + lotWidth / 2} y="1.25" textAnchor="middle" fontSize="0.55" fontWeight="800" fill="#0f766e">
+                    {lotWidth.toFixed(2).replace(".", ",")} m
+                  </text>
+                  <text
+                    x="1.7"
+                    y={3 + lotDepth / 2}
+                    textAnchor="middle"
+                    fontSize="0.55"
+                    fontWeight="800"
+                    fill="#0f766e"
+                    transform={`rotate(-90 1.7 ${3 + lotDepth / 2})`}
+                  >
+                    {lotDepth.toFixed(2).replace(".", ",")} m
+                  </text>
+                  <text
+                    x={4 + lotWidth / 2}
+                    y={4 + lotDepth}
+                    textAnchor="middle"
+                    fontSize="0.62"
+                    fontWeight="800"
+                    letterSpacing="0.12"
+                    fill="#475569"
+                  >
+                    FRENTE / ACESSO
+                  </text>
+                </svg>
+              </div>
             </div>
           </section>
         )}
@@ -1555,32 +1643,46 @@ export default function ConceptPlanner() {
             <div className="flex items-center gap-3">
               <Home className="h-7 w-7 text-orange-500" />
               <div>
-                <h2 className="text-xl font-semibold">2. Escolha uma tipologia de partida</h2>
-                <p className="text-sm text-muted-foreground">Você não começa do zero. Escolha uma casa-base coerente e personalize depois.</p>
+                <h2 className="text-xl font-semibold">Compare propostas de planta</h2>
+                <p className="text-sm text-muted-foreground">Cada opção abaixo já usa as dimensões do seu lote. Escolha pela organização visual e personalize depois.</p>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {CONCEPT_TYPOLOGIES.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => applyTypology(item.id)}
                   className={typology === item.id
-                    ? "rounded-2xl border border-orange-500 bg-orange-500/5 p-5 text-left ring-2 ring-orange-500/10"
-                    : "rounded-2xl border p-5 text-left transition hover:border-slate-400 hover:bg-muted/30"}
+                    ? "group overflow-hidden rounded-2xl border border-orange-500 bg-orange-500/[0.03] text-left ring-2 ring-orange-500/10"
+                    : "group overflow-hidden rounded-2xl border bg-background text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md"}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">{item.title}</div>
-                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.subtitle}</div>
-                    </div>
-                    <Layers3 className="h-5 w-5 text-muted-foreground" />
+                  <div className="p-3 pb-0">
+                    <ConceptTypologyPreview
+                      typology={item.id}
+                      lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                    />
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                    <span className="rounded-full bg-muted px-2 py-1">{item.floors === 1 ? "Térrea" : "Sobrado"}</span>
-                    <span className="rounded-full bg-muted px-2 py-1">≈ {item.suggestedArea} m²</span>
-                    <span className="rounded-full bg-muted px-2 py-1">{item.rooms.length} ambientes</span>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{item.title}</div>
+                        <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.subtitle}</div>
+                      </div>
+                      <Layers3 className={typology === item.id ? "h-5 w-5 text-orange-500" : "h-5 w-5 text-muted-foreground"} />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                      <span className="rounded-full bg-muted px-2 py-1">{item.floors === 1 ? "Térrea" : "Sobrado"}</span>
+                      <span className="rounded-full bg-muted px-2 py-1">≈ {item.suggestedArea} m²</span>
+                      <span className="rounded-full bg-muted px-2 py-1">{item.rooms.length} ambientes</span>
+                    </div>
+                    <div className={typology === item.id
+                      ? "mt-4 text-xs font-semibold text-orange-600"
+                      : "mt-4 text-xs font-semibold text-slate-500 group-hover:text-slate-900"}>
+                      {typology === item.id ? "Proposta selecionada" : "Selecionar proposta"}
+                    </div>
                   </div>
                 </button>
               ))}
