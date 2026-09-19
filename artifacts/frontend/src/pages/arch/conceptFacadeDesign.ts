@@ -25,7 +25,12 @@ export type FacadeVolumeKind =
   | "panel"
   | "slats"
   | "pergola"
-  | "planter";
+  | "planter"
+  | "frame"
+  | "garage"
+  | "balcony"
+  | "wall"
+  | "gate";
 
 export type FacadeMaterialDefinition = {
   id: FacadeMaterialId;
@@ -180,6 +185,11 @@ export const FACADE_VOLUME_PRESETS: Array<{
   { kind: "slats", label: "Ripado", defaultMaterial: "wood-natural", width: 18, height: 62, depth: 0.18 },
   { kind: "pergola", label: "Pergolado", defaultMaterial: "wood-dark", width: 35, height: 18, depth: 1.8 },
   { kind: "planter", label: "Jardineira", defaultMaterial: "concrete-light", width: 22, height: 12, depth: 0.5 },
+  { kind: "frame", label: "Moldura", defaultMaterial: "concrete-dark", width: 32, height: 54, depth: 0.35 },
+  { kind: "garage", label: "Volume garagem", defaultMaterial: "paint-greige", width: 42, height: 44, depth: 1.2 },
+  { kind: "balcony", label: "Sacada", defaultMaterial: "concrete-light", width: 34, height: 22, depth: 1.1 },
+  { kind: "wall", label: "Muro frontal", defaultMaterial: "stone-graphite", width: 46, height: 24, depth: 0.25 },
+  { kind: "gate", label: "Portão", defaultMaterial: "metal-black", width: 38, height: 34, depth: 0.18 },
 ];
 
 export function getFacadeMaterial(id: FacadeMaterialId | undefined) {

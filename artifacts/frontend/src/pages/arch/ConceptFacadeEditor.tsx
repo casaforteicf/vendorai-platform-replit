@@ -61,6 +61,98 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function FacadePresetThumbnail({ kind }: { kind: FacadeVolumeKind }) {
+  const dark = "bg-slate-700";
+  const warm = "bg-amber-200";
+  const light = "bg-slate-200";
+
+  if (kind === "portal" || kind === "frame") {
+    return (
+      <div className="relative h-14 w-full overflow-hidden rounded-lg bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="absolute inset-x-5 bottom-2 top-2 rounded-md border-[6px] border-slate-700 bg-white" />
+      </div>
+    );
+  }
+
+  if (kind === "canopy") {
+    return (
+      <div className="relative h-14 w-full overflow-hidden rounded-lg bg-gradient-to-b from-sky-50 to-slate-100">
+        <div className="absolute left-3 right-3 top-5 h-2 rounded-sm bg-slate-700 shadow" />
+        <div className="absolute left-5 top-7 h-5 w-1 bg-slate-400" />
+      </div>
+    );
+  }
+
+  if (kind === "slats" || kind === "gate") {
+    return (
+      <div className="relative flex h-14 w-full items-center justify-center gap-1 rounded-lg bg-slate-50 px-5">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <span key={index} className="h-10 w-1.5 rounded-sm bg-amber-700/80" />
+        ))}
+      </div>
+    );
+  }
+
+  if (kind === "pergola") {
+    return (
+      <div className="relative h-14 w-full rounded-lg bg-gradient-to-b from-emerald-50 to-stone-100">
+        <div className="absolute left-4 right-4 top-3 flex gap-1">
+          {Array.from({ length: 6 }).map((_, index) => <span key={index} className="h-2 flex-1 rounded-sm bg-amber-800/80" />)}
+        </div>
+        <div className="absolute left-5 top-4 h-8 w-1.5 bg-amber-800/80" />
+        <div className="absolute right-5 top-4 h-8 w-1.5 bg-amber-800/80" />
+      </div>
+    );
+  }
+
+  if (kind === "planter") {
+    return (
+      <div className="relative h-14 w-full rounded-lg bg-gradient-to-b from-emerald-50 to-slate-100">
+        <div className="absolute bottom-2 left-4 right-4 h-4 rounded-sm bg-slate-300" />
+        <div className="absolute bottom-5 left-7 h-4 w-5 rounded-full bg-emerald-600/70" />
+        <div className="absolute bottom-5 right-7 h-5 w-6 rounded-full bg-emerald-700/70" />
+      </div>
+    );
+  }
+
+  if (kind === "balcony") {
+    return (
+      <div className="relative h-14 w-full rounded-lg bg-gradient-to-b from-sky-50 to-slate-100">
+        <div className="absolute bottom-2 left-4 right-4 h-3 rounded-sm bg-slate-300" />
+        <div className="absolute bottom-5 left-5 right-5 h-6 rounded border border-sky-300 bg-sky-100/80" />
+      </div>
+    );
+  }
+
+  if (kind === "wall") {
+    return (
+      <div className="relative h-14 w-full rounded-lg bg-gradient-to-b from-slate-50 to-stone-100">
+        <div className="absolute bottom-2 left-3 right-3 h-7 rounded-sm bg-stone-500">
+          <div className="h-full w-full opacity-30" style={{ backgroundImage: "linear-gradient(90deg,#fff 1px,transparent 1px),linear-gradient(#fff 1px,transparent 1px)", backgroundSize: "18px 10px" }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === "garage") {
+    return (
+      <div className="relative h-14 w-full rounded-lg bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="absolute bottom-2 left-3 right-3 h-9 rounded-md bg-stone-200 shadow-sm">
+          <div className="absolute bottom-0 left-2 right-2 h-7 rounded-t bg-slate-700" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-14 w-full rounded-lg bg-gradient-to-br from-slate-50 to-orange-50">
+      <div className={`absolute bottom-2 left-5 right-5 top-3 rounded-md shadow-sm ${light}`} />
+      <div className={`absolute bottom-2 left-5 h-8 w-2 rounded-sm ${dark}`} />
+      <div className={`absolute right-6 top-5 h-5 w-8 rounded-sm ${warm}`} />
+    </div>
+  );
+}
+
 export default function ConceptFacadeEditor({
   lotWidth,
   levels,
@@ -189,9 +281,9 @@ export default function ConceptFacadeEditor({
 
         {panel === "volumes" && (
           <div className="p-4 pt-11">
-            <div className="text-sm font-semibold">Composição de volumes</div>
+            <div className="text-sm font-semibold">Elementos arquitetônicos</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Adicione elementos sobre a fachada e arraste diretamente no desenho.
+              Insira pórticos, molduras, marquises, sacadas, muro e outros elementos; depois arraste e dimensione diretamente.
             </p>
 
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -202,9 +294,7 @@ export default function ConceptFacadeEditor({
                   onClick={() => addVolume(preset.kind)}
                   className="rounded-xl border bg-white p-3 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
                 >
-                  <div className="grid h-12 place-items-center rounded-lg bg-slate-50">
-                    <Box className="h-5 w-5 text-slate-600" />
-                  </div>
+                  <FacadePresetThumbnail kind={preset.kind} />
                   <div className="mt-2 text-xs font-semibold">{preset.label}</div>
                   <div className="mt-0.5 text-[10px] text-slate-400">
                     ≈ {(facadeMetrics.width * preset.width / 100).toFixed(1)} × {(facadeMetrics.height * preset.height / 100).toFixed(1)} m

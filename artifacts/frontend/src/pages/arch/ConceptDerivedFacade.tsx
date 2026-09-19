@@ -354,7 +354,7 @@ export default function ConceptDerivedFacade({
         }}
         className={volume.locked ? "cursor-default" : "cursor-move"}
       >
-        {volume.kind === "portal" ? (
+        {volume.kind === "portal" || volume.kind === "frame" ? (
           <>
             <rect x={x} y={y} width={width} height={height} rx="0.5" {...common} />
             <rect
@@ -401,6 +401,27 @@ export default function ConceptDerivedFacade({
             <rect x={x} y={y} width={width} height={height} rx="0.35" {...common} />
             <ellipse cx={x + width * 0.3} cy={y - 0.4} rx={Math.max(0.8, width * 0.12)} ry="1" fill="#66835f" />
             <ellipse cx={x + width * 0.68} cy={y - 0.45} rx={Math.max(0.8, width * 0.13)} ry="1.05" fill="#78936f" />
+          </>
+        ) : volume.kind === "gate" ? (
+          <>
+            <rect x={x} y={y} width={width} height={height} rx="0.25" fill={getFacadeMaterial(volume.materialId).shadeColor} stroke={common.stroke} strokeWidth={common.strokeWidth} />
+            {Array.from({ length: 8 }).map((_, index) => (
+              <line
+                key={index}
+                x1={x + (index + 1) * width / 9}
+                y1={y}
+                x2={x + (index + 1) * width / 9}
+                y2={y + height}
+                stroke={getFacadeMaterial(volume.materialId).lineColor}
+                strokeWidth="0.35"
+                opacity="0.8"
+              />
+            ))}
+          </>
+        ) : volume.kind === "balcony" ? (
+          <>
+            <rect x={x} y={y + height * 0.58} width={width} height={height * 0.42} rx="0.18" {...common} />
+            <rect x={x + width * 0.04} y={y + height * 0.12} width={width * 0.92} height={height * 0.48} rx="0.2" fill="#b8d0dc" fillOpacity="0.42" stroke="#64748b" strokeWidth="0.38" />
           </>
         ) : (
           <rect x={x} y={y} width={width} height={height} rx={volume.kind === "canopy" ? 0.18 : 0.42} {...common} />
