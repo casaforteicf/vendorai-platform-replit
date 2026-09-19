@@ -148,7 +148,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
 
       <g filter="url(#derived-facade-shadow)">
         {usable.map(({ level, segments, frontY }) => {
-          const levelBottom = groundY - level.level.floor * LEVEL_HEIGHT * pxPerMeterY;
+          const levelBottom = groundY - level.floor * LEVEL_HEIGHT * pxPerMeterY;
           const levelTop = levelBottom - WALL_HEIGHT * pxPerMeterY;
           const minX = Math.min(...segments.flatMap((wall) => [wall.x1, wall.x2]));
           const maxX = Math.max(...segments.flatMap((wall) => [wall.x1, wall.x2]));
@@ -157,7 +157,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
           const openings = frontOpenings(level, frontY);
 
           return (
-            <g key={`facade-level-${level.level.floor}`}>
+            <g key={`facade-level-${level.floor}`}>
               <rect
                 x={bodyX}
                 y={levelTop}
