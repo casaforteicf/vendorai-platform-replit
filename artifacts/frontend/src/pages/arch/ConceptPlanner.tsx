@@ -205,6 +205,7 @@ export default function ConceptPlanner() {
   const [floors, setFloors] = useState(1);
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
+  const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
@@ -342,6 +343,10 @@ export default function ConceptPlanner() {
   const updateSelected = (patch: Partial<Room>) => {
     if (!selectedId) return;
     setRooms((prev) => prev.map((room) => (room.id === selectedId ? { ...room, ...patch } : room)));
+  };
+
+  const updateRoomById = (roomId: string, patch: Partial<Room>) => {
+    setRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, ...patch } : room)));
   };
 
   const organize = (variant = layoutVariant) => {
@@ -791,186 +796,328 @@ export default function ConceptPlanner() {
         )}
 
                 {step === 4 && (
-          <section className="grid min-h-[680px] gap-5 xl:grid-cols-[260px_1fr_310px]">
-            <aside className="rounded-3xl border bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold">5. Layout</h2>
-                  <p className="text-xs text-muted-foreground">Selecione um ambiente para ajustar.</p>
-                </div>
-                <button type="button" onClick={() => organize()} className="rounded-lg border p-2" title="Organizar novamente"><RotateCcw className="h-4 w-4" /></button>
+          <section className="overflow-hidden rounded-3xl border bg-card shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold">Editor do pré-projeto</div>
+                <div className="text-xs text-muted-foreground">Edite a mesma casa em planta, fachada e render sem sair do workspace.</div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {Array.from({ length: floors }).map((_, floor) => (
-                  <button key={floor} type="button" onClick={() => { setActiveFloor(floor); setSelectedId(null); }} className={activeFloor === floor ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg border px-3 py-2 text-xs font-semibold"}>
-                    {floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-4 space-y-2">
-                {visibleRooms.map((room) => (
-                  <button key={room.id} type="button" onClick={() => setSelectedId(room.id)} className={selectedId === room.id ? "w-full rounded-xl border border-orange-500 bg-orange-500/5 p-3 text-left" : "w-full rounded-xl border p-3 text-left"}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">{room.label}</span>
-                      {room.locked && <Lock className="h-3.5 w-3.5" />}
-                    </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground">{room.width.toFixed(1)} × {room.depth.toFixed(1)} m</div>
-                  </button>
-                ))}
-              </div>
-            </aside>
-
-            <div className="rounded-3xl border bg-card p-4 shadow-sm">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold">Planta conceitual — {activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Terreno {lotWidth} × {lotDepth} m · planta vetorial, cotas, portas, janelas e paredes.
-                  </div>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-xl border bg-muted/40 p-1">
+                  {([
+                    ["plan", "2D"],
+                    ["facade", "Fachada"],
+                    ["render", "Render"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setEditorView(value)}
+                      className={editorView === value
+                        ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background"
+                        : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
                 <button
                   type="button"
-                  onClick={() => organize()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white"
+                  onClick={() => void saveConcept(4)}
+                  className="rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
                 >
-                  <Sparkles className="h-4 w-4" /> Recalcular
+                  {saveState === "saving" ? "Salvando..." : "Salvar"}
                 </button>
-              </div>
-
-              <div className="mb-4 grid gap-2 sm:grid-cols-3">
-                {[
-                  ["Opção A", "Social integrada"],
-                  ["Opção B", "Mais privacidade"],
-                  ["Opção C", "Lazer valorizado"],
-                ].map(([title, subtitle], index) => (
-                  <button
-                    key={title}
-                    type="button"
-                    onClick={() => organize(index)}
-                    className={layoutVariant === index ? "rounded-xl border border-orange-500 bg-orange-500/5 p-3 text-left ring-2 ring-orange-500/10" : "rounded-xl border p-3 text-left hover:bg-muted/50"}
-                  >
-                    <div className="text-sm font-semibold">{title}</div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>
-                  </button>
-                ))}
-              </div>
-
-              <ConceptPlan2D
-                rooms={visibleRooms}
-                lotWidth={lotWidth}
-                lotDepth={lotDepth}
-                geometry={geometry}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-              />
-
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-                <span><strong className="text-slate-900">Planta conceitual</strong> cotas, paredes e ambientes</span>
-                <span><strong className="text-slate-700">Portas</strong> com arco de abertura</span>
-                <span><strong className="text-sky-700">Janelas</strong> integradas às paredes</span>
-                <span><strong className="text-orange-600">Seleção</strong> ambiente em ajuste</span>
               </div>
             </div>
 
-            <aside className="rounded-3xl border bg-card p-4 shadow-sm">
-              <h3 className="font-semibold">Ajustes simples</h3>
-              {!selected ? (
-                <div className="mt-4 rounded-2xl border border-dashed p-5 text-sm text-muted-foreground">Toque em um ambiente na planta.</div>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-2xl bg-muted p-4">
-                    <div className="font-semibold">{selected.label}</div>
-                    <div className="text-xs text-muted-foreground">{(selected.width * selected.depth).toFixed(1)} m²</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="text-xs font-medium">Largura<input type="number" step="0.1" value={selected.width} onChange={(e) => updateSelected({ width: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 h-10 w-full rounded-lg border bg-background px-2" /></label>
-                    <label className="text-xs font-medium">Profundidade<input type="number" step="0.1" value={selected.depth} onChange={(e) => updateSelected({ depth: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 h-10 w-full rounded-lg border bg-background px-2" /></label>
-                  </div>
-                  <button type="button" onClick={() => updateSelected({ locked: !selected.locked })} className="flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold">
-                    <Lock className="h-4 w-4" /> {selected.locked ? "Liberar posição" : "Manter aqui"}
-                  </button>
-                  <div>
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mover ambiente</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <span />
-                      <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "up")} className="rounded-lg border p-2 disabled:opacity-40">↑</button>
-                      <span />
-                      <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "left")} className="rounded-lg border p-2 disabled:opacity-40">←</button>
-                      <button type="button" onClick={() => organize()} className="rounded-lg border p-2 text-xs font-semibold" title="Reorganizar automaticamente">Auto</button>
-                      <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "right")} className="rounded-lg border p-2 disabled:opacity-40">→</button>
-                      <span />
-                      <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "down")} className="rounded-lg border p-2 disabled:opacity-40">↓</button>
-                      <span />
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-xs leading-relaxed text-orange-950">
-                    <strong>Geometria automática ativa:</strong> ao mover ou redimensionar ambientes, o sistema recalcula paredes e sugere vãos.
-                  </div>
+            <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
+              <aside className="border-r bg-muted/20 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
+                <div className="mt-3 grid gap-2">
+                  {([
+                    ["sala", "Sala"],
+                    ["cozinha", "Cozinha"],
+                    ["quarto", "Quarto"],
+                    ["suite", "Suíte"],
+                    ["banheiro", "Banheiro"],
+                    ["lavanderia", "Lavanderia"],
+                    ["gourmet", "Gourmet"],
+                    ["garagem", "Garagem"],
+                    ["escada", "Escada"],
+                    ["piscina", "Piscina"],
+                  ] as Array<[RoomKind, string]>).map(([kind, label]) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => addRoom(kind)}
+                      className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted"
+                    >
+                      <span>{label}</span>
+                      <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                  ))}
                 </div>
-              )}
-              <div className="mt-5 rounded-2xl border p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-semibold">Checagem do layout</div>
-                  <span className={layoutIssues.some((issue) => issue.severity === "error") ? "rounded-full bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700" : layoutIssues.length ? "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700" : "rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700"}>
-                    {layoutIssues.some((issue) => issue.severity === "error") ? "Corrigir" : layoutIssues.length ? "Atenção" : "Tudo certo"}
-                  </span>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {layoutIssues.length === 0 ? (
-                    <div className="text-xs text-emerald-700">Sem colisões ou problemas básicos detectados neste pavimento.</div>
-                  ) : (
-                    layoutIssues.slice(0, 5).map((issue) => (
+
+                <div className="mt-5 border-t pt-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pavimentos</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Array.from({ length: floors }).map((_, floor) => (
                       <button
-                        key={issue.id}
+                        key={floor}
                         type="button"
-                        onClick={() => issue.roomId && setSelectedId(issue.roomId)}
-                        className={issue.severity === "error" ? "block w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs text-red-800" : "block w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"}
+                        onClick={() => { setActiveFloor(floor); setSelectedId(null); setEditorView("plan"); }}
+                        className={activeFloor === floor
+                          ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background"
+                          : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold"}
                       >
-                        {issue.message}
+                        {floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}
                       </button>
-                    ))
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 border-t pt-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Ambientes</div>
+                  <div className="mt-2 max-h-72 space-y-1.5 overflow-auto">
+                    {visibleRooms.map((room) => (
+                      <button
+                        key={room.id}
+                        type="button"
+                        onClick={() => { setSelectedId(room.id); setEditorView("plan"); }}
+                        className={selectedId === room.id
+                          ? "w-full rounded-lg border border-orange-500 bg-orange-500/5 px-3 py-2 text-left"
+                          : "w-full rounded-lg border bg-background px-3 py-2 text-left"}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold">{room.label}</span>
+                          {room.locked && <Lock className="h-3 w-3 shrink-0" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+
+              <div className="min-w-0 bg-slate-100/60 p-3 sm:p-5">
+                <div className="mx-auto max-w-5xl">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {editorView === "plan"
+                          ? `Planta 2D — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}`
+                          : editorView === "facade"
+                            ? "Fachada conceitual"
+                            : "Render conceitual"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {editorView === "plan"
+                          ? "Arraste ambientes para mover. Use a alça laranja para redimensionar."
+                          : editorView === "facade"
+                            ? "A fachada nasce da mesma implantação e das preferências do projeto."
+                            : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
+                      </div>
+                    </div>
+                    {editorView === "plan" && (
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          ["A", "Social"],
+                          ["B", "Privacidade"],
+                          ["C", "Lazer"],
+                        ].map(([label, subtitle], index) => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => organize(index)}
+                            className={layoutVariant === index
+                              ? "rounded-lg border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold"
+                              : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold"}
+                          >
+                            {label} · {subtitle}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {editorView === "plan" && (
+                    <>
+                      <ConceptPlan2D
+                        rooms={visibleRooms}
+                        lotWidth={lotWidth}
+                        lotDepth={lotDepth}
+                        geometry={geometry}
+                        selectedId={selectedId}
+                        onSelect={setSelectedId}
+                        onRoomChange={updateRoomById}
+                      />
+                      <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
+                        Arrastar = mover · alça laranja = redimensionar · grade = 25 cm · paredes e vãos recalculam automaticamente.
+                      </div>
+                    </>
+                  )}
+
+                  {editorView === "facade" && (
+                    <div data-concept-render-source="true" className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                      <ConceptFacadeElevation rooms={rooms} floors={floors} lotWidth={lotWidth} facade={facadePreferences} />
+                    </div>
+                  )}
+
+                  {editorView === "render" && (
+                    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                      {conceptRender?.resultImageUrl ? (
+                        <img
+                          src={conceptRender.resultImageUrl}
+                          alt="Render conceitual"
+                          className="max-h-[680px] w-full object-contain"
+                        />
+                      ) : (
+                        <div className="grid min-h-[420px] place-items-center text-center">
+                          <div>
+                            <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
+                            <div className="mt-3 font-semibold">Ainda não há render</div>
+                            <p className="mt-1 text-sm text-muted-foreground">Gere a imagem sem sair do editor.</p>
+                            <button
+                              type="button"
+                              onClick={() => void generateConceptRender()}
+                              disabled={conceptRender?.status === "processing"}
+                              className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                            >
+                              {conceptRender?.status === "processing" ? "Gerando..." : "Gerar render"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="mt-5 rounded-2xl border p-4">
-                <div className="font-semibold">Portas e janelas</div>
-                <p className="mt-1 text-xs text-muted-foreground">Selecione um vão sugerido para mover ou trocar o tipo.</p>
-                <div className="mt-3 max-h-44 space-y-2 overflow-auto">
-                  {geometry.openings
-                    .filter((opening) => !selected || opening.roomId === selected.id)
-                    .map((opening) => (
-                      <button
-                        key={opening.id}
-                        type="button"
-                        onClick={() => setSelectedOpeningId(opening.id)}
-                        className={selectedOpeningId === opening.id ? "flex w-full items-center justify-between rounded-lg border border-orange-500 bg-orange-500/5 px-3 py-2 text-left text-xs" : "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs"}
+              <aside className="border-l bg-background p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Propriedades</div>
+
+                {editorView === "plan" && (
+                  <>
+                    {!selected ? (
+                      <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                        Selecione um ambiente na planta para editar medidas, posição e bloqueio.
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-4">
+                        <div className="rounded-xl bg-muted p-3">
+                          <div className="font-semibold">{selected.label}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{(selected.width * selected.depth).toFixed(1)} m²</div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="text-xs font-medium">Largura
+                            <input type="number" step="0.1" value={selected.width} onChange={(e) => updateSelected({ width: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                          </label>
+                          <label className="text-xs font-medium">Profundidade
+                            <input type="number" step="0.1" value={selected.depth} onChange={(e) => updateSelected({ depth: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                          </label>
+                          <label className="text-xs font-medium">X
+                            <input type="number" step="0.25" value={selected.x} onChange={(e) => updateSelected({ x: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                          </label>
+                          <label className="text-xs font-medium">Y
+                            <input type="number" step="0.25" value={selected.y} onChange={(e) => updateSelected({ y: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateSelected({ locked: !selected.locked })}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                        >
+                          <Lock className="h-4 w-4" /> {selected.locked ? "Desbloquear" : "Bloquear posição"}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="mt-5 border-t pt-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold">Validação</div>
+                        <span className={layoutIssues.some((issue) => issue.severity === "error")
+                          ? "rounded-full bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700"
+                          : layoutIssues.length
+                            ? "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700"
+                            : "rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700"}>
+                          {layoutIssues.some((issue) => issue.severity === "error") ? "Corrigir" : layoutIssues.length ? "Atenção" : "OK"}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {layoutIssues.slice(0, 5).map((issue) => (
+                          <button
+                            key={issue.id}
+                            type="button"
+                            onClick={() => issue.roomId && setSelectedId(issue.roomId)}
+                            className={issue.severity === "error"
+                              ? "block w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs text-red-800"
+                              : "block w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"}
+                          >
+                            {issue.message}
+                          </button>
+                        ))}
+                        {layoutIssues.length === 0 && <div className="text-xs text-emerald-700">Sem conflitos básicos detectados.</div>}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {editorView === "facade" && (
+                  <div className="mt-4 space-y-4">
+                    <label className="block text-xs font-semibold">Estilo
+                      <select
+                        value={facadePreferences.style}
+                        onChange={(event) => setFacadePreferences((prev) => ({ ...prev, style: event.target.value as ConceptFacadePreferences["style"] }))}
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
                       >
-                        <span>{opening.type === "door" ? "Porta" : "Janela"}</span>
-                        <span className="text-muted-foreground">{opening.orientation === "horizontal" ? "horizontal" : "vertical"}</span>
-                      </button>
-                    ))}
-                </div>
-                {selectedOpening && (
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => moveOpening(-0.25)} className="rounded-lg border px-2 py-2 text-xs font-semibold">← 25 cm</button>
-                    <button type="button" onClick={toggleOpeningType} className="rounded-lg border px-2 py-2 text-xs font-semibold">Trocar tipo</button>
-                    <button type="button" onClick={() => moveOpening(0.25)} className="rounded-lg border px-2 py-2 text-xs font-semibold">25 cm →</button>
+                        <option value="contemporaneo">Contemporâneo</option>
+                        <option value="minimalista">Minimalista</option>
+                        <option value="classico_contemporaneo">Clássico contemporâneo</option>
+                        <option value="tropical">Tropical</option>
+                        <option value="industrial">Industrial</option>
+                        <option value="rustico_contemporaneo">Rústico contemporâneo</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs font-semibold">Cobertura
+                      <select
+                        value={facadePreferences.roof}
+                        onChange={(event) => setFacadePreferences((prev) => ({ ...prev, roof: event.target.value as ConceptFacadePreferences["roof"] }))}
+                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                      >
+                        <option value="platibanda">Platibanda</option>
+                        <option value="aparente">Telhado aparente</option>
+                        <option value="misto">Misto</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setStep(5)}
+                      className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+                    >
+                      Abrir ajustes completos de fachada
+                    </button>
                   </div>
                 )}
-              </div>
 
-              <div className="mt-5 rounded-2xl border p-4">
-                <div className="flex items-center gap-2 font-semibold"><Maximize2 className="h-4 w-4" /> Resumo</div>
-                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                  <div>Terreno: {lotWidth} × {lotDepth} m</div>
-                  <div>Pavimentos: {floors}</div>
-                  <div>Área desejada: {desiredArea} m²</div>
-                  <div>Ambientes: {rooms.length}</div>
-                  <div>Área dos blocos: {currentArea.toFixed(0)} m²</div>
-                </div>
-              </div>
-            </aside>
+                {editorView === "render" && (
+                  <div className="mt-4 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => void generateConceptRender()}
+                      disabled={conceptRender?.status === "processing"}
+                      className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {conceptRender?.status === "processing"
+                        ? "Gerando render..."
+                        : conceptRender?.resultImageUrl
+                          ? "Gerar nova versão"
+                          : "Gerar render"}
+                    </button>
+                    {renderError && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{renderError}</div>}
+                  </div>
+                )}
+              </aside>
+            </div>
           </section>
         )}
 
