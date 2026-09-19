@@ -6,6 +6,13 @@ import type { ClosedSpace } from "./conceptWallNetwork";
 import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofFaces, normalizeRoofParameters, roofPeakZ, type RoofInput } from "./conceptRoof";
 import { conceptObjectCorners, type ConceptObject } from "./conceptObjects";
+import {
+  conceptFloorMaterial,
+  normalizeConceptMaterialScheme,
+  uniqueSchemeMaterials,
+  type ConceptMaterialRef,
+  type ConceptMaterialScheme,
+} from "./conceptMaterials";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -35,6 +42,7 @@ type Props = {
   activeFloor: number;
   levels: ConceptModelLevel[];
   roof: RoofInput;
+  materials: ConceptMaterialScheme;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -142,13 +150,204 @@ function objectVolumePolygons(
   };
 }
 
-function objectPalette(object: ConceptObject) {
-  if (object.category === "banheiro") return { top: "#dbeafe", side: "#bfdbfe", edge: "#64748b" };
-  if (object.category === "cozinha" || object.category === "eletro") return { top: "#e5e7eb", side: "#cbd5e1", edge: "#64748b" };
-  if (object.category === "decoracao") return { top: "#bbf7d0", side: "#86efac", edge: "#15803d" };
-  if (object.category === "armazenamento") return { top: "#d6c2a6", side: "#b59b7b", edge: "#6b5a47" };
-  return { top: "#ddd0bf", side: "#c3ad91", edge: "#6b5a47" };
+function normalizeHex(value: string | undefined, fallback: string) {
+  if (value && /^#[0-9a-f]{6}$/i.test(value)) return value.toLowerCase();
+  const text = value?.trim().toLowerCase() ?? "";
+  if (text.includes("preto") || text.includes("black")) return "#202020";
+  if (text.includes("branco") || text.includes("white")) return "#f0eee8";
+  if (text.includes("bronze")) return "#735640";
+  if (text.includes("dourado") || text.includes("gold")) return "#a88952";
+  if (text.includes("cinza") || text.includes("gray") || text.includes("grey")) return "#858585";
+  if (text.includes("verde") || text.includes("green")) return "#71806a";
+  if (text.includes("azul") || text.includes("blue")) return "#6f8796";
+  if (text.includes("bege") || text.includes("nude")) return "#c2ad91";
+  if (text.includes("freij") || text.includes("madeira") || text.includes("wood")) return "#aa7b4b";
+  return fallback;
 }
+
+function shadeHex(hex: string, amount: number) {
+  const normalized = normalizeHex(hex, "#888888").slice(1);
+  const value = Number.parseInt(normalized, 16);
+  const r = Math.max(0, Math.min(255, (value >> 16) + amount));
+  const g = Math.max(0, Math.min(255, ((value >> 8) & 255) + amount));
+  const b = Math.max(0, Math.min(255, (value & 255) + amount));
+  return `#${[r, g, b].map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function materialPatternId(material: ConceptMaterialRef) {
+  return `concept-material-${material.id.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
+function materialFill(material: ConceptMaterialRef) {
+  return `url(#${materialPatternId(material)})`;
+}
+
+function MaterialPatternDef({ material }: { material: ConceptMaterialRef }) {
+  const id = materialPatternId(material);
+  const base = material.color;
+  const secondary = material.secondaryColor ?? shadeHex(base, -18);
+  const edge = material.edgeColor ?? shadeHex(base, -38);
+
+  if (material.pattern === "tile") {
+    return (
+      <pattern id={id} width="2.1" height="2.1" patternUnits="userSpaceOnUse">
+        <rect width="2.1" height="2.1" fill={base} />
+        <path d="M 0 0 H 2.1 M 0 0 V 2.1" stroke={edge} strokeWidth="0.045" opacity="0.52" />
+        <path d="M 1.05 0 V 2.1 M 0 1.05 H 2.1" stroke={secondary} strokeWidth="0.018" opacity="0.22" />
+      </pattern>
+    );
+  }
+
+  if (material.pattern === "wood") {
+    return (
+      <pattern id={id} width="1.8" height="0.55" patternUnits="userSpaceOnUse">
+        <rect width="1.8" height="0.55" fill={base} />
+        <path d="M 0 .12 C .45 .02, .9 .25, 1.8 .1 M 0 .38 C .55 .26, 1.1 .52, 1.8 .34" fill="none" stroke={secondary} strokeWidth="0.045" opacity="0.72" />
+        <path d="M .15 0 V .55 M 1.2 0 V .55" stroke={edge} strokeWidth="0.018" opacity="0.22" />
+      </pattern>
+    );
+  }
+
+  if (material.pattern === "stone") {
+    return (
+      <pattern id={id} width="1.45" height="1.05" patternUnits="userSpaceOnUse">
+        <rect width="1.45" height="1.05" fill={base} />
+        <path d="M .05 .2 Q .45 .02 .75 .22 T 1.4 .15 M .08 .72 Q .5 .5 .82 .78 T 1.38 .68" fill="none" stroke={secondary} strokeWidth="0.055" opacity="0.62" />
+        <circle cx=".35" cy=".48" r=".08" fill={edge} opacity="0.22" />
+        <circle cx="1.08" cy=".42" r=".055" fill={edge} opacity="0.18" />
+      </pattern>
+    );
+  }
+
+  if (material.pattern === "concrete") {
+    return (
+      <pattern id={id} width=".85" height=".85" patternUnits="userSpaceOnUse">
+        <rect width=".85" height=".85" fill={base} />
+        <circle cx=".16" cy=".19" r=".025" fill={secondary} opacity=".55" />
+        <circle cx=".62" cy=".38" r=".018" fill={edge} opacity=".42" />
+        <circle cx=".35" cy=".7" r=".022" fill={secondary} opacity=".46" />
+      </pattern>
+    );
+  }
+
+  if (material.pattern === "metal") {
+    return (
+      <pattern id={id} width="1" height=".5" patternUnits="userSpaceOnUse">
+        <rect width="1" height=".5" fill={base} />
+        <path d="M 0 .08 H 1 M 0 .25 H 1 M 0 .42 H 1" stroke={secondary} strokeWidth=".018" opacity=".45" />
+      </pattern>
+    );
+  }
+
+  if (material.pattern === "fabric") {
+    return (
+      <pattern id={id} width=".35" height=".35" patternUnits="userSpaceOnUse">
+        <rect width=".35" height=".35" fill={base} />
+        <path d="M 0 0 L .35 .35 M .35 0 L 0 .35" stroke={secondary} strokeWidth=".012" opacity=".38" />
+      </pattern>
+    );
+  }
+
+  return (
+    <pattern id={id} width="1" height="1" patternUnits="userSpaceOnUse">
+      <rect width="1" height="1" fill={base} />
+      <rect width="1" height="1" fill={secondary} opacity="0.08" />
+    </pattern>
+  );
+}
+
+function objectPalette(object: ConceptObject) {
+  const fallback =
+    object.category === "banheiro" ? "#dbeafe" :
+    object.category === "cozinha" || object.category === "eletro" ? "#d7d9da" :
+    object.category === "decoracao" ? "#9dbc91" :
+    object.category === "armazenamento" ? "#b8956e" :
+    "#c4ad91";
+  const top = normalizeHex(object.color, normalizeHex(object.material, fallback));
+  return {
+    top,
+    side: shadeHex(top, -22),
+    edge: shadeHex(top, -58),
+  };
+}
+
+function openingVisualPolygons(
+  opening: OpeningMarker,
+  levelBase: number,
+  rotation: number,
+  lotWidth: number,
+  lotDepth: number,
+  zoom: number,
+) {
+  const params = normalizeOpeningParameters(opening.type, opening);
+  const width = params.width;
+  const z1 = levelBase + params.sillHeight;
+  const z2 = z1 + params.height;
+  const frameInset = Math.min(0.08, width * 0.08, params.height * 0.08);
+  const alongStart = (opening.orientation === "horizontal" ? opening.x : opening.y) - width / 2;
+  const alongEnd = alongStart + width;
+
+  const plane = (start: number, end: number, bottom: number, top: number) => {
+    const world = opening.orientation === "horizontal"
+      ? [
+          { x: start, y: opening.y, z: bottom },
+          { x: end, y: opening.y, z: bottom },
+          { x: end, y: opening.y, z: top },
+          { x: start, y: opening.y, z: top },
+        ]
+      : [
+          { x: opening.x, y: start, z: bottom },
+          { x: opening.x, y: end, z: bottom },
+          { x: opening.x, y: end, z: top },
+          { x: opening.x, y: start, z: top },
+        ];
+    return world.map((point) => project(point, rotation, lotWidth, lotDepth, zoom));
+  };
+
+  const innerStart = alongStart + frameInset;
+  const innerEnd = alongEnd - frameInset;
+  const innerBottom = z1 + frameInset;
+  const innerTop = z2 - frameInset;
+  const frameColor = normalizeHex(
+    params.frameColor,
+    params.frameMaterial === "wood" ? "#8a6540" :
+      params.frameMaterial === "pvc" ? "#e8e5df" :
+        params.frameMaterial === "steel" ? "#3c4145" :
+          "#303438",
+  );
+  const glass = params.glassType && params.glassType !== "none";
+  const innerColor = glass
+    ? params.glassType === "frosted" ? "#d9eef3" : params.glassType === "insulated" ? "#a8d5e2" : "#83c3d5"
+    : opening.type === "door" ? shadeHex(frameColor, 18) : "#b7d5dd";
+
+  const dividers = Array.from({ length: Math.max(0, params.leafCount - 1) }, (_, index) => {
+    const ratio = (index + 1) / params.leafCount;
+    const along = innerStart + (innerEnd - innerStart) * ratio;
+    const world = opening.orientation === "horizontal"
+      ? [
+          { x: along, y: opening.y, z: innerBottom },
+          { x: along, y: opening.y, z: innerTop },
+        ]
+      : [
+          { x: opening.x, y: along, z: innerBottom },
+          { x: opening.x, y: along, z: innerTop },
+        ];
+    return world.map((point) => project(point, rotation, lotWidth, lotDepth, zoom));
+  });
+
+  return {
+    frame: plane(alongStart, alongEnd, z1, z2),
+    inner: innerEnd > innerStart && innerTop > innerBottom
+      ? plane(innerStart, innerEnd, innerBottom, innerTop)
+      : plane(alongStart, alongEnd, z1, z2),
+    frameColor,
+    innerColor,
+    innerOpacity: glass ? (params.glassType === "frosted" ? 0.88 : 0.58) : 0.96,
+    glass,
+    dividers,
+  };
+}
+
 function splitWallForOpenings(
   wall: { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number; exterior?: boolean },
   openings: OpeningMarker[],
@@ -264,7 +463,9 @@ export default function ConceptModel3D({
   activeFloor,
   levels,
   roof,
+  materials,
 }: Props) {
+  const materialScheme = normalizeConceptMaterialScheme(materials);
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1);
   const [showAllFloors, setShowAllFloors] = useState(true);
@@ -416,6 +617,9 @@ export default function ConceptModel3D({
             <stop offset="0%" stopColor="#7c5a47" />
             <stop offset="100%" stopColor="#4e382e" />
           </linearGradient>
+          {uniqueSchemeMaterials(materialScheme).map((material) => (
+            <MaterialPatternDef key={material.id} material={material} />
+          ))}
           <filter id="concept3d-shadow" x="-30%" y="-30%" width="160%" height="180%">
             <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" floodColor="#000000" floodOpacity="0.28" />
           </filter>
@@ -426,6 +630,7 @@ export default function ConceptModel3D({
         {visibleLevels.map((level) => {
           const levelBase = level.elevation;
           const wallHeight = Math.max(WALL_HEIGHT, level.floorToFloorHeight - FLOOR_THICKNESS);
+          const floorMaterial = conceptFloorMaterial(materialScheme, level.floor);
           const allWalls = [
             ...level.walls.map((wall) => ({
               id: wall.id,
@@ -464,9 +669,9 @@ export default function ConceptModel3D({
                           lotDepth,
                           zoom,
                         ))}
-                        fill={level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1"}
-                        fillOpacity={level.floor === activeFloor ? "0.42" : "0.28"}
-                        stroke="#94a3b8"
+                        fill={materialFill(floorMaterial)}
+                        fillOpacity={level.floor === activeFloor ? "0.9" : "0.68"}
+                        stroke={floorMaterial.edgeColor ?? shadeHex(floorMaterial.color, -42)}
                         strokeOpacity="0.35"
                         strokeWidth="0.04"
                       />
@@ -508,15 +713,52 @@ export default function ConceptModel3D({
                       levelBase + piece.zMin,
                       levelBase + piece.zMax,
                     );
+                    const material = wall.exterior ? materialScheme.exteriorWall : materialScheme.interiorWall;
+                    const edge = material.edgeColor ?? shadeHex(material.color, -46);
                     return (
                       <g key={`${level.floor}-${wall.id}-${piece.kind}-${index}`}>
-                        <polygon points={points(shape.sideA)} fill={wall.exterior ? "#dbe1e8" : "#aab5c3"} stroke="#475569" strokeWidth="0.055" />
-                        <polygon points={points(shape.sideB)} fill="url(#concept3d-wall-side)" stroke="#475569" strokeWidth="0.055" />
-                        <polygon points={points(shape.top)} fill="url(#concept3d-wall)" stroke="#64748b" strokeWidth="0.055" />
+                        <polygon points={points(shape.sideA)} fill={materialFill(material)} stroke={edge} strokeWidth="0.055" />
+                        <polygon points={points(shape.sideB)} fill={shadeHex(material.color, -24)} stroke={edge} strokeWidth="0.055" />
+                        <polygon points={points(shape.top)} fill={materialFill(material)} stroke={edge} strokeWidth="0.055" />
                       </g>
                     );
                   })
                 )}
+              </g>
+
+              <g filter="url(#concept3d-shadow)">
+                {level.openings.map((opening) => {
+                  const visual = openingVisualPolygons(opening, levelBase, rotation, lotWidth, lotDepth, zoom);
+                  return (
+                    <g key={`${level.floor}-opening-visual-${opening.id}`}>
+                      <polygon
+                        points={points(visual.frame)}
+                        fill={visual.frameColor}
+                        stroke={shadeHex(visual.frameColor, -55)}
+                        strokeWidth="0.055"
+                      />
+                      <polygon
+                        points={points(visual.inner)}
+                        fill={visual.innerColor}
+                        fillOpacity={visual.innerOpacity}
+                        stroke={visual.frameColor}
+                        strokeWidth="0.04"
+                      />
+                      {visual.dividers.map((divider, index) => (
+                        <line
+                          key={`${opening.id}-leaf-${index}`}
+                          x1={divider[0]?.x}
+                          y1={divider[0]?.y}
+                          x2={divider[1]?.x}
+                          y2={divider[1]?.y}
+                          stroke={visual.frameColor}
+                          strokeWidth="0.055"
+                          strokeOpacity="0.9"
+                        />
+                      ))}
+                    </g>
+                  );
+                })}
               </g>
 
               {level.floor > 0 && level.closedSpaces.flatMap((space) =>
@@ -538,9 +780,9 @@ export default function ConceptModel3D({
                         lotDepth,
                         zoom,
                       ))}
-                      fill="#64748b"
-                      fillOpacity="0.7"
-                      stroke="#475569"
+                      fill={shadeHex(floorMaterial.color, -32)}
+                      fillOpacity="0.88"
+                      stroke={floorMaterial.edgeColor ?? shadeHex(floorMaterial.color, -48)}
                       strokeWidth="0.05"
                     />
                   ))
@@ -562,8 +804,8 @@ export default function ConceptModel3D({
                       lotDepth,
                       zoom,
                     ))}
-                    fill="#a99478"
-                    stroke="#5f5143"
+                    fill={materialFill(materialScheme.stair)}
+                    stroke={materialScheme.stair.edgeColor ?? shadeHex(materialScheme.stair.color, -48)}
                     strokeWidth="0.045"
                   />
                 ));
@@ -581,8 +823,8 @@ export default function ConceptModel3D({
                       lotDepth,
                       zoom,
                     ))}
-                    fill={index % 2 === 0 ? "#b8a78f" : "#c9b9a4"}
-                    stroke="#6b5a47"
+                    fill={index % 2 === 0 ? materialFill(materialScheme.stair) : shadeHex(materialScheme.stair.color, 10)}
+                    stroke={materialScheme.stair.edgeColor ?? shadeHex(materialScheme.stair.color, -48)}
                     strokeWidth="0.04"
                   />
                 ));
@@ -623,10 +865,14 @@ export default function ConceptModel3D({
               project(point, rotation, lotWidth, lotDepth, zoom)
             ))}
             fill={face.role === "roof"
-              ? index % 2 === 0 ? "url(#concept3d-roof)" : "#65493b"
-              : face.role === "parapet" ? "#d5d9dc" : "#aeb6bd"}
+              ? materialFill(materialScheme.roof)
+              : face.role === "parapet"
+                ? materialFill(materialScheme.exteriorWall)
+                : materialFill(conceptFloorMaterial(materialScheme, topLevel?.floor ?? 0))}
             fillOpacity={face.role === "slab" ? "0.94" : "1"}
-            stroke={face.role === "roof" ? "#3f2f28" : "#737b82"}
+            stroke={face.role === "roof"
+              ? materialScheme.roof.edgeColor ?? shadeHex(materialScheme.roof.color, -50)
+              : materialScheme.exteriorWall.edgeColor ?? shadeHex(materialScheme.exteriorWall.color, -48)}
             strokeWidth="0.08"
           />
         ))}
@@ -635,7 +881,7 @@ export default function ConceptModel3D({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
         <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços · {objectCount} objetos</span>
         <span>
-          Vista {Math.round(rotation)}° · cobertura {roofParams.roof === "platibanda" ? "platibanda" : `${roofParams.roofWaters} água${roofParams.roofWaters > 1 ? "s" : ""} · ${roofParams.roofPitchDeg.toFixed(0)}°`} · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm
+          Vista {Math.round(rotation)}° · piso {conceptFloorMaterial(materialScheme, activeFloor).name} · cobertura {materialScheme.roof.name} · {roofParams.roof === "platibanda" ? "platibanda" : `${roofParams.roofWaters} água${roofParams.roofWaters > 1 ? "s" : ""} · ${roofParams.roofPitchDeg.toFixed(0)}°`}
         </span>
       </div>
     </div>
