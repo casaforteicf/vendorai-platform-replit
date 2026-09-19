@@ -61,6 +61,7 @@ import {
   createConceptObjectFromPreset,
   normalizeConceptObject,
   objectCategoryLabel,
+  sanitizeConceptObjectForPersistence,
   type ConceptObject,
 } from "./conceptObjects";
 
@@ -687,7 +688,7 @@ export default function ConceptPlanner() {
     setSaveState("saving");
     const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
     const persistedRooms = normalizeDraftRooms(rooms);
-    const persistedObjects = objects.map((object) => normalizeConceptObject(object, lotWidth, lotDepth));
+    const persistedObjects = objects.map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",
@@ -1878,7 +1879,7 @@ export default function ConceptPlanner() {
 
           const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
           const persistedRooms = normalizeDraftRooms(rooms);
-          const persistedObjects = objects.map((object) => normalizeConceptObject(object, lotWidth, lotDepth));
+          const persistedObjects = objects.map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
           const payload = {
             title: "Meu pré-projeto",
             status: "draft",

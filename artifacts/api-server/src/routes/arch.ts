@@ -227,6 +227,7 @@ type ConceptPromotedObject = {
   componentId?: string;
   manufacturerId?: string;
   catalogProductId?: string;
+  locked?: boolean;
 };
 
 function conceptFloorElevation(rooms: any[], targetFloor: number) {
@@ -281,7 +282,7 @@ async function syncConceptObjectsToProject(
       ...(object.presetId ? [`preset:${object.presetId}`] : []),
       ...(object.catalogProductId ? [`catalog_product:${object.catalogProductId}`] : []),
     ],
-    locked: false,
+    locked: object.locked ?? false,
   })));
 }
 router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res) => {
@@ -351,6 +352,11 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       const area = Number(room.width ?? 0) * Number(room.depth ?? 0);
       return `${room.label ?? room.kind ?? "Ambiente"} (${area.toFixed(1)} m²)`;
     })
+    .join(", ");
+  const objectSummary = conceptObjects
+    .map((object) => object.name)
+    .filter(Boolean)
+    .slice(0, 30)
     .join(", ");
 
   let leadId: string | null = null;
@@ -456,6 +462,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `Pavimentos: ${config.floors ?? "—"}.`,
     `Área desejada: ${config.desiredArea ?? "—"} m².`,
     roomSummary ? `Ambientes: ${roomSummary}.` : null,
+    objectSummary ? `Móveis/objetos do Concept: ${objectSummary}.` : null,
     typeof facade.style === "string" ? `Estilo: ${facade.style}.` : null,
     typeof facade.roof === "string"
       ? [

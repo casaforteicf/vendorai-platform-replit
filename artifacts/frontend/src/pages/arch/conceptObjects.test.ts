@@ -5,6 +5,7 @@ import {
   createConceptObjectFromPreset,
   normalizeConceptObject,
   normalizeObjectRotation,
+  sanitizeConceptObjectForPersistence,
 } from "./conceptObjects";
 
 describe("concept objects", () => {
@@ -37,6 +38,48 @@ describe("concept objects", () => {
     }, 10, 10);
     expect(object.x).toBeGreaterThanOrEqual(0.5);
     expect(object.y).toBeGreaterThanOrEqual(1);
+  });
+
+  it("preserva espaço durante a edição e limpa no salvamento", () => {
+    const editing = normalizeConceptObject({
+      id: "obj-1",
+      name: "Mesa ",
+      category: "jantar",
+      symbol: "table",
+      floor: 0,
+      x: 3,
+      y: 3,
+      width: 1,
+      depth: 1,
+      height: 0.7,
+      rotationDeg: 0,
+      material: " madeira ",
+    }, 10, 10);
+    expect(editing.name).toBe("Mesa ");
+    const persisted = sanitizeConceptObjectForPersistence(editing, 10, 10);
+    expect(persisted.name).toBe("Mesa");
+    expect(persisted.material).toBe("madeira");
+  });
+
+  it("reduz um objeto rotacionado grande para caber no terreno", () => {
+    const object = normalizeConceptObject({
+      id: "obj-large",
+      name: "Grande",
+      category: "decoracao",
+      symbol: "generic",
+      floor: 0,
+      x: 5,
+      y: 5,
+      width: 10,
+      depth: 10,
+      height: 1,
+      rotationDeg: 45,
+    }, 10, 10);
+    const corners = conceptObjectCorners(object);
+    expect(Math.min(...corners.map((point) => point.x))).toBeGreaterThanOrEqual(-0.0001);
+    expect(Math.max(...corners.map((point) => point.x))).toBeLessThanOrEqual(10.0001);
+    expect(Math.min(...corners.map((point) => point.y))).toBeGreaterThanOrEqual(-0.0001);
+    expect(Math.max(...corners.map((point) => point.y))).toBeLessThanOrEqual(10.0001);
   });
 
   it("gera o mesmo footprint rotacionado consumido por 2D e 3D", () => {

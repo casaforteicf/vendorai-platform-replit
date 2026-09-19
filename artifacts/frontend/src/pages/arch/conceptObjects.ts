@@ -107,6 +107,16 @@ function finiteOr(value: number | undefined, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function liveText(value: string | undefined, fallback?: string) {
+  if (typeof value !== "string") return fallback;
+  return value.trim().length ? value : fallback;
+}
+
+function cleanText(value: string | undefined) {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : undefined;
+}
+
 export function normalizeObjectRotation(value: number | undefined) {
   const normalized = ((finiteOr(value, 0) % 360) + 360) % 360;
   return Math.round(normalized * 10) / 10;
@@ -117,17 +127,28 @@ export function normalizeConceptObject(
   lotWidth: number,
   lotDepth: number,
 ): ConceptObject {
-  const width = clamp(finiteOr(source.width, 0.6), 0.15, Math.max(0.15, lotWidth));
-  const depth = clamp(finiteOr(source.depth, 0.6), 0.15, Math.max(0.15, lotDepth));
+  let width = clamp(finiteOr(source.width, 0.6), 0.15, Math.max(0.15, lotWidth));
+  let depth = clamp(finiteOr(source.depth, 0.6), 0.15, Math.max(0.15, lotDepth));
   const height = clamp(finiteOr(source.height, 0.8), 0.05, 5);
   const rotationDeg = normalizeObjectRotation(source.rotationDeg);
   const radians = (rotationDeg * Math.PI) / 180;
-  const bboxWidth = Math.abs(width * Math.cos(radians)) + Math.abs(depth * Math.sin(radians));
-  const bboxDepth = Math.abs(width * Math.sin(radians)) + Math.abs(depth * Math.cos(radians));
+  let bboxWidth = Math.abs(width * Math.cos(radians)) + Math.abs(depth * Math.sin(radians));
+  let bboxDepth = Math.abs(width * Math.sin(radians)) + Math.abs(depth * Math.cos(radians));
+  const fitScale = Math.min(
+    1,
+    bboxWidth > 0 ? lotWidth / bboxWidth : 1,
+    bboxDepth > 0 ? lotDepth / bboxDepth : 1,
+  );
+  if (fitScale < 1) {
+    width *= fitScale;
+    depth *= fitScale;
+    bboxWidth = Math.abs(width * Math.cos(radians)) + Math.abs(depth * Math.sin(radians));
+    bboxDepth = Math.abs(width * Math.sin(radians)) + Math.abs(depth * Math.cos(radians));
+  }
 
   return {
     ...source,
-    name: source.name?.trim() || "Objeto",
+    name: liveText(source.name, "Objeto") ?? "Objeto",
     category: CATEGORIES.has(source.category) ? source.category : "decoracao",
     symbol: SYMBOLS.has(source.symbol) ? source.symbol : "generic",
     floor: Math.max(0, Math.round(finiteOr(source.floor, 0))),
@@ -162,6 +183,24 @@ export function createConceptObjectFromPreset(
     rotationDeg: 0,
     material: preset.material,
     color: preset.color,
+  };
+}
+
+export function sanitizeConceptObjectForPersistence(
+  object: ConceptObject,
+  lotWidth: number,
+  lotDepth: number,
+): ConceptObject {
+  const normalized = normalizeConceptObject(object, lotWidth, lotDepth);
+  return {
+    ...normalized,
+    name: normalized.name.trim() || "Objeto",
+    material: cleanText(normalized.material),
+    finish: cleanText(normalized.finish),
+    color: cleanText(normalized.color),
+    componentId: cleanText(normalized.componentId),
+    manufacturerId: cleanText(normalized.manufacturerId),
+    catalogProductId: cleanText(normalized.catalogProductId),
   };
 }
 
