@@ -127,17 +127,116 @@ function wallPolygon(
   };
 }
 
-function objectVolumePolygons(
+type ObjectVisualPart = {
+  id: string;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  depth: number;
+  zBase: number;
+  height: number;
+  shade?: number;
+};
+
+function objectVisualParts(object: ConceptObject): ObjectVisualPart[] {
+  const w = object.width;
+  const d = object.depth;
+  const h = object.height;
+  const full = (): ObjectVisualPart[] => [{
+    id: "body", offsetX: 0, offsetY: 0, width: w, depth: d, zBase: 0, height: h,
+  }];
+
+  if (object.symbol === "bed") {
+    return [
+      { id: "base", offsetX: 0, offsetY: 0.06 * d, width: w * 0.96, depth: d * 0.9, zBase: 0, height: h * 0.38, shade: -18 },
+      { id: "mattress", offsetX: 0, offsetY: 0.06 * d, width: w * 0.93, depth: d * 0.86, zBase: h * 0.38, height: h * 0.28, shade: 20 },
+      { id: "headboard", offsetX: 0, offsetY: -d * 0.44, width: w, depth: Math.max(0.06, d * 0.07), zBase: 0, height: h, shade: -28 },
+    ];
+  }
+
+  if (object.symbol === "sofa") {
+    return [
+      { id: "seat", offsetX: 0, offsetY: d * 0.08, width: w * 0.82, depth: d * 0.67, zBase: 0, height: h * 0.48 },
+      { id: "back", offsetX: 0, offsetY: -d * 0.39, width: w * 0.92, depth: d * 0.16, zBase: h * 0.12, height: h * 0.82, shade: -16 },
+      { id: "arm-left", offsetX: -w * 0.45, offsetY: d * 0.03, width: w * 0.1, depth: d * 0.7, zBase: 0, height: h * 0.66, shade: -10 },
+      { id: "arm-right", offsetX: w * 0.45, offsetY: d * 0.03, width: w * 0.1, depth: d * 0.7, zBase: 0, height: h * 0.66, shade: -10 },
+    ];
+  }
+
+  if (object.symbol === "chair") {
+    return [
+      { id: "seat", offsetX: 0, offsetY: d * 0.05, width: w * 0.82, depth: d * 0.72, zBase: h * 0.36, height: h * 0.12 },
+      { id: "back", offsetX: 0, offsetY: -d * 0.38, width: w * 0.82, depth: d * 0.12, zBase: h * 0.43, height: h * 0.55, shade: -14 },
+      { id: "base", offsetX: 0, offsetY: d * 0.04, width: w * 0.18, depth: d * 0.18, zBase: 0, height: h * 0.4, shade: -30 },
+    ];
+  }
+
+  if (["table", "desk"].includes(object.symbol)) {
+    return [
+      { id: "top", offsetX: 0, offsetY: 0, width: w, depth: d, zBase: h * 0.78, height: Math.max(0.05, h * 0.12), shade: 10 },
+      { id: "base", offsetX: 0, offsetY: 0, width: Math.max(0.12, w * 0.12), depth: Math.max(0.12, d * 0.18), zBase: 0, height: h * 0.8, shade: -28 },
+    ];
+  }
+
+  if (["counter", "island"].includes(object.symbol)) {
+    return [
+      { id: "cabinet", offsetX: 0, offsetY: 0, width: w * 0.94, depth: d * 0.9, zBase: 0, height: h * 0.88, shade: -12 },
+      { id: "top", offsetX: 0, offsetY: 0, width: w, depth: d, zBase: h * 0.88, height: h * 0.1, shade: 22 },
+    ];
+  }
+
+  if (object.symbol === "toilet") {
+    return [
+      { id: "base", offsetX: 0, offsetY: d * 0.12, width: w * 0.7, depth: d * 0.66, zBase: 0, height: h * 0.48, shade: 12 },
+      { id: "tank", offsetX: 0, offsetY: -d * 0.34, width: w * 0.88, depth: d * 0.22, zBase: h * 0.28, height: h * 0.68, shade: 4 },
+    ];
+  }
+
+  if (object.symbol === "sink") {
+    return [
+      { id: "pedestal", offsetX: 0, offsetY: 0, width: w * 0.28, depth: d * 0.28, zBase: 0, height: h * 0.72, shade: -12 },
+      { id: "basin", offsetX: 0, offsetY: 0, width: w * 0.92, depth: d * 0.8, zBase: h * 0.72, height: h * 0.18, shade: 18 },
+    ];
+  }
+
+  if (object.symbol === "plant") {
+    return [
+      { id: "pot", offsetX: 0, offsetY: 0, width: w * 0.45, depth: d * 0.45, zBase: 0, height: h * 0.34, shade: -26 },
+      { id: "foliage", offsetX: 0, offsetY: 0, width: w, depth: d, zBase: h * 0.28, height: h * 0.7, shade: 10 },
+    ];
+  }
+
+  return full();
+}
+
+function objectPartVolumePolygons(
   object: ConceptObject,
+  part: ObjectVisualPart,
   levelBase: number,
   rotation: number,
   lotWidth: number,
   lotDepth: number,
   zoom: number,
 ) {
-  const footprint = conceptObjectCorners(object);
-  const base = footprint.map((point) => ({ ...point, z: levelBase }));
-  const top = footprint.map((point) => ({ ...point, z: levelBase + object.height }));
+  const radians = (object.rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const centerX = object.x + part.offsetX * cos - part.offsetY * sin;
+  const centerY = object.y + part.offsetX * sin + part.offsetY * cos;
+  const halfW = part.width / 2;
+  const halfD = part.depth / 2;
+  const local = [
+    { x: -halfW, y: -halfD },
+    { x: halfW, y: -halfD },
+    { x: halfW, y: halfD },
+    { x: -halfW, y: halfD },
+  ];
+  const footprint = local.map((point) => ({
+    x: centerX + point.x * cos - point.y * sin,
+    y: centerY + point.x * sin + point.y * cos,
+  }));
+  const base = footprint.map((point) => ({ ...point, z: levelBase + part.zBase }));
+  const top = footprint.map((point) => ({ ...point, z: levelBase + part.zBase + part.height }));
   const projectPoints = (items: Point3[]) => items.map((point) => project(point, rotation, lotWidth, lotDepth, zoom));
   return {
     top: projectPoints(top),
@@ -831,28 +930,32 @@ export default function ConceptModel3D({
                 return [...landings, ...treads];
               })}
               {level.objects.flatMap((object) => {
-                const volume = objectVolumePolygons(object, levelBase, rotation, lotWidth, lotDepth, zoom);
                 const palette = objectPalette(object);
-                const sidePolygons = volume.sides.map((side, index) => (
-                  <polygon
-                    key={`${object.id}-side-${index}`}
-                    points={points(side)}
-                    fill={palette.side}
-                    fillOpacity="0.96"
-                    stroke={palette.edge}
-                    strokeWidth="0.035"
-                  />
-                ));
-                const topPolygon = (
-                  <polygon
-                    key={`${object.id}-top`}
-                    points={points(volume.top)}
-                    fill={palette.top}
-                    stroke={palette.edge}
-                    strokeWidth="0.04"
-                  />
-                );
-                return [...sidePolygons, topPolygon];
+                return objectVisualParts(object).flatMap((part) => {
+                  const volume = objectPartVolumePolygons(object, part, levelBase, rotation, lotWidth, lotDepth, zoom);
+                  const topColor = shadeHex(palette.top, part.shade ?? 0);
+                  const sideColor = shadeHex(palette.side, Math.round((part.shade ?? 0) * 0.6));
+                  const sidePolygons = volume.sides.map((side, index) => (
+                    <polygon
+                      key={`${object.id}-${part.id}-side-${index}`}
+                      points={points(side)}
+                      fill={sideColor}
+                      fillOpacity="0.97"
+                      stroke={palette.edge}
+                      strokeWidth="0.035"
+                    />
+                  ));
+                  const topPolygon = (
+                    <polygon
+                      key={`${object.id}-${part.id}-top`}
+                      points={points(volume.top)}
+                      fill={topColor}
+                      stroke={palette.edge}
+                      strokeWidth="0.04"
+                    />
+                  );
+                  return [...sidePolygons, topPolygon];
+                });
               })}
             </g>
           );

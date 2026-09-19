@@ -771,6 +771,16 @@ export default function ConceptPlanner() {
     surface: "floor" | "interiorWall" | "exteriorWall" | "roof" | "stair",
     materialId: string,
   ) => {
+    const selectedLibraryMaterial = CONCEPT_MATERIAL_LIBRARY.find((material) => material.id === materialId);
+    if (!selectedLibraryMaterial) return;
+
+    if (surface === "exteriorWall") {
+      setFacadePreferences((currentFacade) => ({
+        ...currentFacade,
+        primaryMaterial: legacyFacadePrimaryMaterial(selectedLibraryMaterial),
+      }));
+    }
+
     setMaterialScheme((current) => {
       const normalized = normalizeConceptMaterialScheme(current);
       if (surface === "floor") {
@@ -783,17 +793,9 @@ export default function ConceptPlanner() {
         };
       }
 
-      const selected = materialFromLibrary(materialId, normalized[surface]);
-      if (surface === "exteriorWall") {
-        setFacadePreferences((currentFacade) => ({
-          ...currentFacade,
-          primaryMaterial: legacyFacadePrimaryMaterial(selected),
-        }));
-      }
-
       return {
         ...normalized,
-        [surface]: selected,
+        [surface]: materialFromLibrary(materialId, normalized[surface]),
       };
     });
   };
