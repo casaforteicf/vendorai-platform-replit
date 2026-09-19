@@ -1595,6 +1595,123 @@ export default function ConceptPlanner() {
     }
   };
 
+  const autosaveSignature = useMemo(
+    () =>
+      JSON.stringify({
+        lotWidth,
+        lotDepth,
+        floors,
+        desiredArea,
+        typology,
+        layoutPreferences,
+        wallFirstFloors,
+        showDimensions,
+        rooms,
+        customWalls,
+        customOpenings,
+        spaceProfiles,
+        openingOverrides,
+        facadePreferences,
+        facadeDesign,
+      }),
+    [
+      lotWidth,
+      lotDepth,
+      floors,
+      desiredArea,
+      typology,
+      layoutPreferences,
+      wallFirstFloors,
+      showDimensions,
+      rooms,
+      customWalls,
+      customOpenings,
+      spaceProfiles,
+      openingOverrides,
+      facadePreferences,
+      facadeDesign,
+    ],
+  );
+
+  useEffect(() => {
+    if (step !== 4 || saveState === "loading") return;
+
+    setSaveState((current) => current === "loading" ? current : "idle");
+    const timer = window.setTimeout(() => {
+      void saveConcept(4);
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [autosaveSignature, step]);
+
+  useEffect(() => {
+    const handleEditorShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const editingText =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        Boolean(target?.isContentEditable);
+
+      const command = event.ctrlKey || event.metaKey;
+
+      if (command && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveConcept(4);
+        return;
+      }
+
+      if (editingText) return;
+
+      if (command && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redoRooms();
+        else undoRooms();
+        return;
+      }
+
+      if (command && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoRooms();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedId(null);
+        setSelectedWallId(null);
+        setSelectedCustomWallId(null);
+        setSelectedOpeningId(null);
+        setSelectedClosedSpaceId(null);
+        if (interactionMode === "draw-wall") setInteractionMode("navigate");
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (selectedCustomWall) {
+          event.preventDefault();
+          deleteCustomWall(selectedCustomWall.id);
+          return;
+        }
+
+        if (selectedOpening && customOpenings.some((opening) => opening.id === selectedOpening.id)) {
+          event.preventDefault();
+          deleteCustomOpening(selectedOpening.id);
+          return;
+        }
+
+        if (selected) {
+          event.preventDefault();
+          deleteSelectedRoom();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleEditorShortcut);
+    return () => window.removeEventListener("keydown", handleEditorShortcut);
+  });
+
+
   return (
     <div className="arqdor-reference-ui min-h-screen bg-muted/30">
       {step !== 4 && (
