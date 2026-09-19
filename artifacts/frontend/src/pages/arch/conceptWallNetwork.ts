@@ -187,12 +187,25 @@ export function detectClosedSpaces(
   const outsideQueue: Cell[] = [];
   for (const row of cells) {
     for (const cell of row) {
-      if (
-        cell.ix === 0 ||
-        cell.iy === 0 ||
-        cell.ix === xs.length - 2 ||
-        cell.iy === ys.length - 2
-      ) {
+      const x1 = xs[cell.ix];
+      const x2 = xs[cell.ix + 1];
+      const y1 = ys[cell.iy];
+      const y2 = ys[cell.iy + 1];
+
+      const exposedLeft =
+        cell.ix === 0 &&
+        !usableWalls.some((wall) => coversVertical(wall, x1, y1, y2));
+      const exposedRight =
+        cell.ix === xs.length - 2 &&
+        !usableWalls.some((wall) => coversVertical(wall, x2, y1, y2));
+      const exposedTop =
+        cell.iy === 0 &&
+        !usableWalls.some((wall) => coversHorizontal(wall, y1, x1, x2));
+      const exposedBottom =
+        cell.iy === ys.length - 2 &&
+        !usableWalls.some((wall) => coversHorizontal(wall, y2, x1, x2));
+
+      if (exposedLeft || exposedRight || exposedTop || exposedBottom) {
         cell.outside = true;
         outsideQueue.push(cell);
       }
