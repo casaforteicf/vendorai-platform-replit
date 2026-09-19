@@ -63,8 +63,8 @@ const superAdminFullVisibilityPlugin = {
     );
     contents = replaceExact(
       contents,
-      `      if (!arqdorVisible) {\n        injected.forEach((entry) => entry.remove());\n        return;\n      }`,
-      `      if (isSuperAdmin) {\n        injected.forEach((entry) => entry.remove());\n        return;\n      }\n\n      if (!arqdorVisible) {\n        injected.forEach((entry) => entry.remove());\n        return;\n      }`,
+      `      if (!arqdorVisible) {\n        injected.forEach((entry) => entry.remove());\n        observer.observe(document.body, { childList: true, subtree: true });\n        return;\n      }`,
+      `      if (isSuperAdmin) {\n        injected.forEach((entry) => entry.remove());\n        observer.observe(document.body, { childList: true, subtree: true });\n        return;\n      }\n\n      if (!arqdorVisible) {\n        injected.forEach((entry) => entry.remove());\n        observer.observe(document.body, { childList: true, subtree: true });\n        return;\n      }`,
       "skip tenant Arqdor injector for super admin",
     );
     contents = replaceExact(
