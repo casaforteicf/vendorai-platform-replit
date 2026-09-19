@@ -1517,60 +1517,63 @@ export default function ConceptPlanner() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <div className="border-b bg-background">
-        <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <a
-                href="/arch"
-                className="mb-3 inline-flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Voltar ao dashboard
-              </a>
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
-                <Sparkles className="h-4 w-4" />
-                Arqdor Concept
-              </div>
-              <h1 className="mt-1 text-2xl font-bold">Crie o conceito da sua casa</h1>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Defina o lote e escolha uma proposta visual. Depois personalize a planta, a fachada e o 3D no mesmo workspace.
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-3">
-              <div className="flex flex-wrap gap-3">
-                {FLOW_STEPS.map((label, index) => {
-                  const flowIndex = step >= 6 ? 3 : step >= 4 ? 2 : step >= 1 ? 1 : 0;
-                  return <StepPill key={label} index={index} current={flowIndex} label={label} />;
-                })}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={saveState === "error" ? "text-xs text-red-600" : "text-xs text-muted-foreground"}>
-                  {saveState === "loading"
-                    ? "Carregando..."
-                    : saveState === "saving"
-                      ? "Salvando..."
-                      : saveState === "saved"
-                        ? "Pré-projeto salvo"
-                        : saveState === "error"
-                          ? "Não foi possível salvar"
-                          : "Ainda não salvo"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void saveConcept()}
-                  disabled={saveState === "saving" || saveState === "loading"}
-                  className="rounded-xl border bg-background px-4 py-2 text-sm font-semibold disabled:opacity-50"
+      {step !== 4 && (
+        <div className="border-b bg-background">
+          <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <a
+                  href="/arch"
+                  className="mb-3 inline-flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted"
                 >
-                  Salvar pré-projeto
-                </button>
+                  <ArrowLeft className="h-4 w-4" />
+                  Voltar ao dashboard
+                </a>
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+                  <Sparkles className="h-4 w-4" />
+                  Arqdor Concept
+                </div>
+                <h1 className="mt-1 text-2xl font-bold">Crie o conceito da sua casa</h1>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                  Defina o lote e escolha uma proposta visual. Depois personalize a planta, a fachada e o 3D no mesmo workspace.
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-3">
+                <div className="flex flex-wrap gap-3">
+                  {FLOW_STEPS.map((label, index) => {
+                    const flowIndex = step >= 6 ? 3 : step >= 4 ? 2 : step >= 1 ? 1 : 0;
+                    return <StepPill key={label} index={index} current={flowIndex} label={label} />;
+                  })}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={saveState === "error" ? "text-xs text-red-600" : "text-xs text-muted-foreground"}>
+                    {saveState === "loading"
+                      ? "Carregando..."
+                      : saveState === "saving"
+                        ? "Salvando..."
+                        : saveState === "saved"
+                          ? "Pré-projeto salvo"
+                          : saveState === "error"
+                            ? "Não foi possível salvar"
+                            : "Ainda não salvo"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void saveConcept()}
+                    disabled={saveState === "saving" || saveState === "loading"}
+                    className="rounded-xl border bg-background px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  >
+                    Salvar pré-projeto
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <main className="mx-auto max-w-[1500px] p-4 sm:p-6">
+      )}
+
+      <main className={step === 4 ? "w-full p-0" : "mx-auto max-w-[1500px] p-4 sm:p-6"}>
         {step === 0 && (
           <section className="grid gap-5 xl:grid-cols-[380px_1fr]">
             <aside className="rounded-3xl border bg-card p-6 shadow-sm">
@@ -2003,15 +2006,28 @@ export default function ConceptPlanner() {
           </section>
         )}
 
-                {step === 4 && (
-          <section className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3">
-              <div>
-                <div className="text-sm font-semibold">Editor do pré-projeto</div>
-                <div className="text-xs text-muted-foreground">Edite a mesma casa em 2D, 3D, fachada e render sem sair do workspace.</div>
+        {step === 4 && (
+          <section className="min-h-screen overflow-hidden bg-[#eef1f4]">
+            <div className="flex h-14 items-center justify-between border-b border-slate-800 bg-[#111820] px-3 text-white shadow-sm sm:px-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <a
+                  href="/arch"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
+                  title="Voltar ao Arqdor"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </a>
+                <div className="hidden h-6 w-px bg-white/10 sm:block" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">Meu pré-projeto</div>
+                  <div className="hidden text-[10px] text-slate-400 sm:block">
+                    Arqdor Concept · {lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-xl border bg-muted/40 p-1">
+
+              <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 lg:flex">
+                <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
                   {([
                     ["plan", "2D"],
                     ["model3d", "3D"],
@@ -2023,19 +2039,22 @@ export default function ConceptPlanner() {
                       type="button"
                       onClick={() => setEditorView(value)}
                       className={editorView === value
-                        ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background"
-                        : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                        ? "rounded-md bg-white px-4 py-1.5 text-xs font-semibold text-slate-950 shadow"
+                        : "rounded-md px-4 py-1.5 text-xs font-semibold text-slate-400 transition hover:text-white"}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={undoRooms}
                   disabled={!roomHistory.length}
                   title="Desfazer"
-                  className="grid h-9 w-9 place-items-center rounded-xl border bg-background disabled:opacity-35"
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
                 >
                   <RotateCcw className="h-4 w-4" />
                 </button>
@@ -2044,16 +2063,20 @@ export default function ConceptPlanner() {
                   onClick={redoRooms}
                   disabled={!roomFuture.length}
                   title="Refazer"
-                  className="grid h-9 w-9 place-items-center rounded-xl border bg-background disabled:opacity-35"
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
                 >
                   <RotateCw className="h-4 w-4" />
                 </button>
+                <div className="mx-1 hidden h-6 w-px bg-white/10 sm:block" />
+                <span className="hidden text-[10px] text-slate-400 md:block">
+                  {saveState === "saving" ? "Salvando…" : saveState === "saved" ? "Salvo" : saveState === "error" ? "Erro ao salvar" : ""}
+                </span>
                 <button
                   type="button"
                   onClick={() => void saveConcept(4)}
-                  className="rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
+                  className="rounded-lg bg-orange-500 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-orange-600"
                 >
-                  {saveState === "saving" ? "Salvando..." : "Salvar"}
+                  Salvar
                 </button>
               </div>
             </div>
@@ -2066,40 +2089,52 @@ export default function ConceptPlanner() {
               <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={rooms} facade={facadePreferences} />
             </div>
 
-            <div className="grid min-h-[760px] xl:grid-cols-[286px_1fr_300px]">
-              <aside className="order-3 border-t bg-background xl:order-1 xl:border-r xl:border-t-0">
-                <div className="sticky top-0 z-10 border-b bg-background p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-base font-semibold">Biblioteca</div>
-                      <div className="text-xs text-muted-foreground">Arraste a ideia, ajuste na planta.</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setStep(1)}
-                      className="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
-                    >
-                      Modelos
-                    </button>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1">
-                    {([
-                      ["build", "Construir"],
-                      ["rooms", "Ambientes"],
-                      ["outdoor", "Externo"],
-                    ] as const).map(([value, label]) => (
+            <div className="grid min-h-[calc(100vh-56px)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+              <aside className="order-3 border-t bg-white xl:order-1 xl:border-r xl:border-t-0">
+                <div className="flex min-h-full">
+                  <div className="w-14 shrink-0 border-r bg-[#151d26] py-3 text-white">
+                    <div className="flex flex-col items-center gap-2">
+                      {([
+                        ["build", Layers3, "Construir"],
+                        ["rooms", Home, "Ambientes"],
+                        ["outdoor", Trees, "Externo"],
+                      ] as const).map(([value, Icon, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setEditorLibraryTab(value)}
+                          title={label}
+                          className={editorLibraryTab === value
+                            ? "grid h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm"
+                            : "grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white"}
+                        >
+                          <Icon className="h-4.5 w-4.5" />
+                        </button>
+                      ))}
+                      <div className="my-1 h-px w-7 bg-white/10" />
                       <button
-                        key={value}
                         type="button"
-                        onClick={() => setEditorLibraryTab(value)}
-                        className={editorLibraryTab === value
-                          ? "rounded-lg bg-background px-2 py-2 text-[11px] font-semibold shadow-sm"
-                          : "rounded-lg px-2 py-2 text-[11px] font-semibold text-muted-foreground"}
+                        onClick={() => setStep(1)}
+                        title="Modelos"
+                        className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white"
                       >
-                        {label}
+                        <LayoutGrid className="h-4.5 w-4.5" />
                       </button>
-                    ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                <div className="sticky top-0 z-10 border-b bg-white p-4">
+                  <div>
+                    <div className="text-sm font-semibold">
+                      {editorLibraryTab === "build" ? "Construir" : editorLibraryTab === "rooms" ? "Ambientes" : "Área externa"}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {editorLibraryTab === "build"
+                        ? "Estrutura, paredes, aberturas e pavimentos"
+                        : editorLibraryTab === "rooms"
+                          ? "Organize os ambientes da residência"
+                          : "Garagem, lazer e elementos externos"}
+                    </div>
                   </div>
                 </div>
 
@@ -2360,11 +2395,13 @@ export default function ConceptPlanner() {
                     </div>
                   </div>
                 </div>
+                  </div>
+                </div>
               </aside>
 
-              <div className="order-1 min-w-0 bg-[#f7f8fa] p-3 sm:p-4 xl:order-2">
-                <div className="mx-auto max-w-5xl">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="order-1 min-w-0 bg-[#dfe4e9] p-2 sm:p-3 xl:order-2">
+                <div className="mx-auto max-w-[1180px]">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/5 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
                     <div>
                       <div className="font-semibold">
                         {editorView === "plan"
@@ -2586,8 +2623,15 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <aside className="order-2 border-t bg-background p-4 xl:order-3 xl:border-l xl:border-t-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Propriedades</div>
+              <aside className="order-2 border-t bg-white xl:order-3 xl:border-l xl:border-t-0">
+                <div className="sticky top-0 z-10 flex h-14 items-center justify-between border-b px-4">
+                  <div>
+                    <div className="text-sm font-semibold">Propriedades</div>
+                    <div className="text-[10px] text-muted-foreground">Ajustes do item selecionado</div>
+                  </div>
+                  <Maximize2 className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="p-4">
 
                 {editorView === "plan" && (
                   <>
@@ -3132,7 +3176,19 @@ export default function ConceptPlanner() {
                     {renderError && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{renderError}</div>}
                   </div>
                 )}
+                </div>
               </aside>
+            </div>
+            <div className="flex h-8 items-center justify-between border-t bg-white px-3 text-[10px] text-slate-500">
+              <div className="flex items-center gap-4">
+                <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Pavimento superior" : `Pavimento ${activeFloor + 1}`}</span>
+                <span>{currentArea.toFixed(1)} m² projetados</span>
+                <span>{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m de lote</span>
+              </div>
+              <div className="hidden items-center gap-4 sm:flex">
+                <span>{showDimensions ? "Cotas visíveis" : "Cotas ocultas"}</span>
+                <span className="font-medium text-emerald-600">{saveState === "saved" ? "Sincronizado" : saveState === "saving" ? "Salvando…" : ""}</span>
+              </div>
             </div>
           </section>
         )}
@@ -3624,50 +3680,52 @@ export default function ConceptPlanner() {
           </section>
         )}
 
-        <div className="mx-auto mt-6 flex max-w-4xl items-center justify-between gap-3">
-          <button
-            type="button"
-            disabled={step === 0}
-            onClick={() => setStep(step >= 6 ? 4 : step >= 4 ? 1 : 0)}
-            className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40"
-          >
-            <ArrowLeft className="h-4 w-4" /> Voltar
-          </button>
-          {step < 6 ? (
+        {step !== 4 && (
+          <div className="mx-auto mt-6 flex max-w-4xl items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => {
-                const nextStep = step === 0 ? 1 : step === 1 ? 4 : 6;
-                if (nextStep === 4) {
-                  setRooms((prev) =>
-                    generateTypologyLayout(
-                      normalizeDraftRooms(prev),
-                      lotWidth,
-                      lotDepth,
-                      activeFloor,
-                      typology,
-                      layoutVariant,
-                      layoutPreferences,
-                    ),
-                  );
-                }
-                setStep(nextStep);
-                void saveConcept(nextStep);
-              }}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white"
+              disabled={step === 0}
+              onClick={() => setStep(step >= 6 ? 4 : step >= 4 ? 1 : 0)}
+              className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40"
             >
-              {step === 1 ? "Abrir editor" : step === 4 ? "Ver resultado" : "Continuar"} <ArrowRight className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" /> Voltar
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void saveConcept()}
-              className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
-            >
-              <Sparkles className="h-4 w-4" /> Salvar resultado
-            </button>
-          )}
-        </div>
+            {step < 6 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextStep = step === 0 ? 1 : step === 1 ? 4 : 6;
+                  if (nextStep === 4) {
+                    setRooms((prev) =>
+                      generateTypologyLayout(
+                        normalizeDraftRooms(prev),
+                        lotWidth,
+                        lotDepth,
+                        activeFloor,
+                        typology,
+                        layoutVariant,
+                        layoutPreferences,
+                      ),
+                    );
+                  }
+                  setStep(nextStep);
+                  void saveConcept(nextStep);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white"
+              >
+                {step === 1 ? "Abrir editor" : step === 4 ? "Ver resultado" : "Continuar"} <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void saveConcept()}
+                className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
+              >
+                <Sparkles className="h-4 w-4" /> Salvar resultado
+              </button>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
