@@ -54,6 +54,20 @@ function normalizeRuntimeConnectionString(value: string): string {
 
 const connectionString = normalizeRuntimeConnectionString(rawConnectionString);
 
+try {
+  const diagnosticUrl = new URL(connectionString);
+  console.info("[db] connection target", {
+    protocol: diagnosticUrl.protocol,
+    username: diagnosticUrl.username,
+    hostname: diagnosticUrl.hostname,
+    port: diagnosticUrl.port || "(default)",
+    database: diagnosticUrl.pathname,
+    hasPassword: diagnosticUrl.password.length > 0,
+  });
+} catch {
+  console.info("[db] connection target could not be parsed");
+}
+
 // Pool sem `max` explícito cai no default do node-postgres (10 conexões
 // simultâneas). O front dispara ~10-15 chamadas em paralelo por troca de
 // tela (visto nos logs do Railway) — acima de 10, as requisições extras
