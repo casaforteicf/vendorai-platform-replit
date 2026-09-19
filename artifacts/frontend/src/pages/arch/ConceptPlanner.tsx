@@ -114,6 +114,19 @@ function normalizeCustomOpeningForWall(
   };
 }
 
+function normalizeCustomOpeningsForWalls(
+  openings: CustomOpening[],
+  walls: CustomWall[],
+): CustomOpening[] {
+  const wallsById = new Map(walls.map((wall) => [wall.id, wall]));
+  return openings.map((opening) => {
+    const wall = wallsById.get(opening.wallId);
+    return wall
+      ? normalizeCustomOpeningForWall(opening, wall)
+      : { ...opening, ...normalizeOpeningParameters(opening.type, opening) };
+  });
+}
+
 function customOpeningToMarker(opening: CustomOpening, wall: CustomWall): OpeningMarker {
   const normalized = normalizeCustomOpeningForWall(opening, wall);
   const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
@@ -389,15 +402,14 @@ export default function ConceptPlanner() {
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setWallFirstFloors(Array.isArray(draft.configuration?.wallFirstFloors) ? draft.configuration.wallFirstFloors : []);
         setShowDimensions(draft.configuration?.showDimensions ?? true);
-        setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
-        setCustomOpenings(
-          Array.isArray(draft.configuration?.customOpenings)
-            ? draft.configuration.customOpenings.map((opening) => ({
-                ...opening,
-                ...normalizeOpeningParameters(opening.type, opening),
-              }))
-            : [],
-        );
+        const loadedCustomWalls = Array.isArray(draft.configuration?.customWalls)
+          ? draft.configuration.customWalls
+          : [];
+        const loadedCustomOpenings = Array.isArray(draft.configuration?.customOpenings)
+          ? normalizeCustomOpeningsForWalls(draft.configuration.customOpenings, loadedCustomWalls)
+          : [];
+        setCustomWalls(loadedCustomWalls);
+        setCustomOpenings(loadedCustomOpenings);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
@@ -419,12 +431,23 @@ export default function ConceptPlanner() {
 
   const saveConcept = async (stepOverride?: number) => {
     setSaveState("saving");
+    const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls);
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles },
+      configuration: {
+        floors,
+        desiredArea,
+        typology,
+        layoutPreferences,
+        wallFirstFloors,
+        showDimensions,
+        customWalls,
+        customOpenings: persistedCustomOpenings,
+        spaceProfiles,
+      },
       rooms,
       openingOverrides,
       customerProfile,
@@ -1038,11 +1061,14 @@ export default function ConceptPlanner() {
   const selectedCustomOpening = selectedOpening
     ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
     : null;
-  const selectedOpeningParams = selectedCustomOpening
-    ? normalizeOpeningParameters(selectedCustomOpening.type, selectedCustomOpening)
-    : null;
   const selectedOpeningWall = selectedCustomOpening
     ? customWalls.find((wall) => wall.id === selectedCustomOpening.wallId) ?? null
+    : null;
+  const selectedResolvedCustomOpening = selectedCustomOpening && selectedOpeningWall
+    ? normalizeCustomOpeningForWall(selectedCustomOpening, selectedOpeningWall)
+    : selectedCustomOpening;
+  const selectedOpeningParams = selectedResolvedCustomOpening
+    ? normalizeOpeningParameters(selectedResolvedCustomOpening.type, selectedResolvedCustomOpening)
     : null;
   const selectedOpeningWallLength = selectedOpeningWall ? customWallLength(selectedOpeningWall) : 0;
   const selectedOpeningPresets = selectedCustomOpening
@@ -2446,7 +2472,7 @@ export default function ConceptPlanner() {
                               <div>
                                 <div className="text-xs font-semibold text-muted-foreground">Biblioteca de esquadrias</div>
                                 <select
-                                  value={selectedCustomOpening.presetId ?? ""}
+                                  value={selectedResolvedCustomOpening?.presetId ?? ""}
                                   onChange={(event) => {
                                     if (event.target.value) {
                                       applyPresetToCustomOpening(selectedOpening.id, event.target.value);
@@ -2517,7 +2543,7 @@ export default function ConceptPlanner() {
                                     min="0"
                                     max={selectedOpeningWallLength}
                                     step="0.05"
-                                    value={(selectedCustomOpening.offset * selectedOpeningWallLength).toFixed(2)}
+                                    value={((selectedResolvedCustomOpening?.offset ?? selectedCustomOpening.offset) * selectedOpeningWallLength).toFixed(2)}
                                     onChange={(event) => setCustomOpeningOffsetMeters(selectedOpening.id, Number(event.target.value))}
                                     className="mt-1 h-10 w-full rounded-lg border px-2"
                                   />
