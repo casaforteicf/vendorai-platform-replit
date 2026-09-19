@@ -95,6 +95,7 @@ type EditorSnapshot = {
   rooms: Room[];
   customWalls: CustomWall[];
   customOpenings: CustomOpening[];
+  wallFirstFloors: number[];
   openingOverrides: Record<string, OpeningOverride>;
 };
 
@@ -118,6 +119,7 @@ type ConceptDraftResponse = {
     desiredArea: number;
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
+    wallFirstFloors?: number[];
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
@@ -259,6 +261,7 @@ export default function ConceptPlanner() {
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
   const customOpeningsRef = useRef<CustomOpening[]>([]);
+  const wallFirstFloorsRef = useRef<number[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
@@ -271,6 +274,7 @@ export default function ConceptPlanner() {
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
+  const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([]);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
@@ -282,6 +286,7 @@ export default function ConceptPlanner() {
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
+  const wallFirstActive = wallFirstFloors.includes(activeFloor);
 
   useEffect(() => {
     roomsRef.current = rooms;
@@ -294,6 +299,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     customOpeningsRef.current = customOpenings;
   }, [customOpenings]);
+
+  useEffect(() => {
+    wallFirstFloorsRef.current = wallFirstFloors;
+  }, [wallFirstFloors]);
 
   useEffect(() => {
     openingOverridesRef.current = openingOverrides;
@@ -323,6 +332,7 @@ export default function ConceptPlanner() {
         setDesiredArea(draft.configuration?.desiredArea ?? 145);
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
+        setWallFirstFloors(Array.isArray(draft.configuration?.wallFirstFloors) ? draft.configuration.wallFirstFloors : []);
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
         setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
@@ -351,7 +361,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, customWalls, customOpenings, spaceProfiles },
       rooms,
       openingOverrides,
       customerProfile,
@@ -381,11 +391,26 @@ export default function ConceptPlanner() {
   };
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
-  const visibleRooms = rooms.filter((r) => r.floor === activeFloor);
-  const currentArea = useMemo(
-    () => rooms.filter((r) => r.kind !== "piscina").reduce((sum, r) => sum + r.width * r.depth, 0),
-    [rooms],
-  );
+  const visibleRooms = wallFirstActive ? [] : rooms.filter((r) => r.floor === activeFloor);
+  const currentArea = useMemo(() => {
+    const legacyArea = rooms
+      .filter((room) => room.kind !== "piscina" && !wallFirstFloors.includes(room.floor))
+      .reduce((sum, room) => sum + room.width * room.depth, 0);
+    const wallFirstArea = wallFirstFloors.reduce((sum, floor) => {
+      const floorWalls = customWalls
+        .filter((wall) => wall.floor === floor)
+        .map((wall) => ({
+          id: wall.id,
+          x1: wall.x1,
+          y1: wall.y1,
+          x2: wall.x2,
+          y2: wall.y2,
+        }));
+      return sum + detectClosedSpaces(floorWalls, lotWidth, lotDepth)
+        .reduce((area, space) => area + space.area, 0);
+    }, 0);
+    return legacyArea + wallFirstArea;
+  }, [rooms, wallFirstFloors, customWalls, lotWidth, lotDepth]);
 
   const applyTypology = (nextTypology: ConceptTypology) => {
     const template = CONCEPT_TYPOLOGIES.find((item) => item.id === nextTypology);
@@ -409,6 +434,10 @@ export default function ConceptPlanner() {
     setDesiredArea(template.suggestedArea);
     setActiveFloor(0);
     setSelectedId(null);
+    setWallFirstFloors([]);
+    setCustomWalls([]);
+    setCustomOpenings([]);
+    setSpaceProfiles([]);
     setRooms(nextRooms);
   };
 
@@ -420,6 +449,7 @@ export default function ConceptPlanner() {
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
     customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
+    wallFirstFloors: [...wallFirstFloorsRef.current],
     openingOverrides: Object.fromEntries(
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
@@ -429,6 +459,7 @@ export default function ConceptPlanner() {
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
     customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
+    wallFirstFloors: [...snapshot.wallFirstFloors],
     openingOverrides: Object.fromEntries(
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
@@ -439,6 +470,7 @@ export default function ConceptPlanner() {
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
     setCustomOpenings(cloned.customOpenings);
+    setWallFirstFloors(cloned.wallFirstFloors);
     setOpeningOverrides(cloned.openingOverrides);
     setSelectedId(null);
     setSelectedWallId(null);
@@ -590,6 +622,148 @@ export default function ConceptPlanner() {
     () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
   );
+  const activateWallFirstFloor = () => {
+    if (wallFirstActive) return;
+    const before = snapshotEditor();
+    const floorRooms = rooms.filter((room) => room.floor === activeFloor && room.kind !== "piscina");
+    const existingWalls = customWalls.filter((wall) => wall.floor === activeFloor);
+    const otherWalls = customWalls.filter((wall) => wall.floor !== activeFloor);
+
+    const keyOf = (wall: { x1: number; y1: number; x2: number; y2: number }) => {
+      const a = [Math.round(wall.x1 * 100), Math.round(wall.y1 * 100)];
+      const b = [Math.round(wall.x2 * 100), Math.round(wall.y2 * 100)];
+      const first = a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? a : b;
+      const second = first === a ? b : a;
+      return `${first[0]}:${first[1]}:${second[0]}:${second[1]}`;
+    };
+
+    const merged = new Map<string, CustomWall>();
+    for (const wall of existingWalls) merged.set(keyOf(wall), wall);
+    for (const wall of baseGeometry.walls) {
+      const key = keyOf(wall);
+      if (merged.has(key)) continue;
+      merged.set(key, {
+        id: `wf-${activeFloor}-${wall.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+        floor: activeFloor,
+        x1: wall.x1,
+        y1: wall.y1,
+        x2: wall.x2,
+        y2: wall.y2,
+        thickness: wall.exterior ? 0.18 : 0.12,
+      });
+    }
+
+    const floorWalls = [...merged.values()];
+    const wallForOpening = (opening: { x: number; y: number; orientation: "horizontal" | "vertical" }) =>
+      floorWalls.find((wall) => {
+        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+        if ((opening.orientation === "horizontal") !== horizontal) return false;
+        if (horizontal) {
+          return Math.abs(wall.y1 - opening.y) <= 0.08 &&
+            opening.x >= Math.min(wall.x1, wall.x2) - 0.05 &&
+            opening.x <= Math.max(wall.x1, wall.x2) + 0.05;
+        }
+        return Math.abs(wall.x1 - opening.x) <= 0.08 &&
+          opening.y >= Math.min(wall.y1, wall.y2) - 0.05 &&
+          opening.y <= Math.max(wall.y1, wall.y2) + 0.05;
+      });
+
+    const existingOpenings = customOpenings.filter((opening) => opening.floor === activeFloor);
+    const otherOpenings = customOpenings.filter((opening) => opening.floor !== activeFloor);
+    const importedOpenings: CustomOpening[] = [];
+
+    for (const opening of baseGeometry.openings) {
+      const override = openingOverrides[opening.id];
+      const source = override ? { ...opening, ...override } : opening;
+      const wall = wallForOpening(source);
+      if (!wall) continue;
+      const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+      const start = horizontal ? wall.x1 : wall.y1;
+      const end = horizontal ? wall.x2 : wall.y2;
+      const position = horizontal ? source.x : source.y;
+      const denominator = end - start;
+      if (Math.abs(denominator) < 0.05) continue;
+      const offset = Math.max(0.08, Math.min(0.92, (position - start) / denominator));
+      const duplicate = existingOpenings.some((item) =>
+        item.wallId === wall.id && Math.abs(item.offset - offset) < 0.08
+      );
+      if (duplicate) continue;
+      importedOpenings.push({
+        id: `wf-opening-${activeFloor}-${opening.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+        wallId: wall.id,
+        floor: activeFloor,
+        type: source.type,
+        offset,
+      });
+    }
+
+    const derivedSpaces = detectClosedSpaces(floorWalls, lotWidth, lotDepth);
+    const existingProfiles = spaceProfiles.filter((profile) => profile.floor === activeFloor);
+    if (!existingProfiles.length && derivedSpaces.length) {
+      const seededProfiles: SpaceProfile[] = derivedSpaces.map((space, index) => {
+        const containing = floorRooms.find((room) =>
+          space.centroid.x >= room.x - 0.05 &&
+          space.centroid.x <= room.x + room.width + 0.05 &&
+          space.centroid.y >= room.y - 0.05 &&
+          space.centroid.y <= room.y + room.depth + 0.05
+        );
+        const nearest = containing ?? [...floorRooms].sort((a, b) => {
+          const da = Math.hypot(
+            a.x + a.width / 2 - space.centroid.x,
+            a.y + a.depth / 2 - space.centroid.y,
+          );
+          const db = Math.hypot(
+            b.x + b.width / 2 - space.centroid.x,
+            b.y + b.depth / 2 - space.centroid.y,
+          );
+          return da - db;
+        })[0];
+        return {
+          id: `wf-profile-${activeFloor}-${index}-${uid()}`,
+          floor: activeFloor,
+          label: nearest?.label ?? `Ambiente ${index + 1}`,
+          kind: nearest?.kind ?? "outro",
+          centroid: space.centroid,
+          area: space.area,
+        };
+      });
+      setSpaceProfiles((prev) => [
+        ...prev.filter((profile) => profile.floor !== activeFloor),
+        ...seededProfiles,
+      ]);
+    }
+
+    setCustomWalls([...otherWalls, ...floorWalls]);
+    setCustomOpenings([...otherOpenings, ...existingOpenings, ...importedOpenings]);
+    setWallFirstFloors((prev) => [...new Set([...prev, activeFloor])].sort((a, b) => a - b));
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedOpeningId(null);
+    setSelectedClosedSpaceId(null);
+    setInteractionMode("space");
+    pushRoomHistory(before);
+  };
+
+  const deactivateWallFirstFloor = () => {
+    if (!wallFirstActive) return;
+    const before = snapshotEditor();
+    setWallFirstFloors((prev) => prev.filter((floor) => floor !== activeFloor));
+    setCustomWalls((prev) => prev.filter((wall) =>
+      wall.floor !== activeFloor || !wall.id.startsWith(`wf-${activeFloor}-`)
+    ));
+    setCustomOpenings((prev) => prev.filter((opening) =>
+      opening.floor !== activeFloor || !opening.id.startsWith(`wf-opening-${activeFloor}-`)
+    ));
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedOpeningId(null);
+    setSelectedClosedSpaceId(null);
+    setInteractionMode("room");
+    pushRoomHistory(before);
+  };
+
   const customOpeningMarkers = useMemo(
     () =>
       customOpenings
@@ -615,15 +789,18 @@ export default function ConceptPlanner() {
   const geometry = useMemo(
     () => ({
       ...baseGeometry,
-      openings: [
-        ...baseGeometry.openings.map((opening) => {
-          const override = openingOverrides[opening.id];
-          return override ? { ...opening, ...override } : opening;
-        }),
-        ...customOpeningMarkers,
-      ],
+      walls: wallFirstActive ? [] : baseGeometry.walls,
+      openings: wallFirstActive
+        ? customOpeningMarkers
+        : [
+            ...baseGeometry.openings.map((opening) => {
+              const override = openingOverrides[opening.id];
+              return override ? { ...opening, ...override } : opening;
+            }),
+            ...customOpeningMarkers,
+          ],
     }),
-    [baseGeometry, openingOverrides, customOpeningMarkers],
+    [baseGeometry, openingOverrides, customOpeningMarkers, wallFirstActive],
   );
   const closedSpaces = useMemo(
     () =>
@@ -690,7 +867,9 @@ export default function ConceptPlanner() {
           return override ? { ...opening, ...override } : opening;
         }),
       };
+      const floorWallFirst = wallFirstFloors.includes(floorIndex);
       const floorCustomWalls = customWalls.filter((wall) => wall.floor === floorIndex);
+      const legacyWalls = floorWallFirst ? [] : floorGeometry.walls;
       const floorCustomOpeningMarkers = customOpenings
         .filter((opening) => opening.floor === floorIndex)
         .flatMap((opening) => {
@@ -709,7 +888,7 @@ export default function ConceptPlanner() {
         });
       const floorClosedSpaces = detectClosedSpaces(
         [
-          ...floorGeometry.walls.map((wall) => ({
+          ...legacyWalls.map((wall) => ({
             id: wall.id,
             x1: wall.x1,
             y1: wall.y1,
@@ -752,10 +931,12 @@ export default function ConceptPlanner() {
 
       return {
         floor: floorIndex,
-        walls: floorGeometry.walls,
+        walls: legacyWalls,
         customWalls: floorCustomWalls,
         closedSpaces: floorClosedSpaces,
-        openings: [...floorGeometry.openings, ...floorCustomOpeningMarkers],
+        openings: floorWallFirst
+          ? floorCustomOpeningMarkers
+          : [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
         stairs: rooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
@@ -768,7 +949,7 @@ export default function ConceptPlanner() {
           })),
       };
     });
-  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles]);
+  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles, wallFirstFloors]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
@@ -802,8 +983,8 @@ export default function ConceptPlanner() {
     setSpaceProfiles((prev) => [...prev, created]);
   };
   const layoutIssues = useMemo(
-    () => validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
-    [rooms, lotWidth, lotDepth, activeFloor],
+    () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
+    [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
   );
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
@@ -1554,8 +1735,10 @@ export default function ConceptPlanner() {
                     <button
                       key={kind}
                       type="button"
-                      onClick={() => addRoom(kind)}
-                      className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted"
+                      onClick={() => { if (!wallFirstActive) addRoom(kind); }}
+                      disabled={wallFirstActive}
+                      title={wallFirstActive ? "Neste pavimento os ambientes são derivados das paredes." : undefined}
+                      className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span>{label}</span>
                       <Plus className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1618,7 +1801,9 @@ export default function ConceptPlanner() {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {editorView === "plan"
-                          ? "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
+                          ? wallFirstActive
+                            ? "Modo wall-first ativo: ambientes, 3D e fachada são derivados da rede de paredes."
+                            : "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
                           : editorView === "model3d"
                             ? "O 3D é reconstruído automaticamente a partir da mesma rede de paredes e espaços fechados."
                             : editorView === "facade"
@@ -1639,6 +1824,26 @@ export default function ConceptPlanner() {
                         <div className="rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
                           {customWallTopology.nodes.filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2).length} junções · {customWallTopology.segments.length} segmentos topológicos
                         </div>
+                        {wallFirstActive ? (
+                          <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
+                            <span>Rede de paredes = modelo principal</span>
+                            <button
+                              type="button"
+                              onClick={deactivateWallFirstFloor}
+                              className="rounded-md border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
+                            >
+                              Reverter
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={activateWallFirstFloor}
+                            className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                          >
+                            Usar paredes como modelo principal
+                          </button>
+                        )}
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
@@ -1656,6 +1861,7 @@ export default function ConceptPlanner() {
                           >
                             Navegar
                           </button>
+                          {!wallFirstActive && (
                           <button
                             type="button"
                             onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
@@ -1665,6 +1871,7 @@ export default function ConceptPlanner() {
                           >
                             Ambientes
                           </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -1708,6 +1915,8 @@ export default function ConceptPlanner() {
                             Portas e janelas
                           </button>
                         </div>
+                        {!wallFirstActive && (
+                          <>
                         {[
                           ["A", "Social"],
                           ["B", "Privacidade"],
@@ -1724,6 +1933,8 @@ export default function ConceptPlanner() {
                             {label} · {subtitle}
                           </button>
                         ))}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1795,7 +2006,9 @@ export default function ConceptPlanner() {
                           : interactionMode === "space"
                             ? "Espaços: selecione uma área fechada para nomear e classificar o ambiente diretamente na planta."
                           : interactionMode === "wall"
-                            ? "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
+                            ? wallFirstActive
+                              ? "Paredes: esta rede é a geometria principal do pavimento · edite segmentos, junções e medidas diretamente."
+                              : "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
                             : interactionMode === "draw-wall"
                               ? "Desenhar parede: cada segmento encaixa na rede existente; ao fechar um contorno, a área interna é detectada automaticamente."
                               : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
