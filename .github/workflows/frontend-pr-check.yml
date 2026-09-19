@@ -45,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Dialog accessibility regression test
+        run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/components/ui/dialog.test.tsx
+
       - name: Build frontend
         run: pnpm --filter @workspace/frontend build
 
