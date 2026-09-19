@@ -243,7 +243,7 @@ export default function ConceptFacadeEditor({
           <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Materiais por elemento</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Selecione a superfície e aplique um material. A alteração também alimenta o 3D e o render.
+              Clique na própria fachada ou escolha a superfície abaixo. A alteração alimenta o 3D e o render.
             </p>
 
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -395,6 +395,14 @@ export default function ConceptFacadeEditor({
           selectedVolumeId={selectedVolumeId}
           onSelectVolume={setSelectedVolumeId}
           onVolumeChange={updateVolume}
+          selectedSurface={selectedSurface}
+          onSelectSurface={(surface) => {
+            if (!surface) return;
+            setSelectedSurface(surface);
+            setSelectedVolumeId(null);
+            setPanel("materials");
+            setPanelOpen(true);
+          }}
         />
       </div>
 

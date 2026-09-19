@@ -4,6 +4,7 @@ import {
   FACADE_MATERIALS,
   getFacadeMaterial,
   type FacadeDesignState,
+  type FacadeSurfaceKey,
   type FacadeVolume,
 } from "./conceptFacadeDesign";
 import type { ConceptModelLevel } from "./ConceptModel3D";
@@ -18,6 +19,8 @@ type Props = {
   selectedVolumeId?: string | null;
   onSelectVolume?: (id: string | null) => void;
   onVolumeChange?: (id: string, patch: Partial<FacadeVolume>) => void;
+  selectedSurface?: FacadeSurfaceKey | null;
+  onSelectSurface?: (surface: FacadeSurfaceKey | null) => void;
 };
 
 type Bounds = { minX: number; maxX: number; width: number };
@@ -190,6 +193,8 @@ export default function ConceptDerivedFacade({
   selectedVolumeId,
   onSelectVolume,
   onVolumeChange,
+  selectedSurface,
+  onSelectSurface,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<{
@@ -406,7 +411,10 @@ export default function ConceptDerivedFacade({
       onPointerCancel={(event) => {
         if (drag?.pointerId === event.pointerId) setDrag(null);
       }}
-      onClick={() => onSelectVolume?.(null)}
+      onClick={() => {
+        onSelectVolume?.(null);
+        onSelectSurface?.(null);
+      }}
       preserveAspectRatio="xMidYMid meet"
       className="block h-full min-h-[calc(100vh-64px)] w-full"
       role="img"
@@ -480,10 +488,35 @@ export default function ConceptDerivedFacade({
         d={"M " + (garageDoorX - 2) + " 63 L " + (garageDoorX + garageW + 2) + " 63 L " + (garageDoorX + garageW + 9) + " 78 L " + (garageDoorX - 9) + " 78 Z"}
         fill={pavingFill}
         opacity="0.95"
+        stroke={selectedSurface === "paving" ? "#f97316" : "transparent"}
+        strokeWidth={selectedSurface === "paving" ? "0.8" : "0"}
+        className={onSelectSurface ? "cursor-pointer" : undefined}
+        onClick={(event) => {
+          if (!onSelectSurface) return;
+          event.stopPropagation();
+          onSelectSurface("paving");
+          onSelectVolume?.(null);
+        }}
       />
 
       <g filter="url(#derived-facade-shadow)">
-        <rect x={baseX} y={groundTop} width={facadeWidth} height={STORY_HEIGHT} rx="0.42" fill={mainFill} />
+        <rect
+          x={baseX}
+          y={groundTop}
+          width={facadeWidth}
+          height={STORY_HEIGHT}
+          rx="0.42"
+          fill={mainFill}
+          stroke={selectedSurface === "main" ? "#f97316" : "none"}
+          strokeWidth={selectedSurface === "main" ? "0.8" : "0"}
+          className={onSelectSurface ? "cursor-pointer" : undefined}
+          onClick={(event) => {
+            if (!onSelectSurface) return;
+            event.stopPropagation();
+            onSelectSurface("main");
+            onSelectVolume?.(null);
+          }}
+        />
 
         {floors > 1 && (
           <rect
@@ -504,6 +537,15 @@ export default function ConceptDerivedFacade({
           rx="0.32"
           fill={accentFill}
           opacity={facade.accentMaterial === "nenhum" ? 0.34 : 0.96}
+          stroke={selectedSurface === "accent" ? "#f97316" : "none"}
+          strokeWidth={selectedSurface === "accent" ? "0.8" : "0"}
+          className={onSelectSurface ? "cursor-pointer" : undefined}
+          onClick={(event) => {
+            if (!onSelectSurface) return;
+            event.stopPropagation();
+            onSelectSurface("accent");
+            onSelectVolume?.(null);
+          }}
         />
 
         {facade.style === "contemporaneo" && (
@@ -539,8 +581,15 @@ export default function ConceptDerivedFacade({
           height={STORY_HEIGHT - 5.1}
           rx="0.42"
           fill={garageFill}
-          stroke={frameColor}
-          strokeWidth="0.7"
+          stroke={selectedSurface === "garage" ? "#f97316" : frameColor}
+          strokeWidth={selectedSurface === "garage" ? "1.05" : "0.7"}
+          className={onSelectSurface ? "cursor-pointer" : undefined}
+          onClick={(event) => {
+            if (!onSelectSurface) return;
+            event.stopPropagation();
+            onSelectSurface("garage");
+            onSelectVolume?.(null);
+          }}
         />
         <g stroke="#6d767c" strokeWidth="0.32" opacity="0.88">
           <line x1={garageDoorX} y1={groundTop + 8.3} x2={garageDoorX + garageW} y2={groundTop + 8.3} />
@@ -556,8 +605,15 @@ export default function ConceptDerivedFacade({
           height="14.8"
           rx="0.35"
           fill={entranceFill}
-          stroke={colors.frame}
-          strokeWidth="0.65"
+          stroke={selectedSurface === "entrance" ? "#f97316" : colors.frame}
+          strokeWidth={selectedSurface === "entrance" ? "1.05" : "0.65"}
+          className={onSelectSurface ? "cursor-pointer" : undefined}
+          onClick={(event) => {
+            if (!onSelectSurface) return;
+            event.stopPropagation();
+            onSelectSurface("entrance");
+            onSelectVolume?.(null);
+          }}
         />
         <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill="#43545d" opacity="0.78" />
         <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill="#d9c7b2" />
@@ -570,6 +626,24 @@ export default function ConceptDerivedFacade({
           frame={colors.frame}
           id="derived-facade-glass"
         />
+        {onSelectSurface && (
+          <rect
+            x={socialGlassX - 0.5}
+            y={groundTop + 4.6}
+            width={socialGlassW + 1}
+            height="9.8"
+            rx="0.35"
+            fill="transparent"
+            stroke={selectedSurface === "frames" ? "#f97316" : "transparent"}
+            strokeWidth={selectedSurface === "frames" ? "0.9" : "0"}
+            className="cursor-pointer"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectSurface("frames");
+              onSelectVolume?.(null);
+            }}
+          />
+        )}
 
         {floors === 1 && privateGround.map((room, index) => {
           const width = clamp(mapW(room.width) * 0.52, 9, 15);
