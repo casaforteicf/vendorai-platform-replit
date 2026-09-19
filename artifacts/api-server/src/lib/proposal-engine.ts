@@ -638,6 +638,15 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-table th.r, .orc-table td.r { text-align: right; }
   .orc-table td { padding: 2.5mm 3mm; border-bottom: 1px solid ${theme.concrete}; vertical-align: top; }
   .orc-table tr:last-child td { border-bottom: none; }
+  .orc-stage-row td {
+    background: ${theme.cream2};
+    border-top: 1px solid ${theme.concreteLine} !important;
+    border-bottom: 1px solid ${theme.concreteLine} !important;
+    color: ${theme.navyDeep};
+    font-size: 8pt;
+    padding-top: 2.5mm !important;
+    padding-bottom: 2.5mm !important;
+  }
   .orc-desc { font-size: 7pt; color: #8b84a8; display: block; margin-top: 1px; }
   .orc-total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .orc-total-box { border: 1px solid ${theme.accentSoft}; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: ${theme.cream2}; }
@@ -784,15 +793,46 @@ ${orcamento ? (() => {
   const itensValidos = (orcamento.itens || []).filter((i) => i.nome);
   const calculatedTotal = itensValidos.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
   const totalExibido = orcamento.valorTotal ? parseFloat(orcamento.valorTotal) : calculatedTotal;
-  const rows = itensValidos.map((i) => {
-    const subtotal = i.quantidade * i.valorUnitario;
-    return `<tr>
-      <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
-      <td class="r">${i.quantidade}</td>
-      <td class="r">${fmtBRL(i.valorUnitario)}</td>
-      <td class="r">${fmtBRL(subtotal)}</td>
-    </tr>`;
-  }).join("");
+  const hasEtapas = itensValidos.some((item) => item.etapaOrdem || item.etapaNome);
+  const rows = hasEtapas
+    ? Array.from(
+        itensValidos.reduce((groups, item, index) => {
+          const ordem = item.etapaOrdem ?? index + 1;
+          const nome = item.etapaNome ?? `Etapa ${ordem}`;
+          const key = `${ordem}::${nome}`;
+          const group = groups.get(key) ?? { ordem, nome, itens: [] as typeof itensValidos };
+          group.itens.push(item);
+          groups.set(key, group);
+          return groups;
+        }, new Map<string, { ordem: number; nome: string; itens: typeof itensValidos }>())
+      )
+        .map(([, group]) => group)
+        .sort((a, b) => a.ordem - b.ordem)
+        .map((group) => {
+          const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+          const itemRows = group.itens.map((i) => {
+            const subtotal = i.quantidade * i.valorUnitario;
+            return `<tr>
+              <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+              <td class="r">${i.quantidade}</td>
+              <td class="r">${fmtBRL(i.valorUnitario)}</td>
+              <td class="r">${fmtBRL(subtotal)}</td>
+            </tr>`;
+          }).join("");
+          return `<tr class="orc-stage-row">
+            <td colspan="3"><strong>Etapa ${group.ordem}</strong> · ${group.nome}</td>
+            <td class="r"><strong>${fmtBRL(etapaTotal)}</strong></td>
+          </tr>${itemRows}`;
+        }).join("")
+    : itensValidos.map((i) => {
+        const subtotal = i.quantidade * i.valorUnitario;
+        return `<tr>
+          <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+          <td class="r">${i.quantidade}</td>
+          <td class="r">${fmtBRL(i.valorUnitario)}</td>
+          <td class="r">${fmtBRL(subtotal)}</td>
+        </tr>`;
+      }).join("");
   const metaItems = [
     orcamento.formaPagamento ? `<div class="orc-meta-item"><span>Forma de Pagamento</span><span>${FORMA_LABELS[orcamento.formaPagamento] || orcamento.formaPagamento}</span></div>` : "",
     orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição</span><span>${orcamento.condPagamento}</span></div>` : "",
