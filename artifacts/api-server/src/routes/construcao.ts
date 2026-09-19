@@ -40,6 +40,7 @@ import {
   insertInsumoSchema,
   updateInsumoSchema,
   insertComposicaoSchema,
+  updateComposicaoSchema,
   insertComposicaoInsumoSchema,
   tabelasPrecosObrasTable,
   tabelaPrecosObrasItensTable,
@@ -1555,7 +1556,33 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
   if (req.query.q) filters.push(ilike(composicoesTable.nome, `%${req.query.q}%`));
 
   const rows = await db.select().from(composicoesTable).where(and(...filters)).orderBy(asc(composicoesTable.nome));
-  return res.json(rows);
+  if (rows.length === 0) return res.json(rows);
+
+  // O custo da composição é sempre calculado a partir da base atual de insumos.
+  // Se o item tiver preço fixo próprio, ele prevalece. Caso contrário, qualquer
+  // alteração no preço do insumo atualiza automaticamente a composição.
+  const itens = await db
+    .select({
+      composicaoId: composicaoInsumosTable.composicaoId,
+      quantidade: composicaoInsumosTable.quantidade,
+      precoUnitario: composicaoInsumosTable.precoUnitario,
+      precoInsumo: insumosTable.precoUnitario,
+    })
+    .from(composicaoInsumosTable)
+    .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
+    .where(inArray(composicaoInsumosTable.composicaoId, rows.map((row) => row.id)));
+
+  const totais = new Map<string, number>();
+  for (const item of itens) {
+    const quantidade = Number(item.quantidade ?? 0);
+    const preco = Number(item.precoUnitario ?? item.precoInsumo ?? 0);
+    totais.set(item.composicaoId, (totais.get(item.composicaoId) ?? 0) + quantidade * preco);
+  }
+
+  return res.json(rows.map((row) => ({
+    ...row,
+    custoTotal: (totais.get(row.id) ?? 0).toFixed(4),
+  })));
 });
 
 router.post("/tenants/:tenantId/composicoes", async (req, res) => {
@@ -1567,15 +1594,43 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
   const parsedComposicao = insertComposicaoSchema.safeParse({ ...rest, tenantId: tid });
   if (!parsedComposicao.success) return res.status(422).json({ error: parsedComposicao.error.message });
 
-  const [composicao] = await db.insert(composicoesTable).values(parsedComposicao.data).returning();
+  const parsedItens = z.array(insertComposicaoInsumoSchema).safeParse(
+    (itens ?? []).map((item) => ({ ...(item as object), composicaoId: "__pending__" }))
+  );
+  if (!parsedItens.success) return res.status(422).json({ error: parsedItens.error.message });
 
-  if (itens && itens.length > 0) {
-    const parsedItens = z.array(insertComposicaoInsumoSchema).safeParse(
-      itens.map((i) => ({ ...(i as object), composicaoId: composicao.id }))
-    );
-    if (!parsedItens.success) return res.status(422).json({ error: parsedItens.error.message });
-    await db.insert(composicaoInsumosTable).values(parsedItens.data);
+  const insumoIds = [...new Set(parsedItens.data.map((item) => item.insumoId))];
+  const insumos = insumoIds.length
+    ? await db
+        .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario })
+        .from(insumosTable)
+        .where(and(eq(insumosTable.tenantId, tid), inArray(insumosTable.id, insumoIds)))
+    : [];
+
+  if (insumos.length !== insumoIds.length) {
+    return res.status(422).json({ error: "Um ou mais insumos não pertencem a este tenant." });
   }
+
+  const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
+  const custoTotal = parsedItens.data.reduce((sum, item) => {
+    const preco = Number(item.precoUnitario ?? precoPorInsumo.get(item.insumoId) ?? 0);
+    return sum + Number(item.quantidade ?? 0) * preco;
+  }, 0);
+
+  const composicao = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(composicoesTable)
+      .values({ ...parsedComposicao.data, custoTotal: custoTotal.toFixed(4) })
+      .returning();
+
+    if (parsedItens.data.length > 0) {
+      await tx.insert(composicaoInsumosTable).values(
+        parsedItens.data.map((item) => ({ ...item, composicaoId: created.id }))
+      );
+    }
+
+    return created;
+  });
 
   return res.status(201).json(composicao);
 });
@@ -1584,7 +1639,10 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
   const { tenantId: tid, composicaoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [composicao] = await db.select().from(composicoesTable).where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  const [composicao] = await db
+    .select()
+    .from(composicoesTable)
+    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
   if (!composicao) return res.status(404).json({ error: "Not found" });
 
   const itens = await db
@@ -1599,18 +1657,81 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
     .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
 
-  return res.json({ ...composicao, itens });
+  const custoTotal = itens.reduce((sum, item) => {
+    const quantidade = Number(item.quantidade ?? 0);
+    const preco = Number(item.precoUnitario ?? item.insumo?.precoUnitario ?? 0);
+    return sum + quantidade * preco;
+  }, 0);
+
+  return res.json({ ...composicao, custoTotal: custoTotal.toFixed(4), itens });
 });
 
 router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
   const { tenantId: tid, composicaoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [composicao] = await db.update(composicoesTable)
-    .set({ ...req.body, updatedAt: new Date() })
-    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)))
-    .returning();
-  if (!composicao) return res.status(404).json({ error: "Not found" });
+  const [owned] = await db
+    .select({ id: composicoesTable.id })
+    .from(composicoesTable)
+    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  if (!owned) return res.status(404).json({ error: "Not found" });
+
+  const { itens, ...rest } = req.body as { itens?: unknown[]; [key: string]: unknown };
+  const parsedComposicao = updateComposicaoSchema.safeParse(rest);
+  if (!parsedComposicao.success) return res.status(422).json({ error: parsedComposicao.error.message });
+
+  let parsedItens: z.infer<typeof insertComposicaoInsumoSchema>[] | undefined;
+  let custoTotal: number | undefined;
+
+  if (itens !== undefined) {
+    const result = z.array(insertComposicaoInsumoSchema).safeParse(
+      itens.map((item) => ({ ...(item as object), composicaoId }))
+    );
+    if (!result.success) return res.status(422).json({ error: result.error.message });
+    parsedItens = result.data;
+
+    const insumoIds = [...new Set(parsedItens.map((item) => item.insumoId))];
+    const insumos = insumoIds.length
+      ? await db
+          .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario })
+          .from(insumosTable)
+          .where(and(eq(insumosTable.tenantId, tid), inArray(insumosTable.id, insumoIds)))
+      : [];
+
+    if (insumos.length !== insumoIds.length) {
+      return res.status(422).json({ error: "Um ou mais insumos não pertencem a este tenant." });
+    }
+
+    const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
+    custoTotal = parsedItens.reduce((sum, item) => {
+      const preco = Number(item.precoUnitario ?? precoPorInsumo.get(item.insumoId) ?? 0);
+      return sum + Number(item.quantidade ?? 0) * preco;
+    }, 0);
+  }
+
+  const composicao = await db.transaction(async (tx) => {
+    const updateData = {
+      ...parsedComposicao.data,
+      ...(custoTotal !== undefined ? { custoTotal: custoTotal.toFixed(4) } : {}),
+      updatedAt: new Date(),
+    };
+
+    const [updated] = await tx
+      .update(composicoesTable)
+      .set(updateData)
+      .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)))
+      .returning();
+
+    if (parsedItens !== undefined) {
+      await tx.delete(composicaoInsumosTable).where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+      if (parsedItens.length > 0) {
+        await tx.insert(composicaoInsumosTable).values(parsedItens);
+      }
+    }
+
+    return updated;
+  });
+
   return res.json(composicao);
 });
 
