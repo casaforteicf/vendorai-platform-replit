@@ -353,7 +353,19 @@ export default function ConceptPlanner() {
 
   const updateSelected = (patch: Partial<Room>) => {
     if (!selectedId) return;
-    setRooms((prev) => prev.map((room) => (room.id === selectedId ? { ...room, ...patch } : room)));
+    setRooms((prev) => prev.map((room) => {
+      if (room.id !== selectedId) return room;
+      const next = { ...room, ...patch };
+      const width = Math.max(1, Math.min(lotWidth, next.width));
+      const depth = Math.max(1, Math.min(lotDepth, next.depth));
+      return {
+        ...next,
+        width,
+        depth,
+        x: Math.max(0, Math.min(lotWidth - width, next.x)),
+        y: Math.max(0, Math.min(lotDepth - depth, next.y)),
+      };
+    }));
   };
 
   const updateRoomById = (roomId: string, patch: Partial<Room>) => {
@@ -377,10 +389,31 @@ export default function ConceptPlanner() {
 
   const swapPosition = (room: Room, direction: "left" | "right" | "up" | "down") => {
     if (room.locked) return;
-    const delta = 1;
+    const delta = 0.25;
     const nextX = Math.max(0, Math.min(lotWidth - room.width, room.x + (direction === "right" ? delta : direction === "left" ? -delta : 0)));
     const nextY = Math.max(0, Math.min(lotDepth - room.depth, room.y + (direction === "down" ? delta : direction === "up" ? -delta : 0)));
     updateSelected({ x: nextX, y: nextY });
+  };
+
+  const duplicateSelectedRoom = () => {
+    if (!selected) return;
+    if (SINGLETON_ROOM_KINDS.has(selected.kind)) return;
+    const copy: Room = {
+      ...selected,
+      id: uid(),
+      label: selected.label.replace(/\s+\d+$/, "") + " cópia",
+      locked: false,
+      x: Math.max(0, Math.min(lotWidth - selected.width, selected.x + 0.5)),
+      y: Math.max(0, Math.min(lotDepth - selected.depth, selected.y + 0.5)),
+    };
+    setRooms((prev) => [...prev, copy]);
+    setSelectedId(copy.id);
+  };
+
+  const deleteSelectedRoom = () => {
+    if (!selected) return;
+    setRooms((prev) => prev.filter((room) => room.id !== selected.id));
+    setSelectedId(null);
   };
 
   const baseGeometry = useMemo(
@@ -932,7 +965,7 @@ export default function ConceptPlanner() {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {editorView === "plan"
-                          ? "Arraste ambientes para mover. Use a alça laranja para redimensionar."
+                          ? "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
                           : editorView === "facade"
                             ? "A fachada nasce da mesma implantação e das preferências do projeto."
                             : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
@@ -972,7 +1005,7 @@ export default function ConceptPlanner() {
                         onRoomChange={updateRoomById}
                       />
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
-                        Arrastar = mover · alça laranja = redimensionar · grade = 25 cm · paredes e vãos recalculam automaticamente.
+                        Arrastar = mover · 8 alças laranja = ajustar paredes · snap magnético + grade de 25 cm · paredes e vãos recalculam automaticamente.
                       </div>
                     </>
                   )}
@@ -1042,6 +1075,17 @@ export default function ConceptPlanner() {
                             <input type="number" step="0.25" value={selected.y} onChange={(e) => updateSelected({ y: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
                           </label>
                         </div>
+                        <div>
+                          <div className="mb-2 text-xs font-semibold text-muted-foreground">Mover 25 cm</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <span />
+                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "up")} className="rounded-lg border py-2 text-sm disabled:opacity-40">↑</button>
+                            <span />
+                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "left")} className="rounded-lg border py-2 text-sm disabled:opacity-40">←</button>
+                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "down")} className="rounded-lg border py-2 text-sm disabled:opacity-40">↓</button>
+                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "right")} className="rounded-lg border py-2 text-sm disabled:opacity-40">→</button>
+                          </div>
+                        </div>
                         <button
                           type="button"
                           onClick={() => updateSelected({ locked: !selected.locked })}
@@ -1049,6 +1093,23 @@ export default function ConceptPlanner() {
                         >
                           <Lock className="h-4 w-4" /> {selected.locked ? "Desbloquear" : "Bloquear posição"}
                         </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={duplicateSelectedRoom}
+                            disabled={SINGLETON_ROOM_KINDS.has(selected.kind)}
+                            className="rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-40"
+                          >
+                            Duplicar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={deleteSelectedRoom}
+                            className="rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
+                          >
+                            Excluir
+                          </button>
+                        </div>
                       </div>
                     )}
 
