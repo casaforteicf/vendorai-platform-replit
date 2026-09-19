@@ -203,10 +203,30 @@ const queryClient = new QueryClient({
   },
 });
 
-function Spinner() {
+function Spinner({ debug }: { debug?: Record<string, unknown> } = {}) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, []);
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
       <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      {slow && debug && (
+        <pre
+          style={{
+            background: "#1a0a0a",
+            color: "#ffdada",
+            padding: "12px",
+            fontSize: "12px",
+            maxWidth: "90vw",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {"DIAG spinner travado:\n" + JSON.stringify(debug, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }
@@ -335,9 +355,19 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     }
   }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, isInstallationAction, setLocation]);
 
-  if (isLoading || !token || !user) return <Spinner />;
-
-  // Tenant/billing checks are policy checks, not a prerequisite for mounting every CRM page.
+  if (isLoading || !token || !user) {
+    return (
+      <Spinner
+        debug={{
+          isLoading,
+          hasToken: !!token,
+          hasUser: !!user,
+          hasRawTokenInStorage: !!localStorage.getItem("vendorai_token"),
+          location,
+        }}
+      />
+    );
+  }
   // Keep them running in parallel and react when data arrives, but never hold the whole app
   // on a full-screen spinner if one of those endpoints is slow, rate-limited or unavailable.
   if (isTenantAdmin && (tenant?.status === "suspended" || hasOverdueInvoice)) return <Suspended />;
