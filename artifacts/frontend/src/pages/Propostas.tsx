@@ -144,6 +144,8 @@ import {
   MessageCircle,
   Star,
   Clock,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1953,6 +1955,15 @@ function newFreeItem(): FreeItem {
 }
  
   function removeCatLine(i: number) { setCartLines((p) => p.filter((_, j) => j !== i)); }
+  function moveCatLine(i: number, direction: -1 | 1) {
+    setCartLines((prev) => {
+      const target = i + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[target]] = [next[target], next[i]];
+      return next;
+    });
+  }
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
@@ -2128,7 +2139,7 @@ function newFreeItem(): FreeItem {
               ...(line.tipo === "composicao" && line.composicaoId ? { composicaoId: line.composicaoId } : {}),
               quantidade: line.quantidade,
               precoUnitario: line.precoUnitarioOverride,
-              nome: line.nomeOverride || undefined,
+              nome: line.nomeOverride?.trim() || undefined,
             })),
             paymentCompositions: paymentComp?.length
               ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl }))
@@ -2367,7 +2378,10 @@ function newFreeItem(): FreeItem {
             {mode === "catalogo" && (
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <p className="text-sm font-medium">Itens do Orçamento</p>
+                  <div>
+                    <p className="text-sm font-medium">Itens do Orçamento</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">A ordem abaixo define a sequência das etapas de execução.</p>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto")}>
                       <Plus className="h-3.5 w-3.5 mr-1" /> Produto
@@ -2381,6 +2395,7 @@ function newFreeItem(): FreeItem {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="text-xs py-2 w-28">Etapa</TableHead>
                         <TableHead className="text-xs py-2 w-32">Tipo</TableHead>
                         <TableHead className="text-xs py-2">Item</TableHead>
                         <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
@@ -2404,6 +2419,37 @@ function newFreeItem(): FreeItem {
                         const unidade = prod?.unidade ?? composicao?.unidade ?? "";
                         return (
                           <TableRow key={idx}>
+                            <TableCell className="py-1.5 align-top">
+                              <div className="flex items-center gap-1.5">
+                                <span className="min-w-10 rounded-md bg-muted px-2 py-1 text-center text-xs font-semibold">
+                                  {idx + 1}
+                                </span>
+                                <div className="flex gap-0.5">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    disabled={idx === 0}
+                                    onClick={() => moveCatLine(idx, -1)}
+                                    title="Mover etapa para cima"
+                                  >
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    disabled={idx === cartLines.length - 1}
+                                    onClick={() => moveCatLine(idx, 1)}
+                                    title="Mover etapa para baixo"
+                                  >
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </TableCell>
                             <TableCell className="py-1.5 align-top">
                               <Select value={line.tipo} onValueChange={(value) => changeLineType(idx, value as "produto" | "composicao")}>
                                 <SelectTrigger className="h-8 text-xs">
@@ -2454,13 +2500,18 @@ function newFreeItem(): FreeItem {
     </Button>
   );
 })()}
-                              {line.nomeOverride && (
-                                <Input
-                                  className="h-6 text-xs mt-1 px-1 border-0 border-b rounded-none bg-transparent text-primary font-medium focus-visible:ring-0"
-                                  value={line.nomeOverride}
-                                  onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
-                                  placeholder="Descrição do item"
-                                />
+                              {selected && (
+                                <div className="mt-1 space-y-1">
+                                  <Label className="text-[10px] font-medium text-muted-foreground">
+                                    Nome/descrição no orçamento
+                                  </Label>
+                                  <Input
+                                    className="h-7 text-xs"
+                                    value={line.nomeOverride ?? (prod?.nome ?? composicao?.nome ?? "")}
+                                    onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
+                                    placeholder="Nome ou descrição que aparecerá no orçamento"
+                                  />
+                                </div>
                               )}
                               {composicao && (
                                 <p className="mt-1 text-[11px] text-muted-foreground">
