@@ -1245,8 +1245,11 @@ export default function ConceptPlan2D({
 
         {geometry.openings.map((opening) => {
           const selectedOpening = selectedOpeningId === opening.id;
-          const half = opening.type === "door" ? 0.48 : 0.62;
+          const openingWidth = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.25));
+          const half = openingWidth / 2;
           const horizontal = opening.orientation === "horizontal";
+          const sliding = opening.openingStyle === "sliding";
+          const swingRight = opening.swing === "right";
           return (
             <g
               key={opening.id}
@@ -1293,14 +1296,43 @@ export default function ConceptPlan2D({
                     stroke="#ffffff"
                     strokeWidth="0.22"
                   />
-                  <line
-                    x1={horizontal ? opening.x - half : opening.x}
-                    y1={horizontal ? opening.y : opening.y - half}
-                    x2={horizontal ? opening.x - half : opening.x + half}
-                    y2={horizontal ? opening.y + 0.82 : opening.y - half}
-                    stroke={selectedOpening ? "#f97316" : "#475569"}
-                    strokeWidth="0.06"
-                  />
+                  {sliding ? (
+                    <>
+                      <line
+                        x1={horizontal ? opening.x - half : opening.x - 0.10}
+                        y1={horizontal ? opening.y - 0.10 : opening.y - half}
+                        x2={horizontal ? opening.x + 0.06 : opening.x - 0.10}
+                        y2={horizontal ? opening.y - 0.10 : opening.y + 0.06}
+                        stroke={selectedOpening ? "#f97316" : "#475569"}
+                        strokeWidth="0.055"
+                      />
+                      <line
+                        x1={horizontal ? opening.x - 0.06 : opening.x + 0.10}
+                        y1={horizontal ? opening.y + 0.10 : opening.y - 0.06}
+                        x2={horizontal ? opening.x + half : opening.x + 0.10}
+                        y2={horizontal ? opening.y + 0.10 : opening.y + half}
+                        stroke={selectedOpening ? "#f97316" : "#475569"}
+                        strokeWidth="0.055"
+                      />
+                    </>
+                  ) : (
+                    <line
+                      x1={horizontal
+                        ? opening.x + (swingRight ? half : -half)
+                        : opening.x}
+                      y1={horizontal
+                        ? opening.y
+                        : opening.y + (swingRight ? half : -half)}
+                      x2={horizontal
+                        ? opening.x + (swingRight ? half : -half)
+                        : opening.x + (swingRight ? -openingWidth : openingWidth)}
+                      y2={horizontal
+                        ? opening.y + (swingRight ? -openingWidth : openingWidth)
+                        : opening.y + (swingRight ? half : -half)}
+                      stroke={selectedOpening ? "#f97316" : "#475569"}
+                      strokeWidth="0.06"
+                    />
+                  )}
                 </g>
               ) : (
                 <g pointerEvents="none">
