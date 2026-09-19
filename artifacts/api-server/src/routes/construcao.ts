@@ -418,6 +418,16 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/pdf", asyn
     orcamentoTitulo: orcamento.titulo,
     orcamentoStatus: orcamento.status,
     bdiGlobal: orcamento.bdiGlobal,
+    modoPrecificacao: orcamento.modoPrecificacao,
+    custosIndiretosPct: orcamento.custosIndiretosPct,
+    administracaoPct: orcamento.administracaoPct,
+    riscoPct: orcamento.riscoPct,
+    financeiroPct: orcamento.financeiroPct,
+    impostosPct: orcamento.impostosPct,
+    comissaoPct: orcamento.comissaoPct,
+    margemPct: orcamento.margemPct,
+    descontoPct: orcamento.descontoPct,
+    areaReferencia: orcamento.areaReferencia,
     etapas,
   });
 
