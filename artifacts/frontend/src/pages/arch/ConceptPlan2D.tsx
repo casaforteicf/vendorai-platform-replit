@@ -704,49 +704,7 @@ export default function ConceptPlan2D({
                       />
                     </g>
                   ))}
-                  {(() => {
-                    const mid = wallMidpoint(wall);
-                    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-                    return (
-                      <g
-                        className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
-                        onPointerDown={(event) => {
-                          if (interactionMode !== "wall" || !onUpdateCustomWall) return;
-                          event.stopPropagation();
-                          onEditStart?.();
-                          const point = toSvgPoint(event.clientX, event.clientY);
-                          setGesture({
-                            roomId: "",
-                            customWallId: wall.id,
-                            mode: "custom-wall-move",
-                            startX: point.x,
-                            startY: point.y,
-                            roomX: 0,
-                            roomY: 0,
-                            roomWidth: 0,
-                            roomDepth: 0,
-                            wallX1: wall.x1,
-                            wallY1: wall.y1,
-                            wallX2: wall.x2,
-                            wallY2: wall.y2,
-                          });
-                        }}
-                      >
-                        <circle cx={mid.x} cy={mid.y} r="0.48" fill="transparent" />
-                        <rect
-                          x={mid.x - 0.16}
-                          y={mid.y - 0.16}
-                          width="0.32"
-                          height="0.32"
-                          rx="0.07"
-                          fill="#0f172a"
-                          stroke="#fff"
-                          strokeWidth="0.05"
-                          pointerEvents="none"
-                        />
-                      </g>
-                    );
-                  })()}
+
                 </>
               )}
               {isPool && (
@@ -839,6 +797,49 @@ export default function ConceptPlan2D({
                       <circle cx={hx} cy={hy} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
                     </g>
                   ))}
+                  {(() => {
+                    const mid = wallMidpoint(wall);
+                    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+                    return (
+                      <g
+                        className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
+                        onPointerDown={(event) => {
+                          if (interactionMode !== "wall" || !onUpdateCustomWall) return;
+                          event.stopPropagation();
+                          onEditStart?.();
+                          const point = toSvgPoint(event.clientX, event.clientY);
+                          setGesture({
+                            roomId: "",
+                            customWallId: wall.id,
+                            mode: "custom-wall-move",
+                            startX: point.x,
+                            startY: point.y,
+                            roomX: 0,
+                            roomY: 0,
+                            roomWidth: 0,
+                            roomDepth: 0,
+                            wallX1: wall.x1,
+                            wallY1: wall.y1,
+                            wallX2: wall.x2,
+                            wallY2: wall.y2,
+                          });
+                        }}
+                      >
+                        <circle cx={mid.x} cy={mid.y} r="0.48" fill="transparent" />
+                        <rect
+                          x={mid.x - 0.16}
+                          y={mid.y - 0.16}
+                          width="0.32"
+                          height="0.32"
+                          rx="0.07"
+                          fill="#0f172a"
+                          stroke="#fff"
+                          strokeWidth="0.05"
+                          pointerEvents="none"
+                        />
+                      </g>
+                    );
+                  })()}
                 </>
               )}
             </g>
