@@ -209,6 +209,81 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   return res.json(updated);
 });
 
+type ConceptPromotedObject = {
+  id: string;
+  presetId?: string;
+  name: string;
+  category: string;
+  floor: number;
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  height: number;
+  rotationDeg: number;
+  material?: string;
+  finish?: string;
+  color?: string;
+  componentId?: string;
+  manufacturerId?: string;
+  catalogProductId?: string;
+};
+
+function conceptFloorElevation(rooms: any[], targetFloor: number) {
+  let elevation = 0;
+  for (let floor = 0; floor < targetFloor; floor += 1) {
+    const stair = rooms.find((room: any) => room?.floor === floor && room?.kind === "escada");
+    const floorToFloor = Number(stair?.stairFloorToFloorHeight);
+    elevation += Number.isFinite(floorToFloor) && floorToFloor >= 2.96 ? floorToFloor : 2.96;
+  }
+  return elevation;
+}
+
+async function syncConceptObjectsToProject(
+  projectId: string,
+  objects: ConceptPromotedObject[],
+  rooms: any[],
+) {
+  await db
+    .delete(arqObjectsTable)
+    .where(and(
+      eq(arqObjectsTable.projetoId, projectId),
+      ilike(arqObjectsTable.objectClientId, "concept-object-%"),
+    ));
+
+  if (!objects.length) return;
+
+  await db.insert(arqObjectsTable).values(objects.map((object) => ({
+    projetoId: projectId,
+    objectClientId: object.id,
+    name: object.name || "Objeto",
+    category: object.category || "decoracao",
+    material: object.material || null,
+    finish: object.finish || null,
+    color: object.color || null,
+    dimensions: {
+      width: object.width,
+      height: object.height,
+      depth: object.depth,
+      unit: "m",
+    },
+    position: {
+      x: object.x,
+      y: object.y,
+      z: conceptFloorElevation(rooms, object.floor),
+      rotationDeg: object.rotationDeg,
+      floor: object.floor,
+    },
+    componentId: object.componentId || object.presetId || null,
+    manufacturerId: object.manufacturerId || null,
+    designIntent: [
+      "source:arqdor_concept",
+      ...(object.presetId ? [`preset:${object.presetId}`] : []),
+      ...(object.catalogProductId ? [`catalog_product:${object.catalogProductId}`] : []),
+    ],
+    locked: false,
+  })));
+}
 router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
@@ -229,6 +304,14 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
   if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
 
+  const config = (concept.configuration ?? {}) as {
+    floors?: number;
+    desiredArea?: number;
+    objects?: ConceptPromotedObject[];
+  };
+  const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
+  const conceptObjects = Array.isArray(config.objects) ? config.objects : [];
+
   if (concept.archProjetoId) {
     const [existingProject] = await db
       .select()
@@ -242,6 +325,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       .limit(1);
 
     if (existingProject) {
+      await syncConceptObjectsToProject(existingProject.id, conceptObjects, rooms);
       return res.json({
         ok: true,
         alreadyPromoted: true,
@@ -252,7 +336,6 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     }
   }
 
-  const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
   const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
   const facade = (concept.facadePreferences ?? {}) as Record<string, unknown>;
   const customer = (concept.customerProfile ?? {}) as {
@@ -263,7 +346,6 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     timeframe?: string;
     notes?: string;
   };
-  const rooms = Array.isArray(concept.rooms) ? concept.rooms : [];
   const roomSummary = rooms
     .map((room: any) => {
       const area = Number(room.width ?? 0) * Number(room.depth ?? 0);
@@ -410,6 +492,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       portalAtivo: false,
     })
     .returning();
+
+  await syncConceptObjectsToProject(project.id, conceptObjects, rooms);
 
   await db
     .update(archConceptProjectsTable)
