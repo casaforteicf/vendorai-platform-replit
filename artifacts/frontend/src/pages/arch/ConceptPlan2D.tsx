@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace } from "./conceptWallNetwork";
 
@@ -29,7 +30,7 @@ type Props = {
   onUpdateCustomWall?: (wallId: string, patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
-  interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall";
+  interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall" | "navigate";
 };
 
 function formatMeters(value: number) {
@@ -174,10 +175,51 @@ export default function ConceptPlan2D({
   }, [interactionMode]);
 
   const margin = 2.4;
-  const vbX = -margin;
-  const vbY = -margin;
-  const vbW = lotWidth + margin * 2;
-  const vbH = lotDepth + margin * 2;
+  const fitView = useMemo(
+    () => ({
+      x: -margin,
+      y: -margin,
+      width: lotWidth + margin * 2,
+      height: lotDepth + margin * 2,
+    }),
+    [lotWidth, lotDepth],
+  );
+  const [view, setView] = useState(fitView);
+  const [panGesture, setPanGesture] = useState<null | {
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startViewX: number;
+    startViewY: number;
+  }>(null);
+
+  useEffect(() => {
+    setView(fitView);
+  }, [fitView.x, fitView.y, fitView.width, fitView.height]);
+
+  const zoomView = (factor: number, anchor?: { x: number; y: number }) => {
+    setView((current) => {
+      const minWidth = Math.max(3, fitView.width * 0.18);
+      const maxWidth = fitView.width * 2.4;
+      const nextWidth = Math.max(minWidth, Math.min(maxWidth, current.width * factor));
+      const ratio = nextWidth / current.width;
+      const nextHeight = current.height * ratio;
+      const focus = anchor ?? {
+        x: current.x + current.width / 2,
+        y: current.y + current.height / 2,
+      };
+      const fx = (focus.x - current.x) / current.width;
+      const fy = (focus.y - current.y) / current.height;
+      return {
+        x: focus.x - nextWidth * fx,
+        y: focus.y - nextHeight * fy,
+        width: nextWidth,
+        height: nextHeight,
+      };
+    });
+  };
+
+  const resetView = () => setView(fitView);
 
   const toSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -241,7 +283,26 @@ export default function ConceptPlan2D({
     setWallDrawPreview(wallDrawStart);
   };
 
+  const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const point = toSvgPoint(event.clientX, event.clientY);
+    zoomView(event.deltaY > 0 ? 1.12 : 0.88, point);
+  };
+
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (panGesture && interactionMode === "navigate") {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const dx = ((event.clientX - panGesture.startClientX) / Math.max(1, rect.width)) * view.width;
+      const dy = ((event.clientY - panGesture.startClientY) / Math.max(1, rect.height)) * view.height;
+      setView((current) => ({
+        ...current,
+        x: panGesture.startViewX - dx,
+        y: panGesture.startViewY - dy,
+      }));
+      return;
+    }
     const point = toSvgPoint(event.clientX, event.clientY);
     if (interactionMode === "draw-wall" && wallDrawStart) {
       const clamped = clampPoint(point);
@@ -404,22 +465,72 @@ export default function ConceptPlan2D({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border bg-white shadow-inner">
+    <div className="relative overflow-hidden rounded-2xl border bg-white shadow-inner">
+      <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
+        <button
+          type="button"
+          onClick={() => zoomView(0.82)}
+          className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
+          title="Aproximar"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomView(1.22)}
+          className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
+          title="Afastar"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={resetView}
+          className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
+          title="Enquadrar planta"
+        >
+          <Maximize2 className="h-4 w-4" />
+        </button>
+        {interactionMode === "navigate" && (
+          <div className="ml-1 flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1.5 text-[11px] font-semibold text-white">
+            <Move className="h-3.5 w-3.5" /> Arraste para navegar
+          </div>
+        )}
+      </div>
       <svg
         ref={svgRef}
-        className="block h-auto w-full touch-none select-none"
+        className={`block h-auto w-full touch-none select-none ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
+        onWheel={handleWheel}
         onPointerDown={(event) => {
+          if (interactionMode === "navigate") {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setPanGesture({
+              pointerId: event.pointerId,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
+              startViewX: view.x,
+              startViewY: view.y,
+            });
+            return;
+          }
           if (interactionMode !== "draw-wall") return;
           event.preventDefault();
           const point = toSvgPoint(event.clientX, event.clientY);
           handleDrawWallPoint(point);
         }}
         onPointerMove={handlePointerMove}
-        onPointerUp={() => {
+        onPointerUp={(event) => {
+          if (panGesture?.pointerId === event.pointerId) {
+            setPanGesture(null);
+          }
           if (gesture) onEditEnd?.();
           setGesture(null);
         }}
-        onPointerCancel={() => {
+        onPointerCancel={(event) => {
+          if (panGesture?.pointerId === event.pointerId) {
+            setPanGesture(null);
+          }
           if (gesture) onEditEnd?.();
           setGesture(null);
         }}
@@ -429,7 +540,7 @@ export default function ConceptPlan2D({
             setWallDrawPreview(null);
           }
         }}
-        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+        viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Planta conceitual arquitetônica"
