@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
-import type { WallSegment } from "./conceptGeometry";
+import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
 
 type CustomWall = {
@@ -20,6 +20,7 @@ type Props = {
   walls: WallSegment[];
   customWalls: CustomWall[];
   closedSpaces: ClosedSpace[];
+  openings?: OpeningMarker[];
   labels?: Record<string, string>;
 };
 
@@ -62,6 +63,8 @@ function wallPolygon(
   lotWidth: number,
   lotDepth: number,
   zoom: number,
+  zMin = 0,
+  zMax = WALL_HEIGHT,
 ) {
   const thickness = Math.max(0.08, wall.thickness ?? 0.14);
   const dx = wall.x2 - wall.x1;
@@ -71,13 +74,13 @@ function wallPolygon(
   const ny = (dx / length) * (thickness / 2);
 
   const base = [
-    { x: wall.x1 + nx, y: wall.y1 + ny, z: 0 },
-    { x: wall.x2 + nx, y: wall.y2 + ny, z: 0 },
-    { x: wall.x2 - nx, y: wall.y2 - ny, z: 0 },
-    { x: wall.x1 - nx, y: wall.y1 - ny, z: 0 },
+    { x: wall.x1 + nx, y: wall.y1 + ny, z: zMin },
+    { x: wall.x2 + nx, y: wall.y2 + ny, z: zMin },
+    { x: wall.x2 - nx, y: wall.y2 - ny, z: zMin },
+    { x: wall.x1 - nx, y: wall.y1 - ny, z: zMin },
   ];
 
-  const top = base.map((point) => ({ ...point, z: WALL_HEIGHT }));
+  const top = base.map((point) => ({ ...point, z: zMax }));
 
   return {
     base: base.map((point) => project(point, rotation, lotWidth, lotDepth, zoom)),
@@ -87,6 +90,75 @@ function wallPolygon(
   };
 }
 
+function splitWallForOpenings(
+  wall: { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number; exterior?: boolean },
+  openings: OpeningMarker[],
+) {
+  const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
+  const wallStart = vertical ? Math.min(wall.y1, wall.y2) : Math.min(wall.x1, wall.x2);
+  const wallEnd = vertical ? Math.max(wall.y1, wall.y2) : Math.max(wall.x1, wall.x2);
+  const wallCoord = vertical ? wall.x1 : wall.y1;
+
+  const matches = openings
+    .filter((opening) => {
+      if (vertical && opening.orientation !== "vertical") return false;
+      if (!vertical && opening.orientation !== "horizontal") return false;
+      const coord = vertical ? opening.x : opening.y;
+      const along = vertical ? opening.y : opening.x;
+      return Math.abs(coord - wallCoord) <= 0.08 && along >= wallStart - 0.05 && along <= wallEnd + 0.05;
+    })
+    .map((opening) => {
+      const along = vertical ? opening.y : opening.x;
+      const width = opening.type === "door" ? 0.95 : 1.35;
+      return {
+        ...opening,
+        start: Math.max(wallStart, along - width / 2),
+        end: Math.min(wallEnd, along + width / 2),
+      };
+    })
+    .sort((a, b) => a.start - b.start);
+
+  if (!matches.length) {
+    return [{ wall, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" as const }];
+  }
+
+  const pieces: Array<{
+    wall: typeof wall;
+    zMin: number;
+    zMax: number;
+    kind: "solid" | "lintel" | "sill";
+  }> = [];
+  let cursor = wallStart;
+
+  const makeSegment = (start: number, end: number) => {
+    if (end - start < 0.04) return null;
+    return vertical
+      ? { ...wall, y1: start, y2: end }
+      : { ...wall, x1: start, x2: end };
+  };
+
+  for (const opening of matches) {
+    const before = makeSegment(cursor, opening.start);
+    if (before) pieces.push({ wall: before, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
+
+    const openingSegment = makeSegment(opening.start, opening.end);
+    if (openingSegment) {
+      if (opening.type === "door") {
+        pieces.push({ wall: openingSegment, zMin: 2.1, zMax: WALL_HEIGHT, kind: "lintel" });
+      } else {
+        pieces.push({ wall: openingSegment, zMin: 0, zMax: 0.9, kind: "sill" });
+        pieces.push({ wall: openingSegment, zMin: 2.1, zMax: WALL_HEIGHT, kind: "lintel" });
+      }
+    }
+    cursor = Math.max(cursor, opening.end);
+  }
+
+  const after = makeSegment(cursor, wallEnd);
+  if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
+
+  return pieces;
+}
+
 export default function ConceptModel3D({
   lotWidth,
   lotDepth,
@@ -94,6 +166,7 @@ export default function ConceptModel3D({
   walls,
   customWalls,
   closedSpaces,
+  openings = [],
   labels = {},
 }: Props) {
   const [rotation, setRotation] = useState(0);
@@ -245,36 +318,46 @@ export default function ConceptModel3D({
         ))}
 
         <g filter="url(#concept3d-shadow)">
-          {allWalls.map((wall) => {
-            const shape = wallPolygon(wall, rotation, lotWidth, lotDepth, zoom);
-            return (
-              <g key={wall.id}>
-                <polygon
-                  points={points(shape.sideA)}
-                  fill={wall.exterior ? "#cbd5e1" : "#94a3b8"}
-                  stroke="#475569"
-                  strokeWidth="0.055"
-                />
-                <polygon
-                  points={points(shape.sideB)}
-                  fill="url(#concept3d-wall-side)"
-                  stroke="#475569"
-                  strokeWidth="0.055"
-                />
-                <polygon
-                  points={points(shape.top)}
-                  fill="url(#concept3d-wall)"
-                  stroke="#64748b"
-                  strokeWidth="0.055"
-                />
-              </g>
-            );
-          })}
+          {allWalls.flatMap((wall) =>
+            splitWallForOpenings(wall, openings).map((piece, index) => {
+              const shape = wallPolygon(
+                piece.wall,
+                rotation,
+                lotWidth,
+                lotDepth,
+                zoom,
+                piece.zMin,
+                piece.zMax,
+              );
+              return (
+                <g key={`${wall.id}-${piece.kind}-${index}`}>
+                  <polygon
+                    points={points(shape.sideA)}
+                    fill={wall.exterior ? "#cbd5e1" : "#94a3b8"}
+                    stroke="#475569"
+                    strokeWidth="0.055"
+                  />
+                  <polygon
+                    points={points(shape.sideB)}
+                    fill="url(#concept3d-wall-side)"
+                    stroke="#475569"
+                    strokeWidth="0.055"
+                  />
+                  <polygon
+                    points={points(shape.top)}
+                    fill="url(#concept3d-wall)"
+                    stroke="#64748b"
+                    strokeWidth="0.055"
+                  />
+                </g>
+              );
+            })
+          )}
         </g>
       </svg>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
-        <span>{allWalls.length} paredes · {closedSpaces.length} espaços fechados</span>
+        <span>{allWalls.length} paredes · {openings.length} vãos · {closedSpaces.length} espaços fechados</span>
         <span>Pé-direito conceitual: {WALL_HEIGHT.toFixed(2).replace(".", ",")} m</span>
       </div>
     </div>

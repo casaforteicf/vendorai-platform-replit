@@ -1457,6 +1457,7 @@ export default function ConceptPlanner() {
                       walls={geometry.walls}
                       customWalls={customWalls}
                       closedSpaces={closedSpaces}
+                      openings={geometry.openings}
                       labels={Object.fromEntries(
                         closedSpaces.map((space) => [
                           space.id,
