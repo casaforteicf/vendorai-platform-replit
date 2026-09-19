@@ -343,30 +343,49 @@ export default function ConceptModel3D({
           <div className="text-xs text-slate-500">Arraste para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden overflow-hidden rounded-xl border bg-slate-50 sm:flex">
+            {([
+              [35, "Iso"],
+              [0, "Frente"],
+              [90, "Lateral"],
+              [180, "Traseira"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setCameraPreset(value)}
+                className={Math.abs(normalizeRotation(rotation) - value) < 2
+                  ? "bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 first:border-l-0 hover:bg-white"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {levels.length > 1 && (
             <button
               type="button"
               onClick={() => setShowAllFloors((value) => !value)}
               className={showAllFloors
-                ? "rounded-lg border border-orange-400/40 bg-orange-500/20 px-3 py-2 text-xs font-semibold text-orange-100"
-                : "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/75"}
+                ? "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"
+                : "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"}
             >
               {showAllFloors ? "Todos pavimentos" : "Pavimento ativo"}
             </button>
           )}
-          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para esquerda">
+          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Girar para esquerda">
             <RotateCcw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para direita">
+          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Girar para direita">
             <RotateCw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Reduzir">
+          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Reduzir">
             <ZoomOut className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Ampliar">
+          <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Ampliar">
             <ZoomIn className="h-4 w-4" />
           </button>
-          <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Restaurar câmera">
+          <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Restaurar câmera">
             <Maximize2 className="h-4 w-4" />
           </button>
         </div>
