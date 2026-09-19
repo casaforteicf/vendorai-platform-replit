@@ -39,6 +39,11 @@ export const propostaItemSchema = z.object({
   sku: z.string().optional(),
   descricao: z.string().optional(),
   unidade: z.string().optional(),
+  // Grupo operacional do orçamento. Vários produtos/composições podem pertencer
+  // à mesma etapa e a sequência é controlada por etapaOrdem.
+  etapaId: z.string().optional(),
+  etapaNome: z.string().optional(),
+  etapaOrdem: z.number().int().positive().optional(),
   // Ordem operacional do item depois que o orçamento é vendido.
   // O orçamento comercial continua sendo o snapshot original; a execução
   // avança item a item sem apagar histórico.
