@@ -267,7 +267,12 @@ function optionalFinite(value: number | undefined, min: number, max: number) {
   return clamp(value, min, max);
 }
 
-function cleanText(value: string | undefined) {
+function liveText(value: string | undefined) {
+  if (typeof value !== "string") return undefined;
+  return value.trim().length ? value : undefined;
+}
+
+function trimmedText(value: string | undefined) {
   const cleaned = value?.trim();
   return cleaned ? cleaned : undefined;
 }
@@ -331,21 +336,37 @@ export function normalizeOpeningParameters(
     sillHeight,
     openingStyle,
     swing: source.swing === "right" ? "right" : "left",
-    presetId: cleanText(source.presetId),
-    manufacturer: cleanText(source.manufacturer),
-    productLine: cleanText(source.productLine),
-    profile: cleanText(source.profile),
+    presetId: liveText(source.presetId),
+    manufacturer: liveText(source.manufacturer),
+    productLine: liveText(source.productLine),
+    profile: liveText(source.profile),
     frameMaterial: source.frameMaterial && FRAME_MATERIAL_VALUES.has(source.frameMaterial)
       ? source.frameMaterial
       : undefined,
-    frameColor: cleanText(source.frameColor),
+    frameColor: liveText(source.frameColor),
     glassType: source.glassType && GLASS_TYPE_VALUES.has(source.glassType)
       ? source.glassType
       : undefined,
     glassThicknessMm: optionalFinite(source.glassThicknessMm, 1, 80),
     leafCount,
     unitCost: optionalFinite(source.unitCost, 0, 10000000),
-    components: cleanText(source.components),
+    components: liveText(source.components),
+  };
+}
+
+export function sanitizeOpeningParametersForPersistence(
+  type: OpeningType,
+  source: OpeningParameters = {},
+): NormalizedOpeningParameters {
+  const normalized = normalizeOpeningParameters(type, source);
+  return {
+    ...normalized,
+    presetId: trimmedText(normalized.presetId),
+    manufacturer: trimmedText(normalized.manufacturer),
+    productLine: trimmedText(normalized.productLine),
+    profile: trimmedText(normalized.profile),
+    frameColor: trimmedText(normalized.frameColor),
+    components: trimmedText(normalized.components),
   };
 }
 

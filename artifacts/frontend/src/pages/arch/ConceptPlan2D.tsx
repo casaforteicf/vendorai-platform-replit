@@ -173,6 +173,7 @@ function ParametricOpeningSymbol({
     return (
       <g pointerEvents="none" opacity={selected ? 1 : 0.92}>
         {gap}
+        {leafMarks}
         <line x1={hinge.x} y1={hinge.y} x2={openEnd.x} y2={openEnd.y} stroke={tone} strokeWidth="0.06" />
         <path
           d={`M ${closedEnd.x} ${closedEnd.y} A ${params.width} ${params.width} 0 0 ${swingRight ? 0 : 1} ${openEnd.x} ${openEnd.y}`}

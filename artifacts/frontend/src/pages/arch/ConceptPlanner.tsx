@@ -42,6 +42,7 @@ import {
   normalizeOpeningParameters,
   openingStyleSupportsSwing,
   parametersFromOpeningPreset,
+  sanitizeOpeningParametersForPersistence,
   type OpeningParameters,
 } from "./conceptOpenings";
 
@@ -119,13 +120,21 @@ function normalizeCustomOpeningForWall(
 function normalizeCustomOpeningsForWalls(
   openings: CustomOpening[],
   walls: CustomWall[],
+  forPersistence = false,
 ): CustomOpening[] {
   const wallsById = new Map(walls.map((wall) => [wall.id, wall]));
   return openings.map((opening) => {
     const wall = wallsById.get(opening.wallId);
-    return wall
+    const normalized = wall
       ? normalizeCustomOpeningForWall(opening, wall)
       : { ...opening, ...normalizeOpeningParameters(opening.type, opening) };
+
+    return forPersistence
+      ? {
+          ...normalized,
+          ...sanitizeOpeningParametersForPersistence(normalized.type, normalized),
+        }
+      : normalized;
   });
 }
 
@@ -443,7 +452,7 @@ export default function ConceptPlanner() {
 
   const saveConcept = async (stepOverride?: number) => {
     setSaveState("saving");
-    const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls);
+    const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",

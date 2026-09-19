@@ -6,6 +6,7 @@ import {
   clampOpeningWidthForWall,
   defaultOpeningParameters,
   normalizeOpeningParameters,
+  sanitizeOpeningParametersForPersistence,
 } from "./conceptOpenings";
 
 describe("concept openings", () => {
@@ -55,8 +56,17 @@ describe("concept openings", () => {
     }
   });
 
+  it("preserva texto durante a edição e limpa apenas ao persistir", () => {
+    const live = normalizeOpeningParameters("window", {
+      manufacturer: "Fabricante ",
+      productLine: "Linha ",
+    });
+    expect(live.manufacturer).toBe("Fabricante ");
+    expect(live.productLine).toBe("Linha ");
+  });
+
   it("normaliza a especificação técnica sem criar outro objeto de esquadria", () => {
-    const normalized = normalizeOpeningParameters("window", {
+    const normalized = sanitizeOpeningParametersForPersistence("window", {
       manufacturer: "  Fabricante X  ",
       productLine: " Linha 70 ",
       profile: " 70 mm ",
