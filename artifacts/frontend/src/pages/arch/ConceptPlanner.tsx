@@ -1110,6 +1110,7 @@ export default function ConceptPlanner() {
                 <ConceptFacadeElevation
                   rooms={rooms}
                   floors={floors}
+                  lotWidth={lotWidth}
                   facade={facadePreferences}
                 />
               </div>
@@ -1244,7 +1245,7 @@ export default function ConceptPlanner() {
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptFacadeElevation rooms={rooms} floors={floors} facade={facadePreferences} />
+                    <ConceptFacadeElevation rooms={rooms} floors={floors} lotWidth={lotWidth} facade={facadePreferences} />
                   </div>
                 </div>
               </div>
