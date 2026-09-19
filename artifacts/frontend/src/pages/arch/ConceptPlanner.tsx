@@ -26,6 +26,7 @@ import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./con
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptFacadeElevation from "./ConceptFacadeElevation";
+import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
@@ -1275,7 +1276,7 @@ export default function ConceptPlanner() {
               className="fixed -left-[9999px] top-0 h-[650px] w-[900px] overflow-hidden"
               aria-hidden="true"
             >
-              <ConceptFacadeElevation rooms={rooms} floors={floors} lotWidth={lotWidth} facade={facadePreferences} />
+              <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
             </div>
 
             <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
@@ -1365,7 +1366,7 @@ export default function ConceptPlanner() {
                           : editorView === "model3d"
                             ? "O 3D é reconstruído automaticamente a partir da mesma rede de paredes e espaços fechados."
                             : editorView === "facade"
-                              ? "A fachada nasce da mesma implantação e das preferências do projeto."
+                              ? "A fachada é derivada da mesma geometria 2D/3D, incluindo pavimentos e vãos do projeto."
                               : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
                       </div>
                     </div>
@@ -1535,7 +1536,7 @@ export default function ConceptPlanner() {
 
                   {editorView === "facade" && (
                     <div data-concept-render-source="true" className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-                      <ConceptFacadeElevation rooms={rooms} floors={floors} lotWidth={lotWidth} facade={facadePreferences} />
+                      <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
                     </div>
                   )}
 
@@ -2220,12 +2221,12 @@ export default function ConceptPlanner() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-semibold">Fachada conceitual</h3>
-                      <p className="text-xs text-muted-foreground">Elevação frontal derivada da tipologia e das preferências aprovadas.</p>
+                      <p className="text-xs text-muted-foreground">Elevação frontal derivada da geometria do modelo, dos pavimentos e das preferências aprovadas.</p>
                     </div>
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptFacadeElevation rooms={rooms} floors={floors} lotWidth={lotWidth} facade={facadePreferences} />
+                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
                   </div>
                 </div>
               </div>
