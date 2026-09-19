@@ -299,8 +299,20 @@ function normalizeStairRoom(room: Room): Room {
 function normalizeDraftRooms(input: Room[]) {
   const singletonKinds = SINGLETON_ROOM_KINDS;
   const seen = new Set<string>();
-  return input
-    .map(normalizeStairRoom)
+  const normalized = input.map(normalizeStairRoom);
+  const floorHeights = new Map<number, number>();
+
+  for (const room of normalized) {
+    if (room.kind !== "escada" || floorHeights.has(room.floor)) continue;
+    floorHeights.set(room.floor, normalizeStairParameters(room).stairFloorToFloorHeight);
+  }
+
+  return normalized
+    .map((room) =>
+      room.kind === "escada" && floorHeights.has(room.floor)
+        ? { ...room, stairFloorToFloorHeight: floorHeights.get(room.floor) }
+        : room
+    )
     .filter((room) => {
       if (!singletonKinds.has(room.kind)) return true;
       const key = `${room.floor}:${room.kind}`;
@@ -661,6 +673,21 @@ export default function ConceptPlanner() {
     const next = createRoom(kind, activeFloor);
     setRooms((prev) => autoArrange([...prev, next], lotWidth, lotDepth, activeFloor));
     setSelectedId(next.id);
+  };
+
+  const setStairFloorToFloorHeight = (roomId: string, rawHeight: number) => {
+    if (!Number.isFinite(rawHeight)) return;
+    const source = rooms.find((room) => room.id === roomId && room.kind === "escada");
+    if (!source) return;
+    const height = normalizeStairParameters({
+      ...source,
+      stairFloorToFloorHeight: rawHeight,
+    }).stairFloorToFloorHeight;
+    setRooms((prev) => prev.map((room) =>
+      room.kind === "escada" && room.floor === source.floor
+        ? { ...room, stairFloorToFloorHeight: height }
+        : room
+    ));
   };
 
   const updateSelected = (patch: Partial<Room>) => {
@@ -1595,14 +1622,27 @@ export default function ConceptPlanner() {
           };
           setConceptRender(completed);
 
+          const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
+          const persistedRooms = normalizeDraftRooms(rooms);
           const payload = {
             title: "Meu pré-projeto",
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
-            rooms,
+            configuration: {
+              floors,
+              desiredArea,
+              typology,
+              layoutPreferences,
+              wallFirstFloors,
+              showDimensions,
+              customWalls,
+              customOpenings: persistedCustomOpenings,
+              spaceProfiles,
+            },
+            rooms: persistedRooms,
             openingOverrides,
+            customerProfile,
             facadePreferences,
             conceptRender: completed,
             selectedVariant: layoutVariant,
@@ -2898,7 +2938,7 @@ export default function ConceptPlanner() {
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                               <label className="text-xs font-medium">Piso a piso (m)
-                                <input type="number" min="2.96" max="4.5" step="0.01" value={selectedStairParams.stairFloorToFloorHeight.toFixed(2)} onChange={(event) => updateSelected({ stairFloorToFloorHeight: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                                <input type="number" min="2.96" max="4.5" step="0.01" value={selectedStairParams.stairFloorToFloorHeight.toFixed(2)} onChange={(event) => setStairFloorToFloorHeight(selected.id, Number(event.target.value))} className="mt-1 h-10 w-full rounded-lg border px-2" />
                               </label>
                               <label className="text-xs font-medium">Nº de espelhos
                                 <input type="number" min="12" max="30" step="1" value={selectedStairParams.stairRiserCount} onChange={(event) => updateSelected({ stairRiserCount: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />

@@ -119,6 +119,7 @@ function wallPolygon(
 function splitWallForOpenings(
   wall: { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number; exterior?: boolean },
   openings: OpeningMarker[],
+  wallHeight = WALL_HEIGHT,
 ) {
   const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
   const wallStart = vertical ? Math.min(wall.y1, wall.y2) : Math.min(wall.x1, wall.x2);
@@ -146,7 +147,7 @@ function splitWallForOpenings(
     .sort((a, b) => a.start - b.start);
 
   if (!matches.length) {
-    return [{ wall, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" as const }];
+    return [{ wall, zMin: 0, zMax: wallHeight, kind: "solid" as const }];
   }
 
   const pieces: Array<{
@@ -166,7 +167,7 @@ function splitWallForOpenings(
 
   for (const opening of matches) {
     const before = makeSegment(cursor, opening.start);
-    if (before) pieces.push({ wall: before, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
+    if (before) pieces.push({ wall: before, zMin: 0, zMax: wallHeight, kind: "solid" });
 
     const openingSegment = makeSegment(opening.start, opening.end);
     if (openingSegment) {
@@ -178,15 +179,15 @@ function splitWallForOpenings(
       if (sillHeight > 0.04) {
         pieces.push({ wall: openingSegment, zMin: 0, zMax: sillHeight, kind: "sill" });
       }
-      if (headHeight < WALL_HEIGHT - 0.04) {
-        pieces.push({ wall: openingSegment, zMin: headHeight, zMax: WALL_HEIGHT, kind: "lintel" });
+      if (headHeight < wallHeight - 0.04) {
+        pieces.push({ wall: openingSegment, zMin: headHeight, zMax: wallHeight, kind: "lintel" });
       }
     }
     cursor = Math.max(cursor, opening.end);
   }
 
   const after = makeSegment(cursor, wallEnd);
-  if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
+  if (after) pieces.push({ wall: after, zMin: 0, zMax: wallHeight, kind: "solid" });
   return pieces;
 }
 
@@ -289,11 +290,16 @@ export default function ConceptModel3D({
     undefined,
   );
   const topBounds = roofBounds(topLevel);
-  const topZ = (topLevel?.elevation ?? 0) + WALL_HEIGHT + FLOOR_THICKNESS;
+  const topWallHeight = topLevel
+    ? Math.max(WALL_HEIGHT, topLevel.floorToFloorHeight - FLOOR_THICKNESS)
+    : WALL_HEIGHT;
+  const topZ = (topLevel?.elevation ?? 0) + topWallHeight + FLOOR_THICKNESS;
 
   const maxElevation = Math.max(
     WALL_HEIGHT + FLOOR_THICKNESS,
-    ...levels.map((level) => level.elevation + WALL_HEIGHT + FLOOR_THICKNESS),
+    ...levels.map((level) =>
+      level.elevation + Math.max(WALL_HEIGHT, level.floorToFloorHeight - FLOOR_THICKNESS) + FLOOR_THICKNESS
+    ),
   );
   const sceneWidth = Math.max(lotWidth, lotDepth) * 2.9 * zoom + 22;
   const sceneHeight = Math.max(lotWidth, lotDepth) * 1.9 * zoom + maxElevation * 2.1 + 22;
@@ -381,6 +387,7 @@ export default function ConceptModel3D({
 
         {visibleLevels.map((level) => {
           const levelBase = level.elevation;
+          const wallHeight = Math.max(WALL_HEIGHT, level.floorToFloorHeight - FLOOR_THICKNESS);
           const allWalls = [
             ...level.walls.map((wall) => ({
               id: wall.id,
@@ -453,7 +460,7 @@ export default function ConceptModel3D({
 
               <g filter="url(#concept3d-shadow)">
                 {allWalls.flatMap((wall) =>
-                  splitWallForOpenings(wall, level.openings).map((piece, index) => {
+                  splitWallForOpenings(wall, level.openings, wallHeight).map((piece, index) => {
                     const shape = wallPolygon(
                       piece.wall,
                       rotation,
