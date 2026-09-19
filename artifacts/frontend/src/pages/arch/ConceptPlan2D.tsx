@@ -73,6 +73,39 @@ function ParametricOpeningSymbol({
   const horizontal = opening.orientation === "horizontal";
   const swingRight = params.swing === "right";
   const tone = selected ? "#f97316" : opening.type === "door" ? "#475569" : "#0284c7";
+  const leafDividers = params.leafCount > 1
+    ? Array.from({ length: params.leafCount - 1 }, (_, index) => (index + 1) / params.leafCount)
+    : [];
+  const leafMarks = (
+    <g pointerEvents="none">
+      {leafDividers.map((ratio) => {
+        const along = -half + params.width * ratio;
+        return horizontal ? (
+          <line
+            key={ratio}
+            x1={opening.x + along}
+            y1={opening.y - 0.10}
+            x2={opening.x + along}
+            y2={opening.y + 0.10}
+            stroke={tone}
+            strokeOpacity="0.62"
+            strokeWidth="0.035"
+          />
+        ) : (
+          <line
+            key={ratio}
+            x1={opening.x - 0.10}
+            y1={opening.y + along}
+            x2={opening.x + 0.10}
+            y2={opening.y + along}
+            stroke={tone}
+            strokeOpacity="0.62"
+            strokeWidth="0.035"
+          />
+        );
+      })}
+    </g>
+  );
   const gap = (
     <line
       x1={horizontal ? opening.x - half : opening.x}
@@ -89,6 +122,7 @@ function ParametricOpeningSymbol({
       return (
         <g pointerEvents="none" opacity={selected ? 1 : 0.92}>
           {gap}
+          {leafMarks}
           <line
             x1={horizontal ? opening.x - half : opening.x - 0.10}
             y1={horizontal ? opening.y - 0.10 : opening.y - half}
@@ -113,6 +147,7 @@ function ParametricOpeningSymbol({
       return (
         <g pointerEvents="none" opacity={selected ? 1 : 0.92}>
           {gap}
+          {leafMarks}
           <line
             x1={horizontal ? opening.x - half : opening.x}
             y1={horizontal ? opening.y : opening.y - half}
@@ -166,6 +201,7 @@ function ParametricOpeningSymbol({
     return (
       <g pointerEvents="none">
         {gap}
+        {leafMarks}
         <line
           x1={horizontal ? opening.x - half : opening.x - 0.08}
           y1={horizontal ? opening.y - 0.08 : opening.y - half}
@@ -189,6 +225,7 @@ function ParametricOpeningSymbol({
   return (
     <g pointerEvents="none">
       {gap}
+      {leafMarks}
       <line x1={left.x} y1={left.y} x2={right.x} y2={right.y} stroke={tone} strokeWidth={selected ? "0.11" : "0.07"} />
       {params.openingStyle !== "fixed" && (
         <>

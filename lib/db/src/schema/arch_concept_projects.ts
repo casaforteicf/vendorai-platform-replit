@@ -38,6 +38,16 @@ export type ArchConceptConfiguration = {
     openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
     swing?: "left" | "right";
     presetId?: string;
+    manufacturer?: string;
+    productLine?: string;
+    profile?: string;
+    frameMaterial?: "pvc" | "aluminum" | "wood" | "steel" | "other";
+    frameColor?: string;
+    glassType?: "clear" | "tempered" | "laminated" | "insulated" | "frosted" | "none" | "other";
+    glassThicknessMm?: number;
+    leafCount?: number;
+    unitCost?: number;
+    components?: string;
   }>;
   spaceProfiles?: Array<{
     id: string;

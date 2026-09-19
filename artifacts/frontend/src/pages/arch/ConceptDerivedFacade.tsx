@@ -32,6 +32,27 @@ function facadePalette(facade: ConceptFacadePreferences) {
   return { wall, accent, frame };
 }
 
+function specificationFrameColor(value: string | undefined, fallback: string) {
+  const normalized = value?.trim().toLocaleLowerCase("pt-BR");
+  if (!normalized) return fallback;
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) return normalized;
+  if (normalized.includes("branco")) return "#f5f7f8";
+  if (normalized.includes("preto")) return "#202428";
+  if (normalized.includes("grafite")) return "#3f454a";
+  if (normalized.includes("bronze")) return "#69513f";
+  if (normalized.includes("cinza")) return "#737b82";
+  if (normalized.includes("madeira") || normalized.includes("amadeir")) return "#815d45";
+  return fallback;
+}
+
+function glassOpacity(glassType: string | undefined) {
+  if (glassType === "frosted") return 0.72;
+  if (glassType === "insulated") return 0.9;
+  if (glassType === "laminated") return 0.94;
+  if (glassType === "tempered") return 0.97;
+  return 1;
+}
+
 function frontSegments(level: ConceptModelLevel) {
   const legacyExterior = level.walls.filter(
     (wall) => wall.exterior && Math.abs(wall.y1 - wall.y2) <= EPS,
@@ -206,6 +227,10 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                 const openingW = Math.max(3.8, widthM * scaleX);
                 const openingY = levelBottom - (sillM + heightM) * pxPerMeterY;
                 const openingH = heightM * pxPerMeterY;
+                const frameColor = specificationFrameColor(params.frameColor, colors.frame);
+                const leafDividers = params.leafCount > 1
+                  ? Array.from({ length: params.leafCount - 1 }, (_, index) => (index + 1) / params.leafCount)
+                  : [];
 
                 if (opening.type === "door") {
                   return (
@@ -216,21 +241,26 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                         width={openingW}
                         height={openingH}
                         rx="0.25"
-                        fill={facade.accentMaterial === "madeira" ? "#8a5d43" : "#4b5055"}
-                        stroke={colors.frame}
+                        fill={params.glassType && params.glassType !== "none"
+                          ? "url(#derived-facade-glass)"
+                          : facade.accentMaterial === "madeira" ? "#8a5d43" : "#4b5055"}
+                        fillOpacity={params.glassType && params.glassType !== "none" ? glassOpacity(params.glassType) : 1}
+                        stroke={frameColor}
                         strokeWidth="0.55"
                       />
-                      {params.openingStyle === "sliding" ? (
+                      {leafDividers.map((ratio) => (
                         <line
-                          x1={openingX + openingW / 2}
+                          key={ratio}
+                          x1={openingX + openingW * ratio}
                           y1={levelBottom - openingH}
-                          x2={openingX + openingW / 2}
+                          x2={openingX + openingW * ratio}
                           y2={levelBottom}
-                          stroke="#d7dee2"
-                          strokeOpacity="0.7"
-                          strokeWidth="0.35"
+                          stroke={frameColor}
+                          strokeOpacity="0.72"
+                          strokeWidth="0.32"
                         />
-                      ) : params.openingStyle === "hinged" ? (
+                      ))}
+                      {params.openingStyle === "hinged" ? (
                         <circle
                           cx={params.swing === "right" ? openingX + 0.8 : openingX + openingW - 0.8}
                           cy={levelBottom - Math.min(heightM * 0.48, 1.05) * pxPerMeterY}
@@ -250,21 +280,23 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                       width={openingW}
                       height={openingH}
                       rx="0.22"
-                      fill="url(#derived-facade-glass)"
-                      stroke={colors.frame}
+                      fill={params.glassType === "none" ? colors.wall : "url(#derived-facade-glass)"}
+                      fillOpacity={params.glassType === "none" ? 1 : glassOpacity(params.glassType)}
+                      stroke={frameColor}
                       strokeWidth="0.6"
                     />
-                    {params.openingStyle === "sliding" && (
+                    {leafDividers.map((ratio) => (
                       <line
-                        x1={openingX + openingW / 2}
+                        key={ratio}
+                        x1={openingX + openingW * ratio}
                         y1={openingY}
-                        x2={openingX + openingW / 2}
+                        x2={openingX + openingW * ratio}
                         y2={openingY + openingH}
-                        stroke="#d4dde2"
-                        strokeOpacity="0.65"
-                        strokeWidth="0.35"
+                        stroke={frameColor}
+                        strokeOpacity="0.7"
+                        strokeWidth="0.32"
                       />
-                    )}
+                    ))}
                     {params.openingStyle === "hinged" && (
                       <line
                         x1={params.swing === "right" ? openingX + openingW : openingX}

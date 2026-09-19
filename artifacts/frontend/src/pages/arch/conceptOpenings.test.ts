@@ -51,6 +51,35 @@ describe("concept openings", () => {
       expect(normalized.height).toBeGreaterThanOrEqual(0.5);
       expect(normalized.height + normalized.sillHeight).toBeLessThanOrEqual(OPENING_WALL_HEIGHT);
       expect(normalized.openingStyle).toBe(preset.openingStyle);
+      expect(normalized.leafCount).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it("normaliza a especificação técnica sem criar outro objeto de esquadria", () => {
+    const normalized = normalizeOpeningParameters("window", {
+      manufacturer: "  Fabricante X  ",
+      productLine: " Linha 70 ",
+      profile: " 70 mm ",
+      frameMaterial: "pvc",
+      frameColor: " Branco ",
+      glassType: "insulated",
+      glassThicknessMm: 20,
+      leafCount: 2.6,
+      unitCost: 1850.5,
+      components: " Marco, folhas, ferragens ",
+    });
+
+    expect(normalized).toMatchObject({
+      manufacturer: "Fabricante X",
+      productLine: "Linha 70",
+      profile: "70 mm",
+      frameMaterial: "pvc",
+      frameColor: "Branco",
+      glassType: "insulated",
+      glassThicknessMm: 20,
+      leafCount: 3,
+      unitCost: 1850.5,
+      components: "Marco, folhas, ferragens",
+    });
   });
 });

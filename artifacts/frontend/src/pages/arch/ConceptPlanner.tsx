@@ -32,6 +32,8 @@ import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import {
+  OPENING_FRAME_MATERIAL_OPTIONS,
+  OPENING_GLASS_TYPE_OPTIONS,
   OPENING_PRESETS,
   OPENING_STYLE_OPTIONS,
   clampOpeningOffset,
@@ -145,6 +147,16 @@ function customOpeningToMarker(opening: CustomOpening, wall: CustomWall): Openin
     openingStyle: normalized.openingStyle,
     swing: normalized.swing,
     presetId: normalized.presetId,
+    manufacturer: normalized.manufacturer,
+    productLine: normalized.productLine,
+    profile: normalized.profile,
+    frameMaterial: normalized.frameMaterial,
+    frameColor: normalized.frameColor,
+    glassType: normalized.glassType,
+    glassThicknessMm: normalized.glassThicknessMm,
+    leafCount: normalized.leafCount,
+    unitCost: normalized.unitCost,
+    components: normalized.components,
   };
 }
 
@@ -2587,6 +2599,146 @@ export default function ConceptPlanner() {
                                   </div>
                                 </div>
                               )}
+
+                              <div className="border-t pt-3">
+                                <div className="mb-2 text-xs font-semibold text-muted-foreground">Especificação técnica</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <label className="text-xs font-medium">
+                                    Fabricante
+                                    <input
+                                      type="text"
+                                      value={selectedOpeningParams.manufacturer ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { manufacturer: event.target.value })}
+                                      placeholder="Ex.: fabricante"
+                                      className="mt-1 h-10 w-full rounded-lg border px-2"
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium">
+                                    Linha
+                                    <input
+                                      type="text"
+                                      value={selectedOpeningParams.productLine ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { productLine: event.target.value })}
+                                      placeholder="Ex.: Linha 70"
+                                      className="mt-1 h-10 w-full rounded-lg border px-2"
+                                    />
+                                  </label>
+                                </div>
+
+                                <label className="mt-2 block text-xs font-medium">
+                                  Perfil / sistema
+                                  <input
+                                    type="text"
+                                    value={selectedOpeningParams.profile ?? ""}
+                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { profile: event.target.value })}
+                                    placeholder="Ex.: perfil 70 mm"
+                                    className="mt-1 h-10 w-full rounded-lg border px-2"
+                                  />
+                                </label>
+
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <label className="text-xs font-medium">
+                                    Material
+                                    <select
+                                      value={selectedOpeningParams.frameMaterial ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
+                                        frameMaterial: (event.target.value || undefined) as OpeningParameters["frameMaterial"],
+                                      })}
+                                      className="mt-1 h-10 w-full rounded-lg border bg-background px-2"
+                                    >
+                                      <option value="">Não definido</option>
+                                      {OPENING_FRAME_MATERIAL_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="text-xs font-medium">
+                                    Cor
+                                    <input
+                                      type="text"
+                                      value={selectedOpeningParams.frameColor ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { frameColor: event.target.value })}
+                                      placeholder="Ex.: Preto"
+                                      className="mt-1 h-10 w-full rounded-lg border px-2"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <label className="text-xs font-medium">
+                                    Vidro
+                                    <select
+                                      value={selectedOpeningParams.glassType ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
+                                        glassType: (event.target.value || undefined) as OpeningParameters["glassType"],
+                                      })}
+                                      className="mt-1 h-10 w-full rounded-lg border bg-background px-2"
+                                    >
+                                      <option value="">Não definido</option>
+                                      {OPENING_GLASS_TYPE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="text-xs font-medium">
+                                    Esp. vidro (mm)
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="80"
+                                      step="1"
+                                      value={selectedOpeningParams.glassThicknessMm ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
+                                        glassThicknessMm: event.target.value === "" ? undefined : Number(event.target.value),
+                                      })}
+                                      className="mt-1 h-10 w-full rounded-lg border px-2"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <label className="text-xs font-medium">
+                                    Nº de folhas
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="12"
+                                      step="1"
+                                      value={selectedOpeningParams.leafCount}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { leafCount: Number(event.target.value) })}
+                                      className="mt-1 h-10 w-full rounded-lg border px-2"
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium">
+                                    Custo unitário (R$)
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={selectedOpeningParams.unitCost ?? ""}
+                                      onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
+                                        unitCost: event.target.value === "" ? undefined : Number(event.target.value),
+                                      })}
+                                      className="mt-1 h-10 w-full rounded-lg border px-2"
+                                    />
+                                  </label>
+                                </div>
+
+                                <label className="mt-2 block text-xs font-medium">
+                                  Componentes
+                                  <textarea
+                                    rows={2}
+                                    value={selectedOpeningParams.components ?? ""}
+                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { components: event.target.value })}
+                                    placeholder="Ex.: marco, folhas, trilhos, roldanas, fechos"
+                                    className="mt-1 w-full rounded-lg border px-2 py-2 text-sm"
+                                  />
+                                </label>
+
+                                <div className="mt-2 rounded-lg border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+                                  Estes dados pertencem ao mesmo vão paramétrico usado pela planta, 3D, fachada e persistência; não existe uma esquadria duplicada fora do objeto da abertura.
+                                </div>
+                              </div>
                             </div>
                           )}
 
