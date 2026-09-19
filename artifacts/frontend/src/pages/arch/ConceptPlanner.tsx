@@ -54,6 +54,7 @@ import {
   stairFootprintMetrics,
   type StairParameters,
 } from "./conceptStairs";
+import { defaultRoofParameters, normalizeRoofParameters, type RoofWaterCount } from "./conceptRoof";
 
 type RoomKind =
   | "sala"
@@ -239,8 +240,8 @@ const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada"
 const FLOW_STEPS = ["Terreno", "Modelo", "Editor", "Resultado"];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
+  ...defaultRoofParameters("platibanda"),
   style: "contemporaneo",
-  roof: "platibanda",
   primaryMaterial: "pintura",
   accentMaterial: "madeira",
   facadeTone: "claro",
@@ -373,6 +374,173 @@ function StepPill({ index, current, label }: { index: number; current: number; l
   );
 }
 
+function RoofControls({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: ConceptFacadePreferences;
+  onChange: (patch: Partial<ConceptFacadePreferences>) => void;
+  compact?: boolean;
+}) {
+  const roof = normalizeRoofParameters(value);
+  const patchRoof = (patch: Partial<ConceptFacadePreferences>) => {
+    onChange(normalizeRoofParameters({ ...value, ...patch }));
+  };
+
+  return (
+    <div className={compact ? "space-y-3" : "space-y-4 rounded-2xl border bg-muted/20 p-4"}>
+      <label className="block text-xs font-semibold">
+        Tipo de cobertura
+        <select
+          value={roof.roof}
+          onChange={(event) => patchRoof({ roof: event.target.value as ConceptFacadePreferences["roof"] })}
+          className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+        >
+          <option value="platibanda">Platibanda</option>
+          <option value="aparente">Telhado aparente</option>
+          <option value="misto">Misto</option>
+        </select>
+      </label>
+
+      {roof.roof === "platibanda" ? (
+        <label className="block text-xs font-semibold">
+          Altura da platibanda
+          <div className="mt-1 flex items-center rounded-xl border bg-background px-3">
+            <input
+              type="number"
+              min="0.25"
+              max="1.5"
+              step="0.05"
+              value={roof.roofParapetHeight}
+              onChange={(event) => patchRoof({ roofParapetHeight: Number(event.target.value) })}
+              className="h-10 w-full bg-transparent outline-none"
+            />
+            <span className="text-xs text-muted-foreground">m</span>
+          </div>
+        </label>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs font-semibold">
+              Águas
+              <select
+                value={roof.roofWaters}
+                onChange={(event) => patchRoof({ roofWaters: Number(event.target.value) as RoofWaterCount })}
+                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+              >
+                <option value={1}>1 água</option>
+                <option value={2}>2 águas</option>
+                <option value={4}>4 águas</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold">
+              Inclinação
+              <div className="mt-1 flex items-center rounded-xl border bg-background px-3">
+                <input
+                  type="number"
+                  min="3"
+                  max="55"
+                  step="1"
+                  value={roof.roofPitchDeg}
+                  onChange={(event) => patchRoof({ roofPitchDeg: Number(event.target.value) })}
+                  className="h-10 w-full bg-transparent outline-none"
+                />
+                <span className="text-xs text-muted-foreground">°</span>
+              </div>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs font-semibold">
+              Beiral
+              <div className="mt-1 flex items-center rounded-xl border bg-background px-3">
+                <input
+                  type="number"
+                  min="0"
+                  max="1.5"
+                  step="0.05"
+                  value={roof.roofOverhang}
+                  onChange={(event) => patchRoof({ roofOverhang: Number(event.target.value) })}
+                  className="h-10 w-full bg-transparent outline-none"
+                />
+                <span className="text-xs text-muted-foreground">m</span>
+              </div>
+            </label>
+            {roof.roofWaters === 1 ? (
+              <label className="text-xs font-semibold">
+                Sentido da queda
+                <select
+                  value={roof.roofSlopeDirection}
+                  onChange={(event) => patchRoof({ roofSlopeDirection: event.target.value as ConceptFacadePreferences["roofSlopeDirection"] })}
+                  className="mt-1 h-10 w-full rounded-xl border bg-background px-2 text-sm"
+                >
+                  <option value="north">Para cima</option>
+                  <option value="south">Para baixo</option>
+                  <option value="east">Para direita</option>
+                  <option value="west">Para esquerda</option>
+                </select>
+              </label>
+            ) : (
+              <label className="text-xs font-semibold">
+                Cumeeira
+                <select
+                  value={roof.roofRidgeOrientation}
+                  onChange={(event) => patchRoof({ roofRidgeOrientation: event.target.value as ConceptFacadePreferences["roofRidgeOrientation"] })}
+                  className="mt-1 h-10 w-full rounded-xl border bg-background px-2 text-sm"
+                >
+                  <option value="x">Paralela à fachada</option>
+                  <option value="y">Perpendicular à fachada</option>
+                </select>
+              </label>
+            )}
+          </div>
+
+          {roof.roof === "misto" && (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs font-semibold">
+                Parte com platibanda
+                <div className="mt-1 flex items-center rounded-xl border bg-background px-3">
+                  <input
+                    type="number"
+                    min="20"
+                    max="80"
+                    step="5"
+                    value={Math.round(roof.roofMixedRatio * 100)}
+                    onChange={(event) => patchRoof({ roofMixedRatio: Number(event.target.value) / 100 })}
+                    className="h-10 w-full bg-transparent outline-none"
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
+              </label>
+              <label className="text-xs font-semibold">
+                Altura da platibanda
+                <div className="mt-1 flex items-center rounded-xl border bg-background px-3">
+                  <input
+                    type="number"
+                    min="0.25"
+                    max="1.5"
+                    step="0.05"
+                    value={roof.roofParapetHeight}
+                    onChange={(event) => patchRoof({ roofParapetHeight: Number(event.target.value) })}
+                    className="h-10 w-full bg-transparent outline-none"
+                  />
+                  <span className="text-xs text-muted-foreground">m</span>
+                </div>
+              </label>
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="rounded-lg border bg-background px-3 py-2 text-[11px] text-muted-foreground">
+        {roof.roof === "platibanda"
+          ? `Laje coberta por platibanda de ${roof.roofParapetHeight.toFixed(2)} m.`
+          : `${roof.roofWaters} água${roof.roofWaters > 1 ? "s" : ""} · ${roof.roofPitchDeg.toFixed(0)}° · beiral ${roof.roofOverhang.toFixed(2)} m.`}
+      </div>
+    </div>
+  );
+}
 export default function ConceptPlanner() {
   const [step, setStep] = useState(0);
   const [lotWidth, setLotWidth] = useState(12);
@@ -474,7 +642,8 @@ export default function ConceptPlanner() {
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
-        setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
+        const loadedFacade = { ...DEFAULT_FACADE, ...(draft.facadePreferences ?? {}) };
+        setFacadePreferences({ ...loadedFacade, ...normalizeRoofParameters(loadedFacade) });
         setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
@@ -2263,6 +2432,8 @@ export default function ConceptPlanner() {
                               .filter((room) => room.floor === activeFloor - 1 && room.kind === "escada")
                               .flatMap((room) => buildStairSlabOpenings(room))
                           : []}
+                        roof={facadePreferences}
+                        showRoofPlan={activeFloor === floors - 1}
                         selectedCustomWallId={selectedCustomWallId}
                         onCreateCustomWall={addCustomWall}
                         onSelectCustomWall={(wallId) => {
@@ -2304,7 +2475,7 @@ export default function ConceptPlanner() {
                       lotDepth={lotDepth}
                       activeFloor={activeFloor}
                       levels={modelLevels}
-                      roof={facadePreferences.roof}
+                      roof={facadePreferences}
                     />
                   )}
 
@@ -3080,17 +3251,11 @@ export default function ConceptPlanner() {
                         <option value="rustico_contemporaneo">Rústico contemporâneo</option>
                       </select>
                     </label>
-                    <label className="block text-xs font-semibold">Cobertura
-                      <select
-                        value={facadePreferences.roof}
-                        onChange={(event) => setFacadePreferences((prev) => ({ ...prev, roof: event.target.value as ConceptFacadePreferences["roof"] }))}
-                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                      >
-                        <option value="platibanda">Platibanda</option>
-                        <option value="aparente">Telhado aparente</option>
-                        <option value="misto">Misto</option>
-                      </select>
-                    </label>
+                    <RoofControls
+                      compact
+                      value={facadePreferences}
+                      onChange={(patch) => setFacadePreferences((prev) => ({ ...prev, ...patch }))}
+                    />
                     <button
                       type="button"
                       onClick={() => setStep(5)}
@@ -3159,23 +3324,11 @@ export default function ConceptPlanner() {
                 </div>
 
                 <div>
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cobertura</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {([
-                      ["platibanda", "Platibanda"],
-                      ["aparente", "Telhado"],
-                      ["misto", "Misto"],
-                    ] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setFacadePreferences((prev) => ({ ...prev, roof: value }))}
-                        className={facadePreferences.roof === value ? "rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2 text-xs font-semibold" : "rounded-xl border px-3 py-2 text-xs font-semibold"}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cobertura paramétrica</div>
+                  <RoofControls
+                    value={facadePreferences}
+                    onChange={(patch) => setFacadePreferences((prev) => ({ ...prev, ...patch }))}
+                  />
                 </div>
 
                 <label className="block text-xs font-semibold">
