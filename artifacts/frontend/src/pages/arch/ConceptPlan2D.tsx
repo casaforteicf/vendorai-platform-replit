@@ -11,6 +11,15 @@ type Props = {
   onRoomChange?: (roomId: string, patch: Partial<Pick<ConceptRoomShape, "x" | "y" | "width" | "depth">>) => void;
 };
 
+function formatMeters(value: number) {
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function fitLabelSize(label: string, width: number) {
+  const estimated = (width * 1.55) / Math.max(5, label.length);
+  return Math.max(0.21, Math.min(0.38, estimated));
+}
+
 const ROOM_FILL: Record<string, string> = {
   sala: "#f8fafc",
   cozinha: "#f8fafc",
@@ -178,7 +187,7 @@ export default function ConceptPlan2D({
         <line x1="0" y1="-0.82" x2="0" y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
         <line x1={lotWidth} y1="-0.82" x2={lotWidth} y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
         <text x={lotWidth / 2} y="-0.88" textAnchor="middle" fontSize="0.34" fontWeight="700" fill="#64748b">
-          {lotWidth.toFixed(2)} m
+          {formatMeters(lotWidth)} m
         </text>
 
         <line x1="-0.55" y1="0" x2="-0.55" y2={lotDepth} stroke="#94a3b8" strokeWidth="0.035" />
@@ -193,7 +202,7 @@ export default function ConceptPlan2D({
           fill="#64748b"
           transform={`rotate(-90 -0.9 ${lotDepth / 2})`}
         >
-          {lotDepth.toFixed(2)} m
+          {formatMeters(lotDepth)} m
         </text>
 
         <g>
@@ -287,23 +296,27 @@ export default function ConceptPlan2D({
                     <>
                       <text
                         x={room.x + room.width / 2}
-                        y={room.y + room.depth / 2 - 0.12}
+                        y={room.y + room.depth / 2 - (room.width >= 2.4 && room.depth >= 2 ? 0.13 : 0)}
                         textAnchor="middle"
-                        fontSize={room.kind === "escada" ? "0.28" : Math.max(0.3, Math.min(0.44, room.width / 8))}
+                        fontSize={room.kind === "escada" ? "0.25" : fitLabelSize(room.label, room.width)}
                         fontWeight="750"
                         fill="#0f172a"
+                        textLength={Math.max(0.8, room.width - 0.38)}
+                        lengthAdjust="spacingAndGlyphs"
                       >
                         {room.label}
                       </text>
-                      <text
-                        x={room.x + room.width / 2}
-                        y={room.y + room.depth / 2 + 0.36}
-                        textAnchor="middle"
-                        fontSize="0.28"
-                        fill="#64748b"
-                      >
-                        {room.width.toFixed(2)} × {room.depth.toFixed(2)} m · {area.toFixed(1)} m²
-                      </text>
+                      {room.width >= 2.4 && room.depth >= 2 && (
+                        <text
+                          x={room.x + room.width / 2}
+                          y={room.y + room.depth / 2 + 0.32}
+                          textAnchor="middle"
+                          fontSize="0.22"
+                          fill="#64748b"
+                        >
+                          {formatMeters(room.width)} × {formatMeters(room.depth)} m · {area.toFixed(1)} m²
+                        </text>
+                      )}
                     </>
                   )}
                 </>
@@ -359,7 +372,7 @@ export default function ConceptPlan2D({
                     fontSize="0.27"
                     fill="#0284c7"
                   >
-                    {room.width.toFixed(2)} × {room.depth.toFixed(2)} m
+                    {formatMeters(room.width)} × {formatMeters(room.depth)} m
                   </text>
                 </>
               )}
