@@ -24,6 +24,14 @@ export type ArchConceptConfiguration = {
     y2: number;
     thickness?: number;
   }>;
+  spaceProfiles?: Array<{
+    id: string;
+    floor: number;
+    label: string;
+    kind: string;
+    centroid: { x: number; y: number };
+    area: number;
+  }>;
 };
 
 export type ArchConceptRoom = {
