@@ -6,6 +6,7 @@ import type { ClosedSpace } from "./conceptWallNetwork";
 import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofFaces, normalizeRoofParameters, roofPeakZ, type RoofInput } from "./conceptRoof";
 import { conceptObjectCorners, type ConceptObject } from "./conceptObjects";
+import { distanceBetweenPoints, pinchZoomScalar } from "./conceptViewport";
 import {
   conceptFloorMaterial,
   normalizeConceptMaterialScheme,
@@ -619,7 +620,10 @@ export default function ConceptModel3D({
     event.preventDefault();
     event.stopPropagation();
     pinchZoomRef.current = {
-      startDistance: Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)),
+      startDistance: distanceBetweenPoints(
+        { x: first.clientX, y: first.clientY },
+        { x: second.clientX, y: second.clientY },
+      ),
       startZoom: zoom,
     };
     setOrbitGesture(null);
@@ -635,9 +639,16 @@ export default function ConceptModel3D({
     event.preventDefault();
     event.stopPropagation();
     const [first, second] = points;
-    const distance = Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY));
-    const next = pinch.startZoom * (distance / pinch.startDistance);
-    setZoom(Math.max(0.55, Math.min(1.75, Number(next.toFixed(3)))));
+    setZoom(pinchZoomScalar(
+      pinch.startZoom,
+      pinch.startDistance,
+      distanceBetweenPoints(
+        { x: first.clientX, y: first.clientY },
+        { x: second.clientX, y: second.clientY },
+      ),
+      0.55,
+      1.75,
+    ));
   };
 
   const handleTouchPointerEndCapture = (event: ReactPointerEvent<SVGSVGElement>) => {

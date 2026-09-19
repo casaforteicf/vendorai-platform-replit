@@ -7,6 +7,13 @@ import { buildRoofPlanGuides, normalizeRoofParameters, roofPlanBounds, type Roof
 import { normalizeConceptObject, type ConceptObject } from "./conceptObjects";
 import type { ArchitecturalIssue } from "./conceptValidation";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
+import {
+  distanceBetweenPoints,
+  midpointBetweenPoints,
+  pinchViewBox,
+  worldPointFromScreen,
+  type ConceptViewBox,
+} from "./conceptViewport";
 
 type Props = {
   rooms: ConceptRoomShape[];
@@ -493,7 +500,7 @@ export default function ConceptPlan2D({
   const touchPointersRef = useRef(new Map<number, { clientX: number; clientY: number }>());
   const pinchGestureRef = useRef<null | {
     startDistance: number;
-    startView: { x: number; y: number; width: number; height: number };
+    startView: ConceptViewBox;
     worldFocus: { x: number; y: number };
   }>(null);
 
@@ -537,19 +544,17 @@ export default function ConceptPlan2D({
     if (!pair || !svgRef.current) return;
 
     const [first, second] = pair;
-    const distance = Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY));
-    const midX = (first.clientX + second.clientX) / 2;
-    const midY = (first.clientY + second.clientY) / 2;
+    const firstPoint = { x: first.clientX, y: first.clientY };
+    const secondPoint = { x: second.clientX, y: second.clientY };
+    const midpoint = midpointBetweenPoints(firstPoint, secondPoint);
     const rect = svgRef.current.getBoundingClientRect();
-    const focusX = view.x + ((midX - rect.left) / Math.max(1, rect.width)) * view.width;
-    const focusY = view.y + ((midY - rect.top) / Math.max(1, rect.height)) * view.height;
 
     event.preventDefault();
     event.stopPropagation();
     pinchGestureRef.current = {
-      startDistance: distance,
+      startDistance: distanceBetweenPoints(firstPoint, secondPoint),
       startView: { ...view },
-      worldFocus: { x: focusX, y: focusY },
+      worldFocus: worldPointFromScreen(midpoint, rect, view),
     };
     setPanGesture(null);
     onEditEnd?.();
@@ -571,25 +576,19 @@ export default function ConceptPlan2D({
     event.stopPropagation();
 
     const [first, second] = pair;
-    const currentDistance = Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY));
-    const scale = pinch.startDistance / currentDistance;
-    const minWidth = Math.max(3, fitView.width * 0.18);
-    const maxWidth = fitView.width * 2.4;
-    const nextWidth = Math.max(minWidth, Math.min(maxWidth, pinch.startView.width * scale));
-    const ratio = nextWidth / pinch.startView.width;
-    const nextHeight = pinch.startView.height * ratio;
-    const midX = (first.clientX + second.clientX) / 2;
-    const midY = (first.clientY + second.clientY) / 2;
+    const firstPoint = { x: first.clientX, y: first.clientY };
+    const secondPoint = { x: second.clientX, y: second.clientY };
     const rect = svgRef.current.getBoundingClientRect();
-    const screenX = (midX - rect.left) / Math.max(1, rect.width);
-    const screenY = (midY - rect.top) / Math.max(1, rect.height);
 
-    setView({
-      x: pinch.worldFocus.x - screenX * nextWidth,
-      y: pinch.worldFocus.y - screenY * nextHeight,
-      width: nextWidth,
-      height: nextHeight,
-    });
+    setView(pinchViewBox({
+      startView: pinch.startView,
+      fitView,
+      startDistance: pinch.startDistance,
+      currentDistance: distanceBetweenPoints(firstPoint, secondPoint),
+      worldFocus: pinch.worldFocus,
+      currentMidpoint: midpointBetweenPoints(firstPoint, secondPoint),
+      viewport: rect,
+    }));
   };
 
   const handleTouchPointerEndCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
