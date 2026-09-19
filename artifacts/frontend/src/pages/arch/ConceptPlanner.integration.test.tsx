@@ -3,6 +3,14 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ConceptPlanner from "./ConceptPlanner";
 
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    user: { tenantId: "tenant-e2e", platformRole: "tenant_admin" },
+    tenantOverride: null,
+    isLoading: false,
+  }),
+}));
+
 vi.mock("./conceptRender", async () => {
   const actual = await vi.importActual<typeof import("./conceptRender")>("./conceptRender");
   return {
@@ -68,7 +76,12 @@ describe("Arqdor Concept — fluxo integrado do editor", () => {
     render(<ConceptPlanner />);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith("/api/arch/concept-projects/latest")
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/arch/concept-projects/latest",
+        expect.objectContaining({
+          headers: expect.objectContaining({ "x-tenant-id": "tenant-e2e" }),
+        }),
+      )
     );
 
     await user.click(screen.getByRole("button", { name: /continuar/i }));

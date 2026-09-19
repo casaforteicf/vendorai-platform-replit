@@ -11,6 +11,8 @@ on:
       - "artifacts/frontend/src/pages/arch/concept*.ts"
       - "artifacts/api-server/src/lib/arch-concept-promotion.ts"
       - "artifacts/api-server/src/lib/arch-concept-promotion.test.ts"
+      - "artifacts/api-server/src/lib/arch-tenant-context.ts"
+      - "artifacts/api-server/src/lib/arch-tenant-context.test.ts"
       - "artifacts/api-server/src/routes/arch.ts"
       - "lib/db/src/schema/arch_concept_projects.ts"
       - "lib/db/src/schema/arq_objects.ts"
@@ -25,6 +27,8 @@ on:
       - "artifacts/frontend/src/pages/arch/concept*.ts"
       - "artifacts/api-server/src/lib/arch-concept-promotion.ts"
       - "artifacts/api-server/src/lib/arch-concept-promotion.test.ts"
+      - "artifacts/api-server/src/lib/arch-tenant-context.ts"
+      - "artifacts/api-server/src/lib/arch-tenant-context.test.ts"
       - "artifacts/api-server/src/routes/arch.ts"
       - "lib/db/src/schema/arch_concept_projects.ts"
       - "lib/db/src/schema/arq_objects.ts"
@@ -95,6 +99,7 @@ jobs:
           set -o pipefail
           pnpm --filter @workspace/api-server exec vitest run \
             src/lib/arch-concept-promotion.test.ts \
+            src/lib/arch-tenant-context.test.ts \
             2>&1 | tee arqdor-concept-promotion.log
 
       - name: Upload Concept CI diagnostics
