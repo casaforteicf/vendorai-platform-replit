@@ -15,6 +15,8 @@ type Props = {
   selectedWallId?: string | null;
   onSelectWall?: (wallId: string | null) => void;
   onWallMove?: (wallId: string, delta: number) => void;
+  onEditStart?: () => void;
+  onEditEnd?: () => void;
   interactionMode?: "room" | "wall" | "opening";
 };
 
@@ -116,6 +118,8 @@ export default function ConceptPlan2D({
   selectedWallId = null,
   onSelectWall,
   onWallMove,
+  onEditStart,
+  onEditEnd,
   interactionMode = "room",
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -261,8 +265,14 @@ export default function ConceptPlan2D({
         ref={svgRef}
         className="block h-auto w-full touch-none select-none"
         onPointerMove={handlePointerMove}
-        onPointerUp={() => setGesture(null)}
-        onPointerCancel={() => setGesture(null)}
+        onPointerUp={() => {
+          if (gesture) onEditEnd?.();
+          setGesture(null);
+        }}
+        onPointerCancel={() => {
+          if (gesture) onEditEnd?.();
+          setGesture(null);
+        }}
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -324,6 +334,7 @@ export default function ConceptPlan2D({
               tabIndex={0}
               onPointerDown={(event) => {
                 if (interactionMode !== "room") return;
+                onEditStart?.();
                 onSelect(room.id);
                 if (!onRoomChange || room.locked) return;
                 const point = toSvgPoint(event.clientX, event.clientY);
@@ -438,6 +449,7 @@ export default function ConceptPlan2D({
                       className={cursor}
                       onPointerDown={(event) => {
                         event.stopPropagation();
+                        onEditStart?.();
                         const point = toSvgPoint(event.clientX, event.clientY);
                         setGesture({
                           roomId: room.id,
@@ -502,6 +514,7 @@ export default function ConceptPlan2D({
               onPointerDown={(event) => {
                 if (interactionMode !== "wall" || !onSelectWall || !onWallMove) return;
                 event.stopPropagation();
+                onEditStart?.();
                 const point = toSvgPoint(event.clientX, event.clientY);
                 onSelectWall(wall.id);
                 setGesture({
