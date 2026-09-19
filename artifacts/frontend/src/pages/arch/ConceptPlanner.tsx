@@ -878,11 +878,37 @@ export default function ConceptPlanner() {
   const deleteCustomWall = (wallId: string) => {
     const before = snapshotEditor();
     setCustomWalls((prev) => prev.filter((wall) => wall.id !== wallId));
+    setCustomOpenings((prev) => prev.filter((opening) => opening.wallId !== wallId));
     pushRoomHistory(before);
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
 
   const selectedCustomWall = customWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+
+  const addOpeningToCustomWall = (wallId: string, type: "door" | "window") => {
+    const wall = customWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const before = snapshotEditor();
+    const opening: CustomOpening = {
+      id: `custom-opening-${uid()}`,
+      wallId,
+      floor: wall.floor,
+      type,
+      offset: 0.5,
+    };
+    setCustomOpenings((prev) => [...prev, opening]);
+    pushRoomHistory(before);
+    setInteractionMode("opening");
+    setSelectedOpeningId(opening.id);
+    setSelectedCustomWallId(null);
+  };
+
+  const deleteCustomOpening = (openingId: string) => {
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => prev.filter((opening) => opening.id !== openingId));
+    pushRoomHistory(before);
+    setSelectedOpeningId((current) => current === openingId ? null : current);
+  };
 
   const moveWallById = (wallId: string, delta: number) => {
     if (!delta) return;
