@@ -13,6 +13,8 @@ export type ArchConceptLot = {
 export type ArchConceptConfiguration = {
   floors: number;
   desiredArea: number;
+  typology?: "terrea_2q" | "terrea_3q" | "terrea_lazer" | "sobrado_3q" | "sobrado_master";
+  layoutPreferences?: Record<string, boolean>;
 };
 
 export type ArchConceptRoom = {
