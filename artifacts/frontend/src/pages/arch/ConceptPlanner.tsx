@@ -21,6 +21,8 @@ import {
   FileText,
   Printer,
   Send,
+  Search,
+  LayoutGrid,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -295,6 +297,26 @@ export default function ConceptPlanner() {
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const wallFirstActive = wallFirstFloors.includes(activeFloor);
+  const [modelSearch, setModelSearch] = useState("");
+  const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
+
+  const filteredTypologies = useMemo(() => {
+    const query = modelSearch.trim().toLocaleLowerCase("pt-BR");
+    return CONCEPT_TYPOLOGIES.filter((item) => {
+      const categoryMatch =
+        modelCategory === "todos" ||
+        (modelCategory === "terreas" && item.id.startsWith("terrea_")) ||
+        (modelCategory === "sobrados" && item.id.startsWith("sobrado_")) ||
+        (modelCategory === "lazer" && (item.id.includes("lazer") || item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet")));
+
+      if (!categoryMatch) return false;
+      if (!query) return true;
+
+      return `${item.title} ${item.subtitle} ${item.suggestedArea}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(query);
+    });
+  }, [modelCategory, modelSearch]);
 
   useEffect(() => {
     roomsRef.current = rooms;
@@ -450,6 +472,25 @@ export default function ConceptPlanner() {
     setCustomOpenings([]);
     setSpaceProfiles([]);
     setRooms(nextRooms);
+  };
+
+  const startBlankPlan = () => {
+    setFloors(1);
+    setActiveFloor(0);
+    setRooms([]);
+    setCustomWalls([]);
+    setCustomOpenings([]);
+    setSpaceProfiles([]);
+    setOpeningOverrides({});
+    setWallFirstFloors([0]);
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedOpeningId(null);
+    setSelectedClosedSpaceId(null);
+    setInteractionMode("draw-wall");
+    setEditorView("plan");
+    setStep(4);
   };
 
   const toggleLayoutPreference = (key: LayoutPreferenceKey) => {
@@ -1641,71 +1682,199 @@ export default function ConceptPlanner() {
         )}
 
         {step === 1 && (
-          <section className="mx-auto max-w-5xl rounded-3xl border bg-card p-5 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <Home className="h-7 w-7 text-orange-500" />
-              <div>
-                <h2 className="text-xl font-semibold">Compare propostas de planta</h2>
-                <p className="text-sm text-muted-foreground">Cada opção abaixo já usa as dimensões do seu lote. Escolha pela organização visual e personalize depois.</p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {CONCEPT_TYPOLOGIES.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => applyTypology(item.id)}
-                  className={typology === item.id
-                    ? "group overflow-hidden rounded-2xl border border-orange-500 bg-orange-500/[0.03] text-left ring-2 ring-orange-500/10"
-                    : "group overflow-hidden rounded-2xl border bg-background text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md"}
-                >
-                  <div className="p-3 pb-0">
-                    <ConceptTypologyPreview
-                      typology={item.id}
-                      lotWidth={lotWidth}
-                      lotDepth={lotDepth}
-                    />
-                  </div>
-                  <div className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold">{item.title}</div>
-                        <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.subtitle}</div>
-                      </div>
-                      <Layers3 className={typology === item.id ? "h-5 w-5 text-orange-500" : "h-5 w-5 text-muted-foreground"} />
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                      <span className="rounded-full bg-muted px-2 py-1">{item.floors === 1 ? "Térrea" : "Sobrado"}</span>
-                      <span className="rounded-full bg-muted px-2 py-1">≈ {item.suggestedArea} m²</span>
-                      <span className="rounded-full bg-muted px-2 py-1">{item.rooms.length} ambientes</span>
-                    </div>
-                    <div className={typology === item.id
-                      ? "mt-4 text-xs font-semibold text-orange-600"
-                      : "mt-4 text-xs font-semibold text-slate-500 group-hover:text-slate-900"}>
-                      {typology === item.id ? "Proposta selecionada" : "Selecionar proposta"}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-6 grid gap-4 rounded-2xl border bg-muted/25 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
-              <label className="block space-y-2 text-sm font-medium">
-                Área aproximada desejada
-                <div className="flex items-center rounded-xl border bg-background px-3">
-                  <input
-                    className="h-12 w-full bg-transparent outline-none"
-                    type="number"
-                    min={40}
-                    value={desiredArea}
-                    onChange={(e) => setDesiredArea(Math.max(40, Number(e.target.value) || 40))}
-                  />
-                  <span className="text-muted-foreground">m²</span>
+          <section className="grid gap-5 xl:grid-cols-[230px_1fr]">
+            <aside className="rounded-3xl border bg-card p-4 shadow-sm">
+              <div className="flex items-center gap-2 px-2 py-2">
+                <LayoutGrid className="h-5 w-5 text-orange-500" />
+                <div>
+                  <div className="font-semibold">Modelos</div>
+                  <div className="text-xs text-muted-foreground">Escolha um ponto de partida</div>
                 </div>
-              </label>
-              <div className="rounded-xl bg-background px-4 py-3 text-xs text-muted-foreground">
-                A tipologia define a lógica inicial; medidas e ambientes continuam editáveis.
+              </div>
+
+              <div className="mt-3 space-y-1">
+                {([
+                  ["todos", "Todos os modelos"],
+                  ["terreas", "Casas térreas"],
+                  ["sobrados", "Sobrados"],
+                  ["lazer", "Com lazer"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setModelCategory(value)}
+                    className={modelCategory === value
+                      ? "flex w-full items-center justify-between rounded-xl bg-orange-500/10 px-3 py-2.5 text-left text-sm font-semibold text-orange-700"
+                      : "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-muted-foreground hover:bg-muted"}
+                  >
+                    <span>{label}</span>
+                    <span className="text-xs">
+                      {value === "todos"
+                        ? CONCEPT_TYPOLOGIES.length
+                        : CONCEPT_TYPOLOGIES.filter((item) =>
+                            value === "terreas"
+                              ? item.id.startsWith("terrea_")
+                              : value === "sobrados"
+                                ? item.id.startsWith("sobrado_")
+                                : item.id.includes("lazer") || item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet")
+                          ).length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 border-t pt-4">
+                <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Começar
+                </div>
+                <button
+                  type="button"
+                  onClick={startBlankPlan}
+                  className="mt-2 flex w-full items-center gap-3 rounded-xl border bg-background px-3 py-3 text-left hover:border-orange-300 hover:bg-orange-50/40"
+                >
+                  <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100">
+                    <Plus className="h-4 w-4" />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">Do zero</span>
+                    <span className="block text-[11px] text-muted-foreground">Canvas 2D vazio</span>
+                  </span>
+                </button>
+              </div>
+
+              <div className="mt-5 rounded-2xl bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+                Os modelos são totalmente editáveis. Você pode mover paredes, ajustar ambientes, trocar aberturas e visualizar tudo em 3D.
+              </div>
+            </aside>
+
+            <div className="min-w-0">
+              <div className="rounded-3xl border bg-card p-5 shadow-sm sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Biblioteca Arqdor</div>
+                    <h2 className="mt-1 text-2xl font-bold">Escolha um modelo para começar</h2>
+                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                      Modelos residenciais adaptados ao lote de {lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m. Abra um modelo e personalize no editor 2D/3D.
+                    </p>
+                  </div>
+
+                  <label className="flex h-11 min-w-[260px] items-center gap-2 rounded-xl border bg-background px-3">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <input
+                      value={modelSearch}
+                      onChange={(event) => setModelSearch(event.target.value)}
+                      placeholder="Buscar modelo..."
+                      className="w-full bg-transparent text-sm outline-none"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-2 xl:hidden">
+                  {([
+                    ["todos", "Todos"],
+                    ["terreas", "Térreas"],
+                    ["sobrados", "Sobrados"],
+                    ["lazer", "Lazer"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setModelCategory(value)}
+                      className={modelCategory === value
+                        ? "rounded-full bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
+                        : "rounded-full border bg-background px-3 py-1.5 text-xs font-semibold"}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {filteredTypologies.length ? (
+                  <div className="mt-6 grid gap-x-5 gap-y-7 md:grid-cols-2 2xl:grid-cols-3">
+                    {filteredTypologies.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => applyTypology(item.id)}
+                        className="group text-left"
+                      >
+                        <div className={typology === item.id
+                          ? "relative overflow-hidden rounded-2xl border-2 border-orange-500 bg-slate-50 shadow-sm"
+                          : "relative overflow-hidden rounded-2xl border bg-slate-50 transition group-hover:-translate-y-0.5 group-hover:border-slate-400 group-hover:shadow-lg"}
+                        >
+                          <div className="aspect-[4/3] p-3">
+                            <ConceptTypologyPreview
+                              typology={item.id}
+                              lotWidth={lotWidth}
+                              lotDepth={lotDepth}
+                            />
+                          </div>
+
+                          <div className="absolute left-3 top-3 flex gap-2">
+                            <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold shadow-sm">
+                              {item.floors === 1 ? "TÉRREA" : "SOBRADO"}
+                            </span>
+                            {(item.rooms.some((room) => room.kind === "piscina" || room.kind === "gourmet")) && (
+                              <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold shadow-sm">
+                                LAZER
+                              </span>
+                            )}
+                          </div>
+
+                          {typology === item.id && (
+                            <div className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-orange-500 text-white shadow">
+                              <Check className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="px-1 pt-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-base font-semibold">{item.title}</div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">{item.subtitle}</div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <div className="text-sm font-semibold">≈ {item.suggestedArea} m²</div>
+                              <div className="text-[10px] text-muted-foreground">{item.rooms.length} ambientes</div>
+                            </div>
+                          </div>
+                          <div className={typology === item.id
+                            ? "mt-3 text-xs font-semibold text-orange-600"
+                            : "mt-3 text-xs font-semibold text-muted-foreground group-hover:text-foreground"}
+                          >
+                            {typology === item.id ? "Modelo selecionado · abrir no editor abaixo" : "Selecionar modelo"}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-8 rounded-2xl border border-dashed p-10 text-center">
+                    <Search className="mx-auto h-6 w-6 text-muted-foreground" />
+                    <div className="mt-3 font-semibold">Nenhum modelo encontrado</div>
+                    <div className="mt-1 text-sm text-muted-foreground">Tente outro termo ou categoria.</div>
+                  </div>
+                )}
+
+                <div className="mt-7 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Modelo selecionado: <span className="font-semibold text-foreground">{CONCEPT_TYPOLOGIES.find((item) => item.id === typology)?.title}</span>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    Área desejada
+                    <div className="flex h-10 w-32 items-center rounded-xl border bg-background px-3">
+                      <input
+                        className="w-full bg-transparent text-right font-semibold outline-none"
+                        type="number"
+                        min={40}
+                        value={desiredArea}
+                        onChange={(event) => setDesiredArea(Math.max(40, Number(event.target.value) || 40))}
+                      />
+                      <span className="ml-1 text-xs text-muted-foreground">m²</span>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
           </section>
