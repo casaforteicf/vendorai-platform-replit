@@ -582,7 +582,7 @@ export default function ConceptPlanner() {
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "object" | "draw-wall" | "navigate">("room");
-  const [mobilePanel, setMobilePanel] = useState<"closed" | "build" | "properties">("closed");
+  const [mobilePanel, setMobilePanel] = useState<"closed" | "build" | "properties" | "tools">("closed");
   const [rooms, setRooms] = useState<Room[]>(() => normalizeDraftRooms(buildTypologyRooms("terrea_3q") as Room[]));
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
@@ -2350,7 +2350,7 @@ export default function ConceptPlanner() {
         )}
 
                 {step === 4 && (
-          <section className="overflow-hidden rounded-3xl border bg-card pb-20 shadow-sm xl:pb-0">
+          <section className="overflow-hidden rounded-3xl border bg-card pb-32 shadow-sm xl:pb-0">
             <div className="flex flex-col gap-3 border-b bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
               <div>
                 <div className="text-sm font-semibold">Editor do pré-projeto</div>
@@ -2421,10 +2421,98 @@ export default function ConceptPlanner() {
               />
             )}
 
+            {mobilePanel === "tools" && (
+              <aside className="fixed inset-x-3 bottom-28 z-50 max-h-[58vh] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl xl:hidden">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Mais ferramentas</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Ferramentas menos frequentes sem ocupar a planta.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobilePanel("closed")}
+                    className="rounded-lg border px-3 py-2 text-xs font-semibold"
+                  >
+                    Fechar
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorView("plan");
+                      setInteractionMode("space");
+                      setSelectedId(null);
+                      setSelectedOpeningId(null);
+                      setSelectedWallId(null);
+                      setSelectedCustomWallId(null);
+                      setSelectedObjectId(null);
+                      setMobilePanel("closed");
+                    }}
+                    className={interactionMode === "space"
+                      ? "min-h-14 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-left text-sm font-semibold text-emerald-900"
+                      : "min-h-14 rounded-xl border bg-background px-3 py-3 text-left text-sm font-semibold"}
+                  >
+                    Espaços
+                    <span className="mt-1 block text-[10px] font-normal text-muted-foreground">Nomear áreas fechadas</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorView("plan");
+                      setInteractionMode("draw-wall");
+                      setSelectedId(null);
+                      setSelectedOpeningId(null);
+                      setSelectedWallId(null);
+                      setSelectedCustomWallId(null);
+                      setSelectedObjectId(null);
+                      setMobilePanel("closed");
+                    }}
+                    className={interactionMode === "draw-wall"
+                      ? "min-h-14 rounded-xl border border-orange-300 bg-orange-50 px-3 py-3 text-left text-sm font-semibold text-orange-900"
+                      : "min-h-14 rounded-xl border bg-background px-3 py-3 text-left text-sm font-semibold"}
+                  >
+                    Desenhar parede
+                    <span className="mt-1 block text-[10px] font-normal text-muted-foreground">Toque início e fim</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowDimensions((value) => !value)}
+                    className={showDimensions
+                      ? "min-h-14 rounded-xl border border-sky-300 bg-sky-50 px-3 py-3 text-left text-sm font-semibold text-sky-900"
+                      : "min-h-14 rounded-xl border bg-background px-3 py-3 text-left text-sm font-semibold"}
+                  >
+                    Cotas {showDimensions ? "ligadas" : "desligadas"}
+                    <span className="mt-1 block text-[10px] font-normal text-muted-foreground">Medidas na planta</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (wallFirstActive) deactivateWallFirstFloor();
+                      else activateWallFirstFloor();
+                      setMobilePanel("closed");
+                    }}
+                    className={wallFirstActive
+                      ? "min-h-14 rounded-xl border border-violet-300 bg-violet-50 px-3 py-3 text-left text-sm font-semibold text-violet-900"
+                      : "min-h-14 rounded-xl border bg-background px-3 py-3 text-left text-sm font-semibold"}
+                  >
+                    {wallFirstActive ? "Paredes = modelo" : "Usar wall-first"}
+                    <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                      {wallFirstActive ? "Toque para reverter" : "Rede de paredes como fonte"}
+                    </span>
+                  </button>
+                </div>
+              </aside>
+            )}
+
             <div className="grid min-h-[calc(100vh-210px)] xl:min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
               <aside className={[
                 mobilePanel === "build"
-                  ? "fixed inset-x-3 bottom-20 z-50 block max-h-[68vh] overflow-y-auto rounded-2xl border bg-background p-3 shadow-2xl"
+                  ? "fixed inset-x-3 bottom-28 z-50 block max-h-[64vh] overflow-y-auto rounded-2xl border bg-background p-3 shadow-2xl"
                   : "hidden",
                 "order-3 xl:static xl:order-1 xl:block xl:max-h-none xl:overflow-visible xl:rounded-none xl:border-0 xl:border-r xl:bg-muted/20 xl:p-3 xl:shadow-none",
               ].join(" ")}>
@@ -2845,7 +2933,7 @@ export default function ConceptPlanner() {
 
               <aside className={[
                 mobilePanel === "properties"
-                  ? "fixed inset-x-3 bottom-20 z-50 block max-h-[68vh] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl"
+                  ? "fixed inset-x-3 bottom-28 z-50 block max-h-[64vh] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl"
                   : "hidden",
                 "order-2 [&_input]:text-base [&_select]:text-base xl:static xl:order-3 xl:block xl:max-h-none xl:overflow-visible xl:rounded-none xl:border-0 xl:border-l xl:bg-background xl:p-4 xl:shadow-none xl:[&_input]:text-sm xl:[&_select]:text-sm",
               ].join(" ")}>
@@ -3842,13 +3930,13 @@ export default function ConceptPlanner() {
               </aside>
             </div>
 
-            <div className="fixed inset-x-2 bottom-2 z-30 grid grid-cols-7 gap-1 rounded-2xl border bg-background/95 p-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur xl:hidden">
+            <div className="fixed inset-x-2 bottom-2 z-30 grid grid-cols-4 gap-1 rounded-2xl border bg-background/95 p-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur xl:hidden">
               {([
                 ["navigate", "Mover"],
-                ["room", "Amb."],
-                ["wall", "Parede"],
+                ["room", "Ambientes"],
+                ["wall", "Paredes"],
                 ["opening", "Vãos"],
-                ["object", "Obj."],
+                ["object", "Objetos"],
               ] as const).map(([mode, label]) => (
                 <button
                   key={mode}
@@ -3859,27 +3947,39 @@ export default function ConceptPlanner() {
                     setMobilePanel("closed");
                   }}
                   className={interactionMode === mode && editorView === "plan"
-                    ? "min-h-12 rounded-xl bg-foreground px-1 text-[10px] font-bold text-background"
-                    : "min-h-12 rounded-xl px-1 text-[10px] font-semibold text-muted-foreground"}
+                    ? "min-h-12 rounded-xl bg-foreground px-2 text-[11px] font-bold text-background"
+                    : "min-h-12 rounded-xl px-2 text-[11px] font-semibold text-muted-foreground"}
                 >
                   {label}
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={() => setMobilePanel((current) => current === "tools" ? "closed" : "tools")}
+                className={mobilePanel === "tools"
+                  ? "min-h-12 rounded-xl bg-emerald-600 px-2 text-[11px] font-bold text-white"
+                  : "min-h-12 rounded-xl px-2 text-[11px] font-semibold text-muted-foreground"}
+              >
+                Mais
+              </button>
+
               <button
                 type="button"
                 onClick={() => setMobilePanel((current) => current === "build" ? "closed" : "build")}
                 className={mobilePanel === "build"
-                  ? "min-h-12 rounded-xl bg-orange-500 px-1 text-[10px] font-bold text-white"
-                  : "min-h-12 rounded-xl px-1 text-[10px] font-semibold text-muted-foreground"}
+                  ? "min-h-12 rounded-xl bg-orange-500 px-2 text-[11px] font-bold text-white"
+                  : "min-h-12 rounded-xl px-2 text-[11px] font-semibold text-muted-foreground"}
               >
                 + Itens
               </button>
+
               <button
                 type="button"
                 onClick={() => setMobilePanel((current) => current === "properties" ? "closed" : "properties")}
                 className={mobilePanel === "properties"
-                  ? "min-h-12 rounded-xl bg-violet-600 px-1 text-[10px] font-bold text-white"
-                  : "min-h-12 rounded-xl px-1 text-[10px] font-semibold text-muted-foreground"}
+                  ? "min-h-12 rounded-xl bg-violet-600 px-2 text-[11px] font-bold text-white"
+                  : "min-h-12 rounded-xl px-2 text-[11px] font-semibold text-muted-foreground"}
               >
                 Ajustes
               </button>
