@@ -22,8 +22,10 @@ import {
   Send,
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
-import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
+import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
+import ConceptFacadeElevation from "./ConceptFacadeElevation";
+import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 
 type RoomKind =
@@ -71,7 +73,7 @@ type ConceptDraftResponse = {
   archProjetoId?: string | null;
   currentStep: number;
   lot: { width: number; depth: number };
-  configuration: { floors: number; desiredArea: number };
+  configuration: { floors: number; desiredArea: number; typology?: ConceptTypology; layoutPreferences?: LayoutPreferences };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
   customerProfile?: CustomerProfile;
@@ -193,30 +195,18 @@ export default function ConceptPlanner() {
   const [step, setStep] = useState(0);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
+  const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
+  const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(DEFAULT_LAYOUT_PREFERENCES);
   const [floors, setFloors] = useState(1);
-  const [desiredArea, setDesiredArea] = useState(180);
+  const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
-  const [rooms, setRooms] = useState<Room[]>([
-    createRoom("garagem"),
-    createRoom("sala"),
-    createRoom("cozinha"),
-    createRoom("suite"),
-    createRoom("quarto"),
-    createRoom("quarto"),
-    createRoom("banheiro"),
-    createRoom("lavanderia"),
-    createRoom("gourmet"),
-    createRoom("piscina"),
-  ]);
+  const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
-  const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
-  const [rotation, setRotation] = useState(45);
-  const [exploded3d, setExploded3d] = useState(false);
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
@@ -245,7 +235,9 @@ export default function ConceptPlanner() {
         setLotWidth(draft.lot?.width ?? 12);
         setLotDepth(draft.lot?.depth ?? 30);
         setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
-        setDesiredArea(draft.configuration?.desiredArea ?? 180);
+        setDesiredArea(draft.configuration?.desiredArea ?? 145);
+        setTypology(draft.configuration?.typology ?? "terrea_3q");
+        setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -271,7 +263,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea },
+      configuration: { floors, desiredArea, typology, layoutPreferences },
       rooms,
       openingOverrides,
       customerProfile,
@@ -307,6 +299,34 @@ export default function ConceptPlanner() {
     [rooms],
   );
 
+  const applyTypology = (nextTypology: ConceptTypology) => {
+    const template = CONCEPT_TYPOLOGIES.find((item) => item.id === nextTypology);
+    if (!template) return;
+
+    let nextRooms = buildTypologyRooms(nextTypology) as Room[];
+    for (let floor = 0; floor < template.floors; floor += 1) {
+      nextRooms = generateLayoutVariant(
+        nextRooms,
+        lotWidth,
+        lotDepth,
+        floor,
+        layoutVariant,
+        layoutPreferences,
+      ) as Room[];
+    }
+
+    setTypology(nextTypology);
+    setFloors(template.floors);
+    setDesiredArea(template.suggestedArea);
+    setActiveFloor(0);
+    setSelectedId(null);
+    setRooms(nextRooms);
+  };
+
+  const toggleLayoutPreference = (key: LayoutPreferenceKey) => {
+    setLayoutPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const addRoom = (kind: RoomKind) => {
     const next = createRoom(kind, activeFloor);
     setRooms((prev) => autoArrange([...prev, next], lotWidth, lotDepth, activeFloor));
@@ -320,7 +340,7 @@ export default function ConceptPlanner() {
 
   const organize = (variant = layoutVariant) => {
     setLayoutVariant(variant);
-    setRooms((prev) => generateLayoutVariant(prev, lotWidth, lotDepth, activeFloor, variant));
+    setRooms((prev) => generateLayoutVariant(prev, lotWidth, lotDepth, activeFloor, variant, layoutPreferences));
   };
 
   const swapPosition = (room: Room, direction: "left" | "right" | "up" | "down") => {
@@ -476,7 +496,7 @@ export default function ConceptPlanner() {
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea },
+            configuration: { floors, desiredArea, typology, layoutPreferences },
             rooms,
             openingOverrides,
             facadePreferences,
@@ -587,45 +607,63 @@ export default function ConceptPlanner() {
         )}
 
         {step === 1 && (
-          <section className="mx-auto max-w-3xl rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+          <section className="mx-auto max-w-5xl rounded-3xl border bg-card p-5 shadow-sm sm:p-8">
             <div className="flex items-center gap-3">
               <Home className="h-7 w-7 text-orange-500" />
               <div>
-                <h2 className="text-xl font-semibold">2. Como será a casa?</h2>
-                <p className="text-sm text-muted-foreground">Defina só o essencial. O layout será montado depois.</p>
+                <h2 className="text-xl font-semibold">2. Escolha uma tipologia de partida</h2>
+                <p className="text-sm text-muted-foreground">Você não começa do zero. Escolha uma casa-base coerente e personalize depois.</p>
               </div>
             </div>
-            <div className="mt-7 grid gap-4 sm:grid-cols-3">
-              {[1, 2, 3].map((count) => (
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {CONCEPT_TYPOLOGIES.map((item) => (
                 <button
-                  key={count}
+                  key={item.id}
                   type="button"
-                  onClick={() => {
-                    setFloors(count);
-                    setActiveFloor(Math.min(activeFloor, count - 1));
-                  }}
-                  className={[
-                    "rounded-2xl border p-5 text-left transition",
-                    floors === count ? "border-orange-500 bg-orange-500/5 ring-2 ring-orange-500/15" : "hover:border-foreground/30",
-                  ].join(" ")}
+                  onClick={() => applyTypology(item.id)}
+                  className={typology === item.id
+                    ? "rounded-2xl border border-orange-500 bg-orange-500/5 p-5 text-left ring-2 ring-orange-500/10"
+                    : "rounded-2xl border p-5 text-left transition hover:border-slate-400 hover:bg-muted/30"}
                 >
-                  <Layers3 className="h-6 w-6" />
-                  <div className="mt-3 font-semibold">{count === 1 ? "Casa térrea" : count === 2 ? "Sobrado" : "3 pavimentos"}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{count} nível{count > 1 ? "eis" : ""} para organizar</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{item.title}</div>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.subtitle}</div>
+                    </div>
+                    <Layers3 className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-1">{item.floors === 1 ? "Térrea" : "Sobrado"}</span>
+                    <span className="rounded-full bg-muted px-2 py-1">≈ {item.suggestedArea} m²</span>
+                    <span className="rounded-full bg-muted px-2 py-1">{item.rooms.length} ambientes</span>
+                  </div>
                 </button>
               ))}
             </div>
-            <label className="mt-6 block space-y-2 text-sm font-medium">
-              Área aproximada desejada
-              <div className="flex items-center rounded-xl border bg-background px-3">
-                <input className="h-12 w-full bg-transparent outline-none" type="number" min={40} value={desiredArea} onChange={(e) => setDesiredArea(Math.max(40, Number(e.target.value) || 40))} />
-                <span className="text-muted-foreground">m²</span>
+
+            <div className="mt-6 grid gap-4 rounded-2xl border bg-muted/25 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+              <label className="block space-y-2 text-sm font-medium">
+                Área aproximada desejada
+                <div className="flex items-center rounded-xl border bg-background px-3">
+                  <input
+                    className="h-12 w-full bg-transparent outline-none"
+                    type="number"
+                    min={40}
+                    value={desiredArea}
+                    onChange={(e) => setDesiredArea(Math.max(40, Number(e.target.value) || 40))}
+                  />
+                  <span className="text-muted-foreground">m²</span>
+                </div>
+              </label>
+              <div className="rounded-xl bg-background px-4 py-3 text-xs text-muted-foreground">
+                A tipologia define a lógica inicial; medidas e ambientes continuam editáveis.
               </div>
-            </label>
+            </div>
           </section>
         )}
 
-        {step === 2 && (
+                {step === 2 && (
           <section className="grid gap-5 lg:grid-cols-[320px_1fr]">
             <aside className="rounded-3xl border bg-card p-5 shadow-sm">
               <h2 className="text-lg font-semibold">3. Ambientes</h2>
@@ -686,37 +724,57 @@ export default function ConceptPlanner() {
         )}
 
         {step === 3 && (
-          <section className="mx-auto max-w-4xl rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+          <section className="mx-auto max-w-4xl rounded-3xl border bg-card p-5 shadow-sm sm:p-8">
             <div className="flex items-center gap-3">
               <Sparkles className="h-7 w-7 text-orange-500" />
               <div>
-                <h2 className="text-xl font-semibold">4. Onde você prefere cada parte?</h2>
-                <p className="text-sm text-muted-foreground">O sistema organiza sozinho; você só indica prioridades.</p>
+                <h2 className="text-xl font-semibold">4. Prioridades do projeto</h2>
+                <p className="text-sm text-muted-foreground">Estas escolhas agora alteram de verdade a organização da planta.</p>
               </div>
             </div>
+
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {[
-                "Garagem na frente",
-                "Suíte principal nos fundos",
-                "Cozinha perto do gourmet",
-                "Gourmet perto da piscina",
-                "Quartos separados da área social",
-                "Sala integrada com a cozinha",
-              ].map((text, index) => (
-                <label key={text} className="flex cursor-pointer items-center gap-3 rounded-2xl border p-4">
-                  <input type="checkbox" defaultChecked={index < 4} className="h-4 w-4 accent-orange-500" />
-                  <span className="text-sm font-medium">{text}</span>
-                </label>
+              {([
+                ["garageFront", "Garagem na frente", "Prioriza acesso direto de veículos pela rua."],
+                ["masterRear", "Suíte principal mais reservada", "Leva a suíte para a faixa mais íntima da implantação."],
+                ["kitchenNearGourmet", "Cozinha perto do gourmet", "Aproxima preparo e lazer para reduzir circulação."],
+                ["gourmetNearPool", "Gourmet conectado à piscina", "Cria um conjunto de lazer no fundo do lote."],
+                ["privateAwaySocial", "Quartos afastados da área social", "Separa ruído e circulação social da área íntima."],
+                ["livingIntegratedKitchen", "Sala integrada com cozinha", "Mantém social e cozinha na mesma faixa funcional."],
+              ] as Array<[LayoutPreferenceKey, string, string]>).map(([key, title, description]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleLayoutPreference(key)}
+                  className={layoutPreferences[key]
+                    ? "flex items-start gap-3 rounded-2xl border border-orange-500 bg-orange-500/5 p-4 text-left"
+                    : "flex items-start gap-3 rounded-2xl border p-4 text-left hover:bg-muted/30"}
+                >
+                  <span className={layoutPreferences[key]
+                    ? "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-orange-500 text-white"
+                    : "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border"}>
+                    {layoutPreferences[key] && <Check className="h-3.5 w-3.5" />}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">{title}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
+                  </span>
+                </button>
               ))}
             </div>
-            <button type="button" onClick={() => organize()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white">
+
+            <button
+              type="button"
+              onClick={() => organize()}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
+            >
               <Sparkles className="h-4 w-4" />
-              Organizar para mim
+              Recalcular planta com essas prioridades
             </button>
           </section>
         )}
 
-        {step === 4 && (
+                {step === 4 && (
           <section className="grid min-h-[680px] gap-5 xl:grid-cols-[260px_1fr_310px]">
             <aside className="rounded-3xl border bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between">
@@ -749,40 +807,25 @@ export default function ConceptPlanner() {
             <div className="rounded-3xl border bg-card p-4 shadow-sm">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-semibold">{viewMode === "2d" ? `Planta conceitual — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}` : "Volumetria 3D conceitual"}</div>
+                  <div className="font-semibold">Planta conceitual — {activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}</div>
                   <div className="text-xs text-muted-foreground">
-                    {viewMode === "2d"
-                      ? `Terreno ${lotWidth} × ${lotDepth} m · paredes, portas e janelas são calculadas a partir dos ambientes.`
-                      : "A volumetria usa exatamente os pavimentos, posições e dimensões da planta — sem inventar outra geometria."}
+                    Terreno {lotWidth} × {lotDepth} m · planta vetorial, cotas, portas, janelas e paredes.
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex rounded-xl border bg-background p-1">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("2d")}
-                      className={viewMode === "2d" ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
-                    >
-                      2D
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("3d")}
-                      className={viewMode === "3d" ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background" : "rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"}
-                    >
-                      3D
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => organize()} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white">
-                    <Sparkles className="h-4 w-4" /> Organizar para mim
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => organize()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  <Sparkles className="h-4 w-4" /> Recalcular
+                </button>
               </div>
+
               <div className="mb-4 grid gap-2 sm:grid-cols-3">
                 {[
                   ["Opção A", "Social integrada"],
                   ["Opção B", "Mais privacidade"],
-                  ["Opção C", "Lazer central"],
+                  ["Opção C", "Lazer valorizado"],
                 ].map(([title, subtitle], index) => (
                   <button
                     key={title}
@@ -795,63 +838,22 @@ export default function ConceptPlanner() {
                   </button>
                 ))}
               </div>
-              {viewMode === "2d" ? (
-                <div className="space-y-3">
-                  <ConceptPlan2D
-                    rooms={visibleRooms}
-                    lotWidth={lotWidth}
-                    lotDepth={lotDepth}
-                    geometry={geometry}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                  />
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-                    <span><strong className="text-slate-900">Planta conceitual</strong> cotas, paredes e ambientes</span>
-                    <span><strong className="text-slate-700">Portas</strong> com arco de abertura</span>
-                    <span><strong className="text-sky-700">Janelas</strong> em azul</span>
-                    <span><strong className="text-orange-600">Seleção</strong> ambiente em ajuste</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="relative mx-auto h-[560px] max-w-[820px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
-                    <ConceptVolumetry
-                      rooms={rooms}
-                      lotWidth={lotWidth}
-                      lotDepth={lotDepth}
-                      floors={floors}
-                      rotation={rotation}
-                      exploded={exploded3d}
-                      facade={facadePreferences}
-                    />
-                    <div className="absolute left-3 top-3 rounded-xl border bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-                      <div className="font-semibold text-slate-900">Volumetria vinculada à planta</div>
-                      <div className="mt-0.5 text-slate-500">{floors} pavimento{floors > 1 ? "s" : ""} · pé-direito conceitual 2,80 m</div>
-                    </div>
-                  </div>
-                  <div className="grid gap-3 rounded-2xl border bg-muted/30 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <label className="text-xs font-semibold text-muted-foreground">
-                      Girar visualização
-                      <input
-                        type="range"
-                        min="0"
-                        max="360"
-                        step="5"
-                        value={rotation}
-                        onChange={(event) => setRotation(Number(event.target.value))}
-                        className="mt-2 w-full accent-orange-500"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setExploded3d((value) => !value)}
-                      className={exploded3d ? "rounded-xl border border-orange-500 bg-orange-500/5 px-4 py-2 text-xs font-semibold text-orange-700" : "rounded-xl border bg-background px-4 py-2 text-xs font-semibold"}
-                    >
-                      {exploded3d ? "Unir pavimentos" : "Separar pavimentos"}
-                    </button>
-                  </div>
-                </div>
-              )}
+
+              <ConceptPlan2D
+                rooms={visibleRooms}
+                lotWidth={lotWidth}
+                lotDepth={lotDepth}
+                geometry={geometry}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                <span><strong className="text-slate-900">Planta conceitual</strong> cotas, paredes e ambientes</span>
+                <span><strong className="text-slate-700">Portas</strong> com arco de abertura</span>
+                <span><strong className="text-sky-700">Janelas</strong> integradas às paredes</span>
+                <span><strong className="text-orange-600">Seleção</strong> ambiente em ajuste</span>
+              </div>
             </div>
 
             <aside className="rounded-3xl border bg-card p-4 shadow-sm">
@@ -878,7 +880,7 @@ export default function ConceptPlanner() {
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "up")} className="rounded-lg border p-2 disabled:opacity-40">↑</button>
                       <span />
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "left")} className="rounded-lg border p-2 disabled:opacity-40">←</button>
-                      <button type="button" onClick={() => organize()} className="rounded-lg border p-2 text-xs font-semibold">IA</button>
+                      <button type="button" onClick={() => organize()} className="rounded-lg border p-2 text-xs font-semibold" title="Reorganizar automaticamente">Auto</button>
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "right")} className="rounded-lg border p-2 disabled:opacity-40">→</button>
                       <span />
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "down")} className="rounded-lg border p-2 disabled:opacity-40">↓</button>
@@ -962,8 +964,8 @@ export default function ConceptPlanner() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-orange-500" />
                 <div>
-                  <h2 className="text-lg font-semibold">6. Fachada e estilo</h2>
-                  <p className="text-xs text-muted-foreground">Escolha a direção visual. A geometria da casa continua a mesma.</p>
+                  <h2 className="text-lg font-semibold">6. Fachada</h2>
+                  <p className="text-xs text-muted-foreground">Agora a fachada é tratada como composição frontal, não como caixas 3D pintadas.</p>
                 </div>
               </div>
 
@@ -1092,42 +1094,31 @@ export default function ConceptPlanner() {
             <div className="rounded-3xl border bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-semibold">Prévia da fachada</h3>
-                  <p className="text-sm text-muted-foreground">A prévia aplica a linguagem visual sem alterar a planta aprovada.</p>
+                  <h3 className="font-semibold">Elevação frontal conceitual</h3>
+                  <p className="text-sm text-muted-foreground">Garagem, entrada, pavimentos, cobertura e aberturas são compostos como fachada frontal.</p>
                 </div>
-                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-700">
+                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold capitalize text-orange-700">
                   {facadePreferences.style.replaceAll("_", " ")}
                 </div>
               </div>
 
-              <div data-concept-render-source="true" className="mt-4 h-[430px] overflow-hidden rounded-2xl border-2 border-slate-300 sm:h-[590px] bg-gradient-to-b from-slate-50 to-slate-100">
-                <ConceptVolumetry
+              <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
+                <ConceptFacadeElevation
                   rooms={rooms}
-                  lotWidth={lotWidth}
-                  lotDepth={lotDepth}
                   floors={floors}
-                  rotation={rotation}
-                  exploded={false}
                   facade={facadePreferences}
-                  showLabels={false}
                 />
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Girar fachada
-                  <input
-                    type="range"
-                    min="0"
-                    max="360"
-                    step="5"
-                    value={rotation}
-                    onChange={(event) => setRotation(Number(event.target.value))}
-                    className="mt-2 w-full accent-orange-500"
-                  />
-                </label>
-                <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-                  O render usa esta mesma câmera, volumetria e preferências para preservar a ideia aprovada.
+              <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
+                <div className="font-semibold">Critério da fachada</div>
+                <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                  <span>• garagem e acesso reconhecíveis</span>
+                  <span>• composição por pavimentos</span>
+                  <span>• cobertura coerente com estilo</span>
+                  <span>• esquadrias proporcionais</span>
+                  <span>• até 2 materiais dominantes</span>
+                  <span>• paisagismo sem esconder arquitetura</span>
                 </div>
               </div>
 
@@ -1136,7 +1127,7 @@ export default function ConceptPlanner() {
                   <div>
                     <div className="font-semibold">Render conceitual</div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Gera uma imagem fotorrealista mantendo a geometria do pré-projeto.
+                      Usa esta elevação frontal + planta + preferências como referência estruturada.
                     </p>
                   </div>
                   <button
@@ -1160,7 +1151,7 @@ export default function ConceptPlanner() {
 
                 {conceptRender?.status === "processing" && (
                   <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
-                    Render em processamento. A geometria, fachada e materiais selecionados estão sendo usados como base.
+                    Render em processamento com preservação da tipologia e da composição frontal.
                   </div>
                 )}
 
@@ -1173,9 +1164,7 @@ export default function ConceptPlanner() {
                     />
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-background p-3 text-xs text-muted-foreground">
                       <span>Render vinculado a este pré-projeto</span>
-                      {conceptRender.generatedAt && (
-                        <span>{new Date(conceptRender.generatedAt).toLocaleString("pt-BR")}</span>
-                      )}
+                      {conceptRender.generatedAt && <span>{new Date(conceptRender.generatedAt).toLocaleString("pt-BR")}</span>}
                     </div>
                   </div>
                 )}
@@ -1195,7 +1184,7 @@ export default function ConceptPlanner() {
                   </div>
                   <h2 className="mt-2 text-2xl font-bold">Sua ideia organizada para seguir com o profissional</h2>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    Este material reúne programa de necessidades, dimensões, implantação conceitual, volumetria, fachada e render.
+                    Este material reúne programa de necessidades, dimensões, implantação conceitual, fachada e render.
                     É um pré-projeto conceitual e precisa de validação técnica antes de qualquer execução.
                   </p>
                 </div>
@@ -1231,7 +1220,7 @@ export default function ConceptPlanner() {
                     />
                     <div className="border-t p-4">
                       <div className="font-semibold">Render conceitual</div>
-                      <div className="mt-1 text-xs text-muted-foreground">Visualização baseada na volumetria e preferências selecionadas.</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Visualização baseada na planta, elevação frontal e preferências selecionadas.</div>
                     </div>
                   </div>
                 ) : (
@@ -1245,22 +1234,13 @@ export default function ConceptPlanner() {
                 <div className="rounded-3xl border bg-card p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold">Volumetria aprovada</h3>
-                      <p className="text-xs text-muted-foreground">Mesma geometria usada como base para o render.</p>
+                      <h3 className="font-semibold">Fachada conceitual</h3>
+                      <p className="text-xs text-muted-foreground">Elevação frontal derivada da tipologia e das preferências aprovadas.</p>
                     </div>
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
-                  <div className="mt-4 h-[360px] overflow-hidden rounded-2xl border bg-gradient-to-b from-slate-50 to-slate-100 sm:h-[460px]">
-                    <ConceptVolumetry
-                      rooms={rooms}
-                      lotWidth={lotWidth}
-                      lotDepth={lotDepth}
-                      floors={floors}
-                      rotation={rotation}
-                      exploded={false}
-                      facade={facadePreferences}
-                      showLabels={false}
-                    />
+                  <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
+                    <ConceptFacadeElevation rooms={rooms} floors={floors} facade={facadePreferences} />
                   </div>
                 </div>
               </div>

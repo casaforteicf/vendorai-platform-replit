@@ -1,3 +1,5 @@
+import type { LayoutPreferences } from "./conceptTemplates";
+
 export type ConceptRoomShape = {
   id: string;
   kind: string;
@@ -210,6 +212,7 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
   lotDepth: number,
   floor: number,
   variant: number,
+  preferences?: LayoutPreferences,
 ): T[] {
   const current = rooms.filter((room) => room.floor === floor);
   const others = rooms.filter((room) => room.floor !== floor);
@@ -250,19 +253,28 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
   };
 
   const targetFor = (room: ConceptRoomShape) => {
-    const front = 0.6;
+    const front = preferences?.garageFront === false ? Math.max(1, lotDepth * 0.18) : 0.6;
     const middle = Math.max(1, lotDepth * 0.34);
-    const privateBand = Math.max(1, lotDepth * 0.56);
+    const privateBand = Math.max(1, lotDepth * (preferences?.privateAwaySocial === false ? 0.46 : 0.58));
     const rear = Math.max(1, lotDepth * 0.72);
     const right = Math.max(0, lotWidth - room.width - 0.6);
     const center = Math.max(0, (lotWidth - room.width) / 2);
 
     if (room.kind === "garagem") return { x: variant === 1 ? right : 0.6, y: front };
     if (room.kind === "sala") return { x: variant === 2 ? center : 0.6, y: middle };
-    if (room.kind === "cozinha") return { x: right, y: middle };
+    if (room.kind === "cozinha") return {
+      x: preferences?.livingIntegratedKitchen === false ? right : Math.max(0.6, lotWidth * 0.48),
+      y: preferences?.kitchenNearGourmet === false ? middle : Math.min(rear - room.depth, middle + 2.5),
+    };
     if (room.kind === "lavanderia") return { x: right, y: Math.min(rear, middle + 4) };
-    if (room.kind === "gourmet") return { x: variant === 2 ? center : 0.6, y: rear };
-    if (room.kind === "suite") return { x: variant === 1 ? 0.6 : right, y: privateBand };
+    if (room.kind === "gourmet") return {
+      x: variant === 2 ? center : 0.6,
+      y: preferences?.gourmetNearPool === false ? Math.max(middle, rear - 4) : rear,
+    };
+    if (room.kind === "suite") return {
+      x: variant === 1 ? 0.6 : right,
+      y: preferences?.masterRear === false ? privateBand : Math.max(privateBand, rear - 2.5),
+    };
     if (room.kind === "quarto") return { x: variant === 1 ? right : 0.6, y: privateBand };
     if (room.kind === "banheiro") return { x: center, y: privateBand };
     return { x: center, y: privateBand };

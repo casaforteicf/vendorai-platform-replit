@@ -54,8 +54,8 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
   const facade = input.facade;
 
   return [
-    "Convert this exact conceptual massing model into a photorealistic exterior architectural photograph.",
-    "CRITICAL GEOMETRY PRESERVATION: preserve the exact footprint, number of floors, relative position and dimensions of every visible volume. Do not redesign, stretch, shrink, rotate, move, add or remove building volumes.",
+    "Convert this conceptual FRONT ELEVATION and the structured plan data into a photorealistic exterior architectural photograph.",
+    "CRITICAL PRESERVATION: preserve the number of floors, garage position, main entrance hierarchy, facade proportions, roof strategy and the major opening rhythm shown in the source elevation. Do not invent a different house.",
     `Site: rectangular lot ${input.lotWidth} x ${input.lotDepth} m. Building: ${input.floors} floor(s), target area approximately ${input.desiredArea} m².`,
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
@@ -65,9 +65,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     pool
       ? `Preserve the pool exactly at its modeled position and approximate size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m.`
       : "Do not invent a swimming pool.",
-    "Create plausible facade openings and entrance articulation aligned with the modeled volumes, but do not alter the footprint or massing.",
+    "Refine facade openings and entrance details only within the composition shown in the source elevation. Keep the garage, social facade and upper-floor composition recognizable.",
     "Use realistic exterior materials, physically plausible daylight, architectural shadows, reflections and professional real-estate photography quality.",
-    "Keep the same camera direction and overall perspective as the source massing image so the client can compare the render directly with the approved pre-project.",
+    "Use a frontal or slight 3/4 architectural camera that clearly preserves the source elevation composition; avoid aerial or distorted perspectives.",
     `Structured room reference for preservation: ${roomSummary}`,
     "This is a CONCEPTUAL pre-project visualization, not a technical or construction document.",
   ].join("\n");
