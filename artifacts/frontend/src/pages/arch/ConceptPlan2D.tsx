@@ -806,9 +806,24 @@ export default function ConceptPlan2D({
           <text x={lotWidth - 0.9} y="-2.02" textAnchor="middle" fontSize="0.34" fontWeight="800" fill="#0f172a">N</text>
         </g>
 
-        <text x={lotWidth / 2} y={lotDepth + 1.35} textAnchor="middle" fontSize="0.34" fontWeight="800" fill="#64748b" letterSpacing="0.08">
-          FRENTE / ACESSO
-        </text>
+        <g pointerEvents="none">
+          <rect
+            x={lotWidth / 2 - 1.65}
+            y="-2.05"
+            width="3.3"
+            height="0.58"
+            rx="0.18"
+            fill="#fff7ed"
+            stroke="#fb923c"
+            strokeWidth="0.035"
+          />
+          <text x={lotWidth / 2} y="-1.66" textAnchor="middle" fontSize="0.28" fontWeight="850" fill="#c2410c" letterSpacing="0.06">
+            FRENTE / ACESSO
+          </text>
+          <text x={lotWidth / 2} y={lotDepth + 1.35} textAnchor="middle" fontSize="0.28" fontWeight="750" fill="#94a3b8" letterSpacing="0.08">
+            FUNDOS
+          </text>
+        </g>
 
         {closedSpaces.map((space, index) => {
           const selectedSpace = selectedClosedSpaceId === space.id;
