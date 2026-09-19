@@ -92,6 +92,7 @@ type ConceptDraftResponse = {
 };
 
 const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada", "Resultado"];
+const FLOW_STEPS = ["Terreno", "Modelo", "Editor", "Resultado"];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
   style: "contemporaneo",
@@ -133,8 +134,10 @@ function createRoom(kind: RoomKind, floor = 0): Room {
   };
 }
 
+const SINGLETON_ROOM_KINDS = new Set<RoomKind>(["sala", "cozinha", "garagem", "lavanderia", "gourmet", "piscina"]);
+
 function normalizeDraftRooms(input: Room[]) {
-  const singletonKinds = new Set<RoomKind>(["sala", "cozinha", "garagem", "lavanderia", "gourmet", "piscina"]);
+  const singletonKinds = SINGLETON_ROOM_KINDS;
   const seen = new Set<string>();
   return input.filter((room) => {
     if (!singletonKinds.has(room.kind)) return true;
@@ -237,7 +240,8 @@ export default function ConceptPlanner() {
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
-        setStep(Math.max(0, Math.min(STEPS.length - 1, draft.currentStep ?? 0)));
+        const rawStep = Math.max(0, Math.min(STEPS.length - 1, draft.currentStep ?? 0));
+        setStep(rawStep <= 0 ? 0 : rawStep === 1 ? 1 : rawStep >= 6 ? 6 : 4);
         setLotWidth(draft.lot?.width ?? 12);
         setLotDepth(draft.lot?.depth ?? 30);
         setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
@@ -335,6 +339,13 @@ export default function ConceptPlanner() {
   };
 
   const addRoom = (kind: RoomKind) => {
+    if (SINGLETON_ROOM_KINDS.has(kind)) {
+      const existing = rooms.find((room) => room.floor === activeFloor && room.kind === kind);
+      if (existing) {
+        setSelectedId(existing.id);
+        return;
+      }
+    }
     const next = createRoom(kind, activeFloor);
     setRooms((prev) => autoArrange([...prev, next], lotWidth, lotDepth, activeFloor));
     setSelectedId(next.id);
@@ -353,7 +364,7 @@ export default function ConceptPlanner() {
     setLayoutVariant(variant);
     setRooms((prev) =>
       generateTypologyLayout(
-        prev,
+        normalizeDraftRooms(prev),
         lotWidth,
         lotDepth,
         activeFloor,
@@ -565,9 +576,10 @@ export default function ConceptPlanner() {
             </div>
             <div className="flex flex-col items-end gap-3">
               <div className="flex flex-wrap gap-3">
-                {STEPS.map((label, index) => (
-                  <StepPill key={label} index={index} current={step} label={label} />
-                ))}
+                {FLOW_STEPS.map((label, index) => {
+                  const flowIndex = step >= 6 ? 3 : step >= 4 ? 2 : step >= 1 ? 1 : 0;
+                  return <StepPill key={label} index={index} current={flowIndex} label={label} />;
+                })}
               </div>
               <div className="flex items-center gap-3">
                 <span className={saveState === "error" ? "text-xs text-red-600" : "text-xs text-muted-foreground"}>
@@ -840,9 +852,9 @@ export default function ConceptPlanner() {
             </div>
 
             <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
-              <aside className="border-r bg-muted/20 p-3">
+              <aside className="order-3 border-t bg-muted/20 p-3 xl:order-1 xl:border-r xl:border-t-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
-                <div className="mt-3 grid gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-1">
                   {([
                     ["sala", "Sala"],
                     ["cozinha", "Cozinha"],
@@ -885,7 +897,7 @@ export default function ConceptPlanner() {
                   </div>
                 </div>
 
-                <div className="mt-5 border-t pt-4">
+                <div className="mt-5 hidden border-t pt-4 xl:block">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Ambientes</div>
                   <div className="mt-2 max-h-72 space-y-1.5 overflow-auto">
                     {visibleRooms.map((room) => (
@@ -907,7 +919,7 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className="min-w-0 bg-slate-100/60 p-3 sm:p-5">
+              <div className="order-1 min-w-0 bg-slate-100/60 p-3 sm:p-5 xl:order-2">
                 <div className="mx-auto max-w-5xl">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -1001,7 +1013,7 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <aside className="border-l bg-background p-4">
+              <aside className="order-2 border-t bg-background p-4 xl:order-3 xl:border-l xl:border-t-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Propriedades</div>
 
                 {editorView === "plan" && (
@@ -1616,12 +1628,38 @@ export default function ConceptPlanner() {
         )}
 
         <div className="mx-auto mt-6 flex max-w-4xl items-center justify-between gap-3">
-          <button type="button" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))} className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40">
+          <button
+            type="button"
+            disabled={step === 0}
+            onClick={() => setStep(step >= 6 ? 4 : step >= 4 ? 1 : 0)}
+            className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40"
+          >
             <ArrowLeft className="h-4 w-4" /> Voltar
           </button>
-          {step < STEPS.length - 1 ? (
-            <button type="button" onClick={() => { if (step === 3) organize(); const nextStep = Math.min(STEPS.length - 1, step + 1); setStep(nextStep); void saveConcept(nextStep); }} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white">
-              Continuar <ArrowRight className="h-4 w-4" />
+          {step < 6 ? (
+            <button
+              type="button"
+              onClick={() => {
+                const nextStep = step === 0 ? 1 : step === 1 ? 4 : 6;
+                if (nextStep === 4) {
+                  setRooms((prev) =>
+                    generateTypologyLayout(
+                      normalizeDraftRooms(prev),
+                      lotWidth,
+                      lotDepth,
+                      activeFloor,
+                      typology,
+                      layoutVariant,
+                      layoutPreferences,
+                    ),
+                  );
+                }
+                setStep(nextStep);
+                void saveConcept(nextStep);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white"
+            >
+              {step === 1 ? "Abrir editor" : step === 4 ? "Ver resultado" : "Continuar"} <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
             <button
