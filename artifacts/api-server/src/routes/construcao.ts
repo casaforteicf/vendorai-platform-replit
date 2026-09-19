@@ -888,6 +888,89 @@ async function aplicarPrecoMestre(params: {
   };
 }
 
+async function recalcularOrcamentoComTabelaAtual(tenantId: string, orcamentoId: string) {
+  const [orcamento] = await db
+    .select({ id: obraOrcamentosTable.id, status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tenantId),
+    ));
+
+  if (!orcamento) return { ok: false as const, motivo: "not_found" as const };
+  if (orcamento.status === "aprovado" || orcamento.status === "contratado") {
+    return { ok: false as const, motivo: "locked" as const };
+  }
+
+  const itens = await db
+    .select({
+      id: obraOrcamentoItensTable.id,
+      insumoId: obraOrcamentoItensTable.insumoId,
+      composicaoId: obraOrcamentoItensTable.composicaoId,
+    })
+    .from(obraOrcamentoItensTable)
+    .innerJoin(obraOrcamentoEtapasTable, eq(obraOrcamentoItensTable.etapaId, obraOrcamentoEtapasTable.id))
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+
+  let atualizados = 0;
+  for (const item of itens) {
+    let custo: number | null = null;
+
+    if (item.composicaoId) {
+      const [comp] = await db
+        .select({ custoTotal: composicoesTable.custoTotal })
+        .from(composicoesTable)
+        .where(and(
+          eq(composicoesTable.id, item.composicaoId),
+          eq(composicoesTable.tenantId, tenantId),
+        ));
+      if (comp?.custoTotal != null) custo = numberOrZero(comp.custoTotal);
+    } else if (item.insumoId) {
+      const [insumo] = await db
+        .select({ precoUnitario: insumosTable.precoUnitario })
+        .from(insumosTable)
+        .where(and(
+          eq(insumosTable.id, item.insumoId),
+          eq(insumosTable.tenantId, tenantId),
+        ));
+      if (insumo?.precoUnitario != null) custo = numberOrZero(insumo.precoUnitario);
+    }
+
+    if (custo == null) continue;
+
+    await db
+      .update(obraOrcamentoItensTable)
+      .set({
+        custoUnitario: custo.toFixed(4),
+        precoAtualizadoEm: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(obraOrcamentoItensTable.id, item.id));
+    atualizados += 1;
+  }
+
+  const [tabelaPadrao] = await db
+    .select({ id: tabelasPrecosObrasTable.id })
+    .from(tabelasPrecosObrasTable)
+    .where(and(
+      eq(tabelasPrecosObrasTable.tenantId, tenantId),
+      eq(tabelasPrecosObrasTable.isPadrao, true),
+      eq(tabelasPrecosObrasTable.ativo, true),
+    ));
+
+  await db
+    .update(obraOrcamentosTable)
+    .set({
+      tabelaPrecoId: tabelaPadrao?.id ?? null,
+      precosDesatualizados: false,
+      precosAtualizadosEm: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(obraOrcamentosTable.id, orcamentoId));
+
+  return { ok: true as const, itensAtualizados: atualizados, tabelaPrecoId: tabelaPadrao?.id ?? null };
+}
+
 // ─── Insumos ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/insumos", async (req, res) => {
