@@ -40,9 +40,37 @@ function formatMeters(value: number) {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-function fitLabelSize(label: string, width: number) {
-  const estimated = (width * 1.55) / Math.max(5, label.length);
-  return Math.max(0.21, Math.min(0.38, estimated));
+function splitRoomLabel(label: string) {
+  const clean = label.trim();
+  if (clean.length <= 15) return [clean];
+
+  const words = clean.split(/\s+/);
+  if (words.length === 1) return [clean.slice(0, 14)];
+
+  let bestIndex = 1;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < words.length; index += 1) {
+    const left = words.slice(0, index).join(" ");
+    const right = words.slice(index).join(" ");
+    const diff = Math.abs(left.length - right.length);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIndex = index;
+    }
+  }
+
+  return [
+    words.slice(0, bestIndex).join(" "),
+    words.slice(bestIndex).join(" "),
+  ].filter(Boolean);
+}
+
+function fitLabelSize(label: string, width: number, depth: number) {
+  const lines = splitRoomLabel(label);
+  const longest = Math.max(...lines.map((line) => line.length), 5);
+  const widthSize = (Math.max(1.1, width - 0.5) * 1.45) / longest;
+  const depthSize = depth < 1.8 ? 0.22 : depth < 2.4 ? 0.27 : 0.32;
+  return Math.max(0.2, Math.min(0.34, widthSize, depthSize));
 }
 
 const ROOM_FILL: Record<string, string> = {
@@ -576,7 +604,7 @@ export default function ConceptPlan2D({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border bg-white shadow-inner">
+    <div className="relative min-h-[520px] overflow-hidden rounded-2xl border bg-white shadow-inner">
       <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
         <button
           type="button"
@@ -610,7 +638,7 @@ export default function ConceptPlan2D({
       </div>
       <svg
         ref={svgRef}
-        className={`block h-auto w-full touch-none select-none ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
+        className={`block h-[62vh] min-h-[520px] max-h-[780px] w-full touch-none select-none lg:h-[72vh] ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
         onWheel={handleWheel}
         onPointerDown={(event) => {
           if (interactionMode === "navigate") {
@@ -775,6 +803,8 @@ export default function ConceptPlan2D({
           const fill = ROOM_FILL[room.kind] ?? "#ffffff";
           const isPool = room.kind === "piscina";
           const area = room.width * room.depth;
+          const labelLines = splitRoomLabel(room.label);
+          const labelSize = room.kind === "escada" ? 0.25 : fitLabelSize(room.label, room.width, room.depth);
           return (
             <g
               key={room.id}
@@ -856,25 +886,32 @@ export default function ConceptPlan2D({
                     <>
                       <text
                         x={room.x + room.width / 2}
-                        y={room.y + room.depth / 2 - (room.width >= 2.4 && room.depth >= 2 ? 0.13 : 0)}
+                        y={room.y + room.depth / 2 - (labelLines.length > 1 ? 0.27 : 0.14)}
                         textAnchor="middle"
-                        fontSize={room.kind === "escada" ? "0.25" : fitLabelSize(room.label, room.width)}
+                        fontSize={labelSize}
                         fontWeight="750"
                         fill="#0f172a"
-                        textLength={Math.max(0.8, room.width - 0.38)}
-                        lengthAdjust="spacingAndGlyphs"
                       >
-                        {room.label}
+                        {labelLines.map((line, index) => (
+                          <tspan
+                            key={`${room.id}-label-${index}`}
+                            x={room.x + room.width / 2}
+                            dy={index === 0 ? 0 : labelSize * 1.12}
+                          >
+                            {line}
+                          </tspan>
+                        ))}
                       </text>
-                      {room.width >= 2.4 && room.depth >= 2 && (
+                      {room.width >= 2.1 && room.depth >= 1.8 && (
                         <text
                           x={room.x + room.width / 2}
-                          y={room.y + room.depth / 2 + 0.32}
+                          y={room.y + room.depth / 2 + (labelLines.length > 1 ? 0.42 : 0.30)}
                           textAnchor="middle"
-                          fontSize="0.22"
+                          fontSize="0.21"
+                          fontWeight="650"
                           fill="#64748b"
                         >
-                          {formatMeters(room.width)} × {formatMeters(room.depth)} m · {area.toFixed(1)} m²
+                          {area.toFixed(1)} m²
                         </text>
                       )}
                     </>
