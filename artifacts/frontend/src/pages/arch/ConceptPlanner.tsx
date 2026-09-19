@@ -496,7 +496,7 @@ export default function ConceptPlanner() {
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea },
+            configuration: { floors, desiredArea, typology, layoutPreferences },
             rooms,
             openingOverrides,
             facadePreferences,
@@ -1184,7 +1184,7 @@ export default function ConceptPlanner() {
                   </div>
                   <h2 className="mt-2 text-2xl font-bold">Sua ideia organizada para seguir com o profissional</h2>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    Este material reúne programa de necessidades, dimensões, implantação conceitual, volumetria, fachada e render.
+                    Este material reúne programa de necessidades, dimensões, implantação conceitual, fachada e render.
                     É um pré-projeto conceitual e precisa de validação técnica antes de qualquer execução.
                   </p>
                 </div>
@@ -1220,7 +1220,7 @@ export default function ConceptPlanner() {
                     />
                     <div className="border-t p-4">
                       <div className="font-semibold">Render conceitual</div>
-                      <div className="mt-1 text-xs text-muted-foreground">Visualização baseada na volumetria e preferências selecionadas.</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Visualização baseada na planta, elevação frontal e preferências selecionadas.</div>
                     </div>
                   </div>
                 ) : (
