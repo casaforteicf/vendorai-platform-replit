@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Layers, Pencil, Trash2, Search, ChevronDown, ChevronUp, X, Upload, Download } from "lucide-react";
+import { Plus, Layers, Trash2, Search, ChevronDown, ChevronUp, X, Upload, Download, Sparkles, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
 
@@ -103,6 +103,32 @@ function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; compos
 }
 
 type InsumoItem = { insumoId: string; quantidade: string; precoUnitario: string };
+
+type AiCompositionItem = {
+  insumoId: string | null;
+  nomeSugerido: string;
+  nome: string;
+  unidade: string;
+  codigo: string | null;
+  categoria: string | null;
+  quantidade: number;
+  precoUnitario: number | null;
+  subtotal: number | null;
+  status: "ok" | "sem_preco" | "nao_cadastrado";
+  observacao?: string | null;
+};
+
+type AiCompositionDraft = {
+  nome: string;
+  descricao: string | null;
+  unidade: string;
+  itens: AiCompositionItem[];
+  custoTotalConhecido: number;
+  itensPendentes: number;
+  coberturaPct: number;
+  podeSalvarCompleta: boolean;
+  aviso: string | null;
+};
 
 function ComposicaoForm({
   tenantId,
@@ -221,7 +247,7 @@ function ComposicaoForm({
 }
 
 export default function Composicoes() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -229,6 +255,11 @@ export default function Composicoes() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPedido, setAiPedido] = useState("");
+  const [aiUnidade, setAiUnidade] = useState("m²");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiDraft, setAiDraft] = useState<AiCompositionDraft | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -245,6 +276,70 @@ export default function Composicoes() {
     await createComposicao({ tenantId, data: data as any });
     await qc.invalidateQueries({ queryKey: getListComposicoesQueryKey(tenantId) });
     setAddOpen(false);
+  }
+
+  async function handleGenerateAi() {
+    if (!tenantId || !token || aiPedido.trim().length < 5) return;
+    setAiGenerating(true);
+    setAiDraft(null);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/composicoes/gerar-ia`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pedido: aiPedido.trim(),
+          unidadePreferida: aiUnidade,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível gerar a composição.");
+      setAiDraft(body as AiCompositionDraft);
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar a composição",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setAiGenerating(false);
+    }
+  }
+
+  async function handleSaveAiDraft() {
+    if (!aiDraft?.podeSalvarCompleta) return;
+    try {
+      await createComposicao({
+        tenantId,
+        data: {
+          nome: aiDraft.nome,
+          descricao: aiDraft.descricao ?? undefined,
+          unidade: aiDraft.unidade,
+          itens: aiDraft.itens.map((item) => ({
+            insumoId: item.insumoId!,
+            quantidade: String(item.quantidade),
+          })),
+        } as any,
+      });
+      await qc.invalidateQueries({ queryKey: getListComposicoesQueryKey(tenantId) });
+      toast({
+        title: "Composição criada",
+        description: aiDraft.itensPendentes > 0
+          ? "A composição foi salva, mas ainda possui insumos sem preço cadastrado."
+          : "Todos os insumos foram vinculados à base de custos.",
+      });
+      setAiOpen(false);
+      setAiPedido("");
+      setAiDraft(null);
+    } catch (error) {
+      toast({
+        title: "Não foi possível salvar",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function handleCsvImport() {
@@ -312,6 +407,123 @@ export default function Composicoes() {
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de composições para alocação em obras</p>
         </div>
         <div className="flex flex-wrap gap-2">
+        <Dialog open={aiOpen} onOpenChange={(open) => { setAiOpen(open); if (!open) setAiDraft(null); }}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              Gerar com IA
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Gerar composição técnica com IA</DialogTitle></DialogHeader>
+            <div className="space-y-5">
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                A IA monta os consumos por unidade do serviço e tenta vincular cada item aos insumos já cadastrados. <strong className="text-foreground">Ela não cria preços.</strong>
+              </div>
+              <div className="space-y-2">
+                <Label>Descreva o serviço *</Label>
+                <textarea
+                  className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={aiPedido}
+                  onChange={(e) => setAiPedido(e.target.value)}
+                  placeholder="Ex.: Parede ICF 17 cm completa por m², incluindo blocos, concreto, aço, conectores, montagem e equipamentos necessários."
+                />
+              </div>
+              <div className="max-w-xs space-y-2">
+                <Label>Unidade da composição</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  value={aiUnidade}
+                  onChange={(e) => setAiUnidade(e.target.value)}
+                >
+                  {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={handleGenerateAi} disabled={aiGenerating || aiPedido.trim().length < 5} className="gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  {aiGenerating ? "Gerando..." : aiDraft ? "Gerar novamente" : "Gerar composição"}
+                </Button>
+              </div>
+
+              {aiDraft && (
+                <div className="space-y-4 border-t pt-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{aiDraft.nome}</h3>
+                      <span className="rounded bg-muted px-2 py-0.5 text-xs font-mono">{aiDraft.unidade}</span>
+                    </div>
+                    {aiDraft.descricao && <p className="mt-1 text-sm text-muted-foreground">{aiDraft.descricao}</p>}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Custo conhecido</p><p className="mt-1 text-lg font-semibold">{aiDraft.custoTotalConhecido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p></CardContent></Card>
+                    <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Cobertura de preços</p><p className="mt-1 text-lg font-semibold">{aiDraft.coberturaPct.toLocaleString("pt-BR")}%</p></CardContent></Card>
+                    <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Pendências</p><p className="mt-1 text-lg font-semibold">{aiDraft.itensPendentes}</p></CardContent></Card>
+                  </div>
+
+                  {aiDraft.aviso && (
+                    <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{aiDraft.aviso}</span>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full min-w-[680px] text-sm">
+                      <thead className="bg-muted/50 text-xs text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Insumo</th>
+                          <th className="px-3 py-2 text-right">Consumo</th>
+                          <th className="px-3 py-2 text-left">Un.</th>
+                          <th className="px-3 py-2 text-right">Preço base</th>
+                          <th className="px-3 py-2 text-right">Parcial</th>
+                          <th className="px-3 py-2 text-left">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiDraft.itens.map((item, index) => (
+                          <tr key={`${item.insumoId ?? item.nomeSugerido}-${index}`} className="border-t">
+                            <td className="px-3 py-2">
+                              <div className="font-medium">{item.nome}</div>
+                              {item.observacao && <div className="mt-0.5 text-xs text-muted-foreground">{item.observacao}</div>}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">{item.quantidade.toLocaleString("pt-BR", { maximumFractionDigits: 4 })}</td>
+                            <td className="px-3 py-2">{item.unidade}</td>
+                            <td className="px-3 py-2 text-right font-mono">{item.precoUnitario == null ? "—" : item.precoUnitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                            <td className="px-3 py-2 text-right font-mono">{item.subtotal == null ? "—" : item.subtotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                            <td className="px-3 py-2">
+                              {item.status === "ok" ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Vinculado</span>
+                              ) : item.status === "sem_preco" ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"><AlertTriangle className="h-3.5 w-3.5" />Sem preço</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive"><AlertTriangle className="h-3.5 w-3.5" />Cadastrar insumo</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {!aiDraft.podeSalvarCompleta && (
+                    <p className="text-sm text-destructive">
+                      Existem itens que ainda não estão cadastrados como insumo. Cadastre-os na base e gere novamente para salvar a composição completa.
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button variant="outline" onClick={() => setAiDraft(null)}>Editar pedido</Button>
+                    <Button onClick={handleSaveAiDraft} disabled={!aiDraft.podeSalvarCompleta || isCreating}>
+                      {isCreating ? "Salvando..." : "Salvar composição"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={importOpen} onOpenChange={setImportOpen}>
           <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar CSV</Button></DialogTrigger>
           <DialogContent className="w-full max-w-2xl">
