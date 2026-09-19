@@ -1,0 +1,81 @@
+name: Arqdor Concept CI
+
+on:
+  push:
+    paths:
+      - "artifacts/frontend/src/pages/arch/ConceptPlanner.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptPlanner.integration.test.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptPlan2D.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptModel3D.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptDerivedFacade.tsx"
+      - "artifacts/frontend/src/pages/arch/concept*.ts"
+      - "artifacts/api-server/src/lib/arch-concept-promotion.ts"
+      - "artifacts/api-server/src/lib/arch-concept-promotion.test.ts"
+      - "artifacts/api-server/src/routes/arch.ts"
+      - "lib/db/src/schema/arch_concept_projects.ts"
+      - "lib/db/src/schema/arq_objects.ts"
+      - ".github/workflows/arqdor-concept-ci.yml"
+  pull_request:
+    paths:
+      - "artifacts/frontend/src/pages/arch/ConceptPlanner.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptPlanner.integration.test.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptPlan2D.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptModel3D.tsx"
+      - "artifacts/frontend/src/pages/arch/ConceptDerivedFacade.tsx"
+      - "artifacts/frontend/src/pages/arch/concept*.ts"
+      - "artifacts/api-server/src/lib/arch-concept-promotion.ts"
+      - "artifacts/api-server/src/lib/arch-concept-promotion.test.ts"
+      - "artifacts/api-server/src/routes/arch.ts"
+      - "lib/db/src/schema/arch_concept_projects.ts"
+      - "lib/db/src/schema/arq_objects.ts"
+      - ".github/workflows/arqdor-concept-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  concept:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/vendorai_ci
+      NODE_OPTIONS: --max-old-space-size=6144
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Concept frontend tests
+        run: >-
+          pnpm --filter @workspace/frontend exec vitest run
+          --config vitest.config.ts
+          src/pages/arch/ConceptPlanner.integration.test.tsx
+          src/pages/arch/conceptEditorState.test.ts
+          src/pages/arch/conceptMaterials.test.ts
+          src/pages/arch/conceptModel.test.ts
+          src/pages/arch/conceptObjects.test.ts
+          src/pages/arch/conceptOpenings.test.ts
+          src/pages/arch/conceptRoof.test.ts
+          src/pages/arch/conceptStairs.test.ts
+          src/pages/arch/conceptValidation.test.ts
+          src/pages/arch/conceptViewport.test.ts
+
+      - name: Concept promotion tests
+        run: >-
+          pnpm --filter @workspace/api-server exec vitest run
+          src/lib/arch-concept-promotion.test.ts
