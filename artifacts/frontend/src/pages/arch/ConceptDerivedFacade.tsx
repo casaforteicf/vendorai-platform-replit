@@ -1,5 +1,6 @@
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
+import { normalizeOpeningParameters } from "./conceptOpenings";
 
 type Props = {
   lotWidth: number;
@@ -32,13 +33,17 @@ function facadePalette(facade: ConceptFacadePreferences) {
 }
 
 function frontSegments(level: ConceptModelLevel) {
-  const horizontal = level.walls.filter(
+  const legacyExterior = level.walls.filter(
     (wall) => wall.exterior && Math.abs(wall.y1 - wall.y2) <= EPS,
   );
-  if (!horizontal.length) return { segments: [], frontY: 0 };
+  const customHorizontal = level.customWalls.filter(
+    (wall) => Math.abs(wall.y1 - wall.y2) <= EPS,
+  );
+  const candidates = legacyExterior.length > 0 ? legacyExterior : customHorizontal;
+  if (!candidates.length) return { segments: [], frontY: 0 };
 
-  const frontY = Math.max(...horizontal.map((wall) => (wall.y1 + wall.y2) / 2));
-  const segments = horizontal.filter((wall) => {
+  const frontY = Math.max(...candidates.map((wall) => (wall.y1 + wall.y2) / 2));
+  const segments = candidates.filter((wall) => {
     const y = (wall.y1 + wall.y2) / 2;
     return y >= frontY - 2.5;
   });
@@ -46,12 +51,17 @@ function frontSegments(level: ConceptModelLevel) {
   return { segments, frontY };
 }
 
-function frontOpenings(level: ConceptModelLevel, frontY: number) {
-  return level.openings.filter(
-    (opening) =>
-      opening.orientation === "horizontal" &&
-      Math.abs(opening.y - frontY) <= 2.55,
-  );
+function frontOpenings(
+  level: ConceptModelLevel,
+  frontY: number,
+  segments: Array<{ id: string; x1: number; y1: number; x2: number; y2: number }>,
+) {
+  const wallIds = new Set(segments.map((wall) => wall.id));
+  return level.openings.filter((opening) => {
+    if (opening.orientation !== "horizontal") return false;
+    if (opening.wallId) return wallIds.has(opening.wallId);
+    return Math.abs(opening.y - frontY) <= 2.55;
+  });
 }
 
 function Roof({
@@ -154,7 +164,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
           const maxX = Math.max(...segments.flatMap((wall) => [wall.x1, wall.x2]));
           const bodyX = baseX + minX * scaleX;
           const bodyW = Math.max(4, (maxX - minX) * scaleX);
-          const openings = frontOpenings(level, frontY);
+          const openings = frontOpenings(level, frontY, segments);
 
           return (
             <g key={`facade-level-${level.floor}`}>
@@ -188,31 +198,46 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
               })}
 
               {openings.map((opening) => {
-                const widthM = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
-                const heightM = Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
-                const sillM = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
+                const params = normalizeOpeningParameters(opening.type, opening);
+                const widthM = params.width;
+                const heightM = params.height;
+                const sillM = params.sillHeight;
                 const openingX = baseX + (opening.x - widthM / 2) * scaleX;
                 const openingW = Math.max(3.8, widthM * scaleX);
+                const openingY = levelBottom - (sillM + heightM) * pxPerMeterY;
+                const openingH = heightM * pxPerMeterY;
 
                 if (opening.type === "door") {
                   return (
                     <g key={opening.id}>
                       <rect
                         x={openingX}
-                        y={levelBottom - heightM * pxPerMeterY}
+                        y={levelBottom - openingH}
                         width={openingW}
-                        height={heightM * pxPerMeterY}
+                        height={openingH}
                         rx="0.25"
                         fill={facade.accentMaterial === "madeira" ? "#8a5d43" : "#4b5055"}
                         stroke={colors.frame}
                         strokeWidth="0.55"
                       />
-                      <circle
-                        cx={openingX + openingW - 0.8}
-                        cy={levelBottom - Math.min(heightM * 0.48, 1.05) * pxPerMeterY}
-                        r="0.28"
-                        fill="#d7c8b8"
-                      />
+                      {params.openingStyle === "sliding" ? (
+                        <line
+                          x1={openingX + openingW / 2}
+                          y1={levelBottom - openingH}
+                          x2={openingX + openingW / 2}
+                          y2={levelBottom}
+                          stroke="#d7dee2"
+                          strokeOpacity="0.7"
+                          strokeWidth="0.35"
+                        />
+                      ) : params.openingStyle === "hinged" ? (
+                        <circle
+                          cx={params.swing === "right" ? openingX + 0.8 : openingX + openingW - 0.8}
+                          cy={levelBottom - Math.min(heightM * 0.48, 1.05) * pxPerMeterY}
+                          r="0.28"
+                          fill="#d7c8b8"
+                        />
+                      ) : null}
                     </g>
                   );
                 }
@@ -221,26 +246,62 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                   <g key={opening.id}>
                     <rect
                       x={openingX}
-                      y={levelBottom - (sillM + heightM) * pxPerMeterY}
+                      y={openingY}
                       width={openingW}
-                      height={heightM * pxPerMeterY}
+                      height={openingH}
                       rx="0.22"
                       fill="url(#derived-facade-glass)"
                       stroke={colors.frame}
                       strokeWidth="0.6"
                     />
-                    <line
-                      x1={openingX + openingW / 2}
-                      y1={levelBottom - (sillM + heightM) * pxPerMeterY}
-                      x2={openingX + openingW / 2}
-                      y2={levelBottom - sillM * pxPerMeterY}
-                      stroke="#d4dde2"
-                      strokeOpacity="0.65"
-                      strokeWidth="0.35"
-                    />
+                    {params.openingStyle === "sliding" && (
+                      <line
+                        x1={openingX + openingW / 2}
+                        y1={openingY}
+                        x2={openingX + openingW / 2}
+                        y2={openingY + openingH}
+                        stroke="#d4dde2"
+                        strokeOpacity="0.65"
+                        strokeWidth="0.35"
+                      />
+                    )}
+                    {params.openingStyle === "hinged" && (
+                      <line
+                        x1={params.swing === "right" ? openingX + openingW : openingX}
+                        y1={openingY}
+                        x2={params.swing === "right" ? openingX : openingX + openingW}
+                        y2={openingY + openingH}
+                        stroke="#d4dde2"
+                        strokeOpacity="0.55"
+                        strokeWidth="0.28"
+                      />
+                    )}
+                    {params.openingStyle === "tilt_turn" && (
+                      <>
+                        <line
+                          x1={openingX}
+                          y1={openingY}
+                          x2={openingX + openingW / 2}
+                          y2={openingY + openingH}
+                          stroke="#d4dde2"
+                          strokeOpacity="0.58"
+                          strokeWidth="0.26"
+                        />
+                        <line
+                          x1={openingX + openingW}
+                          y1={openingY}
+                          x2={openingX + openingW / 2}
+                          y2={openingY + openingH}
+                          stroke="#d4dde2"
+                          strokeOpacity="0.58"
+                          strokeWidth="0.26"
+                        />
+                      </>
+                    )}
                   </g>
                 );
               })}
+
             </g>
           );
         })}

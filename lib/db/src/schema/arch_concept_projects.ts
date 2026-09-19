@@ -37,6 +37,7 @@ export type ArchConceptConfiguration = {
     sillHeight?: number;
     openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
     swing?: "left" | "right";
+    presetId?: string;
   }>;
   spaceProfiles?: Array<{
     id: string;

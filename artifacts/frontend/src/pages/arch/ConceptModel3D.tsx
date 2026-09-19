@@ -1,6 +1,7 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
+import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenings";
 import type { ClosedSpace } from "./conceptWallNetwork";
 
 export type ConceptModelLevel = {
@@ -38,7 +39,7 @@ type Props = {
 type Point3 = { x: number; y: number; z: number };
 type Point2 = { x: number; y: number };
 
-const WALL_HEIGHT = 2.8;
+const WALL_HEIGHT = OPENING_WALL_HEIGHT;
 const FLOOR_THICKNESS = 0.16;
 const LEVEL_HEIGHT = WALL_HEIGHT + FLOOR_THICKNESS;
 
@@ -129,6 +130,7 @@ function splitWallForOpenings(
 
   const matches = openings
     .filter((opening) => {
+      if (opening.wallId && opening.wallId !== wall.id) return false;
       if (vertical && opening.orientation !== "vertical") return false;
       if (!vertical && opening.orientation !== "horizontal") return false;
       const coord = vertical ? opening.x : opening.y;
@@ -137,7 +139,7 @@ function splitWallForOpenings(
     })
     .map((opening) => {
       const along = vertical ? opening.y : opening.x;
-      const width = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
+      const { width } = normalizeOpeningParameters(opening.type, opening);
       return {
         ...opening,
         start: Math.max(wallStart, along - width / 2),
@@ -171,14 +173,10 @@ function splitWallForOpenings(
 
     const openingSegment = makeSegment(opening.start, opening.end);
     if (openingSegment) {
-      const openingHeight = Math.max(
-        0.5,
-        Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
-      );
-      const sillHeight = opening.type === "door"
-        ? 0
-        : Math.max(0, Math.min(WALL_HEIGHT - 0.3, opening.sillHeight ?? 0.9));
-      const headHeight = Math.min(WALL_HEIGHT, sillHeight + openingHeight);
+      const params = normalizeOpeningParameters(opening.type, opening);
+      const openingHeight = params.height;
+      const sillHeight = params.sillHeight;
+      const headHeight = sillHeight + openingHeight;
 
       if (sillHeight > 0.04) {
         pieces.push({ wall: openingSegment, zMin: 0, zMax: sillHeight, kind: "sill" });

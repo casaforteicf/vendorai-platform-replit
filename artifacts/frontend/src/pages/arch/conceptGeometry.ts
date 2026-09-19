@@ -1,4 +1,5 @@
 import type { LayoutPreferences } from "./conceptTemplates";
+import type { OpeningParameters } from "./conceptOpenings";
 
 export type ConceptRoomShape = {
   id: string;
@@ -29,12 +30,9 @@ export type OpeningMarker = {
   y: number;
   orientation: "horizontal" | "vertical";
   roomId: string;
-  width?: number;
-  height?: number;
-  sillHeight?: number;
-  openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
-  swing?: "left" | "right";
-};
+  wallId?: string;
+  offset?: number;
+} & OpeningParameters;
 
 export type ConceptGeometry = {
   walls: WallSegment[];

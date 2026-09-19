@@ -22,7 +22,7 @@ import {
   Printer,
   Send,
 } from "lucide-react";
-import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
+import { buildConceptGeometry, nudgeOpening, validateConceptLayout, type OpeningMarker } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
@@ -31,6 +31,17 @@ import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, typ
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
+import {
+  OPENING_PRESETS,
+  OPENING_STYLE_OPTIONS,
+  clampOpeningOffset,
+  clampOpeningWidthForWall,
+  defaultOpeningParameters,
+  normalizeOpeningParameters,
+  openingStyleSupportsSwing,
+  parametersFromOpeningPreset,
+  type OpeningParameters,
+} from "./conceptOpenings";
 
 type RoomKind =
   | "sala"
@@ -80,12 +91,49 @@ type CustomOpening = {
   floor: number;
   type: "door" | "window";
   offset: number;
-  width?: number;
-  height?: number;
-  sillHeight?: number;
-  openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
-  swing?: "left" | "right";
-};
+} & OpeningParameters;
+
+function customWallLength(wall: CustomWall) {
+  return Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+}
+
+function normalizeCustomOpeningForWall(
+  opening: CustomOpening,
+  wall: CustomWall,
+  patch: Partial<CustomOpening> = {},
+): CustomOpening {
+  const merged = { ...opening, ...patch };
+  const params = normalizeOpeningParameters(merged.type, merged);
+  const width = clampOpeningWidthForWall(params.width, customWallLength(wall));
+  const offset = clampOpeningOffset(merged.offset, width, customWallLength(wall));
+  return {
+    ...merged,
+    ...params,
+    width,
+    offset,
+  };
+}
+
+function customOpeningToMarker(opening: CustomOpening, wall: CustomWall): OpeningMarker {
+  const normalized = normalizeCustomOpeningForWall(opening, wall);
+  const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+  return {
+    id: normalized.id,
+    type: normalized.type,
+    wallId: normalized.wallId,
+    offset: normalized.offset,
+    x: wall.x1 + (wall.x2 - wall.x1) * normalized.offset,
+    y: wall.y1 + (wall.y2 - wall.y1) * normalized.offset,
+    orientation: horizontal ? "horizontal" : "vertical",
+    roomId: `custom-wall:${wall.id}`,
+    width: normalized.width,
+    height: normalized.height,
+    sillHeight: normalized.sillHeight,
+    openingStyle: normalized.openingStyle,
+    swing: normalized.swing,
+    presetId: normalized.presetId,
+  };
+}
 
 type SpaceProfile = {
   id: string;
@@ -342,7 +390,14 @@ export default function ConceptPlanner() {
         setWallFirstFloors(Array.isArray(draft.configuration?.wallFirstFloors) ? draft.configuration.wallFirstFloors : []);
         setShowDimensions(draft.configuration?.showDimensions ?? true);
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
-        setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
+        setCustomOpenings(
+          Array.isArray(draft.configuration?.customOpenings)
+            ? draft.configuration.customOpenings.map((opening) => ({
+                ...opening,
+                ...normalizeOpeningParameters(opening.type, opening),
+              }))
+            : [],
+        );
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
@@ -567,11 +622,17 @@ export default function ConceptPlanner() {
       const end = horizontal ? wall.x2 : wall.y2;
       const current = horizontal ? patch.x : patch.y;
       const denominator = end - start;
-      const offset = Math.abs(denominator) < 0.001
+      const rawOffset = Math.abs(denominator) < 0.001
         ? custom.offset
-        : Math.max(0.08, Math.min(0.92, (current - start) / denominator));
+        : (current - start) / denominator;
+
       setCustomOpenings((prev) => prev.map((opening) =>
-        opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
+        opening.id === openingId
+          ? normalizeCustomOpeningForWall(opening, wall, {
+              offset: rawOffset,
+              type: patch.type,
+            })
+          : opening
       ));
       return;
     }
@@ -702,11 +763,7 @@ export default function ConceptPlanner() {
         floor: activeFloor,
         type: source.type,
         offset,
-        width: source.type === "door" ? 0.90 : 1.20,
-        height: source.type === "door" ? 2.10 : 1.20,
-        sillHeight: source.type === "door" ? 0 : 0.90,
-        openingStyle: source.type === "door" ? "hinged" : "sliding",
-        swing: "left",
+        ...defaultOpeningParameters(source.type),
       });
     }
 
@@ -783,24 +840,7 @@ export default function ConceptPlanner() {
         .filter((opening) => opening.floor === activeFloor)
         .flatMap((opening) => {
           const wall = customWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
-          if (!wall) return [];
-          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
-          const x = wall.x1 + (wall.x2 - wall.x1) * offset;
-          const y = wall.y1 + (wall.y2 - wall.y1) * offset;
-          const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-          return [{
-            id: opening.id,
-            type: opening.type,
-            x,
-            y,
-            orientation: horizontal ? "horizontal" as const : "vertical" as const,
-            roomId: `custom-wall:${wall.id}`,
-            width: opening.width,
-            height: opening.height,
-            sillHeight: opening.sillHeight,
-            openingStyle: opening.openingStyle,
-            swing: opening.swing,
-          }];
+          return wall ? [customOpeningToMarker(opening, wall)] : [];
         }),
     [customOpenings, customWalls, activeFloor],
   );
@@ -892,22 +932,7 @@ export default function ConceptPlanner() {
         .filter((opening) => opening.floor === floorIndex)
         .flatMap((opening) => {
           const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
-          if (!wall) return [];
-          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
-          const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
-          return [{
-            id: opening.id,
-            type: opening.type,
-            x: wall.x1 + (wall.x2 - wall.x1) * offset,
-            y: wall.y1 + (wall.y2 - wall.y1) * offset,
-            orientation: horizontal ? "horizontal" as const : "vertical" as const,
-            roomId: `custom-wall:${wall.id}`,
-            width: opening.width,
-            height: opening.height,
-            sillHeight: opening.sillHeight,
-            openingStyle: opening.openingStyle,
-            swing: opening.swing,
-          }];
+          return wall ? [customOpeningToMarker(opening, wall)] : [];
         });
       const floorClosedSpaces = detectClosedSpaces(
         [
@@ -1013,6 +1038,16 @@ export default function ConceptPlanner() {
   const selectedCustomOpening = selectedOpening
     ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
     : null;
+  const selectedOpeningParams = selectedCustomOpening
+    ? normalizeOpeningParameters(selectedCustomOpening.type, selectedCustomOpening)
+    : null;
+  const selectedOpeningWall = selectedCustomOpening
+    ? customWalls.find((wall) => wall.id === selectedCustomOpening.wallId) ?? null
+    : null;
+  const selectedOpeningWallLength = selectedOpeningWall ? customWallLength(selectedOpeningWall) : 0;
+  const selectedOpeningPresets = selectedCustomOpening
+    ? OPENING_PRESETS.filter((preset) => preset.type === selectedCustomOpening.type)
+    : [];
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
 
   const addCustomWall = (wall: CustomWall) => {
@@ -1204,11 +1239,7 @@ export default function ConceptPlanner() {
       floor: wall.floor,
       type,
       offset: 0.5,
-      width: type === "door" ? 0.90 : 1.20,
-      height: type === "door" ? 2.10 : 1.20,
-      sillHeight: type === "door" ? 0 : 0.90,
-      openingStyle: type === "door" ? "hinged" : "sliding",
-      swing: "left",
+      ...defaultOpeningParameters(type),
     };
     setCustomOpenings((prev) => [...prev, opening]);
     pushRoomHistory(before);
@@ -1219,20 +1250,52 @@ export default function ConceptPlanner() {
 
   const updateCustomOpeningParams = (
     openingId: string,
-    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
+    patch: Partial<OpeningParameters>,
   ) => {
     const before = snapshotEditor();
     setCustomOpenings((prev) => prev.map((opening) => {
       if (opening.id !== openingId) return opening;
-      const next = { ...opening, ...patch };
-      const isDoor = next.type === "door";
-      return {
-        ...next,
-        width: Math.max(0.5, Math.min(4, next.width ?? (isDoor ? 0.9 : 1.2))),
-        height: Math.max(0.5, Math.min(2.8, next.height ?? (isDoor ? 2.1 : 1.2))),
-        sillHeight: isDoor ? 0 : Math.max(0, Math.min(2.2, next.sillHeight ?? 0.9)),
-      };
+      const wall = customWalls.find((item) => item.id === opening.wallId);
+      const manualPatch = { ...patch, presetId: undefined };
+      return wall
+        ? normalizeCustomOpeningForWall(opening, wall, manualPatch)
+        : { ...opening, ...normalizeOpeningParameters(opening.type, { ...opening, ...manualPatch }) };
     }));
+    pushRoomHistory(before);
+  };
+
+  const applyPresetToCustomOpening = (openingId: string, presetId: string) => {
+    const preset = OPENING_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    const opening = customOpenings.find((item) => item.id === openingId);
+    if (!opening || opening.type !== preset.type) return;
+    const wall = customWalls.find((item) => item.id === opening.wallId);
+    if (!wall) return;
+
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => prev.map((item) =>
+      item.id === openingId
+        ? normalizeCustomOpeningForWall(item, wall, parametersFromOpeningPreset(preset))
+        : item
+    ));
+    pushRoomHistory(before);
+  };
+
+  const setCustomOpeningOffsetMeters = (openingId: string, rawMeters: number) => {
+    if (!Number.isFinite(rawMeters)) return;
+    const opening = customOpenings.find((item) => item.id === openingId);
+    if (!opening) return;
+    const wall = customWalls.find((item) => item.id === opening.wallId);
+    if (!wall) return;
+    const length = customWallLength(wall);
+    if (length <= 0.001) return;
+
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => prev.map((item) =>
+      item.id === openingId
+        ? normalizeCustomOpeningForWall(item, wall, { offset: rawMeters / length })
+        : item
+    ));
     pushRoomHistory(before);
   };
 
@@ -1309,26 +1372,28 @@ export default function ConceptPlanner() {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const nextType = selectedOpening.type === "door" ? "window" : "door";
-    updateOpeningById(selectedOpening.id, {
-      x: selectedOpening.x,
-      y: selectedOpening.y,
-      type: nextType,
-    });
     const custom = customOpenings.find((opening) => opening.id === selectedOpening.id);
+
     if (custom) {
+      const wall = customWalls.find((item) => item.id === custom.wallId);
+      if (!wall) return;
       setCustomOpenings((prev) => prev.map((opening) =>
         opening.id === selectedOpening.id
-          ? {
-              ...opening,
+          ? normalizeCustomOpeningForWall(opening, wall, {
               type: nextType,
-              width: nextType === "door" ? Math.min(opening.width ?? 0.9, 1.4) : Math.max(opening.width ?? 1.2, 0.8),
-              height: nextType === "door" ? 2.1 : 1.2,
-              sillHeight: nextType === "door" ? 0 : 0.9,
-              openingStyle: nextType === "door" ? "hinged" : "sliding",
-            }
+              ...defaultOpeningParameters(nextType),
+              presetId: undefined,
+            })
           : opening
       ));
+    } else {
+      updateOpeningById(selectedOpening.id, {
+        x: selectedOpening.x,
+        y: selectedOpening.y,
+        type: nextType,
+      });
     }
+
     pushRoomHistory(before);
   };
 
@@ -2376,8 +2441,31 @@ export default function ConceptPlanner() {
                               Arraste na planta ou use o ajuste fino abaixo.
                             </div>
                           </div>
-                          {selectedCustomOpening && (
+                          {selectedCustomOpening && selectedOpeningParams && (
                             <div className="space-y-3 rounded-xl border bg-background p-3">
+                              <div>
+                                <div className="text-xs font-semibold text-muted-foreground">Biblioteca de esquadrias</div>
+                                <select
+                                  value={selectedCustomOpening.presetId ?? ""}
+                                  onChange={(event) => {
+                                    if (event.target.value) {
+                                      applyPresetToCustomOpening(selectedOpening.id, event.target.value);
+                                    } else {
+                                      updateCustomOpeningParams(selectedOpening.id, { presetId: undefined });
+                                    }
+                                  }}
+                                  className="mt-1 h-10 w-full rounded-lg border bg-background px-2 text-xs"
+                                >
+                                  <option value="">Personalizada</option>
+                                  {selectedOpeningPresets.map((preset) => (
+                                    <option key={preset.id} value={preset.id}>{preset.label}</option>
+                                  ))}
+                                </select>
+                                <div className="mt-1 text-[11px] text-muted-foreground">
+                                  O preset apenas preenche o mesmo objeto paramétrico; qualquer edição manual passa a ser personalizada.
+                                </div>
+                              </div>
+
                               <div className="text-xs font-semibold text-muted-foreground">Dimensões do vão</div>
                               <div className="grid grid-cols-2 gap-2">
                                 <label className="text-xs font-medium">
@@ -2385,9 +2473,9 @@ export default function ConceptPlanner() {
                                   <input
                                     type="number"
                                     min="0.5"
-                                    max="4"
+                                    max={Math.max(0.5, Math.min(4, selectedOpeningWallLength ? selectedOpeningWallLength - 0.1 : 4))}
                                     step="0.05"
-                                    value={(selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)).toFixed(2)}
+                                    value={selectedOpeningParams.width.toFixed(2)}
                                     onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { width: Number(event.target.value) })}
                                     className="mt-1 h-10 w-full rounded-lg border px-2"
                                   />
@@ -2397,54 +2485,64 @@ export default function ConceptPlanner() {
                                   <input
                                     type="number"
                                     min="0.5"
-                                    max="2.8"
+                                    max={selectedOpening.type === "door" ? 2.8 : Math.max(0.5, 2.8 - selectedOpeningParams.sillHeight)}
                                     step="0.05"
-                                    value={(selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)).toFixed(2)}
+                                    value={selectedOpeningParams.height.toFixed(2)}
                                     onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { height: Number(event.target.value) })}
                                     className="mt-1 h-10 w-full rounded-lg border px-2"
                                   />
                                 </label>
                               </div>
+
                               {selectedOpening.type === "window" && (
                                 <label className="block text-xs font-medium">
                                   Peitoril (m)
                                   <input
                                     type="number"
                                     min="0"
-                                    max="2.2"
+                                    max={Math.max(0, 2.8 - selectedOpeningParams.height)}
                                     step="0.05"
-                                    value={(selectedCustomOpening.sillHeight ?? 0.9).toFixed(2)}
+                                    value={selectedOpeningParams.sillHeight.toFixed(2)}
                                     onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: Number(event.target.value) })}
                                     className="mt-1 h-10 w-full rounded-lg border px-2"
                                   />
                                 </label>
                               )}
+
+                              {selectedOpeningWall && selectedOpeningWallLength > 0 && (
+                                <label className="block text-xs font-medium">
+                                  Centro desde o início da parede (m)
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={selectedOpeningWallLength}
+                                    step="0.05"
+                                    value={(selectedCustomOpening.offset * selectedOpeningWallLength).toFixed(2)}
+                                    onChange={(event) => setCustomOpeningOffsetMeters(selectedOpening.id, Number(event.target.value))}
+                                    className="mt-1 h-10 w-full rounded-lg border px-2"
+                                  />
+                                  <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                                    Vinculada à parede por wallId + offset; o centro é limitado automaticamente para o vão não sair do segmento.
+                                  </span>
+                                </label>
+                              )}
+
                               <label className="block text-xs font-medium">
                                 Tipo de abertura
                                 <select
-                                  value={selectedCustomOpening.openingStyle ?? (selectedOpening.type === "door" ? "hinged" : "sliding")}
+                                  value={selectedOpeningParams.openingStyle}
                                   onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
-                                    openingStyle: event.target.value as CustomOpening["openingStyle"],
+                                    openingStyle: event.target.value as NonNullable<CustomOpening["openingStyle"]>,
                                   })}
                                   className="mt-1 h-10 w-full rounded-lg border bg-background px-2"
                                 >
-                                  {selectedOpening.type === "door" ? (
-                                    <>
-                                      <option value="hinged">Giro</option>
-                                      <option value="sliding">Correr</option>
-                                      <option value="fixed">Fixa</option>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <option value="sliding">Correr</option>
-                                      <option value="fixed">Fixa</option>
-                                      <option value="tilt_turn">Oscilobatente</option>
-                                      <option value="hinged">Abrir</option>
-                                    </>
-                                  )}
+                                  {OPENING_STYLE_OPTIONS[selectedOpening.type].map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
                                 </select>
                               </label>
-                              {selectedOpening.type === "door" && (selectedCustomOpening.openingStyle ?? "hinged") === "hinged" && (
+
+                              {openingStyleSupportsSwing(selectedOpeningParams.openingStyle) && (
                                 <div>
                                   <div className="mb-1 text-xs font-medium">Sentido de abertura</div>
                                   <div className="grid grid-cols-2 gap-2">
@@ -2453,7 +2551,7 @@ export default function ConceptPlanner() {
                                         key={swing}
                                         type="button"
                                         onClick={() => updateCustomOpeningParams(selectedOpening.id, { swing })}
-                                        className={(selectedCustomOpening.swing ?? "left") === swing
+                                        className={selectedOpeningParams.swing === swing
                                           ? "rounded-lg border border-orange-400 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-800"
                                           : "rounded-lg border px-3 py-2 text-xs font-semibold"}
                                       >
