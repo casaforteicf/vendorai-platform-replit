@@ -880,7 +880,7 @@ export default function ConceptPlanner() {
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "up")} className="rounded-lg border p-2 disabled:opacity-40">↑</button>
                       <span />
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "left")} className="rounded-lg border p-2 disabled:opacity-40">←</button>
-                      <button type="button" onClick={() => organize()} className="rounded-lg border p-2 text-xs font-semibold">IA</button>
+                      <button type="button" onClick={() => organize()} className="rounded-lg border p-2 text-xs font-semibold" title="Reorganizar automaticamente">Auto</button>
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "right")} className="rounded-lg border p-2 disabled:opacity-40">→</button>
                       <span />
                       <button disabled={selected.locked} type="button" onClick={() => swapPosition(selected, "down")} className="rounded-lg border p-2 disabled:opacity-40">↓</button>
