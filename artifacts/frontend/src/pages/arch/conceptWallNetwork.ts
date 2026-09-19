@@ -69,6 +69,166 @@ export function wallMidpoint(wall: WallNetworkSegment) {
 }
 
 
+
+export type WallTopologyEndpointRef = {
+  wallId: string;
+  endpoint: "start" | "end";
+};
+
+export type WallTopologyNode = WallNetworkPoint & {
+  id: string;
+  segmentIds: string[];
+  sourceWallIds: string[];
+  endpointRefs: WallTopologyEndpointRef[];
+};
+
+export type WallTopologySegment = WallNetworkSegment & {
+  sourceWallId: string;
+};
+
+export type WallTopology = {
+  nodes: WallTopologyNode[];
+  segments: WallTopologySegment[];
+};
+
+const topologyKey = (point: WallNetworkPoint) =>
+  `${Math.round(point.x * 1000) / 1000}:${Math.round(point.y * 1000) / 1000}`;
+
+const between = (value: number, a: number, b: number, epsilon = 0.001) =>
+  value >= Math.min(a, b) - epsilon && value <= Math.max(a, b) + epsilon;
+
+export function buildOrthogonalWallTopology(walls: WallNetworkSegment[]): WallTopology {
+  const orthogonal = walls
+    .filter((wall) => wallLength(wall) >= 0.05)
+    .filter(
+      (wall) =>
+        Math.abs(wall.x1 - wall.x2) < 0.01 ||
+        Math.abs(wall.y1 - wall.y2) < 0.01,
+    );
+
+  const splitPoints = new Map<string, WallNetworkPoint[]>();
+  for (const wall of orthogonal) {
+    splitPoints.set(wall.id, [
+      { x: wall.x1, y: wall.y1 },
+      { x: wall.x2, y: wall.y2 },
+    ]);
+  }
+
+  for (let i = 0; i < orthogonal.length; i += 1) {
+    for (let j = i + 1; j < orthogonal.length; j += 1) {
+      const a = orthogonal[i];
+      const b = orthogonal[j];
+      const aHorizontal = Math.abs(a.y1 - a.y2) < 0.01;
+      const bHorizontal = Math.abs(b.y1 - b.y2) < 0.01;
+
+      if (aHorizontal !== bHorizontal) {
+        const h = aHorizontal ? a : b;
+        const v = aHorizontal ? b : a;
+        const point = { x: v.x1, y: h.y1 };
+        if (
+          between(point.x, h.x1, h.x2) &&
+          between(point.y, v.y1, v.y2)
+        ) {
+          splitPoints.get(a.id)?.push(point);
+          splitPoints.get(b.id)?.push(point);
+        }
+        continue;
+      }
+
+      if (aHorizontal && Math.abs(a.y1 - b.y1) < 0.01) {
+        for (const x of [a.x1, a.x2, b.x1, b.x2]) {
+          if (between(x, a.x1, a.x2) && between(x, b.x1, b.x2)) {
+            const point = { x, y: a.y1 };
+            splitPoints.get(a.id)?.push(point);
+            splitPoints.get(b.id)?.push(point);
+          }
+        }
+      } else if (!aHorizontal && Math.abs(a.x1 - b.x1) < 0.01) {
+        for (const y of [a.y1, a.y2, b.y1, b.y2]) {
+          if (between(y, a.y1, a.y2) && between(y, b.y1, b.y2)) {
+            const point = { x: a.x1, y };
+            splitPoints.get(a.id)?.push(point);
+            splitPoints.get(b.id)?.push(point);
+          }
+        }
+      }
+    }
+  }
+
+  const segments: WallTopologySegment[] = [];
+  for (const wall of orthogonal) {
+    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+    const unique = new Map<string, WallNetworkPoint>();
+    for (const point of splitPoints.get(wall.id) ?? []) {
+      unique.set(topologyKey(point), point);
+    }
+    const ordered = [...unique.values()].sort((a, b) =>
+      horizontal ? a.x - b.x : a.y - b.y,
+    );
+    for (let index = 0; index < ordered.length - 1; index += 1) {
+      const start = ordered[index];
+      const end = ordered[index + 1];
+      if (distance(start, end) < 0.04) continue;
+      segments.push({
+        id: `${wall.id}:segment:${index}`,
+        sourceWallId: wall.id,
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+      });
+    }
+  }
+
+  const nodeMap = new Map<string, WallTopologyNode>();
+  const ensureNode = (point: WallNetworkPoint) => {
+    const key = topologyKey(point);
+    let node = nodeMap.get(key);
+    if (!node) {
+      node = {
+        id: `node:${key}`,
+        x: point.x,
+        y: point.y,
+        segmentIds: [],
+        sourceWallIds: [],
+        endpointRefs: [],
+      };
+      nodeMap.set(key, node);
+    }
+    return node;
+  };
+
+  for (const segment of segments) {
+    for (const point of [
+      { x: segment.x1, y: segment.y1 },
+      { x: segment.x2, y: segment.y2 },
+    ]) {
+      const node = ensureNode(point);
+      if (!node.segmentIds.includes(segment.id)) node.segmentIds.push(segment.id);
+      if (!node.sourceWallIds.includes(segment.sourceWallId)) {
+        node.sourceWallIds.push(segment.sourceWallId);
+      }
+    }
+  }
+
+  for (const wall of orthogonal) {
+    for (const [endpoint, point] of [
+      ["start", { x: wall.x1, y: wall.y1 }],
+      ["end", { x: wall.x2, y: wall.y2 }],
+    ] as const) {
+      const node = ensureNode(point);
+      if (!node.endpointRefs.some((ref) => ref.wallId === wall.id && ref.endpoint === endpoint)) {
+        node.endpointRefs.push({ wallId: wall.id, endpoint });
+      }
+    }
+  }
+
+  return {
+    nodes: [...nodeMap.values()].sort((a, b) => a.y - b.y || a.x - b.x),
+    segments,
+  };
+}
+
 export type ClosedSpaceCell = {
   x: number;
   y: number;
@@ -119,7 +279,8 @@ export function detectClosedSpaces(
   lotWidth: number,
   lotDepth: number,
 ): ClosedSpace[] {
-  const usableWalls = walls.filter((wall) => wallLength(wall) >= 0.05);
+  const topology = buildOrthogonalWallTopology(walls);
+  const usableWalls = topology.segments;
   if (!usableWalls.length) return [];
 
   const xs = uniqueSorted([
