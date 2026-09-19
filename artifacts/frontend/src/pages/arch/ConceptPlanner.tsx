@@ -29,7 +29,7 @@ import ConceptFacadeElevation from "./ConceptFacadeElevation";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
-import { detectClosedSpaces } from "./conceptWallNetwork";
+import { detectClosedSpaces, type ClosedSpace } from "./conceptWallNetwork";
 
 type RoomKind =
   | "sala"
@@ -73,6 +73,15 @@ type CustomWall = {
   thickness?: number;
 };
 
+type SpaceProfile = {
+  id: string;
+  floor: number;
+  label: string;
+  kind: string;
+  centroid: { x: number; y: number };
+  area: number;
+};
+
 type EditorSnapshot = {
   rooms: Room[];
   customWalls: CustomWall[];
@@ -100,6 +109,7 @@ type ConceptDraftResponse = {
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+    spaceProfiles?: SpaceProfile[];
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -233,7 +243,7 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
-  const [interactionMode, setInteractionMode] = useState<"room" | "wall" | "opening" | "draw-wall">("room");
+  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
@@ -246,7 +256,9 @@ export default function ConceptPlanner() {
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
+  const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
+  const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -295,6 +307,7 @@ export default function ConceptPlanner() {
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
+        setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -320,7 +333,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls },
+      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, spaceProfiles },
       rooms,
       openingOverrides,
       customerProfile,
@@ -575,6 +588,65 @@ export default function ConceptPlanner() {
     [geometry.walls, customWalls, activeFloor, lotWidth, lotDepth],
   );
   const closedArea = closedSpaces.reduce((sum, space) => sum + space.area, 0);
+  const spaceAssignments = useMemo(() => {
+    const assignments = new Map<string, SpaceProfile>();
+    const usedProfiles = new Set<string>();
+
+    for (const space of closedSpaces) {
+      const candidates = spaceProfiles
+        .filter((profile) => profile.floor === activeFloor && !usedProfiles.has(profile.id))
+        .map((profile) => {
+          const distance = Math.hypot(
+            profile.centroid.x - space.centroid.x,
+            profile.centroid.y - space.centroid.y,
+          );
+          const areaRatio = Math.abs(profile.area - space.area) / Math.max(1, space.area);
+          return { profile, score: distance + areaRatio * 2.5, distance, areaRatio };
+        })
+        .filter((candidate) => candidate.distance <= 3.5 && candidate.areaRatio <= 0.65)
+        .sort((a, b) => a.score - b.score);
+
+      const best = candidates[0]?.profile;
+      if (best) {
+        assignments.set(space.id, best);
+        usedProfiles.add(best.id);
+      }
+    }
+
+    return assignments;
+  }, [closedSpaces, spaceProfiles, activeFloor]);
+
+  const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
+  const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
+
+  const updateSelectedSpaceProfile = (patch: Partial<Pick<SpaceProfile, "label" | "kind">>) => {
+    if (!selectedClosedSpace) return;
+    const existing = spaceAssignments.get(selectedClosedSpace.id);
+    if (existing) {
+      setSpaceProfiles((prev) => prev.map((profile) =>
+        profile.id === existing.id
+          ? {
+              ...profile,
+              ...patch,
+              centroid: selectedClosedSpace.centroid,
+              area: selectedClosedSpace.area,
+              floor: activeFloor,
+            }
+          : profile
+      ));
+      return;
+    }
+
+    const created: SpaceProfile = {
+      id: `space-profile-${uid()}`,
+      floor: activeFloor,
+      label: patch.label ?? "Ambiente",
+      kind: patch.kind ?? "outro",
+      centroid: selectedClosedSpace.centroid,
+      area: selectedClosedSpace.area,
+    };
+    setSpaceProfiles((prev) => [...prev, created]);
+  };
   const layoutIssues = useMemo(
     () => validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
@@ -789,7 +861,7 @@ export default function ConceptPlanner() {
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls },
+            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, spaceProfiles },
             rooms,
             openingOverrides,
             facadePreferences,
@@ -1239,6 +1311,21 @@ export default function ConceptPlanner() {
                           </button>
                           <button
                             type="button"
+                            onClick={() => {
+                              setInteractionMode("space");
+                              setSelectedId(null);
+                              setSelectedOpeningId(null);
+                              setSelectedWallId(null);
+                              setSelectedCustomWallId(null);
+                            }}
+                            className={interactionMode === "space"
+                              ? "rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Espaços
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => { setInteractionMode("wall"); setSelectedId(null); setSelectedOpeningId(null); }}
                             className={interactionMode === "wall"
                               ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
@@ -1294,6 +1381,20 @@ export default function ConceptPlanner() {
                         activeFloor={activeFloor}
                         geometry={geometry}
                         closedSpaces={closedSpaces}
+                        selectedClosedSpaceId={selectedClosedSpaceId}
+                        onSelectClosedSpace={(spaceId) => {
+                          setSelectedClosedSpaceId(spaceId);
+                          setSelectedId(null);
+                          setSelectedOpeningId(null);
+                          setSelectedWallId(null);
+                          setSelectedCustomWallId(null);
+                        }}
+                        closedSpaceLabels={Object.fromEntries(
+                          closedSpaces.map((space) => [
+                            space.id,
+                            spaceAssignments.get(space.id)?.label ?? "",
+                          ]),
+                        )}
                         selectedId={selectedId}
                         onSelect={(roomId) => {
                           setSelectedId(roomId);
@@ -1331,6 +1432,8 @@ export default function ConceptPlanner() {
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
                         {interactionMode === "room"
                           ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
+                          : interactionMode === "space"
+                            ? "Espaços: selecione uma área fechada para nomear e classificar o ambiente diretamente na planta."
                           : interactionMode === "wall"
                             ? "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
                             : interactionMode === "draw-wall"
@@ -1381,7 +1484,52 @@ export default function ConceptPlanner() {
 
                 {editorView === "plan" && (
                   <>
-                    {interactionMode === "draw-wall" ? (
+                    {interactionMode === "space" ? (
+                      !selectedClosedSpace ? (
+                        <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                          Selecione uma área fechada na planta para definir seu nome e uso.
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-4">
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Espaço detectado</div>
+                            <div className="mt-1 text-lg font-bold text-emerald-950">{selectedClosedSpace.area.toFixed(1)} m²</div>
+                          </div>
+                          <label className="block text-xs font-semibold">
+                            Nome do ambiente
+                            <input
+                              value={selectedSpaceProfile?.label ?? ""}
+                              onChange={(event) => updateSelectedSpaceProfile({ label: event.target.value })}
+                              placeholder="Ex.: Sala de estar"
+                              className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                            />
+                          </label>
+                          <label className="block text-xs font-semibold">
+                            Tipo
+                            <select
+                              value={selectedSpaceProfile?.kind ?? "outro"}
+                              onChange={(event) => updateSelectedSpaceProfile({ kind: event.target.value })}
+                              className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                            >
+                              <option value="sala">Sala / estar</option>
+                              <option value="cozinha">Cozinha</option>
+                              <option value="suite">Suíte</option>
+                              <option value="quarto">Quarto</option>
+                              <option value="banheiro">Banheiro</option>
+                              <option value="lavanderia">Lavanderia</option>
+                              <option value="garagem">Garagem</option>
+                              <option value="gourmet">Gourmet</option>
+                              <option value="circulacao">Circulação</option>
+                              <option value="escada">Escada</option>
+                              <option value="outro">Outro</option>
+                            </select>
+                          </label>
+                          <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                            A classificação acompanha o espaço pela posição e área, mesmo após pequenos ajustes nas paredes.
+                          </div>
+                        </div>
+                      )
+                    ) : interactionMode === "draw-wall" ? (
                       <div className="mt-4 space-y-3">
                         <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
                           Toque no primeiro ponto e continue pelos vértices. Ao fechar o contorno, o sistema identifica automaticamente a área interna e calcula sua metragem.
