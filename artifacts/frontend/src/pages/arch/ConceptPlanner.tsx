@@ -25,7 +25,6 @@ import {
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
-import ConceptFacadeElevation from "./ConceptFacadeElevation";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
@@ -2088,12 +2087,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptFacadeElevation
-                  rooms={rooms}
-                  floors={floors}
-                  lotWidth={lotWidth}
-                  facade={facadePreferences}
-                />
+                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
