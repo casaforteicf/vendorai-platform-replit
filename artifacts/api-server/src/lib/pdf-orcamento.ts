@@ -42,27 +42,57 @@ export interface PdfOrcamentoOptions {
   orcamentoTitulo?: string | null;
   orcamentoStatus?: string;
   bdiGlobal: string | number;
+  modoPrecificacao?: string | null;
+  custosIndiretosPct?: string | number | null;
+  administracaoPct?: string | number | null;
+  riscoPct?: string | number | null;
+  financeiroPct?: string | number | null;
+  impostosPct?: string | number | null;
+  comissaoPct?: string | number | null;
+  margemPct?: string | number | null;
+  descontoPct?: string | number | null;
+  areaReferencia?: string | number | null;
   etapas: OrcamentoEtapa[];
 }
 
 // ─── Calculations ─────────────────────────────────────────────────────────────
 
-function calcItem(item: OrcamentoItem, bdiGlobal: number): number {
+function calcItem(item: OrcamentoItem, bdiGlobal: number, detailed = false): number {
   const qty = Number(item.quantidade) || 0;
   const cost = Number(item.custoUnitario) || 0;
+  const direct = qty * cost;
+  if (detailed) return direct;
   const bdi = item.bdi != null ? Number(item.bdi) : bdiGlobal;
-  return qty * cost * (1 + bdi / 100);
+  return direct * (1 + bdi / 100);
 }
 
-function calcEtapa(etapa: OrcamentoEtapa, bdiGlobal: number): number {
-  return etapa.itens.reduce((s, i) => s + calcItem(i, bdiGlobal), 0);
+function calcEtapa(etapa: OrcamentoEtapa, bdiGlobal: number, detailed = false): number {
+  return etapa.itens.reduce((s, i) => s + calcItem(i, bdiGlobal, detailed), 0);
+}
+
+function calcDetailedPrice(directCost: number, opts: PdfOrcamentoOptions) {
+  const n = (value: string | number | null | undefined) => Number(value ?? 0) || 0;
+  const operational =
+    n(opts.custosIndiretosPct) +
+    n(opts.administracaoPct) +
+    n(opts.riscoPct) +
+    n(opts.financeiroPct);
+  const enterpriseCost = directCost * (1 + operational / 100);
+  const salesPct = n(opts.impostosPct) + n(opts.comissaoPct) + n(opts.margemPct);
+  if (salesPct >= 100) return { enterpriseCost, salePrice: 0 };
+  const tablePrice = enterpriseCost / Math.max(0.0001, 1 - salesPct / 100);
+  const salePrice = tablePrice * (1 - Math.min(100, n(opts.descontoPct)) / 100);
+  return { enterpriseCost, salePrice };
 }
 
 // ─── HTML template ────────────────────────────────────────────────────────────
 
 function buildHtml(opts: PdfOrcamentoOptions): string {
   const bdiGlobal = Number(opts.bdiGlobal) || 0;
-  const totalGeral = opts.etapas.reduce((s, e) => s + calcEtapa(e, bdiGlobal), 0);
+  const detailed = opts.modoPrecificacao === "detalhada";
+  const directOrBdiTotal = opts.etapas.reduce((s, e) => s + calcEtapa(e, bdiGlobal, detailed), 0);
+  const detailedPrice = calcDetailedPrice(directOrBdiTotal, opts);
+  const totalGeral = detailed ? detailedPrice.salePrice : directOrBdiTotal;
 
   const statusLabel: Record<string, string> = {
     rascunho: "Rascunho",
@@ -73,14 +103,14 @@ function buildHtml(opts: PdfOrcamentoOptions): string {
   function renderItems(etapa: OrcamentoEtapa) {
     return etapa.itens.map((item, i) => {
       const bdiItem = item.bdi != null ? Number(item.bdi) : bdiGlobal;
-      const total = calcItem(item, bdiGlobal);
+      const total = calcItem(item, bdiGlobal, detailed);
       return `
       <tr class="${i % 2 === 0 ? "row-even" : "row-odd"}">
         <td class="td-nome">${esc(item.nome)}</td>
         <td class="td-center">${esc(item.unidade)}</td>
         <td class="td-right">${num(Number(item.quantidade) || 0)}</td>
         <td class="td-right">${money(Number(item.custoUnitario) || 0)}</td>
-        <td class="td-center">${num(bdiItem)}%</td>
+        <td class="td-center">${detailed ? "—" : `${num(bdiItem)}%`}</td>
         <td class="td-right td-total">${money(total)}</td>
       </tr>`;
     }).join("");
@@ -88,8 +118,9 @@ function buildHtml(opts: PdfOrcamentoOptions): string {
 
   function renderEtapas() {
     return opts.etapas.map((etapa) => {
-      const etapaTotal = calcEtapa(etapa, bdiGlobal);
-      const pct = totalGeral > 0 ? ((etapaTotal / totalGeral) * 100).toFixed(1) : "0.0";
+      const etapaTotal = calcEtapa(etapa, bdiGlobal, detailed);
+      const baseTotal = detailed ? directOrBdiTotal : totalGeral;
+      const pct = baseTotal > 0 ? ((etapaTotal / baseTotal) * 100).toFixed(1) : "0.0";
       return `
       <tr class="row-etapa">
         <td colspan="5" class="td-etapa-nome">📐 ${esc(etapa.nome)}</td>
@@ -203,7 +234,7 @@ function buildHtml(opts: PdfOrcamentoOptions): string {
   <div class="subtitle">${esc(opts.obraNome)} — ${titulo}</div>
   <div class="header-meta">
     ${opts.obraEndereco ? `<div class="header-meta-item">📍 <strong>${esc(opts.obraEndereco)}</strong></div>` : ""}
-    <div class="header-meta-item">📋 BDI Global: <strong>${num(bdiGlobal)}%</strong></div>
+    <div class="header-meta-item">📋 Precificação: <strong>${detailed ? "Detalhada" : `BDI ${num(bdiGlobal)}%`}</strong></div>
     <div class="header-meta-item">🗓 Emitido em: <strong>${emitidoEm}</strong></div>
   </div>
 </div>
@@ -219,7 +250,7 @@ function buildHtml(opts: PdfOrcamentoOptions): string {
   </div>
   <div class="summary-card">
     <div class="num" style="font-size:12pt">${money(totalGeral)}</div>
-    <div class="lbl">Total com BDI</div>
+    <div class="lbl">${detailed ? "Preço de venda" : "Total com BDI"}</div>
   </div>
 </div>
 
@@ -232,7 +263,7 @@ function buildHtml(opts: PdfOrcamentoOptions): string {
         <th class="th-center">Un.</th>
         <th class="th-right">Qtd.</th>
         <th class="th-right">Custo Unit.</th>
-        <th class="th-center">BDI %</th>
+        <th class="th-center">${detailed ? "BDI" : "BDI %"}</th>
         <th class="th-right">Total</th>
       </tr>
     </thead>
@@ -244,7 +275,10 @@ function buildHtml(opts: PdfOrcamentoOptions): string {
       </tr>
     </tbody>
   </table>
-  <p class="bdi-note">* BDI (Benefícios e Despesas Indiretas) de ${num(bdiGlobal)}% aplicado sobre o custo direto. Itens com BDI individual sobrescrevem o global.</p>
+  <p class="bdi-note">${detailed
+    ? `* Custo direto: ${money(directOrBdiTotal)} · custo empresarial: ${money(detailedPrice.enterpriseCost)} · impostos ${num(Number(opts.impostosPct ?? 0))}% · comissão ${num(Number(opts.comissaoPct ?? 0))}% · margem definida ${num(Number(opts.margemPct ?? 0))}% · desconto ${num(Number(opts.descontoPct ?? 0))}%.`
+    : `* BDI (Benefícios e Despesas Indiretas) de ${num(bdiGlobal)}% aplicado sobre o custo direto. Itens com BDI individual sobrescrevem o global.`
+  }</p>
 </div>
 
 <div class="report-footer">
