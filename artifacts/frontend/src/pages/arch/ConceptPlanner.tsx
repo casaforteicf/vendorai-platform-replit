@@ -29,6 +29,7 @@ import ConceptFacadeElevation from "./ConceptFacadeElevation";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
+import { detectClosedSpaces } from "./conceptWallNetwork";
 
 type RoomKind =
   | "sala"
@@ -547,6 +548,33 @@ export default function ConceptPlanner() {
     }),
     [baseGeometry, openingOverrides],
   );
+  const closedSpaces = useMemo(
+    () =>
+      detectClosedSpaces(
+        [
+          ...geometry.walls.map((wall) => ({
+            id: wall.id,
+            x1: wall.x1,
+            y1: wall.y1,
+            x2: wall.x2,
+            y2: wall.y2,
+          })),
+          ...customWalls
+            .filter((wall) => wall.floor === activeFloor)
+            .map((wall) => ({
+              id: wall.id,
+              x1: wall.x1,
+              y1: wall.y1,
+              x2: wall.x2,
+              y2: wall.y2,
+            })),
+        ],
+        lotWidth,
+        lotDepth,
+      ),
+    [geometry.walls, customWalls, activeFloor, lotWidth, lotDepth],
+  );
+  const closedArea = closedSpaces.reduce((sum, space) => sum + space.area, 0);
   const layoutIssues = useMemo(
     () => validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
@@ -1191,6 +1219,14 @@ export default function ConceptPlanner() {
                     </div>
                     {editorView === "plan" && (
                       <div className="flex flex-wrap items-center gap-2">
+                        <div className={closedSpaces.length
+                          ? "rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
+                          : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                        >
+                          {closedSpaces.length
+                            ? `${closedSpaces.length} área${closedSpaces.length > 1 ? "s" : ""} fechada${closedSpaces.length > 1 ? "s" : ""} · ${closedArea.toFixed(1)} m²`
+                            : "Nenhuma área fechada"}
+                        </div>
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
@@ -1257,6 +1293,7 @@ export default function ConceptPlanner() {
                         lotDepth={lotDepth}
                         activeFloor={activeFloor}
                         geometry={geometry}
+                        closedSpaces={closedSpaces}
                         selectedId={selectedId}
                         onSelect={(roomId) => {
                           setSelectedId(roomId);
@@ -1297,7 +1334,7 @@ export default function ConceptPlanner() {
                           : interactionMode === "wall"
                             ? "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
                             : interactionMode === "draw-wall"
-                              ? "Desenhar parede: toque no ponto inicial e depois no ponto final · o editor trava automaticamente em horizontal/vertical e grade de 25 cm."
+                              ? "Desenhar parede: cada segmento encaixa na rede existente; ao fechar um contorno, a área interna é detectada automaticamente."
                               : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
                       </div>
                     </>
@@ -1347,7 +1384,15 @@ export default function ConceptPlanner() {
                     {interactionMode === "draw-wall" ? (
                       <div className="mt-4 space-y-3">
                         <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
-                          Toque no primeiro ponto e continue tocando nos próximos pontos. Cada novo segmento parte do anterior, permitindo desenhar contornos em L, U e sequências ortogonais.
+                          Toque no primeiro ponto e continue pelos vértices. Ao fechar o contorno, o sistema identifica automaticamente a área interna e calcula sua metragem.
+                        </div>
+                        <div className={closedSpaces.length
+                          ? "rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800"
+                          : "rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"}
+                        >
+                          {closedSpaces.length
+                            ? `Detectado: ${closedSpaces.length} espaço${closedSpaces.length > 1 ? "s" : ""} fechado${closedSpaces.length > 1 ? "s" : ""}, total ${closedArea.toFixed(1)} m².`
+                            : "Feche o perímetro com paredes conectadas para o Arqdor reconhecer o ambiente."}
                         </div>
                         <button
                           type="button"

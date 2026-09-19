@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
-import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint } from "./conceptWallNetwork";
+import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace } from "./conceptWallNetwork";
 
 type Props = {
   rooms: ConceptRoomShape[];
@@ -8,6 +8,7 @@ type Props = {
   lotDepth: number;
   activeFloor?: number;
   geometry: ConceptGeometry;
+  closedSpaces?: ClosedSpace[];
   selectedId: string | null;
   onSelect: (roomId: string) => void;
   onRoomChange?: (roomId: string, patch: Partial<Pick<ConceptRoomShape, "x" | "y" | "width" | "depth">>) => void;
@@ -118,6 +119,7 @@ export default function ConceptPlan2D({
   lotDepth,
   activeFloor = 0,
   geometry,
+  closedSpaces = [],
   selectedId,
   onSelect,
   onRoomChange,
@@ -469,6 +471,43 @@ export default function ConceptPlan2D({
         <text x={lotWidth / 2} y={lotDepth + 1.35} textAnchor="middle" fontSize="0.34" fontWeight="800" fill="#64748b" letterSpacing="0.08">
           FRENTE / ACESSO
         </text>
+
+        {closedSpaces.map((space, index) => (
+          <g key={space.id} pointerEvents="none">
+            {space.cells.map((cell, cellIndex) => (
+              <rect
+                key={`${space.id}-cell-${cellIndex}`}
+                x={cell.x}
+                y={cell.y}
+                width={cell.width}
+                height={cell.height}
+                fill={index % 2 === 0 ? "#dbeafe" : "#dcfce7"}
+                opacity="0.28"
+              />
+            ))}
+            <g>
+              <rect
+                x={space.centroid.x - 0.9}
+                y={space.centroid.y - 0.36}
+                width="1.8"
+                height="0.58"
+                rx="0.14"
+                fill="#ffffff"
+                opacity="0.92"
+              />
+              <text
+                x={space.centroid.x}
+                y={space.centroid.y + 0.03}
+                textAnchor="middle"
+                fontSize="0.24"
+                fontWeight="800"
+                fill="#166534"
+              >
+                {space.area.toFixed(1)} m²
+              </text>
+            </g>
+          </g>
+        ))}
 
         {rooms.map((room) => {
           const selected = selectedId === room.id;
