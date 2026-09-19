@@ -8,7 +8,7 @@ import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
-import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";
+import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";\nimport { resolveSessionTenantContext } from "../lib/session-tenant-context.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -785,18 +785,37 @@ router.post("/auth/register", authenticate, requireRole("super_admin"), async (r
 });
 
 protectedRouter.get("/auth/me", async (req, res) => {
-  const [row] = await db
-    .select({ ...PUBLIC_FIELDS, tenantVertical: tenantsTable.vertical, tenantLogoUrl: tenantsTable.logoUrl, tenantWhiteLabel: tenantsTable.whiteLabelCompleto })
+  const [user] = await db
+    .select(PUBLIC_FIELDS)
     .from(usersTable)
-    .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .where(eq(usersTable.id, req.user!.sub));
 
-  if (!row || !row.active) {
+  if (!user || !user.active) {
     res.status(401).json({ error: "User not found or inactive" });
     return;
   }
 
-  res.json(row);
+  const sessionTenant = await resolveSessionTenantContext({
+    userId: user.id,
+    baseTenantId: user.tenantId,
+    tokenTenantId: req.user!.tenantId,
+  });
+
+  if (!sessionTenant.ok) {
+    res.status(403).json({
+      error: "SESSION_TENANT_FORBIDDEN",
+      reason: sessionTenant.reason,
+    });
+    return;
+  }
+
+  res.json({
+    ...user,
+    tenantId: sessionTenant.tenant.id,
+    tenantVertical: sessionTenant.tenant.vertical,
+    tenantLogoUrl: sessionTenant.tenant.logoUrl,
+    tenantWhiteLabel: sessionTenant.tenant.whiteLabelCompleto,
+  });
 });
 
 protectedRouter.post("/auth/refresh", async (req, res) => {
@@ -810,6 +829,20 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
     return;
   }
 
+  const sessionTenant = await resolveSessionTenantContext({
+    userId: user.id,
+    baseTenantId: user.tenantId,
+    tokenTenantId: req.user!.tenantId,
+  });
+
+  if (!sessionTenant.ok) {
+    res.status(403).json({
+      error: "SESSION_TENANT_FORBIDDEN",
+      reason: sessionTenant.reason,
+    });
+    return;
+  }
+
   let partnerId: string | undefined;
   if (user.platformRole === "partner") {
     const [partnerRow] = await db
@@ -819,17 +852,22 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
     partnerId = partnerRow?.id;
   }
 
+  const sessionUser = {
+    ...user,
+    tenantId: sessionTenant.tenant.id,
+  };
+
   const token = signToken({
     sub: user.id,
     email: user.email,
     platformRole: user.platformRole,
-    tenantId: user.tenantId,
+    tenantId: sessionTenant.tenant.id,
     role: user.role,
     userFunction: user.userFunction ?? undefined,
     ...(partnerId ? { partnerId } : {}),
   });
 
-  res.json({ token, user });
+  res.json({ token, user: sessionUser });
 });
 
 // ── Forgot password ───────────────────────────────────────────────────────
