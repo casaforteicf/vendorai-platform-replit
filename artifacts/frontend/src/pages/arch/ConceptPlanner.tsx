@@ -582,6 +582,7 @@ export default function ConceptPlanner() {
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "object" | "draw-wall" | "navigate">("room");
+  const [mobilePanel, setMobilePanel] = useState<"closed" | "build" | "properties">("closed");
   const [rooms, setRooms] = useState<Room[]>(() => normalizeDraftRooms(buildTypologyRooms("terrea_3q") as Room[]));
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
@@ -622,6 +623,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     roomsRef.current = rooms;
   }, [rooms]);
+
+  useEffect(() => {
+    setMobilePanel("closed");
+  }, [activeFloor, editorView]);
 
   useEffect(() => {
     customWallsRef.current = customWalls;
@@ -2366,14 +2371,14 @@ export default function ConceptPlanner() {
         )}
 
                 {step === 4 && (
-          <section className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3">
+          <section className="overflow-hidden rounded-3xl border bg-card pb-20 shadow-sm xl:pb-0">
+            <div className="flex flex-col gap-3 border-b bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
               <div>
                 <div className="text-sm font-semibold">Editor do pré-projeto</div>
                 <div className="text-xs text-muted-foreground">Edite a mesma casa em 2D, 3D, fachada e render sem sair do workspace.</div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-xl border bg-muted/40 p-1">
+              <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:pb-0">
+                <div className="inline-flex shrink-0 rounded-xl border bg-muted/40 p-1">
                   {([
                     ["plan", "2D"],
                     ["model3d", "3D"],
@@ -2425,12 +2430,35 @@ export default function ConceptPlanner() {
               className="fixed -left-[9999px] top-0 h-[650px] w-[900px] overflow-hidden"
               aria-hidden="true"
             >
-              <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+              <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} materials={materialScheme} />
             </div>
 
-            <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
-              <aside className="order-3 border-t bg-muted/20 p-3 xl:order-1 xl:border-r xl:border-t-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
+            {mobilePanel !== "closed" && (
+              <button
+                type="button"
+                aria-label="Fechar painel móvel"
+                onClick={() => setMobilePanel("closed")}
+                className="fixed inset-0 z-40 bg-slate-950/25 backdrop-blur-[1px] xl:hidden"
+              />
+            )}
+
+            <div className="grid min-h-[calc(100vh-210px)] xl:min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
+              <aside className={[
+                mobilePanel === "build"
+                  ? "fixed inset-x-3 bottom-20 z-50 block max-h-[68vh] overflow-y-auto rounded-2xl border bg-background p-3 shadow-2xl"
+                  : "hidden",
+                "order-3 xl:static xl:order-1 xl:block xl:max-h-none xl:overflow-visible xl:rounded-none xl:border-0 xl:border-r xl:bg-muted/20 xl:p-3 xl:shadow-none",
+              ].join(" ")}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
+                  <button
+                    type="button"
+                    onClick={() => setMobilePanel("closed")}
+                    className="rounded-lg border px-3 py-2 text-xs font-semibold xl:hidden"
+                  >
+                    Fechar
+                  </button>
+                </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-1">
                   {([
                     ["sala", "Sala"],
@@ -2524,7 +2552,7 @@ export default function ConceptPlanner() {
                       </div>
                     </div>
                     {editorView === "plan" && (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="-mx-1 flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
                         <div className={closedSpaces.length
                           ? "rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
                           : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground"}
@@ -2761,7 +2789,7 @@ export default function ConceptPlanner() {
                       />
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
                         {interactionMode === "navigate"
-                          ? "Navegar: arraste a planta para mover a visualização · use a roda do mouse ou os controles +/− para zoom."
+                          ? "Navegar: arraste com um dedo para mover · use pinça com dois dedos, roda do mouse ou +/− para zoom."
                           : interactionMode === "room"
                             ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
                           : interactionMode === "space"
@@ -2826,15 +2854,29 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <aside className="order-2 border-t bg-background p-4 xl:order-3 xl:border-l xl:border-t-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Propriedades</div>
+              <aside className={[
+                mobilePanel === "properties"
+                  ? "fixed inset-x-3 bottom-20 z-50 block max-h-[68vh] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl"
+                  : "hidden",
+                "order-2 xl:static xl:order-3 xl:block xl:max-h-none xl:overflow-visible xl:rounded-none xl:border-0 xl:border-l xl:bg-background xl:p-4 xl:shadow-none",
+              ].join(" ")}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Propriedades</div>
+                  <button
+                    type="button"
+                    onClick={() => setMobilePanel("closed")}
+                    className="rounded-lg border px-3 py-2 text-xs font-semibold xl:hidden"
+                  >
+                    Fechar
+                  </button>
+                </div>
 
                 {editorView === "plan" && (
                   <>
                     {interactionMode === "navigate" ? (
                       <div className="mt-4 space-y-3">
                         <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                          Arraste o canvas para navegar. Use a roda do mouse ou os botões de zoom no canto superior da planta. O botão de enquadrar retorna à visão completa.
+                          Arraste o canvas com mouse ou um dedo para navegar. Use pinça com dois dedos, roda do mouse ou os botões de zoom. O botão de enquadrar retorna à visão completa.
                         </div>
                         <button
                           type="button"
@@ -3810,6 +3852,49 @@ export default function ConceptPlanner() {
                 )}
               </aside>
             </div>
+
+            <div className="fixed inset-x-2 bottom-2 z-30 grid grid-cols-7 gap-1 rounded-2xl border bg-background/95 p-1.5 shadow-2xl backdrop-blur xl:hidden">
+              {([
+                ["navigate", "Mover"],
+                ["room", "Amb."],
+                ["wall", "Parede"],
+                ["opening", "Vãos"],
+                ["object", "Obj."],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setEditorView("plan");
+                    setInteractionMode(mode);
+                    setMobilePanel("closed");
+                  }}
+                  className={interactionMode === mode && editorView === "plan"
+                    ? "min-h-12 rounded-xl bg-foreground px-1 text-[10px] font-bold text-background"
+                    : "min-h-12 rounded-xl px-1 text-[10px] font-semibold text-muted-foreground"}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setMobilePanel((current) => current === "build" ? "closed" : "build")}
+                className={mobilePanel === "build"
+                  ? "min-h-12 rounded-xl bg-orange-500 px-1 text-[10px] font-bold text-white"
+                  : "min-h-12 rounded-xl px-1 text-[10px] font-semibold text-muted-foreground"}
+              >
+                + Itens
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobilePanel((current) => current === "properties" ? "closed" : "properties")}
+                className={mobilePanel === "properties"
+                  ? "min-h-12 rounded-xl bg-violet-600 px-1 text-[10px] font-bold text-white"
+                  : "min-h-12 rounded-xl px-1 text-[10px] font-semibold text-muted-foreground"}
+              >
+                Ajustes
+              </button>
+            </div>
           </section>
         )}
 
@@ -3934,7 +4019,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+                <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} materials={materialScheme} />
               </div>
 
               <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
@@ -4067,7 +4152,7 @@ export default function ConceptPlanner() {
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
-                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+                    <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} materials={materialScheme} />
                   </div>
                 </div>
               </div>
