@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveAIKey } from "../lib/ai-gateway.js";
-import { and, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
+import { and, or, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
@@ -38,8 +38,14 @@ import {
   insertObraOrcamentoItemSchema,
   insertCompraObraSchema,
   insertInsumoSchema,
+  updateInsumoSchema,
   insertComposicaoSchema,
   insertComposicaoInsumoSchema,
+  tabelasPrecosObrasTable,
+  tabelaPrecosObrasItensTable,
+  insumoPrecoHistoricoTable,
+  insertTabelaPrecosObrasSchema,
+  insertTabelaPrecosObrasItemSchema,
   updateObraOrcamentoItemSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
@@ -690,6 +696,281 @@ router.put("/tenants/:tenantId/compras-obras/:compraId", async (req, res) => {
   return res.json(compra);
 });
 
+// ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
+
+function numberOrZero(value: string | number | null | undefined): number {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(value ?? "0");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function recalcularCustoComposicao(composicaoId: string): Promise<number> {
+  const itens = await db
+    .select({
+      quantidade: composicaoInsumosTable.quantidade,
+      precoOverride: composicaoInsumosTable.precoUnitario,
+      precoMestre: insumosTable.precoUnitario,
+    })
+    .from(composicaoInsumosTable)
+    .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
+    .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+
+  const total = itens.reduce((sum, item) => {
+    const quantidade = numberOrZero(item.quantidade);
+    const preco = item.precoOverride != null
+      ? numberOrZero(item.precoOverride)
+      : numberOrZero(item.precoMestre);
+    return sum + quantidade * preco;
+  }, 0);
+
+  await db
+    .update(composicoesTable)
+    .set({ custoTotal: total.toFixed(4), updatedAt: new Date() })
+    .where(eq(composicoesTable.id, composicaoId));
+
+  return total;
+}
+
+async function propagarPrecoParaOrcamentos(params: {
+  tenantId: string;
+  insumoId: string;
+  precoInsumo: number;
+  composicoesAtualizadas: Map<string, number>;
+}) {
+  const { tenantId: tid, insumoId, precoInsumo, composicoesAtualizadas } = params;
+  const composicaoIds = [...composicoesAtualizadas.keys()];
+  const sourceFilters = [eq(obraOrcamentoItensTable.insumoId, insumoId)];
+  if (composicaoIds.length > 0) {
+    sourceFilters.push(inArray(obraOrcamentoItensTable.composicaoId, composicaoIds));
+  }
+
+  const itens = await db
+    .select({
+      itemId: obraOrcamentoItensTable.id,
+      insumoId: obraOrcamentoItensTable.insumoId,
+      composicaoId: obraOrcamentoItensTable.composicaoId,
+      orcamentoId: obraOrcamentosTable.id,
+      status: obraOrcamentosTable.status,
+    })
+    .from(obraOrcamentoItensTable)
+    .innerJoin(obraOrcamentoEtapasTable, eq(obraOrcamentoItensTable.etapaId, obraOrcamentoEtapasTable.id))
+    .innerJoin(obraOrcamentosTable, eq(obraOrcamentoEtapasTable.orcamentoId, obraOrcamentosTable.id))
+    .where(and(
+      eq(obraOrcamentosTable.tenantId, tid),
+      or(...sourceFilters),
+    ));
+
+  const rascunhos = new Set<string>();
+  const enviados = new Set<string>();
+
+  for (const item of itens) {
+    if (item.status === "rascunho") {
+      const custo = item.composicaoId
+        ? composicoesAtualizadas.get(item.composicaoId)
+        : precoInsumo;
+      if (custo == null) continue;
+
+      await db
+        .update(obraOrcamentoItensTable)
+        .set({
+          custoUnitario: custo.toFixed(4),
+          precoAtualizadoEm: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(obraOrcamentoItensTable.id, item.itemId));
+      rascunhos.add(item.orcamentoId);
+    } else if (item.status === "enviado") {
+      enviados.add(item.orcamentoId);
+    }
+    // aprovado/contratado e demais estados ficam congelados por desenho.
+  }
+
+  if (rascunhos.size > 0) {
+    await db
+      .update(obraOrcamentosTable)
+      .set({
+        precosDesatualizados: false,
+        precosAtualizadosEm: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(inArray(obraOrcamentosTable.id, [...rascunhos]));
+  }
+
+  if (enviados.size > 0) {
+    await db
+      .update(obraOrcamentosTable)
+      .set({ precosDesatualizados: true, updatedAt: new Date() })
+      .where(inArray(obraOrcamentosTable.id, [...enviados]));
+  }
+
+  return {
+    orcamentosRecalculados: rascunhos.size,
+    orcamentosComAviso: enviados.size,
+  };
+}
+
+async function aplicarPrecoMestre(params: {
+  tenantId: string;
+  insumoId: string;
+  precoNovo: number;
+  tabelaPrecoId?: string | null;
+  fornecedor?: string | null;
+  regiao?: string | null;
+  origem?: string;
+  alteradoPorId?: string | null;
+}) {
+  const {
+    tenantId: tid,
+    insumoId,
+    precoNovo,
+    tabelaPrecoId = null,
+    fornecedor = null,
+    regiao = null,
+    origem = "tabela_precos",
+    alteradoPorId = null,
+  } = params;
+
+  const [insumo] = await db
+    .select()
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+
+  if (!insumo) return null;
+
+  const precoAnterior = insumo.precoUnitario == null ? null : numberOrZero(insumo.precoUnitario);
+
+  await db
+    .update(insumosTable)
+    .set({ precoUnitario: precoNovo.toFixed(4), updatedAt: new Date() })
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+
+  if (precoAnterior == null || Math.abs(precoAnterior - precoNovo) > 0.00005) {
+    await db.insert(insumoPrecoHistoricoTable).values({
+      tenantId: tid,
+      insumoId,
+      tabelaPrecoId,
+      precoAnterior: precoAnterior == null ? null : precoAnterior.toFixed(4),
+      precoNovo: precoNovo.toFixed(4),
+      origem,
+      fornecedor,
+      regiao,
+      alteradoPorId,
+    });
+  }
+
+  const composicoes = await db
+    .select({ id: composicoesTable.id })
+    .from(composicaoInsumosTable)
+    .innerJoin(composicoesTable, eq(composicaoInsumosTable.composicaoId, composicoesTable.id))
+    .where(and(
+      eq(composicaoInsumosTable.insumoId, insumoId),
+      eq(composicoesTable.tenantId, tid),
+    ));
+
+  const custosComposicoes = new Map<string, number>();
+  for (const composicao of composicoes) {
+    const custo = await recalcularCustoComposicao(composicao.id);
+    custosComposicoes.set(composicao.id, custo);
+  }
+
+  const impacto = await propagarPrecoParaOrcamentos({
+    tenantId: tid,
+    insumoId,
+    precoInsumo: precoNovo,
+    composicoesAtualizadas: custosComposicoes,
+  });
+
+  return {
+    insumoId,
+    precoAnterior,
+    precoNovo,
+    composicoesRecalculadas: custosComposicoes.size,
+    ...impacto,
+  };
+}
+
+async function recalcularOrcamentoComTabelaAtual(tenantId: string, orcamentoId: string) {
+  const [orcamento] = await db
+    .select({ id: obraOrcamentosTable.id, status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tenantId),
+    ));
+
+  if (!orcamento) return { ok: false as const, motivo: "not_found" as const };
+  if (orcamento.status === "aprovado" || orcamento.status === "contratado") {
+    return { ok: false as const, motivo: "locked" as const };
+  }
+
+  const itens = await db
+    .select({
+      id: obraOrcamentoItensTable.id,
+      insumoId: obraOrcamentoItensTable.insumoId,
+      composicaoId: obraOrcamentoItensTable.composicaoId,
+    })
+    .from(obraOrcamentoItensTable)
+    .innerJoin(obraOrcamentoEtapasTable, eq(obraOrcamentoItensTable.etapaId, obraOrcamentoEtapasTable.id))
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+
+  let atualizados = 0;
+  for (const item of itens) {
+    let custo: number | null = null;
+
+    if (item.composicaoId) {
+      const [comp] = await db
+        .select({ custoTotal: composicoesTable.custoTotal })
+        .from(composicoesTable)
+        .where(and(
+          eq(composicoesTable.id, item.composicaoId),
+          eq(composicoesTable.tenantId, tenantId),
+        ));
+      if (comp?.custoTotal != null) custo = numberOrZero(comp.custoTotal);
+    } else if (item.insumoId) {
+      const [insumo] = await db
+        .select({ precoUnitario: insumosTable.precoUnitario })
+        .from(insumosTable)
+        .where(and(
+          eq(insumosTable.id, item.insumoId),
+          eq(insumosTable.tenantId, tenantId),
+        ));
+      if (insumo?.precoUnitario != null) custo = numberOrZero(insumo.precoUnitario);
+    }
+
+    if (custo == null) continue;
+
+    await db
+      .update(obraOrcamentoItensTable)
+      .set({
+        custoUnitario: custo.toFixed(4),
+        precoAtualizadoEm: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(obraOrcamentoItensTable.id, item.id));
+    atualizados += 1;
+  }
+
+  const [tabelaPadrao] = await db
+    .select({ id: tabelasPrecosObrasTable.id })
+    .from(tabelasPrecosObrasTable)
+    .where(and(
+      eq(tabelasPrecosObrasTable.tenantId, tenantId),
+      eq(tabelasPrecosObrasTable.isPadrao, true),
+      eq(tabelasPrecosObrasTable.ativo, true),
+    ));
+
+  await db
+    .update(obraOrcamentosTable)
+    .set({
+      tabelaPrecoId: tabelaPadrao?.id ?? null,
+      precosDesatualizados: false,
+      precosAtualizadosEm: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(obraOrcamentosTable.id, orcamentoId));
+
+  return { ok: true as const, itensAtualizados: atualizados, tabelaPrecoId: tabelaPadrao?.id ?? null };
+}
+
 // ─── Insumos ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/insumos", async (req, res) => {
@@ -719,12 +1000,26 @@ router.put("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
   const { tenantId: tid, insumoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = updateInsumoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  let impactoPreco: Awaited<ReturnType<typeof aplicarPrecoMestre>> | null = null;
+  if (parsed.data.precoUnitario !== undefined) {
+    impactoPreco = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId,
+      precoNovo: numberOrZero(parsed.data.precoUnitario),
+      origem: "cadastro_insumo",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+  }
+
   const [insumo] = await db.update(insumosTable)
-    .set({ ...req.body, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() })
     .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)))
     .returning();
   if (!insumo) return res.status(404).json({ error: "Not found" });
-  return res.json(insumo);
+  return res.json({ ...insumo, impactoPreco });
 });
 
 router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
@@ -733,6 +1028,228 @@ router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
 
   await db.delete(insumosTable).where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
   return res.status(204).end();
+});
+
+// ─── Tabelas de Preços de Obras ───────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(eq(tabelasPrecosObrasTable.tenantId, tid))
+    .orderBy(desc(tabelasPrecosObrasTable.isPadrao), desc(tabelasPrecosObrasTable.updatedAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/tabelas-precos-obras", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertTabelaPrecosObrasSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.isPadrao) {
+    await db
+      .update(tabelasPrecosObrasTable)
+      .set({ isPadrao: false, updatedAt: new Date() })
+      .where(eq(tabelasPrecosObrasTable.tenantId, tid));
+  }
+
+  const [row] = await db.insert(tabelasPrecosObrasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens", async (req, res) => {
+  const { tenantId: tid, tabelaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tabela] = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(and(eq(tabelasPrecosObrasTable.id, tabelaId), eq(tabelasPrecosObrasTable.tenantId, tid)));
+  if (!tabela) return res.status(404).json({ error: "Tabela de preços não encontrada" });
+
+  const itens = await db
+    .select({
+      id: tabelaPrecosObrasItensTable.id,
+      tabelaPrecoId: tabelaPrecosObrasItensTable.tabelaPrecoId,
+      insumoId: tabelaPrecosObrasItensTable.insumoId,
+      precoBase: tabelaPrecosObrasItensTable.precoBase,
+      freteUnitario: tabelaPrecosObrasItensTable.freteUnitario,
+      impostosPercentual: tabelaPrecosObrasItensTable.impostosPercentual,
+      descontoPercentual: tabelaPrecosObrasItensTable.descontoPercentual,
+      precoFinal: tabelaPrecosObrasItensTable.precoFinal,
+      fornecedor: tabelaPrecosObrasItensTable.fornecedor,
+      marca: tabelaPrecosObrasItensTable.marca,
+      regiao: tabelaPrecosObrasItensTable.regiao,
+      dataCotacao: tabelaPrecosObrasItensTable.dataCotacao,
+      validade: tabelaPrecosObrasItensTable.validade,
+      observacoes: tabelaPrecosObrasItensTable.observacoes,
+      updatedAt: tabelaPrecosObrasItensTable.updatedAt,
+      insumo: insumosTable,
+    })
+    .from(tabelaPrecosObrasItensTable)
+    .innerJoin(insumosTable, eq(tabelaPrecosObrasItensTable.insumoId, insumosTable.id))
+    .where(and(
+      eq(tabelaPrecosObrasItensTable.tabelaPrecoId, tabelaId),
+      eq(insumosTable.tenantId, tid),
+    ))
+    .orderBy(asc(insumosTable.nome));
+
+  return res.json({ tabela, itens });
+});
+
+router.put("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/itens/:insumoId", async (req, res) => {
+  const { tenantId: tid, tabelaId, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tabela] = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(and(eq(tabelasPrecosObrasTable.id, tabelaId), eq(tabelasPrecosObrasTable.tenantId, tid)));
+  if (!tabela) return res.status(404).json({ error: "Tabela de preços não encontrada" });
+
+  const [insumo] = await db
+    .select({ id: insumosTable.id })
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+  if (!insumo) return res.status(404).json({ error: "Insumo não encontrado" });
+
+  const precoBaseRaw = Number(req.body.precoBase);
+  if (!Number.isFinite(precoBaseRaw) || precoBaseRaw < 0) {
+    return res.status(422).json({ error: "precoBase inválido" });
+  }
+
+  const frete = Math.max(0, numberOrZero(req.body.freteUnitario));
+  const impostos = Math.max(0, numberOrZero(req.body.impostosPercentual));
+  const desconto = Math.max(0, Math.min(100, numberOrZero(req.body.descontoPercentual)));
+  const precoFinal = (precoBaseRaw + frete) * (1 + impostos / 100) * (1 - desconto / 100);
+
+  const payload = {
+    tabelaPrecoId: tabelaId,
+    insumoId,
+    precoBase: precoBaseRaw.toFixed(4),
+    freteUnitario: frete.toFixed(4),
+    impostosPercentual: impostos.toFixed(4),
+    descontoPercentual: desconto.toFixed(4),
+    precoFinal: precoFinal.toFixed(4),
+    fornecedor: req.body.fornecedor ?? tabela.fornecedor ?? null,
+    marca: req.body.marca ?? null,
+    regiao: req.body.regiao ?? tabela.regiao ?? null,
+    dataCotacao: req.body.dataCotacao ?? null,
+    validade: req.body.validade ?? null,
+    observacoes: req.body.observacoes ?? null,
+  };
+
+  const parsed = insertTabelaPrecosObrasItemSchema.safeParse(payload);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [existing] = await db
+    .select({ id: tabelaPrecosObrasItensTable.id })
+    .from(tabelaPrecosObrasItensTable)
+    .where(and(
+      eq(tabelaPrecosObrasItensTable.tabelaPrecoId, tabelaId),
+      eq(tabelaPrecosObrasItensTable.insumoId, insumoId),
+    ));
+
+  const [row] = existing
+    ? await db
+        .update(tabelaPrecosObrasItensTable)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(eq(tabelaPrecosObrasItensTable.id, existing.id))
+        .returning()
+    : await db.insert(tabelaPrecosObrasItensTable).values(parsed.data).returning();
+
+  let impacto = null;
+  if (tabela.isPadrao && tabela.ativo) {
+    impacto = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId,
+      precoNovo: precoFinal,
+      tabelaPrecoId: tabelaId,
+      fornecedor: payload.fornecedor,
+      regiao: payload.regiao,
+      origem: "tabela_precos",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+  }
+
+  return res.json({ ...row, impacto });
+});
+
+router.post("/tenants/:tenantId/tabelas-precos-obras/:tabelaId/ativar", async (req, res) => {
+  const { tenantId: tid, tabelaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [tabela] = await db
+    .select()
+    .from(tabelasPrecosObrasTable)
+    .where(and(eq(tabelasPrecosObrasTable.id, tabelaId), eq(tabelasPrecosObrasTable.tenantId, tid)));
+  if (!tabela) return res.status(404).json({ error: "Tabela de preços não encontrada" });
+
+  await db
+    .update(tabelasPrecosObrasTable)
+    .set({ isPadrao: false, updatedAt: new Date() })
+    .where(eq(tabelasPrecosObrasTable.tenantId, tid));
+
+  await db
+    .update(tabelasPrecosObrasTable)
+    .set({ isPadrao: true, ativo: true, updatedAt: new Date() })
+    .where(eq(tabelasPrecosObrasTable.id, tabelaId));
+
+  const itens = await db
+    .select()
+    .from(tabelaPrecosObrasItensTable)
+    .where(eq(tabelaPrecosObrasItensTable.tabelaPrecoId, tabelaId));
+
+  let composicoesRecalculadas = 0;
+  const rascunhos = new Set<string>();
+  const enviados = new Set<string>();
+
+  for (const item of itens) {
+    const impacto = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId: item.insumoId,
+      precoNovo: numberOrZero(item.precoFinal),
+      tabelaPrecoId: tabelaId,
+      fornecedor: item.fornecedor ?? tabela.fornecedor,
+      regiao: item.regiao ?? tabela.regiao,
+      origem: "ativacao_tabela_precos",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+    if (impacto) {
+      composicoesRecalculadas += impacto.composicoesRecalculadas;
+      if (impacto.orcamentosRecalculados > 0) rascunhos.add(item.insumoId);
+      if (impacto.orcamentosComAviso > 0) enviados.add(item.insumoId);
+    }
+  }
+
+  return res.json({
+    tabelaId,
+    itensAplicados: itens.length,
+    composicoesRecalculadas,
+    insumosComImpactoEmRascunhos: rascunhos.size,
+    insumosComImpactoEmEnviados: enviados.size,
+  });
+});
+
+router.get("/tenants/:tenantId/insumos/:insumoId/precos-historico", async (req, res) => {
+  const { tenantId: tid, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(insumoPrecoHistoricoTable)
+    .where(and(
+      eq(insumoPrecoHistoricoTable.tenantId, tid),
+      eq(insumoPrecoHistoricoTable.insumoId, insumoId),
+    ))
+    .orderBy(desc(insumoPrecoHistoricoTable.createdAt));
+
+  return res.json(rows);
 });
 
 // ─── Estoque Central ──────────────────────────────────────────────────────────
@@ -975,11 +1492,23 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos", async (req, res) => {
     .where(and(eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   const nextVersao = (maxRow?.v ?? 0) + 1;
 
+  const [tabelaPadrao] = await db
+    .select({ id: tabelasPrecosObrasTable.id })
+    .from(tabelasPrecosObrasTable)
+    .where(and(
+      eq(tabelasPrecosObrasTable.tenantId, tid),
+      eq(tabelasPrecosObrasTable.isPadrao, true),
+      eq(tabelasPrecosObrasTable.ativo, true),
+    ));
+
   const parsed = insertObraOrcamentoSchema.safeParse({
     ...req.body,
     tenantId: tid,
     obraId,
     versao: nextVersao,
+    tabelaPrecoId: tabelaPadrao?.id ?? null,
+    precosDesatualizados: false,
+    precosAtualizadosEm: new Date(),
   });
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
@@ -1003,6 +1532,29 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (re
 
   const etapas = await getEtapasWithItens(orcamentoId);
   return res.json({ ...orcamento, etapas });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/recalcular-precos", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [owned] = await db
+    .select({ id: obraOrcamentosTable.id })
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!owned) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  const result = await recalcularOrcamentoComTabelaAtual(tid, orcamentoId);
+  if (!result.ok && result.motivo === "locked") {
+    return res.status(409).json({ error: "Orçamento aprovado/contratado mantém o snapshot de preços e não pode ser recalculado." });
+  }
+  if (!result.ok) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  return res.json(result);
 });
 
 // GET /tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc
@@ -1150,6 +1702,10 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate"
           unidade: i.unidade,
           quantidade: i.quantidade,
           custoUnitario: i.custoUnitario,
+          insumoId: i.insumoId,
+          composicaoId: i.composicaoId,
+          origemPreco: i.origemPreco,
+          precoAtualizadoEm: i.precoAtualizadoEm,
           bdi: i.bdi,
           ordem: i.ordem,
         }))
@@ -1157,6 +1713,7 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate"
     }
   }
 
+  await recalcularOrcamentoComTabelaAtual(tid, novo.id);
   return res.status(201).json(novo);
 });
 
@@ -1172,7 +1729,7 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas", a
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   const parsed = insertObraOrcamentoEtapaSchema.safeParse({ ...req.body, orcamentoId });
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -1190,7 +1747,7 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   const parsed = updateObraOrcamentoEtapaSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -1213,7 +1770,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   await db
     .delete(obraOrcamentoEtapasTable)
@@ -1232,9 +1789,56 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:et
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") {
+    return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
+  }
 
-  const parsed = insertObraOrcamentoItemSchema.safeParse({ ...req.body, etapaId });
+  const source = req.body as Record<string, unknown>;
+  if (source.insumoId && source.composicaoId) {
+    return res.status(422).json({ error: "O item pode estar ligado a um insumo OU a uma composição, não aos dois." });
+  }
+
+  const data: Record<string, unknown> = { ...source, etapaId };
+
+  if (typeof source.insumoId === "string" && source.insumoId) {
+    const [insumo] = await db
+      .select({
+        id: insumosTable.id,
+        nome: insumosTable.nome,
+        unidade: insumosTable.unidade,
+        precoUnitario: insumosTable.precoUnitario,
+      })
+      .from(insumosTable)
+      .where(and(eq(insumosTable.id, source.insumoId), eq(insumosTable.tenantId, tid)));
+    if (!insumo) return res.status(404).json({ error: "Insumo não encontrado" });
+
+    data.nome = source.nome || insumo.nome;
+    data.unidade = source.unidade || insumo.unidade;
+    data.custoUnitario = insumo.precoUnitario ?? "0";
+    data.origemPreco = "insumo";
+    data.precoAtualizadoEm = new Date();
+  } else if (typeof source.composicaoId === "string" && source.composicaoId) {
+    const [composicao] = await db
+      .select({
+        id: composicoesTable.id,
+        nome: composicoesTable.nome,
+        unidade: composicoesTable.unidade,
+        custoTotal: composicoesTable.custoTotal,
+      })
+      .from(composicoesTable)
+      .where(and(eq(composicoesTable.id, source.composicaoId), eq(composicoesTable.tenantId, tid)));
+    if (!composicao) return res.status(404).json({ error: "Composição não encontrada" });
+
+    data.nome = source.nome || composicao.nome;
+    data.unidade = source.unidade || composicao.unidade;
+    data.custoUnitario = composicao.custoTotal ?? "0";
+    data.origemPreco = "composicao";
+    data.precoAtualizadoEm = new Date();
+  } else {
+    data.origemPreco = "manual";
+  }
+
+  const parsed = insertObraOrcamentoItemSchema.safeParse(data);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
   const [row] = await db.insert(obraOrcamentoItensTable).values(parsed.data).returning();
@@ -1250,7 +1854,7 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   const parsed = updateObraOrcamentoItemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -1273,7 +1877,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   await db
     .delete(obraOrcamentoItensTable)

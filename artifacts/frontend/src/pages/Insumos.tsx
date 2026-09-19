@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Package, Pencil, Trash2, Search, Upload, Download } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet } from "lucide-react";
 import type { Insumo } from "@workspace/api-client-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
@@ -162,6 +162,9 @@ export default function Insumos() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [priceTableOpen, setPriceTableOpen] = useState(false);
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [priceSaving, setPriceSaving] = useState(false);
   const { toast } = useToast();
 
   const { data: insumos = [], isLoading } = useListInsumos(tenantId, {}, {
@@ -169,6 +172,7 @@ export default function Insumos() {
   });
 
   const { mutateAsync: createInsumo, isPending: isCreating } = useCreateInsumo();
+  const { mutateAsync: updateInsumo } = useUpdateInsumo();
   const { mutateAsync: deleteInsumo } = useDeleteInsumo();
 
   async function handleCreate(data: Record<string, unknown>) {
@@ -188,16 +192,33 @@ export default function Insumos() {
     try {
       const rows = parseConstructionCsv(await importFile.text());
       if (!rows.length) throw new Error("O CSV está vazio ou não possui cabeçalho.");
-      const known = new Set(insumos.flatMap((item) => [item.codigo?.trim().toLowerCase(), item.nome.trim().toLowerCase()].filter(Boolean) as string[]));
+      const byKey = new Map<string, Insumo>();
+      for (const item of insumos) {
+        if (item.codigo?.trim()) byKey.set(item.codigo.trim().toLowerCase(), item);
+        byKey.set(item.nome.trim().toLowerCase(), item);
+      }
       let imported = 0;
+      let updatedPrices = 0;
       let ignored = 0;
       for (const row of rows) {
         const nome = row.nome?.trim();
         const codigo = row.codigo?.trim();
         const key = (codigo || nome || "").toLowerCase();
-        if (!nome || !row.unidade?.trim() || !key || known.has(key)) { ignored += 1; continue; }
+        if (!nome || !row.unidade?.trim() || !key) { ignored += 1; continue; }
+
         const precoUnitario = csvDecimal(row.preco_unitario);
-        await createInsumo({ tenantId, data: {
+        const existing = byKey.get(key) ?? byKey.get(nome.toLowerCase());
+        if (existing) {
+          if (precoUnitario && Number(existing.precoUnitario ?? 0) !== Number(precoUnitario)) {
+            await updateInsumo({ tenantId, insumoId: existing.id, data: { precoUnitario } as any });
+            updatedPrices += 1;
+          } else {
+            ignored += 1;
+          }
+          continue;
+        }
+
+        const created = await createInsumo({ tenantId, data: {
           nome,
           unidade: row.unidade.trim(),
           ...(codigo ? { codigo } : {}),
@@ -205,16 +226,68 @@ export default function Insumos() {
           ...(row.categoria ? { categoria: row.categoria } : {}),
           ...(precoUnitario ? { precoUnitario } : {}),
         } as any });
-        known.add(key);
-        known.add(nome.toLowerCase());
+        if (codigo) byKey.set(codigo.toLowerCase(), created);
+        byKey.set(nome.toLowerCase(), created);
         imported += 1;
       }
       await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
-      toast({ title: `${imported} insumo(s) importado(s)`, description: ignored ? `${ignored} linha(s) inválida(s) ou já cadastrada(s) foram ignoradas.` : undefined });
+      toast({
+        title: `${imported} insumo(s) novo(s) · ${updatedPrices} preço(s) atualizado(s)`,
+        description: ignored ? `${ignored} linha(s) sem alteração ou inválida(s) foram ignoradas.` : undefined,
+      });
       setImportOpen(false); setImportFile(null);
     } catch (error) {
       toast({ title: "Não foi possível importar o CSV", description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.", variant: "destructive" });
     } finally { setImporting(false); }
+  }
+
+  function openPriceTable() {
+    setPriceDrafts(Object.fromEntries(insumos.map((item) => [item.id, item.precoUnitario ?? ""])));
+    setPriceTableOpen(true);
+  }
+
+  async function savePriceTable() {
+    setPriceSaving(true);
+    try {
+      let changed = 0;
+      let draftsRecalculated = 0;
+      let sentWithWarning = 0;
+
+      for (const item of insumos) {
+        const nextRaw = priceDrafts[item.id]?.trim() ?? "";
+        const current = item.precoUnitario == null ? "" : String(Number(item.precoUnitario));
+        const next = nextRaw === "" ? "" : String(Number(nextRaw));
+        if (next === current) continue;
+        if (next === "" || !Number.isFinite(Number(next)) || Number(next) < 0) continue;
+
+        const result = await updateInsumo({
+          tenantId,
+          insumoId: item.id,
+          data: { precoUnitario: next } as any,
+        }) as any;
+
+        changed += 1;
+        draftsRecalculated += Number(result?.impactoPreco?.orcamentosRecalculados ?? 0);
+        sentWithWarning += Number(result?.impactoPreco?.orcamentosComAviso ?? 0);
+      }
+
+      await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
+      toast({
+        title: changed ? `${changed} preço(s) atualizado(s)` : "Nenhuma alteração de preço",
+        description: changed
+          ? `Rascunhos recalculados: ${draftsRecalculated}. Orçamentos enviados sinalizados: ${sentWithWarning}.`
+          : "Os valores da tabela mestre já estavam atualizados.",
+      });
+      setPriceTableOpen(false);
+    } catch (error) {
+      toast({
+        title: "Não foi possível atualizar a tabela de preços",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setPriceSaving(false);
+    }
   }
 
   const filtered = insumos.filter((i) => {
@@ -236,6 +309,60 @@ export default function Insumos() {
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de materiais e insumos para alocação em obras</p>
         </div>
         <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="gap-2" onClick={openPriceTable}>
+          <FileSpreadsheet className="h-4 w-4" />Tabela mestre de preços
+        </Button>
+        <Dialog open={priceTableOpen} onOpenChange={setPriceTableOpen}>
+          <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Tabela Mestre de Preços</DialogTitle>
+            </DialogHeader>
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+              Alterar um preço aqui atualiza o custo do insumo, recalcula as composições dependentes e os orçamentos em rascunho.
+              Orçamentos enviados recebem aviso de preço desatualizado; aprovados permanecem congelados.
+            </div>
+            <div className="overflow-auto border rounded-lg flex-1 min-h-0">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-background border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2">Código</th>
+                    <th className="text-left px-3 py-2">Insumo</th>
+                    <th className="text-left px-3 py-2">Un.</th>
+                    <th className="text-left px-3 py-2">Categoria</th>
+                    <th className="text-right px-3 py-2 w-44">Preço mestre (R$)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {insumos.map((item) => (
+                    <tr key={item.id} className="border-b last:border-0">
+                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{item.codigo ?? "—"}</td>
+                      <td className="px-3 py-2 font-medium">{item.nome}</td>
+                      <td className="px-3 py-2">{item.unidade}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{item.categoria ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          className="h-8 text-right font-mono"
+                          value={priceDrafts[item.id] ?? ""}
+                          onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                          placeholder="0,00"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setPriceTableOpen(false)} disabled={priceSaving}>Cancelar</Button>
+              <Button onClick={savePriceTable} disabled={priceSaving}>
+                {priceSaving ? "Atualizando preços..." : "Salvar e recalcular"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={importOpen} onOpenChange={setImportOpen}>
           <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar CSV</Button></DialogTrigger>
           <DialogContent className="w-full max-w-lg">
