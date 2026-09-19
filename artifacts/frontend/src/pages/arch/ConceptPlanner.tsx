@@ -1835,6 +1835,25 @@ export default function ConceptPlanner() {
                               {Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)} m · espessura {((selectedCustomWall.thickness ?? 0.15) * 100).toFixed(0)} cm
                             </div>
                           </div>
+                          <div>
+                            <div className="mb-2 text-xs font-semibold text-muted-foreground">Adicionar vão nesta parede</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")}
+                                className="rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-muted"
+                              >
+                                + Porta
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")}
+                                className="rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-muted"
+                              >
+                                + Janela
+                              </button>
+                            </div>
+                          </div>
                           <div className="grid grid-cols-2 gap-3">
                             <label className="block text-xs font-semibold">
                               Comprimento exato (m)
@@ -1985,6 +2004,15 @@ export default function ConceptPlanner() {
                           >
                             Trocar para {selectedOpening.type === "door" ? "janela" : "porta"}
                           </button>
+                          {customOpenings.some((opening) => opening.id === selectedOpening.id) && (
+                            <button
+                              type="button"
+                              onClick={() => deleteCustomOpening(selectedOpening.id)}
+                              className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
+                            >
+                              Excluir vão
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSelectedOpeningId(null)}
