@@ -5,6 +5,7 @@ import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenin
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofFaces, normalizeRoofParameters, roofPeakZ, type RoofInput } from "./conceptRoof";
+import type { ConceptModelLevel } from "./conceptModel";
 import { conceptObjectCorners, type ConceptObject } from "./conceptObjects";
 import { distanceBetweenPoints, pinchZoomScalar } from "./conceptViewport";
 import {
@@ -14,28 +15,6 @@ import {
   type ConceptMaterialRef,
   type ConceptMaterialScheme,
 } from "./conceptMaterials";
-
-export type ConceptModelLevel = {
-  floor: number;
-  elevation: number;
-  floorToFloorHeight: number;
-  walls: WallSegment[];
-  customWalls: Array<{
-    id: string;
-    floor: number;
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    thickness?: number;
-  }>;
-  closedSpaces: ClosedSpace[];
-  openings: OpeningMarker[];
-  labels: Record<string, string>;
-  stairs: StairCarrier[];
-  slabOpenings: StairSlabOpening[];
-  objects: ConceptObject[];
-};
 
 type Props = {
   lotWidth: number;

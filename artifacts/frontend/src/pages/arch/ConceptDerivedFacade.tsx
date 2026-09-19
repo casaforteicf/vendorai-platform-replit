@@ -1,5 +1,5 @@
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
-import type { ConceptModelLevel } from "./ConceptModel3D";
+import type { ConceptModelLevel } from "./conceptModel";
 import { normalizeOpeningParameters } from "./conceptOpenings";
 import { buildRoofFacadeProfile, normalizeRoofParameters } from "./conceptRoof";
 import { normalizeConceptMaterialScheme, type ConceptMaterialScheme } from "./conceptMaterials";

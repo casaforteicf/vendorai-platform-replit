@@ -26,7 +26,7 @@ import { buildConceptGeometry, nudgeOpening } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
-import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
+import ConceptModel3D from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
@@ -98,6 +98,7 @@ import {
   type RoomKind,
   type SpaceProfile,
 } from "./conceptEditorState";
+import { buildConceptModelLevels, matchSpaceProfiles } from "./conceptModel";
 
 function StepPill({ index, current, label }: { index: number; current: number; label: string }) {
   const active = index === current;
@@ -1011,135 +1012,37 @@ export default function ConceptPlanner() {
     [geometry.walls, customWalls, activeFloor, lotWidth, lotDepth],
   );
   const closedArea = closedSpaces.reduce((sum, space) => sum + space.area, 0);
-  const spaceAssignments = useMemo(() => {
-    const assignments = new Map<string, SpaceProfile>();
-    const usedProfiles = new Set<string>();
+  const spaceAssignments = useMemo(
+    () => matchSpaceProfiles(closedSpaces, spaceProfiles, activeFloor),
+    [closedSpaces, spaceProfiles, activeFloor],
+  );
 
-    for (const space of closedSpaces) {
-      const candidates = spaceProfiles
-        .filter((profile) => profile.floor === activeFloor && !usedProfiles.has(profile.id))
-        .map((profile) => {
-          const distance = Math.hypot(
-            profile.centroid.x - space.centroid.x,
-            profile.centroid.y - space.centroid.y,
-          );
-          const areaRatio = Math.abs(profile.area - space.area) / Math.max(1, space.area);
-          return { profile, score: distance + areaRatio * 2.5, distance, areaRatio };
-        })
-        .filter((candidate) => candidate.distance <= 3.5 && candidate.areaRatio <= 0.65)
-        .sort((a, b) => a.score - b.score);
-
-      const best = candidates[0]?.profile;
-      if (best) {
-        assignments.set(space.id, best);
-        usedProfiles.add(best.id);
-      }
-    }
-
-    return assignments;
-  }, [closedSpaces, spaceProfiles, activeFloor]);
-
-  const modelLevels = useMemo<ConceptModelLevel[]>(() => {
-    const floorToFloorHeight = (floorIndex: number) => {
-      const stair = rooms.find((room) => room.floor === floorIndex && room.kind === "escada");
-      return stair
-        ? normalizeStairParameters(stair).stairFloorToFloorHeight
-        : STAIR_LEVEL_HEIGHT;
-    };
-    const elevationAt = (floorIndex: number) => {
-      let elevation = 0;
-      for (let index = 0; index < floorIndex; index += 1) {
-        elevation += floorToFloorHeight(index);
-      }
-      return elevation;
-    };
-
-    return Array.from({ length: floors }, (_, floorIndex) => {
-      const base = buildConceptGeometry(rooms, lotWidth, lotDepth, floorIndex);
-      const floorGeometry = {
-        ...base,
-        openings: base.openings.map((opening) => {
-          const override = openingOverrides[opening.id];
-          return override ? { ...opening, ...override } : opening;
-        }),
-      };
-      const floorWallFirst = wallFirstFloors.includes(floorIndex);
-      const floorCustomWalls = customWalls.filter((wall) => wall.floor === floorIndex);
-      const legacyWalls = floorWallFirst ? [] : floorGeometry.walls;
-      const floorCustomOpeningMarkers = customOpenings
-        .filter((opening) => opening.floor === floorIndex)
-        .flatMap((opening) => {
-          const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
-          return wall ? [customOpeningToMarker(opening, wall)] : [];
-        });
-      const floorClosedSpaces = detectClosedSpaces(
-        [
-          ...legacyWalls.map((wall) => ({
-            id: wall.id,
-            x1: wall.x1,
-            y1: wall.y1,
-            x2: wall.x2,
-            y2: wall.y2,
-          })),
-          ...floorCustomWalls.map((wall) => ({
-            id: wall.id,
-            x1: wall.x1,
-            y1: wall.y1,
-            x2: wall.x2,
-            y2: wall.y2,
-          })),
-        ],
-        lotWidth,
-        lotDepth,
-      );
-
-      const labels: Record<string, string> = {};
-      const usedProfiles = new Set<string>();
-      for (const space of floorClosedSpaces) {
-        const best = spaceProfiles
-          .filter((profile) => profile.floor === floorIndex && !usedProfiles.has(profile.id))
-          .map((profile) => {
-            const distance = Math.hypot(
-              profile.centroid.x - space.centroid.x,
-              profile.centroid.y - space.centroid.y,
-            );
-            const areaRatio = Math.abs(profile.area - space.area) / Math.max(1, space.area);
-            return { profile, score: distance + areaRatio * 2.5, distance, areaRatio };
-          })
-          .filter((candidate) => candidate.distance <= 3.5 && candidate.areaRatio <= 0.65)
-          .sort((a, b) => a.score - b.score)[0];
-
-        if (best) {
-          labels[space.id] = best.profile.label;
-          usedProfiles.add(best.profile.id);
-        }
-      }
-
-      return {
-        floor: floorIndex,
-        elevation: elevationAt(floorIndex),
-        floorToFloorHeight: floorToFloorHeight(floorIndex),
-        walls: legacyWalls,
-        customWalls: floorCustomWalls,
-        closedSpaces: floorClosedSpaces,
-        openings: floorWallFirst
-          ? floorCustomOpeningMarkers
-          : [...floorGeometry.openings, ...floorCustomOpeningMarkers],
-        labels,
-        stairs: rooms
-          .filter((room) => room.floor === floorIndex && room.kind === "escada")
-          .map((room) => ({ ...room, ...normalizeStairParameters(room) })),
-        slabOpenings: floorIndex > 0
-          ? rooms
-              .filter((room) => room.floor === floorIndex - 1 && room.kind === "escada")
-              .flatMap((room) => buildStairSlabOpenings(room))
-          : [],
-        objects: objects
-          .filter((object) => object.floor === floorIndex)
-          .map((object) => normalizeConceptObject(object, lotWidth, lotDepth)),
-      };
-    });
-  }, [floors, rooms, objects, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles, wallFirstFloors]);
+  const modelLevels = useMemo(
+    () => buildConceptModelLevels({
+      floors,
+      rooms,
+      objects,
+      lotWidth,
+      lotDepth,
+      openingOverrides,
+      customWalls,
+      customOpenings,
+      spaceProfiles,
+      wallFirstFloors,
+    }),
+    [
+      floors,
+      rooms,
+      objects,
+      lotWidth,
+      lotDepth,
+      openingOverrides,
+      customWalls,
+      customOpenings,
+      spaceProfiles,
+      wallFirstFloors,
+    ],
+  );
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
