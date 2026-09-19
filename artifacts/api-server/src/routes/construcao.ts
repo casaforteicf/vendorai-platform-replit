@@ -714,7 +714,6 @@ async function recalcularCustoComposicao(composicaoId: string): Promise<number> 
   const itens = await db
     .select({
       quantidade: composicaoInsumosTable.quantidade,
-      precoOverride: composicaoInsumosTable.precoUnitario,
       precoMestre: insumosTable.precoUnitario,
     })
     .from(composicaoInsumosTable)
@@ -723,9 +722,7 @@ async function recalcularCustoComposicao(composicaoId: string): Promise<number> 
 
   const total = itens.reduce((sum, item) => {
     const quantidade = numberOrZero(item.quantidade);
-    const preco = item.precoOverride != null
-      ? numberOrZero(item.precoOverride)
-      : numberOrZero(item.precoMestre);
+    const preco = numberOrZero(item.precoMestre);
     return sum + quantidade * preco;
   }, 0);
 
@@ -1565,7 +1562,6 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
     .select({
       composicaoId: composicaoInsumosTable.composicaoId,
       quantidade: composicaoInsumosTable.quantidade,
-      precoUnitario: composicaoInsumosTable.precoUnitario,
       precoInsumo: insumosTable.precoUnitario,
     })
     .from(composicaoInsumosTable)
@@ -1575,7 +1571,7 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
   const totais = new Map<string, number>();
   for (const item of itens) {
     const quantidade = Number(item.quantidade ?? 0);
-    const preco = Number(item.precoUnitario ?? item.precoInsumo ?? 0);
+    const preco = Number(item.precoInsumo ?? 0);
     totais.set(item.composicaoId, (totais.get(item.composicaoId) ?? 0) + quantidade * preco);
   }
 
@@ -1617,7 +1613,7 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
 
   const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
   const custoTotal = parsedItens.data.reduce((sum, item) => {
-    const preco = Number(item.precoUnitario ?? precoPorInsumo.get(item.insumoId) ?? 0);
+    const preco = Number(precoPorInsumo.get(item.insumoId) ?? 0);
     return sum + Number(item.quantidade ?? 0) * preco;
   }, 0);
 
@@ -1629,7 +1625,10 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
 
     if (parsedItens.data.length > 0) {
       await tx.insert(composicaoInsumosTable).values(
-        parsedItens.data.map((item) => ({ ...item, composicaoId: created.id }))
+        parsedItens.data.map(({ precoUnitario: _legacyOverride, ...item }) => ({
+          ...item,
+          composicaoId: created.id,
+        }))
       );
     }
 
@@ -1663,7 +1662,7 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
 
   const custoTotal = itens.reduce((sum, item) => {
     const quantidade = Number(item.quantidade ?? 0);
-    const preco = Number(item.precoUnitario ?? item.insumo?.precoUnitario ?? 0);
+    const preco = Number(item.insumo?.precoUnitario ?? 0);
     return sum + quantidade * preco;
   }, 0);
 
@@ -1712,7 +1711,7 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
 
     const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
     custoTotal = parsedItens.reduce((sum, item) => {
-      const preco = Number(item.precoUnitario ?? precoPorInsumo.get(item.insumoId) ?? 0);
+      const preco = Number(precoPorInsumo.get(item.insumoId) ?? 0);
       return sum + Number(item.quantidade ?? 0) * preco;
     }, 0);
   }
@@ -1733,7 +1732,9 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     if (parsedItens !== undefined) {
       await tx.delete(composicaoInsumosTable).where(eq(composicaoInsumosTable.composicaoId, composicaoId));
       if (parsedItens.length > 0) {
-        await tx.insert(composicaoInsumosTable).values(parsedItens);
+        await tx.insert(composicaoInsumosTable).values(
+          parsedItens.map(({ precoUnitario: _legacyOverride, ...item }) => item)
+        );
       }
     }
 
