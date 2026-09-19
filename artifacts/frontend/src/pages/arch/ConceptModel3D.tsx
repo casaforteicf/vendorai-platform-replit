@@ -197,6 +197,37 @@ function splitWallForOpenings(
   return pieces;
 }
 
+type Rect2 = { x: number; y: number; width: number; height: number };
+
+function subtractRect(rect: Rect2, hole: Rect2): Rect2[] {
+  const rx2 = rect.x + rect.width;
+  const ry2 = rect.y + rect.height;
+  const hx2 = hole.x + hole.width;
+  const hy2 = hole.y + hole.height;
+  const ix1 = Math.max(rect.x, hole.x);
+  const iy1 = Math.max(rect.y, hole.y);
+  const ix2 = Math.min(rx2, hx2);
+  const iy2 = Math.min(ry2, hy2);
+
+  if (ix2 <= ix1 + 0.02 || iy2 <= iy1 + 0.02) return [rect];
+
+  const pieces: Rect2[] = [
+    { x: rect.x, y: rect.y, width: rect.width, height: iy1 - rect.y },
+    { x: rect.x, y: iy2, width: rect.width, height: ry2 - iy2 },
+    { x: rect.x, y: iy1, width: ix1 - rect.x, height: iy2 - iy1 },
+    { x: ix2, y: iy1, width: rx2 - ix2, height: iy2 - iy1 },
+  ];
+
+  return pieces.filter((piece) => piece.width > 0.04 && piece.height > 0.04);
+}
+
+function slabPiecesForCell(cell: Rect2, stairHoles: Rect2[]) {
+  return stairHoles.reduce<Rect2[]>(
+    (pieces, hole) => pieces.flatMap((piece) => subtractRect(piece, hole)),
+    [cell],
+  );
+}
+
 function roofBounds(level: ConceptModelLevel | undefined) {
   if (!level?.closedSpaces.length) return null;
   const minX = Math.min(...level.closedSpaces.map((space) => space.bounds.x));
@@ -516,25 +547,38 @@ export default function ConceptModel3D({
                 )}
               </g>
 
-              {level.floor > 0 && level.closedSpaces.flatMap((space) =>
-                space.cells.map((cell, index) => (
-                  <polygon
-                    key={`${space.id}-floor-slab-${index}`}
-                    points={points(quad(
-                      cell.x,
-                      cell.y,
-                      cell.x + cell.width,
-                      cell.y + cell.height,
-                      levelBase - FLOOR_THICKNESS,
-                      rotation, projectionWidth, projectionDepth, zoom,
-                    ))}
-                    fill="#64748b"
-                    fillOpacity="0.7"
-                    stroke="#475569"
-                    strokeWidth="0.05"
-                  />
-                ))
-              )}
+              {level.floor > 0 && (() => {
+                const lowerStairs = levels
+                  .find((candidate) => candidate.floor === level.floor - 1)
+                  ?.stairs.map((stair) => ({
+                    x: stair.x - 0.08,
+                    y: stair.y - 0.08,
+                    width: stair.width + 0.16,
+                    height: stair.depth + 0.16,
+                  })) ?? [];
+
+                return level.closedSpaces.flatMap((space) =>
+                  space.cells.flatMap((cell, index) =>
+                    slabPiecesForCell(cell, lowerStairs).map((piece, pieceIndex) => (
+                      <polygon
+                        key={`${space.id}-floor-slab-${index}-${pieceIndex}`}
+                        points={points(quad(
+                          piece.x,
+                          piece.y,
+                          piece.x + piece.width,
+                          piece.y + piece.height,
+                          levelBase - FLOOR_THICKNESS,
+                          rotation, projectionWidth, projectionDepth, zoom,
+                        ))}
+                        fill="#64748b"
+                        fillOpacity="0.7"
+                        stroke="#475569"
+                        strokeWidth="0.05"
+                      />
+                    ))
+                  )
+                );
+              })()}
 
               {level.stairs.flatMap((stair) => {
                 const steps = 10;
