@@ -69,6 +69,13 @@ export type ArchConceptRoom = {
   x: number;
   y: number;
   locked?: boolean;
+  stairShape?: "straight" | "l" | "u";
+  stairDirection?: "north" | "south" | "east" | "west";
+  stairFloorToFloorHeight?: number;
+  stairRiserCount?: number;
+  stairTreadDepth?: number;
+  stairFlightWidth?: number;
+  stairLandingDepth?: number;
 };
 
 export type ArchConceptOpeningOverride = Record<

@@ -1,5 +1,6 @@
 import type { LayoutPreferences } from "./conceptTemplates";
 import type { OpeningParameters } from "./conceptOpenings";
+import type { StairParameters } from "./conceptStairs";
 
 export type ConceptRoomShape = {
   id: string;
@@ -11,7 +12,7 @@ export type ConceptRoomShape = {
   x: number;
   y: number;
   locked?: boolean;
-};
+} & StairParameters;
 
 export type WallSegment = {
   id: string;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { normalizeOpeningParameters } from "./conceptOpenings";
+import { buildStairTreads, normalizeStairParameters, type StairSlabOpening } from "./conceptStairs";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 type Props = {
@@ -24,6 +25,7 @@ type Props = {
   onSelectWall?: (wallId: string | null) => void;
   onWallMove?: (wallId: string, delta: number) => void;
   customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+  stairOpenings?: StairSlabOpening[];
   selectedCustomWallId?: string | null;
   onCreateCustomWall?: (wall: { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }) => void;
   onSelectCustomWall?: (wallId: string | null) => void;
@@ -339,6 +341,7 @@ export default function ConceptPlan2D({
   onSelectWall,
   onWallMove,
   customWalls = [],
+  stairOpenings = [],
   selectedCustomWallId = null,
   onCreateCustomWall,
   onSelectCustomWall,
@@ -899,6 +902,13 @@ export default function ConceptPlan2D({
           );
         })}
 
+        {stairOpenings.map((opening) => (
+          <g key={opening.id} pointerEvents="none">
+            <rect x={opening.x} y={opening.y} width={opening.width} height={opening.depth} fill="#ffffff" fillOpacity="0.96" stroke="#dc2626" strokeWidth="0.055" strokeDasharray="0.16 0.10" />
+            <text x={opening.x + opening.width / 2} y={opening.y + opening.depth / 2} textAnchor="middle" fontSize="0.18" fontWeight="900" fill="#b91c1c">VAZIO ESCADA</text>
+          </g>
+        ))}
+
         {rooms.map((room) => {
           const selected = selectedId === room.id;
           const fill = ROOM_FILL[room.kind] ?? "#ffffff";
@@ -948,27 +958,29 @@ export default function ConceptPlan2D({
               />
               {!isPool && (
                 <>
-                  {room.kind === "escada" && (
-                    <g opacity="0.8">
-                      {Array.from({ length: 7 }).map((_, step) => (
-                        <line
-                          key={step}
-                          x1={room.x + 0.18}
-                          y1={room.y + 0.35 + step * Math.max(0.2, (room.depth - 0.7) / 7)}
-                          x2={room.x + room.width - 0.18}
-                          y2={room.y + 0.35 + step * Math.max(0.2, (room.depth - 0.7) / 7)}
-                          stroke="#94a3b8"
-                          strokeWidth="0.035"
-                        />
-                      ))}
-                      <path
-                        d={`M ${room.x + room.width / 2} ${room.y + room.depth - 0.45} L ${room.x + room.width / 2} ${room.y + 0.65} M ${room.x + room.width / 2} ${room.y + 0.65} l -0.18 0.28 M ${room.x + room.width / 2} ${room.y + 0.65} l 0.18 0.28`}
-                        stroke="#64748b"
-                        strokeWidth="0.05"
-                        fill="none"
-                      />
-                    </g>
-                  )}
+                  {room.kind === "escada" && (() => {
+                    const stairParams = normalizeStairParameters(room);
+                    const treads = buildStairTreads({ ...room, ...stairParams });
+                    return (
+                      <g opacity="0.9" pointerEvents="none">
+                        {treads.map((tread, index) => (
+                          <rect
+                            key={tread.id}
+                            x={tread.x}
+                            y={tread.y}
+                            width={tread.width}
+                            height={tread.depth}
+                            fill={index % 2 === 0 ? "#d8c8b2" : "#e7dccd"}
+                            stroke="#786b5c"
+                            strokeWidth="0.025"
+                          />
+                        ))}
+                        <text x={room.x + room.width / 2} y={room.y + room.depth / 2} textAnchor="middle" fontSize="0.20" fontWeight="900" fill="#334155">
+                          SOBE {stairParams.stairDirection === "north" ? "↑" : stairParams.stairDirection === "south" ? "↓" : stairParams.stairDirection === "east" ? "→" : "←"}
+                        </text>
+                      </g>
+                    );
+                  })()}
                   {room.kind === "circulacao" ? (
                     <text
                       x={room.x + room.width / 2}

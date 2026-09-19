@@ -45,6 +45,14 @@ import {
   sanitizeOpeningParametersForPersistence,
   type OpeningParameters,
 } from "./conceptOpenings";
+import {
+  buildStairSlabOpenings,
+  defaultStairParameters,
+  normalizeStairParameters,
+  riserCountForTargetHeight,
+  stairFootprintMetrics,
+  type StairParameters,
+} from "./conceptStairs";
 
 type RoomKind =
   | "sala"
@@ -70,7 +78,7 @@ type Room = {
   x: number;
   y: number;
   locked?: boolean;
-};
+} & StairParameters;
 
 type OpeningOverride = {
   x: number;
@@ -262,6 +270,7 @@ function createRoom(kind: RoomKind, floor = 0): Room {
   const base = roomDefaults[kind];
   return {
     ...base,
+    ...(kind === "escada" ? defaultStairParameters() : {}),
     id: uid(),
     floor,
     x: 8,
@@ -1032,13 +1041,12 @@ export default function ConceptPlanner() {
         labels,
         stairs: rooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
-          .map((room) => ({
-            id: room.id,
-            x: room.x,
-            y: room.y,
-            width: room.width,
-            depth: room.depth,
-          })),
+          .map((room) => ({ ...room, ...normalizeStairParameters(room) })),
+        slabOpenings: floorIndex > 0
+          ? rooms
+              .filter((room) => room.floor === floorIndex - 1 && room.kind === "escada")
+              .flatMap((room) => buildStairSlabOpenings(room))
+          : [],
       };
     });
   }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles, wallFirstFloors]);
@@ -1078,6 +1086,12 @@ export default function ConceptPlanner() {
     () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
   );
+  const selectedStairParams = selected?.kind === "escada"
+    ? normalizeStairParameters(selected)
+    : null;
+  const selectedStairMetrics = selected?.kind === "escada"
+    ? stairFootprintMetrics(selected)
+    : null;
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedCustomOpening = selectedOpening
     ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
@@ -1734,6 +1748,7 @@ export default function ConceptPlanner() {
                   ["garagem", CarFront, "Garagem"],
                   ["gourmet", ChefHat, "Gourmet"],
                   ["piscina", Waves, "Piscina"],
+                  ["escada", Layers3, "Escada"],
                   ["outro", Plus, "Outro ambiente"],
                 ] as const).map(([kind, Icon, label]) => (
                   <button key={kind} type="button" onClick={() => addRoom(kind)} className="flex items-center justify-between rounded-xl border px-3 py-3 text-left text-sm hover:bg-muted">
@@ -2168,6 +2183,11 @@ export default function ConceptPlanner() {
                         }}
                         onWallMove={moveWallById}
                         customWalls={customWalls.filter((wall) => wall.floor === activeFloor)}
+                        stairOpenings={activeFloor > 0
+                          ? rooms
+                              .filter((room) => room.floor === activeFloor - 1 && room.kind === "escada")
+                              .flatMap((room) => buildStairSlabOpenings(room))
+                          : []}
                         selectedCustomWallId={selectedCustomWallId}
                         onCreateCustomWall={addCustomWall}
                         onSelectCustomWall={(wallId) => {
@@ -2816,6 +2836,61 @@ export default function ConceptPlanner() {
                             <input type="number" step="0.25" value={selected.y} onChange={(e) => updateSelected({ y: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
                           </label>
                         </div>
+                        {selected.kind === "escada" && selectedStairParams && selectedStairMetrics && (
+                          <div className="space-y-3 rounded-xl border bg-background p-3">
+                            <div>
+                              <div className="text-xs font-semibold text-muted-foreground">Escada paramétrica</div>
+                              <div className="mt-1 text-[11px] text-muted-foreground">
+                                A mesma escada gera os degraus 2D/3D e recorta automaticamente a laje do pavimento superior.
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Formato
+                                <select value={selectedStairParams.stairShape} onChange={(event) => updateSelected({ stairShape: event.target.value as NonNullable<Room["stairShape"]> })} className="mt-1 h-10 w-full rounded-lg border bg-background px-2">
+                                  <option value="straight">Reta</option>
+                                  <option value="l">Em L</option>
+                                  <option value="u">Em U</option>
+                                </select>
+                              </label>
+                              <label className="text-xs font-medium">Sobe para
+                                <select value={selectedStairParams.stairDirection} onChange={(event) => updateSelected({ stairDirection: event.target.value as NonNullable<Room["stairDirection"]> })} className="mt-1 h-10 w-full rounded-lg border bg-background px-2">
+                                  <option value="north">Cima</option>
+                                  <option value="south">Baixo</option>
+                                  <option value="east">Direita</option>
+                                  <option value="west">Esquerda</option>
+                                </select>
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Piso a piso (m)
+                                <input type="number" min="2.4" max="4.5" step="0.01" value={selectedStairParams.stairFloorToFloorHeight.toFixed(2)} onChange={(event) => updateSelected({ stairFloorToFloorHeight: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                              <label className="text-xs font-medium">Nº de espelhos
+                                <input type="number" min="12" max="30" step="1" value={selectedStairParams.stairRiserCount} onChange={(event) => updateSelected({ stairRiserCount: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Espelho desejado (cm)
+                                <input type="number" min="12" max="24" step="0.5" value={(selectedStairParams.riserHeight * 100).toFixed(1)} onChange={(event) => updateSelected({ stairRiserCount: riserCountForTargetHeight(selectedStairParams.stairFloorToFloorHeight, Number(event.target.value) / 100) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                              <label className="text-xs font-medium">Piso (cm)
+                                <input type="number" min="22" max="36" step="1" value={(selectedStairParams.stairTreadDepth * 100).toFixed(0)} onChange={(event) => updateSelected({ stairTreadDepth: Number(event.target.value) / 100 })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Largura do lance (m)
+                                <input type="number" min="0.8" max="2.4" step="0.05" value={selectedStairParams.stairFlightWidth.toFixed(2)} onChange={(event) => updateSelected({ stairFlightWidth: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                              <label className="text-xs font-medium">Patamar (m)
+                                <input type="number" min="0.8" max="2.5" step="0.05" value={selectedStairParams.stairLandingDepth.toFixed(2)} onChange={(event) => updateSelected({ stairLandingDepth: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                            </div>
+                            <div className={selectedStairMetrics.fitsTreadDepth ? "rounded-lg border bg-emerald-50 p-2 text-[11px] text-emerald-800" : "rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800"}>
+                              Espelho resultante: {(selectedStairParams.riserHeight * 100).toFixed(1)} cm · {selectedStairParams.treadCount} pisos · desenvolvimento disponível {selectedStairMetrics.pathLength.toFixed(2)} m.
+                              {!selectedStairMetrics.fitsTreadDepth && " O espaço atual é menor que o desenvolvimento necessário para o piso informado."}
+                            </div>
+                          </div>
+                        )}
                         <div>
                           <div className="mb-2 text-xs font-semibold text-muted-foreground">Mover 25 cm</div>
                           <div className="grid grid-cols-3 gap-2">

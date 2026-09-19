@@ -3,6 +3,7 @@ import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenings";
 import type { ClosedSpace } from "./conceptWallNetwork";
+import { buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -19,13 +20,8 @@ export type ConceptModelLevel = {
   closedSpaces: ClosedSpace[];
   openings: OpeningMarker[];
   labels: Record<string, string>;
-  stairs: Array<{
-    id: string;
-    x: number;
-    y: number;
-    width: number;
-    depth: number;
-  }>;
+  stairs: StairCarrier[];
+  slabOpenings: StairSlabOpening[];
 };
 
 type Props = {
@@ -191,6 +187,31 @@ function splitWallForOpenings(
   const after = makeSegment(cursor, wallEnd);
   if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
   return pieces;
+}
+
+type Rect = { x: number; y: number; width: number; depth: number };
+
+function subtractOpeningFromRect(rect: Rect, opening: Rect): Rect[] {
+  const ax1 = rect.x;
+  const ay1 = rect.y;
+  const ax2 = rect.x + rect.width;
+  const ay2 = rect.y + rect.depth;
+  const bx1 = Math.max(ax1, opening.x);
+  const by1 = Math.max(ay1, opening.y);
+  const bx2 = Math.min(ax2, opening.x + opening.width);
+  const by2 = Math.min(ay2, opening.y + opening.depth);
+  if (bx2 <= bx1 || by2 <= by1) return [rect];
+
+  const pieces: Rect[] = [];
+  if (by1 > ay1) pieces.push({ x: ax1, y: ay1, width: rect.width, depth: by1 - ay1 });
+  if (by2 < ay2) pieces.push({ x: ax1, y: by2, width: rect.width, depth: ay2 - by2 });
+  if (bx1 > ax1) pieces.push({ x: ax1, y: by1, width: bx1 - ax1, depth: by2 - by1 });
+  if (bx2 < ax2) pieces.push({ x: bx2, y: by1, width: ax2 - bx2, depth: by2 - by1 });
+  return pieces.filter((piece) => piece.width > 0.01 && piece.depth > 0.01);
+}
+
+function subtractSlabOpenings(rect: Rect, openings: StairSlabOpening[]) {
+  return openings.reduce<Rect[]>((pieces, opening) => pieces.flatMap((piece) => subtractOpeningFromRect(piece, opening)), [rect]);
 }
 
 function roofBounds(level: ConceptModelLevel | undefined) {
@@ -442,50 +463,54 @@ export default function ConceptModel3D({
               </g>
 
               {level.floor > 0 && level.closedSpaces.flatMap((space) =>
-                space.cells.map((cell, index) => (
+                space.cells.flatMap((cell, index) =>
+                  subtractSlabOpenings(
+                    { x: cell.x, y: cell.y, width: cell.width, depth: cell.height },
+                    level.slabOpenings,
+                  ).map((piece, pieceIndex) => (
+                    <polygon
+                      key={`${space.id}-floor-slab-${index}-${pieceIndex}`}
+                      points={points(quad(
+                        piece.x,
+                        piece.y,
+                        piece.x + piece.width,
+                        piece.y + piece.depth,
+                        levelBase - FLOOR_THICKNESS,
+                        rotation,
+                        lotWidth,
+                        lotDepth,
+                        zoom,
+                      ))}
+                      fill="#64748b"
+                      fillOpacity="0.7"
+                      stroke="#475569"
+                      strokeWidth="0.05"
+                    />
+                  ))
+                )
+              )}
+
+              {level.stairs.flatMap((stair) =>
+                buildStairTreads(stair).map((tread, index) => (
                   <polygon
-                    key={`${space.id}-floor-slab-${index}`}
+                    key={tread.id}
                     points={points(quad(
-                      cell.x,
-                      cell.y,
-                      cell.x + cell.width,
-                      cell.y + cell.height,
-                      levelBase - FLOOR_THICKNESS,
+                      tread.x,
+                      tread.y,
+                      tread.x + tread.width,
+                      tread.y + tread.depth,
+                      levelBase + tread.rise,
                       rotation,
                       lotWidth,
                       lotDepth,
                       zoom,
                     ))}
-                    fill="#64748b"
-                    fillOpacity="0.7"
-                    stroke="#475569"
-                    strokeWidth="0.05"
+                    fill={index % 2 === 0 ? "#b8a78f" : "#c9b9a4"}
+                    stroke="#6b5a47"
+                    strokeWidth="0.04"
                   />
                 ))
               )}
-
-              {level.stairs.flatMap((stair) => {
-                const steps = 10;
-                const alongY = stair.depth >= stair.width;
-                return Array.from({ length: steps }).map((_, index) => {
-                  const ratioStart = index / steps;
-                  const ratioEnd = (index + 1) / steps;
-                  const z = levelBase + (index / steps) * WALL_HEIGHT;
-                  const x1 = alongY ? stair.x : stair.x + stair.width * ratioStart;
-                  const x2 = alongY ? stair.x + stair.width : stair.x + stair.width * ratioEnd;
-                  const y1 = alongY ? stair.y + stair.depth * ratioStart : stair.y;
-                  const y2 = alongY ? stair.y + stair.depth * ratioEnd : stair.y + stair.depth;
-                  return (
-                    <polygon
-                      key={`${stair.id}-step-${index}`}
-                      points={points(quad(x1, y1, x2, y2, z, rotation, lotWidth, lotDepth, zoom))}
-                      fill="#b8a78f"
-                      stroke="#6b5a47"
-                      strokeWidth="0.04"
-                    />
-                  );
-                });
-              })}
             </g>
           );
         })}
