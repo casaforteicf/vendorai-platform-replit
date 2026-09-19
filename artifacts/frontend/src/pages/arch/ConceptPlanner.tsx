@@ -1747,7 +1747,7 @@ export default function ConceptPlanner() {
         method: "POST",
         headers: conceptHeaders(true),
         body: JSON.stringify({
-          project_id: renderProjectId,
+          concept_project_id: renderProjectId,
           original_image_url: originalImage,
           mode: "preservar",
           ambiente: "fachada",
