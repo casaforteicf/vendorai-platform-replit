@@ -163,6 +163,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const enforceArqdorTenantTool = () => {
+      // Mesmo cuidado do enforceArqdorContext: as mutações abaixo (remove,
+      // display=none, insertAdjacentElement) são observadas pelo próprio
+      // MutationObserver criado mais abaixo — sem desconectar antes de
+      // mexer no DOM, cada rodada podia disparar a si mesma de novo.
+      observer.disconnect();
       const injected = Array.from(
         document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
       );
@@ -177,6 +182,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
       if (!arqdorVisible) {
         injected.forEach((entry) => entry.remove());
+        observer.observe(document.body, { childList: true, subtree: true });
         return;
       }
 
@@ -230,11 +236,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground",
         ].join(" ");
       });
+
+      observer.observe(document.body, { childList: true, subtree: true });
     };
 
-    enforceArqdorTenantTool();
     const observer = new MutationObserver(enforceArqdorTenantTool);
-    observer.observe(document.body, { childList: true, subtree: true });
+    enforceArqdorTenantTool();
 
     return () => {
       observer.disconnect();
@@ -590,6 +597,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
 
     const enforceCompanyProfileLogo = () => {
+      // Mesmo risco de loop dos outros enforce* deste arquivo: este
+      // observer também escuta mudanças de atributo (src/style), que são
+      // exatamente o que criar/mostrar a logo do tenant produz.
+      observer.disconnect();
       document.querySelectorAll<HTMLImageElement>('img[alt="Vendor.ai"]').forEach((vendorLogo) => {
         const parent = vendorLogo.parentElement;
         if (!parent) return;
@@ -626,16 +637,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           if (fallback) setVisible(fallback, true);
         }
       });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["src", "style"],
+      });
     };
 
-    enforceCompanyProfileLogo();
     const observer = new MutationObserver(enforceCompanyProfileLogo);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["src", "style"],
-    });
+    enforceCompanyProfileLogo();
 
     return () => {
       observer.disconnect();
