@@ -44,16 +44,42 @@ function nearestFit<T extends ConceptRoomShape>(
       if (overlaps(room, x, y, placed)) continue;
       const dx = x - targetX;
       const dy = y - targetY;
-      candidates.push({ x, y, d: dx * dx + dy * dy });
+      let score = dx * dx + dy * dy;
+
+      if (placed.length && room.kind !== "piscina") {
+        const touching = placed.filter((other) => {
+          const verticalTouch =
+            (Math.abs(x + room.width - other.x) < 0.08 || Math.abs(x - (other.x + other.width)) < 0.08) &&
+            Math.max(0, Math.min(y + room.depth, other.y + other.depth) - Math.max(y, other.y)) >= 0.8;
+          const horizontalTouch =
+            (Math.abs(y + room.depth - other.y) < 0.08 || Math.abs(y - (other.y + other.depth)) < 0.08) &&
+            Math.max(0, Math.min(x + room.width, other.x + other.width) - Math.max(x, other.x)) >= 0.8;
+          return verticalTouch || horizontalTouch;
+        });
+
+        if (touching.length === 0) score += 120;
+        else score -= 18 * touching.length;
+
+        const kinds = new Set(touching.map((other) => other.kind));
+        if (room.kind === "cozinha") {
+          if (kinds.has("sala")) score -= 30;
+          if (kinds.has("gourmet")) score -= 36;
+          if (kinds.has("lavanderia")) score -= 18;
+        }
+        if (room.kind === "lavanderia" && kinds.has("cozinha")) score -= 30;
+        if (room.kind === "gourmet" && kinds.has("cozinha")) score -= 34;
+        if ((room.kind === "quarto" || room.kind === "suite") && kinds.has("circulacao")) score -= 40;
+        if (room.kind === "banheiro" && (kinds.has("circulacao") || kinds.has("suite"))) score -= 34;
+        if (room.kind === "escada" && kinds.has("circulacao")) score -= 30;
+        if (room.kind === "circulacao" && (kinds.has("sala") || kinds.has("escada"))) score -= 24;
+      }
+
+      candidates.push({ x, y, d: score });
     }
   }
   candidates.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
   const best = candidates[0];
   return { ...room, x: best?.x ?? targetX, y: best?.y ?? targetY };
-}
-
-function roomMatches(room: ConceptRoomShape, kind: string, labelIncludes?: string) {
-  return room.kind === kind && (!labelIncludes || room.label.toLowerCase().includes(labelIncludes.toLowerCase()));
 }
 
 function getAnchor(
