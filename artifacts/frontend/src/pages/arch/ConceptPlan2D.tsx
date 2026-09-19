@@ -3,6 +3,7 @@ import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { normalizeOpeningParameters } from "./conceptOpenings";
 import { buildStairLandings, buildStairTreads, normalizeStairParameters, type StairSlabOpening } from "./conceptStairs";
+import { buildRoofPlanGuides, normalizeRoofParameters, roofPlanBounds, type RoofInput } from "./conceptRoof";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 type Props = {
@@ -26,6 +27,8 @@ type Props = {
   onWallMove?: (wallId: string, delta: number) => void;
   customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
   stairOpenings?: StairSlabOpening[];
+  roof?: RoofInput;
+  showRoofPlan?: boolean;
   selectedCustomWallId?: string | null;
   onCreateCustomWall?: (wall: { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }) => void;
   onSelectCustomWall?: (wallId: string | null) => void;
@@ -342,6 +345,8 @@ export default function ConceptPlan2D({
   onWallMove,
   customWalls = [],
   stairOpenings = [],
+  roof = { roof: "platibanda" },
+  showRoofPlan = false,
   selectedCustomWallId = null,
   onCreateCustomWall,
   onSelectCustomWall,
@@ -443,6 +448,21 @@ export default function ConceptPlan2D({
   };
 
   const snap = (value: number) => Math.round(value * 4) / 4;
+
+  const roofPlan = useMemo(() => {
+    if (!showRoofPlan || !closedSpaces.length) return null;
+    const bounds = {
+      minX: Math.min(...closedSpaces.map((space) => space.bounds.x)),
+      minY: Math.min(...closedSpaces.map((space) => space.bounds.y)),
+      maxX: Math.max(...closedSpaces.map((space) => space.bounds.x + space.bounds.width)),
+      maxY: Math.max(...closedSpaces.map((space) => space.bounds.y + space.bounds.height)),
+    };
+    return {
+      outline: roofPlanBounds(bounds, roof),
+      guides: buildRoofPlanGuides(bounds, roof),
+      params: normalizeRoofParameters(roof),
+    };
+  }, [showRoofPlan, closedSpaces, roof]);
 
   const wallNetwork = [
     ...geometry.walls.map((wall) => ({
@@ -1311,6 +1331,41 @@ export default function ConceptPlan2D({
             </text>
           </g>
         ))}
+
+        {roofPlan && (
+          <g pointerEvents="none">
+            <rect
+              x={roofPlan.outline.minX}
+              y={roofPlan.outline.minY}
+              width={roofPlan.outline.maxX - roofPlan.outline.minX}
+              height={roofPlan.outline.maxY - roofPlan.outline.minY}
+              fill="none"
+              stroke="#7c3aed"
+              strokeWidth="0.065"
+              strokeDasharray="0.22 0.14"
+            />
+            {roofPlan.guides.map((guide) => (
+              <line
+                key={guide.id}
+                x1={guide.x1}
+                y1={guide.y1}
+                x2={guide.x2}
+                y2={guide.y2}
+                stroke={guide.kind === "ridge" ? "#6d28d9" : guide.kind === "split" ? "#c2410c" : "#8b5cf6"}
+                strokeWidth={guide.kind === "ridge" ? "0.075" : "0.05"}
+                strokeDasharray={guide.kind === "slope" ? "0.14 0.1" : undefined}
+              />
+            ))}
+            <g transform={`translate(${roofPlan.outline.minX + 0.25} ${roofPlan.outline.minY - 0.28})`}>
+              <rect x="0" y="-0.28" width="4.6" height="0.44" rx="0.08" fill="#ffffff" fillOpacity="0.94" stroke="#7c3aed" strokeWidth="0.025" />
+              <text x="0.16" y="0" fontSize="0.19" fontWeight="800" fill="#6d28d9">
+                {roofPlan.params.roof === "platibanda"
+                  ? `COBERTURA · platibanda ${roofPlan.params.roofParapetHeight.toFixed(2)} m`
+                  : `COBERTURA · ${roofPlan.params.roofWaters} água${roofPlan.params.roofWaters > 1 ? "s" : ""} · ${roofPlan.params.roofPitchDeg.toFixed(0)}°`}
+              </text>
+            </g>
+          </g>
+        )}
 
         {geometry.walls.map((wall) => {
           const selectedWall = selectedWallId === wall.id;
