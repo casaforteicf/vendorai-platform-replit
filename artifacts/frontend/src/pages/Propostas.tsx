@@ -1731,6 +1731,7 @@ interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitari
 
 const DEFAULT_ETAPA_ID = "etapa-inicial";
 const ETAPAS_OBRA_SUGERIDAS = [
+  "Projetos e legalização",
   "Serviços preliminares",
   "Terraplenagem",
   "Fundações",
@@ -1745,7 +1746,6 @@ const ETAPAS_OBRA_SUGERIDAS = [
   "Acabamentos",
   "Áreas externas",
   "Energia solar e automação",
-  "Projetos e legalização",
   "Limpeza e entrega",
 ];
 
