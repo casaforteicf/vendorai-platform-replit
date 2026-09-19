@@ -95,7 +95,7 @@ const SUPER_ADMIN_USER_CACHE_KEY = "vendorai_user_cache";
 const SUPER_ADMIN_TENANT_OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const GUARDED_VERTICAL_ROUTES = [
   {
-    matches: (pathname: string) => pathname === "/obras" || pathname.startsWith("/obras/") || pathname === "/insumos" || pathname === "/composicoes",
+    matches: (pathname: string) => pathname === "/obras" || pathname.startsWith("/obras/") || pathname === "/custos-orcamentos" || pathname === "/insumos" || pathname === "/composicoes",
     vertical: "Construção & Reforma",
     name: "Preview — Construção Civil",
     slug: "construcao",
