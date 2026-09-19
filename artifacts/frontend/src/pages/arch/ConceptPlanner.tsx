@@ -691,6 +691,22 @@ export default function ConceptPlanner() {
         }),
       };
       const floorCustomWalls = customWalls.filter((wall) => wall.floor === floorIndex);
+      const floorCustomOpeningMarkers = customOpenings
+        .filter((opening) => opening.floor === floorIndex)
+        .flatMap((opening) => {
+          const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
+          if (!wall) return [];
+          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
+          const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+          return [{
+            id: opening.id,
+            type: opening.type,
+            x: wall.x1 + (wall.x2 - wall.x1) * offset,
+            y: wall.y1 + (wall.y2 - wall.y1) * offset,
+            orientation: horizontal ? "horizontal" as const : "vertical" as const,
+            roomId: `custom-wall:${wall.id}`,
+          }];
+        });
       const floorClosedSpaces = detectClosedSpaces(
         [
           ...floorGeometry.walls.map((wall) => ({
@@ -739,7 +755,7 @@ export default function ConceptPlanner() {
         walls: floorGeometry.walls,
         customWalls: floorCustomWalls,
         closedSpaces: floorClosedSpaces,
-        openings: floorGeometry.openings,
+        openings: [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
         stairs: rooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
@@ -752,7 +768,7 @@ export default function ConceptPlanner() {
           })),
       };
     });
-  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, spaceProfiles]);
+  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
