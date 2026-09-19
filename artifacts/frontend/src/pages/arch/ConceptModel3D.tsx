@@ -229,6 +229,11 @@ export default function ConceptModel3D({
     setZoom(1.32);
   };
 
+  const setCameraPreset = (nextRotation: number) => {
+    setRotation(normalizeRotation(nextRotation));
+    setZoom(1.32);
+  };
+
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -329,39 +334,58 @@ export default function ConceptModel3D({
     : { minX: frameBounds.minX, maxX: frameBounds.maxX, minY: frameBounds.minY, maxY: frameBounds.maxY };
 
   return (
-    <div className="relative h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
-      <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/72 px-4 py-3 text-white shadow-xl backdrop-blur">
+    <div className="relative h-[calc(100vh-64px)] overflow-hidden bg-[#edf1f4]">
+      <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/92 px-4 py-3 text-slate-800 shadow-xl backdrop-blur">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-white/60">Arraste horizontalmente para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
+          <div className="text-xs text-slate-500">Arraste para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden overflow-hidden rounded-xl border bg-slate-50 sm:flex">
+            {([
+              [35, "Iso"],
+              [0, "Frente"],
+              [90, "Lateral"],
+              [180, "Traseira"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setCameraPreset(value)}
+                className={Math.abs(normalizeRotation(rotation) - value) < 2
+                  ? "bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 first:border-l-0 hover:bg-white"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {levels.length > 1 && (
             <button
               type="button"
               onClick={() => setShowAllFloors((value) => !value)}
               className={showAllFloors
-                ? "rounded-lg border border-orange-400/40 bg-orange-500/20 px-3 py-2 text-xs font-semibold text-orange-100"
-                : "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/75"}
+                ? "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"
+                : "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"}
             >
               {showAllFloors ? "Todos pavimentos" : "Pavimento ativo"}
             </button>
           )}
-          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para esquerda">
+          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Girar para esquerda">
             <RotateCcw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para direita">
+          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Girar para direita">
             <RotateCw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Reduzir">
+          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Reduzir">
             <ZoomOut className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Ampliar">
+          <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Ampliar">
             <ZoomIn className="h-4 w-4" />
           </button>
-          <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Restaurar câmera">
+          <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Restaurar câmera">
             <Maximize2 className="h-4 w-4" />
           </button>
         </div>
@@ -374,14 +398,14 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
-        className={`block h-[calc(100vh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100vh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
         <defs>
           <linearGradient id="concept3d-floor" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#334155" />
-            <stop offset="100%" stopColor="#1e293b" />
+            <stop offset="0%" stopColor="#f8fafc" />
+            <stop offset="100%" stopColor="#d9e0e7" />
           </linearGradient>
           <linearGradient id="concept3d-wall" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={exteriorMaterial.baseColor} />
@@ -400,11 +424,19 @@ export default function ConceptModel3D({
             <stop offset="100%" stopColor="#4e382e" />
           </linearGradient>
           <filter id="concept3d-shadow" x="-30%" y="-30%" width="160%" height="180%">
-            <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" floodColor="#000000" floodOpacity="0.28" />
+            <feDropShadow dx="0.8" dy="1.8" stdDeviation="1.7" floodColor="#475569" floodOpacity="0.22" />
           </filter>
         </defs>
 
         <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" fillOpacity="0.34" stroke="#475569" strokeOpacity="0.55" strokeWidth="0.06" />
+        <ellipse
+          cx="0"
+          cy={Math.max(2.5, sceneHeight * 0.08)}
+          rx={Math.max(6, buildingWidth * 0.95 * zoom)}
+          ry={Math.max(2.2, buildingDepth * 0.28 * zoom)}
+          fill="#64748b"
+          opacity="0.11"
+        />
 
         {visibleLevels.map((level) => {
           const levelBase = level.floor * LEVEL_HEIGHT;
