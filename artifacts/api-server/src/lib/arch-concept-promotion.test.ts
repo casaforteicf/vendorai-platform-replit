@@ -3,6 +3,7 @@ import {
   collectConceptMaterials,
   conceptFloorElevation,
   conceptMaterialRows,
+  conceptObjectRows,
   type ConceptPromotedMaterialRef,
   type ConceptPromotedMaterialScheme,
 } from "./arch-concept-promotion.js";
@@ -43,6 +44,41 @@ describe("Arqdor Concept promotion helpers", () => {
     expect(conceptFloorElevation([
       { floor: 0, kind: "escada", stairFloorToFloorHeight: 2.5 },
     ], 1)).toBeCloseTo(2.96);
+  });
+
+  it("gera linhas de arq_objects preservando transformação e origem", () => {
+    const rows = conceptObjectRows([
+      {
+        id: "concept-object-sofa",
+        presetId: "sofa-3",
+        name: "Sofá",
+        category: "estar",
+        symbol: "sofa",
+        floor: 1,
+        x: 4,
+        y: 5,
+        width: 2.2,
+        depth: 0.9,
+        height: 0.85,
+        rotationDeg: 90,
+        material: "Linho",
+        color: "#cdbfae",
+        catalogProductId: "catalog-1",
+      },
+    ], [
+      { floor: 0, kind: "escada", stairFloorToFloorHeight: 3.1 },
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      objectClientId: "concept-object-sofa",
+      dimensions: { width: 2.2, height: 0.85, depth: 0.9, unit: "m" },
+      position: { x: 4, y: 5, z: 3.1, rotationDeg: 90, floor: 1 },
+      componentId: "sofa-3",
+    });
+    expect(rows[0]?.designIntent).toContain("source:arqdor_concept");
+    expect(rows[0]?.designIntent).toContain("preset:sofa-3");
+    expect(rows[0]?.designIntent).toContain("symbol:sofa");
+    expect(rows[0]?.designIntent).toContain("catalog_product:catalog-1");
   });
 
   it("deduplica o mesmo material usado no piso geral e em um pavimento", () => {

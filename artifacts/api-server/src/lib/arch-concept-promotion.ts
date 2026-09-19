@@ -27,6 +27,28 @@ export type ConceptPromotionRoom = {
   stairFloorToFloorHeight?: number;
 };
 
+export type ConceptPromotedObject = {
+  id: string;
+  presetId?: string;
+  name: string;
+  category: string;
+  symbol?: string;
+  floor: number;
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  height: number;
+  rotationDeg: number;
+  material?: string;
+  finish?: string;
+  color?: string;
+  componentId?: string;
+  manufacturerId?: string;
+  catalogProductId?: string;
+  locked?: boolean;
+};
+
 export function conceptFloorElevation(
   rooms: ConceptPromotionRoom[],
   targetFloor: number,
@@ -40,6 +62,42 @@ export function conceptFloorElevation(
       : 2.96;
   }
   return elevation;
+}
+
+export function conceptObjectRows(
+  objects: ConceptPromotedObject[],
+  rooms: ConceptPromotionRoom[],
+) {
+  return objects.map((object) => ({
+    objectClientId: object.id,
+    name: object.name || "Objeto",
+    category: object.category || "decoracao",
+    material: object.material || null,
+    finish: object.finish || null,
+    color: object.color || null,
+    dimensions: {
+      width: object.width,
+      height: object.height,
+      depth: object.depth,
+      unit: "m",
+    },
+    position: {
+      x: object.x,
+      y: object.y,
+      z: conceptFloorElevation(rooms, object.floor),
+      rotationDeg: object.rotationDeg,
+      floor: object.floor,
+    },
+    componentId: object.componentId || object.presetId || null,
+    manufacturerId: object.manufacturerId || null,
+    designIntent: [
+      "source:arqdor_concept",
+      ...(object.presetId ? [`preset:${object.presetId}`] : []),
+      ...(object.symbol ? [`symbol:${object.symbol}`] : []),
+      ...(object.catalogProductId ? [`catalog_product:${object.catalogProductId}`] : []),
+    ],
+    locked: object.locked ?? false,
+  }));
 }
 
 export function collectConceptMaterials(
