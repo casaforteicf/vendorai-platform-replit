@@ -70,6 +70,7 @@ import {
   type ArchitecturalValidationCategory,
 } from "./conceptValidation";
 import {
+  CONCEPT_MATERIAL_LIBRARY,
   conceptFloorMaterial,
   defaultConceptMaterialScheme,
   legacyFacadePrimaryMaterial,
@@ -3144,6 +3145,45 @@ export default function ConceptPlanner() {
                               </label>
                             </div>
 
+                            <label className="block text-xs font-medium">
+                              Material visual da biblioteca
+                              <select
+                                value=""
+                                onChange={(event) => {
+                                  const material = CONCEPT_MATERIAL_LIBRARY.find((item) => item.id === event.target.value);
+                                  if (!material) return;
+                                  updateConceptObject(selectedObject.id, {
+                                    material: material.name,
+                                    finish: material.finish,
+                                    color: material.color,
+                                  }, true);
+                                }}
+                                className="mt-1 h-10 w-full rounded-lg border bg-background px-2"
+                              >
+                                <option value="">Aplicar preset...</option>
+                                {CONCEPT_MATERIAL_LIBRARY
+                                  .filter((material) => {
+                                    if (selectedObject.symbol === "sofa" || selectedObject.symbol === "chair") {
+                                      return ["fabric", "wood"].includes(material.category);
+                                    }
+                                    if (selectedObject.symbol === "counter" || selectedObject.symbol === "island" || selectedObject.symbol === "sink") {
+                                      return ["stone", "wood", "metal"].includes(material.category);
+                                    }
+                                    if (selectedObject.symbol === "appliance") return material.category === "metal";
+                                    if (selectedObject.symbol === "plant") return false;
+                                    return ["wood", "stone", "metal", "fabric"].includes(material.category);
+                                  })
+                                  .map((material) => (
+                                    <option key={material.id} value={material.id}>
+                                      {material.name}{material.finish ? ` · ${material.finish}` : ""}
+                                    </option>
+                                  ))}
+                              </select>
+                              <span className="mt-1 block text-[10px] text-muted-foreground">
+                                Aplica nome, acabamento e cor ao mesmo objeto; você ainda pode editar manualmente.
+                              </span>
+                            </label>
+
                             <button type="button" onClick={() => deleteConceptObject(selectedObject.id)} className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700">
                               Excluir objeto
                             </button>
@@ -3810,19 +3850,7 @@ export default function ConceptPlanner() {
                   />
                 </div>
 
-                <label className="block text-xs font-semibold">
-                  Material principal
-                  <select
-                    value={facadePreferences.primaryMaterial}
-                    onChange={(event) => setFacadePreferences((prev) => ({ ...prev, primaryMaterial: event.target.value as ConceptFacadePreferences["primaryMaterial"] }))}
-                    className="mt-2 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                  >
-                    <option value="pintura">Pintura / reboco</option>
-                    <option value="madeira">Madeira</option>
-                    <option value="pedra">Pedra</option>
-                    <option value="concreto">Concreto aparente</option>
-                  </select>
-                </label>
+                {materialSelect("Revestimento externo principal", "exteriorWall", materialScheme.exteriorWall)}
 
                 <label className="block text-xs font-semibold">
                   Material de destaque
@@ -4089,7 +4117,7 @@ export default function ConceptPlanner() {
                           ? `Platibanda · ${resolvedRoof.roofParapetHeight.toFixed(2)} m`
                           : `${resolvedRoof.roof === "misto" ? "Mista" : "Telhado"} · ${resolvedRoof.roofWaters} água${resolvedRoof.roofWaters > 1 ? "s" : ""} · ${resolvedRoof.roofPitchDeg.toFixed(0)}° · beiral ${resolvedRoof.roofOverhang.toFixed(2)} m`,
                       ],
-                      ["Material principal", facadePreferences.primaryMaterial],
+                      ["Material principal", materialScheme.exteriorWall.name],
                       ["Material de destaque", facadePreferences.accentMaterial],
                       ["Tom", facadePreferences.facadeTone],
                       ["Esquadrias", facadePreferences.frameTone],
