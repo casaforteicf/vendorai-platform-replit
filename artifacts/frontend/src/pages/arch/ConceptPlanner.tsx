@@ -419,6 +419,10 @@ export default function ConceptPlanner() {
     setDesiredArea(template.suggestedArea);
     setActiveFloor(0);
     setSelectedId(null);
+    setWallFirstFloors([]);
+    setCustomWalls([]);
+    setCustomOpenings([]);
+    setSpaceProfiles([]);
     setRooms(nextRooms);
   };
 
@@ -1697,8 +1701,10 @@ export default function ConceptPlanner() {
                     <button
                       key={kind}
                       type="button"
-                      onClick={() => addRoom(kind)}
-                      className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted"
+                      onClick={() => { if (!wallFirstActive) addRoom(kind); }}
+                      disabled={wallFirstActive}
+                      title={wallFirstActive ? "Neste pavimento os ambientes são derivados das paredes." : undefined}
+                      className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span>{label}</span>
                       <Plus className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1761,7 +1767,9 @@ export default function ConceptPlanner() {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {editorView === "plan"
-                          ? "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
+                          ? wallFirstActive
+                            ? "Modo wall-first ativo: ambientes, 3D e fachada são derivados da rede de paredes."
+                            : "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
                           : editorView === "model3d"
                             ? "O 3D é reconstruído automaticamente a partir da mesma rede de paredes e espaços fechados."
                             : editorView === "facade"
@@ -1782,6 +1790,19 @@ export default function ConceptPlanner() {
                         <div className="rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
                           {customWallTopology.nodes.filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2).length} junções · {customWallTopology.segments.length} segmentos topológicos
                         </div>
+                        {wallFirstActive ? (
+                          <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
+                            Rede de paredes = modelo principal
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={activateWallFirstFloor}
+                            className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                          >
+                            Usar paredes como modelo principal
+                          </button>
+                        )}
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
@@ -1799,6 +1820,7 @@ export default function ConceptPlanner() {
                           >
                             Navegar
                           </button>
+                          {!wallFirstActive && (
                           <button
                             type="button"
                             onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
@@ -1808,6 +1830,7 @@ export default function ConceptPlanner() {
                           >
                             Ambientes
                           </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -1851,6 +1874,8 @@ export default function ConceptPlanner() {
                             Portas e janelas
                           </button>
                         </div>
+                        {!wallFirstActive && (
+                          <>
                         {[
                           ["A", "Social"],
                           ["B", "Privacidade"],
@@ -1867,6 +1892,8 @@ export default function ConceptPlanner() {
                             {label} · {subtitle}
                           </button>
                         ))}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1938,7 +1965,9 @@ export default function ConceptPlanner() {
                           : interactionMode === "space"
                             ? "Espaços: selecione uma área fechada para nomear e classificar o ambiente diretamente na planta."
                           : interactionMode === "wall"
-                            ? "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
+                            ? wallFirstActive
+                              ? "Paredes: esta rede é a geometria principal do pavimento · edite segmentos, junções e medidas diretamente."
+                              : "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
                             : interactionMode === "draw-wall"
                               ? "Desenhar parede: cada segmento encaixa na rede existente; ao fechar um contorno, a área interna é detectada automaticamente."
                               : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
