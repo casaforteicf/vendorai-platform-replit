@@ -19,6 +19,7 @@ export type WallSegment = {
   x2: number;
   y2: number;
   exterior: boolean;
+  roomIds: string[];
 };
 
 export type OpeningMarker = {
@@ -74,8 +75,13 @@ export function buildConceptGeometry(
     ];
     for (const [x1, y1, x2, y2] of edges) {
       const key = keyOf(x1, y1, x2, y2);
-      if (wallMap.has(key)) sharedKeys.add(key);
-      else wallMap.set(key, { id: key, x1, y1, x2, y2, exterior: true });
+      const existing = wallMap.get(key);
+      if (existing) {
+        sharedKeys.add(key);
+        if (!existing.roomIds.includes(room.id)) existing.roomIds.push(room.id);
+      } else {
+        wallMap.set(key, { id: key, x1, y1, x2, y2, exterior: true, roomIds: [room.id] });
+      }
     }
   }
 
