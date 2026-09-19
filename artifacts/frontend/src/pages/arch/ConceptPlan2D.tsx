@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { normalizeOpeningParameters } from "./conceptOpenings";
-import { buildStairTreads, normalizeStairParameters, type StairSlabOpening } from "./conceptStairs";
+import { buildStairLandings, buildStairTreads, normalizeStairParameters, type StairSlabOpening } from "./conceptStairs";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 type Props = {
@@ -902,13 +902,6 @@ export default function ConceptPlan2D({
           );
         })}
 
-        {stairOpenings.map((opening) => (
-          <g key={opening.id} pointerEvents="none">
-            <rect x={opening.x} y={opening.y} width={opening.width} height={opening.depth} fill="#ffffff" fillOpacity="0.96" stroke="#dc2626" strokeWidth="0.055" strokeDasharray="0.16 0.10" />
-            <text x={opening.x + opening.width / 2} y={opening.y + opening.depth / 2} textAnchor="middle" fontSize="0.18" fontWeight="900" fill="#b91c1c">VAZIO ESCADA</text>
-          </g>
-        ))}
-
         {rooms.map((room) => {
           const selected = selectedId === room.id;
           const fill = ROOM_FILL[room.kind] ?? "#ffffff";
@@ -960,9 +953,23 @@ export default function ConceptPlan2D({
                 <>
                   {room.kind === "escada" && (() => {
                     const stairParams = normalizeStairParameters(room);
-                    const treads = buildStairTreads({ ...room, ...stairParams });
+                    const normalizedStair = { ...room, ...stairParams };
+                    const landings = buildStairLandings(normalizedStair);
+                    const treads = buildStairTreads(normalizedStair);
                     return (
                       <g opacity="0.9" pointerEvents="none">
+                        {landings.map((landing) => (
+                          <rect
+                            key={landing.id}
+                            x={landing.x}
+                            y={landing.y}
+                            width={landing.width}
+                            height={landing.depth}
+                            fill="#c7b59d"
+                            stroke="#6b5a47"
+                            strokeWidth="0.035"
+                          />
+                        ))}
                         {treads.map((tread, index) => (
                           <rect
                             key={tread.id}
@@ -1278,6 +1285,32 @@ export default function ConceptPlan2D({
             })()}
           </g>
         )}
+
+        {stairOpenings.map((opening) => (
+          <g key={opening.id} pointerEvents="none">
+            <rect
+              x={opening.x}
+              y={opening.y}
+              width={opening.width}
+              height={opening.depth}
+              fill="#ffffff"
+              fillOpacity="0.98"
+              stroke="#dc2626"
+              strokeWidth="0.055"
+              strokeDasharray="0.16 0.10"
+            />
+            <text
+              x={opening.x + opening.width / 2}
+              y={opening.y + opening.depth / 2}
+              textAnchor="middle"
+              fontSize="0.18"
+              fontWeight="900"
+              fill="#b91c1c"
+            >
+              VAZIO ESCADA
+            </text>
+          </g>
+        ))}
 
         {geometry.walls.map((wall) => {
           const selectedWall = selectedWallId === wall.id;

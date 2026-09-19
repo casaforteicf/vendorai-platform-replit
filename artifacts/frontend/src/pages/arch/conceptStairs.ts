@@ -41,6 +41,15 @@ export type StairTread = {
   rise: number;
 };
 
+export type StairLanding = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  rise: number;
+};
+
 export type StairSlabOpening = {
   id: string;
   stairId: string;
@@ -65,19 +74,24 @@ function finiteOr(value: number | undefined, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-export function defaultStairParameters(): NormalizedStairParameters {
-  const stairFloorToFloorHeight = STAIR_LEVEL_HEIGHT;
-  const stairRiserCount = 17;
+export function defaultStairSourceParameters(): Required<StairParameters> {
   return {
     stairShape: "straight",
     stairDirection: "north",
-    stairFloorToFloorHeight,
-    stairRiserCount,
+    stairFloorToFloorHeight: STAIR_LEVEL_HEIGHT,
+    stairRiserCount: 17,
     stairTreadDepth: 0.28,
     stairFlightWidth: 1,
     stairLandingDepth: 1,
-    riserHeight: stairFloorToFloorHeight / stairRiserCount,
-    treadCount: stairRiserCount - 1,
+  };
+}
+
+export function defaultStairParameters(): NormalizedStairParameters {
+  const source = defaultStairSourceParameters();
+  return {
+    ...source,
+    riserHeight: source.stairFloorToFloorHeight / source.stairRiserCount,
+    treadCount: source.stairRiserCount - 1,
   };
 }
 
@@ -232,11 +246,38 @@ export function buildStairTreads(stair: StairCarrier): StairTread[] {
   });
 }
 
+export function buildStairLandings(stair: StairCarrier): StairLanding[] {
+  const { params, points, segments } = stairPath(stair);
+  if (points.length <= 2 || !segments.length) return [];
+
+  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+  let cumulative = 0;
+
+  return points.slice(1, -1).map((point, index) => {
+    cumulative += segments[index]?.length ?? 0;
+    const size = Math.max(params.stairFlightWidth, params.stairLandingDepth);
+    const x1 = clamp(point.x - size / 2, stair.x, stair.x + stair.width);
+    const y1 = clamp(point.y - size / 2, stair.y, stair.y + stair.depth);
+    const x2 = clamp(point.x + size / 2, stair.x, stair.x + stair.width);
+    const y2 = clamp(point.y + size / 2, stair.y, stair.y + stair.depth);
+    return {
+      id: `${stair.id}-landing-${index}`,
+      x: x1,
+      y: y1,
+      width: Math.max(0.08, x2 - x1),
+      depth: Math.max(0.08, y2 - y1),
+      rise: totalLength > 0.001
+        ? params.stairFloorToFloorHeight * (cumulative / totalLength)
+        : 0,
+    };
+  });
+}
+
 export function buildStairSlabOpenings(stair: StairCarrier, clearance = 0.12): StairSlabOpening[] {
   const { params, segments } = stairPath(stair);
   const halfFlight = params.stairFlightWidth / 2 + Math.max(0, clearance);
 
-  return segments.map((segment, index) => {
+  const segmentOpenings = segments.map((segment, index) => {
     const horizontal = Math.abs(segment.end.x - segment.start.x) >= Math.abs(segment.end.y - segment.start.y);
     const rawX = horizontal
       ? Math.min(segment.start.x, segment.end.x) - clearance
@@ -267,6 +308,19 @@ export function buildStairSlabOpenings(stair: StairCarrier, clearance = 0.12): S
       depth: Math.max(0, y2 - y1),
     };
   }).filter((opening) => opening.width > 0.05 && opening.depth > 0.05);
+
+  const landingOpenings = buildStairLandings(stair).map((landing, index) => ({
+    id: `stair-opening-${stair.id}-landing-${index}`,
+    stairId: stair.id,
+    sourceFloor: stair.floor,
+    targetFloor: stair.floor + 1,
+    x: landing.x,
+    y: landing.y,
+    width: landing.width,
+    depth: landing.depth,
+  }));
+
+  return [...segmentOpenings, ...landingOpenings];
 }
 
 export function stairFootprintMetrics(stair: StairCarrier) {

@@ -3,7 +3,7 @@ import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenings";
 import type { ClosedSpace } from "./conceptWallNetwork";
-import { buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
+import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -394,27 +394,35 @@ export default function ConceptModel3D({
             <g key={`level-${level.floor}`} opacity={!showAllFloors && level.floor !== activeFloor ? 0.2 : 1}>
               {level.closedSpaces.map((space) => (
                 <g key={`${level.floor}-${space.id}`}>
-                  {space.cells.map((cell, index) => (
-                    <polygon
-                      key={`${space.id}-slab-${index}`}
-                      points={points(quad(
-                        cell.x,
-                        cell.y,
-                        cell.x + cell.width,
-                        cell.y + cell.height,
-                        levelBase,
-                        rotation,
-                        lotWidth,
-                        lotDepth,
-                        zoom,
-                      ))}
-                      fill={level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1"}
-                      fillOpacity={level.floor === activeFloor ? "0.42" : "0.28"}
-                      stroke="#94a3b8"
-                      strokeOpacity="0.35"
-                      strokeWidth="0.04"
-                    />
-                  ))}
+                  {space.cells.flatMap((cell, index) => {
+                    const surfacePieces = level.floor > 0
+                      ? subtractSlabOpenings(
+                          { x: cell.x, y: cell.y, width: cell.width, depth: cell.height },
+                          level.slabOpenings,
+                        )
+                      : [{ x: cell.x, y: cell.y, width: cell.width, depth: cell.height }];
+                    return surfacePieces.map((piece, pieceIndex) => (
+                      <polygon
+                        key={`${space.id}-slab-${index}-${pieceIndex}`}
+                        points={points(quad(
+                          piece.x,
+                          piece.y,
+                          piece.x + piece.width,
+                          piece.y + piece.depth,
+                          levelBase,
+                          rotation,
+                          lotWidth,
+                          lotDepth,
+                          zoom,
+                        ))}
+                        fill={level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1"}
+                        fillOpacity={level.floor === activeFloor ? "0.42" : "0.28"}
+                        stroke="#94a3b8"
+                        strokeOpacity="0.35"
+                        strokeWidth="0.04"
+                      />
+                    ));
+                  })}
                   {(() => {
                     const labelPoint = project(
                       { x: space.centroid.x, y: space.centroid.y, z: levelBase + 0.18 },
@@ -490,8 +498,27 @@ export default function ConceptModel3D({
                 )
               )}
 
-              {level.stairs.flatMap((stair) =>
-                buildStairTreads(stair).map((tread, index) => (
+              {level.stairs.flatMap((stair) => {
+                const landings = buildStairLandings(stair).map((landing) => (
+                  <polygon
+                    key={landing.id}
+                    points={points(quad(
+                      landing.x,
+                      landing.y,
+                      landing.x + landing.width,
+                      landing.y + landing.depth,
+                      levelBase + landing.rise,
+                      rotation,
+                      lotWidth,
+                      lotDepth,
+                      zoom,
+                    ))}
+                    fill="#a99478"
+                    stroke="#5f5143"
+                    strokeWidth="0.045"
+                  />
+                ));
+                const treads = buildStairTreads(stair).map((tread, index) => (
                   <polygon
                     key={tread.id}
                     points={points(quad(
@@ -509,8 +536,9 @@ export default function ConceptModel3D({
                     stroke="#6b5a47"
                     strokeWidth="0.04"
                   />
-                ))
-              )}
+                ));
+                return [...landings, ...treads];
+              })}
             </g>
           );
         })}

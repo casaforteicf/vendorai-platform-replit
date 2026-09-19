@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildStairLandings,
   buildStairSlabOpenings,
   buildStairTreads,
   normalizeStairParameters,
@@ -47,9 +48,16 @@ describe("concept stairs", () => {
       ...stair,
       stairShape: "l" as const,
     });
-    expect(openings.length).toBe(2);
+    expect(openings.length).toBeGreaterThanOrEqual(3);
     expect(openings.every((opening) => opening.sourceFloor === 0 && opening.targetFloor === 1)).toBe(true);
     expect(openings.every((opening) => opening.width > 0 && opening.depth > 0)).toBe(true);
+  });
+
+  it("faz o patamar alterar a geometria compartilhada", () => {
+    const compact = buildStairLandings({ ...stair, stairShape: "l" as const, stairLandingDepth: 0.8 });
+    const wide = buildStairLandings({ ...stair, stairShape: "l" as const, stairLandingDepth: 1.4 });
+    expect(compact.length).toBe(1);
+    expect(wide[0].width * wide[0].depth).toBeGreaterThan(compact[0].width * compact[0].depth);
   });
 
   it("detecta quando o desenvolvimento disponível não comporta o piso especificado", () => {

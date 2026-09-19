@@ -47,7 +47,7 @@ import {
 } from "./conceptOpenings";
 import {
   buildStairSlabOpenings,
-  defaultStairParameters,
+  defaultStairSourceParameters,
   normalizeStairParameters,
   riserCountForTargetHeight,
   stairFootprintMetrics,
@@ -270,7 +270,7 @@ function createRoom(kind: RoomKind, floor = 0): Room {
   const base = roomDefaults[kind];
   return {
     ...base,
-    ...(kind === "escada" ? defaultStairParameters() : {}),
+    ...(kind === "escada" ? defaultStairSourceParameters() : {}),
     id: uid(),
     floor,
     x: 8,
