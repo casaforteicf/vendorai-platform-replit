@@ -2020,15 +2020,6 @@ function newFreeItem(): FreeItem {
 }
  
   function removeCatLine(i: number) { setCartLines((p) => p.filter((_, j) => j !== i)); }
-  function moveCatLine(i: number, direction: -1 | 1) {
-    setCartLines((prev) => {
-      const target = i + direction;
-      if (target < 0 || target >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[target]] = [next[target], next[i]];
-      return next;
-    });
-  }
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
