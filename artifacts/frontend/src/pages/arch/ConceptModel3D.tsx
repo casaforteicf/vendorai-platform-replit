@@ -1,0 +1,282 @@
+import { useMemo, useState } from "react";
+import { RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+import type { WallSegment } from "./conceptGeometry";
+import type { ClosedSpace } from "./conceptWallNetwork";
+
+type CustomWall = {
+  id: string;
+  floor: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness?: number;
+};
+
+type Props = {
+  lotWidth: number;
+  lotDepth: number;
+  floor: number;
+  walls: WallSegment[];
+  customWalls: CustomWall[];
+  closedSpaces: ClosedSpace[];
+  labels?: Record<string, string>;
+};
+
+type Point3 = { x: number; y: number; z: number };
+type Point2 = { x: number; y: number };
+
+const WALL_HEIGHT = 2.8;
+const FLOOR_THICKNESS = 0.12;
+
+function rotatePoint(x: number, y: number, quarterTurns: number, lotWidth: number, lotDepth: number) {
+  const cx = lotWidth / 2;
+  const cy = lotDepth / 2;
+  let px = x - cx;
+  let py = y - cy;
+  const turns = ((quarterTurns % 4) + 4) % 4;
+
+  for (let index = 0; index < turns; index += 1) {
+    const nextX = -py;
+    py = px;
+    px = nextX;
+  }
+
+  return { x: px, y: py };
+}
+
+function project(point: Point3, rotation: number, lotWidth: number, lotDepth: number, zoom: number): Point2 {
+  const rotated = rotatePoint(point.x, point.y, rotation, lotWidth, lotDepth);
+  const isoX = (rotated.x - rotated.y) * 1.08;
+  const isoY = (rotated.x + rotated.y) * 0.54 - point.z * 1.42;
+  return { x: isoX * zoom, y: isoY * zoom };
+}
+
+function points(pointsValue: Point2[]) {
+  return pointsValue.map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`).join(" ");
+}
+
+function wallPolygon(
+  wall: { x1: number; y1: number; x2: number; y2: number; thickness?: number },
+  rotation: number,
+  lotWidth: number,
+  lotDepth: number,
+  zoom: number,
+) {
+  const thickness = Math.max(0.08, wall.thickness ?? 0.14);
+  const dx = wall.x2 - wall.x1;
+  const dy = wall.y2 - wall.y1;
+  const length = Math.max(0.001, Math.hypot(dx, dy));
+  const nx = (-dy / length) * (thickness / 2);
+  const ny = (dx / length) * (thickness / 2);
+
+  const base = [
+    { x: wall.x1 + nx, y: wall.y1 + ny, z: 0 },
+    { x: wall.x2 + nx, y: wall.y2 + ny, z: 0 },
+    { x: wall.x2 - nx, y: wall.y2 - ny, z: 0 },
+    { x: wall.x1 - nx, y: wall.y1 - ny, z: 0 },
+  ];
+
+  const top = base.map((point) => ({ ...point, z: WALL_HEIGHT }));
+
+  return {
+    base: base.map((point) => project(point, rotation, lotWidth, lotDepth, zoom)),
+    top: top.map((point) => project(point, rotation, lotWidth, lotDepth, zoom)),
+    sideA: [base[0], base[1], top[1], top[0]].map((point) => project(point, rotation, lotWidth, lotDepth, zoom)),
+    sideB: [base[1], base[2], top[2], top[1]].map((point) => project(point, rotation, lotWidth, lotDepth, zoom)),
+  };
+}
+
+export default function ConceptModel3D({
+  lotWidth,
+  lotDepth,
+  floor,
+  walls,
+  customWalls,
+  closedSpaces,
+  labels = {},
+}: Props) {
+  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState(1);
+
+  const allWalls = useMemo(
+    () => [
+      ...walls.map((wall) => ({
+        id: wall.id,
+        x1: wall.x1,
+        y1: wall.y1,
+        x2: wall.x2,
+        y2: wall.y2,
+        thickness: wall.exterior ? 0.18 : 0.12,
+        exterior: wall.exterior,
+      })),
+      ...customWalls
+        .filter((wall) => wall.floor === floor)
+        .map((wall) => ({ ...wall, exterior: false })),
+    ],
+    [walls, customWalls, floor],
+  );
+
+  const lotCorners = useMemo(() => {
+    const z = -FLOOR_THICKNESS;
+    return [
+      project({ x: 0, y: 0, z }, rotation, lotWidth, lotDepth, zoom),
+      project({ x: lotWidth, y: 0, z }, rotation, lotWidth, lotDepth, zoom),
+      project({ x: lotWidth, y: lotDepth, z }, rotation, lotWidth, lotDepth, zoom),
+      project({ x: 0, y: lotDepth, z }, rotation, lotWidth, lotDepth, zoom),
+    ];
+  }, [rotation, lotWidth, lotDepth, zoom]);
+
+  const sceneWidth = Math.max(lotWidth, lotDepth) * 2.8 * zoom + 20;
+  const sceneHeight = Math.max(lotWidth, lotDepth) * 1.8 * zoom + WALL_HEIGHT * 3 + 18;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border bg-slate-950 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
+        <div>
+          <div className="text-sm font-semibold">Modelo 3D sincronizado</div>
+          <div className="text-xs text-white/60">Gerado diretamente da mesma rede de paredes da planta.</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRotation((value) => (value + 3) % 4)}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5"
+            title="Girar para esquerda"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setRotation((value) => (value + 1) % 4)}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5"
+            title="Girar para direita"
+          >
+            <RotateCw className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom((value) => Math.max(0.65, Number((value - 0.1).toFixed(2))))}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5"
+            title="Reduzir"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.1).toFixed(2))))}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5"
+            title="Ampliar"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <svg
+        viewBox={`${-sceneWidth / 2} ${-sceneHeight / 2} ${sceneWidth} ${sceneHeight}`}
+        className="block min-h-[460px] w-full bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)]"
+        role="img"
+        aria-label="Modelo tridimensional conceitual da planta"
+      >
+        <defs>
+          <linearGradient id="concept3d-floor" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#334155" />
+            <stop offset="100%" stopColor="#1e293b" />
+          </linearGradient>
+          <linearGradient id="concept3d-wall" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#f8fafc" />
+            <stop offset="100%" stopColor="#cbd5e1" />
+          </linearGradient>
+          <linearGradient id="concept3d-wall-side" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#94a3b8" />
+            <stop offset="100%" stopColor="#64748b" />
+          </linearGradient>
+          <filter id="concept3d-shadow" x="-30%" y="-30%" width="160%" height="180%">
+            <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" floodColor="#000000" floodOpacity="0.28" />
+          </filter>
+        </defs>
+
+        <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" stroke="#475569" strokeWidth="0.08" />
+
+        {closedSpaces.map((space) => (
+          <g key={space.id} opacity="0.86">
+            {space.cells.map((cell, index) => {
+              const floorPolygon = [
+                project({ x: cell.x, y: cell.y, z: 0.015 }, rotation, lotWidth, lotDepth, zoom),
+                project({ x: cell.x + cell.width, y: cell.y, z: 0.015 }, rotation, lotWidth, lotDepth, zoom),
+                project({ x: cell.x + cell.width, y: cell.y + cell.height, z: 0.015 }, rotation, lotWidth, lotDepth, zoom),
+                project({ x: cell.x, y: cell.y + cell.height, z: 0.015 }, rotation, lotWidth, lotDepth, zoom),
+              ];
+              return (
+                <polygon
+                  key={`${space.id}-floor-${index}`}
+                  points={points(floorPolygon)}
+                  fill="#e2e8f0"
+                  fillOpacity="0.34"
+                  stroke="#94a3b8"
+                  strokeOpacity="0.24"
+                  strokeWidth="0.04"
+                />
+              );
+            })}
+            {(() => {
+              const labelPoint = project(
+                { x: space.centroid.x, y: space.centroid.y, z: 0.18 },
+                rotation,
+                lotWidth,
+                lotDepth,
+                zoom,
+              );
+              const label = labels[space.id]?.trim();
+              return (
+                <g transform={`translate(${labelPoint.x} ${labelPoint.y})`}>
+                  <rect x="-2.4" y="-0.62" width="4.8" height="1.1" rx="0.22" fill="#020617" fillOpacity="0.74" />
+                  <text x="0" y="-0.12" textAnchor="middle" fontSize="0.48" fontWeight="800" fill="#f8fafc">
+                    {label || "Espaço"}
+                  </text>
+                  <text x="0" y="0.31" textAnchor="middle" fontSize="0.34" fontWeight="700" fill="#cbd5e1">
+                    {space.area.toFixed(1)} m²
+                  </text>
+                </g>
+              );
+            })()}
+          </g>
+        ))}
+
+        <g filter="url(#concept3d-shadow)">
+          {allWalls.map((wall) => {
+            const shape = wallPolygon(wall, rotation, lotWidth, lotDepth, zoom);
+            return (
+              <g key={wall.id}>
+                <polygon
+                  points={points(shape.sideA)}
+                  fill={wall.exterior ? "#cbd5e1" : "#94a3b8"}
+                  stroke="#475569"
+                  strokeWidth="0.055"
+                />
+                <polygon
+                  points={points(shape.sideB)}
+                  fill="url(#concept3d-wall-side)"
+                  stroke="#475569"
+                  strokeWidth="0.055"
+                />
+                <polygon
+                  points={points(shape.top)}
+                  fill="url(#concept3d-wall)"
+                  stroke="#64748b"
+                  strokeWidth="0.055"
+                />
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
+        <span>{allWalls.length} paredes · {closedSpaces.length} espaços fechados</span>
+        <span>Pé-direito conceitual: {WALL_HEIGHT.toFixed(2).replace(".", ",")} m</span>
+      </div>
+    </div>
+  );
+}
