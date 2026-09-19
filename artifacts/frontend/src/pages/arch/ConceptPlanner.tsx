@@ -26,6 +26,7 @@ import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./con
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptFacadeElevation from "./ConceptFacadeElevation";
+import ConceptModel3D from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
@@ -242,7 +243,7 @@ export default function ConceptPlanner() {
   const [floors, setFloors] = useState(1);
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
-  const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
+  const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
@@ -1145,12 +1146,13 @@ export default function ConceptPlanner() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3">
               <div>
                 <div className="text-sm font-semibold">Editor do pré-projeto</div>
-                <div className="text-xs text-muted-foreground">Edite a mesma casa em planta, fachada e render sem sair do workspace.</div>
+                <div className="text-xs text-muted-foreground">Edite a mesma casa em 2D, 3D, fachada e render sem sair do workspace.</div>
               </div>
               <div className="flex items-center gap-2">
                 <div className="inline-flex rounded-xl border bg-muted/40 p-1">
                   {([
                     ["plan", "2D"],
+                    ["model3d", "3D"],
                     ["facade", "Fachada"],
                     ["render", "Render"],
                   ] as const).map(([value, label]) => (
@@ -1277,16 +1279,20 @@ export default function ConceptPlanner() {
                       <div className="font-semibold">
                         {editorView === "plan"
                           ? `Planta 2D — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}`
-                          : editorView === "facade"
-                            ? "Fachada conceitual"
-                            : "Render conceitual"}
+                          : editorView === "model3d"
+                            ? `Modelo 3D — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}`
+                            : editorView === "facade"
+                              ? "Fachada conceitual"
+                              : "Render conceitual"}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {editorView === "plan"
                           ? "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
-                          : editorView === "facade"
-                            ? "A fachada nasce da mesma implantação e das preferências do projeto."
-                            : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
+                          : editorView === "model3d"
+                            ? "O 3D é reconstruído automaticamente a partir da mesma rede de paredes e espaços fechados."
+                            : editorView === "facade"
+                              ? "A fachada nasce da mesma implantação e das preferências do projeto."
+                              : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
                       </div>
                     </div>
                     {editorView === "plan" && (
@@ -1441,6 +1447,23 @@ export default function ConceptPlanner() {
                               : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
                       </div>
                     </>
+                  )}
+
+                  {editorView === "model3d" && (
+                    <ConceptModel3D
+                      lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                      floor={activeFloor}
+                      walls={geometry.walls}
+                      customWalls={customWalls}
+                      closedSpaces={closedSpaces}
+                      labels={Object.fromEntries(
+                        closedSpaces.map((space) => [
+                          space.id,
+                          spaceAssignments.get(space.id)?.label ?? "",
+                        ]),
+                      )}
+                    />
                   )}
 
                   {editorView === "facade" && (
@@ -1763,6 +1786,34 @@ export default function ConceptPlanner() {
                     </div>
                     )}
                   </>
+                )}
+
+                {editorView === "model3d" && (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-xl border bg-muted/30 p-4">
+                      <div className="text-sm font-semibold">Modelo sincronizado</div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Alterações feitas na planta 2D, nas paredes livres e nos espaços fechados alimentam esta visualização. Não existe um segundo modelo paralelo.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-muted/50 p-3">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Paredes</div>
+                        <div className="mt-1 text-lg font-bold">{geometry.walls.length + customWalls.filter((wall) => wall.floor === activeFloor).length}</div>
+                      </div>
+                      <div className="rounded-xl bg-muted/50 p-3">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Espaços</div>
+                        <div className="mt-1 text-lg font-bold">{closedSpaces.length}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditorView("plan")}
+                      className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+                    >
+                      Voltar para editar planta
+                    </button>
+                  </div>
                 )}
 
                 {editorView === "facade" && (
