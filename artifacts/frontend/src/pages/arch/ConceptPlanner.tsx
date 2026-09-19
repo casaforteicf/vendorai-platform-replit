@@ -55,7 +55,6 @@ import {
   createConceptObjectFromPreset,
   normalizeConceptObject,
   objectCategoryLabel,
-  sanitizeConceptObjectForPersistence,
   type ConceptObject,
 } from "./conceptObjects";
 import {
@@ -72,13 +71,13 @@ import {
   materialFromLibrary,
   materialOptionsFor,
   normalizeConceptMaterialScheme,
-  sanitizeConceptMaterialSchemeForFloors,
   type ConceptMaterialRef,
   type ConceptMaterialScheme,
 } from "./conceptMaterials";
 import {
   SINGLETON_ROOM_KINDS,
   autoArrange,
+  buildConceptPersistencePayload,
   cloneEditorSnapshot as cloneSnapshot,
   conceptUid as uid,
   createRoom,
@@ -433,39 +432,28 @@ export default function ConceptPlanner() {
   const buildConceptPayload = (
     currentStep: number,
     renderState: ConceptDraftResponse["conceptRender"] = conceptRender,
-  ) => {
-    const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
-    const persistedRooms = normalizeDraftRooms(rooms);
-    const persistedObjects = objects
-      .filter((object) => object.floor >= 0 && object.floor < floors)
-      .map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
-
-    return {
-      title: "Meu pré-projeto",
-      status: "draft",
-      currentStep,
-      lot: { width: lotWidth, depth: lotDepth },
-      configuration: {
-        floors,
-        desiredArea,
-        typology,
-        layoutPreferences,
-        wallFirstFloors,
-        showDimensions,
-        customWalls,
-        customOpenings: persistedCustomOpenings,
-        spaceProfiles,
-        objects: persistedObjects,
-        materials: sanitizeConceptMaterialSchemeForFloors(materialScheme, floors),
-      },
-      rooms: persistedRooms,
-      openingOverrides,
-      customerProfile,
-      facadePreferences,
-      conceptRender: renderState,
-      selectedVariant: layoutVariant,
-    };
-  };
+  ) => buildConceptPersistencePayload({
+    currentStep,
+    renderState,
+    floors,
+    desiredArea,
+    typology,
+    layoutPreferences,
+    wallFirstFloors,
+    showDimensions,
+    customWalls,
+    customOpenings,
+    spaceProfiles,
+    objects,
+    materialScheme,
+    rooms,
+    openingOverrides,
+    customerProfile,
+    facadePreferences,
+    selectedVariant: layoutVariant,
+    lotWidth,
+    lotDepth,
+  });
 
   const saveConcept = async (stepOverride?: number) => {
     setSaveState("saving");
