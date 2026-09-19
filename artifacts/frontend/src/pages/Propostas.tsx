@@ -1744,8 +1744,120 @@ const ETAPAS_OBRA_SUGERIDAS = [
   "Forros e pintura",
   "Acabamentos",
   "Áreas externas",
+  "Energia solar e automação",
+  "Projetos e legalização",
   "Limpeza e entrega",
 ];
+
+type OrcamentoStageKey =
+  | "preliminares"
+  | "terraplenagem"
+  | "fundacoes"
+  | "estrutura_icf"
+  | "lajes"
+  | "cobertura"
+  | "hidraulica"
+  | "eletrica"
+  | "esquadrias"
+  | "revestimentos"
+  | "forros_pintura"
+  | "acabamentos"
+  | "areas_externas"
+  | "solar_automacao"
+  | "projetos_legalizacao"
+  | "limpeza_entrega"
+  | "custom";
+
+function normalizeStageText(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function resolveOrcamentoStageKey(nome: string): OrcamentoStageKey {
+  const value = normalizeStageText(nome);
+  if (/preliminar|canteiro|mobilizacao/.test(value)) return "preliminares";
+  if (/terraplen|movimentacao de terra|escavacao/.test(value)) return "terraplenagem";
+  if (/fundac|radier|baldrame|sapata|estaca/.test(value)) return "fundacoes";
+  if (/estrutura|\bicf\b|parede estrutural/.test(value)) return "estrutura_icf";
+  if (/laje/.test(value)) return "lajes";
+  if (/cobertura|telhado/.test(value)) return "cobertura";
+  if (/hidraul|sanitari|esgoto|gas/.test(value)) return "hidraulica";
+  if (/eletric|climatiz|ar condicionado/.test(value)) return "eletrica";
+  if (/esquadr|vidro|janela|porta/.test(value)) return "esquadrias";
+  if (/revest|piso|impermeab/.test(value)) return "revestimentos";
+  if (/forro|pintura|gesso|drywall/.test(value)) return "forros_pintura";
+  if (/acabamento|marcenaria|mobiliario/.test(value)) return "acabamentos";
+  if (/extern|piscina|deck|paisag|jardim/.test(value)) return "areas_externas";
+  if (/solar|fotovolta|automacao/.test(value)) return "solar_automacao";
+  if (/projeto|legal|licen|regulariz|taxa/.test(value)) return "projetos_legalizacao";
+  if (/limpeza|entrega|pos obra/.test(value)) return "limpeza_entrega";
+  return "custom";
+}
+
+const STAGE_KEYWORDS: Record<Exclude<OrcamentoStageKey, "custom">, string[]> = {
+  preliminares: ["canteiro", "tapume", "sondagem", "demarcacao", "locacao de obra", "limpeza do terreno", "placa de obra", "barracao"],
+  terraplenagem: ["terraplen", "escavacao", "movimentacao de terra", "aterro", "corte", "compactacao"],
+  fundacoes: ["fundacao", "radier", "sapata", "baldrame", "estaca", "broca"],
+  estrutura_icf: ["icf", "estrutura", "coluna", "viga", "armadura", "graute", "concreto estrutural", "forma"],
+  lajes: ["laje", "escoramento"],
+  cobertura: ["cobertura", "telha", "rufo", "calha", "cumeeira"],
+  hidraulica: ["hidraul", "sanitari", "esgoto", "pex", "agua", "cisterna", "aquecedor", "registro", "chuveiro", "vaso", "banheiro", "fossa", "biofiltro", "gas"],
+  eletrica: ["eletric", "cabo", "eletroduto", "quadro", "disjuntor", "tomada", "interruptor", "aterramento", "split", "climatizacao", "ar condicionado"],
+  esquadrias: ["esquadr", "janela", "porta", "vidro", "box", "persiana", "fechadura"],
+  revestimentos: ["revest", "porcelanato", "piso", "reboco", "impermeab", "argamassa", "rejunte"],
+  forros_pintura: ["forro", "gesso", "drywall", "pintura", "tinta", "massa", "sanca"],
+  acabamentos: ["acabamento", "louca", "metal", "granito", "marmore", "moveis", "movel", "marcenaria"],
+  areas_externas: ["extern", "piscina", "deck", "churrasqueira", "paisag", "jardim", "calcada", "paver"],
+  solar_automacao: ["solar", "fotovolta", "inversor", "bateria", "mppt", "automacao", "monitoramento"],
+  projetos_legalizacao: ["projeto", "alvara", "taxa", "avcb", "acessibilidade", "habite", "seguro", "averbacao", "inss", "iss", "licenca", "regularizacao"],
+  limpeza_entrega: ["limpeza", "entrega", "pos obra"],
+};
+
+function textMatchesStage(text: string, key: OrcamentoStageKey, etapaNome: string) {
+  const normalized = normalizeStageText(text);
+  if (!normalized) return false;
+  if (key === "custom") {
+    const terms = normalizeStageText(etapaNome).split(" ").filter((term) => term.length >= 4);
+    return terms.length > 0 && terms.some((term) => normalized.includes(term));
+  }
+  return STAGE_KEYWORDS[key].some((keyword) => normalized.includes(keyword));
+}
+
+function composicaoMatchesStage(item: Composicao, etapaNome: string) {
+  const key = resolveOrcamentoStageKey(etapaNome);
+  const codigo = String(item.codigo ?? "").trim();
+  const text = [item.nome, item.descricao, item.codigo].filter(Boolean).join(" ");
+
+  if (key === "preliminares" && /^1\.1\./.test(codigo)) return true;
+  if (key === "terraplenagem" && /^1\.2\.(1|3)$/.test(codigo)) return true;
+  if (key === "fundacoes" && /^1\.2\.2$/.test(codigo)) return true;
+  if (key === "estrutura_icf" && (/^2\.1\./.test(codigo) || /^2\.2\.(1|3)$/.test(codigo) || /^2\.3\./.test(codigo))) return true;
+  if (key === "lajes" && /^2\.2\.2$/.test(codigo)) return true;
+  if (key === "cobertura" && /^6\.3\.(3|4|6)$/.test(codigo)) return true;
+  if (key === "hidraulica" && /^4\.(1|2|3|4)\./.test(codigo)) return true;
+  if (key === "eletrica" && /^3\./.test(codigo)) return true;
+  if (key === "esquadrias" && /^5\./.test(codigo)) return true;
+  if (key === "revestimentos" && (/^4\.5\./.test(codigo) || /^6\.2\./.test(codigo) || /^6\.3\.(1|2)$/.test(codigo) || /^6\.4\.1$/.test(codigo))) return true;
+  if (key === "forros_pintura" && (/^6\.1\./.test(codigo) || /^6\.3\.5$/.test(codigo))) return true;
+  if (key === "acabamentos" && (/^6\.4\.2$/.test(codigo) || /^9\.4\.(1|2|5)$/.test(codigo))) return true;
+  if (key === "areas_externas" && (/^7\./.test(codigo) || /^9\.4\.3$/.test(codigo))) return true;
+  if (key === "solar_automacao" && (/^8\./.test(codigo) || /^9\.4\.4$/.test(codigo))) return true;
+  if (key === "projetos_legalizacao" && (/^1\.3\./.test(codigo) || /^9\.(1|2)\./.test(codigo))) return true;
+  if (key === "limpeza_entrega" && /^9\.3\./.test(codigo)) return true;
+
+  return textMatchesStage(text, key, etapaNome);
+}
+
+function produtoMatchesStage(item: ProdutoCatalogo, etapaNome: string) {
+  const key = resolveOrcamentoStageKey(etapaNome);
+  const product = item as ProdutoCatalogo & { categoriaNome?: string; descricao?: string | null };
+  const text = [product.nome, product.categoriaNome, product.descricao].filter(Boolean).join(" ");
+  return textMatchesStage(text, key, etapaNome);
+}
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
   pix: "PIX",
@@ -1831,6 +1943,7 @@ function newFreeItem(): FreeItem {
     ]);
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
+    const [showAllByStage, setShowAllByStage] = useState<Record<string, boolean>>({});
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
     const [freeError, setFreeError] = useState("");
@@ -1962,6 +2075,7 @@ function newFreeItem(): FreeItem {
     setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: ETAPAS_OBRA_SUGERIDAS[0] }]);
     setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
     setCartError("");
+    setShowAllByStage({});
     setFreeItems([newFreeItem()]);
     setFreeError("");
     setContextoIA("");
@@ -2469,6 +2583,16 @@ function newFreeItem(): FreeItem {
                     .map((line, index) => ({ line, index }))
                     .filter(({ line }) => line.etapaId === etapa.id);
 
+                  const selectedProductIds = new Set(stageEntries.map(({ line }) => line.produtoId).filter(Boolean) as string[]);
+                  const selectedComposicaoIds = new Set(stageEntries.map(({ line }) => line.composicaoId).filter(Boolean) as string[]);
+                  const showAllForStage = Boolean(showAllByStage[etapa.id]);
+                  const produtosEtapa = activeCatalog.filter((item) =>
+                    showAllForStage || selectedProductIds.has(item.id) || produtoMatchesStage(item, etapa.nome)
+                  );
+                  const composicoesEtapa = composicoes.filter((item: Composicao) =>
+                    showAllForStage || selectedComposicaoIds.has(item.id) || composicaoMatchesStage(item, etapa.nome)
+                  );
+
                   const etapaTotal = stageEntries.reduce((sum, { line }) => {
                     const prod = line.tipo === "produto" && line.produtoId
                       ? activeCatalog.find((item) => item.id === line.produtoId)
@@ -2537,13 +2661,31 @@ function newFreeItem(): FreeItem {
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto", etapa.id)}>
-                            <Plus className="h-3.5 w-3.5 mr-1" /> Produto
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao", etapa.id)}>
-                            <Plus className="h-3.5 w-3.5 mr-1" /> Composição
-                          </Button>
+                        <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto", etapa.id)}>
+                              <Plus className="h-3.5 w-3.5 mr-1" /> Produto
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao", etapa.id)}>
+                              <Plus className="h-3.5 w-3.5 mr-1" /> Composição
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span>
+                              {showAllForStage
+                                ? `Exibindo catálogo completo · ${activeCatalog.length} produtos · ${composicoes.length} composições`
+                                : `${produtosEtapa.length} produtos · ${composicoesEtapa.length} composições compatíveis`}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[11px]"
+                              onClick={() => setShowAllByStage((prev) => ({ ...prev, [etapa.id]: !showAllForStage }))}
+                            >
+                              {showAllForStage ? "Filtrar pela etapa" : "Mostrar todos"}
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
 
@@ -2596,7 +2738,11 @@ function newFreeItem(): FreeItem {
                                           <Select value={line.produtoId} onValueChange={(value) => selectProduct(idx, value)}>
                                             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione um produto…" /></SelectTrigger>
                                             <SelectContent>
-                                              {activeCatalog.map((p) => (
+                                              {produtosEtapa.length === 0 ? (
+                                                <SelectItem value={`__no-product-${etapa.id}`} disabled>
+                                                  Nenhum produto correspondente a esta etapa
+                                                </SelectItem>
+                                              ) : produtosEtapa.map((p) => (
                                                 <SelectItem key={p.id} value={p.id}>
                                                   {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
                                                 </SelectItem>
@@ -2607,7 +2753,11 @@ function newFreeItem(): FreeItem {
                                           <Select value={line.composicaoId} onValueChange={(value) => selectComposicao(idx, value)}>
                                             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione uma composição…" /></SelectTrigger>
                                             <SelectContent>
-                                              {composicoes.map((item: Composicao) => (
+                                              {composicoesEtapa.length === 0 ? (
+                                                <SelectItem value={`__no-composition-${etapa.id}`} disabled>
+                                                  Nenhuma composição correspondente a esta etapa
+                                                </SelectItem>
+                                              ) : composicoesEtapa.map((item: Composicao) => (
                                                 <SelectItem key={item.id} value={item.id}>
                                                   {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
                                                 </SelectItem>
