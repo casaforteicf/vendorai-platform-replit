@@ -74,6 +74,14 @@ type CustomWall = {
   thickness?: number;
 };
 
+type CustomOpening = {
+  id: string;
+  wallId: string;
+  floor: number;
+  type: "door" | "window";
+  offset: number;
+};
+
 type SpaceProfile = {
   id: string;
   floor: number;
@@ -86,6 +94,7 @@ type SpaceProfile = {
 type EditorSnapshot = {
   rooms: Room[];
   customWalls: CustomWall[];
+  customOpenings: CustomOpening[];
   openingOverrides: Record<string, OpeningOverride>;
 };
 
@@ -110,6 +119,7 @@ type ConceptDraftResponse = {
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+    customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
   };
   rooms: Room[];
@@ -248,6 +258,7 @@ export default function ConceptPlanner() {
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
+  const customOpeningsRef = useRef<CustomOpening[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
@@ -259,6 +270,7 @@ export default function ConceptPlanner() {
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
+  const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
@@ -278,6 +290,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     customWallsRef.current = customWalls;
   }, [customWalls]);
+
+  useEffect(() => {
+    customOpeningsRef.current = customOpenings;
+  }, [customOpenings]);
 
   useEffect(() => {
     openingOverridesRef.current = openingOverrides;
@@ -308,6 +324,7 @@ export default function ConceptPlanner() {
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
+        setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
@@ -334,7 +351,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, spaceProfiles },
+      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
       rooms,
       openingOverrides,
       customerProfile,
@@ -402,6 +419,7 @@ export default function ConceptPlanner() {
   const snapshotEditor = (): EditorSnapshot => ({
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
+    customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
     openingOverrides: Object.fromEntries(
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
@@ -410,6 +428,7 @@ export default function ConceptPlanner() {
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
+    customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
     openingOverrides: Object.fromEntries(
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
@@ -419,6 +438,7 @@ export default function ConceptPlanner() {
     const cloned = cloneSnapshot(snapshot);
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
+    setCustomOpenings(cloned.customOpenings);
     setOpeningOverrides(cloned.openingOverrides);
     setSelectedId(null);
     setSelectedWallId(null);
@@ -498,6 +518,24 @@ export default function ConceptPlanner() {
   };
 
   const updateOpeningById = (openingId: string, patch: OpeningOverride) => {
+    const custom = customOpenings.find((opening) => opening.id === openingId);
+    if (custom) {
+      const wall = customWalls.find((item) => item.id === custom.wallId);
+      if (!wall) return;
+      const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+      const start = horizontal ? wall.x1 : wall.y1;
+      const end = horizontal ? wall.x2 : wall.y2;
+      const current = horizontal ? patch.x : patch.y;
+      const denominator = end - start;
+      const offset = Math.abs(denominator) < 0.001
+        ? custom.offset
+        : Math.max(0.08, Math.min(0.92, (current - start) / denominator));
+      setCustomOpenings((prev) => prev.map((opening) =>
+        opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
+      ));
+      return;
+    }
+
     setOpeningOverrides((prev) => ({
       ...prev,
       [openingId]: patch,
@@ -552,15 +590,40 @@ export default function ConceptPlanner() {
     () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
   );
+  const customOpeningMarkers = useMemo(
+    () =>
+      customOpenings
+        .filter((opening) => opening.floor === activeFloor)
+        .flatMap((opening) => {
+          const wall = customWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
+          if (!wall) return [];
+          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
+          const x = wall.x1 + (wall.x2 - wall.x1) * offset;
+          const y = wall.y1 + (wall.y2 - wall.y1) * offset;
+          const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+          return [{
+            id: opening.id,
+            type: opening.type,
+            x,
+            y,
+            orientation: horizontal ? "horizontal" as const : "vertical" as const,
+            roomId: `custom-wall:${wall.id}`,
+          }];
+        }),
+    [customOpenings, customWalls, activeFloor],
+  );
   const geometry = useMemo(
     () => ({
       ...baseGeometry,
-      openings: baseGeometry.openings.map((opening) => {
-        const override = openingOverrides[opening.id];
-        return override ? { ...opening, ...override } : opening;
-      }),
+      openings: [
+        ...baseGeometry.openings.map((opening) => {
+          const override = openingOverrides[opening.id];
+          return override ? { ...opening, ...override } : opening;
+        }),
+        ...customOpeningMarkers,
+      ],
     }),
-    [baseGeometry, openingOverrides],
+    [baseGeometry, openingOverrides, customOpeningMarkers],
   );
   const closedSpaces = useMemo(
     () =>
@@ -628,6 +691,22 @@ export default function ConceptPlanner() {
         }),
       };
       const floorCustomWalls = customWalls.filter((wall) => wall.floor === floorIndex);
+      const floorCustomOpeningMarkers = customOpenings
+        .filter((opening) => opening.floor === floorIndex)
+        .flatMap((opening) => {
+          const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
+          if (!wall) return [];
+          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
+          const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+          return [{
+            id: opening.id,
+            type: opening.type,
+            x: wall.x1 + (wall.x2 - wall.x1) * offset,
+            y: wall.y1 + (wall.y2 - wall.y1) * offset,
+            orientation: horizontal ? "horizontal" as const : "vertical" as const,
+            roomId: `custom-wall:${wall.id}`,
+          }];
+        });
       const floorClosedSpaces = detectClosedSpaces(
         [
           ...floorGeometry.walls.map((wall) => ({
@@ -676,7 +755,7 @@ export default function ConceptPlanner() {
         walls: floorGeometry.walls,
         customWalls: floorCustomWalls,
         closedSpaces: floorClosedSpaces,
-        openings: floorGeometry.openings,
+        openings: [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
         stairs: rooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
@@ -689,7 +768,7 @@ export default function ConceptPlanner() {
           })),
       };
     });
-  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, spaceProfiles]);
+  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
@@ -799,11 +878,37 @@ export default function ConceptPlanner() {
   const deleteCustomWall = (wallId: string) => {
     const before = snapshotEditor();
     setCustomWalls((prev) => prev.filter((wall) => wall.id !== wallId));
+    setCustomOpenings((prev) => prev.filter((opening) => opening.wallId !== wallId));
     pushRoomHistory(before);
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
 
   const selectedCustomWall = customWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+
+  const addOpeningToCustomWall = (wallId: string, type: "door" | "window") => {
+    const wall = customWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const before = snapshotEditor();
+    const opening: CustomOpening = {
+      id: `custom-opening-${uid()}`,
+      wallId,
+      floor: wall.floor,
+      type,
+      offset: 0.5,
+    };
+    setCustomOpenings((prev) => [...prev, opening]);
+    pushRoomHistory(before);
+    setInteractionMode("opening");
+    setSelectedOpeningId(opening.id);
+    setSelectedCustomWallId(null);
+  };
+
+  const deleteCustomOpening = (openingId: string) => {
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => prev.filter((opening) => opening.id !== openingId));
+    pushRoomHistory(before);
+    setSelectedOpeningId((current) => current === openingId ? null : current);
+  };
 
   const moveWallById = (wallId: string, delta: number) => {
     if (!delta) return;
@@ -863,10 +968,7 @@ export default function ConceptPlanner() {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const next = nudgeOpening(selectedOpening, amount, lotWidth, lotDepth);
-    setOpeningOverrides((prev) => ({
-      ...prev,
-      [selectedOpening.id]: { x: next.x, y: next.y, type: next.type },
-    }));
+    updateOpeningById(selectedOpening.id, { x: next.x, y: next.y, type: next.type });
     pushRoomHistory(before);
   };
 
@@ -874,10 +976,11 @@ export default function ConceptPlanner() {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const nextType = selectedOpening.type === "door" ? "window" : "door";
-    setOpeningOverrides((prev) => ({
-      ...prev,
-      [selectedOpening.id]: { x: selectedOpening.x, y: selectedOpening.y, type: nextType },
-    }));
+    updateOpeningById(selectedOpening.id, {
+      x: selectedOpening.x,
+      y: selectedOpening.y,
+      type: nextType,
+    });
     pushRoomHistory(before);
   };
 
@@ -988,7 +1091,7 @@ export default function ConceptPlanner() {
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, spaceProfiles },
+            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
             rooms,
             openingOverrides,
             facadePreferences,
@@ -1732,6 +1835,25 @@ export default function ConceptPlanner() {
                               {Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)} m · espessura {((selectedCustomWall.thickness ?? 0.15) * 100).toFixed(0)} cm
                             </div>
                           </div>
+                          <div>
+                            <div className="mb-2 text-xs font-semibold text-muted-foreground">Adicionar vão nesta parede</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")}
+                                className="rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-muted"
+                              >
+                                + Porta
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")}
+                                className="rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-muted"
+                              >
+                                + Janela
+                              </button>
+                            </div>
+                          </div>
                           <div className="grid grid-cols-2 gap-3">
                             <label className="block text-xs font-semibold">
                               Comprimento exato (m)
@@ -1882,6 +2004,15 @@ export default function ConceptPlanner() {
                           >
                             Trocar para {selectedOpening.type === "door" ? "janela" : "porta"}
                           </button>
+                          {customOpenings.some((opening) => opening.id === selectedOpening.id) && (
+                            <button
+                              type="button"
+                              onClick={() => deleteCustomOpening(selectedOpening.id)}
+                              className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
+                            >
+                              Excluir vão
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSelectedOpeningId(null)}
