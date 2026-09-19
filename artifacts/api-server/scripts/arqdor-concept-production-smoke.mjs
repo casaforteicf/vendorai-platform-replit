@@ -110,6 +110,7 @@ async function main() {
     headers,
     body: JSON.stringify({
       project_id: conceptId,
+      original_image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2mRIAAAAASUVORK5CYII=",
       mode: "preservar",
       ambiente: "fachada",
       user_notes: "Smoke test Arqdor Concept. Fachada residencial contemporânea brasileira.",
