@@ -51,8 +51,17 @@ function ensureGrowthLabEntry() {
 
 export function GrowthLabMenuInjector() {
   useEffect(() => {
+    // Mesmo risco de auto-loop dos observers do SidebarLayout: insertBefore
+    // é uma mutação de childList que o próprio observer abaixo escuta. Sem
+    // desconectar antes de mexer no DOM, um re-render do React que apagasse
+    // o link injetado fazia o ciclo se repetir pra sempre — e esse aqui roda
+    // pra QUALQUER conta admin/tenant_admin, sem depender do Arqdor.
+    const observer = new MutationObserver(() => {
+      observer.disconnect();
+      ensureGrowthLabEntry();
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
     ensureGrowthLabEntry();
-    const observer = new MutationObserver(ensureGrowthLabEntry);
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("storage", ensureGrowthLabEntry);
     window.addEventListener("focus", ensureGrowthLabEntry);

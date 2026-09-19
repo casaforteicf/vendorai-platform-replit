@@ -426,7 +426,15 @@ export function useNavigationDeduplication() {
     };
 
     applyPolicy();
-    const observer = new MutationObserver(applyPolicy);
+    const observer = new MutationObserver(() => {
+      // Mesmo padrão dos outros observers corrigidos hoje: applyPolicy pode
+      // inserir/mover elementos (childList), o que sem desconectar antes
+      // retrigger a si mesmo — e se o React re-renderizar esse trecho do
+      // menu no meio do caminho, isso podia entrar em loop e travar a aba.
+      observer.disconnect();
+      applyPolicy();
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
