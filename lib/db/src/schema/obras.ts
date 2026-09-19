@@ -153,16 +153,44 @@ export const obraOrcamentosTable = pgTable("obra_orcamentos", {
   descricao: text("descricao"),
   status: text("status").notNull().default("rascunho"),
   bdiGlobal: numeric("bdi_global", { precision: 5, scale: 2 }).notNull().default("0"),
+  modoPrecificacao: text("modo_precificacao").notNull().default("bdi"),
+  custosIndiretosPct: numeric("custos_indiretos_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  administracaoPct: numeric("administracao_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  riscoPct: numeric("risco_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  financeiroPct: numeric("financeiro_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  impostosPct: numeric("impostos_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  comissaoPct: numeric("comissao_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  margemPct: numeric("margem_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  descontoPct: numeric("desconto_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  areaReferencia: numeric("area_referencia", { precision: 15, scale: 2 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertObraOrcamentoSchema = createInsertSchema(obraOrcamentosTable, {
   bdiGlobal: decimalOptional,
+  custosIndiretosPct: decimalOptional,
+  administracaoPct: decimalOptional,
+  riscoPct: decimalOptional,
+  financeiroPct: decimalOptional,
+  impostosPct: decimalOptional,
+  comissaoPct: decimalOptional,
+  margemPct: decimalOptional,
+  descontoPct: decimalOptional,
+  areaReferencia: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateObraOrcamentoSchema = createSelectSchema(obraOrcamentosTable, {
   bdiGlobal: decimalOptional,
+  custosIndiretosPct: decimalOptional,
+  administracaoPct: decimalOptional,
+  riscoPct: decimalOptional,
+  financeiroPct: decimalOptional,
+  impostosPct: decimalOptional,
+  comissaoPct: decimalOptional,
+  margemPct: decimalOptional,
+  descontoPct: decimalOptional,
+  areaReferencia: decimalOptional,
 }).omit({ id: true, tenantId: true, obraId: true, createdAt: true, updatedAt: true }).partial();
 
 export type InsertObraOrcamento = z.infer<typeof insertObraOrcamentoSchema>;
@@ -188,6 +216,10 @@ export const obraOrcamentoItensTable = pgTable("obra_orcamento_itens", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   etapaId: text("etapa_id").notNull().references(() => obraOrcamentoEtapasTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
+  codigo: text("codigo"),
+  composicaoId: text("composicao_id"),
+  origem: text("origem").notNull().default("manual"),
+  origemReferencia: text("origem_referencia"),
   unidade: text("unidade").notNull().default("un"),
   quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull().default("1"),
   custoUnitario: numeric("custo_unitario", { precision: 15, scale: 4 }).notNull().default("0"),
