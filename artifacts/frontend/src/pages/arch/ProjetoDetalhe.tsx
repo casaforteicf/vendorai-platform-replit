@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import "./planner5d-reference.css";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -708,7 +709,7 @@ export default function ProjetoDetalhe() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
       {/* Back link */}
       <Link href="/arch/projetos">
         <Button variant="ghost" size="sm" className="-ml-2">
