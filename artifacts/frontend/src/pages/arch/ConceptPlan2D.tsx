@@ -604,8 +604,8 @@ export default function ConceptPlan2D({
   };
 
   return (
-    <div className="relative min-h-[520px] overflow-hidden rounded-2xl border bg-white shadow-inner">
-      <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
+    <div className="relative h-[calc(100vh-64px)] min-h-[620px] overflow-hidden bg-white">
+      <div className="absolute bottom-4 right-4 z-20 flex flex-col items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
         <button
           type="button"
           onClick={() => zoomView(0.82)}
@@ -638,7 +638,7 @@ export default function ConceptPlan2D({
       </div>
       <svg
         ref={svgRef}
-        className={`block h-[62vh] min-h-[520px] max-h-[780px] w-full touch-none select-none lg:h-[72vh] ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
+        className={`block h-full min-h-[620px] w-full touch-none select-none ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
         onWheel={handleWheel}
         onPointerDown={(event) => {
           if (interactionMode === "navigate") {
