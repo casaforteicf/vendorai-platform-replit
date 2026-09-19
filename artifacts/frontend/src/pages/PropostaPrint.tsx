@@ -560,20 +560,131 @@ export default function PropostaPrint() {
             <h2 className="text-xl font-bold text-gray-900">{proposta.titulo}</h2>
           </div>
 
-          {/* ── Itens ── */}
-          <div className="mb-6 -mx-6 sm:mx-0 overflow-x-auto">
-            <table className="w-full text-sm min-w-[480px]">
+          {/* ── Execução operacional: itens concluídos somem da fila ativa ── */}
+          {jaVendido && (
+            <div className="screen-execution mb-6 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Execução do orçamento</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    A sequência é obrigatória: conclua a etapa atual para liberar a próxima.
+                  </p>
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  <p>{etapasConcluidas} concluída{etapasConcluidas === 1 ? "" : "s"} · {itensAtivosExecucao.length} restante{itensAtivosExecucao.length === 1 ? "" : "s"}</p>
+                  <p className="font-medium text-gray-700 mt-0.5">Saldo a executar: {fmtCurrency(valorRestanteExecucao)}</p>
+                </div>
+              </div>
+
+              {itensAtivosExecucao.length === 0 ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">Todas as etapas foram executadas.</p>
+                    <p className="text-xs text-emerald-700 mt-0.5">Os itens concluídos permanecem preservados no histórico e no PDF do orçamento.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {itensAtivosExecucao.map((item, position) => {
+                    const isCurrent = etapaAtualExecucao?.originalIndex === item.originalIndex;
+                    const isRunning = item.statusExecucao === "em_execucao";
+                    const isUpdating = updatingExecutionIndex === item.originalIndex;
+
+                    return (
+                      <div
+                        key={item.originalIndex}
+                        className={`rounded-lg border p-3 flex flex-col sm:flex-row sm:items-center gap-3 ${
+                          isCurrent ? "border-violet-300 bg-violet-50/60" : "border-gray-200 bg-gray-50/60"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className={`h-9 min-w-16 rounded-md flex items-center justify-center text-xs font-bold ${
+                            isCurrent ? "bg-violet-600 text-white" : "bg-gray-200 text-gray-600"
+                          }`}>
+                            Etapa {item.ordemExecucao}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{item.nome}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {item.quantidade} {item.unidade ?? "un"} × {fmtCurrency(item.valorUnitario)}
+                              <span className="mx-1.5">·</span>
+                              {fmtCurrency(item.quantidade * item.valorUnitario)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 sm:justify-end">
+                          {!isCurrent ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                              <LockKeyhole className="h-3.5 w-3.5" />
+                              Aguardando etapa anterior
+                            </span>
+                          ) : isRunning ? (
+                            <>
+                              <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+                                Em execução
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                                disabled={isUpdating}
+                                onClick={() => updateExecutionStatus(item.originalIndex, "concluida")}
+                              >
+                                {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                Concluir etapa
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs font-medium text-violet-700 bg-violet-100 rounded-md px-2 py-1">
+                                Próxima etapa
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50"
+                                disabled={isUpdating || position !== 0}
+                                onClick={() => updateExecutionStatus(item.originalIndex, "em_execucao")}
+                              >
+                                {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                                Iniciar etapa
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {etapasConcluidas > 0 && (
+                <p className="text-[11px] text-gray-400">
+                  Etapas já executadas ficam ocultas desta fila para não poluir a operação.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Itens comerciais / histórico original ── */}
+          <div className={`mb-6 -mx-6 sm:mx-0 overflow-x-auto ${jaVendido ? "sold-historical-table" : ""}`}>
+            <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="bg-gray-900 text-white">
-                  <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Descrição</th>
+                  <th className="text-center px-3 py-2.5 rounded-tl-lg font-medium w-20">Etapa</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Descrição</th>
                   <th className="text-center px-4 py-2.5 font-medium w-20">Qtd</th>
                   <th className="text-right px-4 py-2.5 font-medium w-32">Valor Unit.</th>
                   <th className="text-right px-4 py-2.5 rounded-tr-lg font-medium w-32">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {proposta.itens.map((item, i) => (
-                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                {itensExecucao.map((item, i) => (
+                  <tr key={item.originalIndex} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="px-3 py-2.5 text-center text-gray-500 font-semibold">{item.ordemExecucao}</td>
                     <td className="px-4 py-2.5 text-gray-800 font-medium">{item.nome}</td>
                     <td className="px-4 py-2.5 text-center text-gray-600">{item.quantidade}</td>
                     <td className="px-4 py-2.5 text-right text-gray-600 font-mono">
@@ -587,7 +698,7 @@ export default function PropostaPrint() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-900">
-                  <td colSpan={3} className="px-4 py-3 text-right font-semibold text-gray-700">
+                  <td colSpan={4} className="px-4 py-3 text-right font-semibold text-gray-700">
                     Total
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-gray-900 text-lg font-mono">
@@ -1018,7 +1129,16 @@ export default function PropostaPrint() {
       </Dialog>
 
       <style>{`
+        .sold-historical-table {
+          display: none;
+        }
         @media print {
+          .screen-execution {
+            display: none !important;
+          }
+          .sold-historical-table {
+            display: block !important;
+          }
           body * { visibility: hidden !important; }
           #proposta-print,
           #proposta-print * { visibility: visible !important; }
