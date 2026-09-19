@@ -30,7 +30,7 @@ import ConceptModel3D from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
-import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
+import { buildOrthogonalWallTopology, detectClosedSpaces, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import {
   OPENING_FRAME_MATERIAL_OPTIONS,
   OPENING_GLASS_TYPE_OPTIONS,
@@ -43,7 +43,6 @@ import {
   type OpeningParameters,
 } from "./conceptOpenings";
 import {
-  STAIR_LEVEL_HEIGHT,
   buildStairSlabOpenings,
   normalizeStairParameters,
   riserCountForTargetHeight,

@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
-import type { OpeningMarker, WallSegment } from "./conceptGeometry";
+import type { OpeningMarker } from "./conceptGeometry";
 import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenings";
-import type { ClosedSpace } from "./conceptWallNetwork";
-import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
+import { buildStairLandings, buildStairTreads, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofFaces, normalizeRoofParameters, roofPeakZ, type RoofInput } from "./conceptRoof";
 import type { ConceptModelLevel } from "./conceptModel";
 import { conceptObjectCorners, type ConceptObject } from "./conceptObjects";
