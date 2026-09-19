@@ -32,6 +32,11 @@ export type ArchConceptConfiguration = {
     floor: number;
     type: "door" | "window";
     offset: number;
+    width?: number;
+    height?: number;
+    sillHeight?: number;
+    openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
+    swing?: "left" | "right";
   }>;
   spaceProfiles?: Array<{
     id: string;
