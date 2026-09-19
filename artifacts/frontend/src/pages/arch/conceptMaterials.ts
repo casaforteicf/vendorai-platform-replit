@@ -337,6 +337,21 @@ export function materialFromLibrary(
   return CONCEPT_MATERIAL_LIBRARY.find((material) => material.id === materialId) ?? fallback;
 }
 
+export function conceptMaterialSchemeFromLegacyFacade(
+  primaryMaterial: "pintura" | "madeira" | "pedra" | "concreto" | undefined,
+) {
+  const scheme = defaultConceptMaterialScheme();
+  const materialId =
+    primaryMaterial === "madeira" ? "mat-wood-freijo" :
+    primaryMaterial === "pedra" ? "mat-exterior-stone" :
+    primaryMaterial === "concreto" ? "mat-exterior-concrete" :
+    "mat-exterior-white";
+  return {
+    ...scheme,
+    exteriorWall: materialFromLibrary(materialId, scheme.exteriorWall),
+  };
+}
+
 export function legacyFacadePrimaryMaterial(material: ConceptMaterialRef): "pintura" | "madeira" | "pedra" | "concreto" {
   if (material.pattern === "wood" || material.category === "wood") return "madeira";
   if (material.pattern === "stone" || material.category === "stone") return "pedra";

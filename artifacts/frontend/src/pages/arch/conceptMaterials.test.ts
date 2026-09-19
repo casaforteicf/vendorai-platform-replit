@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   conceptFloorMaterial,
+  conceptMaterialSchemeFromLegacyFacade,
   defaultConceptMaterialScheme,
   legacyFacadePrimaryMaterial,
   materialFromLibrary,
@@ -45,6 +46,12 @@ describe("concept materials", () => {
     const defaults = defaultConceptMaterialScheme();
     const stone = materialOptionsFor("exteriorWall").find((item) => item.pattern === "stone")!;
     expect(materialFromLibrary(stone.id, defaults.exteriorWall).id).toBe(stone.id);
+  });
+
+  it("migra material principal legado para o novo esquema", () => {
+    expect(conceptMaterialSchemeFromLegacyFacade("pedra").exteriorWall.pattern).toBe("stone");
+    expect(conceptMaterialSchemeFromLegacyFacade("madeira").exteriorWall.pattern).toBe("wood");
+    expect(conceptMaterialSchemeFromLegacyFacade("concreto").exteriorWall.pattern).toBe("concrete");
   });
 
   it("espelha o material externo para o campo legado da fachada", () => {

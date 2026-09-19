@@ -72,6 +72,7 @@ import {
 import {
   CONCEPT_MATERIAL_LIBRARY,
   conceptFloorMaterial,
+  conceptMaterialSchemeFromLegacyFacade,
   defaultConceptMaterialScheme,
   legacyFacadePrimaryMaterial,
   materialFromLibrary,
@@ -684,7 +685,10 @@ export default function ConceptPlanner() {
             ? draft.configuration.objects.map((object) => normalizeConceptObject(object, loadedLotWidth, loadedLotDepth))
             : []
         );
-        setMaterialScheme(normalizeConceptMaterialScheme(draft.configuration?.materials));
+        const loadedMaterialScheme = draft.configuration?.materials
+          ? normalizeConceptMaterialScheme(draft.configuration.materials)
+          : conceptMaterialSchemeFromLegacyFacade(draft.facadePreferences?.primaryMaterial);
+        setMaterialScheme(loadedMaterialScheme);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
