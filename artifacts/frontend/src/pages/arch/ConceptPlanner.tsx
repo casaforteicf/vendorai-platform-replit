@@ -713,17 +713,20 @@ export default function ConceptPlanner() {
     };
   }, []);
 
-  const saveConcept = async (stepOverride?: number) => {
-    setSaveState("saving");
+  const buildConceptPayload = (
+    currentStep: number,
+    renderState: ConceptDraftResponse["conceptRender"] = conceptRender,
+  ) => {
     const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
     const persistedRooms = normalizeDraftRooms(rooms);
     const persistedObjects = objects
       .filter((object) => object.floor >= 0 && object.floor < floors)
       .map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
-    const payload = {
+
+    return {
       title: "Meu pré-projeto",
       status: "draft",
-      currentStep: stepOverride ?? step,
+      currentStep,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: {
         floors,
@@ -742,9 +745,14 @@ export default function ConceptPlanner() {
       openingOverrides,
       customerProfile,
       facadePreferences,
-      conceptRender,
+      conceptRender: renderState,
       selectedVariant: layoutVariant,
     };
+  };
+
+  const saveConcept = async (stepOverride?: number) => {
+    setSaveState("saving");
+    const payload = buildConceptPayload(stepOverride ?? step);
 
     try {
       const response = await fetch(
@@ -2067,36 +2075,7 @@ export default function ConceptPlanner() {
           };
           setConceptRender(completed);
 
-          const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
-          const persistedRooms = normalizeDraftRooms(rooms);
-          const persistedObjects = objects
-      .filter((object) => object.floor >= 0 && object.floor < floors)
-      .map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
-          const payload = {
-            title: "Meu pré-projeto",
-            status: "draft",
-            currentStep: 5,
-            lot: { width: lotWidth, depth: lotDepth },
-            configuration: {
-              floors,
-              desiredArea,
-              typology,
-              layoutPreferences,
-              wallFirstFloors,
-              showDimensions,
-              customWalls,
-              customOpenings: persistedCustomOpenings,
-              spaceProfiles,
-              objects: persistedObjects,
-              materials: sanitizeConceptMaterialSchemeForFloors(materialScheme, floors),
-            },
-            rooms: persistedRooms,
-            openingOverrides,
-            customerProfile,
-            facadePreferences,
-            conceptRender: completed,
-            selectedVariant: layoutVariant,
-          };
+          const payload = buildConceptPayload(5, completed);
           if (renderProjectId) {
             await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
               method: "PATCH",
