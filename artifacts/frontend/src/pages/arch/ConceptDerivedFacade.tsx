@@ -392,10 +392,13 @@ export default function ConceptDerivedFacade({
     );
   };
 
+  const facadeViewY = floors > 1 ? 14 : 28;
+  const facadeViewHeight = floors > 1 ? 58 : 44;
+
   return (
     <svg
       ref={svgRef}
-      viewBox="0 0 140 78"
+      viewBox={`5 ${facadeViewY} 130 ${facadeViewHeight}`}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => {
         if (drag?.pointerId === event.pointerId) setDrag(null);
@@ -405,7 +408,7 @@ export default function ConceptDerivedFacade({
       }}
       onClick={() => onSelectVolume?.(null)}
       preserveAspectRatio="xMidYMid meet"
-      className="block h-[520px] w-full"
+      className="block h-full min-h-[calc(100vh-64px)] w-full"
       role="img"
       aria-label="Fachada arquitetônica conceitual derivada do pré-projeto"
     >
