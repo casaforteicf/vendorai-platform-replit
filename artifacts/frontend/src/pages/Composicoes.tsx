@@ -7,6 +7,8 @@ import {
   useUpdateComposicao,
   useDeleteComposicao,
   useListInsumos,
+  useCreateInsumo,
+  useUpdateInsumo,
   getListComposicoesQueryKey,
   getGetComposicaoQueryKey,
   getListInsumosQueryKey,
@@ -33,7 +35,7 @@ function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; compos
   if (!data || !(data as any).itens?.length) return <p className="text-xs text-muted-foreground">Nenhum insumo cadastrado</p>;
 
   const total = (data as any).itens.reduce((sum: number, i: any) => {
-    const preco = parseFloat(i.precoUnitario ?? i.insumo?.precoUnitario ?? "0");
+    const preco = parseFloat(i.insumo?.precoUnitario ?? "0");
     return sum + preco * parseFloat(i.quantidade ?? "0");
   }, 0);
 
@@ -42,7 +44,7 @@ function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; compos
       {/* Mobile: labeled rows */}
       <div className="md:hidden space-y-2">
         {(data as any).itens.map((item: any) => {
-          const preco = parseFloat(item.precoUnitario ?? item.insumo?.precoUnitario ?? "0");
+          const preco = parseFloat(item.insumo?.precoUnitario ?? "0");
           const custo = preco * parseFloat(item.quantidade ?? "0");
           return (
             <div key={item.id} className="flex items-center justify-between gap-2 text-xs border-b pb-2">
@@ -77,7 +79,7 @@ function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; compos
         </thead>
         <tbody>
           {(data as any).itens.map((item: any) => {
-            const preco = parseFloat(item.precoUnitario ?? item.insumo?.precoUnitario ?? "0");
+            const preco = parseFloat(item.insumo?.precoUnitario ?? "0");
             const custo = preco * parseFloat(item.quantidade ?? "0");
             return (
               <tr key={item.id} className="border-b">
@@ -102,7 +104,7 @@ function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; compos
   );
 }
 
-type InsumoItem = { insumoId: string; quantidade: string; precoUnitario: string };
+type InsumoItem = { insumoId: string; quantidade: string };
 
 function ComposicaoForm({
   tenantId,
@@ -115,7 +117,7 @@ function ComposicaoForm({
   tenantId: string;
   initial?: { nome?: string; descricao?: string; unidade?: string; codigo?: string };
   initialItems?: InsumoItem[];
-  onSave: (data: Record<string, unknown>) => void;
+  onSave: (data: Record<string, unknown>) => void | Promise<void>;
   onCancel: () => void;
   isPending: boolean;
 }) {
@@ -127,26 +129,161 @@ function ComposicaoForm({
   });
   const [itens, setItens] = useState<InsumoItem[]>(initialItems ?? []);
   const [insumoSearch, setInsumoSearch] = useState("");
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [savingPrices, setSavingPrices] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [newInsumo, setNewInsumo] = useState({
+    nome: "",
+    unidade: "un",
+    codigo: "",
+    categoria: "",
+    precoUnitario: "",
+  });
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { mutateAsync: createInsumo, isPending: isCreatingInsumo } = useCreateInsumo();
+  const { mutateAsync: updateInsumo } = useUpdateInsumo();
 
   const { data: allInsumos = [] } = useListInsumos(tenantId, {}, { query: { enabled: !!tenantId, queryKey: getListInsumosQueryKey(tenantId) } });
   const filteredInsumos = allInsumos.filter((i) => i.nome.toLowerCase().includes(insumoSearch.toLowerCase()));
 
   function addInsumo(insumoId: string) {
     if (itens.find((i) => i.insumoId === insumoId)) return;
-    setItens((prev) => [...prev, { insumoId, quantidade: "1", precoUnitario: "" }]);
+    setItens((prev) => [...prev, { insumoId, quantidade: "1" }]);
     setInsumoSearch("");
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const payload: Record<string, unknown> = { ...form };
-    Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
-    payload.itens = itens.map((i) => ({
-      insumoId: i.insumoId,
-      quantidade: i.quantidade,
-      ...(i.precoUnitario ? { precoUnitario: i.precoUnitario } : {}),
+  function openQuickCreate() {
+    setNewInsumo((current) => ({
+      ...current,
+      nome: insumoSearch.trim() || current.nome,
     }));
-    onSave(payload);
+    setQuickCreateOpen(true);
+  }
+
+  async function handleQuickCreateInsumo() {
+    const nome = newInsumo.nome.trim();
+    if (!nome) {
+      toast({ title: "Informe o nome do insumo", variant: "destructive" });
+      return;
+    }
+
+    const duplicated = allInsumos.find((item) => {
+      const sameCode = newInsumo.codigo.trim()
+        && item.codigo?.trim().toLowerCase() === newInsumo.codigo.trim().toLowerCase();
+      const sameName = item.nome.trim().toLowerCase() === nome.toLowerCase();
+      return sameCode || sameName;
+    });
+
+    if (duplicated) {
+      addInsumo(duplicated.id);
+      setQuickCreateOpen(false);
+      setNewInsumo({ nome: "", unidade: "un", codigo: "", categoria: "", precoUnitario: "" });
+      toast({
+        title: "Insumo já cadastrado",
+        description: `${duplicated.nome} foi adicionado à composição.`,
+      });
+      return;
+    }
+
+    try {
+      const created = await createInsumo({
+        tenantId,
+        data: {
+          nome,
+          unidade: newInsumo.unidade,
+          ...(newInsumo.codigo.trim() ? { codigo: newInsumo.codigo.trim() } : {}),
+          ...(newInsumo.categoria.trim() ? { categoria: newInsumo.categoria.trim() } : {}),
+          ...(newInsumo.precoUnitario.trim() ? { precoUnitario: newInsumo.precoUnitario.trim() } : {}),
+        } as any,
+      });
+
+      qc.setQueryData(getListInsumosQueryKey(tenantId), (current: any) => {
+        const rows = Array.isArray(current) ? current : [];
+        return rows.some((item: any) => item.id === created.id) ? rows : [...rows, created];
+      });
+      await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
+
+      setItens((prev) => prev.some((item) => item.insumoId === created.id)
+        ? prev
+        : [...prev, { insumoId: created.id, quantidade: "1" }]);
+      if (created.precoUnitario != null) {
+        setPriceDrafts((prev) => ({ ...prev, [created.id]: String(Number(created.precoUnitario)) }));
+      }
+
+      setInsumoSearch("");
+      setQuickCreateOpen(false);
+      setNewInsumo({ nome: "", unidade: "un", codigo: "", categoria: "", precoUnitario: "" });
+      toast({
+        title: "Insumo cadastrado",
+        description: `${created.nome} foi salvo na Tabela Mestre e adicionado à composição.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível cadastrar o insumo",
+        description: error instanceof Error ? error.message : "Confira os dados e tente novamente.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingPrices(true);
+    try {
+      let priceChanges = 0;
+
+      for (const item of itens) {
+        const insumo = allInsumos.find((candidate) => candidate.id === item.insumoId);
+        if (!insumo) continue;
+
+        const draft = priceDrafts[item.insumoId];
+        if (draft === undefined) continue;
+
+        const nextRaw = draft.trim();
+        const current = insumo.precoUnitario == null ? "" : String(Number(insumo.precoUnitario));
+        const next = nextRaw === "" ? "" : String(Number(nextRaw));
+
+        if (next === current) continue;
+        if (next === "" || !Number.isFinite(Number(next)) || Number(next) < 0) {
+          throw new Error(`Informe um preço válido para ${insumo.nome}.`);
+        }
+
+        await updateInsumo({
+          tenantId,
+          insumoId: insumo.id,
+          data: { precoUnitario: next } as any,
+        });
+        priceChanges += 1;
+      }
+
+      if (priceChanges > 0) {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) }),
+          qc.invalidateQueries({ queryKey: getListComposicoesQueryKey(tenantId) }),
+        ]);
+        toast({
+          title: `${priceChanges} preço(s) atualizado(s) na Tabela Mestre`,
+          description: "Composições dependentes e orçamentos em rascunho foram recalculados.",
+        });
+      }
+
+      const payload: Record<string, unknown> = { ...form };
+      Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
+      payload.itens = itens.map((i) => ({
+        insumoId: i.insumoId,
+        quantidade: i.quantidade,
+      }));
+      await onSave(payload);
+    } catch (error) {
+      toast({
+        title: "Não foi possível salvar a composição",
+        description: error instanceof Error ? error.message : "Confira os valores e tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPrices(false);
+    }
   }
 
   return (
@@ -176,24 +313,131 @@ function ComposicaoForm({
         <div>
           <Label>Insumos da composição</Label>
           <p className="text-xs text-muted-foreground mt-1">
-            Deixe o preço em branco para usar a base mestre do insumo. Preencha somente quando quiser fixar um preço específico nesta composição.
+            Quantidade = consumo para 1 {form.unidade} da composição. O preço vem da Tabela Mestre; se você alterar o valor aqui, a Tabela Mestre também será atualizada.
           </p>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar insumo..." className="pl-8" value={insumoSearch} onChange={(e) => setInsumoSearch(e.target.value)} />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar insumo..."
+              className="pl-8"
+              value={insumoSearch}
+              onChange={(e) => setInsumoSearch(e.target.value)}
+            />
+          </div>
+          <Button type="button" variant="outline" className="gap-2 shrink-0" onClick={openQuickCreate}>
+            <Plus className="h-4 w-4" />
+            Novo insumo
+          </Button>
         </div>
-        {insumoSearch && filteredInsumos.length > 0 && (
-          <div className="border rounded-md max-h-40 overflow-y-auto">
-            {filteredInsumos.slice(0, 8).map((ins) => (
-              <button key={ins.id} type="button" onClick={() => addInsumo(ins.id)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between">
-                <span>{ins.nome}</span>
-                <span className="text-xs text-muted-foreground font-mono">{ins.unidade}</span>
-              </button>
-            ))}
+        {insumoSearch && (
+          <div className="border rounded-md overflow-hidden">
+            {filteredInsumos.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto">
+                {filteredInsumos.slice(0, 8).map((ins) => (
+                  <button key={ins.id} type="button" onClick={() => addInsumo(ins.id)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between">
+                    <span>{ins.nome}</span>
+                    <span className="text-xs text-muted-foreground font-mono">{ins.unidade}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                Nenhum insumo encontrado com “{insumoSearch}”.
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={openQuickCreate}
+              className="w-full border-t bg-muted/30 px-3 py-2 text-left text-sm font-medium hover:bg-muted flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Cadastrar novo insumo “{insumoSearch.trim()}”
+            </button>
           </div>
         )}
+
+        {quickCreateOpen && (
+          <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Novo insumo</p>
+                <p className="text-xs text-muted-foreground">
+                  Será salvo na Tabela Mestre e adicionado automaticamente à composição.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setQuickCreateOpen(false)}
+                title="Fechar cadastro"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="sm:col-span-2 space-y-1">
+                <Label className="text-xs">Nome *</Label>
+                <Input
+                  autoFocus
+                  value={newInsumo.nome}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, nome: e.target.value }))}
+                  placeholder="Ex.: Arame recozido"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Unidade *</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  value={newInsumo.unidade}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, unidade: e.target.value }))}
+                >
+                  {UNIDADES.map((unidade) => <option key={unidade} value={unidade}>{unidade}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Preço na Tabela Mestre</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={newInsumo.precoUnitario}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, precoUnitario: e.target.value }))}
+                  placeholder="R$ 0,00"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Código</Label>
+                <Input
+                  value={newInsumo.codigo}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, codigo: e.target.value }))}
+                  placeholder="Ex.: MAT-001"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Categoria</Label>
+                <Input
+                  value={newInsumo.categoria}
+                  onChange={(e) => setNewInsumo((prev) => ({ ...prev, categoria: e.target.value }))}
+                  placeholder="Ex.: Estrutura"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setQuickCreateOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" size="sm" onClick={handleQuickCreateInsumo} disabled={isCreatingInsumo}>
+                {isCreatingInsumo ? "Cadastrando..." : "Cadastrar e adicionar"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {itens.length > 0 && (
           <div className="space-y-2 mt-2">
             {itens.map((item, idx) => {
@@ -206,10 +450,42 @@ function ComposicaoForm({
                       <X className="h-4 w-4" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Input type="number" step="0.001" min="0.001" value={item.quantidade} onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, quantidade: e.target.value } : i))} className="w-20 h-8 text-xs" placeholder="Qtd" />
-                    <span className="text-xs text-muted-foreground w-8 shrink-0">{ins?.unidade}</span>
-                    <Input type="number" step="0.0001" min="0" value={item.precoUnitario} onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, precoUnitario: e.target.value } : i))} className="flex-1 sm:w-28 sm:flex-none h-8 text-xs" placeholder="R$/un" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min="0.0001"
+                        value={item.quantidade}
+                        onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, quantidade: e.target.value } : i))}
+                        className="w-24 h-8 text-xs"
+                        placeholder="Consumo"
+                        title={`Consumo de ${ins?.unidade ?? ""} para 1 ${form.unidade}`}
+                      />
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                        {ins?.unidade ?? "un"}/{form.unidade}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground">R$</span>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        value={priceDrafts[item.insumoId] ?? (ins?.precoUnitario != null ? String(Number(ins.precoUnitario)) : "")}
+                        onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.insumoId]: e.target.value }))}
+                        className="w-28 h-8 text-xs"
+                        placeholder="Preço tabela"
+                        title="Preço unitário da Tabela Mestre"
+                      />
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">/{ins?.unidade ?? "un"}</span>
+                    </div>
+                    <span className="min-w-[92px] text-right text-xs font-mono text-muted-foreground">
+                      = R$ {(
+                        Number(item.quantidade || 0)
+                        * Number(priceDrafts[item.insumoId] ?? ins?.precoUnitario ?? 0)
+                      ).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                     <button type="button" className="hidden sm:block text-muted-foreground" onClick={() => setItens((prev) => prev.filter((_, j) => j !== idx))}>
                       <X className="h-4 w-4" />
                     </button>
@@ -223,7 +499,7 @@ function ComposicaoForm({
 
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button>
+        <Button type="submit" disabled={isPending || savingPrices}>{isPending || savingPrices ? "Salvando..." : "Salvar"}</Button>
       </div>
     </form>
   );
@@ -250,7 +526,6 @@ function ComposicaoEditDialog({
   const initialItems: InsumoItem[] = (detail?.itens ?? []).map((item: any) => ({
     insumoId: item.insumoId,
     quantidade: String(item.quantidade ?? "1"),
-    precoUnitario: item.precoUnitario ? String(item.precoUnitario) : "",
   }));
 
   async function handleUpdate(payload: Record<string, unknown>) {
@@ -357,8 +632,7 @@ export default function Composicoes() {
             : byInsumoName.get((row.insumo_nome || "").trim().toLowerCase());
           const quantidade = csvDecimal(row.quantidade);
           if (!insumo || !quantidade) { ignored += 1; return []; }
-          const precoUnitario = csvDecimal(row.preco_unitario);
-          return [{ insumoId: insumo.id, quantidade, ...(precoUnitario ? { precoUnitario } : {}) }];
+          return [{ insumoId: insumo.id, quantidade }];
         });
         if (!itens.length && group.some((row) => row.insumo_codigo || row.insumo_nome)) continue;
         await createComposicao({ tenantId, data: {
@@ -402,7 +676,7 @@ export default function Composicoes() {
             <DialogHeader><DialogTitle>Importar composições detalhadas</DialogTitle></DialogHeader>
             <div className="space-y-4 text-sm">
               <p className="text-muted-foreground">Use uma linha para cada insumo. Repita os dados da composição nas linhas seguintes. O insumo deve estar previamente cadastrado e pode ser identificado pelo código ou nome.</p>
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-composicoes.csv", "composicao_codigo;composicao_nome;descricao;unidade;insumo_codigo;insumo_nome;quantidade;preco_unitario\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-001;;7;39,90\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-002;;0,70;120,00\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-composicoes.csv", "composicao_codigo;composicao_nome;descricao;unidade;insumo_codigo;insumo_nome;quantidade\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-001;;7\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-002;;0,70\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
               <Input type="file" accept=".csv,text/csv" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setImportOpen(false)}>Cancelar</Button><Button onClick={handleCsvImport} disabled={!importFile || importing}>{importing ? "Importando..." : "Importar"}</Button></div>
             </div>
