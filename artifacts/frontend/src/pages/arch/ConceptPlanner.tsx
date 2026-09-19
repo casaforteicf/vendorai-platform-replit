@@ -448,7 +448,9 @@ export default function ConceptPlanner() {
   };
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
-  const visibleRooms = wallFirstActive ? [] : rooms.filter((r) => r.floor === activeFloor);
+  const visibleRooms = wallFirstActive
+    ? rooms.filter((r) => r.floor === activeFloor && r.kind === "escada")
+    : rooms.filter((r) => r.floor === activeFloor);
   const currentArea = useMemo(() => {
     const legacyArea = rooms
       .filter((room) => room.kind !== "piscina" && !wallFirstFloors.includes(room.floor))
@@ -597,6 +599,35 @@ export default function ConceptPlanner() {
   };
 
   const addRoom = (kind: RoomKind) => {
+    if (kind === "escada" && wallFirstActive) {
+      const existing = rooms.find((room) => room.floor === activeFloor && room.kind === "escada");
+      if (existing) {
+        setSelectedId(existing.id);
+        setInteractionMode("room");
+        return;
+      }
+
+      const before = snapshotEditor();
+      const next = createRoom("escada", activeFloor);
+      const targetSpace = [...closedSpaces].sort((a, b) => b.area - a.area)[0];
+      const targetX = targetSpace
+        ? targetSpace.centroid.x - next.width / 2
+        : lotWidth / 2 - next.width / 2;
+      const targetY = targetSpace
+        ? targetSpace.centroid.y - next.depth / 2
+        : lotDepth / 2 - next.depth / 2;
+
+      next.x = Math.max(0, Math.min(lotWidth - next.width, Math.round(targetX * 4) / 4));
+      next.y = Math.max(0, Math.min(lotDepth - next.depth, Math.round(targetY * 4) / 4));
+      setRooms((prev) => [...prev, next]);
+      if (activeFloor < 2) setFloors((value) => Math.max(value, activeFloor + 2));
+      setSelectedId(next.id);
+      setInteractionMode("room");
+      setSelectedClosedSpaceId(null);
+      pushRoomHistory(before);
+      return;
+    }
+
     if (SINGLETON_ROOM_KINDS.has(kind)) {
       const existing = rooms.find((room) => room.floor === activeFloor && room.kind === kind);
       if (existing) {
@@ -2613,9 +2644,8 @@ export default function ConceptPlanner() {
 
                         <button
                           type="button"
-                          disabled={wallFirstActive}
                           onClick={() => addRoom("escada")}
-                          className="group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                          className="group overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-stone-50 to-slate-100">
                             <div className="flex items-end gap-0.5">
@@ -2626,7 +2656,7 @@ export default function ConceptPlanner() {
                           </div>
                           <div className="p-3">
                             <div className="text-sm font-semibold">Escada</div>
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">{wallFirstActive ? "Disponível em modo ambientes" : "Adicionar"}</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">{wallFirstActive ? "Inserir na planta" : "Adicionar"}</div>
                           </div>
                         </button>
                       </div>
