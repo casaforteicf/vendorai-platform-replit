@@ -9,6 +9,9 @@ type Props = {
   activeFloor?: number;
   geometry: ConceptGeometry;
   closedSpaces?: ClosedSpace[];
+  selectedClosedSpaceId?: string | null;
+  onSelectClosedSpace?: (spaceId: string | null) => void;
+  closedSpaceLabels?: Record<string, string>;
   selectedId: string | null;
   onSelect: (roomId: string) => void;
   onRoomChange?: (roomId: string, patch: Partial<Pick<ConceptRoomShape, "x" | "y" | "width" | "depth">>) => void;
@@ -26,7 +29,7 @@ type Props = {
   onUpdateCustomWall?: (wallId: string, patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
-  interactionMode?: "room" | "wall" | "opening" | "draw-wall";
+  interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall";
 };
 
 function formatMeters(value: number) {
@@ -120,6 +123,9 @@ export default function ConceptPlan2D({
   activeFloor = 0,
   geometry,
   closedSpaces = [],
+  selectedClosedSpaceId = null,
+  onSelectClosedSpace,
+  closedSpaceLabels = {},
   selectedId,
   onSelect,
   onRoomChange,
@@ -472,42 +478,75 @@ export default function ConceptPlan2D({
           FRENTE / ACESSO
         </text>
 
-        {closedSpaces.map((space, index) => (
-          <g key={space.id} pointerEvents="none">
-            {space.cells.map((cell, cellIndex) => (
-              <rect
-                key={`${space.id}-cell-${cellIndex}`}
-                x={cell.x}
-                y={cell.y}
-                width={cell.width}
-                height={cell.height}
-                fill={index % 2 === 0 ? "#dbeafe" : "#dcfce7"}
-                opacity="0.28"
-              />
-            ))}
-            <g>
-              <rect
-                x={space.centroid.x - 0.9}
-                y={space.centroid.y - 0.36}
-                width="1.8"
-                height="0.58"
-                rx="0.14"
-                fill="#ffffff"
-                opacity="0.92"
-              />
-              <text
-                x={space.centroid.x}
-                y={space.centroid.y + 0.03}
-                textAnchor="middle"
-                fontSize="0.24"
-                fontWeight="800"
-                fill="#166534"
-              >
-                {space.area.toFixed(1)} m²
-              </text>
+        {closedSpaces.map((space, index) => {
+          const selectedSpace = selectedClosedSpaceId === space.id;
+          const label = closedSpaceLabels[space.id]?.trim();
+          return (
+            <g
+              key={space.id}
+              className={interactionMode === "space" ? "cursor-pointer" : ""}
+              onPointerDown={(event) => {
+                if (interactionMode !== "space" || !onSelectClosedSpace) return;
+                event.stopPropagation();
+                onSelectClosedSpace(space.id);
+              }}
+              onClick={(event) => {
+                if (interactionMode !== "space" || !onSelectClosedSpace) return;
+                event.stopPropagation();
+                onSelectClosedSpace(space.id);
+              }}
+            >
+              {space.cells.map((cell, cellIndex) => (
+                <rect
+                  key={`${space.id}-cell-${cellIndex}`}
+                  x={cell.x}
+                  y={cell.y}
+                  width={cell.width}
+                  height={cell.height}
+                  fill={selectedSpace ? "#fed7aa" : index % 2 === 0 ? "#dbeafe" : "#dcfce7"}
+                  opacity={selectedSpace ? "0.42" : "0.28"}
+                  stroke={selectedSpace ? "#f97316" : "none"}
+                  strokeWidth={selectedSpace ? "0.035" : "0"}
+                />
+              ))}
+              <g pointerEvents="none">
+                <rect
+                  x={space.centroid.x - 1.25}
+                  y={space.centroid.y - (label ? 0.52 : 0.36)}
+                  width="2.5"
+                  height={label ? "0.92" : "0.58"}
+                  rx="0.14"
+                  fill="#ffffff"
+                  opacity="0.94"
+                  stroke={selectedSpace ? "#f97316" : "#d1d5db"}
+                  strokeWidth="0.035"
+                />
+                {label && (
+                  <text
+                    x={space.centroid.x}
+                    y={space.centroid.y - 0.12}
+                    textAnchor="middle"
+                    fontSize="0.22"
+                    fontWeight="800"
+                    fill="#0f172a"
+                  >
+                    {label}
+                  </text>
+                )}
+                <text
+                  x={space.centroid.x}
+                  y={space.centroid.y + (label ? 0.24 : 0.03)}
+                  textAnchor="middle"
+                  fontSize="0.22"
+                  fontWeight="800"
+                  fill={selectedSpace ? "#c2410c" : "#166534"}
+                >
+                  {space.area.toFixed(1)} m²
+                </text>
+              </g>
             </g>
-          </g>
-        ))}
+          );
+        })}
 
         {rooms.map((room) => {
           const selected = selectedId === room.id;
@@ -537,9 +576,11 @@ export default function ConceptPlan2D({
                   roomDepth: room.depth,
                 });
               }}
-              onClick={() => onSelect(room.id)}
+              onClick={() => {
+                if (interactionMode === "room") onSelect(room.id);
+              }}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") onSelect(room.id);
+                if (interactionMode === "room" && (event.key === "Enter" || event.key === " ")) onSelect(room.id);
               }}
               className="cursor-pointer"
             >
