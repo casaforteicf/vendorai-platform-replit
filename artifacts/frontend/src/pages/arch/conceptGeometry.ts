@@ -235,25 +235,41 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
     ));
   };
 
+  const targetFor = (room: ConceptRoomShape) => {
+    const front = 0.6;
+    const middle = Math.max(1, lotDepth * 0.34);
+    const privateBand = Math.max(1, lotDepth * 0.56);
+    const rear = Math.max(1, lotDepth * 0.72);
+    const right = Math.max(0, lotWidth - room.width - 0.6);
+    const center = Math.max(0, (lotWidth - room.width) / 2);
+
+    if (room.kind === "garagem") return { x: variant === 1 ? right : 0.6, y: front };
+    if (room.kind === "sala") return { x: variant === 2 ? center : 0.6, y: middle };
+    if (room.kind === "cozinha") return { x: right, y: middle };
+    if (room.kind === "lavanderia") return { x: right, y: Math.min(rear, middle + 4) };
+    if (room.kind === "gourmet") return { x: variant === 2 ? center : 0.6, y: rear };
+    if (room.kind === "suite") return { x: variant === 1 ? 0.6 : right, y: privateBand };
+    if (room.kind === "quarto") return { x: variant === 1 ? right : 0.6, y: privateBand };
+    if (room.kind === "banheiro") return { x: center, y: privateBand };
+    return { x: center, y: privateBand };
+  };
+
   const candidateStep = 0.5;
   for (const room of movable) {
-    let found: { x: number; y: number } | null = null;
+    const target = targetFor(room);
+    const candidates: Array<{ x: number; y: number; distance: number }> = [];
 
-    const preferBack = variant === 1 && ["suite", "quarto"].includes(room.kind);
-    const yValues: number[] = [];
-    for (let y = 0; y <= Math.max(0, lotDepth - room.depth) + EPS; y += candidateStep) yValues.push(y);
-    if (preferBack) yValues.reverse();
-
-    for (const y of yValues) {
+    for (let y = 0; y <= Math.max(0, lotDepth - room.depth) + EPS; y += candidateStep) {
       for (let x = 0; x <= Math.max(0, lotWidth - room.width) + EPS; x += candidateStep) {
-        if (fits(room, x, y)) {
-          found = { x, y };
-          break;
-        }
+        if (!fits(room, x, y)) continue;
+        const dx = x - target.x;
+        const dy = y - target.y;
+        candidates.push({ x, y, distance: dx * dx + dy * dy });
       }
-      if (found) break;
     }
 
+    candidates.sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x);
+    const found = candidates[0] ?? null;
     const next = {
       ...room,
       x: found?.x ?? Math.max(0, Math.min(room.x, lotWidth - room.width)),
@@ -264,16 +280,15 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
   }
 
   for (const pool of pools) {
-    const y = Math.max(0, lotDepth - pool.depth);
-    const x = variant === 2
-      ? Math.max(0, (lotWidth - pool.width) / 2)
-      : Math.max(0, lotWidth - pool.width);
+    const y = Math.max(0, lotDepth - pool.depth - 0.6);
+    const x = variant === 1
+      ? 0.6
+      : Math.max(0.6, Math.min(lotWidth - pool.width - 0.6, (lotWidth - pool.width) / 2));
     placed.push({ ...pool, x, y });
   }
 
   return [...others, ...placed];
 }
-
 
 export type LayoutIssue = {
   id: string;
