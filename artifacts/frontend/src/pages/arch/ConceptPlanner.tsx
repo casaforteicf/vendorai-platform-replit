@@ -27,6 +27,7 @@ import {
   Ruler,
   Share2,
   ChevronDown,
+  X,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -304,6 +305,7 @@ export default function ConceptPlanner() {
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
+  const [libraryOpen, setLibraryOpen] = useState(true);
 
   const filteredTypologies = useMemo(() => {
     const query = modelSearch.trim().toLocaleLowerCase("pt-BR");
@@ -2365,8 +2367,8 @@ export default function ConceptPlanner() {
               <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={rooms} facade={facadePreferences} />
             </div>
 
-            <div className="grid min-h-[calc(100vh-64px)] xl:grid-cols-[350px_minmax(0,1fr)]">
-              <aside className="order-3 border-t bg-white xl:order-1 xl:border-r xl:border-t-0">
+            <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8]">
+              <aside className="absolute inset-y-0 left-0 z-30 border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]">
                 <div className="flex min-h-full">
                   <div className="w-16 shrink-0 border-r bg-white py-3">
                     <div className="flex flex-col items-center gap-2">
@@ -2380,7 +2382,11 @@ export default function ConceptPlanner() {
                         <button
                           key={value}
                           type="button"
-                          onClick={() => setEditorLibraryTab(value)}
+                          onClick={() => {
+                            const sameTab = editorLibraryTab === value;
+                            setEditorLibraryTab(value);
+                            setLibraryOpen((open) => sameTab ? !open : true);
+                          }}
                           title={label}
                           className={editorLibraryTab === value
                             ? "grid h-11 w-11 place-items-center rounded-xl bg-orange-50 text-orange-600 shadow-sm"
@@ -2392,31 +2398,41 @@ export default function ConceptPlanner() {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className={libraryOpen ? "w-[300px] min-w-0 flex-1 bg-white" : "hidden"}>
                 <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
-                  <div>
-                    <div className="text-sm font-semibold">
-                      {editorLibraryTab === "site"
-                        ? "Terreno"
-                        : editorLibraryTab === "models"
-                          ? "Modelos"
-                          : editorLibraryTab === "build"
-                            ? "Construir"
-                            : editorLibraryTab === "rooms"
-                              ? "Ambientes"
-                              : "Área externa"}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-base font-semibold">
+                        {editorLibraryTab === "site"
+                          ? "Terreno"
+                          : editorLibraryTab === "models"
+                            ? "Modelos"
+                            : editorLibraryTab === "build"
+                              ? "Construir"
+                              : editorLibraryTab === "rooms"
+                                ? "Ambientes"
+                                : "Área externa"}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {editorLibraryTab === "site"
+                          ? "Dimensões e implantação do lote"
+                          : editorLibraryTab === "models"
+                            ? "Escolha uma base sem sair do editor"
+                            : editorLibraryTab === "build"
+                              ? "Estrutura e aberturas"
+                              : editorLibraryTab === "rooms"
+                                ? "Organize os ambientes"
+                                : "Lazer e área externa"}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      {editorLibraryTab === "site"
-                        ? "Dimensões e implantação do lote"
-                        : editorLibraryTab === "models"
-                          ? "Escolha uma base sem sair do editor"
-                          : editorLibraryTab === "build"
-                            ? "Estrutura, paredes, aberturas e pavimentos"
-                            : editorLibraryTab === "rooms"
-                              ? "Organize os ambientes da residência"
-                              : "Garagem, lazer e elementos externos"}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryOpen(false)}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                      title="Fechar biblioteca"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -2503,7 +2519,7 @@ export default function ConceptPlanner() {
                             <div className="aspect-[16/8] overflow-hidden">
                               <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
                             </div>
-                            <div className="p-3">
+                            <div className="p-2.5">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="text-sm font-semibold">{item.title}</div>
                                 <div className="text-[10px] font-semibold text-slate-500">≈ {item.suggestedArea} m²</div>
@@ -2776,24 +2792,9 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className="order-1 min-w-0 overflow-hidden bg-[#f6f7f8] p-2 xl:order-2">
-                <div className="mx-auto max-w-[1450px]">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 py-1">
-                    <div>
-                      <div className="font-semibold">
-                        {editorView === "plan"
-                          ? `Planta 2D — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}`
-                          : editorView === "model3d"
-                            ? `Modelo 3D — ${activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pavimento ${activeFloor + 1}`}`
-                            : editorView === "facade"
-                              ? "Fachada conceitual"
-                              : "Render conceitual"}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {editorView === "plan" ? "Clique e desenhe diretamente na planta" : editorView === "model3d" ? "Visualização sincronizada" : editorView === "facade" ? "Elevação frontal" : "Render conceitual"}
-                      </div>
-                    </div>
-                    {editorView === "plan" && (
+              <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8] pl-16">
+                <div className="h-full w-full">
+                  {editorView === "plan" && (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -2928,20 +2929,30 @@ export default function ConceptPlanner() {
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
                       />
-                      <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
-                        {interactionMode === "navigate"
-                          ? "Navegar: arraste a planta para mover a visualização · use a roda do mouse ou os controles +/− para zoom."
-                          : interactionMode === "room"
-                            ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
-                          : interactionMode === "space"
-                            ? "Espaços: selecione uma área fechada para nomear e classificar o ambiente diretamente na planta."
-                          : interactionMode === "wall"
-                            ? wallFirstActive
-                              ? "Paredes: esta rede é a geometria principal do pavimento · edite segmentos, junções e medidas diretamente."
-                              : "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
-                            : interactionMode === "draw-wall"
-                              ? "Desenhar parede: cada segmento encaixa na rede existente; ao fechar um contorno, a área interna é detectada automaticamente."
-                              : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
+                      <div className="absolute bottom-4 left-20 z-20 flex items-center gap-2">
+                        <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
+                          <button
+                            type="button"
+                            onClick={undoRooms}
+                            disabled={!roomHistory.length}
+                            className="grid h-10 w-10 place-items-center border-r text-slate-600 hover:bg-slate-50 disabled:opacity-30"
+                            title="Desfazer"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={redoRooms}
+                            disabled={!roomFuture.length}
+                            className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50 disabled:opacity-30"
+                            title="Refazer"
+                          >
+                            <RotateCw className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">
+                          {currentArea.toFixed(0)} m²
+                        </div>
                       </div>
                     </>
                   )}
@@ -2992,8 +3003,9 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <aside className="fixed bottom-5 left-1/2 z-40 max-h-[230px] w-[min(900px,calc(100vw-32px))] -translate-x-1/2 overflow-auto rounded-2xl border bg-white/95 shadow-2xl backdrop-blur xl:left-[calc(50%+175px)]">
-                <div className="sticky top-0 z-10 flex h-10 items-center justify-between border-b bg-white/95 px-4">
+              {editorView === "plan" && (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
+              <aside className="fixed bottom-4 left-1/2 z-40 max-h-[170px] w-[min(820px,calc(100vw-160px))] -translate-x-1/2 overflow-auto rounded-xl border bg-white/95 shadow-2xl backdrop-blur">
+                <div className="sticky top-0 z-10 flex h-9 items-center justify-between border-b bg-white/95 px-3">
                   <div className="text-xs font-semibold">
                     {interactionMode === "draw-wall"
                       ? "Parede"
@@ -3552,6 +3564,7 @@ export default function ConceptPlanner() {
                 )}
                 </div>
               </aside>
+              )}
             </div>
           </section>
         )}
