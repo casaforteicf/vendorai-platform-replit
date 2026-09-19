@@ -279,20 +279,30 @@ router.patch("/propostas/:id/execucao/:itemIndex", async (req, res) => {
     return;
   }
 
-  const fila = itens
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => item.statusExecucao !== "concluida")
-    .sort((a, b) => (a.item.ordemExecucao ?? a.index + 1) - (b.item.ordemExecucao ?? b.index + 1));
+  const pendentes = itens
+    .map((item, index) => ({
+      item,
+      index,
+      etapaOrdem: item.etapaOrdem ?? item.ordemExecucao ?? index + 1,
+      etapaNome: item.etapaNome ?? item.nome,
+    }))
+    .filter(({ item }) => item.statusExecucao !== "concluida");
 
-  const etapaAtual = fila[0];
-  if (!etapaAtual) {
+  if (pendentes.length === 0) {
     res.status(422).json({ error: "Todas as etapas deste orçamento já foram concluídas." });
     return;
   }
 
-  if (etapaAtual.index !== itemIndex) {
+  const etapaAtualOrdem = Math.min(...pendentes.map((entry) => entry.etapaOrdem));
+  const etapaAtual = pendentes.find((entry) => entry.etapaOrdem === etapaAtualOrdem)!;
+  const itemAlvo = itens[itemIndex];
+  const itemEtapaOrdem = itemAlvo.etapaOrdem ?? itemAlvo.ordemExecucao ?? itemIndex + 1;
+
+  // Vários produtos/composições podem ser executados dentro da mesma etapa.
+  // A próxima etapa só é liberada quando todos os itens da etapa atual terminarem.
+  if (itemEtapaOrdem !== etapaAtualOrdem) {
     res.status(409).json({
-      error: `Conclua primeiro a etapa ${etapaAtual.item.ordemExecucao ?? etapaAtual.index + 1}: ${etapaAtual.item.nome}.`,
+      error: `Conclua primeiro a etapa ${etapaAtualOrdem}: ${etapaAtual.etapaNome}.`,
     });
     return;
   }
@@ -346,6 +356,15 @@ router.patch("/propostas/:id/execucao/:itemIndex", async (req, res) => {
       finalizada: restantes.length === 0,
       proximaOrdem: restantes.length
         ? Math.min(...restantes.map((item, index) => item.ordemExecucao ?? index + 1))
+        : null,
+      proximaEtapaOrdem: restantes.length
+        ? Math.min(...restantes.map((item, index) => item.etapaOrdem ?? item.ordemExecucao ?? index + 1))
+        : null,
+      proximaEtapaNome: restantes.length
+        ? (() => {
+            const ordem = Math.min(...restantes.map((item, index) => item.etapaOrdem ?? item.ordemExecucao ?? index + 1));
+            return restantes.find((item, index) => (item.etapaOrdem ?? item.ordemExecucao ?? index + 1) === ordem)?.etapaNome ?? null;
+          })()
         : null,
     },
   });
@@ -459,6 +478,10 @@ const fromCatalogoBodySchema = z.object({
         quantidade: z.number().positive(),
         precoUnitario: z.number().nonnegative().optional(),
         nome: z.string().optional(),
+        etapaId: z.string().min(1).optional(),
+        etapaNome: z.string().min(1).optional(),
+        etapaOrdem: z.number().int().positive().optional(),
+        ordemExecucao: z.number().int().positive().optional(),
       }).refine(
         (item) => Boolean(item.produtoId) !== Boolean(item.composicaoId),
         { message: "Informe produtoId ou composicaoId, mas não os dois." },
@@ -563,6 +586,10 @@ router.post(
           produtoId: produto.id,
           sku: produto.sku ?? undefined,
           unidade: produto.unidade ?? undefined,
+          etapaId: item.etapaId,
+          etapaNome: item.etapaNome,
+          etapaOrdem: item.etapaOrdem,
+          ordemExecucao: item.ordemExecucao,
         };
       }
 
@@ -579,6 +606,10 @@ router.post(
         sku: composicao.codigo ?? undefined,
         descricao: composicao.descricao ?? undefined,
         unidade: composicao.unidade,
+        etapaId: item.etapaId,
+        etapaNome: item.etapaNome,
+        etapaOrdem: item.etapaOrdem,
+        ordemExecucao: item.ordemExecucao,
       };
     });
 

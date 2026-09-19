@@ -421,7 +421,16 @@ export function renderProposalHtml(json: unknown, theme: {
 }, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null, tenantLogoUrl?: string | null, imagens?: string[] | null, orcamento?: {
   titulo: string;
   numero?: string | null;
-  itens: Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>;
+  itens: Array<{
+    nome: string;
+    quantidade: number;
+    valorUnitario: number;
+    sku?: string | null;
+    descricao?: string | null;
+    etapaId?: string | null;
+    etapaNome?: string | null;
+    etapaOrdem?: number | null;
+  }>;
   valorTotal?: string | null;
   observacoes?: string | null;
   formaPagamento?: string | null;
@@ -629,6 +638,15 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-table th.r, .orc-table td.r { text-align: right; }
   .orc-table td { padding: 2.5mm 3mm; border-bottom: 1px solid ${theme.concrete}; vertical-align: top; }
   .orc-table tr:last-child td { border-bottom: none; }
+  .orc-stage-row td {
+    background: ${theme.cream2};
+    border-top: 1px solid ${theme.concreteLine} !important;
+    border-bottom: 1px solid ${theme.concreteLine} !important;
+    color: ${theme.navyDeep};
+    font-size: 8pt;
+    padding-top: 2.5mm !important;
+    padding-bottom: 2.5mm !important;
+  }
   .orc-desc { font-size: 7pt; color: #8b84a8; display: block; margin-top: 1px; }
   .orc-total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
   .orc-total-box { border: 1px solid ${theme.accentSoft}; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: ${theme.cream2}; }
@@ -775,15 +793,46 @@ ${orcamento ? (() => {
   const itensValidos = (orcamento.itens || []).filter((i) => i.nome);
   const calculatedTotal = itensValidos.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
   const totalExibido = orcamento.valorTotal ? parseFloat(orcamento.valorTotal) : calculatedTotal;
-  const rows = itensValidos.map((i) => {
-    const subtotal = i.quantidade * i.valorUnitario;
-    return `<tr>
-      <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
-      <td class="r">${i.quantidade}</td>
-      <td class="r">${fmtBRL(i.valorUnitario)}</td>
-      <td class="r">${fmtBRL(subtotal)}</td>
-    </tr>`;
-  }).join("");
+  const hasEtapas = itensValidos.some((item) => item.etapaOrdem || item.etapaNome);
+  const rows = hasEtapas
+    ? Array.from(
+        itensValidos.reduce((groups, item, index) => {
+          const ordem = item.etapaOrdem ?? index + 1;
+          const nome = item.etapaNome ?? `Etapa ${ordem}`;
+          const key = `${ordem}::${nome}`;
+          const group = groups.get(key) ?? { ordem, nome, itens: [] as typeof itensValidos };
+          group.itens.push(item);
+          groups.set(key, group);
+          return groups;
+        }, new Map<string, { ordem: number; nome: string; itens: typeof itensValidos }>())
+      )
+        .map(([, group]) => group)
+        .sort((a, b) => a.ordem - b.ordem)
+        .map((group) => {
+          const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+          const itemRows = group.itens.map((i) => {
+            const subtotal = i.quantidade * i.valorUnitario;
+            return `<tr>
+              <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+              <td class="r">${i.quantidade}</td>
+              <td class="r">${fmtBRL(i.valorUnitario)}</td>
+              <td class="r">${fmtBRL(subtotal)}</td>
+            </tr>`;
+          }).join("");
+          return `<tr class="orc-stage-row">
+            <td colspan="3"><strong>Etapa ${group.ordem}</strong> · ${group.nome}</td>
+            <td class="r"><strong>${fmtBRL(etapaTotal)}</strong></td>
+          </tr>${itemRows}`;
+        }).join("")
+    : itensValidos.map((i) => {
+        const subtotal = i.quantidade * i.valorUnitario;
+        return `<tr>
+          <td>${i.nome}${i.descricao ? `<span class="orc-desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="orc-desc">SKU: ${i.sku}</span>` : ""}</td>
+          <td class="r">${i.quantidade}</td>
+          <td class="r">${fmtBRL(i.valorUnitario)}</td>
+          <td class="r">${fmtBRL(subtotal)}</td>
+        </tr>`;
+      }).join("");
   const metaItems = [
     orcamento.formaPagamento ? `<div class="orc-meta-item"><span>Forma de Pagamento</span><span>${FORMA_LABELS[orcamento.formaPagamento] || orcamento.formaPagamento}</span></div>` : "",
     orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição</span><span>${orcamento.condPagamento}</span></div>` : "",
@@ -828,7 +877,16 @@ export function renderOrcamentoPdf(args: {
   proposta: {
     titulo: string;
     numero?: string | null;
-    itens: Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>;
+    itens: Array<{
+    nome: string;
+    quantidade: number;
+    valorUnitario: number;
+    sku?: string | null;
+    descricao?: string | null;
+    etapaId?: string | null;
+    etapaNome?: string | null;
+    etapaOrdem?: number | null;
+  }>;
     valorTotal?: string | null;
     observacoes?: string | null;
     formaPagamento?: string | null;
@@ -904,15 +962,48 @@ export function renderOrcamentoPdf(args: {
       </div>`).join("")
     : "";
 
-  const rowsHtml = itens.map((i) => {
-    const sub = i.quantidade * i.valorUnitario;
-    return `<tr>
-      <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
-      <td class="r">${i.quantidade}</td>
-      <td class="r">${fmtBRL(i.valorUnitario)}</td>
-      <td class="r fw">${fmtBRL(sub)}</td>
-    </tr>`;
-  }).join("");
+  const hasStageGroups = itens.some((item) => item.etapaOrdem || item.etapaNome);
+  const rowsHtml = hasStageGroups
+    ? Array.from(
+        itens.reduce((groups, item, index) => {
+          const ordem = item.etapaOrdem ?? index + 1;
+          const nome = item.etapaNome ?? `Etapa ${ordem}`;
+          const key = `${ordem}::${nome}`;
+          const group = groups.get(key) ?? { ordem, nome, itens: [] as typeof itens };
+          group.itens.push(item);
+          groups.set(key, group);
+          return groups;
+        }, new Map<string, { ordem: number; nome: string; itens: typeof itens }>())
+      )
+        .map(([, group]) => group)
+        .sort((a, b) => a.ordem - b.ordem)
+        .map((group) => {
+          const etapaTotal = group.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0);
+          const itemRows = group.itens.map((i) => {
+            const sub = i.quantidade * i.valorUnitario;
+            return `<tr>
+              <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+              <td class="r">${i.quantidade}</td>
+              <td class="r">${fmtBRL(i.valorUnitario)}</td>
+              <td class="r fw">${fmtBRL(sub)}</td>
+            </tr>`;
+          }).join("");
+
+          return `<tr class="stage-row">
+            <td colspan="3"><strong>Etapa ${group.ordem}</strong> · ${group.nome}</td>
+            <td class="r fw">${fmtBRL(etapaTotal)}</td>
+          </tr>${itemRows}`;
+        })
+        .join("")
+    : itens.map((i) => {
+        const sub = i.quantidade * i.valorUnitario;
+        return `<tr>
+          <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+          <td class="r">${i.quantidade}</td>
+          <td class="r">${fmtBRL(i.valorUnitario)}</td>
+          <td class="r fw">${fmtBRL(sub)}</td>
+        </tr>`;
+      }).join("");
 
   const metaRows = [
     proposta.formaPagamento ? `<div class="meta-item"><span>Forma de Pagamento</span><strong>${FORMA_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</strong></div>` : "",
@@ -1069,6 +1160,15 @@ export function renderOrcamentoPdf(args: {
   table.items th.r, table.items td.r { text-align: right; }
   table.items td { padding: 2.5mm 2.5mm; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
   table.items tr:last-child td { border-bottom: none; }
+  .stage-row td {
+    background: #f1f5f9;
+    color: #334155;
+    border-top: 1px solid #cbd5e1 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    padding-top: 2.5mm !important;
+    padding-bottom: 2.5mm !important;
+    font-size: 8.5pt;
+  }
   .row-desc { font-size: 7pt; color: #9ca3af; }
   .fw { font-weight: 600; }
 
