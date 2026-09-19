@@ -78,6 +78,33 @@ export type ArchConceptConfiguration = {
     manufacturerId?: string;
     catalogProductId?: string;
   }>;
+  materials?: {
+    floor: {
+      id: string; name: string; category: string; manufacturer?: string; finish?: string;
+      color: string; secondaryColor?: string; edgeColor?: string; gloss?: number; pattern: string; libraryMaterialId?: string;
+    };
+    floorByLevel: Record<string, {
+      id: string; name: string; category: string; manufacturer?: string; finish?: string;
+      color: string; secondaryColor?: string; edgeColor?: string; gloss?: number; pattern: string; libraryMaterialId?: string;
+    }>;
+    interiorWall: {
+      id: string; name: string; category: string; manufacturer?: string; finish?: string;
+      color: string; secondaryColor?: string; edgeColor?: string; gloss?: number; pattern: string; libraryMaterialId?: string;
+    };
+    exteriorWall: {
+      id: string; name: string; category: string; manufacturer?: string; finish?: string;
+      color: string; secondaryColor?: string; edgeColor?: string; gloss?: number; pattern: string; libraryMaterialId?: string;
+    };
+    roof: {
+      id: string; name: string; category: string; manufacturer?: string; finish?: string;
+      color: string; secondaryColor?: string; edgeColor?: string; gloss?: number; pattern: string; libraryMaterialId?: string;
+    };
+    stair: {
+      id: string; name: string; category: string; manufacturer?: string; finish?: string;
+      color: string; secondaryColor?: string; edgeColor?: string; gloss?: number; pattern: string; libraryMaterialId?: string;
+    };
+  };
+
 };
 
 export type ArchConceptRoom = {

@@ -69,6 +69,15 @@ import {
   type ArchitecturalIssue,
   type ArchitecturalValidationCategory,
 } from "./conceptValidation";
+import {
+  conceptFloorMaterial,
+  defaultConceptMaterialScheme,
+  materialFromLibrary,
+  materialOptionsFor,
+  normalizeConceptMaterialScheme,
+  type ConceptMaterialRef,
+  type ConceptMaterialScheme,
+} from "./conceptMaterials";
 
 type RoomKind =
   | "sala"
@@ -237,6 +246,7 @@ type ConceptDraftResponse = {
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptObject[];
+    materials?: ConceptMaterialScheme;
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -588,6 +598,7 @@ export default function ConceptPlanner() {
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [objects, setObjects] = useState<ConceptObject[]>([]);
+  const [materialScheme, setMaterialScheme] = useState<ConceptMaterialScheme>(() => defaultConceptMaterialScheme());
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([]);
   const [showDimensions, setShowDimensions] = useState(true);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
@@ -670,6 +681,7 @@ export default function ConceptPlanner() {
             ? draft.configuration.objects.map((object) => normalizeConceptObject(object, loadedLotWidth, loadedLotDepth))
             : []
         );
+        setMaterialScheme(normalizeConceptMaterialScheme(draft.configuration?.materials));
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -712,6 +724,7 @@ export default function ConceptPlanner() {
         customOpenings: persistedCustomOpenings,
         spaceProfiles,
         objects: persistedObjects,
+        materials: normalizeConceptMaterialScheme(materialScheme),
       },
       rooms: persistedRooms,
       openingOverrides,
@@ -745,6 +758,59 @@ export default function ConceptPlanner() {
   const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? null;
   const visibleRooms = wallFirstActive ? [] : rooms.filter((r) => r.floor === activeFloor);
   const visibleObjects = objects.filter((object) => object.floor === activeFloor);
+  const activeFloorMaterial = conceptFloorMaterial(materialScheme, activeFloor);
+
+  const updateMaterialSurface = (
+    surface: "floor" | "interiorWall" | "exteriorWall" | "roof" | "stair",
+    materialId: string,
+  ) => {
+    setMaterialScheme((current) => {
+      const normalized = normalizeConceptMaterialScheme(current);
+      if (surface === "floor") {
+        return {
+          ...normalized,
+          floorByLevel: {
+            ...normalized.floorByLevel,
+            [String(activeFloor)]: materialFromLibrary(materialId, conceptFloorMaterial(normalized, activeFloor)),
+          },
+        };
+      }
+      const key = surface;
+      return {
+        ...normalized,
+        [key]: materialFromLibrary(materialId, normalized[key]),
+      };
+    });
+  };
+
+  const materialSelect = (
+    label: string,
+    surface: "floor" | "interiorWall" | "exteriorWall" | "roof" | "stair",
+    value: ConceptMaterialRef,
+  ) => (
+    <label className="block text-xs font-semibold">
+      {label}
+      <div className="mt-1 flex items-center gap-2">
+        <span
+          className="h-9 w-9 shrink-0 rounded-lg border shadow-inner"
+          style={{ backgroundColor: value.color }}
+          title={value.name}
+        />
+        <select
+          value={value.id}
+          onChange={(event) => updateMaterialSurface(surface, event.target.value)}
+          className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3 text-xs"
+        >
+          {materialOptionsFor(surface).map((material) => (
+            <option key={material.id} value={material.id}>
+              {material.name}{material.finish ? ` · ${material.finish}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+    </label>
+  );
+
   const currentArea = useMemo(() => {
     const legacyArea = rooms
       .filter((room) => room.kind !== "piscina" && !wallFirstFloors.includes(room.floor))
@@ -1934,6 +2000,7 @@ export default function ConceptPlanner() {
         desiredArea,
         rooms,
         facade: facadePreferences,
+        materials: materialScheme,
       });
 
       const response = await fetch("/api/arch/ai-render", {
@@ -1999,6 +2066,7 @@ export default function ConceptPlanner() {
               customOpenings: persistedCustomOpenings,
               spaceProfiles,
               objects: persistedObjects,
+              materials: normalizeConceptMaterialScheme(materialScheme),
             },
             rooms: persistedRooms,
             openingOverrides,
@@ -2701,6 +2769,7 @@ export default function ConceptPlanner() {
                       activeFloor={activeFloor}
                       levels={modelLevels}
                       roof={facadePreferences}
+                      materials={materialScheme}
                     />
                   )}
 
@@ -3611,6 +3680,19 @@ export default function ConceptPlanner() {
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Espaços</div>
                         <div className="mt-1 text-lg font-bold">{modelLevels.reduce((sum, level) => sum + level.closedSpaces.length, 0)}</div>
                       </div>
+                    </div>
+                    <div className="space-y-3 rounded-xl border bg-background p-3">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wide text-violet-700">Materialidade sincronizada</div>
+                        <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                          Estas superfícies alimentam o mesmo 3D e seguem com o projeto ao promover para o Arqdor.
+                        </div>
+                      </div>
+                      {materialSelect(`Piso · ${activeFloor === 0 ? "Térreo" : `Pavimento ${activeFloor + 1}`}`, "floor", activeFloorMaterial)}
+                      {materialSelect("Parede interna", "interiorWall", materialScheme.interiorWall)}
+                      {materialSelect("Parede externa", "exteriorWall", materialScheme.exteriorWall)}
+                      {materialSelect("Escada", "stair", materialScheme.stair)}
+                      {materialSelect("Cobertura", "roof", materialScheme.roof)}
                     </div>
                     <button
                       type="button"
