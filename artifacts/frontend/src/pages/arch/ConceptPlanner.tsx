@@ -968,10 +968,7 @@ export default function ConceptPlanner() {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const next = nudgeOpening(selectedOpening, amount, lotWidth, lotDepth);
-    setOpeningOverrides((prev) => ({
-      ...prev,
-      [selectedOpening.id]: { x: next.x, y: next.y, type: next.type },
-    }));
+    updateOpeningById(selectedOpening.id, { x: next.x, y: next.y, type: next.type });
     pushRoomHistory(before);
   };
 
@@ -979,10 +976,11 @@ export default function ConceptPlanner() {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const nextType = selectedOpening.type === "door" ? "window" : "door";
-    setOpeningOverrides((prev) => ({
-      ...prev,
-      [selectedOpening.id]: { x: selectedOpening.x, y: selectedOpening.y, type: nextType },
-    }));
+    updateOpeningById(selectedOpening.id, {
+      x: selectedOpening.x,
+      y: selectedOpening.y,
+      type: nextType,
+    });
     pushRoomHistory(before);
   };
 
