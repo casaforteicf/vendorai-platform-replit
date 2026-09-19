@@ -244,7 +244,7 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
-  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall">("room");
+  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
@@ -1382,6 +1382,22 @@ export default function ConceptPlanner() {
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
+                            onClick={() => {
+                              setInteractionMode("navigate");
+                              setSelectedId(null);
+                              setSelectedClosedSpaceId(null);
+                              setSelectedOpeningId(null);
+                              setSelectedWallId(null);
+                              setSelectedCustomWallId(null);
+                            }}
+                            className={interactionMode === "navigate"
+                              ? "rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Navegar
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
                             className={interactionMode === "room"
                               ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
@@ -1510,8 +1526,10 @@ export default function ConceptPlanner() {
                         interactionMode={interactionMode}
                       />
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
-                        {interactionMode === "room"
-                          ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
+                        {interactionMode === "navigate"
+                          ? "Navegar: arraste a planta para mover a visualização · use a roda do mouse ou os controles +/− para zoom."
+                          : interactionMode === "room"
+                            ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
                           : interactionMode === "space"
                             ? "Espaços: selecione uma área fechada para nomear e classificar o ambiente diretamente na planta."
                           : interactionMode === "wall"
@@ -1574,7 +1592,20 @@ export default function ConceptPlanner() {
 
                 {editorView === "plan" && (
                   <>
-                    {interactionMode === "space" ? (
+                    {interactionMode === "navigate" ? (
+                      <div className="mt-4 space-y-3">
+                        <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                          Arraste o canvas para navegar. Use a roda do mouse ou os botões de zoom no canto superior da planta. O botão de enquadrar retorna à visão completa.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setInteractionMode("room")}
+                          className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+                        >
+                          Voltar para editar
+                        </button>
+                      </div>
+                    ) : interactionMode === "space" ? (
                       !selectedClosedSpace ? (
                         <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                           Selecione uma área fechada na planta para definir seu nome e uso.
