@@ -107,12 +107,14 @@ type InsumoItem = { insumoId: string; quantidade: string; precoUnitario: string 
 function ComposicaoForm({
   tenantId,
   initial,
+  initialItems,
   onSave,
   onCancel,
   isPending,
 }: {
   tenantId: string;
   initial?: { nome?: string; descricao?: string; unidade?: string; codigo?: string };
+  initialItems?: InsumoItem[];
   onSave: (data: Record<string, unknown>) => void;
   onCancel: () => void;
   isPending: boolean;
@@ -123,7 +125,7 @@ function ComposicaoForm({
     unidade: initial?.unidade ?? "m²",
     codigo: initial?.codigo ?? "",
   });
-  const [itens, setItens] = useState<InsumoItem[]>([]);
+  const [itens, setItens] = useState<InsumoItem[]>(initialItems ?? []);
   const [insumoSearch, setInsumoSearch] = useState("");
 
   const { data: allInsumos = [] } = useListInsumos(tenantId, {}, { query: { enabled: !!tenantId, queryKey: getListInsumosQueryKey(tenantId) } });
@@ -139,9 +141,11 @@ function ComposicaoForm({
     e.preventDefault();
     const payload: Record<string, unknown> = { ...form };
     Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
-    if (itens.length > 0) {
-      payload.itens = itens.map((i) => ({ insumoId: i.insumoId, quantidade: i.quantidade, ...(i.precoUnitario ? { precoUnitario: i.precoUnitario } : {}) }));
-    }
+    payload.itens = itens.map((i) => ({
+      insumoId: i.insumoId,
+      quantidade: i.quantidade,
+      ...(i.precoUnitario ? { precoUnitario: i.precoUnitario } : {}),
+    }));
     onSave(payload);
   }
 
@@ -169,7 +173,12 @@ function ComposicaoForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Insumos da composição</Label>
+        <div>
+          <Label>Insumos da composição</Label>
+          <p className="text-xs text-muted-foreground mt-1">
+            Deixe o preço em branco para usar a base mestre do insumo. Preencha somente quando quiser fixar um preço específico nesta composição.
+          </p>
+        </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar insumo..." className="pl-8" value={insumoSearch} onChange={(e) => setInsumoSearch(e.target.value)} />
@@ -217,6 +226,78 @@ function ComposicaoForm({
         <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button>
       </div>
     </form>
+  );
+}
+
+function ComposicaoEditDialog({
+  tenantId,
+  composicao,
+}: {
+  tenantId: string;
+  composicao: { id: string; nome: string; descricao?: string | null; unidade: string; codigo?: string | null };
+}) {
+  const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+  const { data, isLoading } = useGetComposicao(tenantId, composicao.id, {
+    query: {
+      enabled: open,
+      queryKey: getGetComposicaoQueryKey(tenantId, composicao.id),
+    },
+  });
+  const { mutateAsync: updateComposicao, isPending } = useUpdateComposicao();
+
+  const detail = data as any;
+  const initialItems: InsumoItem[] = (detail?.itens ?? []).map((item: any) => ({
+    insumoId: item.insumoId,
+    quantidade: String(item.quantidade ?? "1"),
+    precoUnitario: item.precoUnitario ? String(item.precoUnitario) : "",
+  }));
+
+  async function handleUpdate(payload: Record<string, unknown>) {
+    await updateComposicao({
+      tenantId,
+      composicaoId: composicao.id,
+      data: payload as any,
+    });
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: getListComposicoesQueryKey(tenantId) }),
+      qc.invalidateQueries({ queryKey: getGetComposicaoQueryKey(tenantId, composicao.id) }),
+    ]);
+    setOpen(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Editar composição">
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Editar composição</DialogTitle></DialogHeader>
+        {isLoading || !detail ? (
+          <div className="space-y-2 py-4">
+            <div className="h-10 bg-muted animate-pulse rounded" />
+            <div className="h-28 bg-muted animate-pulse rounded" />
+          </div>
+        ) : (
+          <ComposicaoForm
+            key={`${composicao.id}-${initialItems.length}`}
+            tenantId={tenantId}
+            initial={{
+              nome: detail.nome,
+              descricao: detail.descricao ?? "",
+              unidade: detail.unidade,
+              codigo: detail.codigo ?? "",
+            }}
+            initialItems={initialItems}
+            onSave={handleUpdate}
+            onCancel={() => setOpen(false)}
+            isPending={isPending}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -364,12 +445,19 @@ export default function Composicoes() {
                           {comp.codigo && <span className="text-xs text-muted-foreground font-mono">#{comp.codigo}</span>}
                         </div>
                         {comp.descricao && <p className="text-xs text-muted-foreground mt-0.5">{comp.descricao}</p>}
+                        <div className="mt-1 flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">Custo atual:</span>
+                          <span className="font-mono font-semibold">
+                            R$ {Number(comp.custoTotal ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/{comp.unidade}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setExpandedId(isExpanded ? null : comp.id)}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setExpandedId(isExpanded ? null : comp.id)} title={isExpanded ? "Ocultar insumos" : "Ver insumos"}>
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </Button>
+                      <ComposicaoEditDialog tenantId={tenantId} composicao={comp} />
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
