@@ -557,6 +557,7 @@ export default function ConceptPlan2D({
             <g
               key={room.id}
               role="button"
+              pointerEvents={interactionMode === "space" ? "none" : undefined}
               tabIndex={0}
               onPointerDown={(event) => {
                 if (interactionMode !== "room") return;
