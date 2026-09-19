@@ -673,7 +673,7 @@ function AppRoutes() {
         <Route path="/arch/catalogo">{() => <ProtectedRoute component={ArchCatalogo} />}</Route>
         <Route path="/arch/marketplace">{() => <ProtectedRoute component={ArchMarketplace} />}</Route>
         <Route path="/arch/render">{() => <FullscreenProtectedRoute component={ArchRender} />}</Route>
-        <Route path="/arch/concept">{() => <ProtectedRoute component={ArchConcept} />}</Route>
+        <Route path="/arch/concept">{() => <FullscreenProtectedRoute component={ArchConcept} />}</Route>
         <Route path="/arch/portal/:token">{() => <ArchPortalCliente />}</Route>
         <Route path="/obras">{() => <ConstrucaoRoute component={Obras} />}</Route>
         <Route path="/obras/:obraId">{() => <ConstrucaoRoute component={ObraDetalhe} />}</Route>
