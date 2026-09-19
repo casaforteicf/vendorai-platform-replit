@@ -1411,9 +1411,9 @@ export default function ConceptPlan2D({
               onPointerDown={(event) => {
                 if (interactionMode !== "object" || !onSelectObject) return;
                 event.stopPropagation();
-                onEditStart?.();
                 onSelectObject(object.id);
                 if (object.locked || !onObjectChange) return;
+                onEditStart?.();
                 const point = toSvgPoint(event.clientX, event.clientY);
                 event.currentTarget.setPointerCapture?.(event.pointerId);
                 setGesture({

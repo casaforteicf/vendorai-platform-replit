@@ -214,6 +214,7 @@ type ConceptPromotedObject = {
   presetId?: string;
   name: string;
   category: string;
+  symbol?: string;
   floor: number;
   x: number;
   y: number;
@@ -280,6 +281,7 @@ async function syncConceptObjectsToProject(
     designIntent: [
       "source:arqdor_concept",
       ...(object.presetId ? [`preset:${object.presetId}`] : []),
+      ...(object.symbol ? [`symbol:${object.symbol}`] : []),
       ...(object.catalogProductId ? [`catalog_product:${object.catalogProductId}`] : []),
     ],
     locked: object.locked ?? false,

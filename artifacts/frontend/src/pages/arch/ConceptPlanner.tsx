@@ -688,7 +688,9 @@ export default function ConceptPlanner() {
     setSaveState("saving");
     const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
     const persistedRooms = normalizeDraftRooms(rooms);
-    const persistedObjects = objects.map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
+    const persistedObjects = objects
+      .filter((object) => object.floor >= 0 && object.floor < floors)
+      .map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",
@@ -1879,7 +1881,9 @@ export default function ConceptPlanner() {
 
           const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
           const persistedRooms = normalizeDraftRooms(rooms);
-          const persistedObjects = objects.map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
+          const persistedObjects = objects
+      .filter((object) => object.floor >= 0 && object.floor < floors)
+      .map((object) => sanitizeConceptObjectForPersistence(object, lotWidth, lotDepth));
           const payload = {
             title: "Meu pré-projeto",
             status: "draft",
@@ -2919,6 +2923,31 @@ export default function ConceptPlanner() {
                                 <select value={selectedObject.category} onChange={(event) => updateConceptObject(selectedObject.id, { category: event.target.value as ConceptObject["category"] }, true)} className="mt-1 h-10 w-full rounded-lg border bg-background px-2">
                                   {CONCEPT_OBJECT_CATEGORIES.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
                                 </select>
+                              </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Posição X
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={lotWidth}
+                                  step="0.05"
+                                  value={selectedObject.x.toFixed(2)}
+                                  onChange={(event) => updateConceptObject(selectedObject.id, { x: Number(event.target.value) }, true)}
+                                  className="mt-1 h-10 w-full rounded-lg border px-2"
+                                />
+                              </label>
+                              <label className="text-xs font-medium">Posição Y
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={lotDepth}
+                                  step="0.05"
+                                  value={selectedObject.y.toFixed(2)}
+                                  onChange={(event) => updateConceptObject(selectedObject.id, { y: Number(event.target.value) }, true)}
+                                  className="mt-1 h-10 w-full rounded-lg border px-2"
+                                />
                               </label>
                             </div>
 
