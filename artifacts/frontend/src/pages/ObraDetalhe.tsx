@@ -1625,9 +1625,32 @@ function fmtNum(v?: string | number | null) {
   return Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function calcItemTotal(item: { quantidade: string; custoUnitario: string; bdi?: string | null }, bdiGlobal: string) {
+function calcItemTotal(
+  item: { quantidade: string; custoUnitario: string; bdi?: string | null },
+  bdiGlobal: string,
+  modoPrecificacao: string = "bdi",
+) {
+  const custoDireto = parseFloat(item.quantidade) * parseFloat(item.custoUnitario);
+  if (modoPrecificacao === "detalhada") return custoDireto;
   const bdi = item.bdi != null ? parseFloat(item.bdi) : parseFloat(bdiGlobal ?? "0");
-  return parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + bdi / 100);
+  return custoDireto * (1 + bdi / 100);
+}
+
+function calcDetailedSale(custoDireto: number, orcamento: any) {
+  const n = (value: unknown) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const operacional =
+    n(orcamento.custosIndiretosPct) +
+    n(orcamento.administracaoPct) +
+    n(orcamento.riscoPct) +
+    n(orcamento.financeiroPct);
+  const custoEmpresarial = custoDireto * (1 + operacional / 100);
+  const vendaPct = n(orcamento.impostosPct) + n(orcamento.comissaoPct) + n(orcamento.margemPct);
+  if (vendaPct >= 100) return 0;
+  const precoTabela = custoEmpresarial / Math.max(0.0001, 1 - vendaPct / 100);
+  return precoTabela * (1 - Math.min(100, n(orcamento.descontoPct)) / 100);
 }
 
 function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obraId: string; portalToken?: string | null }) {
@@ -1648,7 +1671,17 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   const [editEtapaNome, setEditEtapaNome] = useState("");
 
   const [addingItemEtapaId, setAddingItemEtapaId] = useState<string | null>(null);
-  const [newItem, setNewItem] = useState({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" });
+  const [newItem, setNewItem] = useState({
+    nome: "",
+    codigo: "",
+    composicaoId: "",
+    origem: "manual",
+    origemReferencia: "",
+    unidade: "un",
+    quantidade: "1",
+    custoUnitario: "0",
+    bdi: "",
+  });
   const [editingItem, setEditingItem] = useState<{ id: string; nome: string; unidade: string; quantidade: string; custoUnitario: string; bdi: string } | null>(null);
 
   const [sinapiQuery, setSinapiQuery] = useState("");
@@ -1677,9 +1710,77 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   }, [addingItemEtapaId]);
 
   function applySinapi(item: { codigo: string; descricao: string; unidade: string; preco: number }) {
-    setNewItem((prev) => ({ ...prev, nome: item.descricao, unidade: item.unidade.toLowerCase(), custoUnitario: String(item.preco) }));
+    setNewItem((prev) => ({
+      ...prev,
+      nome: item.descricao,
+      codigo: item.codigo,
+      composicaoId: "",
+      origem: "sinapi",
+      origemReferencia: item.codigo,
+      unidade: item.unidade.toLowerCase(),
+      custoUnitario: String(item.preco),
+    }));
     setSinapiQuery("");
     setSinapiResults([]);
+  }
+
+  const { data: composicoesOrcamento = [] } = useQuery<Array<{ id: string; nome: string; unidade: string; codigo?: string | null }>>({
+    queryKey: ["obra-orcamento-composicoes", tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/tenants/${tenantId}/composicoes`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as composições.");
+      return response.json();
+    },
+  });
+
+  async function applyComposicao(composicaoId: string) {
+    if (!composicaoId) {
+      setNewItem((prev) => ({ ...prev, codigo: "", composicaoId: "", origem: "manual", origemReferencia: "" }));
+      return;
+    }
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/tenants/${tenantId}/composicoes/${composicaoId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar a composição.");
+      const composicao = await response.json() as {
+        id: string;
+        nome: string;
+        unidade: string;
+        codigo?: string | null;
+        itens?: Array<{ quantidade?: string | null; precoUnitario?: string | null; insumo?: { precoUnitario?: string | null } | null }>;
+      };
+      const custo = (composicao.itens ?? []).reduce((sum, item) => {
+        const quantidade = Number(item.quantidade ?? 0);
+        const preco = Number(item.precoUnitario ?? item.insumo?.precoUnitario ?? 0);
+        return sum + quantidade * preco;
+      }, 0);
+      setNewItem((prev) => ({
+        ...prev,
+        nome: composicao.nome,
+        codigo: composicao.codigo ?? "",
+        composicaoId: composicao.id,
+        origem: "composicao",
+        origemReferencia: composicao.codigo ?? composicao.id,
+        unidade: composicao.unidade,
+        custoUnitario: custo.toFixed(4),
+      }));
+      toast({
+        title: "Composição aplicada",
+        description: `${composicao.nome} · custo unitário ${fmtBRL(custo)}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao aplicar composição",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    }
   }
 
   const { data: orcamentos = [] } = useListObraOrcamentos(tenantId, obraId, {
@@ -1782,8 +1883,26 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   function handleCreateItem(etapaId: string) {
     if (!selectedId) return;
     createItem.mutate(
-      { tenantId, obraId, orcamentoId: selectedId, etapaId, data: { ...newItem, bdi: newItem.bdi || undefined } },
-      { onSuccess: () => { invalidateOrcamentos(); setAddingItemEtapaId(null); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }
+      {
+        tenantId,
+        obraId,
+        orcamentoId: selectedId,
+        etapaId,
+        data: {
+          ...newItem,
+          codigo: newItem.codigo || undefined,
+          composicaoId: newItem.composicaoId || undefined,
+          origemReferencia: newItem.origemReferencia || undefined,
+          bdi: newItem.bdi || undefined,
+        } as any,
+      },
+      {
+        onSuccess: () => {
+          invalidateOrcamentos();
+          setAddingItemEtapaId(null);
+          setNewItem({ nome: "", codigo: "", composicaoId: "", origem: "manual", origemReferencia: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" });
+        },
+      }
     );
   }
 
@@ -1805,10 +1924,16 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
     );
   }
 
-  const totalGeral = (orcamento?.etapas ?? []).reduce((acc, etapa) => {
-    const etapaTotal = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento?.bdiGlobal ?? "0"), 0);
+  const subtotalItens = (orcamento?.etapas ?? []).reduce((acc, etapa) => {
+    const etapaTotal = (etapa.itens ?? []).reduce(
+      (s, item) => s + calcItemTotal(item as any, orcamento?.bdiGlobal ?? "0", (orcamento as any)?.modoPrecificacao ?? "bdi"),
+      0,
+    );
     return acc + etapaTotal;
   }, 0);
+  const totalGeral = (orcamento as any)?.modoPrecificacao === "detalhada"
+    ? calcDetailedSale(subtotalItens, orcamento)
+    : subtotalItens;
 
   function copyOrcamentoLink() {
     if (!portalToken) return;
@@ -1920,7 +2045,9 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                       <CardTitle className="text-base">
                         v{orcamento.versao}{orcamento.titulo ? ` — ${orcamento.titulo}` : ""}
                       </CardTitle>
-                      <span className="text-xs text-muted-foreground">BDI global: {orcamento.bdiGlobal}%</span>
+                      <span className="text-xs text-muted-foreground">
+                        {(orcamento as any).modoPrecificacao === "detalhada" ? "Precificação detalhada" : `BDI global: ${orcamento.bdiGlobal}%`}
+                      </span>
                     </>
                   )}
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ORC_STATUS[orcamento.status]?.color ?? "bg-muted text-muted-foreground"}`}>
@@ -1988,7 +2115,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
 
           {/* Etapas */}
           {(orcamento.etapas ?? []).map((etapa) => {
-            const etapaTotal = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento.bdiGlobal ?? "0"), 0);
+            const etapaTotal = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento.bdiGlobal ?? "0", (orcamento as any).modoPrecificacao ?? "bdi"), 0);
 
             return (
               <Card key={etapa.id}>
@@ -2059,10 +2186,20 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                         </thead>
                         <tbody>
                           {(etapa.itens ?? []).map((item) => {
-                            const total = calcItemTotal(item as any, orcamento.bdiGlobal ?? "0");
+                            const total = calcItemTotal(item as any, orcamento.bdiGlobal ?? "0", (orcamento as any).modoPrecificacao ?? "bdi");
                             return (
                               <tr key={item.id} className="border-b hover:bg-muted/10 group">
-                                <td className="py-1.5 pr-2">{item.nome}</td>
+                                <td className="py-1.5 pr-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{item.nome}</span>
+                                    {(item as any).origem === "composicao" && (
+                                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Composição</span>
+                                    )}
+                                    {(item as any).origem === "arqdor" && (
+                                      <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">Arqdor</span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="py-1.5 px-2 text-center text-muted-foreground">{item.unidade}</td>
                                 <td className="py-1.5 px-2 text-right">{fmtNum(item.quantidade)}</td>
                                 <td className="py-1.5 px-2 text-right">{fmtNum(item.custoUnitario)}</td>
@@ -2092,7 +2229,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
 
                   {/* Dialog: Adicionar item */}
                   {!locked && (
-                    <Dialog open={addingItemEtapaId === etapa.id} onOpenChange={(open) => { if (!open) { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }}>
+                    <Dialog open={addingItemEtapaId === etapa.id} onOpenChange={(open) => { if (!open) { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", codigo: "", composicaoId: "", origem: "manual", origemReferencia: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }}>
                       <DialogTrigger asChild>
                         <Button
                           size="sm"
@@ -2106,6 +2243,25 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                       <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <DialogHeader><DialogTitle>Adicionar item — {etapa.nome}</DialogTitle></DialogHeader>
                         <div className="space-y-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Usar composição cadastrada (recomendado)</Label>
+                            <select
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                              value={newItem.composicaoId}
+                              onChange={(e) => void applyComposicao(e.target.value)}
+                            >
+                              <option value="">Item manual / outra referência</option>
+                              {composicoesOrcamento.map((composicao) => (
+                                <option key={composicao.id} value={composicao.id}>
+                                  {composicao.codigo ? `${composicao.codigo} · ` : ""}{composicao.nome} · {composicao.unidade}
+                                </option>
+                              ))}
+                            </select>
+                            {newItem.origem === "composicao" && (
+                              <p className="text-xs text-emerald-700">Vinculado à composição. O custo acima foi recalculado pelos insumos atuais.</p>
+                            )}
+                          </div>
+
                           {/* SINAPI search */}
                           <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">Buscar no SINAPI (opcional)</Label>
@@ -2173,7 +2329,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                             </div>
                           </div>
                           <div className="flex justify-end gap-2 pt-1">
-                            <Button variant="outline" onClick={() => { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); }}>Cancelar</Button>
+                            <Button variant="outline" onClick={() => { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", codigo: "", composicaoId: "", origem: "manual", origemReferencia: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); }}>Cancelar</Button>
                             <Button onClick={() => handleCreateItem(etapa.id)} disabled={!newItem.nome.trim() || createItem.isPending}>
                               {createItem.isPending ? "Salvando…" : "Adicionar"}
                             </Button>
@@ -2268,7 +2424,7 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                   </div>
                   <div className="text-right text-xs text-muted-foreground space-y-0.5">
                     {(orcamento.etapas ?? []).map((etapa) => {
-                      const t = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento.bdiGlobal ?? "0"), 0);
+                      const t = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento.bdiGlobal ?? "0", (orcamento as any).modoPrecificacao ?? "bdi"), 0);
                       return (
                         <div key={etapa.id} className="flex items-center gap-4 justify-end">
                           <span>{etapa.nome}</span>
