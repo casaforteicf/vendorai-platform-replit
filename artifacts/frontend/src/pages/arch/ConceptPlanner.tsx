@@ -1538,7 +1538,7 @@ export default function ConceptPlanner() {
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <a
-                  href="/arch"
+                  href="/dashboard"
                   className="mb-3 inline-flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted"
                 >
                   <ArrowLeft className="h-4 w-4" />
