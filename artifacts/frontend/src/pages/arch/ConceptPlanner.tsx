@@ -1521,6 +1521,13 @@ export default function ConceptPlanner() {
         <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
+              <a
+                href="/arch"
+                className="mb-3 inline-flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Voltar ao dashboard
+              </a>
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
                 <Sparkles className="h-4 w-4" />
                 Arqdor Concept
