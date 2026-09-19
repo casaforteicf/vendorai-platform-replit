@@ -861,6 +861,7 @@ export default function ConceptPlan2D({
               onPointerDown={(event) => {
                 if (interactionMode !== "opening" || !onSelectOpening || !onOpeningChange) return;
                 event.stopPropagation();
+                onEditStart?.();
                 onSelectOpening(opening.id);
                 const point = toSvgPoint(event.clientX, event.clientY);
                 setGesture({
