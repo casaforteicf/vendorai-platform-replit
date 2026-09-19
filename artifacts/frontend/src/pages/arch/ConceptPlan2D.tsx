@@ -5,6 +5,7 @@ import { normalizeOpeningParameters } from "./conceptOpenings";
 import { buildStairLandings, buildStairTreads, normalizeStairParameters, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofPlanGuides, normalizeRoofParameters, roofPlanBounds, type RoofInput } from "./conceptRoof";
 import { normalizeConceptObject, type ConceptObject } from "./conceptObjects";
+import type { ArchitecturalIssue } from "./conceptValidation";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 type Props = {
@@ -32,6 +33,7 @@ type Props = {
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<ConceptObject>) => void;
+  validationIssues?: ArchitecturalIssue[];
   roof?: RoofInput;
   showRoofPlan?: boolean;
   selectedCustomWallId?: string | null;
@@ -423,6 +425,7 @@ export default function ConceptPlan2D({
   selectedObjectId = null,
   onSelectObject,
   onObjectChange,
+  validationIssues = [],
   roof = { roof: "platibanda" },
   showRoofPlan = false,
   selectedCustomWallId = null,
@@ -1658,6 +1661,38 @@ export default function ConceptPlan2D({
         })}
 
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" pointerEvents="none" />
+        <g pointerEvents="none" aria-label="Alertas de validação">
+          {validationIssues
+            .filter((issue) => typeof issue.x === "number" && typeof issue.y === "number")
+            .map((issue, index) => {
+              const x = issue.x as number;
+              const y = issue.y as number;
+              const isError = issue.severity === "error";
+              const dx = ((index % 3) - 1) * 0.14;
+              const dy = (Math.floor(index / 3) % 3 - 1) * 0.14;
+              return (
+                <g key={issue.id} transform={`translate(${x + dx} ${y + dy})`}>
+                  <circle
+                    r={isError ? "0.18" : "0.15"}
+                    fill={isError ? "#dc2626" : "#d97706"}
+                    stroke="#ffffff"
+                    strokeWidth="0.045"
+                  />
+                  <text
+                    x="0"
+                    y="0.065"
+                    textAnchor="middle"
+                    fontSize={isError ? "0.22" : "0.19"}
+                    fontWeight="900"
+                    fill="#ffffff"
+                  >
+                    !
+                  </text>
+                </g>
+              );
+            })}
+        </g>
+
       </svg>
     </div>
   );

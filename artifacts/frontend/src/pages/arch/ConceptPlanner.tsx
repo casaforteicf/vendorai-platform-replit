@@ -22,7 +22,7 @@ import {
   Printer,
   Send,
 } from "lucide-react";
-import { buildConceptGeometry, nudgeOpening, validateConceptLayout, type OpeningMarker } from "./conceptGeometry";
+import { buildConceptGeometry, nudgeOpening, type OpeningMarker } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
@@ -64,6 +64,11 @@ import {
   sanitizeConceptObjectForPersistence,
   type ConceptObject,
 } from "./conceptObjects";
+import {
+  validateArchitecturalConcept,
+  type ArchitecturalIssue,
+  type ArchitecturalValidationCategory,
+} from "./conceptValidation";
 
 type RoomKind =
   | "sala"
@@ -1354,10 +1359,84 @@ export default function ConceptPlanner() {
     };
     setSpaceProfiles((prev) => [...prev, created]);
   };
-  const layoutIssues = useMemo(
-    () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
-    [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
-  );
+  const architecturalIssues = useMemo(() => {
+    const validationSpaces = closedSpaces.map((space) => {
+      const profile = spaceAssignments.get(space.id);
+      return {
+        ...space,
+        label: profile?.label,
+        kind: profile?.kind,
+      };
+    });
+    return validateArchitecturalConcept({
+      rooms,
+      lotWidth,
+      lotDepth,
+      floor: activeFloor,
+      floors,
+      wallFirstActive,
+      wallCount: geometry.walls.length + customWalls.filter((wall) => wall.floor === activeFloor).length,
+      spaces: validationSpaces,
+      openings: geometry.openings,
+      objects,
+    });
+  }, [
+    rooms,
+    lotWidth,
+    lotDepth,
+    activeFloor,
+    floors,
+    wallFirstActive,
+    closedSpaces,
+    spaceAssignments,
+    geometry.walls.length,
+    geometry.openings,
+    customWalls,
+    objects,
+  ]);
+
+  const validationErrorCount = architecturalIssues.filter((issue) => issue.severity === "error").length;
+  const validationWarningCount = architecturalIssues.filter((issue) => issue.severity === "warning").length;
+
+  const validationCategoryLabel = (category: ArchitecturalValidationCategory) => ({
+    geometry: "Geometria",
+    dimension: "Dimensões",
+    circulation: "Circulação",
+    opening: "Vãos",
+    stair: "Escadas",
+    object: "Mobiliário",
+  }[category]);
+
+  const focusValidationIssue = (issue: ArchitecturalIssue) => {
+    setEditorView("plan");
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setSelectedObjectId(null);
+
+    if (issue.entityType === "room" || issue.entityType === "stair") {
+      setInteractionMode("room");
+      if (issue.entityId) setSelectedId(issue.entityId);
+      return;
+    }
+    if (issue.entityType === "space") {
+      setInteractionMode("space");
+      if (issue.entityId) setSelectedClosedSpaceId(issue.entityId);
+      return;
+    }
+    if (issue.entityType === "opening") {
+      setInteractionMode("opening");
+      if (issue.entityId) setSelectedOpeningId(issue.entityId);
+      return;
+    }
+    if (issue.entityType === "object") {
+      setInteractionMode("object");
+      if (issue.entityId) setSelectedObjectId(issue.entityId);
+      return;
+    }
+  };
   const selectedStairParams = selected?.kind === "escada"
     ? normalizeStairParameters(selected)
     : null;
@@ -2554,6 +2633,7 @@ export default function ConceptPlanner() {
                           setSelectedClosedSpaceId(null);
                         }}
                         onObjectChange={(objectId, patch) => updateConceptObject(objectId, patch)}
+                        validationIssues={architecturalIssues}
                         roof={facadePreferences}
                         showRoofPlan={activeFloor === floors - 1}
                         selectedCustomWallId={selectedCustomWallId}
@@ -3433,35 +3513,64 @@ export default function ConceptPlanner() {
                       </div>
                     )}
 
-                    {interactionMode === "room" && (
                     <div className="mt-5 border-t pt-4">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-semibold">Validação</div>
-                        <span className={layoutIssues.some((issue) => issue.severity === "error")
+                        <div>
+                          <div className="text-sm font-semibold">Validação arquitetônica</div>
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">Referência conceitual · não substitui validação normativa/executiva.</div>
+                        </div>
+                        <span className={validationErrorCount
                           ? "rounded-full bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700"
-                          : layoutIssues.length
+                          : validationWarningCount
                             ? "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700"
                             : "rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700"}>
-                          {layoutIssues.some((issue) => issue.severity === "error") ? "Corrigir" : layoutIssues.length ? "Atenção" : "OK"}
+                          {validationErrorCount ? `${validationErrorCount} erro${validationErrorCount > 1 ? "s" : ""}` : validationWarningCount ? `${validationWarningCount} atenção` : "OK"}
                         </span>
                       </div>
-                      <div className="mt-3 space-y-2">
-                        {layoutIssues.slice(0, 5).map((issue) => (
+
+                      {(validationErrorCount > 0 || validationWarningCount > 0) && (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-lg bg-red-50 px-2.5 py-2">
+                            <div className="text-[10px] uppercase tracking-wide text-red-600">Erros</div>
+                            <div className="text-lg font-bold text-red-800">{validationErrorCount}</div>
+                          </div>
+                          <div className="rounded-lg bg-amber-50 px-2.5 py-2">
+                            <div className="text-[10px] uppercase tracking-wide text-amber-600">Atenções</div>
+                            <div className="text-lg font-bold text-amber-800">{validationWarningCount}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-3 max-h-[330px] space-y-2 overflow-auto pr-1">
+                        {architecturalIssues.slice(0, 12).map((issue) => (
                           <button
                             key={issue.id}
                             type="button"
-                            onClick={() => issue.roomId && setSelectedId(issue.roomId)}
+                            onClick={() => focusValidationIssue(issue)}
                             className={issue.severity === "error"
-                              ? "block w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs text-red-800"
-                              : "block w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"}
+                              ? "block w-full rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-left text-xs text-red-800"
+                              : "block w-full rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"}
                           >
-                            {issue.message}
+                            <span className="mb-1 flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wide opacity-75">{validationCategoryLabel(issue.category)}</span>
+                              <span className="text-[9px] font-bold uppercase">{issue.severity === "error" ? "Corrigir" : "Revisar"}</span>
+                            </span>
+                            <span className="block font-medium">{issue.message}</span>
+                            {issue.recommendation && <span className="mt-1 block text-[10px] opacity-75">{issue.recommendation}</span>}
                           </button>
                         ))}
-                        {layoutIssues.length === 0 && <div className="text-xs text-emerald-700">Sem conflitos básicos detectados.</div>}
+                        {architecturalIssues.length > 12 && (
+                          <div className="rounded-lg border bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground">
+                            + {architecturalIssues.length - 12} validações adicionais neste pavimento.
+                          </div>
+                        )}
+                        {architecturalIssues.length === 0 && (
+                          <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                            Nenhum conflito conceitual detectado neste pavimento.
+                          </div>
+                        )}
                       </div>
                     </div>
-                    )}
                   </>
                 )}
 
