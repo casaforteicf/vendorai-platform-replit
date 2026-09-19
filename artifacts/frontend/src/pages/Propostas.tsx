@@ -1713,7 +1713,13 @@ export function CatalogoModal({
 }
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
+interface OrcamentoEtapaDraft {
+  id: string;
+  nome: string;
+}
+
 interface CartLine {
+  etapaId: string;
   tipo: "produto" | "composicao";
   produtoId?: string;
   composicaoId?: string;
@@ -1722,6 +1728,24 @@ interface CartLine {
   nomeOverride?: string;
 }
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
+
+const DEFAULT_ETAPA_ID = "etapa-inicial";
+const ETAPAS_OBRA_SUGERIDAS = [
+  "Serviços preliminares",
+  "Terraplenagem",
+  "Fundações",
+  "Estrutura / ICF",
+  "Lajes",
+  "Cobertura",
+  "Instalações hidráulicas",
+  "Instalações elétricas",
+  "Esquadrias",
+  "Revestimentos",
+  "Forros e pintura",
+  "Acabamentos",
+  "Áreas externas",
+  "Limpeza e entrega",
+];
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
   pix: "PIX",
@@ -1798,8 +1822,13 @@ function newFreeItem(): FreeItem {
     const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
   
-    // catalog mode
-    const [cartLines, setCartLines] = useState<CartLine[]>([{ tipo: "produto", quantidade: 1 }]);
+    // catálogo + composições organizados por grupos de etapa
+    const [orcamentoEtapas, setOrcamentoEtapas] = useState<OrcamentoEtapaDraft[]>([
+      { id: DEFAULT_ETAPA_ID, nome: ETAPAS_OBRA_SUGERIDAS[0] },
+    ]);
+    const [cartLines, setCartLines] = useState<CartLine[]>([
+      { etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 },
+    ]);
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
     // livre mode
@@ -1864,7 +1893,12 @@ function newFreeItem(): FreeItem {
     useEffect(() => {
       if (!open || initialProductIds.length === 0) return;
       setMode("catalogo");
-      setCartLines(initialProductIds.map((produtoId) => ({ tipo: "produto" as const, produtoId, quantidade: 1 })));
+      setCartLines(initialProductIds.map((produtoId) => ({
+        etapaId: DEFAULT_ETAPA_ID,
+        tipo: "produto" as const,
+        produtoId,
+        quantidade: 1,
+      })));
     }, [open, initialProductIds.join(",")]);
   
     // totals
@@ -1925,7 +1959,8 @@ function newFreeItem(): FreeItem {
     });
     setMode("catalogo");
     setSelectedTemplateSlug("");
-    setCartLines([{ tipo: "produto", quantidade: 1 }]);
+    setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: ETAPAS_OBRA_SUGERIDAS[0] }]);
+    setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
     setCartError("");
     setFreeItems([newFreeItem()]);
     setFreeError("");
@@ -1934,9 +1969,39 @@ function newFreeItem(): FreeItem {
     onClose();
   }
 
-  // ── catalog helpers ───────────────────────────────────────────────────────
-  function addCatLine(tipo: "produto" | "composicao" = "produto") {
-    setCartLines((prev) => [...prev, { tipo, quantidade: 1 }]);
+  // ── catálogo por grupos de etapa ───────────────────────────────────────────
+  function addEtapaDraft() {
+    setOrcamentoEtapas((prev) => {
+      const ordem = prev.length;
+      const id = `etapa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const nome = ETAPAS_OBRA_SUGERIDAS[ordem] ?? `Etapa ${ordem + 1}`;
+      return [...prev, { id, nome }];
+    });
+  }
+
+  function updateEtapaDraft(etapaId: string, nome: string) {
+    setOrcamentoEtapas((prev) => prev.map((etapa) => etapa.id === etapaId ? { ...etapa, nome } : etapa));
+  }
+
+  function moveEtapaDraft(index: number, direction: -1 | 1) {
+    setOrcamentoEtapas((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function removeEtapaDraft(etapaId: string) {
+    if (orcamentoEtapas.length <= 1) return;
+    if (cartLines.some((line) => line.etapaId === etapaId)) return;
+    setOrcamentoEtapas((prev) => prev.filter((etapa) => etapa.id !== etapaId));
+  }
+
+  function addCatLine(tipo: "produto" | "composicao" = "produto", etapaId?: string) {
+    const targetEtapaId = etapaId ?? orcamentoEtapas[0]?.id ?? DEFAULT_ETAPA_ID;
+    setCartLines((prev) => [...prev, { etapaId: targetEtapaId, tipo, quantidade: 1 }]);
   }
   async function calcularOrcamentoM2(payload: {
   produtoId: string;
@@ -1970,6 +2035,7 @@ function newFreeItem(): FreeItem {
   function changeLineType(index: number, tipo: "produto" | "composicao") {
     setCartLines((prev) => prev.map((line, current) => current === index
       ? {
+          etapaId: line.etapaId,
           tipo,
           quantidade: line.quantidade || 1,
           produtoId: undefined,
@@ -1999,8 +2065,8 @@ function newFreeItem(): FreeItem {
     if (precoImpl > 0 && precoMens > 0) {
       setCartLines((prev) => [
         ...prev.slice(0, index),
-        { tipo: "produto", produtoId, quantidade: 1, precoUnitarioOverride: precoImpl, nomeOverride: `${prod.nome} — Implantação` },
-        { tipo: "produto", produtoId, quantidade: 1, precoUnitarioOverride: precoMens, nomeOverride: `${prod.nome} — Mensalidade` },
+        { etapaId: prev[index]?.etapaId ?? DEFAULT_ETAPA_ID, tipo: "produto", produtoId, quantidade: 1, precoUnitarioOverride: precoImpl, nomeOverride: `${prod.nome} — Implantação` },
+        { etapaId: prev[index]?.etapaId ?? DEFAULT_ETAPA_ID, tipo: "produto", produtoId, quantidade: 1, precoUnitarioOverride: precoMens, nomeOverride: `${prod.nome} — Mensalidade` },
         ...prev.slice(index + 1),
       ]);
       return;
@@ -2113,11 +2179,21 @@ function newFreeItem(): FreeItem {
         }
       );
     } else if (mode === "catalogo") {
-      const valid = cartLines.filter((line) =>
-        (line.tipo === "produto" && line.produtoId)
-        || (line.tipo === "composicao" && line.composicaoId)
+      const etapaOrder = new Map(orcamentoEtapas.map((etapa, index) => [etapa.id, index + 1]));
+      const etapaName = new Map(orcamentoEtapas.map((etapa, index) => [
+        etapa.id,
+        etapa.nome.trim() || `Etapa ${index + 1}`,
+      ]));
+      const valid = orcamentoEtapas.flatMap((etapa) =>
+        cartLines.filter((line) =>
+          line.etapaId === etapa.id
+          && (
+            (line.tipo === "produto" && line.produtoId)
+            || (line.tipo === "composicao" && line.composicaoId)
+          )
+        )
       );
-      if (!valid.length) { setCartError("Adicione pelo menos um produto ou composição."); return; }
+      if (!valid.length) { setCartError("Adicione pelo menos um produto ou composição em uma etapa."); return; }
       setCartError("");
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
@@ -2134,12 +2210,16 @@ function newFreeItem(): FreeItem {
             condPagamento: vals.condPagamento || undefined,
             prazoEntrega: vals.prazoEntrega || undefined,
             ...recFields,
-            itens: valid.map((line) => ({
+            itens: valid.map((line, itemIndex) => ({
               ...(line.tipo === "produto" && line.produtoId ? { produtoId: line.produtoId } : {}),
               ...(line.tipo === "composicao" && line.composicaoId ? { composicaoId: line.composicaoId } : {}),
               quantidade: line.quantidade,
               precoUnitario: line.precoUnitarioOverride,
               nome: line.nomeOverride?.trim() || undefined,
+              etapaId: line.etapaId,
+              etapaNome: etapaName.get(line.etapaId),
+              etapaOrdem: etapaOrder.get(line.etapaId),
+              ordemExecucao: itemIndex + 1,
             })),
             paymentCompositions: paymentComp?.length
               ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl }))
@@ -2374,234 +2454,316 @@ function newFreeItem(): FreeItem {
               </div>
             )}
 
-            {/* ── CATALOG MODE ──────────────────────────────────────────────── */}
+            {/* ── CATÁLOGO + COMPOSIÇÕES POR ETAPA ────────────────────────── */}
             {mode === "catalogo" && (
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium">Itens do Orçamento</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">A ordem abaixo define a sequência das etapas de execução.</p>
+                    <p className="text-sm font-semibold">Etapas do Orçamento</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Cada etapa agrupa os produtos e composições executados no mesmo momento da obra.
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto")}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Produto
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao")}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Composição
-                    </Button>
-                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
+                  </Button>
                 </div>
-                <div className="rounded-md border overflow-hidden overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs py-2 w-28">Etapa</TableHead>
-                        <TableHead className="text-xs py-2 w-32">Tipo</TableHead>
-                        <TableHead className="text-xs py-2">Item</TableHead>
-                        <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
-                        <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
-                        <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
-                        <TableHead className="w-8 py-2" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {cartLines.map((line, idx) => {
-                        const prod = line.tipo === "produto" && line.produtoId
-                          ? activeCatalog.find((item) => item.id === line.produtoId)
-                          : undefined;
-                        const composicao = line.tipo === "composicao" && line.composicaoId
-                          ? composicoes.find((item) => item.id === line.composicaoId)
-                          : undefined;
-                        const selected = prod || composicao;
-                        const basePrice = prod ? parseFloat(prod.precoBase) : Number(composicao?.custoTotal ?? 0);
-                        const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
-                        const subtotal = selected ? line.quantidade * precoUnit : 0;
-                        const unidade = prod?.unidade ?? composicao?.unidade ?? "";
-                        return (
-                          <TableRow key={idx}>
-                            <TableCell className="py-1.5 align-top">
-                              <div className="flex items-center gap-1.5">
-                                <span className="min-w-10 rounded-md bg-muted px-2 py-1 text-center text-xs font-semibold">
-                                  {idx + 1}
-                                </span>
-                                <div className="flex gap-0.5">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    disabled={idx === 0}
-                                    onClick={() => moveCatLine(idx, -1)}
-                                    title="Mover etapa para cima"
-                                  >
-                                    <ArrowUp className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    disabled={idx === cartLines.length - 1}
-                                    onClick={() => moveCatLine(idx, 1)}
-                                    title="Mover etapa para baixo"
-                                  >
-                                    <ArrowDown className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-1.5 align-top">
-                              <Select value={line.tipo} onValueChange={(value) => changeLineType(idx, value as "produto" | "composicao")}>
-                                <SelectTrigger className="h-8 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="produto">Produto</SelectItem>
-                                  <SelectItem value="composicao">Composição</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell className="py-1.5">
-                              {line.tipo === "produto" ? (
-                                <Select value={line.produtoId} onValueChange={(value) => selectProduct(idx, value)}>
-                                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione um produto…" /></SelectTrigger>
-                                  <SelectContent>
-                                    {activeCatalog.map((p) => (
-                                      <SelectItem key={p.id} value={p.id}>
-                                        {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <Select value={line.composicaoId} onValueChange={(value) => selectComposicao(idx, value)}>
-                                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione uma composição…" /></SelectTrigger>
-                                  <SelectContent>
-                                    {composicoes.map((item: Composicao) => (
-                                      <SelectItem key={item.id} value={item.id}>
-                                        {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                              {(() => {
-  const tipoCalculo = (prod as any)?.tipoCalculo;
-  if (tipoCalculo !== "area_simples" && tipoCalculo !== "area_com_acabamento_perimetro") return null;
-  return (
-    <Button
-      type="button"
-      variant="link"
-      size="sm"
-      className="h-6 px-0 text-xs"
-      onClick={() => setCalcM2Idx(idx)}
-    >
-      Calcular por m²
-    </Button>
-  );
-})()}
-                              {selected && (
-                                <div className="mt-1 space-y-1">
-                                  <Label className="text-[10px] font-medium text-muted-foreground">
-                                    Nome/descrição no orçamento
-                                  </Label>
-                                  <Input
-                                    className="h-7 text-xs"
-                                    value={line.nomeOverride ?? (prod?.nome ?? composicao?.nome ?? "")}
-                                    onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
-                                    placeholder="Nome ou descrição que aparecerá no orçamento"
-                                  />
-                                </div>
-                              )}
-                              {composicao && (
-                                <p className="mt-1 text-[11px] text-muted-foreground">
-                                  Composição de obra · {composicao.unidade} · custo atual {fmtCurrency(Number(composicao.custoTotal ?? 0))}
-                                </p>
-                              )}
-                            </TableCell>
-                            <TableCell className="py-1.5">
-                              <Input
-                                type="number"
-                                min={composicao ? 0.0001 : 1}
-                                step={composicao ? 0.01 : 1}
-                                className="h-8 text-sm w-24"
-                                value={line.quantidade}
-                                onChange={(e) => {
-                                  const value = Number(e.target.value);
-                                  updateCatLine(idx, {
-                                    quantidade: composicao
-                                      ? Math.max(0.0001, Number.isFinite(value) ? value : 0.0001)
-                                      : Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1)),
-                                  });
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell className="py-1.5">
-                              <div className="relative flex items-center justify-end">
-                                <span className="absolute left-2 text-muted-foreground text-xs pointer-events-none">R$</span>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  step={0.01}
-                                  className="h-8 text-sm text-right font-mono pl-7 w-32"
-                                  disabled={!selected}
-                                  placeholder="0,00"
-                                  value={selected ? precoUnit : ""}
-                                  onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: parseFloat(e.target.value) || 0 })}
-                                />
-                                {selected && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{unidade}</span>}
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{selected ? fmtCurrency(subtotal) : "—"}</TableCell>
-                            <TableCell className="py-1.5">
-                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeCatLine(idx)} disabled={cartLines.length === 1}>
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                    <CalculoOrcamentoM2Dialog
-  open={calcM2Idx !== null}
-  onOpenChange={(v) => { if (!v) setCalcM2Idx(null); }}
-  produto={(() => {
-    if (calcM2Idx === null) return null;
-    const line = cartLines[calcM2Idx];
-    const p = activeCatalog.find((p) => p.id === line.produtoId) as any;
-    return p ? { id: p.id, nome: p.nome, tipoCalculo: p.tipoCalculo } : null;
-  })()}
-  acessoriosDisponiveis={activeCatalog
-    .filter((p: any) => p.tipoCalculo === "acabamento_perimetro")
-    .map((p: any) => ({ id: p.id, nome: p.nome }))}
-  onCalcular={calcularOrcamentoM2}
-  onConfirm={(resultado: ResultadoConfirmadoCalculoM2) => {
-    if (calcM2Idx === null) return;
-    updateCatLine(calcM2Idx, {
-      quantidade: resultado.quantidade,
-      precoUnitarioOverride: resultado.precoUnitario,
-    });
-    if (resultado.itensComposicao && resultado.itensComposicao.length > 0) {
-      setCartLines((prev) => [
-        ...prev,
-        ...resultado.itensComposicao!.map((item) => ({
-          tipo: "produto" as const,
-          produtoId: item.produtoId,
-          quantidade: item.quantidade,
-          precoUnitarioOverride: item.precoUnitario,
-          nomeOverride: item.nome,
-        })),
-      ]);
-    }
-  }}
-/>
-                  </Table>
-                </div>
-                <div className="flex items-center justify-end gap-3 mt-2 pr-2">
+
+                <datalist id="etapas-obras-sugeridas">
+                  {ETAPAS_OBRA_SUGERIDAS.map((nome) => <option key={nome} value={nome} />)}
+                </datalist>
+
+                {orcamentoEtapas.map((etapa, etapaIndex) => {
+                  const stageEntries = cartLines
+                    .map((line, index) => ({ line, index }))
+                    .filter(({ line }) => line.etapaId === etapa.id);
+
+                  const etapaTotal = stageEntries.reduce((sum, { line }) => {
+                    const prod = line.tipo === "produto" && line.produtoId
+                      ? activeCatalog.find((item) => item.id === line.produtoId)
+                      : undefined;
+                    const composicao = line.tipo === "composicao" && line.composicaoId
+                      ? composicoes.find((item) => item.id === line.composicaoId)
+                      : undefined;
+                    if (!prod && !composicao) return sum;
+                    const basePrice = prod ? parseFloat(prod.precoBase) : Number(composicao?.custoTotal ?? 0);
+                    const unitPrice = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
+                    return sum + line.quantidade * unitPrice;
+                  }, 0);
+
+                  return (
+                    <Card key={etapa.id} className="overflow-hidden">
+                      <CardHeader className="p-3 bg-muted/30 border-b">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-md bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary whitespace-nowrap">
+                            Etapa {etapaIndex + 1}
+                          </span>
+                          <Input
+                            list="etapas-obras-sugeridas"
+                            className="h-8 min-w-[220px] flex-1 font-medium"
+                            value={etapa.nome}
+                            onChange={(e) => updateEtapaDraft(etapa.id, e.target.value)}
+                            placeholder="Nome da etapa"
+                          />
+                          <div className="text-right min-w-[120px]">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Subtotal</p>
+                            <p className="text-sm font-bold">{fmtCurrency(etapaTotal)}</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={etapaIndex === 0}
+                              onClick={() => moveEtapaDraft(etapaIndex, -1)}
+                              title="Mover etapa para cima"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={etapaIndex === orcamentoEtapas.length - 1}
+                              onClick={() => moveEtapaDraft(etapaIndex, 1)}
+                              title="Mover etapa para baixo"
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              disabled={orcamentoEtapas.length <= 1 || stageEntries.length > 0}
+                              onClick={() => removeEtapaDraft(etapa.id)}
+                              title={stageEntries.length > 0 ? "Remova os itens antes de excluir a etapa" : "Excluir etapa"}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto", etapa.id)}>
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Produto
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao", etapa.id)}>
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Composição
+                          </Button>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="p-0">
+                        {stageEntries.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-muted-foreground">
+                            Nenhum item nesta etapa. Adicione produtos ou composições.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs py-2 w-32">Tipo</TableHead>
+                                  <TableHead className="text-xs py-2">Item</TableHead>
+                                  <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
+                                  <TableHead className="text-xs py-2 w-32 text-right">Preço unit.</TableHead>
+                                  <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
+                                  <TableHead className="w-8 py-2" />
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {stageEntries.map(({ line, index: idx }) => {
+                                  const prod = line.tipo === "produto" && line.produtoId
+                                    ? activeCatalog.find((item) => item.id === line.produtoId)
+                                    : undefined;
+                                  const composicao = line.tipo === "composicao" && line.composicaoId
+                                    ? composicoes.find((item) => item.id === line.composicaoId)
+                                    : undefined;
+                                  const selected = prod || composicao;
+                                  const basePrice = prod ? parseFloat(prod.precoBase) : Number(composicao?.custoTotal ?? 0);
+                                  const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
+                                  const subtotal = selected ? line.quantidade * precoUnit : 0;
+                                  const unidade = prod?.unidade ?? composicao?.unidade ?? "";
+
+                                  return (
+                                    <TableRow key={`${etapa.id}-${idx}`}>
+                                      <TableCell className="py-1.5 align-top">
+                                        <Select value={line.tipo} onValueChange={(value) => changeLineType(idx, value as "produto" | "composicao")}>
+                                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="produto">Produto</SelectItem>
+                                            <SelectItem value="composicao">Composição</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </TableCell>
+
+                                      <TableCell className="py-1.5 min-w-[300px]">
+                                        {line.tipo === "produto" ? (
+                                          <Select value={line.produtoId} onValueChange={(value) => selectProduct(idx, value)}>
+                                            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione um produto…" /></SelectTrigger>
+                                            <SelectContent>
+                                              {activeCatalog.map((p) => (
+                                                <SelectItem key={p.id} value={p.id}>
+                                                  {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        ) : (
+                                          <Select value={line.composicaoId} onValueChange={(value) => selectComposicao(idx, value)}>
+                                            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione uma composição…" /></SelectTrigger>
+                                            <SelectContent>
+                                              {composicoes.map((item: Composicao) => (
+                                                <SelectItem key={item.id} value={item.id}>
+                                                  {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        )}
+
+                                        {(() => {
+                                          const tipoCalculo = (prod as any)?.tipoCalculo;
+                                          if (tipoCalculo !== "area_simples" && tipoCalculo !== "area_com_acabamento_perimetro") return null;
+                                          return (
+                                            <Button
+                                              type="button"
+                                              variant="link"
+                                              size="sm"
+                                              className="h-6 px-0 text-xs"
+                                              onClick={() => setCalcM2Idx(idx)}
+                                            >
+                                              Calcular por m²
+                                            </Button>
+                                          );
+                                        })()}
+
+                                        {selected && (
+                                          <div className="mt-1 space-y-1">
+                                            <Label className="text-[10px] font-medium text-muted-foreground">
+                                              Nome/descrição no orçamento
+                                            </Label>
+                                            <Input
+                                              className="h-7 text-xs"
+                                              value={line.nomeOverride ?? (prod?.nome ?? composicao?.nome ?? "")}
+                                              onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
+                                              placeholder="Nome ou descrição que aparecerá no orçamento"
+                                            />
+                                          </div>
+                                        )}
+
+                                        {composicao && (
+                                          <p className="mt-1 text-[11px] text-muted-foreground">
+                                            Composição de obra · {composicao.unidade} · custo atual {fmtCurrency(Number(composicao.custoTotal ?? 0))}
+                                          </p>
+                                        )}
+                                      </TableCell>
+
+                                      <TableCell className="py-1.5">
+                                        <Input
+                                          type="number"
+                                          min={composicao ? 0.0001 : 1}
+                                          step={composicao ? 0.01 : 1}
+                                          className="h-8 text-sm w-24"
+                                          value={line.quantidade}
+                                          onChange={(e) => {
+                                            const value = Number(e.target.value);
+                                            updateCatLine(idx, {
+                                              quantidade: composicao
+                                                ? Math.max(0.0001, Number.isFinite(value) ? value : 0.0001)
+                                                : Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1)),
+                                            });
+                                          }}
+                                        />
+                                      </TableCell>
+
+                                      <TableCell className="py-1.5">
+                                        <div className="relative flex items-center justify-end">
+                                          <span className="absolute left-2 text-muted-foreground text-xs pointer-events-none">R$</span>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            className="h-8 text-sm text-right font-mono pl-7 w-32"
+                                            disabled={!selected}
+                                            placeholder="0,00"
+                                            value={selected ? precoUnit : ""}
+                                            onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: parseFloat(e.target.value) || 0 })}
+                                          />
+                                          {selected && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{unidade}</span>}
+                                        </div>
+                                      </TableCell>
+
+                                      <TableCell className="py-1.5 text-right font-mono text-sm font-medium">
+                                        {selected ? fmtCurrency(subtotal) : "—"}
+                                      </TableCell>
+
+                                      <TableCell className="py-1.5">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                          onClick={() => removeCatLine(idx)}
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+
+                <CalculoOrcamentoM2Dialog
+                  open={calcM2Idx !== null}
+                  onOpenChange={(value) => { if (!value) setCalcM2Idx(null); }}
+                  produto={(() => {
+                    if (calcM2Idx === null) return null;
+                    const line = cartLines[calcM2Idx];
+                    const p = line?.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) as any : null;
+                    return p ? { id: p.id, nome: p.nome, tipoCalculo: p.tipoCalculo } : null;
+                  })()}
+                  acessoriosDisponiveis={activeCatalog
+                    .filter((p: any) => p.tipoCalculo === "acabamento_perimetro")
+                    .map((p: any) => ({ id: p.id, nome: p.nome }))}
+                  onCalcular={calcularOrcamentoM2}
+                  onConfirm={(resultado: ResultadoConfirmadoCalculoM2) => {
+                    if (calcM2Idx === null) return;
+                    updateCatLine(calcM2Idx, {
+                      quantidade: resultado.quantidade,
+                      precoUnitarioOverride: resultado.precoUnitario,
+                    });
+                    if (resultado.itensComposicao && resultado.itensComposicao.length > 0) {
+                      setCartLines((prev) => [
+                        ...prev,
+                        ...resultado.itensComposicao!.map((item) => ({
+                          etapaId: prev[calcM2Idx]?.etapaId ?? DEFAULT_ETAPA_ID,
+                          tipo: "produto" as const,
+                          produtoId: item.produtoId,
+                          quantidade: item.quantidade,
+                          precoUnitarioOverride: item.precoUnitario,
+                          nomeOverride: item.nome,
+                        })),
+                      ]);
+                    }
+                  }}
+                />
+
+                <div className="flex items-center justify-end gap-3 pr-2">
                   <span className="text-sm text-muted-foreground">Total estimado:</span>
                   <span className="text-lg font-bold">{fmtCurrency(catTotal)}</span>
                 </div>
-                {cartError && <p className="text-sm text-destructive mt-1">{cartError}</p>}
+                {cartError && <p className="text-sm text-destructive">{cartError}</p>}
               </div>
             )}
 
