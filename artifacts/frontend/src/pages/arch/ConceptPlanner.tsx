@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   ArrowLeft,
   ArrowRight,
@@ -288,6 +289,8 @@ function RoofControls({
   );
 }
 export default function ConceptPlanner() {
+  const { user, tenantOverride, isLoading: authLoading } = useAuth();
+  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const [step, setStep] = useState(0);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
@@ -326,6 +329,7 @@ export default function ConceptPlanner() {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
@@ -364,16 +368,44 @@ export default function ConceptPlanner() {
     openingOverridesRef.current = openingOverrides;
   }, [openingOverrides]);
 
+  const conceptHeaders = (json = false) => {
+    const headers: Record<string, string> = {};
+    if (json) headers["Content-Type"] = "application/json";
+    if (effectiveTenantId) headers["x-tenant-id"] = effectiveTenantId;
+    return headers;
+  };
+
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!effectiveTenantId) {
+      setSaveState("error");
+      setSaveError(user?.platformRole === "super_admin"
+        ? "Selecione uma empresa no Super Admin para salvar o pré-projeto."
+        : "Sua sessão não possui uma empresa vinculada.");
+      return;
+    }
+
     let cancelled = false;
 
     const loadLatest = async () => {
       try {
-        const response = await fetch("/api/arch/concept-projects/latest");
-        if (!response.ok) throw new Error("Falha ao carregar pré-projeto");
+        const response = await fetch("/api/arch/concept-projects/latest", {
+          headers: conceptHeaders(),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error((body as { error?: string }).error ?? "Falha ao carregar pré-projeto");
+        }
         const draft = (await response.json()) as ConceptDraftResponse | null;
         if (cancelled || !draft) {
-          if (!cancelled) setSaveState("idle");
+          if (!cancelled) {
+            setConceptId(null);
+            setArchProjetoId(null);
+            setHandoffState("idle");
+            setSaveState("idle");
+            setSaveError(null);
+          }
           return;
         }
 
@@ -418,8 +450,12 @@ export default function ConceptPlanner() {
         setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
-      } catch {
-        if (!cancelled) setSaveState("error");
+        setSaveError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setSaveState("error");
+          setSaveError(error instanceof Error ? error.message : "Não foi possível carregar o pré-projeto.");
+        }
       }
     };
 
@@ -427,7 +463,7 @@ export default function ConceptPlanner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authLoading, effectiveTenantId]);
 
   const buildConceptPayload = (
     currentStep: number,
@@ -456,7 +492,16 @@ export default function ConceptPlanner() {
   });
 
   const saveConcept = async (stepOverride?: number) => {
+    if (!effectiveTenantId) {
+      setSaveState("error");
+      setSaveError(user?.platformRole === "super_admin"
+        ? "Selecione uma empresa no Super Admin para salvar o pré-projeto."
+        : "Sua sessão não possui uma empresa vinculada.");
+      return null;
+    }
+
     setSaveState("saving");
+    setSaveError(null);
     const payload = buildConceptPayload(stepOverride ?? step);
 
     try {
@@ -464,17 +509,22 @@ export default function ConceptPlanner() {
         conceptId ? `/api/arch/concept-projects/${conceptId}` : "/api/arch/concept-projects",
         {
           method: conceptId ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: conceptHeaders(true),
           body: JSON.stringify(payload),
         },
       );
-      if (!response.ok) throw new Error("Falha ao salvar pré-projeto");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Falha ao salvar pré-projeto");
+      }
       const saved = (await response.json()) as ConceptDraftResponse;
       setConceptId(saved.id);
       setSaveState("saved");
+      setSaveError(null);
       return saved.id;
-    } catch {
+    } catch (error) {
       setSaveState("error");
+      setSaveError(error instanceof Error ? error.message : "Não foi possível salvar o pré-projeto.");
       return null;
     }
   };
@@ -1593,7 +1643,7 @@ export default function ConceptPlanner() {
     try {
       const response = await fetch(`/api/arch/concept-projects/${projectConceptId}/promote`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: conceptHeaders(true),
       });
 
       if (!response.ok) {
@@ -1643,7 +1693,7 @@ export default function ConceptPlanner() {
 
       const response = await fetch("/api/arch/ai-render", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: conceptHeaders(true),
         body: JSON.stringify({
           project_id: renderProjectId,
           original_image_url: originalImage,
@@ -1665,7 +1715,9 @@ export default function ConceptPlanner() {
       let attempts = 0;
       while (attempts < 90) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        const poll = await fetch(`/api/arch/ai-render/${render_id}`);
+        const poll = await fetch(`/api/arch/ai-render/${render_id}`, {
+          headers: conceptHeaders(),
+        });
         if (!poll.ok) throw new Error("Não foi possível acompanhar o render.");
 
         const data = (await poll.json()) as {
@@ -1687,7 +1739,7 @@ export default function ConceptPlanner() {
           if (renderProjectId) {
             await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
               method: "PATCH",
-              headers: { "Content-Type": "application/json" },
+              headers: conceptHeaders(true),
               body: JSON.stringify(payload),
             });
           }
@@ -1739,7 +1791,7 @@ export default function ConceptPlanner() {
                       : saveState === "saved"
                         ? "Pré-projeto salvo"
                         : saveState === "error"
-                          ? "Não foi possível salvar"
+                          ? (saveError ?? "Não foi possível salvar")
                           : "Ainda não salvo"}
                 </span>
                 <button
