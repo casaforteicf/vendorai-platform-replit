@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+// Deploy marker: Arqdor Concept production validation 2026-09-19
 import healthRouter from "./health";
 import storageRouter from "./storage";
 import authRouter, { authProtectedRouter } from "./auth";
