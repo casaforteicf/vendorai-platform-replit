@@ -13,7 +13,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronLeft, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Calculator, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -123,7 +123,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline", "/scout/seguros/renovacoes"],
     analytics:  ["/analytics"],
     arch:       ["/arch", "/arch/projetos", "/arch/render", "/arch/catalogo", "/arch/marketplace"],
-    obras:      ["/obras", "/insumos", "/composicoes"],
+    obras:      ["/obras", "/custos-orcamentos", "/insumos", "/composicoes"],
     financeiro: ["/erp"],
     settings:   ["/configuracoes", "/faq"],
     varejo:       ["/varejo/produtos", "/varejo/colecoes", "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade", "/varejo/combos"],
@@ -282,7 +282,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const BUCKET_EXTRA_HREFS: Record<VerticalBucket, string[]> = {
     core: [],
-    construcao: ["/entregas", "/estoque", "/obras", "/insumos", "/composicoes"],
+    construcao: ["/entregas", "/estoque", "/obras", "/custos-orcamentos", "/insumos", "/composicoes"],
     varejo: ["/estoque", "/varejo/produtos", "/varejo/colecoes", "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade", "/varejo/combos"],
     supermercado: ["/supermercado", "/supermercado/produtos", "/supermercado/pedidos", "/supermercado/campanhas", "/supermercado/config"],
     salao: ["/beauty", "/beauty/agenda", "/beauty/servicos", "/beauty/profissionais"],
@@ -347,8 +347,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     // "Stories" agora é um item dentro do dropdown "Marketing", não mais um item de topo.
     { name: "Obras",         href: "/obras",                    icon: Building2,   sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Custos e Orçamentos", href: "/custos-orcamentos",  icon: Calculator,  sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Produtos",      href: "/varejo/produtos",          icon: Shirt,       sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Coleções",      href: "/varejo/colecoes",          icon: Tag,         sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Fornecedores",  href: "/varejo/fornecedores",      icon: Truck,       sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
