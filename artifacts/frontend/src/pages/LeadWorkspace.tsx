@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -180,7 +180,12 @@ export default function LeadWorkspace() {
   }
 
   function showAdvance() {
-    const stage = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
+    // Aquecimento é uma pipeline de relacionamento separada. Ao retomar,
+    // o fluxo comercial sempre começa em "Novo"; o card de aquecimento
+    // permanece no histórico e será encerrado como retomado no advance().
+    const stage = deal?.etapa === "em_aquecimento"
+      ? "novo"
+      : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
     setNextStage(stage);
     setOwner(deal?.assignedTo ?? user?.id ?? "");
     setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento");
@@ -251,13 +256,76 @@ export default function LeadWorkspace() {
     }
     setSaving(true);
     try {
+      // Regra de processo: um card em Aquecimento não é convertido por PATCH.
+      // A retomada cria um NOVO ciclo comercial e preserva o card anterior no
+      // histórico, exatamente como já acontece na Pipeline de Relacionamento.
+      if (deal.etapa === "em_aquecimento") {
+        const createResponse = await fetch("/api/deals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({
+            tenantId,
+            leadId: id,
+            titulo: deal.titulo + " — Retomada",
+            etapa: "novo",
+            assignedTo: owner,
+          }),
+        });
+        const createdDeal = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok) {
+          throw new Error(createdDeal.message ?? createdDeal.error ?? "Não foi possível criar o novo ciclo comercial.");
+        }
+
+        const closeWarmingResponse = await fetch("/api/deals/" + deal.id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ relationshipStage: "aquecimento_retomado" }),
+        });
+        const closeWarmingResult = await closeWarmingResponse.json().catch(() => ({}));
+        if (!closeWarmingResponse.ok) {
+          throw new Error(closeWarmingResult.message ?? closeWarmingResult.error ?? "Não foi possível encerrar o card de aquecimento.");
+        }
+
+        const activityResponse = await fetch("/api/activities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({
+            tenantId,
+            leadId: id,
+            dealId: createdDeal.id,
+            tipo: "tarefa",
+            titulo: title.trim(),
+            descricao: [
+              description.trim() || null,
+              note.trim() ? "Passagem: " + note.trim() : null,
+            ].filter(Boolean).join("\n") || undefined,
+            status: "pendente",
+            dataVencimento: due ? new Date(due).toISOString() : undefined,
+            responsavelId: owner,
+          }),
+        });
+        const activityResult = await activityResponse.json().catch(() => ({}));
+        if (!activityResponse.ok) {
+          throw new Error(activityResult.message ?? activityResult.error ?? "Novo ciclo criado, mas a próxima atividade não pôde ser salva.");
+        }
+
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+          qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+          qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
+        ]);
+        setOpen(false);
+        toast({ title: "Novo ciclo comercial iniciado", description: "O aquecimento ficou no histórico e a próxima atividade foi atribuída a " + displayUser(owner) + "." });
+        return;
+      }
+
       const response = await fetch("/api/deals/" + deal.id, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ etapa: nextStage, handoff: { responsavelId: owner, atividadeTitulo: title.trim(), atividadeDescricao: description.trim() || undefined, dataVencimento: due ? new Date(due).toISOString() : undefined, observacaoPassagem: note.trim() || undefined } }) });
       const result = await response.json().catch(() => ({}));
       if (response.status === 202 && result.pendingApproval) {
         toast({ title: "Movimentação enviada para aprovação." });
         return;
       }
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível avançar.");
+      if (!response.ok) throw new Error(result.message ?? result.error ?? "Não foi possível avançar.");
       await Promise.all([
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
@@ -378,7 +446,12 @@ export default function LeadWorkspace() {
 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-xl">
-        <DialogHeader><DialogTitle>Avançar e definir a sequência</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Avançar e definir a sequência</DialogTitle>
+          <DialogDescription>
+            Confirme a próxima etapa, o responsável e a atividade que ficará pendente após esta passagem.
+          </DialogDescription>
+        </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">Atual: <strong>{currentStage?.label ?? deal?.etapa}</strong> — responsável: <strong>{displayUser(deal?.assignedTo)}</strong></div>
           {pending.length > 0 && (
@@ -403,7 +476,11 @@ export default function LeadWorkspace() {
           <Field label="Nova etapa">
             <Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{stages.filter((s) => s.key !== deal?.etapa).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{stages.filter((s, index) => {
+                if (deal?.etapa === "em_aquecimento") return s.key === "novo";
+                if (s.key === "perdido") return s.key !== deal?.etapa;
+                return index > currentIndex && !["em_aquecimento", "parceiro"].includes(s.key);
+              }).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
 
