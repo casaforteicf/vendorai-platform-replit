@@ -1717,7 +1717,7 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas", a
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   const parsed = insertObraOrcamentoEtapaSchema.safeParse({ ...req.body, orcamentoId });
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -1735,7 +1735,7 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   const parsed = updateObraOrcamentoEtapaSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -1758,7 +1758,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   await db
     .delete(obraOrcamentoEtapasTable)
@@ -1842,7 +1842,7 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   const parsed = updateObraOrcamentoItemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -1865,7 +1865,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
 
   await db
     .delete(obraOrcamentoItensTable)
