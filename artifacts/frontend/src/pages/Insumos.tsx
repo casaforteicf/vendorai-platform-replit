@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet, AlertCircle } from "lucide-react";
 import type { Insumo } from "@workspace/api-client-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
@@ -167,7 +167,7 @@ export default function Insumos() {
   const [priceSaving, setPriceSaving] = useState(false);
   const { toast } = useToast();
 
-  const { data: insumos = [], isLoading } = useListInsumos(tenantId, {}, {
+  const { data: insumos = [], isLoading, isError, error, refetch } = useListInsumos(tenantId, {}, {
     query: { enabled: !!tenantId, queryKey: getListInsumosQueryKey(tenantId) },
   });
 
@@ -414,6 +414,17 @@ export default function Insumos() {
       {/* Table / Cards */}
       {isLoading ? (
         <div className="h-40 rounded-xl bg-muted animate-pulse" />
+      ) : isError ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center">
+          <AlertCircle className="h-10 w-10 mx-auto mb-3 text-destructive/70" />
+          <p className="font-semibold">Não foi possível carregar os insumos</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "A API recusou ou não concluiu a consulta dos insumos."}
+          </p>
+          <Button className="mt-4" variant="outline" size="sm" onClick={() => void refetch()}>
+            Tentar novamente
+          </Button>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <Package className="h-12 w-12 mx-auto mb-3 opacity-20" />
