@@ -309,6 +309,7 @@ export default function ConceptPlanner() {
   const objectsRef = useRef<ConceptObject[]>([]);
   const wallFirstFloorsRef = useRef<number[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
+  const loadedTenantRef = useRef<string | null>(null);
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
   const [roomFuture, setRoomFuture] = useState<EditorSnapshot[]>([]);
@@ -368,7 +369,47 @@ export default function ConceptPlanner() {
     openingOverridesRef.current = openingOverrides;
   }, [openingOverrides]);
 
-  const conceptHeaders = (json = false) => {
+  const resetConceptForTenant = () => {
+    setStep(0);
+    setLotWidth(12);
+    setLotDepth(30);
+    setTypology("terrea_3q");
+    setLayoutPreferences(DEFAULT_LAYOUT_PREFERENCES);
+    setFloors(1);
+    setDesiredArea(145);
+    setActiveFloor(0);
+    setEditorView("plan");
+    setInteractionMode("room");
+    setMobilePanel("closed");
+    setRooms(normalizeDraftRooms(buildTypologyRooms("terrea_3q") as Room[]));
+    setRoomHistory([]);
+    setRoomFuture([]);
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setSelectedObjectId(null);
+    setCustomWalls([]);
+    setCustomOpenings([]);
+    setObjects([]);
+    setMaterialScheme(defaultConceptMaterialScheme());
+    setWallFirstFloors([]);
+    setShowDimensions(true);
+    setSpaceProfiles([]);
+    setOpeningOverrides({});
+    setConceptId(null);
+    setCustomerProfile({});
+    setFacadePreferences(DEFAULT_FACADE);
+    setConceptRender({ status: "idle" });
+    setRenderError(null);
+    setArchProjetoId(null);
+    setHandoffState("idle");
+    setHandoffError(null);
+    setLayoutVariant(0);
+  };
+
+    const conceptHeaders = (json = false) => {
     const headers: Record<string, string> = {};
     if (json) headers["Content-Type"] = "application/json";
     if (effectiveTenantId) headers["x-tenant-id"] = effectiveTenantId;
@@ -379,11 +420,22 @@ export default function ConceptPlanner() {
     if (authLoading) return;
 
     if (!effectiveTenantId) {
+      if (loadedTenantRef.current !== null) {
+        resetConceptForTenant();
+        loadedTenantRef.current = null;
+      }
       setSaveState("error");
       setSaveError(user?.platformRole === "super_admin"
         ? "Selecione uma empresa no Super Admin para salvar o pré-projeto."
         : "Sua sessão não possui uma empresa vinculada.");
       return;
+    }
+
+    if (loadedTenantRef.current !== effectiveTenantId) {
+      resetConceptForTenant();
+      loadedTenantRef.current = effectiveTenantId;
+      setSaveState("loading");
+      setSaveError(null);
     }
 
     let cancelled = false;
