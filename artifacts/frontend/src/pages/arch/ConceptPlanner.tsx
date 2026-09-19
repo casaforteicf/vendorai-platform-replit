@@ -26,7 +26,7 @@ import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./con
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptFacadeElevation from "./ConceptFacadeElevation";
-import ConceptModel3D from "./ConceptModel3D";
+import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
@@ -616,6 +616,80 @@ export default function ConceptPlanner() {
 
     return assignments;
   }, [closedSpaces, spaceProfiles, activeFloor]);
+
+  const modelLevels = useMemo<ConceptModelLevel[]>(() => {
+    return Array.from({ length: floors }, (_, floorIndex) => {
+      const base = buildConceptGeometry(rooms, lotWidth, lotDepth, floorIndex);
+      const floorGeometry = {
+        ...base,
+        openings: base.openings.map((opening) => {
+          const override = openingOverrides[opening.id];
+          return override ? { ...opening, ...override } : opening;
+        }),
+      };
+      const floorCustomWalls = customWalls.filter((wall) => wall.floor === floorIndex);
+      const floorClosedSpaces = detectClosedSpaces(
+        [
+          ...floorGeometry.walls.map((wall) => ({
+            id: wall.id,
+            x1: wall.x1,
+            y1: wall.y1,
+            x2: wall.x2,
+            y2: wall.y2,
+          })),
+          ...floorCustomWalls.map((wall) => ({
+            id: wall.id,
+            x1: wall.x1,
+            y1: wall.y1,
+            x2: wall.x2,
+            y2: wall.y2,
+          })),
+        ],
+        lotWidth,
+        lotDepth,
+      );
+
+      const labels: Record<string, string> = {};
+      const usedProfiles = new Set<string>();
+      for (const space of floorClosedSpaces) {
+        const best = spaceProfiles
+          .filter((profile) => profile.floor === floorIndex && !usedProfiles.has(profile.id))
+          .map((profile) => {
+            const distance = Math.hypot(
+              profile.centroid.x - space.centroid.x,
+              profile.centroid.y - space.centroid.y,
+            );
+            const areaRatio = Math.abs(profile.area - space.area) / Math.max(1, space.area);
+            return { profile, score: distance + areaRatio * 2.5, distance, areaRatio };
+          })
+          .filter((candidate) => candidate.distance <= 3.5 && candidate.areaRatio <= 0.65)
+          .sort((a, b) => a.score - b.score)[0];
+
+        if (best) {
+          labels[space.id] = best.profile.label;
+          usedProfiles.add(best.profile.id);
+        }
+      }
+
+      return {
+        floor: floorIndex,
+        walls: floorGeometry.walls,
+        customWalls: floorCustomWalls,
+        closedSpaces: floorClosedSpaces,
+        openings: floorGeometry.openings,
+        labels,
+        stairs: rooms
+          .filter((room) => room.floor === floorIndex && room.kind === "escada")
+          .map((room) => ({
+            id: room.id,
+            x: room.x,
+            y: room.y,
+            width: room.width,
+            depth: room.depth,
+          })),
+      };
+    });
+  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, spaceProfiles]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
@@ -1453,17 +1527,9 @@ export default function ConceptPlanner() {
                     <ConceptModel3D
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
-                      floor={activeFloor}
-                      walls={geometry.walls}
-                      customWalls={customWalls}
-                      closedSpaces={closedSpaces}
-                      openings={geometry.openings}
-                      labels={Object.fromEntries(
-                        closedSpaces.map((space) => [
-                          space.id,
-                          spaceAssignments.get(space.id)?.label ?? "",
-                        ]),
-                      )}
+                      activeFloor={activeFloor}
+                      levels={modelLevels}
+                      roof={facadePreferences.roof}
                     />
                   )}
 
@@ -1800,11 +1866,11 @@ export default function ConceptPlanner() {
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-xl bg-muted/50 p-3">
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Paredes</div>
-                        <div className="mt-1 text-lg font-bold">{geometry.walls.length + customWalls.filter((wall) => wall.floor === activeFloor).length}</div>
+                        <div className="mt-1 text-lg font-bold">{modelLevels.reduce((sum, level) => sum + level.walls.length + level.customWalls.length, 0)}</div>
                       </div>
                       <div className="rounded-xl bg-muted/50 p-3">
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Espaços</div>
-                        <div className="mt-1 text-lg font-bold">{closedSpaces.length}</div>
+                        <div className="mt-1 text-lg font-bold">{modelLevels.reduce((sum, level) => sum + level.closedSpaces.length, 0)}</div>
                       </div>
                     </div>
                     <button
