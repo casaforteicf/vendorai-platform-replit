@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
+import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint } from "./conceptWallNetwork";
 
 type Props = {
   rooms: ConceptRoomShape[];
   lotWidth: number;
   lotDepth: number;
+  activeFloor?: number;
   geometry: ConceptGeometry;
   selectedId: string | null;
   onSelect: (roomId: string) => void;
@@ -114,6 +116,7 @@ export default function ConceptPlan2D({
   rooms,
   lotWidth,
   lotDepth,
+  activeFloor = 0,
   geometry,
   selectedId,
   onSelect,
@@ -142,7 +145,7 @@ export default function ConceptPlan2D({
     openingId?: string;
     wallId?: string;
     customWallId?: string;
-    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -182,30 +185,41 @@ export default function ConceptPlan2D({
 
   const snap = (value: number) => Math.round(value * 4) / 4;
 
+  const wallNetwork = [
+    ...geometry.walls.map((wall) => ({
+      id: wall.id,
+      x1: wall.x1,
+      y1: wall.y1,
+      x2: wall.x2,
+      y2: wall.y2,
+    })),
+    ...customWalls,
+  ];
+
   const clampPoint = (point: { x: number; y: number }) => ({
     x: snap(Math.max(0, Math.min(lotWidth, point.x))),
     y: snap(Math.max(0, Math.min(lotDepth, point.y))),
   });
 
   const handleDrawWallPoint = (point: { x: number; y: number }) => {
-    const snapped = clampPoint(point);
+    const clamped = clampPoint(point);
+    const snappedToNetwork = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
+    const snapped = clampPoint(snappedToNetwork);
     if (!wallDrawStart) {
       setWallDrawStart(snapped);
       setWallDrawPreview(snapped);
       return;
     }
 
-    const dx = Math.abs(snapped.x - wallDrawStart.x);
-    const dy = Math.abs(snapped.y - wallDrawStart.y);
-    const end = dx >= dy
-      ? { x: snapped.x, y: wallDrawStart.y }
-      : { x: wallDrawStart.x, y: snapped.y };
+    const rawEnd = orthogonalEnd(wallDrawStart, snapped);
+    const networkEnd = snapPointToWallNetwork(rawEnd, wallNetwork, 0.35);
+    const end = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
 
     const length = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
     if (length >= 0.5 && onCreateCustomWall) {
       onCreateCustomWall({
         id: `custom-wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        floor: rooms[0]?.floor ?? 0,
+        floor: activeFloor,
         x1: wallDrawStart.x,
         y1: wallDrawStart.y,
         x2: end.x,
@@ -222,16 +236,34 @@ export default function ConceptPlan2D({
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     const point = toSvgPoint(event.clientX, event.clientY);
     if (interactionMode === "draw-wall" && wallDrawStart) {
-      const snapped = clampPoint(point);
-      const dx = Math.abs(snapped.x - wallDrawStart.x);
-      const dy = Math.abs(snapped.y - wallDrawStart.y);
-      setWallDrawPreview(dx >= dy
-        ? { x: snapped.x, y: wallDrawStart.y }
-        : { x: wallDrawStart.x, y: snapped.y });
+      const clamped = clampPoint(point);
+      const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
+      const orthogonal = orthogonalEnd(wallDrawStart, snapped);
+      const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
+      setWallDrawPreview(clampPoint(orthogonalEnd(wallDrawStart, networkEnd)));
     }
     if (!gesture || !onRoomChange) return;
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
+
+    if (gesture.mode === "custom-wall-move" && gesture.customWallId && onUpdateCustomWall) {
+      const wall = customWalls.find((item) => item.id === gesture.customWallId);
+      if (!wall) return;
+      const originalX1 = gesture.wallX1 ?? wall.x1;
+      const originalY1 = gesture.wallY1 ?? wall.y1;
+      const originalX2 = gesture.wallX2 ?? wall.x2;
+      const originalY2 = gesture.wallY2 ?? wall.y2;
+      const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
+
+      if (horizontal) {
+        const nextY = snap(Math.max(0, Math.min(lotDepth, originalY1 + dy)));
+        onUpdateCustomWall(wall.id, { y1: nextY, y2: nextY });
+      } else {
+        const nextX = snap(Math.max(0, Math.min(lotWidth, originalX1 + dx)));
+        onUpdateCustomWall(wall.id, { x1: nextX, x2: nextX });
+      }
+      return;
+    }
 
     if (
       (gesture.mode === "custom-wall-start" || gesture.mode === "custom-wall-end") &&
@@ -245,7 +277,8 @@ export default function ConceptPlan2D({
       const originalX2 = gesture.wallX2 ?? wall.x2;
       const originalY2 = gesture.wallY2 ?? wall.y2;
       const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
-      const snapped = clampPoint(point);
+      const clamped = clampPoint(point);
+      const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35, wall.id);
 
       if (gesture.mode === "custom-wall-start") {
         const next = horizontal
@@ -590,6 +623,49 @@ export default function ConceptPlan2D({
                       />
                     </g>
                   ))}
+                  {(() => {
+                    const mid = wallMidpoint(wall);
+                    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+                    return (
+                      <g
+                        className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
+                        onPointerDown={(event) => {
+                          if (interactionMode !== "wall" || !onUpdateCustomWall) return;
+                          event.stopPropagation();
+                          onEditStart?.();
+                          const point = toSvgPoint(event.clientX, event.clientY);
+                          setGesture({
+                            roomId: "",
+                            customWallId: wall.id,
+                            mode: "custom-wall-move",
+                            startX: point.x,
+                            startY: point.y,
+                            roomX: 0,
+                            roomY: 0,
+                            roomWidth: 0,
+                            roomDepth: 0,
+                            wallX1: wall.x1,
+                            wallY1: wall.y1,
+                            wallX2: wall.x2,
+                            wallY2: wall.y2,
+                          });
+                        }}
+                      >
+                        <circle cx={mid.x} cy={mid.y} r="0.48" fill="transparent" />
+                        <rect
+                          x={mid.x - 0.16}
+                          y={mid.y - 0.16}
+                          width="0.32"
+                          height="0.32"
+                          rx="0.07"
+                          fill="#0f172a"
+                          stroke="#fff"
+                          strokeWidth="0.05"
+                          pointerEvents="none"
+                        />
+                      </g>
+                    );
+                  })()}
                 </>
               )}
               {isPool && (
@@ -700,6 +776,18 @@ export default function ConceptPlan2D({
               strokeWidth="0.16"
               strokeDasharray="0.28 0.16"
             />
+            {(() => {
+              const previewWall = { id: "preview", x1: wallDrawStart.x, y1: wallDrawStart.y, x2: wallDrawPreview.x, y2: wallDrawPreview.y };
+              const mid = wallMidpoint(previewWall);
+              return wallLength(previewWall) >= 0.25 ? (
+                <g>
+                  <rect x={mid.x - 0.7} y={mid.y - 0.34} width="1.4" height="0.48" rx="0.12" fill="#ffffff" opacity="0.94" />
+                  <text x={mid.x} y={mid.y} textAnchor="middle" fontSize="0.24" fontWeight="800" fill="#c2410c">
+                    {wallLength(previewWall).toFixed(2)} m
+                  </text>
+                </g>
+              ) : null;
+            })()}
           </g>
         )}
 
