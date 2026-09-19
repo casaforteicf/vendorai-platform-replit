@@ -316,9 +316,20 @@ function ComposicaoForm({
             Quantidade = consumo para 1 {form.unidade} da composição. O preço vem da Tabela Mestre; se você alterar o valor aqui, a Tabela Mestre também será atualizada.
           </p>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar insumo..." className="pl-8" value={insumoSearch} onChange={(e) => setInsumoSearch(e.target.value)} />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar insumo..."
+              className="pl-8"
+              value={insumoSearch}
+              onChange={(e) => setInsumoSearch(e.target.value)}
+            />
+          </div>
+          <Button type="button" variant="outline" className="gap-2 shrink-0" onClick={openQuickCreate}>
+            <Plus className="h-4 w-4" />
+            Novo insumo
+          </Button>
         </div>
         {insumoSearch && (
           <div className="border rounded-md overflow-hidden">
