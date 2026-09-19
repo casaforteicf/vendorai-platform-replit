@@ -1,4 +1,4 @@
-import { useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
@@ -215,7 +215,7 @@ export default function ConceptModel3D({
   facadeDesign,
 }: Props) {
   const [rotation, setRotation] = useState(35);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(1.32);
   const [showAllFloors, setShowAllFloors] = useState(true);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -226,7 +226,7 @@ export default function ConceptModel3D({
   const normalizeRotation = (value: number) => ((value % 360) + 360) % 360;
   const resetCamera = () => {
     setRotation(35);
-    setZoom(1);
+    setZoom(1.32);
   };
 
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -252,8 +252,8 @@ export default function ConceptModel3D({
   const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault();
     setZoom((value) => {
-      const delta = event.deltaY > 0 ? -0.08 : 0.08;
-      return Math.max(0.55, Math.min(1.75, Number((value + delta).toFixed(2))));
+      const delta = event.deltaY > 0 ? -0.1 : 0.1;
+      return Math.max(0.6, Math.min(2.35, Number((value + delta).toFixed(2))));
     });
   };
 
@@ -262,10 +262,30 @@ export default function ConceptModel3D({
     [levels, showAllFloors, activeFloor],
   );
 
-  const lotCorners = useMemo(
-    () => quad(0, 0, lotWidth, lotDepth, -FLOOR_THICKNESS, rotation, lotWidth, lotDepth, zoom),
-    [rotation, lotWidth, lotDepth, zoom],
-  );
+  const frameSpaces = visibleLevels.flatMap((level) => level.closedSpaces);
+  const frameWalls = visibleLevels.flatMap((level) => [...level.walls, ...level.customWalls]);
+  const frameBounds = frameSpaces.length
+    ? {
+        minX: Math.min(...frameSpaces.map((space) => space.bounds.x)),
+        maxX: Math.max(...frameSpaces.map((space) => space.bounds.x + space.bounds.width)),
+        minY: Math.min(...frameSpaces.map((space) => space.bounds.y)),
+        maxY: Math.max(...frameSpaces.map((space) => space.bounds.y + space.bounds.height)),
+      }
+    : frameWalls.length
+      ? {
+          minX: Math.min(...frameWalls.flatMap((wall) => [wall.x1, wall.x2])),
+          maxX: Math.max(...frameWalls.flatMap((wall) => [wall.x1, wall.x2])),
+          minY: Math.min(...frameWalls.flatMap((wall) => [wall.y1, wall.y2])),
+          maxY: Math.max(...frameWalls.flatMap((wall) => [wall.y1, wall.y2])),
+        }
+      : { minX: 0, maxX: lotWidth, minY: 0, maxY: lotDepth };
+
+  const buildingWidth = Math.max(1, frameBounds.maxX - frameBounds.minX);
+  const buildingDepth = Math.max(1, frameBounds.maxY - frameBounds.minY);
+  const buildingCenterX = (frameBounds.minX + frameBounds.maxX) / 2;
+  const buildingCenterY = (frameBounds.minY + frameBounds.maxY) / 2;
+  const projectionWidth = buildingCenterX * 2;
+  const projectionDepth = buildingCenterY * 2;
 
   const topLevel = levels.reduce<ConceptModelLevel | undefined>(
     (highest, level) => !highest || level.floor > highest.floor ? level : highest,
@@ -275,8 +295,19 @@ export default function ConceptModel3D({
   const topZ = ((topLevel?.floor ?? 0) * LEVEL_HEIGHT) + WALL_HEIGHT + FLOOR_THICKNESS;
 
   const maxLevel = Math.max(0, ...levels.map((level) => level.floor));
-  const sceneWidth = Math.max(lotWidth, lotDepth) * 2.9 * zoom + 22;
-  const sceneHeight = Math.max(lotWidth, lotDepth) * 1.9 * zoom + (maxLevel + 1) * LEVEL_HEIGHT * 2.1 + 22;
+  const totalBuildingHeight = Math.max(LEVEL_HEIGHT, (maxLevel + 1) * LEVEL_HEIGHT);
+  const frameExtent = Math.max(buildingWidth, buildingDepth);
+  const sceneWidth = Math.max(20, frameExtent * 1.95 + 10);
+  const sceneHeight = Math.max(17, frameExtent * 1.08 + totalBuildingHeight * 2.35 + 9);
+
+  useEffect(() => {
+    setZoom(1.32);
+  }, [activeFloor, showAllFloors, levels.length, Math.round(buildingWidth * 10), Math.round(buildingDepth * 10)]);
+
+  const lotCorners = useMemo(
+    () => quad(0, 0, lotWidth, lotDepth, -FLOOR_THICKNESS, rotation, projectionWidth, projectionDepth, zoom),
+    [rotation, lotWidth, lotDepth, projectionWidth, projectionDepth, zoom],
+  );
 
   const wallCount = visibleLevels.reduce(
     (sum, level) => sum + level.walls.length + level.customWalls.length,
@@ -293,14 +324,13 @@ export default function ConceptModel3D({
         minX: Math.min(...allSpaces.map((space) => space.bounds.x)),
         maxX: Math.max(...allSpaces.map((space) => space.bounds.x + space.bounds.width)),
         minY: Math.min(...allSpaces.map((space) => space.bounds.y)),
+        maxY: Math.max(...allSpaces.map((space) => space.bounds.y + space.bounds.height)),
       }
-    : { minX: 0, maxX: lotWidth, minY: 0 };
-  const buildingWidth = Math.max(1, buildingBounds.maxX - buildingBounds.minX);
-  const totalBuildingHeight = Math.max(LEVEL_HEIGHT, (maxLevel + 1) * LEVEL_HEIGHT);
+    : { minX: frameBounds.minX, maxX: frameBounds.maxX, minY: frameBounds.minY, maxY: frameBounds.maxY };
 
   return (
-    <div className="h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
+    <div className="relative h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
+      <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/72 px-4 py-3 text-white shadow-xl backdrop-blur">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
@@ -325,10 +355,10 @@ export default function ConceptModel3D({
           <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para direita">
             <RotateCw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.1).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Reduzir">
+          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Reduzir">
             <ZoomOut className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.1).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Ampliar">
+          <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Ampliar">
             <ZoomIn className="h-4 w-4" />
           </button>
           <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Restaurar câmera">
@@ -344,7 +374,7 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
-        className={`block h-[calc(100vh-126px)] min-h-[560px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100vh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
@@ -374,7 +404,7 @@ export default function ConceptModel3D({
           </filter>
         </defs>
 
-        <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" stroke="#475569" strokeWidth="0.08" />
+        <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" fillOpacity="0.34" stroke="#475569" strokeOpacity="0.55" strokeWidth="0.06" />
 
         {visibleLevels.map((level) => {
           const levelBase = level.floor * LEVEL_HEIGHT;
@@ -404,10 +434,7 @@ export default function ConceptModel3D({
                         cell.x + cell.width,
                         cell.y + cell.height,
                         levelBase,
-                        rotation,
-                        lotWidth,
-                        lotDepth,
-                        zoom,
+                        rotation, projectionWidth, projectionDepth, zoom,
                       ))}
                       fill={level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1"}
                       fillOpacity={level.floor === activeFloor ? "0.42" : "0.28"}
@@ -419,10 +446,7 @@ export default function ConceptModel3D({
                   {(() => {
                     const labelPoint = project(
                       { x: space.centroid.x, y: space.centroid.y, z: levelBase + 0.18 },
-                      rotation,
-                      lotWidth,
-                      lotDepth,
-                      zoom,
+                      rotation, projectionWidth, projectionDepth, zoom,
                     );
                     const label = level.labels[space.id]?.trim();
                     return (
@@ -445,10 +469,7 @@ export default function ConceptModel3D({
                   splitWallForOpenings(wall, level.openings).map((piece, index) => {
                     const shape = wallPolygon(
                       piece.wall,
-                      rotation,
-                      lotWidth,
-                      lotDepth,
-                      zoom,
+                      rotation, projectionWidth, projectionDepth, zoom,
                       levelBase + piece.zMin,
                       levelBase + piece.zMax,
                     );
@@ -473,10 +494,7 @@ export default function ConceptModel3D({
                       cell.x + cell.width,
                       cell.y + cell.height,
                       levelBase - FLOOR_THICKNESS,
-                      rotation,
-                      lotWidth,
-                      lotDepth,
-                      zoom,
+                      rotation, projectionWidth, projectionDepth, zoom,
                     ))}
                     fill="#64748b"
                     fillOpacity="0.7"
@@ -500,7 +518,7 @@ export default function ConceptModel3D({
                   return (
                     <polygon
                       key={`${stair.id}-step-${index}`}
-                      points={points(quad(x1, y1, x2, y2, z, rotation, lotWidth, lotDepth, zoom))}
+                      points={points(quad(x1, y1, x2, y2, z, rotation, projectionWidth, projectionDepth, zoom))}
                       fill="#b8a78f"
                       stroke="#6b5a47"
                       strokeWidth="0.04"
@@ -526,10 +544,7 @@ export default function ConceptModel3D({
               y2: y,
               thickness: Math.max(0.12, volume.depth),
             },
-            rotation,
-            lotWidth,
-            lotDepth,
-            zoom,
+            rotation, projectionWidth, projectionDepth, zoom,
             zBottom,
             Math.max(zBottom + 0.18, zTop),
           );
@@ -551,10 +566,7 @@ export default function ConceptModel3D({
               topBounds.maxX,
               topBounds.maxY,
               topZ,
-              rotation,
-              lotWidth,
-              lotDepth,
-              zoom,
+              rotation, projectionWidth, projectionDepth, zoom,
             ))}
             fill="#d5d9dc"
             fillOpacity="0.94"
@@ -567,16 +579,16 @@ export default function ConceptModel3D({
           const midY = (topBounds.minY + topBounds.maxY) / 2;
           const ridgeZ = topZ + Math.min(2.2, (topBounds.maxY - topBounds.minY) * 0.22);
           const leftPlane = [
-            project({ x: topBounds.minX, y: topBounds.minY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: topBounds.minY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.minX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
+            project({ x: topBounds.minX, y: topBounds.minY, z: topZ }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: topBounds.maxX, y: topBounds.minY, z: topZ }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: topBounds.maxX, y: midY, z: ridgeZ }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: topBounds.minX, y: midY, z: ridgeZ }, rotation, projectionWidth, projectionDepth, zoom),
           ];
           const rightPlane = [
-            project({ x: topBounds.minX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: topBounds.maxY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.minX, y: topBounds.maxY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
+            project({ x: topBounds.minX, y: midY, z: ridgeZ }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: topBounds.maxX, y: midY, z: ridgeZ }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: topBounds.maxX, y: topBounds.maxY, z: topZ }, rotation, projectionWidth, projectionDepth, zoom),
+            project({ x: topBounds.minX, y: topBounds.maxY, z: topZ }, rotation, projectionWidth, projectionDepth, zoom),
           ];
           return (
             <g>
