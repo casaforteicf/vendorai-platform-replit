@@ -4,6 +4,7 @@ import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenings";
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
+import { buildRoofFaces, normalizeRoofParameters, roofPeakZ, type RoofInput } from "./conceptRoof";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -31,7 +32,7 @@ type Props = {
   lotDepth: number;
   activeFloor: number;
   levels: ConceptModelLevel[];
-  roof: "platibanda" | "aparente" | "misto";
+  roof: RoofInput;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -294,8 +295,12 @@ export default function ConceptModel3D({
     ? Math.max(WALL_HEIGHT, topLevel.floorToFloorHeight - FLOOR_THICKNESS)
     : WALL_HEIGHT;
   const topZ = (topLevel?.elevation ?? 0) + topWallHeight + FLOOR_THICKNESS;
+  const roofParams = normalizeRoofParameters(roof);
+  const roofFaces = topBounds ? buildRoofFaces(topBounds, topZ, roof) : [];
+  const roofTopZ = topBounds ? roofPeakZ(topBounds, topZ, roof) : topZ;
 
   const maxElevation = Math.max(
+    roofTopZ,
     WALL_HEIGHT + FLOOR_THICKNESS,
     ...levels.map((level) =>
       level.elevation + Math.max(WALL_HEIGHT, level.floorToFloorHeight - FLOOR_THICKNESS) + FLOOR_THICKNESS
@@ -554,53 +559,27 @@ export default function ConceptModel3D({
           );
         })}
 
-        {showAllFloors && topBounds && roof === "platibanda" && (
+        {showAllFloors && roofFaces.map((face, index) => (
           <polygon
-            points={points(quad(
-              topBounds.minX,
-              topBounds.minY,
-              topBounds.maxX,
-              topBounds.maxY,
-              topZ,
-              rotation,
-              lotWidth,
-              lotDepth,
-              zoom,
+            key={face.id}
+            points={points(face.points.map((point) =>
+              project(point, rotation, lotWidth, lotDepth, zoom)
             ))}
-            fill="#d5d9dc"
-            fillOpacity="0.94"
-            stroke="#737b82"
+            fill={face.role === "roof"
+              ? index % 2 === 0 ? "url(#concept3d-roof)" : "#65493b"
+              : face.role === "parapet" ? "#d5d9dc" : "#aeb6bd"}
+            fillOpacity={face.role === "slab" ? "0.94" : "1"}
+            stroke={face.role === "roof" ? "#3f2f28" : "#737b82"}
             strokeWidth="0.08"
           />
-        )}
-
-        {showAllFloors && topBounds && (roof === "aparente" || roof === "misto") && (() => {
-          const midY = (topBounds.minY + topBounds.maxY) / 2;
-          const ridgeZ = topZ + Math.min(2.2, (topBounds.maxY - topBounds.minY) * 0.22);
-          const leftPlane = [
-            project({ x: topBounds.minX, y: topBounds.minY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: topBounds.minY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.minX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-          ];
-          const rightPlane = [
-            project({ x: topBounds.minX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: midY, z: ridgeZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.maxX, y: topBounds.maxY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-            project({ x: topBounds.minX, y: topBounds.maxY, z: topZ }, rotation, lotWidth, lotDepth, zoom),
-          ];
-          return (
-            <g>
-              <polygon points={points(leftPlane)} fill="url(#concept3d-roof)" stroke="#3f2f28" strokeWidth="0.08" />
-              <polygon points={points(rightPlane)} fill="#65493b" stroke="#3f2f28" strokeWidth="0.08" />
-            </g>
-          );
-        })()}
+        ))}
       </svg>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
         <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços</span>
-        <span>Vista {Math.round(rotation)}° · pé-direito {WALL_HEIGHT.toFixed(2).replace(".", ",")} m · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm</span>
+        <span>
+          Vista {Math.round(rotation)}° · cobertura {roofParams.roof === "platibanda" ? "platibanda" : `${roofParams.roofWaters} água${roofParams.roofWaters > 1 ? "s" : ""} · ${roofParams.roofPitchDeg.toFixed(0)}°`} · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm
+        </span>
       </div>
     </div>
   );

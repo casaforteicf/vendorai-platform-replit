@@ -95,6 +95,13 @@ export type ArchConceptCustomerProfile = {
 export type ArchConceptFacadePreferences = {
   style: "contemporaneo" | "minimalista" | "classico_contemporaneo" | "tropical" | "industrial" | "rustico_contemporaneo";
   roof: "platibanda" | "aparente" | "misto";
+  roofWaters?: 1 | 2 | 4;
+  roofPitchDeg?: number;
+  roofOverhang?: number;
+  roofRidgeOrientation?: "x" | "y";
+  roofSlopeDirection?: "north" | "south" | "east" | "west";
+  roofParapetHeight?: number;
+  roofMixedRatio?: number;
   primaryMaterial: "pintura" | "madeira" | "pedra" | "concreto";
   accentMaterial: "nenhum" | "madeira" | "pedra" | "concreto";
   facadeTone: "claro" | "medio" | "escuro";

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { RoofInput } from "./conceptRoof";
 
 export type VolumetryRoom = {
   id: string;
@@ -15,13 +16,12 @@ type Point = { x: number; y: number };
 
 export type ConceptFacadePreferences = {
   style: "contemporaneo" | "minimalista" | "classico_contemporaneo" | "tropical" | "industrial" | "rustico_contemporaneo";
-  roof: "platibanda" | "aparente" | "misto";
   primaryMaterial: "pintura" | "madeira" | "pedra" | "concreto";
   accentMaterial: "nenhum" | "madeira" | "pedra" | "concreto";
   facadeTone: "claro" | "medio" | "escuro";
   frameTone: "preto" | "branco" | "bronze";
   landscaping: "leve" | "medio" | "intenso";
-};
+} & RoofInput;
 
 type Props = {
   rooms: VolumetryRoom[];
