@@ -9,6 +9,7 @@ import {
   Sun,
   Trash2,
   Unlock,
+  X,
 } from "lucide-react";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -71,6 +72,7 @@ export default function ConceptFacadeEditor({
   onOpenRender,
 }: Props) {
   const [panel, setPanel] = useState<"volumes" | "materials" | "style">("volumes");
+  const [panelOpen, setPanelOpen] = useState(true);
   const [selectedSurface, setSelectedSurface] = useState<FacadeSurfaceKey>("main");
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
 
@@ -140,7 +142,11 @@ export default function ConceptFacadeEditor({
           <button
             key={value}
             type="button"
-            onClick={() => setPanel(value)}
+            onClick={() => {
+              const same = panel === value;
+              setPanel(value);
+              setPanelOpen((open) => same ? !open : true);
+            }}
             className={panel === value
               ? "flex h-10 items-center gap-2 border-r bg-slate-900 px-3 text-xs font-semibold text-white last:border-r-0"
               : "flex h-10 items-center gap-2 border-r bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 last:border-r-0"}
@@ -151,9 +157,19 @@ export default function ConceptFacadeEditor({
         ))}
       </div>
 
-      <div className="absolute left-4 top-16 z-30 w-[300px] max-h-[calc(100vh-110px)] overflow-auto rounded-2xl border bg-white shadow-xl">
+      {panelOpen && (
+      <div className="absolute left-4 top-16 z-30 w-[286px] max-h-[calc(100vh-100px)] overflow-auto rounded-2xl border bg-white shadow-xl">
+        <button
+          type="button"
+          onClick={() => setPanelOpen(false)}
+          className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          title="Fechar painel"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
         {panel === "volumes" && (
-          <div className="p-4">
+          <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Composição de volumes</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Adicione elementos sobre a fachada e arraste diretamente no desenho.
@@ -203,7 +219,7 @@ export default function ConceptFacadeEditor({
         )}
 
         {panel === "materials" && (
-          <div className="p-4">
+          <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Materiais por elemento</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Selecione a superfície e aplique um material. A alteração também alimenta o 3D e o render.
@@ -259,7 +275,7 @@ export default function ConceptFacadeEditor({
         )}
 
         {panel === "style" && (
-          <div className="p-4">
+          <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Linguagem da fachada</div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               {STYLE_LABELS.map(([value, label]) => (
@@ -346,8 +362,9 @@ export default function ConceptFacadeEditor({
           </div>
         )}
       </div>
+      )}
 
-      <div className="absolute inset-0 pl-12">
+      <div className="absolute inset-0">
         <ConceptDerivedFacade
           lotWidth={lotWidth}
           levels={levels}
