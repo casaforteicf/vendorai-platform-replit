@@ -1711,9 +1711,14 @@ export function CatalogoModal({
 }
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
-interface CartLine { produtoId: string; quantidade: number; precoUnitarioOverride?: number; nomeOverride?: string; }
+interface CartLine {
+  produtoId?: string;
+  composicaoId?: string;
+  quantidade: number;
+  precoUnitarioOverride?: number;
+  nomeOverride?: string;
+}
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
-interface ComposicaoLine { composicaoId: string; quantidade: number; precoUnitarioOverride?: number; }
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
   pix: "PIX",
@@ -1787,16 +1792,13 @@ function newFreeItem(): FreeItem {
     const qc = useQueryClient();
   
     // mode
-    const [mode, setMode] = useState<"catalogo" | "composicoes" | "livre" | "template" | "importar">("catalogo");
+    const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
   
     // catalog mode
-    const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
+    const [cartLines, setCartLines] = useState<CartLine[]>([{ quantidade: 1 }]);
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
-    // composições mode
-    const [composicaoLines, setComposicaoLines] = useState<ComposicaoLine[]>([{ composicaoId: "", quantidade: 1 }]);
-    const [composicaoError, setComposicaoError] = useState("");
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
     const [freeError, setFreeError] = useState("");
@@ -1863,19 +1865,16 @@ function newFreeItem(): FreeItem {
     }, [open, initialProductIds.join(",")]);
   
     // totals
-    const catTotal = cartLines.reduce((s, l) => {
-      const p = activeCatalog.find((p) => p.id === l.produtoId);
-      if (!p) return s;
-      const pu = l.precoUnitarioOverride !== undefined ? l.precoUnitarioOverride : parseFloat(p.precoBase);
-      return s + l.quantidade * pu;
-    }, 0);
-    const composicaoTotal = composicaoLines.reduce((sum, line) => {
-      const composicao = composicoes.find((item) => item.id === line.composicaoId);
-      if (!composicao) return sum;
-      const preco = line.precoUnitarioOverride !== undefined
-        ? line.precoUnitarioOverride
-        : Number(composicao.custoTotal ?? 0);
-      return sum + line.quantidade * preco;
+    const catTotal = cartLines.reduce((sum, line) => {
+      const produto = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
+      const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+      if (!produto && !composicao) return sum;
+
+      const basePrice = produto
+        ? parseFloat(produto.precoBase)
+        : Number(composicao?.custoTotal ?? 0);
+      const unitPrice = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
+      return sum + line.quantidade * unitPrice;
     }, 0);
     const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
 
@@ -1923,10 +1922,8 @@ function newFreeItem(): FreeItem {
     });
     setMode("catalogo");
     setSelectedTemplateSlug("");
-    setCartLines([{ produtoId: "", quantidade: 1 }]);
+    setCartLines([{ quantidade: 1 }]);
     setCartError("");
-    setComposicaoLines([{ composicaoId: "", quantidade: 1 }]);
-    setComposicaoError("");
     setFreeItems([newFreeItem()]);
     setFreeError("");
     setContextoIA("");
@@ -1935,7 +1932,7 @@ function newFreeItem(): FreeItem {
   }
 
   // ── catalog helpers ───────────────────────────────────────────────────────
-  function addCatLine()    { setCartLines((p) => [...p, { produtoId: "", quantidade: 1 }]); }
+  function addCatLine()    { setCartLines((p) => [...p, { quantidade: 1 }]); }
   async function calcularOrcamentoM2(payload: {
   produtoId: string;
   superficies: Record<string, unknown>[];
@@ -1956,9 +1953,30 @@ function newFreeItem(): FreeItem {
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
-  function selectPlanProduct(i: number, produtoId: string) {
+  function selectBudgetItem(i: number, value: string) {
+    if (value.startsWith("composicao:")) {
+      const composicaoId = value.slice("composicao:".length);
+      updateCatLine(i, {
+        produtoId: undefined,
+        composicaoId,
+        precoUnitarioOverride: undefined,
+        nomeOverride: undefined,
+      });
+      return;
+    }
+
+    const produtoId = value.startsWith("produto:") ? value.slice("produto:".length) : value;
     const prod = activeCatalog.find((p) => p.id === produtoId);
-    if (!prod) { updateCatLine(i, { produtoId, nomeOverride: undefined }); return; }
+    if (!prod) {
+      updateCatLine(i, {
+        produtoId,
+        composicaoId: undefined,
+        precoUnitarioOverride: undefined,
+        nomeOverride: undefined,
+      });
+      return;
+    }
+
     const precoImpl = prod.precoImplantacao ? parseFloat(prod.precoImplantacao) : 0;
     const precoMens = prod.precoMensalidade ? parseFloat(prod.precoMensalidade) : 0;
     if (precoImpl > 0 && precoMens > 0) {
@@ -1969,19 +1987,13 @@ function newFreeItem(): FreeItem {
         ...prev.slice(i + 1),
       ]);
     } else {
-      updateCatLine(i, { produtoId, nomeOverride: undefined });
+      updateCatLine(i, {
+        produtoId,
+        composicaoId: undefined,
+        precoUnitarioOverride: undefined,
+        nomeOverride: undefined,
+      });
     }
-  }
-
-  // ── composições helpers ──────────────────────────────────────────────────
-  function addComposicaoLine() {
-    setComposicaoLines((prev) => [...prev, { composicaoId: "", quantidade: 1 }]);
-  }
-  function removeComposicaoLine(index: number) {
-    setComposicaoLines((prev) => prev.filter((_, current) => current !== index));
-  }
-  function updateComposicaoLine(index: number, patch: Partial<ComposicaoLine>) {
-    setComposicaoLines((prev) => prev.map((line, current) => current === index ? { ...line, ...patch } : line));
   }
 
   // ── livre helpers ─────────────────────────────────────────────────────────
@@ -2071,35 +2083,16 @@ function newFreeItem(): FreeItem {
           onError: () => toast({ title: "Erro ao importar orçamento", variant: "destructive" }),
         }
       );
-    } else if (mode === "composicoes") {
-      const valid = composicaoLines.filter((line) => line.composicaoId);
-      if (!valid.length) { setComposicaoError("Adicione pelo menos uma composição."); return; }
-      setComposicaoError("");
-
-      const itens = valid.flatMap((line) => {
-        const composicao = composicoes.find((item) => item.id === line.composicaoId);
-        if (!composicao) return [];
-        const valorUnitario = line.precoUnitarioOverride !== undefined
-          ? line.precoUnitarioOverride
-          : Number(composicao.custoTotal ?? 0);
-
-        return [{
-          nome: composicao.nome,
-          quantidade: line.quantidade,
-          valorUnitario,
-          sku: composicao.codigo || undefined,
-          composicaoId: composicao.id,
-          unidade: composicao.unidade,
-          descricao: composicao.descricao || undefined,
-        }];
-      });
-
+    } else if (mode === "catalogo") {
+      const valid = cartLines.filter((line) => line.produtoId || line.composicaoId);
+      if (!valid.length) { setCartError("Adicione pelo menos um produto ou composição."); return; }
+      setCartError("");
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
-      createLivreMut.mutate(
+      createFromCatMut.mutate(
         {
+          tenantId,
           data: {
-            tenantId,
             leadId: vals.leadId,
             dealId: activeDealId,
             titulo: vals.titulo,
@@ -2109,40 +2102,19 @@ function newFreeItem(): FreeItem {
             condPagamento: vals.condPagamento || undefined,
             prazoEntrega: vals.prazoEntrega || undefined,
             ...recFields,
-            itens,
-            valorTotal: composicaoTotal,
+            itens: valid.map((line) => ({
+              ...(line.produtoId ? { produtoId: line.produtoId } : {}),
+              ...(line.composicaoId ? { composicaoId: line.composicaoId } : {}),
+              quantidade: line.quantidade,
+              precoUnitario: line.precoUnitarioOverride,
+              nome: line.nomeOverride || undefined,
+            })),
             paymentCompositions: paymentComp?.length
               ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl }))
               : undefined,
             skipAsaasBilling: skipAsaas,
           } as any,
         },
-        {
-          onSuccess: () => {
-            toast({ title: "Orçamento criado com composições" });
-            qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
-            if (lockedLeadId) {
-              qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
-            }
-            const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : composicaoTotal || undefined;
-            if (!activeDealId) createDeal(
-              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas } },
-              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
-            );
-            onSuccess?.();
-            handleClose();
-          },
-          onError: () => toast({ title: "Erro ao criar orçamento com composições", variant: "destructive" }),
-        }
-      );
-    } else if (mode === "catalogo") {
-      const valid = cartLines.filter((l) => l.produtoId);
-      if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
-      setCartError("");
-      const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
-      const skipAsaas = vals.skipAsaasBilling;
-      createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride, nome: l.nomeOverride || undefined })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -2268,7 +2240,7 @@ function newFreeItem(): FreeItem {
             {/* Origens do orçamento: todas usam o mesmo fluxo e persistência real. */}
             <div className="rounded-lg border bg-muted/20 p-3">
               <p className="text-xs font-medium">Como deseja montar este orçamento?</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Use modelos, produtos do catálogo, composições de obra ou itens livres.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Use um modelo pronto, selecione produtos ou composições, ou informe itens livres.</p>
             </div>
             <div className="flex rounded-lg border overflow-hidden text-sm">
               <button
@@ -2284,13 +2256,6 @@ function newFreeItem(): FreeItem {
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "catalogo" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
                 Catálogo
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("composicoes")}
-                className={`flex-1 py-2 font-medium transition-colors ${mode === "composicoes" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              >
-                Composições
               </button>
               <button
                 type="button"
@@ -2390,7 +2355,7 @@ function newFreeItem(): FreeItem {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs py-2">Produto</TableHead>
+                        <TableHead className="text-xs py-2">Produto / Composição</TableHead>
                         <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
@@ -2399,17 +2364,33 @@ function newFreeItem(): FreeItem {
                     </TableHeader>
                     <TableBody>
                       {cartLines.map((line, idx) => {
-                        const prod = activeCatalog.find((p) => p.id === line.produtoId);
-                        const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : (prod ? parseFloat(prod.precoBase) : 0);
-                        const subtotal = prod ? line.quantidade * precoUnit : 0;
+                        const prod = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
+                        const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+                        const selected = prod || composicao;
+                        const basePrice = prod ? parseFloat(prod.precoBase) : Number(composicao?.custoTotal ?? 0);
+                        const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
+                        const subtotal = selected ? line.quantidade * precoUnit : 0;
+                        const unidade = prod?.unidade ?? composicao?.unidade ?? "";
+                        const selectValue = line.produtoId
+                          ? `produto:${line.produtoId}`
+                          : line.composicaoId
+                            ? `composicao:${line.composicaoId}`
+                            : "";
                         return (
                           <TableRow key={idx}>
                             <TableCell className="py-1.5">
-                              <Select value={line.produtoId} onValueChange={(v) => selectPlanProduct(idx, v)}>
-                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                              <Select value={selectValue} onValueChange={(value) => selectBudgetItem(idx, value)}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione produto ou composição…" /></SelectTrigger>
                                 <SelectContent>
                                   {activeCatalog.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>{p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}</SelectItem>
+                                    <SelectItem key={`produto-${p.id}`} value={`produto:${p.id}`}>
+                                      {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
+                                    </SelectItem>
+                                  ))}
+                                  {composicoes.map((item: Composicao) => (
+                                    <SelectItem key={`composicao-${item.id}`} value={`composicao:${item.id}`}>
+                                      [Composição] {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
+                                    </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -2448,15 +2429,15 @@ function newFreeItem(): FreeItem {
                                   min={0}
                                   step={0.01}
                                   className="h-8 text-sm text-right font-mono pl-7 w-32"
-                                  disabled={!prod}
+                                  disabled={!selected}
                                   placeholder="0,00"
-                                  value={prod ? (line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : parseFloat(prod.precoBase)) : ""}
+                                  value={selected ? precoUnit : ""}
                                   onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: parseFloat(e.target.value) || 0 })}
                                 />
-                                {prod && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{prod.unidade}</span>}
+                                {selected && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{unidade}</span>}
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{prod ? fmtCurrency(subtotal) : "—"}</TableCell>
+                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{selected ? fmtCurrency(subtotal) : "—"}</TableCell>
                             <TableCell className="py-1.5">
                               <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeCatLine(idx)} disabled={cartLines.length === 1}>
                                 <X className="h-3.5 w-3.5" />
@@ -2505,137 +2486,6 @@ function newFreeItem(): FreeItem {
                   <span className="text-lg font-bold">{fmtCurrency(catTotal)}</span>
                 </div>
                 {cartError && <p className="text-sm text-destructive mt-1">{cartError}</p>}
-              </div>
-            )}
-
-            {/* ── COMPOSIÇÕES MODE ───────────────────────────────────────────── */}
-            {mode === "composicoes" && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-medium">Composições do Orçamento</p>
-                    <p className="text-xs text-muted-foreground">
-                      O preço inicia com o custo atual da composição. Você pode ajustar o preço deste orçamento sem alterar a Tabela Mestre.
-                    </p>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={addComposicaoLine}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar composição
-                  </Button>
-                </div>
-
-                <div className="rounded-md border overflow-hidden overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs py-2">Composição</TableHead>
-                        <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
-                        <TableHead className="text-xs py-2 w-20">Un.</TableHead>
-                        <TableHead className="text-xs py-2 w-32 text-right">Preço unit.</TableHead>
-                        <TableHead className="text-xs py-2 w-32 text-right">Subtotal</TableHead>
-                        <TableHead className="w-8 py-2" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {composicaoLines.map((line, idx) => {
-                        const composicao = composicoes.find((item) => item.id === line.composicaoId);
-                        const precoUnit = composicao
-                          ? (line.precoUnitarioOverride !== undefined
-                              ? line.precoUnitarioOverride
-                              : Number(composicao.custoTotal ?? 0))
-                          : 0;
-                        const subtotal = composicao ? line.quantidade * precoUnit : 0;
-
-                        return (
-                          <TableRow key={idx}>
-                            <TableCell className="py-1.5 min-w-[320px]">
-                              <Select
-                                value={line.composicaoId}
-                                onValueChange={(value) => updateComposicaoLine(idx, {
-                                  composicaoId: value,
-                                  precoUnitarioOverride: undefined,
-                                })}
-                              >
-                                <SelectTrigger className="h-8 text-sm">
-                                  <SelectValue placeholder="Selecione uma composição..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {composicoes.map((item: Composicao) => (
-                                    <SelectItem key={item.id} value={item.id}>
-                                      {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-
-                            <TableCell className="py-1.5">
-                              <Input
-                                type="number"
-                                min={0.0001}
-                                step={0.01}
-                                className="h-8 text-sm w-24"
-                                value={line.quantidade}
-                                onChange={(e) => updateComposicaoLine(idx, {
-                                  quantidade: Math.max(0.0001, Number(e.target.value) || 0.0001),
-                                })}
-                              />
-                            </TableCell>
-
-                            <TableCell className="py-1.5 text-xs text-muted-foreground">
-                              {composicao?.unidade ?? "—"}
-                            </TableCell>
-
-                            <TableCell className="py-1.5">
-                              <div className="relative flex items-center justify-end">
-                                <span className="absolute left-2 text-muted-foreground text-xs pointer-events-none">R$</span>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  step={0.01}
-                                  className="h-8 text-sm text-right font-mono pl-7 w-32"
-                                  disabled={!composicao}
-                                  value={composicao ? precoUnit : ""}
-                                  onChange={(e) => updateComposicaoLine(idx, {
-                                    precoUnitarioOverride: Math.max(0, Number(e.target.value) || 0),
-                                  })}
-                                />
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">
-                              {composicao ? fmtCurrency(subtotal) : "—"}
-                            </TableCell>
-
-                            <TableCell className="py-1.5">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => removeComposicaoLine(idx)}
-                                disabled={composicaoLines.length === 1}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {composicoes.length === 0 && (
-                  <div className="mt-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                    Nenhuma composição cadastrada. Cadastre em Construção & Reforma → Composições.
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-3 mt-2 pr-2">
-                  <span className="text-sm text-muted-foreground">Total estimado:</span>
-                  <span className="text-lg font-bold">{fmtCurrency(composicaoTotal)}</span>
-                </div>
-                {composicaoError && <p className="text-sm text-destructive mt-1">{composicaoError}</p>}
               </div>
             )}
 
