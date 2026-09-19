@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./planner5d-reference.css";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -241,7 +242,7 @@ export default function Projetos() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
