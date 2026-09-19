@@ -2107,7 +2107,7 @@ function newFreeItem(): FreeItem {
               ...(line.composicaoId ? { composicaoId: line.composicaoId } : {}),
               quantidade: line.quantidade,
               precoUnitario: line.precoUnitarioOverride,
-              nome: line.nomeOverride || undefined,
+              nome: line.nomeOverride?.trim() || undefined,
             })),
             paymentCompositions: paymentComp?.length
               ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl }))
@@ -2414,13 +2414,18 @@ function newFreeItem(): FreeItem {
     </Button>
   );
 })()}
-                              {line.nomeOverride && (
-                                <Input
-                                  className="h-6 text-xs mt-1 px-1 border-0 border-b rounded-none bg-transparent text-primary font-medium focus-visible:ring-0"
-                                  value={line.nomeOverride}
-                                  onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
-                                  placeholder="Descrição do item"
-                                />
+                              {selected && (
+                                <div className="mt-1 space-y-1">
+                                  <Label className="text-[10px] font-medium text-muted-foreground">
+                                    Nome/descrição no orçamento
+                                  </Label>
+                                  <Input
+                                    className="h-7 text-xs"
+                                    value={line.nomeOverride ?? (prod?.nome ?? composicao?.nome ?? "")}
+                                    onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
+                                    placeholder="Nome ou descrição que aparecerá no orçamento"
+                                  />
+                                </div>
                               )}
                               {composicao && (
                                 <p className="mt-1 text-[11px] text-muted-foreground">
