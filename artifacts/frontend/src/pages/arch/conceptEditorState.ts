@@ -13,8 +13,8 @@ import {
   type StairParameters,
 } from "./conceptStairs";
 import type { ConceptTypology, LayoutPreferences } from "./conceptTemplates";
-import type { ConceptObject } from "./conceptObjects";
-import type { ConceptMaterialScheme } from "./conceptMaterials";
+import { sanitizeConceptObjectForPersistence, type ConceptObject } from "./conceptObjects";
+import { sanitizeConceptMaterialSchemeForFloors, type ConceptMaterialScheme } from "./conceptMaterials";
 
 export type RoomKind =
   | "sala"
@@ -316,6 +316,72 @@ export function autoArrange(
   }
 
   return [...others, ...result];
+}
+
+export type ConceptDraftPayloadInput = {
+  currentStep: number;
+  renderState?: ConceptRenderState;
+  floors: number;
+  desiredArea: number;
+  typology: ConceptTypology;
+  layoutPreferences: LayoutPreferences;
+  wallFirstFloors: number[];
+  showDimensions: boolean;
+  customWalls: CustomWall[];
+  customOpenings: CustomOpening[];
+  spaceProfiles: SpaceProfile[];
+  objects: ConceptObject[];
+  materialScheme: ConceptMaterialScheme;
+  rooms: Room[];
+  openingOverrides: Record<string, OpeningOverride>;
+  customerProfile: CustomerProfile;
+  facadePreferences: ConceptFacadePreferences;
+  selectedVariant: number;
+  lotWidth: number;
+  lotDepth: number;
+};
+
+export function buildConceptPersistencePayload(input: ConceptDraftPayloadInput) {
+  const persistedCustomOpenings = normalizeCustomOpeningsForWalls(
+    input.customOpenings,
+    input.customWalls,
+    true,
+  );
+  const persistedRooms = normalizeDraftRooms(input.rooms);
+  const persistedObjects = input.objects
+    .filter((object) => object.floor >= 0 && object.floor < input.floors)
+    .map((object) =>
+      sanitizeConceptObjectForPersistence(object, input.lotWidth, input.lotDepth)
+    );
+
+  return {
+    title: "Meu pré-projeto",
+    status: "draft",
+    currentStep: input.currentStep,
+    lot: { width: input.lotWidth, depth: input.lotDepth },
+    configuration: {
+      floors: input.floors,
+      desiredArea: input.desiredArea,
+      typology: input.typology,
+      layoutPreferences: input.layoutPreferences,
+      wallFirstFloors: input.wallFirstFloors,
+      showDimensions: input.showDimensions,
+      customWalls: input.customWalls,
+      customOpenings: persistedCustomOpenings,
+      spaceProfiles: input.spaceProfiles,
+      objects: persistedObjects,
+      materials: sanitizeConceptMaterialSchemeForFloors(
+        input.materialScheme,
+        input.floors,
+      ),
+    },
+    rooms: persistedRooms,
+    openingOverrides: input.openingOverrides,
+    customerProfile: input.customerProfile,
+    facadePreferences: input.facadePreferences,
+    conceptRender: input.renderState ?? { status: "idle" as const },
+    selectedVariant: input.selectedVariant,
+  };
 }
 
 export function cloneEditorSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
