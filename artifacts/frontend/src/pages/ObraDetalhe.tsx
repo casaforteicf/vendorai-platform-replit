@@ -1619,6 +1619,7 @@ const ORC_STATUS: Record<string, { label: string; color: string }> = {
   rascunho:  { label: "Rascunho",  color: "bg-slate-100 text-slate-600" },
   enviado:   { label: "Enviado",   color: "bg-blue-100 text-blue-700" },
   aprovado:  { label: "Aprovado",  color: "bg-emerald-100 text-emerald-700" },
+  contratado: { label: "Contratado", color: "bg-emerald-100 text-emerald-800" },
   rejeitado: { label: "Rejeitado", color: "bg-red-100 text-red-700" },
 };
 
@@ -1688,7 +1689,14 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   }, [addingItemEtapaId]);
 
   function applySinapi(item: { codigo: string; descricao: string; unidade: string; preco: number }) {
-    setNewItem((prev) => ({ ...prev, nome: item.descricao, unidade: item.unidade.toLowerCase(), custoUnitario: String(item.preco) }));
+    setNewItem((prev) => ({
+      ...prev,
+      nome: item.descricao,
+      unidade: item.unidade.toLowerCase(),
+      custoUnitario: String(item.preco),
+      insumoId: "",
+      composicaoId: "",
+    }));
     setSinapiQuery("");
     setSinapiResults([]);
   }
@@ -1980,6 +1988,24 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
 
       {selectedId && orcamento && (
         <div className="space-y-3">
+          {(orcamento as any).precosDesatualizados && (
+            <Card className="border-amber-300 bg-amber-50/70">
+              <CardContent className="py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-900">A tabela mestre de preços mudou</p>
+                    <p className="text-xs text-amber-800">Este orçamento foi enviado e não foi alterado silenciosamente. Revise e aplique os novos custos quando quiser.</p>
+                  </div>
+                </div>
+                {!locked && (
+                  <Button size="sm" variant="outline" onClick={handleRecalculatePrices} disabled={recalculatingPrices}>
+                    {recalculatingPrices ? "Atualizando..." : "Atualizar com tabela mestre"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
           {/* Header do orçamento */}
           <Card>
             <CardHeader className="pb-3">
@@ -2197,6 +2223,34 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                       <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <DialogHeader><DialogTitle>Adicionar item — {etapa.nome}</DialogTitle></DialogHeader>
                         <div className="space-y-4">
+                          <div className="space-y-1.5">
+                            <Label>Origem do custo</Label>
+                            <select
+                              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                              value={newItem.insumoId ? `insumo:${newItem.insumoId}` : newItem.composicaoId ? `composicao:${newItem.composicaoId}` : "manual"}
+                              onChange={(e) => applyMasterSource(e.target.value)}
+                            >
+                              <option value="manual">Manual / SINAPI avulso</option>
+                              <optgroup label="Base mestre de insumos">
+                                {insumosBase.map((item) => (
+                                  <option key={item.id} value={`insumo:${item.id}`}>
+                                    {item.codigo ? `${item.codigo} — ` : ""}{item.nome} · {item.precoUnitario ? fmtBRL(item.precoUnitario) : "sem preço"}
+                                  </option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Composições">
+                                {composicoesBase.map((item) => (
+                                  <option key={item.id} value={`composicao:${item.id}`}>
+                                    {item.codigo ? `${item.codigo} — ` : ""}{item.nome} · {item.custoTotal ? fmtBRL(item.custoTotal) : "sem custo"}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            </select>
+                            <p className="text-xs text-muted-foreground">
+                              Itens ligados à base mestre acompanham as alterações de preço enquanto o orçamento estiver em rascunho.
+                            </p>
+                          </div>
+
                           {/* SINAPI search */}
                           <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">Buscar no SINAPI (opcional)</Label>
@@ -2255,8 +2309,15 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
                               <Input type="number" step="0.001" value={newItem.quantidade} onChange={(e) => setNewItem({ ...newItem, quantidade: e.target.value })} />
                             </div>
                             <div className="space-y-2">
-                              <Label>Custo unitário (R$)</Label>
-                              <Input type="number" step="0.01" placeholder="0,00" value={newItem.custoUnitario} onChange={(e) => setNewItem({ ...newItem, custoUnitario: e.target.value })} />
+                              <Label>Custo unitário (R$){(newItem.insumoId || newItem.composicaoId) && <span className="text-muted-foreground font-normal"> · automático</span>}</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0,00"
+                                value={newItem.custoUnitario}
+                                disabled={!!newItem.insumoId || !!newItem.composicaoId}
+                                onChange={(e) => setNewItem({ ...newItem, custoUnitario: e.target.value })}
+                              />
                             </div>
                             <div className="space-y-2">
                               <Label>BDI% <span className="text-muted-foreground font-normal">(padrão: {orcamento.bdiGlobal ?? "0"}%)</span></Label>
