@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,6 +13,7 @@ import {
   Maximize2,
   Plus,
   RotateCcw,
+  RotateCw,
   Sparkles,
   Trees,
   Waves,
@@ -211,6 +212,10 @@ export default function ConceptPlanner() {
   const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
   const [interactionMode, setInteractionMode] = useState<"room" | "wall" | "opening">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
+  const roomsRef = useRef<Room[]>(rooms);
+  const editStartRef = useRef<Room[] | null>(null);
+  const [roomHistory, setRoomHistory] = useState<Room[][]>([]);
+  const [roomFuture, setRoomFuture] = useState<Room[][]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
@@ -225,6 +230,10 @@ export default function ConceptPlanner() {
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
+
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
 
   useEffect(() => {
     let cancelled = false;
@@ -338,6 +347,52 @@ export default function ConceptPlanner() {
 
   const toggleLayoutPreference = (key: LayoutPreferenceKey) => {
     setLayoutPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const snapshotRooms = (source: Room[] = roomsRef.current) =>
+    source.map((room) => ({ ...room }));
+
+  const pushRoomHistory = (before: Room[]) => {
+    setRoomHistory((history) => [...history.slice(-39), snapshotRooms(before)]);
+    setRoomFuture([]);
+  };
+
+  const beginRoomEdit = () => {
+    if (!editStartRef.current) editStartRef.current = snapshotRooms();
+  };
+
+  const endRoomEdit = () => {
+    const before = editStartRef.current;
+    editStartRef.current = null;
+    if (!before) return;
+    const after = roomsRef.current;
+    if (JSON.stringify(before) !== JSON.stringify(after)) pushRoomHistory(before);
+  };
+
+  const undoRooms = () => {
+    setRoomHistory((history) => {
+      const previous = history[history.length - 1];
+      if (!previous) return history;
+      setRoomFuture((future) => [snapshotRooms(), ...future].slice(0, 40));
+      setRooms(snapshotRooms(previous));
+      setSelectedId(null);
+      setSelectedWallId(null);
+      setSelectedOpeningId(null);
+      return history.slice(0, -1);
+    });
+  };
+
+  const redoRooms = () => {
+    setRoomFuture((future) => {
+      const next = future[0];
+      if (!next) return future;
+      setRoomHistory((history) => [...history.slice(-39), snapshotRooms()]);
+      setRooms(snapshotRooms(next));
+      setSelectedId(null);
+      setSelectedWallId(null);
+      setSelectedOpeningId(null);
+      return future.slice(1);
+    });
   };
 
   const addRoom = (kind: RoomKind) => {
@@ -932,6 +987,24 @@ export default function ConceptPlanner() {
                 </div>
                 <button
                   type="button"
+                  onClick={undoRooms}
+                  disabled={!roomHistory.length}
+                  title="Desfazer"
+                  className="grid h-9 w-9 place-items-center rounded-xl border bg-background disabled:opacity-35"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={redoRooms}
+                  disabled={!roomFuture.length}
+                  title="Refazer"
+                  className="grid h-9 w-9 place-items-center rounded-xl border bg-background disabled:opacity-35"
+                >
+                  <RotateCw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => void saveConcept(4)}
                   className="rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
                 >
@@ -1112,6 +1185,8 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                         }}
                         onWallMove={moveWallById}
+                        onEditStart={beginRoomEdit}
+                        onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
                       />
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
