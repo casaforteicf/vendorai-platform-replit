@@ -15,7 +15,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   Loader2, Printer, MessageCircle, Pencil, CheckCircle2,
-  Plus, Trash2, X, CalendarIcon, ExternalLink,
+  Plus, Trash2, X, CalendarIcon, ExternalLink, Play, LockKeyhole,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,10 +88,21 @@ function buildGoogleCalendarUrl(title: string, dateIso: string, description: str
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
+type ItemExecucaoStatus = "pendente" | "em_execucao" | "concluida";
+
 interface ItemEdit {
   nome: string;
   quantidade: number;
   valorUnitario: number;
+  sku?: string;
+  descricao?: string;
+  unidade?: string;
+  produtoId?: string;
+  composicaoId?: string;
+  ordemExecucao?: number;
+  statusExecucao?: ItemExecucaoStatus;
+  iniciadoEm?: string;
+  executadoEm?: string;
 }
 
 export default function PropostaPrint() {
@@ -101,6 +112,7 @@ export default function PropostaPrint() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
+  const [updatingExecutionIndex, setUpdatingExecutionIndex] = useState<number | null>(null);
 
   // ── Edit sheet state ──────────────────────────────────────────────────────
   const [editOpen, setEditOpen] = useState(false);
@@ -156,11 +168,23 @@ export default function PropostaPrint() {
     setEFormaPagamentoMensalidade((proposta as any).formaPagamentoMensalidade ?? "");
     setECondPagamentoMensalidade((proposta as any).condPagamentoMensalidade ?? "");
     setEItens(
-      proposta.itens.map((it) => ({
-        nome: it.nome,
-        quantidade: it.quantidade,
-        valorUnitario: it.valorUnitario,
-      }))
+      proposta.itens.map((raw, index) => {
+        const it = raw as typeof raw & Partial<ItemEdit>;
+        return {
+          nome: it.nome,
+          quantidade: it.quantidade,
+          valorUnitario: it.valorUnitario,
+          sku: it.sku,
+          descricao: it.descricao,
+          unidade: it.unidade,
+          produtoId: it.produtoId,
+          composicaoId: it.composicaoId,
+          ordemExecucao: it.ordemExecucao ?? index + 1,
+          statusExecucao: it.statusExecucao ?? "pendente",
+          iniciadoEm: it.iniciadoEm,
+          executadoEm: it.executadoEm,
+        };
+      })
     );
     setEditOpen(true);
   }
@@ -179,7 +203,11 @@ export default function PropostaPrint() {
         id: proposta.id,
         data: {
           titulo: eTitulo.trim() || proposta.titulo,
-          itens: itensValidos,
+          itens: itensValidos.map((item, index) => ({
+            ...item,
+            ordemExecucao: index + 1,
+            statusExecucao: item.statusExecucao ?? "pendente",
+          })),
           valorTotal,
           validadeAte: eValidade ? new Date(eValidade + "T23:59:59").toISOString() : undefined,
           formaPagamento: (eFormaPagamento as any) || undefined,
@@ -240,11 +268,24 @@ export default function PropostaPrint() {
 
   // ── Item helpers ──────────────────────────────────────────────────────────
   function addItem() {
-    setEItens((prev) => [...prev, { nome: "", quantidade: 1, valorUnitario: 0 }]);
+    setEItens((prev) => [
+      ...prev,
+      {
+        nome: "",
+        quantidade: 1,
+        valorUnitario: 0,
+        ordemExecucao: prev.length + 1,
+        statusExecucao: "pendente",
+      },
+    ]);
   }
 
   function removeItem(i: number) {
-    setEItens((prev) => prev.filter((_, idx) => idx !== i));
+    setEItens((prev) =>
+      prev
+        .filter((_, idx) => idx !== i)
+        .map((item, index) => ({ ...item, ordemExecucao: index + 1 }))
+    );
   }
 
   function updateItem(i: number, field: keyof ItemEdit, raw: string) {
