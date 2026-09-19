@@ -380,9 +380,35 @@ export default function ConceptPlan2D({
     if (gesture.mode === "opening" && gesture.openingId && onOpeningChange) {
       const opening = geometry.openings.find((item) => item.id === gesture.openingId);
       if (!opening) return;
+      const pad = 0.55;
+
+      if (opening.roomId.startsWith("custom-wall:")) {
+        const wallId = opening.roomId.slice("custom-wall:".length);
+        const wall = customWalls.find((item) => item.id === wallId);
+        if (!wall) return;
+        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+        if (horizontal) {
+          const minX = Math.min(wall.x1, wall.x2) + Math.min(pad, Math.abs(wall.x2 - wall.x1) / 3);
+          const maxX = Math.max(wall.x1, wall.x2) - Math.min(pad, Math.abs(wall.x2 - wall.x1) / 3);
+          onOpeningChange(opening.id, {
+            x: snap(Math.max(minX, Math.min(maxX, opening.x + dx))),
+            y: wall.y1,
+            type: opening.type,
+          });
+        } else {
+          const minY = Math.min(wall.y1, wall.y2) + Math.min(pad, Math.abs(wall.y2 - wall.y1) / 3);
+          const maxY = Math.max(wall.y1, wall.y2) - Math.min(pad, Math.abs(wall.y2 - wall.y1) / 3);
+          onOpeningChange(opening.id, {
+            x: wall.x1,
+            y: snap(Math.max(minY, Math.min(maxY, opening.y + dy))),
+            type: opening.type,
+          });
+        }
+        return;
+      }
+
       const owner = rooms.find((room) => room.id === opening.roomId);
       if (!owner) return;
-      const pad = 0.55;
       if (opening.orientation === "horizontal") {
         const minX = owner.x + Math.min(pad, owner.width / 3);
         const maxX = owner.x + owner.width - Math.min(pad, owner.width / 3);
