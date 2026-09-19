@@ -1011,7 +1011,11 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc",
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const [orcamento] = await db
-    .select({ id: obraOrcamentosTable.id, bdiGlobal: obraOrcamentosTable.bdiGlobal })
+    .select({
+      id: obraOrcamentosTable.id,
+      bdiGlobal: obraOrcamentosTable.bdiGlobal,
+      modoPrecificacao: obraOrcamentosTable.modoPrecificacao,
+    })
     .from(obraOrcamentosTable)
     .where(and(
       eq(obraOrcamentosTable.id, orcamentoId),
@@ -1041,8 +1045,19 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc",
     const qtd = parseFloat(item.quantidade ?? "1");
     const custo = parseFloat(item.custoUnitario ?? "0");
     const bdi = item.bdi != null ? parseFloat(item.bdi) : bdiGlobal;
-    const valorTotal = qtd * custo * (1 + bdi / 100);
-    return { itemId: item.id, nome: item.nome, etapaNome: etapaMap.get(item.etapaId) ?? "", unidade: item.unidade, quantidade: qtd, custoUnitario: custo, bdi, valorTotal };
+    const valorTotal = orcamento.modoPrecificacao === "detalhada"
+      ? qtd * custo
+      : qtd * custo * (1 + bdi / 100);
+    return {
+      itemId: item.id,
+      nome: item.nome,
+      etapaNome: etapaMap.get(item.etapaId) ?? "",
+      unidade: item.unidade,
+      quantidade: qtd,
+      custoUnitario: custo,
+      bdi,
+      valorTotal,
+    };
   });
 
   comValor.sort((a, b) => b.valorTotal - a.valorTotal);
@@ -1120,6 +1135,16 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate"
       descricao: original.descricao,
       status: "rascunho",
       bdiGlobal: original.bdiGlobal,
+      modoPrecificacao: original.modoPrecificacao,
+      custosIndiretosPct: original.custosIndiretosPct,
+      administracaoPct: original.administracaoPct,
+      riscoPct: original.riscoPct,
+      financeiroPct: original.financeiroPct,
+      impostosPct: original.impostosPct,
+      comissaoPct: original.comissaoPct,
+      margemPct: original.margemPct,
+      descontoPct: original.descontoPct,
+      areaReferencia: original.areaReferencia,
     })
     .returning();
 
@@ -1147,6 +1172,10 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate"
         itensOriginais.map((i) => ({
           etapaId: novaEtapa.id,
           nome: i.nome,
+          codigo: i.codigo,
+          composicaoId: i.composicaoId,
+          origem: i.origem,
+          origemReferencia: i.origemReferencia,
           unidade: i.unidade,
           quantidade: i.quantidade,
           custoUnitario: i.custoUnitario,
