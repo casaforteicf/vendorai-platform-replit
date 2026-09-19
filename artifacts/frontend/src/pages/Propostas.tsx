@@ -1712,6 +1712,7 @@ export function CatalogoModal({
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
 interface CartLine {
+  tipo: "produto" | "composicao";
   produtoId?: string;
   composicaoId?: string;
   quantidade: number;
@@ -1796,7 +1797,7 @@ function newFreeItem(): FreeItem {
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
   
     // catalog mode
-    const [cartLines, setCartLines] = useState<CartLine[]>([{ quantidade: 1 }]);
+    const [cartLines, setCartLines] = useState<CartLine[]>([{ tipo: "produto", quantidade: 1 }]);
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
     // livre mode
@@ -1861,7 +1862,7 @@ function newFreeItem(): FreeItem {
     useEffect(() => {
       if (!open || initialProductIds.length === 0) return;
       setMode("catalogo");
-      setCartLines(initialProductIds.map((produtoId) => ({ produtoId, quantidade: 1 })));
+      setCartLines(initialProductIds.map((produtoId) => ({ tipo: "produto" as const, produtoId, quantidade: 1 })));
     }, [open, initialProductIds.join(",")]);
   
     // totals
@@ -1922,7 +1923,7 @@ function newFreeItem(): FreeItem {
     });
     setMode("catalogo");
     setSelectedTemplateSlug("");
-    setCartLines([{ quantidade: 1 }]);
+    setCartLines([{ tipo: "produto", quantidade: 1 }]);
     setCartError("");
     setFreeItems([newFreeItem()]);
     setFreeError("");
@@ -1932,7 +1933,9 @@ function newFreeItem(): FreeItem {
   }
 
   // ── catalog helpers ───────────────────────────────────────────────────────
-  function addCatLine()    { setCartLines((p) => [...p, { quantidade: 1 }]); }
+  function addCatLine(tipo: "produto" | "composicao" = "produto") {
+    setCartLines((prev) => [...prev, { tipo, quantidade: 1 }]);
+  }
   async function calcularOrcamentoM2(payload: {
   produtoId: string;
   superficies: Record<string, unknown>[];
@@ -1953,22 +1956,25 @@ function newFreeItem(): FreeItem {
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
-  function selectBudgetItem(i: number, value: string) {
-    if (value.startsWith("composicao:")) {
-      const composicaoId = value.slice("composicao:".length);
-      updateCatLine(i, {
-        produtoId: undefined,
-        composicaoId,
-        precoUnitarioOverride: undefined,
-        nomeOverride: undefined,
-      });
-      return;
-    }
+  function changeLineType(index: number, tipo: "produto" | "composicao") {
+    setCartLines((prev) => prev.map((line, current) => current === index
+      ? {
+          tipo,
+          quantidade: line.quantidade || 1,
+          produtoId: undefined,
+          composicaoId: undefined,
+          precoUnitarioOverride: undefined,
+          nomeOverride: undefined,
+        }
+      : line
+    ));
+  }
 
-    const produtoId = value.startsWith("produto:") ? value.slice("produto:".length) : value;
+  function selectProduct(index: number, produtoId: string) {
     const prod = activeCatalog.find((p) => p.id === produtoId);
     if (!prod) {
-      updateCatLine(i, {
+      updateCatLine(index, {
+        tipo: "produto",
         produtoId,
         composicaoId: undefined,
         precoUnitarioOverride: undefined,
@@ -1981,19 +1987,31 @@ function newFreeItem(): FreeItem {
     const precoMens = prod.precoMensalidade ? parseFloat(prod.precoMensalidade) : 0;
     if (precoImpl > 0 && precoMens > 0) {
       setCartLines((prev) => [
-        ...prev.slice(0, i),
-        { produtoId, quantidade: 1, precoUnitarioOverride: precoImpl, nomeOverride: `${prod.nome} — Implantação` },
-        { produtoId, quantidade: 1, precoUnitarioOverride: precoMens, nomeOverride: `${prod.nome} — Mensalidade` },
-        ...prev.slice(i + 1),
+        ...prev.slice(0, index),
+        { tipo: "produto", produtoId, quantidade: 1, precoUnitarioOverride: precoImpl, nomeOverride: `${prod.nome} — Implantação` },
+        { tipo: "produto", produtoId, quantidade: 1, precoUnitarioOverride: precoMens, nomeOverride: `${prod.nome} — Mensalidade` },
+        ...prev.slice(index + 1),
       ]);
-    } else {
-      updateCatLine(i, {
-        produtoId,
-        composicaoId: undefined,
-        precoUnitarioOverride: undefined,
-        nomeOverride: undefined,
-      });
+      return;
     }
+
+    updateCatLine(index, {
+      tipo: "produto",
+      produtoId,
+      composicaoId: undefined,
+      precoUnitarioOverride: undefined,
+      nomeOverride: undefined,
+    });
+  }
+
+  function selectComposicao(index: number, composicaoId: string) {
+    updateCatLine(index, {
+      tipo: "composicao",
+      composicaoId,
+      produtoId: undefined,
+      precoUnitarioOverride: undefined,
+      nomeOverride: undefined,
+    });
   }
 
   // ── livre helpers ─────────────────────────────────────────────────────────
@@ -2084,7 +2102,10 @@ function newFreeItem(): FreeItem {
         }
       );
     } else if (mode === "catalogo") {
-      const valid = cartLines.filter((line) => line.produtoId || line.composicaoId);
+      const valid = cartLines.filter((line) =>
+        (line.tipo === "produto" && line.produtoId)
+        || (line.tipo === "composicao" && line.composicaoId)
+      );
       if (!valid.length) { setCartError("Adicione pelo menos um produto ou composição."); return; }
       setCartError("");
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
@@ -2103,8 +2124,8 @@ function newFreeItem(): FreeItem {
             prazoEntrega: vals.prazoEntrega || undefined,
             ...recFields,
             itens: valid.map((line) => ({
-              ...(line.produtoId ? { produtoId: line.produtoId } : {}),
-              ...(line.composicaoId ? { composicaoId: line.composicaoId } : {}),
+              ...(line.tipo === "produto" && line.produtoId ? { produtoId: line.produtoId } : {}),
+              ...(line.tipo === "composicao" && line.composicaoId ? { composicaoId: line.composicaoId } : {}),
               quantidade: line.quantidade,
               precoUnitario: line.precoUnitarioOverride,
               nome: line.nomeOverride || undefined,
@@ -2345,17 +2366,23 @@ function newFreeItem(): FreeItem {
             {/* ── CATALOG MODE ──────────────────────────────────────────────── */}
             {mode === "catalogo" && (
               <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <p className="text-sm font-medium">Itens do Orçamento</p>
-                  <Button type="button" variant="outline" size="sm" onClick={addCatLine}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("produto")}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Produto
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => addCatLine("composicao")}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Composição
+                    </Button>
+                  </div>
                 </div>
                 <div className="rounded-md border overflow-hidden overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs py-2">Produto / Composição</TableHead>
+                        <TableHead className="text-xs py-2 w-32">Tipo</TableHead>
+                        <TableHead className="text-xs py-2">Item</TableHead>
                         <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
@@ -2364,41 +2391,54 @@ function newFreeItem(): FreeItem {
                     </TableHeader>
                     <TableBody>
                       {cartLines.map((line, idx) => {
-                        const prod = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
-                        const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+                        const prod = line.tipo === "produto" && line.produtoId
+                          ? activeCatalog.find((item) => item.id === line.produtoId)
+                          : undefined;
+                        const composicao = line.tipo === "composicao" && line.composicaoId
+                          ? composicoes.find((item) => item.id === line.composicaoId)
+                          : undefined;
                         const selected = prod || composicao;
                         const basePrice = prod ? parseFloat(prod.precoBase) : Number(composicao?.custoTotal ?? 0);
                         const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
                         const subtotal = selected ? line.quantidade * precoUnit : 0;
                         const unidade = prod?.unidade ?? composicao?.unidade ?? "";
-                        const selectValue = line.produtoId
-                          ? `produto:${line.produtoId}`
-                          : line.composicaoId
-                            ? `composicao:${line.composicaoId}`
-                            : "";
                         return (
                           <TableRow key={idx}>
-                            <TableCell className="py-1.5">
-                              <Select value={selectValue} onValueChange={(value) => selectBudgetItem(idx, value)}>
-                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione produto ou composição…" /></SelectTrigger>
+                            <TableCell className="py-1.5 align-top">
+                              <Select value={line.tipo} onValueChange={(value) => changeLineType(idx, value as "produto" | "composicao")}>
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
-                                  {activeCatalog.map((p) => (
-                                    <SelectItem key={`produto-${p.id}`} value={`produto:${p.id}`}>
-                                      {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
-                                    </SelectItem>
-                                  ))}
-                                  {composicoes.length > 0 && (
-                                    <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Composições de obra
-                                    </div>
-                                  )}
-                                  {composicoes.map((item: Composicao) => (
-                                    <SelectItem key={`composicao-${item.id}`} value={`composicao:${item.id}`}>
-                                      [Composição] {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
-                                    </SelectItem>
-                                  ))}
+                                  <SelectItem value="produto">Produto</SelectItem>
+                                  <SelectItem value="composicao">Composição</SelectItem>
                                 </SelectContent>
                               </Select>
+                            </TableCell>
+                            <TableCell className="py-1.5">
+                              {line.tipo === "produto" ? (
+                                <Select value={line.produtoId} onValueChange={(value) => selectProduct(idx, value)}>
+                                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione um produto…" /></SelectTrigger>
+                                  <SelectContent>
+                                    {activeCatalog.map((p) => (
+                                      <SelectItem key={p.id} value={p.id}>
+                                        {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Select value={line.composicaoId} onValueChange={(value) => selectComposicao(idx, value)}>
+                                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione uma composição…" /></SelectTrigger>
+                                  <SelectContent>
+                                    {composicoes.map((item: Composicao) => (
+                                      <SelectItem key={item.id} value={item.id}>
+                                        {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
                               {(() => {
   const tipoCalculo = (prod as any)?.tipoCalculo;
   if (tipoCalculo !== "area_simples" && tipoCalculo !== "area_com_acabamento_perimetro") return null;
@@ -2494,6 +2534,7 @@ function newFreeItem(): FreeItem {
       setCartLines((prev) => [
         ...prev,
         ...resultado.itensComposicao!.map((item) => ({
+          tipo: "produto" as const,
           produtoId: item.produtoId,
           quantidade: item.quantidade,
           precoUnitarioOverride: item.precoUnitario,
