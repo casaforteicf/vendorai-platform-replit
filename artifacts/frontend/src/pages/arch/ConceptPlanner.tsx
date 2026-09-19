@@ -740,8 +740,60 @@ export default function ConceptPlanner() {
   const updateCustomWall = (
     wallId: string,
     patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>,
+    recordHistory = false,
   ) => {
+    const before = recordHistory ? snapshotEditor() : null;
     setCustomWalls((prev) => prev.map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall));
+    if (before) pushRoomHistory(before);
+  };
+
+  const setCustomWallLength = (wallId: string, rawLength: number) => {
+    const wall = customWalls.find((item) => item.id === wallId);
+    if (!wall || !Number.isFinite(rawLength)) return;
+    const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), rawLength));
+    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+    const before = snapshotEditor();
+
+    if (horizontal) {
+      const direction = wall.x2 >= wall.x1 ? 1 : -1;
+      const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + length * direction));
+      setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x2, y2: item.y1 } : item));
+    } else {
+      const direction = wall.y2 >= wall.y1 ? 1 : -1;
+      const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + length * direction));
+      setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x2: item.x1, y2 } : item));
+    }
+
+    pushRoomHistory(before);
+  };
+
+  const setCustomWallStart = (wallId: string, axis: "x" | "y", value: number) => {
+    const wall = customWalls.find((item) => item.id === wallId);
+    if (!wall || !Number.isFinite(value)) return;
+    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+    const before = snapshotEditor();
+
+    if (horizontal) {
+      if (axis === "x") {
+        const next = Math.max(0, Math.min(lotWidth, value));
+        if (Math.abs(wall.x2 - next) < 0.5) return;
+        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x1: next } : item));
+      } else {
+        const next = Math.max(0, Math.min(lotDepth, value));
+        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, y1: next, y2: next } : item));
+      }
+    } else {
+      if (axis === "x") {
+        const next = Math.max(0, Math.min(lotWidth, value));
+        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x1: next, x2: next } : item));
+      } else {
+        const next = Math.max(0, Math.min(lotDepth, value));
+        if (Math.abs(wall.y2 - next) < 0.5) return;
+        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, y1: next } : item));
+      }
+    }
+
+    pushRoomHistory(before);
   };
 
   const deleteCustomWall = (wallId: string) => {
@@ -1680,11 +1732,58 @@ export default function ConceptPlanner() {
                               {Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)} m · espessura {((selectedCustomWall.thickness ?? 0.15) * 100).toFixed(0)} cm
                             </div>
                           </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="block text-xs font-semibold">
+                              Comprimento exato (m)
+                              <input
+                                type="number"
+                                min="0.5"
+                                step="0.05"
+                                value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
+                                onChange={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.target.value))}
+                                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                              />
+                            </label>
+                            <label className="block text-xs font-semibold">
+                              Orientação
+                              <div className="mt-1 flex h-10 items-center rounded-xl border bg-muted/30 px-3 text-sm font-medium">
+                                {Math.abs(selectedCustomWall.y1 - selectedCustomWall.y2) < 0.01 ? "Horizontal" : "Vertical"}
+                              </div>
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="block text-xs font-semibold">
+                              Início X (m)
+                              <input
+                                type="number"
+                                min="0"
+                                max={lotWidth}
+                                step="0.05"
+                                value={selectedCustomWall.x1.toFixed(2)}
+                                onChange={(event) => setCustomWallStart(selectedCustomWall.id, "x", Number(event.target.value))}
+                                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                              />
+                            </label>
+                            <label className="block text-xs font-semibold">
+                              Início Y (m)
+                              <input
+                                type="number"
+                                min="0"
+                                max={lotDepth}
+                                step="0.05"
+                                value={selectedCustomWall.y1.toFixed(2)}
+                                onChange={(event) => setCustomWallStart(selectedCustomWall.id, "y", Number(event.target.value))}
+                                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                              />
+                            </label>
+                          </div>
+
                           <label className="block text-xs font-semibold">
                             Espessura
                             <select
                               value={selectedCustomWall.thickness ?? 0.15}
-                              onChange={(event) => updateCustomWall(selectedCustomWall.id, { thickness: Number(event.target.value) })}
+                              onChange={(event) => updateCustomWall(selectedCustomWall.id, { thickness: Number(event.target.value) }, true)}
                               className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
                             >
                               <option value={0.10}>10 cm</option>
@@ -1695,7 +1794,7 @@ export default function ConceptPlanner() {
                             </select>
                           </label>
                           <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-                            Arraste os pontos laranja nas extremidades para alterar o comprimento mantendo a parede ortogonal.
+                            Arraste as extremidades para edição rápida ou informe comprimento e coordenadas para ajuste preciso. Alterações numéricas também entram em Desfazer/Refazer.
                           </div>
                           <button
                             type="button"
