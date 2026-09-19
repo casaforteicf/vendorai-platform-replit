@@ -8,7 +8,8 @@ import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
-import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";\nimport { resolveSessionTenantContext } from "../lib/session-tenant-context.js";
+import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";
+import { resolveSessionTenantContext } from "../lib/session-tenant-context.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
