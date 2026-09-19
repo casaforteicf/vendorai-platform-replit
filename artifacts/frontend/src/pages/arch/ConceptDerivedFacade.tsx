@@ -1,0 +1,266 @@
+import type { ConceptFacadePreferences } from "./ConceptVolumetry";
+import type { ConceptModelLevel } from "./ConceptModel3D";
+
+type Props = {
+  lotWidth: number;
+  levels: ConceptModelLevel[];
+  facade: ConceptFacadePreferences;
+};
+
+const EPS = 0.08;
+const LEVEL_HEIGHT = 2.96;
+const WALL_HEIGHT = 2.8;
+
+function facadePalette(facade: ConceptFacadePreferences) {
+  const wall =
+    facade.primaryMaterial === "madeira" ? "#d6ae88" :
+    facade.primaryMaterial === "pedra" ? "#d6d1c8" :
+    facade.primaryMaterial === "concreto" ? "#c7ccd1" :
+    facade.facadeTone === "escuro" ? "#747a81" :
+    facade.facadeTone === "medio" ? "#dedbd5" : "#f2f0ec";
+
+  const accent =
+    facade.accentMaterial === "madeira" ? "#8f6247" :
+    facade.accentMaterial === "pedra" ? "#8d877e" :
+    facade.accentMaterial === "concreto" ? "#777f86" : "#c5c0b8";
+
+  const frame =
+    facade.frameTone === "branco" ? "#f5f7f8" :
+    facade.frameTone === "bronze" ? "#69513f" : "#202428";
+
+  return { wall, accent, frame };
+}
+
+function frontSegments(level: ConceptModelLevel) {
+  const horizontal = level.walls.filter(
+    (wall) => wall.exterior && Math.abs(wall.y1 - wall.y2) <= EPS,
+  );
+  if (!horizontal.length) return { segments: [], frontY: 0 };
+
+  const frontY = Math.max(...horizontal.map((wall) => (wall.y1 + wall.y2) / 2));
+  const segments = horizontal.filter((wall) => {
+    const y = (wall.y1 + wall.y2) / 2;
+    return y >= frontY - 2.5;
+  });
+
+  return { segments, frontY };
+}
+
+function frontOpenings(level: ConceptModelLevel, frontY: number) {
+  return level.openings.filter(
+    (opening) =>
+      opening.orientation === "horizontal" &&
+      Math.abs(opening.y - frontY) <= 2.55,
+  );
+}
+
+function Roof({
+  x,
+  y,
+  width,
+  facade,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  facade: ConceptFacadePreferences;
+}) {
+  if (facade.roof === "platibanda") {
+    return (
+      <>
+        <rect x={x} y={y - 2.1} width={width} height="2.1" fill="#747a80" />
+        <rect x={x + 0.6} y={y - 1.3} width={width - 1.2} height="1.1" fill="#9da3a8" opacity="0.45" />
+      </>
+    );
+  }
+
+  if (facade.roof === "misto") {
+    return (
+      <>
+        <rect x={x} y={y - 1.7} width={width * 0.48} height="1.7" fill="#747a80" />
+        <path
+          d={`M ${x + width * 0.42} ${y} L ${x + width * 0.72} ${y - 7.5} L ${x + width} ${y} Z`}
+          fill="#76513f"
+          stroke="#50382d"
+          strokeWidth="0.55"
+        />
+      </>
+    );
+  }
+
+  return (
+    <path
+      d={`M ${x} ${y} L ${x + width / 2} ${y - 8.5} L ${x + width} ${y} Z`}
+      fill="#76513f"
+      stroke="#50382d"
+      strokeWidth="0.6"
+    />
+  );
+}
+
+export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props) {
+  const colors = facadePalette(facade);
+  const usable = levels
+    .map((level) => ({ level, ...frontSegments(level) }))
+    .filter((entry) => entry.segments.length > 0);
+
+  const maxFloor = usable.reduce((max, entry) => Math.max(max, entry.level.floor), 0);
+  const scaleX = 94 / Math.max(6, lotWidth);
+  const baseX = 13;
+  const groundY = 58;
+  const pxPerMeterY = 7.2;
+
+  const topLevel = usable.find((entry) => entry.level.floor === maxFloor);
+  const topMinX = topLevel?.segments.length
+    ? Math.min(...topLevel.segments.flatMap((wall) => [wall.x1, wall.x2]))
+    : 0;
+  const topMaxX = topLevel?.segments.length
+    ? Math.max(...topLevel.segments.flatMap((wall) => [wall.x1, wall.x2]))
+    : lotWidth;
+  const roofX = baseX + topMinX * scaleX;
+  const roofWidth = Math.max(16, (topMaxX - topMinX) * scaleX);
+  const roofY = groundY - maxFloor * LEVEL_HEIGHT * pxPerMeterY - WALL_HEIGHT * pxPerMeterY;
+
+  return (
+    <svg viewBox="0 0 120 76" className="block h-auto w-full" role="img" aria-label="Fachada derivada da geometria do pré-projeto">
+      <defs>
+        <linearGradient id="derived-facade-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f7f9fb" />
+          <stop offset="100%" stopColor="#e8edf1" />
+        </linearGradient>
+        <linearGradient id="derived-facade-glass" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#81939d" />
+          <stop offset="55%" stopColor="#4f626c" />
+          <stop offset="100%" stopColor="#2a343a" />
+        </linearGradient>
+        <pattern id="derived-stone" width="4" height="3" patternUnits="userSpaceOnUse">
+          <rect width="4" height="3" fill={colors.accent} />
+          <path d="M0 1.5 H4 M2 0 V1.5 M1 1.5 V3" stroke="#fff" strokeOpacity="0.15" strokeWidth="0.2" />
+        </pattern>
+        <filter id="derived-facade-shadow" x="-20%" y="-20%" width="140%" height="160%">
+          <feDropShadow dx="0" dy="1.3" stdDeviation="1.4" floodColor="#64748b" floodOpacity="0.2" />
+        </filter>
+      </defs>
+
+      <rect width="120" height="76" fill="url(#derived-facade-sky)" />
+      <rect y="60" width="120" height="16" fill="#e7ebe5" />
+      <path d="M0 60 H120" stroke="#c4cbc1" strokeWidth="0.5" />
+
+      <g filter="url(#derived-facade-shadow)">
+        {usable.map(({ level, segments, frontY }) => {
+          const levelBottom = groundY - level.floor * LEVEL_HEIGHT * pxPerMeterY;
+          const levelTop = levelBottom - WALL_HEIGHT * pxPerMeterY;
+          const minX = Math.min(...segments.flatMap((wall) => [wall.x1, wall.x2]));
+          const maxX = Math.max(...segments.flatMap((wall) => [wall.x1, wall.x2]));
+          const bodyX = baseX + minX * scaleX;
+          const bodyW = Math.max(4, (maxX - minX) * scaleX);
+          const openings = frontOpenings(level, frontY);
+
+          return (
+            <g key={`facade-level-${level.floor}`}>
+              <rect
+                x={bodyX}
+                y={levelTop}
+                width={bodyW}
+                height={WALL_HEIGHT * pxPerMeterY}
+                fill={colors.wall}
+              />
+
+              {segments.map((wall, index) => {
+                const sx = baseX + Math.min(wall.x1, wall.x2) * scaleX;
+                const sw = Math.max(1.2, Math.abs(wall.x2 - wall.x1) * scaleX);
+                const useAccent =
+                  facade.style === "industrial" ? index % 3 === 0 :
+                  facade.style === "minimalista" ? index === segments.length - 1 :
+                  index % 2 === 1;
+                if (!useAccent) return null;
+                return (
+                  <rect
+                    key={wall.id}
+                    x={sx}
+                    y={levelTop}
+                    width={sw}
+                    height={WALL_HEIGHT * pxPerMeterY}
+                    fill={facade.accentMaterial === "pedra" ? "url(#derived-stone)" : colors.accent}
+                    opacity="0.62"
+                  />
+                );
+              })}
+
+              {openings.map((opening) => {
+                const widthM = opening.type === "door" ? 0.95 : 1.35;
+                const openingX = baseX + (opening.x - widthM / 2) * scaleX;
+                const openingW = Math.max(3.8, widthM * scaleX);
+
+                if (opening.type === "door") {
+                  return (
+                    <g key={opening.id}>
+                      <rect
+                        x={openingX}
+                        y={levelBottom - 2.1 * pxPerMeterY}
+                        width={openingW}
+                        height={2.1 * pxPerMeterY}
+                        rx="0.25"
+                        fill={facade.accentMaterial === "madeira" ? "#8a5d43" : "#4b5055"}
+                        stroke={colors.frame}
+                        strokeWidth="0.55"
+                      />
+                      <circle
+                        cx={openingX + openingW - 0.8}
+                        cy={levelBottom - 1.02 * pxPerMeterY}
+                        r="0.28"
+                        fill="#d7c8b8"
+                      />
+                    </g>
+                  );
+                }
+
+                return (
+                  <g key={opening.id}>
+                    <rect
+                      x={openingX}
+                      y={levelBottom - 2.1 * pxPerMeterY}
+                      width={openingW}
+                      height={1.2 * pxPerMeterY}
+                      rx="0.22"
+                      fill="url(#derived-facade-glass)"
+                      stroke={colors.frame}
+                      strokeWidth="0.6"
+                    />
+                    <line
+                      x1={openingX + openingW / 2}
+                      y1={levelBottom - 2.1 * pxPerMeterY}
+                      x2={openingX + openingW / 2}
+                      y2={levelBottom - 0.9 * pxPerMeterY}
+                      stroke="#d4dde2"
+                      strokeOpacity="0.65"
+                      strokeWidth="0.35"
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+
+        {usable.length > 0 && <Roof x={roofX} y={roofY} width={roofWidth} facade={facade} />}
+      </g>
+
+      <g opacity={facade.landscaping === "leve" ? 0.58 : facade.landscaping === "intenso" ? 1 : 0.82}>
+        <ellipse cx="18" cy="60.7" rx="7.6" ry="2.4" fill="#7f9f7b" />
+        <ellipse cx="102" cy="60.5" rx="6.8" ry="2.1" fill="#8aa786" />
+        {facade.landscaping === "intenso" && (
+          <>
+            <circle cx="12" cy="55.7" r="3.4" fill="#789875" />
+            <circle cx="108" cy="56.1" r="2.9" fill="#86a680" />
+          </>
+        )}
+      </g>
+
+      <path d="M9 62 H111" stroke="#aab3aa" strokeWidth="0.62" />
+      <text x="60" y="70.5" textAnchor="middle" fontSize="2.1" fill="#64748b" fontWeight="700" letterSpacing="0.15">
+        FACHADA DERIVADA DO MODELO
+      </text>
+    </svg>
+  );
+}
