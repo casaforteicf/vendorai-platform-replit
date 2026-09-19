@@ -12,16 +12,34 @@ const { Pool } = pg;
  * existing variables remain as fallbacks so this change is backwards
  * compatible until the restricted role is provisioned in Replit Secrets.
  */
-const connectionString =
+const rawConnectionString =
   process.env.APP_DATABASE_URL ??
   process.env.SUPABASE_DATABASE_URL ??
   process.env.DATABASE_URL;
 
-if (!connectionString) {
+if (!rawConnectionString) {
   throw new Error(
     "APP_DATABASE_URL, SUPABASE_DATABASE_URL or DATABASE_URL must be set.",
   );
 }
+
+function normalizeRuntimeConnectionString(value: string): string {
+  if (!process.env.APP_DATABASE_URL) return value;
+
+  try {
+    const url = new URL(value);
+    if (url.username === "postgres") {
+      url.username = "vendorai_app";
+    } else if (url.username.startsWith("postgres.")) {
+      url.username = `vendorai_app.${url.username.slice("postgres.".length)}`;
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+const connectionString = normalizeRuntimeConnectionString(rawConnectionString);
 
 // Pool sem `max` explícito cai no default do node-postgres (10 conexões
 // simultâneas). O front dispara ~10-15 chamadas em paralelo por troca de
