@@ -1,56 +1,88 @@
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
+import type { ConceptRoomShape } from "./conceptGeometry";
 
 type Props = {
   lotWidth: number;
   levels: ConceptModelLevel[];
+  rooms: ConceptRoomShape[];
   facade: ConceptFacadePreferences;
 };
 
-const EPS = 0.08;
-const LEVEL_HEIGHT = 2.96;
-const WALL_HEIGHT = 2.8;
+type Bounds = { minX: number; maxX: number; width: number };
+
+const STORY_HEIGHT = 18;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
 
 function facadePalette(facade: ConceptFacadePreferences) {
   const wall =
-    facade.primaryMaterial === "madeira" ? "#d6ae88" :
-    facade.primaryMaterial === "pedra" ? "#d6d1c8" :
-    facade.primaryMaterial === "concreto" ? "#c7ccd1" :
-    facade.facadeTone === "escuro" ? "#747a81" :
-    facade.facadeTone === "medio" ? "#dedbd5" : "#f2f0ec";
+    facade.primaryMaterial === "madeira" ? "#c9a47f" :
+    facade.primaryMaterial === "pedra" ? "#d9d4cc" :
+    facade.primaryMaterial === "concreto" ? "#c9ced2" :
+    facade.facadeTone === "escuro" ? "#6f7479" :
+    facade.facadeTone === "medio" ? "#d9d6d0" : "#f2f0eb";
+
+  const wallShade =
+    facade.facadeTone === "escuro" ? "#5f6469" :
+    facade.facadeTone === "medio" ? "#c8c4bd" : "#dfdcd5";
 
   const accent =
-    facade.accentMaterial === "madeira" ? "#8f6247" :
-    facade.accentMaterial === "pedra" ? "#8d877e" :
-    facade.accentMaterial === "concreto" ? "#777f86" : "#c5c0b8";
+    facade.accentMaterial === "madeira" ? "#986848" :
+    facade.accentMaterial === "pedra" ? "#8f8980" :
+    facade.accentMaterial === "concreto" ? "#747b81" : "#b9b4ac";
 
   const frame =
     facade.frameTone === "branco" ? "#f5f7f8" :
-    facade.frameTone === "bronze" ? "#69513f" : "#202428";
+    facade.frameTone === "bronze" ? "#735a45" : "#202428";
 
-  return { wall, accent, frame };
+  const roof =
+    facade.style === "rustico_contemporaneo" ? "#675044" :
+    facade.style === "classico_contemporaneo" ? "#6e5143" :
+    facade.facadeTone === "escuro" ? "#454a4e" : "#565b60";
+
+  return { wall, wallShade, accent, frame, roof };
 }
 
-function frontSegments(level: ConceptModelLevel) {
-  const horizontal = level.walls.filter(
-    (wall) => wall.exterior && Math.abs(wall.y1 - wall.y2) <= EPS,
-  );
-  if (!horizontal.length) return { segments: [], frontY: 0 };
-
-  const frontY = Math.max(...horizontal.map((wall) => (wall.y1 + wall.y2) / 2));
-  const segments = horizontal.filter((wall) => {
-    const y = (wall.y1 + wall.y2) / 2;
-    return y >= frontY - 2.5;
-  });
-
-  return { segments, frontY };
+function floorBounds(rooms: ConceptRoomShape[], floor: number): Bounds | null {
+  const current = rooms.filter((room) => room.floor === floor && room.kind !== "piscina");
+  if (!current.length) return null;
+  const minX = Math.min(...current.map((room) => room.x));
+  const maxX = Math.max(...current.map((room) => room.x + room.width));
+  return { minX, maxX, width: Math.max(1, maxX - minX) };
 }
 
-function frontOpenings(level: ConceptModelLevel, frontY: number) {
-  return level.openings.filter(
-    (opening) =>
-      opening.orientation === "horizontal" &&
-      Math.abs(opening.y - frontY) <= 2.55,
+function modelBounds(levels: ConceptModelLevel[]): Bounds | null {
+  const walls = levels.flatMap((level) => level.walls.filter((wall) => wall.exterior));
+  if (!walls.length) return null;
+  const minX = Math.min(...walls.flatMap((wall) => [wall.x1, wall.x2]));
+  const maxX = Math.max(...walls.flatMap((wall) => [wall.x1, wall.x2]));
+  return { minX, maxX, width: Math.max(1, maxX - minX) };
+}
+
+function Window({
+  x,
+  y,
+  width,
+  height,
+  frame,
+  id,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  frame: string;
+  id: string;
+}) {
+  return (
+    <g>
+      <rect x={x} y={y} width={width} height={height} rx="0.45" fill={"url(#" + id + ")"} stroke={frame} strokeWidth="0.72" />
+      <line x1={x + width / 2} y1={y} x2={x + width / 2} y2={y + height} stroke="#d8e0e4" strokeOpacity="0.52" strokeWidth="0.32" />
+      <line x1={x} y1={y + height * 0.58} x2={x + width} y2={y + height * 0.58} stroke="#d8e0e4" strokeOpacity="0.24" strokeWidth="0.26" />
+    </g>
   );
 }
 
@@ -59,209 +91,377 @@ function Roof({
   y,
   width,
   facade,
+  color,
 }: {
   x: number;
   y: number;
   width: number;
   facade: ConceptFacadePreferences;
+  color: string;
 }) {
   if (facade.roof === "platibanda") {
     return (
-      <>
-        <rect x={x} y={y - 2.1} width={width} height="2.1" fill="#747a80" />
-        <rect x={x + 0.6} y={y - 1.3} width={width - 1.2} height="1.1" fill="#9da3a8" opacity="0.45" />
-      </>
+      <g>
+        <rect x={x - 0.8} y={y - 2.2} width={width + 1.6} height="2.5" rx="0.25" fill={color} />
+        <line x1={x} y1={y - 0.35} x2={x + width} y2={y - 0.35} stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.32" />
+      </g>
     );
   }
 
   if (facade.roof === "misto") {
     return (
-      <>
-        <rect x={x} y={y - 1.7} width={width * 0.48} height="1.7" fill="#747a80" />
+      <g>
+        <rect x={x - 0.6} y={y - 1.8} width={width * 0.5} height="2.1" rx="0.2" fill={color} />
         <path
-          d={`M ${x + width * 0.42} ${y} L ${x + width * 0.72} ${y - 7.5} L ${x + width} ${y} Z`}
-          fill="#76513f"
-          stroke="#50382d"
+          d={"M " + (x + width * 0.42) + " " + y + " L " + (x + width * 0.64) + " " + (y - 8.4) + " L " + (x + width + 1.8) + " " + y + " Z"}
+          fill={color}
+          stroke="#3f342e"
           strokeWidth="0.55"
         />
-      </>
+        <path
+          d={"M " + (x + width * 0.42) + " " + (y - 0.15) + " L " + (x + width * 0.64) + " " + (y - 8.4) + " L " + (x + width + 1.8) + " " + (y - 0.15)}
+          fill="none"
+          stroke="#8b6a59"
+          strokeWidth="0.42"
+        />
+      </g>
+    );
+  }
+
+  if (facade.style === "classico_contemporaneo") {
+    return (
+      <g>
+        <path
+          d={"M " + (x - 2.2) + " " + y + " L " + (x + width / 2) + " " + (y - 10.8) + " L " + (x + width + 2.2) + " " + y + " Z"}
+          fill={color}
+          stroke="#3f342e"
+          strokeWidth="0.62"
+        />
+        <path
+          d={"M " + (x - 2.2) + " " + y + " L " + (x + width / 2) + " " + (y - 10.8) + " L " + (x + width + 2.2) + " " + y}
+          fill="none"
+          stroke="#9a7764"
+          strokeWidth="0.42"
+        />
+      </g>
     );
   }
 
   return (
-    <path
-      d={`M ${x} ${y} L ${x + width / 2} ${y - 8.5} L ${x + width} ${y} Z`}
-      fill="#76513f"
-      stroke="#50382d"
-      strokeWidth="0.6"
-    />
+    <g>
+      <path
+        d={"M " + (x - 2) + " " + y + " L " + (x + width * 0.18) + " " + (y - 7.4) + " L " + (x + width * 0.82) + " " + (y - 7.4) + " L " + (x + width + 2) + " " + y + " Z"}
+        fill={color}
+        stroke="#3d4246"
+        strokeWidth="0.58"
+      />
+      <line x1={x + width * 0.18} y1={y - 7.4} x2={x + width * 0.82} y2={y - 7.4} stroke="#7b8287" strokeWidth="0.34" />
+    </g>
   );
 }
 
-export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props) {
+export default function ConceptDerivedFacade({ lotWidth, levels, rooms, facade }: Props) {
   const colors = facadePalette(facade);
-  const usable = levels
-    .map((level) => ({ level, ...frontSegments(level) }))
-    .filter((entry) => entry.segments.length > 0);
+  const builtRooms = rooms.filter((room) => room.kind !== "piscina");
+  const fallback = modelBounds(levels) ?? { minX: 0, maxX: Math.max(6, lotWidth), width: Math.max(6, lotWidth) };
 
-  const maxFloor = usable.reduce((max, entry) => Math.max(max, entry.level.floor), 0);
-  const scaleX = 94 / Math.max(6, lotWidth);
-  const baseX = 13;
-  const groundY = 58;
-  const pxPerMeterY = 7.2;
+  const overall = builtRooms.length
+    ? (() => {
+        const minX = Math.min(...builtRooms.map((room) => room.x));
+        const maxX = Math.max(...builtRooms.map((room) => room.x + room.width));
+        return { minX, maxX, width: Math.max(6, maxX - minX) };
+      })()
+    : fallback;
 
-  const topLevel = usable.find((entry) => entry.level.floor === maxFloor);
-  const topMinX = topLevel?.segments.length
-    ? Math.min(...topLevel.segments.flatMap((wall) => [wall.x1, wall.x2]))
-    : 0;
-  const topMaxX = topLevel?.segments.length
-    ? Math.max(...topLevel.segments.flatMap((wall) => [wall.x1, wall.x2]))
-    : lotWidth;
-  const roofX = baseX + topMinX * scaleX;
-  const roofWidth = Math.max(16, (topMaxX - topMinX) * scaleX);
-  const roofY = groundY - maxFloor * LEVEL_HEIGHT * pxPerMeterY - WALL_HEIGHT * pxPerMeterY;
+  const maxFloorFromRooms = builtRooms.reduce((max, room) => Math.max(max, room.floor), 0);
+  const maxFloorFromLevels = levels.reduce((max, level) => Math.max(max, level.floor), 0);
+  const maxFloor = Math.max(maxFloorFromRooms, maxFloorFromLevels);
+  const floors = maxFloor + 1;
+
+  const facadeWidth = 106;
+  const scaleX = facadeWidth / Math.max(6, overall.width);
+  const baseX = (140 - facadeWidth) / 2;
+  const groundY = 63;
+  const groundTop = groundY - STORY_HEIGHT;
+
+  const mapX = (x: number) => baseX + (x - overall.minX) * scaleX;
+  const mapW = (width: number) => width * scaleX;
+
+  const groundRooms = builtRooms.filter((room) => room.floor === 0);
+  const garage = groundRooms.find((room) => room.kind === "garagem");
+  const social = groundRooms.find((room) => room.kind === "sala") ?? groundRooms.find((room) => room.kind === "cozinha");
+  const garageCenter = garage ? garage.x + garage.width / 2 : overall.minX + overall.width * 0.24;
+  const garageOnLeft = garageCenter < overall.minX + overall.width / 2;
+
+  const garageX = garage ? mapX(garage.x) + 1.3 : baseX + 2;
+  const garageW = garage ? clamp(mapW(garage.width) - 2.6, 24, 40) : 31;
+  const garageDoorX = garageOnLeft
+    ? clamp(garageX, baseX + 1.4, baseX + facadeWidth - garageW - 1.4)
+    : clamp(garageX + Math.max(0, mapW(garage?.width ?? 0) - garageW - 1.3), baseX + 1.4, baseX + facadeWidth - garageW - 1.4);
+
+  const entryW = facade.style === "classico_contemporaneo" ? 8.6 : 7.5;
+  const desiredEntry = garageOnLeft ? garageDoorX + garageW + 2.2 : garageDoorX - entryW - 2.2;
+  const entryX = clamp(desiredEntry, baseX + 4, baseX + facadeWidth - entryW - 4);
+
+  const socialX = social ? mapX(social.x) : (garageOnLeft ? entryX + entryW + 4 : baseX + 5);
+  const socialRegionW = social ? mapW(social.width) : facadeWidth * 0.42;
+  const socialGlassW = clamp(socialRegionW - 4.5, 18, 31);
+  const socialGlassX = clamp(socialX + 2, baseX + 3, baseX + facadeWidth - socialGlassW - 3);
+
+  const upper = floorBounds(builtRooms, maxFloor);
+  const upperX = floors > 1 && upper ? mapX(upper.minX) : baseX;
+  const upperW = floors > 1 && upper ? clamp(mapW(upper.width), facadeWidth * 0.55, facadeWidth) : facadeWidth;
+  const roofX = floors > 1 ? upperX : baseX;
+  const roofW = floors > 1 ? upperW : facadeWidth;
+  const roofY = groundTop - (floors - 1) * STORY_HEIGHT;
+
+  const upperRooms = builtRooms
+    .filter((room) => room.floor === maxFloor && ["suite", "quarto", "sala"].includes(room.kind))
+    .sort((a, b) => a.x - b.x)
+    .slice(0, 3);
+
+  const privateGround = groundRooms
+    .filter((room) => ["suite", "quarto"].includes(room.kind))
+    .sort((a, b) => a.x - b.x)
+    .slice(0, 2);
+
+  const accentFill = facade.accentMaterial === "pedra" ? "url(#derived-stone)" : colors.accent;
 
   return (
-    <svg viewBox="0 0 120 76" className="block h-auto w-full" role="img" aria-label="Fachada derivada da geometria do pré-projeto">
+    <svg
+      viewBox="0 0 140 78"
+      preserveAspectRatio="xMidYMid meet"
+      className="block h-[520px] w-full"
+      role="img"
+      aria-label="Fachada arquitetônica conceitual derivada do pré-projeto"
+    >
       <defs>
         <linearGradient id="derived-facade-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f7f9fb" />
-          <stop offset="100%" stopColor="#e8edf1" />
+          <stop offset="0%" stopColor="#f5f7fa" />
+          <stop offset="72%" stopColor="#eef2f4" />
+          <stop offset="100%" stopColor="#e8ece8" />
         </linearGradient>
         <linearGradient id="derived-facade-glass" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#81939d" />
-          <stop offset="55%" stopColor="#4f626c" />
-          <stop offset="100%" stopColor="#2a343a" />
+          <stop offset="0%" stopColor="#91a8b3" />
+          <stop offset="35%" stopColor="#617783" />
+          <stop offset="70%" stopColor="#3f515a" />
+          <stop offset="100%" stopColor="#263239" />
         </linearGradient>
-        <pattern id="derived-stone" width="4" height="3" patternUnits="userSpaceOnUse">
-          <rect width="4" height="3" fill={colors.accent} />
-          <path d="M0 1.5 H4 M2 0 V1.5 M1 1.5 V3" stroke="#fff" strokeOpacity="0.15" strokeWidth="0.2" />
+        <linearGradient id="derived-driveway" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#d9d9d4" />
+          <stop offset="100%" stopColor="#c7c8c4" />
+        </linearGradient>
+        <pattern id="derived-stone" width="5" height="3.4" patternUnits="userSpaceOnUse">
+          <rect width="5" height="3.4" fill={colors.accent} />
+          <path d="M0 1.7 H5 M2.5 0 V1.7 M1.2 1.7 V3.4 M4 1.7 V3.4" stroke="#ffffff" strokeOpacity="0.13" strokeWidth="0.22" />
         </pattern>
-        <filter id="derived-facade-shadow" x="-20%" y="-20%" width="140%" height="160%">
-          <feDropShadow dx="0" dy="1.3" stdDeviation="1.4" floodColor="#64748b" floodOpacity="0.2" />
+        <filter id="derived-facade-shadow" x="-20%" y="-30%" width="140%" height="180%">
+          <feDropShadow dx="0" dy="2.2" stdDeviation="2.1" floodColor="#475569" floodOpacity="0.22" />
+        </filter>
+        <filter id="soft-shadow" x="-30%" y="-50%" width="160%" height="220%">
+          <feGaussianBlur stdDeviation="1.4" />
         </filter>
       </defs>
 
-      <rect width="120" height="76" fill="url(#derived-facade-sky)" />
-      <rect y="60" width="120" height="16" fill="#e7ebe5" />
-      <path d="M0 60 H120" stroke="#c4cbc1" strokeWidth="0.5" />
+      <rect width="140" height="78" fill="url(#derived-facade-sky)" />
+      <rect y="63" width="140" height="15" fill="#e4e9e2" />
+      <path d="M0 63 H140" stroke="#b9c3b7" strokeWidth="0.55" />
+
+      <ellipse cx="70" cy="65.2" rx="56" ry="2.5" fill="#94a3a8" opacity="0.14" filter="url(#soft-shadow)" />
+
+      <path
+        d={"M " + (garageDoorX - 2) + " 63 L " + (garageDoorX + garageW + 2) + " 63 L " + (garageDoorX + garageW + 9) + " 78 L " + (garageDoorX - 9) + " 78 Z"}
+        fill="url(#derived-driveway)"
+        opacity="0.95"
+      />
 
       <g filter="url(#derived-facade-shadow)">
-        {usable.map(({ level, segments, frontY }) => {
-          const levelBottom = groundY - level.floor * LEVEL_HEIGHT * pxPerMeterY;
-          const levelTop = levelBottom - WALL_HEIGHT * pxPerMeterY;
-          const minX = Math.min(...segments.flatMap((wall) => [wall.x1, wall.x2]));
-          const maxX = Math.max(...segments.flatMap((wall) => [wall.x1, wall.x2]));
-          const bodyX = baseX + minX * scaleX;
-          const bodyW = Math.max(4, (maxX - minX) * scaleX);
-          const openings = frontOpenings(level, frontY);
+        <rect x={baseX} y={groundTop} width={facadeWidth} height={STORY_HEIGHT} rx="0.42" fill={colors.wall} />
 
+        {floors > 1 && (
+          <rect
+            x={upperX}
+            y={groundTop - STORY_HEIGHT}
+            width={upperW}
+            height={STORY_HEIGHT}
+            rx="0.42"
+            fill={colors.wall}
+          />
+        )}
+
+        <rect
+          x={entryX - 1.5}
+          y={floors > 1 ? groundTop - STORY_HEIGHT + 1.3 : groundTop - 3.8}
+          width={entryW + 3}
+          height={floors > 1 ? STORY_HEIGHT * 2 - 1.3 : STORY_HEIGHT + 3.8}
+          rx="0.32"
+          fill={accentFill}
+          opacity={facade.accentMaterial === "nenhum" ? 0.34 : 0.96}
+        />
+
+        {facade.style === "contemporaneo" && (
+          <rect
+            x={socialGlassX - 1.4}
+            y={groundTop + 2.7}
+            width={socialGlassW + 2.8}
+            height="11.7"
+            rx="0.35"
+            fill="#30363a"
+            opacity="0.9"
+          />
+        )}
+
+        {facade.style === "industrial" && (
+          <rect
+            x={garageOnLeft ? baseX + facadeWidth - 7.2 : baseX}
+            y={roofY - 3}
+            width="7.2"
+            height={groundY - roofY + 3}
+            fill="#444b50"
+          />
+        )}
+
+        {facade.style === "rustico_contemporaneo" && (
+          <rect x={baseX} y={groundY - 5.2} width={facadeWidth} height="5.2" fill="url(#derived-stone)" opacity="0.92" />
+        )}
+
+        <rect
+          x={garageDoorX}
+          y={groundTop + 5.1}
+          width={garageW}
+          height={STORY_HEIGHT - 5.1}
+          rx="0.42"
+          fill="#33393e"
+          stroke={colors.frame}
+          strokeWidth="0.7"
+        />
+        <g stroke="#6d767c" strokeWidth="0.32" opacity="0.88">
+          <line x1={garageDoorX} y1={groundTop + 8.3} x2={garageDoorX + garageW} y2={groundTop + 8.3} />
+          <line x1={garageDoorX} y1={groundTop + 11.5} x2={garageDoorX + garageW} y2={groundTop + 11.5} />
+          <line x1={garageDoorX} y1={groundTop + 14.7} x2={garageDoorX + garageW} y2={groundTop + 14.7} />
+          <line x1={garageDoorX + garageW / 2} y1={groundTop + 5.1} x2={garageDoorX + garageW / 2} y2={groundY} />
+        </g>
+
+        <rect
+          x={entryX}
+          y={groundY - 14.8}
+          width={entryW}
+          height="14.8"
+          rx="0.35"
+          fill={facade.accentMaterial === "madeira" ? "#7f523c" : "#4e555a"}
+          stroke={colors.frame}
+          strokeWidth="0.65"
+        />
+        <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill="#43545d" opacity="0.78" />
+        <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill="#d9c7b2" />
+
+        <Window
+          x={socialGlassX}
+          y={groundTop + 5.1}
+          width={socialGlassW}
+          height="8.8"
+          frame={colors.frame}
+          id="derived-facade-glass"
+        />
+
+        {floors === 1 && privateGround.map((room, index) => {
+          const width = clamp(mapW(room.width) * 0.52, 9, 15);
+          const x = clamp(mapX(room.x) + mapW(room.width) / 2 - width / 2, baseX + 3, baseX + facadeWidth - width - 3);
+          const overlapsMain = x < socialGlassX + socialGlassW + 2 && x + width > socialGlassX - 2;
+          const overlapsGarage = x < garageDoorX + garageW + 2 && x + width > garageDoorX - 2;
+          const overlapsEntry = x < entryX + entryW + 2 && x + width > entryX - 2;
+          if (overlapsMain || overlapsGarage || overlapsEntry) return null;
           return (
-            <g key={`facade-level-${level.floor}`}>
-              <rect
-                x={bodyX}
-                y={levelTop}
-                width={bodyW}
-                height={WALL_HEIGHT * pxPerMeterY}
-                fill={colors.wall}
-              />
-
-              {segments.map((wall, index) => {
-                const sx = baseX + Math.min(wall.x1, wall.x2) * scaleX;
-                const sw = Math.max(1.2, Math.abs(wall.x2 - wall.x1) * scaleX);
-                const useAccent =
-                  facade.style === "industrial" ? index % 3 === 0 :
-                  facade.style === "minimalista" ? index === segments.length - 1 :
-                  index % 2 === 1;
-                if (!useAccent) return null;
-                return (
-                  <rect
-                    key={wall.id}
-                    x={sx}
-                    y={levelTop}
-                    width={sw}
-                    height={WALL_HEIGHT * pxPerMeterY}
-                    fill={facade.accentMaterial === "pedra" ? "url(#derived-stone)" : colors.accent}
-                    opacity="0.62"
-                  />
-                );
-              })}
-
-              {openings.map((opening) => {
-                const widthM = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
-                const heightM = Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
-                const sillM = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
-                const openingX = baseX + (opening.x - widthM / 2) * scaleX;
-                const openingW = Math.max(3.8, widthM * scaleX);
-
-                if (opening.type === "door") {
-                  return (
-                    <g key={opening.id}>
-                      <rect
-                        x={openingX}
-                        y={levelBottom - heightM * pxPerMeterY}
-                        width={openingW}
-                        height={heightM * pxPerMeterY}
-                        rx="0.25"
-                        fill={facade.accentMaterial === "madeira" ? "#8a5d43" : "#4b5055"}
-                        stroke={colors.frame}
-                        strokeWidth="0.55"
-                      />
-                      <circle
-                        cx={openingX + openingW - 0.8}
-                        cy={levelBottom - Math.min(heightM * 0.48, 1.05) * pxPerMeterY}
-                        r="0.28"
-                        fill="#d7c8b8"
-                      />
-                    </g>
-                  );
-                }
-
-                return (
-                  <g key={opening.id}>
-                    <rect
-                      x={openingX}
-                      y={levelBottom - (sillM + heightM) * pxPerMeterY}
-                      width={openingW}
-                      height={heightM * pxPerMeterY}
-                      rx="0.22"
-                      fill="url(#derived-facade-glass)"
-                      stroke={colors.frame}
-                      strokeWidth="0.6"
-                    />
-                    <line
-                      x1={openingX + openingW / 2}
-                      y1={levelBottom - (sillM + heightM) * pxPerMeterY}
-                      x2={openingX + openingW / 2}
-                      y2={levelBottom - sillM * pxPerMeterY}
-                      stroke="#d4dde2"
-                      strokeOpacity="0.65"
-                      strokeWidth="0.35"
-                    />
-                  </g>
-                );
-              })}
-            </g>
+            <Window
+              key={room.id}
+              x={x}
+              y={groundTop + 6.2 + index * 0.15}
+              width={width}
+              height="7.2"
+              frame={colors.frame}
+              id="derived-facade-glass"
+            />
           );
         })}
 
-        {usable.length > 0 && <Roof x={roofX} y={roofY} width={roofWidth} facade={facade} />}
+        {floors > 1 && upperRooms.map((room, index) => {
+          const width = clamp(mapW(room.width) * 0.55, 10, 17);
+          const x = clamp(mapX(room.x) + mapW(room.width) / 2 - width / 2, upperX + 3, upperX + upperW - width - 3);
+          return (
+            <Window
+              key={room.id}
+              x={x}
+              y={groundTop - STORY_HEIGHT + 5.2 + (index % 2) * 0.2}
+              width={width}
+              height="7.4"
+              frame={colors.frame}
+              id="derived-facade-glass"
+            />
+          );
+        })}
+
+        {facade.style === "classico_contemporaneo" && (
+          <g>
+            <rect
+              x={entryX - 2}
+              y={groundTop + 1.7}
+              width={entryW + 4}
+              height={STORY_HEIGHT - 1.7}
+              fill="none"
+              stroke="#d9d2c8"
+              strokeWidth="1.05"
+            />
+            <line
+              x1={entryX - 2}
+              y1={groundTop + 1.7}
+              x2={entryX + entryW + 2}
+              y2={groundTop + 1.7}
+              stroke="#bdb4a8"
+              strokeWidth="1.15"
+            />
+          </g>
+        )}
+
+        {facade.style === "minimalista" && (
+          <rect x={socialGlassX - 2.2} y={groundTop + 2.4} width={socialGlassW + 4.4} height="0.8" rx="0.2" fill="#7c8287" opacity="0.75" />
+        )}
+
+        {facade.style === "tropical" && (
+          <g fill="#9b6a47">
+            <rect x={socialGlassX - 2.8} y={groundTop + 1.6} width={socialGlassW + 5.6} height="1.05" rx="0.22" />
+            {Array.from({ length: 7 }).map((_, index) => (
+              <rect
+                key={index}
+                x={socialGlassX - 1.8 + index * ((socialGlassW + 3.6) / 6)}
+                y={groundTop + 1.6}
+                width="0.42"
+                height="5.1"
+              />
+            ))}
+          </g>
+        )}
+
+        <Roof x={roofX} y={roofY} width={roofW} facade={facade} color={colors.roof} />
+        <rect x={baseX} y={groundY - 0.75} width={facadeWidth} height="0.75" fill={colors.wallShade} opacity="0.72" />
       </g>
 
-      <g opacity={facade.landscaping === "leve" ? 0.58 : facade.landscaping === "intenso" ? 1 : 0.82}>
-        <ellipse cx="18" cy="60.7" rx="7.6" ry="2.4" fill="#7f9f7b" />
-        <ellipse cx="102" cy="60.5" rx="6.8" ry="2.1" fill="#8aa786" />
+      <g opacity={facade.landscaping === "leve" ? 0.66 : facade.landscaping === "intenso" ? 1 : 0.86}>
+        <ellipse cx={baseX + 5} cy="64.2" rx="7.4" ry="2.1" fill="#7f9c79" />
+        <ellipse cx={baseX + facadeWidth - 5} cy="64" rx="6.7" ry="1.9" fill="#89a481" />
+        <ellipse cx={baseX + facadeWidth * 0.71} cy="64.6" rx="4.8" ry="1.35" fill="#93aa89" />
         {facade.landscaping === "intenso" && (
           <>
-            <circle cx="12" cy="55.7" r="3.4" fill="#789875" />
-            <circle cx="108" cy="56.1" r="2.9" fill="#86a680" />
+            <circle cx={baseX + 2.6} cy="59.7" r="3.25" fill="#73906f" />
+            <circle cx={baseX + facadeWidth - 2.2} cy="60.1" r="2.8" fill="#7e9d77" />
+            <rect x={baseX + facadeWidth * 0.76} y="55.2" width="0.65" height="7.5" fill="#7b6754" />
+            <ellipse cx={baseX + facadeWidth * 0.763} cy="54.4" rx="3.8" ry="2.4" fill="#809d77" />
           </>
         )}
       </g>
 
-      <path d="M9 62 H111" stroke="#aab3aa" strokeWidth="0.62" />
-      <text x="60" y="70.5" textAnchor="middle" fontSize="2.1" fill="#64748b" fontWeight="700" letterSpacing="0.15">
-        FACHADA DERIVADA DO MODELO
+      <path d={"M " + (baseX - 4) + " 65.5 H " + (baseX + facadeWidth + 4)} stroke="#a9b2a8" strokeWidth="0.58" />
+      <text x="70" y="74.2" textAnchor="middle" fontSize="1.65" fill="#667085" fontWeight="650" letterSpacing="0.08">
+        {Math.round(overall.width * 10) / 10} m de frente construída · lote {lotWidth.toFixed(1)} m
       </text>
     </svg>
   );
