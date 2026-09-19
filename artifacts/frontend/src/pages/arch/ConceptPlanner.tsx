@@ -419,6 +419,7 @@ export default function ConceptPlanner() {
   const snapshotEditor = (): EditorSnapshot => ({
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
+    customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
     openingOverrides: Object.fromEntries(
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
@@ -427,6 +428,7 @@ export default function ConceptPlanner() {
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
+    customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
     openingOverrides: Object.fromEntries(
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
@@ -436,6 +438,7 @@ export default function ConceptPlanner() {
     const cloned = cloneSnapshot(snapshot);
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
+    setCustomOpenings(cloned.customOpenings);
     setOpeningOverrides(cloned.openingOverrides);
     setSelectedId(null);
     setSelectedWallId(null);
