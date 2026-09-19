@@ -2,6 +2,7 @@ import { useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEv
 import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
+import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -33,6 +34,7 @@ type Props = {
   activeFloor: number;
   levels: ConceptModelLevel[];
   roof: "platibanda" | "aparente" | "misto";
+  facadeDesign?: FacadeDesignState;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -210,6 +212,7 @@ export default function ConceptModel3D({
   activeFloor,
   levels,
   roof,
+  facadeDesign,
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1);
@@ -282,8 +285,21 @@ export default function ConceptModel3D({
   const openingCount = visibleLevels.reduce((sum, level) => sum + level.openings.length, 0);
   const spaceCount = visibleLevels.reduce((sum, level) => sum + level.closedSpaces.length, 0);
 
+  const exteriorMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.main);
+  const accentMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.accent);
+  const allSpaces = levels.flatMap((level) => level.closedSpaces);
+  const buildingBounds = allSpaces.length
+    ? {
+        minX: Math.min(...allSpaces.map((space) => space.bounds.x)),
+        maxX: Math.max(...allSpaces.map((space) => space.bounds.x + space.bounds.width)),
+        minY: Math.min(...allSpaces.map((space) => space.bounds.y)),
+      }
+    : { minX: 0, maxX: lotWidth, minY: 0 };
+  const buildingWidth = Math.max(1, buildingBounds.maxX - buildingBounds.minX);
+  const totalBuildingHeight = Math.max(LEVEL_HEIGHT, (maxLevel + 1) * LEVEL_HEIGHT);
+
   return (
-    <div className="overflow-hidden rounded-2xl border bg-slate-950 shadow-sm">
+    <div className="h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -328,7 +344,7 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
-        className={`block min-h-[500px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100vh-126px)] min-h-[560px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
@@ -338,12 +354,16 @@ export default function ConceptModel3D({
             <stop offset="100%" stopColor="#1e293b" />
           </linearGradient>
           <linearGradient id="concept3d-wall" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#f8fafc" />
-            <stop offset="100%" stopColor="#cbd5e1" />
+            <stop offset="0%" stopColor={exteriorMaterial.baseColor} />
+            <stop offset="100%" stopColor={exteriorMaterial.shadeColor} />
           </linearGradient>
           <linearGradient id="concept3d-wall-side" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#94a3b8" />
-            <stop offset="100%" stopColor="#64748b" />
+            <stop offset="0%" stopColor={exteriorMaterial.shadeColor} />
+            <stop offset="100%" stopColor={exteriorMaterial.lineColor} />
+          </linearGradient>
+          <linearGradient id="concept3d-accent" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={accentMaterial.baseColor} />
+            <stop offset="100%" stopColor={accentMaterial.shadeColor} />
           </linearGradient>
           <linearGradient id="concept3d-roof" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#7c5a47" />
@@ -434,7 +454,7 @@ export default function ConceptModel3D({
                     );
                     return (
                       <g key={`${level.floor}-${wall.id}-${piece.kind}-${index}`}>
-                        <polygon points={points(shape.sideA)} fill={wall.exterior ? "#dbe1e8" : "#aab5c3"} stroke="#475569" strokeWidth="0.055" />
+                        <polygon points={points(shape.sideA)} fill={wall.exterior ? exteriorMaterial.baseColor : "#aab5c3"} stroke="#475569" strokeWidth="0.055" />
                         <polygon points={points(shape.sideB)} fill="url(#concept3d-wall-side)" stroke="#475569" strokeWidth="0.055" />
                         <polygon points={points(shape.top)} fill="url(#concept3d-wall)" stroke="#64748b" strokeWidth="0.055" />
                       </g>
@@ -488,6 +508,37 @@ export default function ConceptModel3D({
                   );
                 });
               })}
+            </g>
+          );
+        })}
+
+        {showAllFloors && facadeDesign?.volumes.map((volume) => {
+          const x1 = buildingBounds.minX + buildingWidth * (volume.x / 100);
+          const x2 = Math.min(buildingBounds.maxX, x1 + buildingWidth * (volume.width / 100));
+          const y = buildingBounds.minY - Math.max(0.08, volume.depth);
+          const zTop = Math.max(0.2, totalBuildingHeight * (1 - volume.y / 100));
+          const zBottom = Math.max(0, totalBuildingHeight * (1 - (volume.y + volume.height) / 100));
+          const shape = wallPolygon(
+            {
+              x1,
+              y1: y,
+              x2: Math.max(x1 + 0.25, x2),
+              y2: y,
+              thickness: Math.max(0.12, volume.depth),
+            },
+            rotation,
+            lotWidth,
+            lotDepth,
+            zoom,
+            zBottom,
+            Math.max(zBottom + 0.18, zTop),
+          );
+          const material = getFacadeMaterial(volume.materialId);
+          return (
+            <g key={`facade-volume-3d-${volume.id}`} opacity={volume.opacity ?? 1}>
+              <polygon points={points(shape.sideA)} fill={material.baseColor} stroke={material.lineColor} strokeWidth="0.06" />
+              <polygon points={points(shape.sideB)} fill={material.shadeColor} stroke={material.lineColor} strokeWidth="0.06" />
+              <polygon points={points(shape.top)} fill={material.baseColor} stroke={material.lineColor} strokeWidth="0.06" />
             </g>
           );
         })}
