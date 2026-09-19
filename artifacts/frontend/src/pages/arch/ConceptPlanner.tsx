@@ -1370,6 +1370,26 @@ export default function ConceptPlanner() {
     });
     return validateArchitecturalConcept({
       rooms,
+      walls: [
+        ...geometry.walls.map((wall) => ({
+          id: wall.id,
+          x1: wall.x1,
+          y1: wall.y1,
+          x2: wall.x2,
+          y2: wall.y2,
+          thickness: 0.15,
+        })),
+        ...customWalls
+          .filter((wall) => wall.floor === activeFloor)
+          .map((wall) => ({
+            id: wall.id,
+            x1: wall.x1,
+            y1: wall.y1,
+            x2: wall.x2,
+            y2: wall.y2,
+            thickness: wall.thickness,
+          })),
+      ],
       lotWidth,
       lotDepth,
       floor: activeFloor,

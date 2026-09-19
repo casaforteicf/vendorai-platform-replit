@@ -4,6 +4,7 @@ import { validateArchitecturalConcept, type ArchitecturalValidationInput } from 
 function baseInput(patch: Partial<ArchitecturalValidationInput> = {}): ArchitecturalValidationInput {
   return {
     rooms: [],
+    walls: [],
     lotWidth: 12,
     lotDepth: 20,
     floor: 0,
@@ -38,6 +39,17 @@ describe("architectural concept validation", () => {
       ],
     }));
     expect(issues.some((issue) => issue.id === "stair-required-0")).toBe(true);
+  });
+
+  it("detecta móvel atravessando uma parede", () => {
+    const issues = validateArchitecturalConcept(baseInput({
+      rooms: [{ id: "s", kind: "sala", label: "Sala", floor: 0, x: 0, y: 0, width: 6, depth: 6 }],
+      walls: [{ id: "w", x1: 3, y1: 0, x2: 3, y2: 6, thickness: 0.15 }],
+      objects: [
+        { id: "a", name: "Sofá", category: "estar", symbol: "sofa", floor: 0, x: 3, y: 3, width: 2, depth: 1, height: 0.8, rotationDeg: 0 },
+      ],
+    }));
+    expect(issues.some((issue) => issue.id === "object-wall-a-w")).toBe(true);
   });
 
   it("detecta colisão real entre móveis", () => {
@@ -91,6 +103,15 @@ describe("architectural concept validation", () => {
     }));
     const dimension = issues.find((issue) => issue.id === "dimension-width-room-q");
     expect(dimension?.severity).toBe("warning");
+  });
+
+  it("aponta parede livre sem nenhum espaço fechado", () => {
+    const issues = validateArchitecturalConcept(baseInput({
+      wallFirstActive: true,
+      wallCount: 1,
+      walls: [{ id: "w", x1: 0, y1: 0, x2: 4, y2: 0 }],
+    }));
+    expect(issues.some((issue) => issue.id === "wall-first-no-space-0")).toBe(true);
   });
 
   it("valida espaços de parede livre sem depender dos rooms legados", () => {

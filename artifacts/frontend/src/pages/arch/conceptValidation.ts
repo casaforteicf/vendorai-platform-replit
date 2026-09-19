@@ -41,8 +41,18 @@ export type ValidationSpace = {
   cells: ClosedSpaceCell[];
 };
 
+export type ValidationWall = {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness?: number;
+};
+
 export type ArchitecturalValidationInput = {
   rooms: ConceptRoomShape[];
+  walls: ValidationWall[];
   lotWidth: number;
   lotDepth: number;
   floor: number;
@@ -152,6 +162,33 @@ function rectPolygon(rect: { x: number; y: number; width: number; height: number
   ];
 }
 
+function wallPolygon(wall: ValidationWall): Point[] | null {
+  const thickness = Math.max(0.08, wall.thickness ?? 0.15);
+  const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+  const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
+  if (horizontal) {
+    return rectPolygon({
+      x: Math.min(wall.x1, wall.x2),
+      y: wall.y1 - thickness / 2,
+      width: Math.abs(wall.x2 - wall.x1),
+      height: thickness,
+    });
+  }
+  if (vertical) {
+    return rectPolygon({
+      x: wall.x1 - thickness / 2,
+      y: Math.min(wall.y1, wall.y2),
+      width: thickness,
+      height: Math.abs(wall.y2 - wall.y1),
+    });
+  }
+  return null;
+}
+
+function rangeOverlap(a1: number, a2: number, b1: number, b2: number) {
+  return Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+}
+
 function openingClearancePolygon(opening: OpeningMarker) {
   const params = normalizeOpeningParameters(opening.type, opening);
   const clearance = opening.type === "door" ? 0.8 : 0.35;
@@ -235,6 +272,7 @@ function validateReferenceDimensions(
 export function validateArchitecturalConcept(input: ArchitecturalValidationInput): ArchitecturalIssue[] {
   const {
     rooms,
+    walls,
     lotWidth,
     lotDepth,
     floor,
@@ -251,7 +289,7 @@ export function validateArchitecturalConcept(input: ArchitecturalValidationInput
 
   if (!wallFirstActive) {
     const basic = validateConceptLayout(rooms, lotWidth, lotDepth, floor)
-      .filter((issue) => !issue.id.startsWith("stair-"));
+      .filter((issue) => !issue.id.startsWith("stair-") && !issue.id.startsWith("small-"));
     for (const issue of basic) {
       const room = issue.roomId ? currentRooms.find((item) => item.id === issue.roomId) : null;
       const position = room ? roomCenter(room) : { x: lotWidth / 2, y: lotDepth / 2 };
@@ -266,15 +304,19 @@ export function validateArchitecturalConcept(input: ArchitecturalValidationInput
         message: issue.message,
       });
     }
-  } else if (wallCount > 0 && spaces.length === 0) {
+  } else if (spaces.length === 0) {
     issues.push({
       id: `wall-first-no-space-${floor}`,
       severity: "error",
       category: "geometry",
       x: lotWidth / 2,
       y: Math.min(lotDepth / 2, 8),
-      message: "A rede de paredes deste pavimento ainda não forma nenhum ambiente fechado.",
-      recommendation: "Feche os perímetros ou conecte as extremidades das paredes.",
+      message: wallCount > 0
+        ? "A rede de paredes deste pavimento ainda não forma nenhum ambiente fechado."
+        : "Este pavimento está no modo parede livre, mas ainda não possui paredes.",
+      recommendation: wallCount > 0
+        ? "Feche os perímetros ou conecte as extremidades das paredes."
+        : "Desenhe o perímetro e as divisórias para formar os ambientes.",
     });
   }
 
@@ -495,6 +537,42 @@ export function validateArchitecturalConcept(input: ArchitecturalValidationInput
         message: `Piso da escada com ${(params.stairTreadDepth * 100).toFixed(0)} cm; referência conceitual: ≥ 25 cm.`,
       });
     }
+    if (params.stairLandingDepth + EPS < params.stairFlightWidth) {
+      issues.push({
+        id: `stair-landing-${stair.id}`,
+        severity: "warning",
+        category: "stair",
+        entityType: "stair",
+        entityId: stair.id,
+        x: position.x,
+        y: position.y,
+        message: `Patamar de ${params.stairLandingDepth.toFixed(2)} m é menor que a largura do lance (${params.stairFlightWidth.toFixed(2)} m).`,
+        recommendation: "Revise o patamar para manter uma transição confortável entre os lances.",
+      });
+    }
+
+    if (floor > 0) {
+      const lower = rooms.find((room) => room.floor === floor - 1 && room.kind === "escada");
+      if (lower) {
+        const overlapX = rangeOverlap(stair.x, stair.x + stair.width, lower.x, lower.x + lower.width);
+        const overlapY = rangeOverlap(stair.y, stair.y + stair.depth, lower.y, lower.y + lower.depth);
+        const overlapArea = overlapX * overlapY;
+        const referenceArea = Math.min(stair.width * stair.depth, lower.width * lower.depth);
+        if (referenceArea > 0 && overlapArea / referenceArea < 0.5) {
+          issues.push({
+            id: `stair-stack-${stair.id}`,
+            severity: "warning",
+            category: "stair",
+            entityType: "stair",
+            entityId: stair.id,
+            x: position.x,
+            y: position.y,
+            message: "A caixa da escada está pouco alinhada com a escada do pavimento inferior.",
+            recommendation: "Revise a continuidade vertical e a posição da abertura de laje.",
+          });
+        }
+      }
+    }
   }
 
   const buildingContains = (point: Point) => {
@@ -506,7 +584,8 @@ export function validateArchitecturalConcept(input: ArchitecturalValidationInput
 
   for (const object of currentObjects) {
     const corners = conceptObjectCorners(object);
-    if (!corners.every(buildingContains)) {
+    const exteriorPlant = object.symbol === "plant" && object.category === "decoracao";
+    if (!exteriorPlant && !corners.every(buildingContains)) {
       issues.push({
         id: `object-outside-${object.id}`,
         severity: "warning",
@@ -535,6 +614,23 @@ export function validateArchitecturalConcept(input: ArchitecturalValidationInput
         message: `${object.name} ocupa a faixa identificada como circulação.`,
         recommendation: "Mantenha a passagem principal livre de mobiliário.",
       });
+    }
+
+    for (const wall of walls) {
+      const polygon = wallPolygon(wall);
+      if (!polygon || !polygonsOverlap(corners, polygon, 0.015)) continue;
+      issues.push({
+        id: `object-wall-${object.id}-${wall.id}`,
+        severity: "error",
+        category: "object",
+        entityType: "object",
+        entityId: object.id,
+        x: object.x,
+        y: object.y,
+        message: `${object.name} está atravessando uma parede.`,
+        recommendation: "Afaste ou gire o objeto para liberar a espessura da parede.",
+      });
+      break;
     }
   }
 
