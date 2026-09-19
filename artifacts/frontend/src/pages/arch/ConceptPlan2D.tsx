@@ -217,18 +217,19 @@ export default function ConceptPlan2D({
     let width = gesture.roomWidth;
     let depth = gesture.roomDepth;
 
-    if (gesture.mode.includes("e")) {
+    const resizeDirection = gesture.mode.startsWith("resize-") ? gesture.mode.slice("resize-".length) : "";
+    if (resizeDirection.includes("e")) {
       width = snap(Math.max(minSize, Math.min(lotWidth - x, gesture.roomWidth + dx)));
     }
-    if (gesture.mode.includes("s")) {
+    if (resizeDirection.includes("s")) {
       depth = snap(Math.max(minSize, Math.min(lotDepth - y, gesture.roomDepth + dy)));
     }
-    if (gesture.mode.includes("w")) {
+    if (resizeDirection.includes("w")) {
       const nextX = snap(Math.max(0, Math.min(gesture.roomX + gesture.roomWidth - minSize, gesture.roomX + dx)));
       width = snap(gesture.roomWidth + (gesture.roomX - nextX));
       x = nextX;
     }
-    if (gesture.mode.includes("n")) {
+    if (resizeDirection.includes("n")) {
       const nextY = snap(Math.max(0, Math.min(gesture.roomY + gesture.roomDepth - minSize, gesture.roomY + dy)));
       depth = snap(gesture.roomDepth + (gesture.roomY - nextY));
       y = nextY;
