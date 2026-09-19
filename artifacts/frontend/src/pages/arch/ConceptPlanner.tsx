@@ -518,6 +518,24 @@ export default function ConceptPlanner() {
   };
 
   const updateOpeningById = (openingId: string, patch: OpeningOverride) => {
+    const custom = customOpenings.find((opening) => opening.id === openingId);
+    if (custom) {
+      const wall = customWalls.find((item) => item.id === custom.wallId);
+      if (!wall) return;
+      const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+      const start = horizontal ? wall.x1 : wall.y1;
+      const end = horizontal ? wall.x2 : wall.y2;
+      const current = horizontal ? patch.x : patch.y;
+      const denominator = end - start;
+      const offset = Math.abs(denominator) < 0.001
+        ? custom.offset
+        : Math.max(0.08, Math.min(0.92, (current - start) / denominator));
+      setCustomOpenings((prev) => prev.map((opening) =>
+        opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
+      ));
+      return;
+    }
+
     setOpeningOverrides((prev) => ({
       ...prev,
       [openingId]: patch,
@@ -572,15 +590,40 @@ export default function ConceptPlanner() {
     () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
   );
+  const customOpeningMarkers = useMemo(
+    () =>
+      customOpenings
+        .filter((opening) => opening.floor === activeFloor)
+        .flatMap((opening) => {
+          const wall = customWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
+          if (!wall) return [];
+          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
+          const x = wall.x1 + (wall.x2 - wall.x1) * offset;
+          const y = wall.y1 + (wall.y2 - wall.y1) * offset;
+          const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+          return [{
+            id: opening.id,
+            type: opening.type,
+            x,
+            y,
+            orientation: horizontal ? "horizontal" as const : "vertical" as const,
+            roomId: `custom-wall:${wall.id}`,
+          }];
+        }),
+    [customOpenings, customWalls, activeFloor],
+  );
   const geometry = useMemo(
     () => ({
       ...baseGeometry,
-      openings: baseGeometry.openings.map((opening) => {
-        const override = openingOverrides[opening.id];
-        return override ? { ...opening, ...override } : opening;
-      }),
+      openings: [
+        ...baseGeometry.openings.map((opening) => {
+          const override = openingOverrides[opening.id];
+          return override ? { ...opening, ...override } : opening;
+        }),
+        ...customOpeningMarkers,
+      ],
     }),
-    [baseGeometry, openingOverrides],
+    [baseGeometry, openingOverrides, customOpeningMarkers],
   );
   const closedSpaces = useMemo(
     () =>
