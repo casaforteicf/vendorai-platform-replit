@@ -1023,8 +1023,8 @@ export default function ConceptPlanner() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-orange-500" />
                 <div>
-                  <h2 className="text-lg font-semibold">6. Fachada e estilo</h2>
-                  <p className="text-xs text-muted-foreground">Escolha a direção visual. A geometria da casa continua a mesma.</p>
+                  <h2 className="text-lg font-semibold">6. Fachada</h2>
+                  <p className="text-xs text-muted-foreground">Agora a fachada é tratada como composição frontal, não como caixas 3D pintadas.</p>
                 </div>
               </div>
 
@@ -1153,42 +1153,31 @@ export default function ConceptPlanner() {
             <div className="rounded-3xl border bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-semibold">Prévia da fachada</h3>
-                  <p className="text-sm text-muted-foreground">A prévia aplica a linguagem visual sem alterar a planta aprovada.</p>
+                  <h3 className="font-semibold">Elevação frontal conceitual</h3>
+                  <p className="text-sm text-muted-foreground">Garagem, entrada, pavimentos, cobertura e aberturas são compostos como fachada frontal.</p>
                 </div>
-                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-700">
+                <div className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold capitalize text-orange-700">
                   {facadePreferences.style.replaceAll("_", " ")}
                 </div>
               </div>
 
-              <div data-concept-render-source="true" className="mt-4 h-[430px] overflow-hidden rounded-2xl border-2 border-slate-300 sm:h-[590px] bg-gradient-to-b from-slate-50 to-slate-100">
-                <ConceptVolumetry
+              <div data-concept-render-source="true" className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
+                <ConceptFacadeElevation
                   rooms={rooms}
-                  lotWidth={lotWidth}
-                  lotDepth={lotDepth}
                   floors={floors}
-                  rotation={rotation}
-                  exploded={false}
                   facade={facadePreferences}
-                  showLabels={false}
                 />
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Girar fachada
-                  <input
-                    type="range"
-                    min="0"
-                    max="360"
-                    step="5"
-                    value={rotation}
-                    onChange={(event) => setRotation(Number(event.target.value))}
-                    className="mt-2 w-full accent-orange-500"
-                  />
-                </label>
-                <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-                  O render usa esta mesma câmera, volumetria e preferências para preservar a ideia aprovada.
+              <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
+                <div className="font-semibold">Critério da fachada</div>
+                <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                  <span>• garagem e acesso reconhecíveis</span>
+                  <span>• composição por pavimentos</span>
+                  <span>• cobertura coerente com estilo</span>
+                  <span>• esquadrias proporcionais</span>
+                  <span>• até 2 materiais dominantes</span>
+                  <span>• paisagismo sem esconder arquitetura</span>
                 </div>
               </div>
 
@@ -1197,7 +1186,7 @@ export default function ConceptPlanner() {
                   <div>
                     <div className="font-semibold">Render conceitual</div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Gera uma imagem fotorrealista mantendo a geometria do pré-projeto.
+                      Usa esta elevação frontal + planta + preferências como referência estruturada.
                     </p>
                   </div>
                   <button
@@ -1221,7 +1210,7 @@ export default function ConceptPlanner() {
 
                 {conceptRender?.status === "processing" && (
                   <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
-                    Render em processamento. A geometria, fachada e materiais selecionados estão sendo usados como base.
+                    Render em processamento com preservação da tipologia e da composição frontal.
                   </div>
                 )}
 
@@ -1234,9 +1223,7 @@ export default function ConceptPlanner() {
                     />
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-background p-3 text-xs text-muted-foreground">
                       <span>Render vinculado a este pré-projeto</span>
-                      {conceptRender.generatedAt && (
-                        <span>{new Date(conceptRender.generatedAt).toLocaleString("pt-BR")}</span>
-                      )}
+                      {conceptRender.generatedAt && <span>{new Date(conceptRender.generatedAt).toLocaleString("pt-BR")}</span>}
                     </div>
                   </div>
                 )}
