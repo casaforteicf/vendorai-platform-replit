@@ -58,6 +58,7 @@ function tenantId(req: Request): string | null {
 
 const renderBodySchema = z.object({
   project_id:        z.string().optional(),
+  concept_project_id: z.string().optional(),
   lead_id:           z.string().optional(),
   original_image_url: z.string().min(10, "original_image_url obrigatório"),
   mode:              z.enum(["preservar", "criar"]),
@@ -112,7 +113,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   }
 
   const {
-    project_id, lead_id, original_image_url, mode,
+    project_id, concept_project_id, lead_id, original_image_url, mode,
     ambiente, estilo, iluminacao, angulo,
     mask_zones, user_notes, materials,
   } = parsed.data;
@@ -127,6 +128,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     tenantId:         tid,
     leadId:           lead_id,
     projectId:        project_id,
+    conceptProjectId: concept_project_id,
     mode,
     ambiente,
     estilo,
@@ -244,6 +246,7 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     success:                render.status === "concluido",
     render_id:              render.id,
     project_id:             render.projectId,
+    concept_project_id:     render.conceptProjectId,
     parent_render_id:       render.parentRenderId,
     status:                 render.status,
     result_image_url:       render.resultImageUrl,
@@ -351,6 +354,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     tenantId:         tid,
     leadId:           parent.leadId,
     projectId:        parent.projectId,
+    conceptProjectId: parent.conceptProjectId,
     parentRenderId:   parent.id,
     mode:             parent.mode,
     ambiente:         parent.ambiente,
