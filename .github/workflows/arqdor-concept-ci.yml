@@ -1,38 +1,8 @@
 name: Arqdor Concept CI
 
 on:
-  push:
-    paths:
-      - "artifacts/frontend/src/pages/arch/ConceptPlanner.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptPlanner.integration.test.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptPlan2D.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptModel3D.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptDerivedFacade.tsx"
-      - "artifacts/frontend/src/pages/arch/concept*.ts"
-      - "artifacts/api-server/src/lib/arch-concept-promotion.ts"
-      - "artifacts/api-server/src/lib/arch-concept-promotion.test.ts"
-      - "artifacts/api-server/src/lib/arch-tenant-context.ts"
-      - "artifacts/api-server/src/lib/arch-tenant-context.test.ts"
-      - "artifacts/api-server/src/routes/arch.ts"
-      - "lib/db/src/schema/arch_concept_projects.ts"
-      - "lib/db/src/schema/arq_objects.ts"
-      - ".github/workflows/arqdor-concept-ci.yml"
-  pull_request:
-    paths:
-      - "artifacts/frontend/src/pages/arch/ConceptPlanner.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptPlanner.integration.test.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptPlan2D.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptModel3D.tsx"
-      - "artifacts/frontend/src/pages/arch/ConceptDerivedFacade.tsx"
-      - "artifacts/frontend/src/pages/arch/concept*.ts"
-      - "artifacts/api-server/src/lib/arch-concept-promotion.ts"
-      - "artifacts/api-server/src/lib/arch-concept-promotion.test.ts"
-      - "artifacts/api-server/src/lib/arch-tenant-context.ts"
-      - "artifacts/api-server/src/lib/arch-tenant-context.test.ts"
-      - "artifacts/api-server/src/routes/arch.ts"
-      - "lib/db/src/schema/arch_concept_projects.ts"
-      - "lib/db/src/schema/arq_objects.ts"
-      - ".github/workflows/arqdor-concept-ci.yml"
+  # O runner hospedado da conta está encerrando antes do primeiro step.
+  # Mantemos o gate pronto para execução manual até o GitHub Actions voltar a iniciar jobs.
   workflow_dispatch:
 
 permissions:
