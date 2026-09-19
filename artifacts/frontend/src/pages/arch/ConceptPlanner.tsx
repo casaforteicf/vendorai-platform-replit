@@ -299,6 +299,7 @@ export default function ConceptPlanner() {
   const wallFirstActive = wallFirstFloors.includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<"build" | "rooms" | "outdoor">("build");
 
   const filteredTypologies = useMemo(() => {
     const query = modelSearch.trim().toLocaleLowerCase("pt-BR");
@@ -2054,77 +2055,303 @@ export default function ConceptPlanner() {
               <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={rooms} facade={facadePreferences} />
             </div>
 
-            <div className="grid min-h-[720px] xl:grid-cols-[220px_1fr_300px]">
-              <aside className="order-3 border-t bg-muted/20 p-3 xl:order-1 xl:border-r xl:border-t-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-1">
-                  {([
-                    ["sala", "Sala"],
-                    ["cozinha", "Cozinha"],
-                    ["quarto", "Quarto"],
-                    ["suite", "Suíte"],
-                    ["banheiro", "Banheiro"],
-                    ["lavanderia", "Lavanderia"],
-                    ["gourmet", "Gourmet"],
-                    ["garagem", "Garagem"],
-                    ["escada", "Escada"],
-                    ["piscina", "Piscina"],
-                  ] as Array<[RoomKind, string]>).map(([kind, label]) => (
+            <div className="grid min-h-[760px] xl:grid-cols-[286px_1fr_300px]">
+              <aside className="order-3 border-t bg-background xl:order-1 xl:border-r xl:border-t-0">
+                <div className="sticky top-0 z-10 border-b bg-background p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-base font-semibold">Biblioteca</div>
+                      <div className="text-xs text-muted-foreground">Arraste a ideia, ajuste na planta.</div>
+                    </div>
                     <button
-                      key={kind}
                       type="button"
-                      onClick={() => { if (!wallFirstActive) addRoom(kind); }}
-                      disabled={wallFirstActive}
-                      title={wallFirstActive ? "Neste pavimento os ambientes são derivados das paredes." : undefined}
-                      className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={() => setStep(1)}
+                      className="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
                     >
-                      <span>{label}</span>
-                      <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                      Modelos
                     </button>
-                  ))}
-                </div>
+                  </div>
 
-                <div className="mt-5 border-t pt-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pavimentos</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {Array.from({ length: floors }).map((_, floor) => (
+                  <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1">
+                    {([
+                      ["build", "Construir"],
+                      ["rooms", "Ambientes"],
+                      ["outdoor", "Externo"],
+                    ] as const).map(([value, label]) => (
                       <button
-                        key={floor}
+                        key={value}
                         type="button"
-                        onClick={() => { setActiveFloor(floor); setSelectedId(null); setEditorView("plan"); }}
-                        className={activeFloor === floor
-                          ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background"
-                          : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold"}
+                        onClick={() => setEditorLibraryTab(value)}
+                        className={editorLibraryTab === value
+                          ? "rounded-lg bg-background px-2 py-2 text-[11px] font-semibold shadow-sm"
+                          : "rounded-lg px-2 py-2 text-[11px] font-semibold text-muted-foreground"}
                       >
-                        {floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}
+                        {label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="mt-5 hidden border-t pt-4 xl:block">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Ambientes</div>
-                  <div className="mt-2 max-h-72 space-y-1.5 overflow-auto">
-                    {visibleRooms.map((room) => (
-                      <button
-                        key={room.id}
-                        type="button"
-                        onClick={() => { setSelectedId(room.id); setEditorView("plan"); }}
-                        className={selectedId === room.id
-                          ? "w-full rounded-lg border border-orange-500 bg-orange-500/5 px-3 py-2 text-left"
-                          : "w-full rounded-lg border bg-background px-3 py-2 text-left"}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-semibold">{room.label}</span>
-                          {room.locked && <Lock className="h-3 w-3 shrink-0" />}
+                <div className="p-4">
+                  {editorLibraryTab === "build" && (
+                    <>
+                      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!wallFirstActive) activateWallFirstFloor();
+                            setInteractionMode("draw-wall");
+                            setSelectedId(null);
+                            setSelectedOpeningId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={interactionMode === "draw-wall"
+                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left"
+                            : "group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"}
+                        >
+                          <div className="grid h-24 place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
+                            <div className="relative h-12 w-14">
+                              <span className="absolute left-1 top-1 h-10 w-1.5 rounded-full bg-slate-700" />
+                              <span className="absolute left-1 top-1 h-1.5 w-11 rounded-full bg-slate-700" />
+                              <span className="absolute bottom-1 right-1 h-10 w-1.5 rounded-full bg-orange-400" />
+                              <span className="absolute bottom-1 right-1 h-1.5 w-11 rounded-full bg-orange-400" />
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div className="text-sm font-semibold">Paredes</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">Desenhar livre</div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInteractionMode(wallFirstActive ? "space" : "room");
+                            setSelectedOpeningId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={(interactionMode === "room" || interactionMode === "space")
+                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left"
+                            : "group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"}
+                        >
+                          <div className="grid h-24 place-items-center bg-gradient-to-br from-orange-50 to-amber-50">
+                            <Home className="h-10 w-10 text-orange-500" />
+                          </div>
+                          <div className="p-3">
+                            <div className="text-sm font-semibold">Ambiente</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">{wallFirstActive ? "Nomear espaços" : "Criar cômodo"}</div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInteractionMode("opening");
+                            setSelectedId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={interactionMode === "opening"
+                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left"
+                            : "group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"}
+                        >
+                          <div className="grid h-24 place-items-center bg-gradient-to-br from-sky-50 to-slate-50">
+                            <div className="grid h-12 w-9 place-items-center rounded-t-lg border-4 border-slate-600 bg-white">
+                              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div className="text-sm font-semibold">Portas e janelas</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">Selecionar / editar</div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={wallFirstActive}
+                          onClick={() => addRoom("escada")}
+                          className="group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          <div className="grid h-24 place-items-center bg-gradient-to-br from-stone-50 to-slate-100">
+                            <div className="flex items-end gap-0.5">
+                              {[2,3,4,5,6].map((height) => (
+                                <span key={height} className="w-2 rounded-sm bg-slate-600" style={{ height: `${height * 5}px` }} />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div className="text-sm font-semibold">Escada</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">{wallFirstActive ? "Disponível em modo ambientes" : "Adicionar"}</div>
+                          </div>
+                        </button>
+                      </div>
+
+                      <div className="mt-5 border-t pt-4">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pavimentos</div>
+                          {floors < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => setFloors((value) => Math.min(3, value + 1))}
+                              className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold"
+                            >
+                              <Plus className="h-3 w-3" /> Adicionar
+                            </button>
+                          )}
                         </div>
-                      </button>
-                    ))}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {Array.from({ length: floors }).map((_, floor) => (
+                            <button
+                              key={floor}
+                              type="button"
+                              onClick={() => { setActiveFloor(floor); setSelectedId(null); setEditorView("plan"); }}
+                              className={activeFloor === floor
+                                ? "rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
+                                : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                            >
+                              {floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {editorLibraryTab === "rooms" && (
+                    <>
+                      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        {wallFirstActive ? "Classificar espaços" : "Adicionar ambientes"}
+                      </div>
+                      {wallFirstActive ? (
+                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                          Desenhe as paredes, feche os espaços e clique dentro da planta para nomear cada ambiente.
+                          <button
+                            type="button"
+                            onClick={() => setInteractionMode("space")}
+                            className="mt-3 w-full rounded-xl bg-foreground px-3 py-2.5 text-xs font-semibold text-background"
+                          >
+                            Nomear espaços na planta
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {([
+                            ["sala", Home, "Sala"],
+                            ["cozinha", ChefHat, "Cozinha"],
+                            ["quarto", BedDouble, "Quarto"],
+                            ["suite", BedDouble, "Suíte"],
+                            ["banheiro", Bath, "Banheiro"],
+                            ["lavanderia", Home, "Lavanderia"],
+                          ] as Array<[RoomKind, typeof Home, string]>).map(([kind, Icon, label]) => (
+                            <button
+                              key={kind}
+                              type="button"
+                              onClick={() => addRoom(kind)}
+                              className="overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"
+                            >
+                              <div className="grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-orange-50">
+                                <Icon className="h-8 w-8 text-slate-600" />
+                              </div>
+                              <div className="flex items-center justify-between p-3">
+                                <span className="text-sm font-semibold">{label}</span>
+                                <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {editorLibraryTab === "outdoor" && (
+                    <>
+                      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Área externa</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {([
+                          ["piscina", Waves, "Piscina", "from-sky-50 to-cyan-100"],
+                          ["gourmet", ChefHat, "Gourmet", "from-amber-50 to-orange-100"],
+                          ["garagem", CarFront, "Garagem", "from-slate-50 to-slate-200"],
+                        ] as Array<[RoomKind, typeof Home, string, string]>).map(([kind, Icon, label, gradient]) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            disabled={wallFirstActive}
+                            onClick={() => addRoom(kind)}
+                            className="overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <div className={`grid h-24 place-items-center bg-gradient-to-br ${gradient}`}>
+                              <Icon className="h-9 w-9 text-slate-700" />
+                            </div>
+                            <div className="flex items-center justify-between p-3">
+                              <span className="text-sm font-semibold">{label}</span>
+                              <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                            </div>
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          disabled
+                          className="overflow-hidden rounded-2xl border bg-background text-left opacity-55"
+                        >
+                          <div className="grid h-24 place-items-center bg-gradient-to-br from-emerald-50 to-green-100">
+                            <Trees className="h-9 w-9 text-emerald-700" />
+                          </div>
+                          <div className="p-3">
+                            <div className="text-sm font-semibold">Paisagismo</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">Biblioteca em preparação</div>
+                          </div>
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="mt-6 hidden border-t pt-4 xl:block">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">No projeto</div>
+                    <div className="mt-3 max-h-64 space-y-1.5 overflow-auto">
+                      {wallFirstActive
+                        ? closedSpaces.map((space) => (
+                            <button
+                              key={space.id}
+                              type="button"
+                              onClick={() => {
+                                setInteractionMode("space");
+                                setSelectedClosedSpaceId(space.id);
+                                setSelectedId(null);
+                                setEditorView("plan");
+                              }}
+                              className={selectedClosedSpaceId === space.id
+                                ? "w-full rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2.5 text-left"
+                                : "w-full rounded-xl border bg-background px-3 py-2.5 text-left hover:bg-muted/40"}
+                            >
+                              <div className="truncate text-xs font-semibold">{spaceAssignments.get(space.id)?.label || "Espaço sem nome"}</div>
+                              <div className="mt-0.5 text-[10px] text-muted-foreground">{space.area.toFixed(1)} m²</div>
+                            </button>
+                          ))
+                        : visibleRooms.map((room) => (
+                            <button
+                              key={room.id}
+                              type="button"
+                              onClick={() => { setSelectedId(room.id); setEditorView("plan"); }}
+                              className={selectedId === room.id
+                                ? "w-full rounded-xl border border-orange-500 bg-orange-500/5 px-3 py-2.5 text-left"
+                                : "w-full rounded-xl border bg-background px-3 py-2.5 text-left hover:bg-muted/40"}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-xs font-semibold">{room.label}</span>
+                                {room.locked && <Lock className="h-3 w-3 shrink-0" />}
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-muted-foreground">{(room.width * room.depth).toFixed(1)} m²</div>
+                            </button>
+                          ))}
+                    </div>
                   </div>
                 </div>
               </aside>
 
-              <div className="order-1 min-w-0 bg-slate-100/60 p-3 sm:p-5 xl:order-2">
+              <div className="order-1 min-w-0 bg-[#f7f8fa] p-3 sm:p-4 xl:order-2">
                 <div className="mx-auto max-w-5xl">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -2150,6 +2377,81 @@ export default function ConceptPlanner() {
                       </div>
                     </div>
                     {editorView === "plan" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInteractionMode("navigate");
+                            setSelectedId(null);
+                            setSelectedClosedSpaceId(null);
+                            setSelectedOpeningId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={interactionMode === "navigate"
+                            ? "rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
+                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Selecionar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!wallFirstActive) activateWallFirstFloor();
+                            setInteractionMode("draw-wall");
+                            setSelectedId(null);
+                            setSelectedOpeningId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={interactionMode === "draw-wall"
+                            ? "rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          + Parede
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInteractionMode(wallFirstActive ? "space" : "room");
+                            setSelectedOpeningId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={(interactionMode === "room" || interactionMode === "space")
+                            ? "rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Ambientes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInteractionMode("opening");
+                            setSelectedId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                          }}
+                          className={interactionMode === "opening"
+                            ? "rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                        >
+                          Portas / janelas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowDimensions((value) => !value)}
+                          className={showDimensions
+                            ? "rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800"
+                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                        >
+                          Cotas {showDimensions ? "✓" : ""}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {editorView === "plan" && (
                       <div className="flex flex-wrap items-center gap-2">
                         <div className={closedSpaces.length
                           ? "rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
