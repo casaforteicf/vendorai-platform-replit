@@ -71,6 +71,7 @@ import { arqOrchestrator } from "../lib/arqdor/orchestrator/index.js";
 import { automationLogsTable } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
+import { resolveArchTenantId } from "../lib/arch-tenant-context.js";
 import {
   collectConceptMaterials,
   conceptMaterialRows,
@@ -111,7 +112,10 @@ const router: IRouter = Router();
 const archPublicRouter: IRouter = Router();
 
 function tenantId(req: Request): string {
-  return (req as any).user?.tenantId as string;
+  return resolveArchTenantId(
+    (req as any).user,
+    req.headers["x-tenant-id"],
+  ) ?? "";
 }
 
 function isSuperAdmin(req: Request) {
