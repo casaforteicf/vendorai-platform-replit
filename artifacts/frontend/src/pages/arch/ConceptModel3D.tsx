@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Layers3, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+import { useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
 
@@ -42,20 +42,19 @@ const WALL_HEIGHT = 2.8;
 const FLOOR_THICKNESS = 0.16;
 const LEVEL_HEIGHT = WALL_HEIGHT + FLOOR_THICKNESS;
 
-function rotatePoint(x: number, y: number, quarterTurns: number, lotWidth: number, lotDepth: number) {
+function rotatePoint(x: number, y: number, rotationDegrees: number, lotWidth: number, lotDepth: number) {
   const cx = lotWidth / 2;
   const cy = lotDepth / 2;
-  let px = x - cx;
-  let py = y - cy;
-  const turns = ((quarterTurns % 4) + 4) % 4;
+  const px = x - cx;
+  const py = y - cy;
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
 
-  for (let index = 0; index < turns; index += 1) {
-    const nextX = -py;
-    py = px;
-    px = nextX;
-  }
-
-  return { x: px, y: py };
+  return {
+    x: px * cos - py * sin,
+    y: px * sin + py * cos,
+  };
 }
 
 function project(point: Point3, rotation: number, lotWidth: number, lotDepth: number, zoom: number): Point2 {
@@ -203,9 +202,48 @@ export default function ConceptModel3D({
   levels,
   roof,
 }: Props) {
-  const [rotation, setRotation] = useState(0);
+  const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1);
   const [showAllFloors, setShowAllFloors] = useState(true);
+  const [orbitGesture, setOrbitGesture] = useState<null | {
+    pointerId: number;
+    startX: number;
+    startRotation: number;
+  }>(null);
+
+  const normalizeRotation = (value: number) => ((value % 360) + 360) % 360;
+  const resetCamera = () => {
+    setRotation(35);
+    setZoom(1);
+  };
+
+  const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setOrbitGesture({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startRotation: rotation,
+    });
+  };
+
+  const handleOrbitMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!orbitGesture || orbitGesture.pointerId !== event.pointerId) return;
+    const delta = event.clientX - orbitGesture.startX;
+    setRotation(normalizeRotation(orbitGesture.startRotation + delta * 0.45));
+  };
+
+  const handleOrbitEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (orbitGesture?.pointerId === event.pointerId) setOrbitGesture(null);
+  };
+
+  const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    setZoom((value) => {
+      const delta = event.deltaY > 0 ? -0.08 : 0.08;
+      return Math.max(0.55, Math.min(1.75, Number((value + delta).toFixed(2))));
+    });
+  };
 
   const visibleLevels = useMemo(
     () => showAllFloors ? levels : levels.filter((level) => level.floor === activeFloor),
@@ -242,7 +280,7 @@ export default function ConceptModel3D({
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-white/60">Pavimentos, lajes, escadas e cobertura derivados do mesmo pré-projeto.</div>
+          <div className="text-xs text-white/60">Arraste horizontalmente para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {levels.length > 1 && (
@@ -256,10 +294,10 @@ export default function ConceptModel3D({
               {showAllFloors ? "Todos pavimentos" : "Pavimento ativo"}
             </button>
           )}
-          <button type="button" onClick={() => setRotation((value) => (value + 3) % 4)} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para esquerda">
+          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para esquerda">
             <RotateCcw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setRotation((value) => (value + 1) % 4)} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para direita">
+          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Girar para direita">
             <RotateCw className="h-4 w-4" />
           </button>
           <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.1).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Reduzir">
@@ -268,12 +306,20 @@ export default function ConceptModel3D({
           <button type="button" onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.1).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Ampliar">
             <ZoomIn className="h-4 w-4" />
           </button>
+          <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-white/15 bg-white/5" title="Restaurar câmera">
+            <Maximize2 className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
       <svg
         viewBox={`${-sceneWidth / 2} ${-sceneHeight / 2} ${sceneWidth} ${sceneHeight}`}
-        className="block min-h-[500px] w-full bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)]"
+        onPointerDown={handleOrbitStart}
+        onPointerMove={handleOrbitMove}
+        onPointerUp={handleOrbitEnd}
+        onPointerCancel={handleOrbitEnd}
+        onWheel={handleWheel}
+        className={`block min-h-[500px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
@@ -483,7 +529,7 @@ export default function ConceptModel3D({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
         <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços</span>
-        <span>Pé-direito {WALL_HEIGHT.toFixed(2).replace(".", ",")} m · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm</span>
+        <span>Vista {Math.round(rotation)}° · pé-direito {WALL_HEIGHT.toFixed(2).replace(".", ",")} m · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm</span>
       </div>
     </div>
   );
