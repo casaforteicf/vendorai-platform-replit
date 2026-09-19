@@ -1517,6 +1517,7 @@ export default function ConceptPlanner() {
             rooms,
             openingOverrides,
             facadePreferences,
+            facadeDesign,
             conceptRender: completed,
             selectedVariant: layoutVariant,
           };
