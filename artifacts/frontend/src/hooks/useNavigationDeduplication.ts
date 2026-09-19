@@ -57,6 +57,7 @@ const CONTEXTUAL_LINK_LABELS = [
 
   // Construção: extensões operacionais do núcleo geral.
   { href: "/obras", label: "Obras & Projetos" },
+  { href: "/custos-orcamentos", label: "Custos & Orçamentos de Obra" },
   { href: "/insumos", label: "Insumos da Construção" },
   { href: "/composicoes", label: "Composições de Obra" },
 
