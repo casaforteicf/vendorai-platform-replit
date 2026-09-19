@@ -696,6 +696,198 @@ router.put("/tenants/:tenantId/compras-obras/:compraId", async (req, res) => {
   return res.json(compra);
 });
 
+// ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
+
+function numberOrZero(value: string | number | null | undefined): number {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(value ?? "0");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function recalcularCustoComposicao(composicaoId: string): Promise<number> {
+  const itens = await db
+    .select({
+      quantidade: composicaoInsumosTable.quantidade,
+      precoOverride: composicaoInsumosTable.precoUnitario,
+      precoMestre: insumosTable.precoUnitario,
+    })
+    .from(composicaoInsumosTable)
+    .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
+    .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+
+  const total = itens.reduce((sum, item) => {
+    const quantidade = numberOrZero(item.quantidade);
+    const preco = item.precoOverride != null
+      ? numberOrZero(item.precoOverride)
+      : numberOrZero(item.precoMestre);
+    return sum + quantidade * preco;
+  }, 0);
+
+  await db
+    .update(composicoesTable)
+    .set({ custoTotal: total.toFixed(4), updatedAt: new Date() })
+    .where(eq(composicoesTable.id, composicaoId));
+
+  return total;
+}
+
+async function propagarPrecoParaOrcamentos(params: {
+  tenantId: string;
+  insumoId: string;
+  precoInsumo: number;
+  composicoesAtualizadas: Map<string, number>;
+}) {
+  const { tenantId: tid, insumoId, precoInsumo, composicoesAtualizadas } = params;
+  const composicaoIds = [...composicoesAtualizadas.keys()];
+  const sourceFilters = [eq(obraOrcamentoItensTable.insumoId, insumoId)];
+  if (composicaoIds.length > 0) {
+    sourceFilters.push(inArray(obraOrcamentoItensTable.composicaoId, composicaoIds));
+  }
+
+  const itens = await db
+    .select({
+      itemId: obraOrcamentoItensTable.id,
+      insumoId: obraOrcamentoItensTable.insumoId,
+      composicaoId: obraOrcamentoItensTable.composicaoId,
+      orcamentoId: obraOrcamentosTable.id,
+      status: obraOrcamentosTable.status,
+    })
+    .from(obraOrcamentoItensTable)
+    .innerJoin(obraOrcamentoEtapasTable, eq(obraOrcamentoItensTable.etapaId, obraOrcamentoEtapasTable.id))
+    .innerJoin(obraOrcamentosTable, eq(obraOrcamentoEtapasTable.orcamentoId, obraOrcamentosTable.id))
+    .where(and(
+      eq(obraOrcamentosTable.tenantId, tid),
+      or(...sourceFilters),
+    ));
+
+  const rascunhos = new Set<string>();
+  const enviados = new Set<string>();
+
+  for (const item of itens) {
+    if (item.status === "rascunho") {
+      const custo = item.composicaoId
+        ? composicoesAtualizadas.get(item.composicaoId)
+        : precoInsumo;
+      if (custo == null) continue;
+
+      await db
+        .update(obraOrcamentoItensTable)
+        .set({
+          custoUnitario: custo.toFixed(4),
+          precoAtualizadoEm: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(obraOrcamentoItensTable.id, item.itemId));
+      rascunhos.add(item.orcamentoId);
+    } else if (item.status === "enviado") {
+      enviados.add(item.orcamentoId);
+    }
+    // aprovado/contratado e demais estados ficam congelados por desenho.
+  }
+
+  if (rascunhos.size > 0) {
+    await db
+      .update(obraOrcamentosTable)
+      .set({
+        precosDesatualizados: false,
+        precosAtualizadosEm: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(inArray(obraOrcamentosTable.id, [...rascunhos]));
+  }
+
+  if (enviados.size > 0) {
+    await db
+      .update(obraOrcamentosTable)
+      .set({ precosDesatualizados: true, updatedAt: new Date() })
+      .where(inArray(obraOrcamentosTable.id, [...enviados]));
+  }
+
+  return {
+    orcamentosRecalculados: rascunhos.size,
+    orcamentosComAviso: enviados.size,
+  };
+}
+
+async function aplicarPrecoMestre(params: {
+  tenantId: string;
+  insumoId: string;
+  precoNovo: number;
+  tabelaPrecoId?: string | null;
+  fornecedor?: string | null;
+  regiao?: string | null;
+  origem?: string;
+  alteradoPorId?: string | null;
+}) {
+  const {
+    tenantId: tid,
+    insumoId,
+    precoNovo,
+    tabelaPrecoId = null,
+    fornecedor = null,
+    regiao = null,
+    origem = "tabela_precos",
+    alteradoPorId = null,
+  } = params;
+
+  const [insumo] = await db
+    .select()
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+
+  if (!insumo) return null;
+
+  const precoAnterior = insumo.precoUnitario == null ? null : numberOrZero(insumo.precoUnitario);
+
+  await db
+    .update(insumosTable)
+    .set({ precoUnitario: precoNovo.toFixed(4), updatedAt: new Date() })
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+
+  if (precoAnterior == null || Math.abs(precoAnterior - precoNovo) > 0.00005) {
+    await db.insert(insumoPrecoHistoricoTable).values({
+      tenantId: tid,
+      insumoId,
+      tabelaPrecoId,
+      precoAnterior: precoAnterior == null ? null : precoAnterior.toFixed(4),
+      precoNovo: precoNovo.toFixed(4),
+      origem,
+      fornecedor,
+      regiao,
+      alteradoPorId,
+    });
+  }
+
+  const composicoes = await db
+    .select({ id: composicoesTable.id })
+    .from(composicaoInsumosTable)
+    .innerJoin(composicoesTable, eq(composicaoInsumosTable.composicaoId, composicoesTable.id))
+    .where(and(
+      eq(composicaoInsumosTable.insumoId, insumoId),
+      eq(composicoesTable.tenantId, tid),
+    ));
+
+  const custosComposicoes = new Map<string, number>();
+  for (const composicao of composicoes) {
+    const custo = await recalcularCustoComposicao(composicao.id);
+    custosComposicoes.set(composicao.id, custo);
+  }
+
+  const impacto = await propagarPrecoParaOrcamentos({
+    tenantId: tid,
+    insumoId,
+    precoInsumo: precoNovo,
+    composicoesAtualizadas: custosComposicoes,
+  });
+
+  return {
+    insumoId,
+    precoAnterior,
+    precoNovo,
+    composicoesRecalculadas: custosComposicoes.size,
+    ...impacto,
+  };
+}
+
 // ─── Insumos ──────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/insumos", async (req, res) => {
