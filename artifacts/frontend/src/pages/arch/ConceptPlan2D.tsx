@@ -4,6 +4,7 @@ import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./concept
 import { normalizeOpeningParameters } from "./conceptOpenings";
 import { buildStairLandings, buildStairTreads, normalizeStairParameters, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofPlanGuides, normalizeRoofParameters, roofPlanBounds, type RoofInput } from "./conceptRoof";
+import { normalizeConceptObject, type ConceptObject } from "./conceptObjects";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
 type Props = {
@@ -27,6 +28,10 @@ type Props = {
   onWallMove?: (wallId: string, delta: number) => void;
   customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
   stairOpenings?: StairSlabOpening[];
+  objects?: ConceptObject[];
+  selectedObjectId?: string | null;
+  onSelectObject?: (objectId: string | null) => void;
+  onObjectChange?: (objectId: string, patch: Partial<ConceptObject>) => void;
   roof?: RoofInput;
   showRoofPlan?: boolean;
   selectedCustomWallId?: string | null;
@@ -39,7 +44,7 @@ type Props = {
   onMoveTopologyJunction?: (refs: WallTopologyEndpointRef[], point: { x: number; y: number }) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
-  interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall" | "navigate";
+  interactionMode?: "room" | "space" | "wall" | "opening" | "object" | "draw-wall" | "navigate";
 };
 
 function formatMeters(value: number) {
@@ -324,6 +329,75 @@ function DimensionLine({
   );
 }
 
+function ConceptObjectSymbol2D({ object, selected }: { object: ConceptObject; selected: boolean }) {
+  const tone = selected ? "#f97316" : "#475569";
+  const fill = object.category === "banheiro" ? "#e0f2fe" :
+    object.category === "cozinha" || object.category === "eletro" ? "#f1f5f9" :
+    object.category === "decoracao" ? "#dcfce7" : "#f8fafc";
+  const w = object.width;
+  const d = object.depth;
+  return (
+    <g transform={`translate(${object.x} ${object.y}) rotate(${object.rotationDeg})`} pointerEvents="none">
+      <rect
+        x={-w / 2}
+        y={-d / 2}
+        width={w}
+        height={d}
+        rx={Math.min(0.14, Math.min(w, d) * 0.18)}
+        fill={fill}
+        stroke={tone}
+        strokeWidth={selected ? "0.085" : "0.045"}
+      />
+      {object.symbol === "bed" && (
+        <>
+          <rect x={-w * 0.42} y={-d * 0.42} width={w * 0.84} height={d * 0.2} rx="0.06" fill="#ffffff" stroke={tone} strokeWidth="0.025" />
+          <line x1={-w * 0.42} y1={-d * 0.17} x2={w * 0.42} y2={-d * 0.17} stroke={tone} strokeOpacity="0.45" strokeWidth="0.025" />
+        </>
+      )}
+      {object.symbol === "sofa" && (
+        <>
+          <rect x={-w * 0.42} y={-d * 0.34} width={w * 0.84} height={d * 0.68} rx="0.08" fill="none" stroke={tone} strokeOpacity="0.7" strokeWidth="0.035" />
+          <line x1={-w * 0.28} y1={-d * 0.34} x2={-w * 0.28} y2={d * 0.34} stroke={tone} strokeOpacity="0.4" strokeWidth="0.025" />
+          <line x1={w * 0.28} y1={-d * 0.34} x2={w * 0.28} y2={d * 0.34} stroke={tone} strokeOpacity="0.4" strokeWidth="0.025" />
+        </>
+      )}
+      {(object.symbol === "table" || object.symbol === "island" || object.symbol === "desk") && (
+        <rect x={-w * 0.38} y={-d * 0.34} width={w * 0.76} height={d * 0.68} rx="0.04" fill="#fff" fillOpacity="0.55" stroke={tone} strokeOpacity="0.55" strokeWidth="0.028" />
+      )}
+      {object.symbol === "toilet" && (
+        <ellipse cx="0" cy={d * 0.08} rx={w * 0.28} ry={d * 0.31} fill="#fff" stroke={tone} strokeWidth="0.03" />
+      )}
+      {object.symbol === "sink" && (
+        <ellipse cx="0" cy="0" rx={w * 0.3} ry={d * 0.24} fill="#fff" stroke={tone} strokeWidth="0.03" />
+      )}
+      {object.symbol === "plant" && (
+        <>
+          <circle cx="0" cy="0" r={Math.min(w, d) * 0.32} fill="#bbf7d0" stroke="#15803d" strokeWidth="0.03" />
+          <path d={`M 0 0 l ${w * 0.18} ${-d * 0.2} M 0 0 l ${-w * 0.2} ${-d * 0.08} M 0 0 l ${w * 0.1} ${d * 0.2}`} stroke="#15803d" strokeWidth="0.025" />
+        </>
+      )}
+      {selected && (
+        <>
+          <circle cx={-w / 2} cy={-d / 2} r="0.08" fill="#f97316" stroke="#fff" strokeWidth="0.025" />
+          <circle cx={w / 2} cy={-d / 2} r="0.08" fill="#f97316" stroke="#fff" strokeWidth="0.025" />
+          <circle cx={w / 2} cy={d / 2} r="0.08" fill="#f97316" stroke="#fff" strokeWidth="0.025" />
+          <circle cx={-w / 2} cy={d / 2} r="0.08" fill="#f97316" stroke="#fff" strokeWidth="0.025" />
+        </>
+      )}
+      <text
+        x="0"
+        y={Math.min(0.08, d * 0.12)}
+        textAnchor="middle"
+        fontSize={Math.max(0.12, Math.min(0.2, w / Math.max(5, object.name.length) * 1.8))}
+        fontWeight="750"
+        fill="#334155"
+        transform={`rotate(${-object.rotationDeg})`}
+      >
+        {object.name.length > 20 ? `${object.name.slice(0, 18)}…` : object.name}
+      </text>
+    </g>
+  );
+}
 export default function ConceptPlan2D({
   rooms,
   lotWidth,
@@ -345,6 +419,10 @@ export default function ConceptPlan2D({
   onWallMove,
   customWalls = [],
   stairOpenings = [],
+  objects = [],
+  selectedObjectId = null,
+  onSelectObject,
+  onObjectChange,
   roof = { roof: "platibanda" },
   showRoofPlan = false,
   selectedCustomWallId = null,
@@ -367,8 +445,11 @@ export default function ConceptPlan2D({
     openingId?: string;
     wallId?: string;
     customWallId?: string;
+    objectId?: string;
+    objectX?: number;
+    objectY?: number;
     junctionRefs?: WallTopologyEndpointRef[];
-    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    mode: "move" | "object" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -548,9 +629,23 @@ export default function ConceptPlan2D({
       const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
       setWallDrawPreview(clampPoint(orthogonalEnd(wallDrawStart, networkEnd)));
     }
-    if (!gesture || !onRoomChange) return;
+    if (!gesture) return;
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
+
+    if (gesture.mode === "object" && gesture.objectId && onObjectChange) {
+      const object = objects.find((item) => item.id === gesture.objectId);
+      if (!object || object.locked) return;
+      const next = normalizeConceptObject({
+        ...object,
+        x: snap((gesture.objectX ?? object.x) + dx),
+        y: snap((gesture.objectY ?? object.y) + dy),
+      }, lotWidth, lotDepth);
+      onObjectChange(object.id, { x: next.x, y: next.y });
+      return;
+    }
+
+    if (!onRoomChange) return;
 
     if (gesture.mode === "custom-wall-move" && gesture.customWallId && onUpdateCustomWall) {
       const wall = customWalls.find((item) => item.id === gesture.customWallId);
@@ -1305,6 +1400,46 @@ export default function ConceptPlan2D({
             })()}
           </g>
         )}
+
+        {objects.map((object) => {
+          const selectedObject = selectedObjectId === object.id;
+          return (
+            <g
+              key={object.id}
+              className={interactionMode === "object" ? (object.locked ? "cursor-not-allowed" : "cursor-move") : ""}
+              pointerEvents={interactionMode === "object" ? undefined : "none"}
+              onPointerDown={(event) => {
+                if (interactionMode !== "object" || !onSelectObject) return;
+                event.stopPropagation();
+                onEditStart?.();
+                onSelectObject(object.id);
+                if (object.locked || !onObjectChange) return;
+                const point = toSvgPoint(event.clientX, event.clientY);
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                setGesture({
+                  roomId: "",
+                  objectId: object.id,
+                  objectX: object.x,
+                  objectY: object.y,
+                  mode: "object",
+                  startX: point.x,
+                  startY: point.y,
+                  roomX: 0,
+                  roomY: 0,
+                  roomWidth: 0,
+                  roomDepth: 0,
+                });
+              }}
+              onClick={(event) => {
+                if (interactionMode !== "object" || !onSelectObject) return;
+                event.stopPropagation();
+                onSelectObject(object.id);
+              }}
+            >
+              <ConceptObjectSymbol2D object={object} selected={selectedObject} />
+            </g>
+          );
+        })}
 
         {stairOpenings.map((opening) => (
           <g key={opening.id} pointerEvents="none">
