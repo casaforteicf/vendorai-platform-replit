@@ -188,7 +188,9 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
               })}
 
               {openings.map((opening) => {
-                const widthM = opening.type === "door" ? 0.95 : 1.35;
+                const widthM = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
+                const heightM = Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
+                const sillM = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
                 const openingX = baseX + (opening.x - widthM / 2) * scaleX;
                 const openingW = Math.max(3.8, widthM * scaleX);
 
@@ -197,9 +199,9 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                     <g key={opening.id}>
                       <rect
                         x={openingX}
-                        y={levelBottom - 2.1 * pxPerMeterY}
+                        y={levelBottom - heightM * pxPerMeterY}
                         width={openingW}
-                        height={2.1 * pxPerMeterY}
+                        height={heightM * pxPerMeterY}
                         rx="0.25"
                         fill={facade.accentMaterial === "madeira" ? "#8a5d43" : "#4b5055"}
                         stroke={colors.frame}
@@ -207,7 +209,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                       />
                       <circle
                         cx={openingX + openingW - 0.8}
-                        cy={levelBottom - 1.02 * pxPerMeterY}
+                        cy={levelBottom - Math.min(heightM * 0.48, 1.05) * pxPerMeterY}
                         r="0.28"
                         fill="#d7c8b8"
                       />
@@ -219,9 +221,9 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                   <g key={opening.id}>
                     <rect
                       x={openingX}
-                      y={levelBottom - 2.1 * pxPerMeterY}
+                      y={levelBottom - (sillM + heightM) * pxPerMeterY}
                       width={openingW}
-                      height={1.2 * pxPerMeterY}
+                      height={heightM * pxPerMeterY}
                       rx="0.22"
                       fill="url(#derived-facade-glass)"
                       stroke={colors.frame}
@@ -229,9 +231,9 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
                     />
                     <line
                       x1={openingX + openingW / 2}
-                      y1={levelBottom - 2.1 * pxPerMeterY}
+                      y1={levelBottom - (sillM + heightM) * pxPerMeterY}
                       x2={openingX + openingW / 2}
-                      y2={levelBottom - 0.9 * pxPerMeterY}
+                      y2={levelBottom - sillM * pxPerMeterY}
                       stroke="#d4dde2"
                       strokeOpacity="0.65"
                       strokeWidth="0.35"
