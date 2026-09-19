@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import "./planner5d-reference.css";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,7 +235,7 @@ export default function Catalogo() {
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import "./planner5d-reference.css";
 import {
   ArrowLeft,
   ArrowRight,
@@ -1533,7 +1534,7 @@ export default function ConceptPlanner() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="arqdor-reference-ui min-h-screen bg-muted/30">
       {step !== 4 && (
         <div className="border-b bg-background">
           <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">

@@ -1,0 +1,180 @@
+/* Arqdor UI reference system
+   Visual language inspired by professional home-design editors:
+   compact application chrome, neutral canvas, clear hierarchy, subtle borders.
+   Identity remains Arqdor (orange accent) and does not reuse third-party assets. */
+
+.arqdor-reference-ui {
+  --arq-accent: #f97316;
+  --arq-accent-strong: #ea580c;
+  --arq-ink: #111827;
+  --arq-muted: #64748b;
+  --arq-border: #e2e8f0;
+  --arq-surface: #ffffff;
+  --arq-canvas: #f6f7f9;
+  --arq-soft: #f8fafc;
+  font-family: Inter, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--arq-ink);
+  letter-spacing: -0.006em;
+}
+
+.arqdor-reference-ui h1,
+.arqdor-reference-ui h2,
+.arqdor-reference-ui h3 {
+  letter-spacing: -0.025em;
+}
+
+.arqdor-reference-ui h1 {
+  font-weight: 750;
+}
+
+.arqdor-reference-ui h2,
+.arqdor-reference-ui h3 {
+  font-weight: 700;
+}
+
+.arqdor-reference-ui .rounded-3xl {
+  border-radius: 16px !important;
+}
+
+.arqdor-reference-ui .rounded-2xl {
+  border-radius: 13px !important;
+}
+
+.arqdor-reference-ui .rounded-xl {
+  border-radius: 10px !important;
+}
+
+.arqdor-reference-ui .shadow-sm {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 6px 20px rgb(15 23 42 / 0.03) !important;
+}
+
+.arqdor-reference-ui input,
+.arqdor-reference-ui select,
+.arqdor-reference-ui textarea,
+.arqdor-reference-ui button {
+  font-family: inherit;
+}
+
+.arqdor-reference-ui input,
+.arqdor-reference-ui select,
+.arqdor-reference-ui textarea {
+  border-color: var(--arq-border);
+}
+
+.arqdor-reference-ui input:focus,
+.arqdor-reference-ui select:focus,
+.arqdor-reference-ui textarea:focus {
+  border-color: rgb(249 115 22 / 0.75);
+  box-shadow: 0 0 0 3px rgb(249 115 22 / 0.08);
+}
+
+.arqdor-reference-ui button {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.arqdor-reference-ui button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.arqdor-reference-ui .bg-card,
+.arqdor-reference-ui .bg-background {
+  background-color: var(--arq-surface);
+}
+
+.arqdor-reference-ui .bg-muted\/30,
+.arqdor-reference-ui .bg-muted\/40,
+.arqdor-reference-ui .bg-muted\/50,
+.arqdor-reference-ui .bg-muted\/60 {
+  background-color: var(--arq-soft);
+}
+
+.arqdor-reference-ui .border {
+  border-color: var(--arq-border);
+}
+
+.arqdor-reference-ui .arq-app-bar {
+  min-height: 68px;
+  border-bottom: 1px solid var(--arq-border);
+  background: rgb(255 255 255 / 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.arqdor-reference-ui .arq-panel {
+  background: var(--arq-surface);
+  border: 1px solid var(--arq-border);
+  border-radius: 14px;
+}
+
+.arqdor-reference-ui .arq-canvas {
+  background-color: var(--arq-canvas);
+  background-image:
+    linear-gradient(#e5e7eb 1px, transparent 1px),
+    linear-gradient(90deg, #e5e7eb 1px, transparent 1px),
+    linear-gradient(#f0f2f5 1px, transparent 1px),
+    linear-gradient(90deg, #f0f2f5 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+}
+
+.arqdor-reference-ui .arq-tool-button {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #64748b;
+}
+
+.arqdor-reference-ui .arq-tool-button:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.arqdor-reference-ui .arq-tool-button[data-active="true"] {
+  background: #fff7ed;
+  color: var(--arq-accent-strong);
+}
+
+.arqdor-reference-ui .arq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--arq-border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  color: #475569;
+}
+
+.arqdor-reference-ui .arq-primary {
+  background: var(--arq-accent);
+  color: #fff;
+  border-color: var(--arq-accent);
+}
+
+.arqdor-reference-ui .arq-primary:hover {
+  background: var(--arq-accent-strong);
+  border-color: var(--arq-accent-strong);
+}
+
+.arqdor-reference-ui .arq-section-eyebrow {
+  font-size: 11px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 750;
+  color: #94a3b8;
+}
+
+@media (max-width: 1279px) {
+  .arqdor-reference-ui {
+    letter-spacing: normal;
+  }
+}

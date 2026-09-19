@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import "./planner5d-reference.css";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -231,7 +232,7 @@ export default function Marketplace() {
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Marketplace Arch</h1>
         <p className="text-sm text-muted-foreground mt-0.5">

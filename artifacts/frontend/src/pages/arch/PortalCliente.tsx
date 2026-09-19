@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import "./planner5d-reference.css";
 import { useRoute } from "wouter";
 import PortalOfficialRenderHistory from "./PortalOfficialRenderHistory";
 import {
@@ -383,7 +384,7 @@ export default function PortalCliente() {
   const totalGeral = orcamento.reduce((acc, i) => acc + Number(i.valorTotal ?? 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="arqdor-reference-ui min-h-screen bg-gray-50">
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
