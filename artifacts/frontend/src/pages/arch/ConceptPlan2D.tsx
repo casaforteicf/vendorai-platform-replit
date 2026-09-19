@@ -1,3 +1,4 @@
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 
 type Props = {
@@ -7,6 +8,7 @@ type Props = {
   geometry: ConceptGeometry;
   selectedId: string | null;
   onSelect: (roomId: string) => void;
+  onRoomChange?: (roomId: string, patch: Partial<Pick<ConceptRoomShape, "x" | "y" | "width" | "depth">>) => void;
 };
 
 const ROOM_FILL: Record<string, string> = {
@@ -28,7 +30,7 @@ function doorGlyph(opening: OpeningMarker) {
   const r = 0.82;
   if (opening.orientation === "horizontal") {
     return (
-      <g key={opening.id}>
+      <g key={opening.id} pointerEvents="none">
         <line
           x1={opening.x - r / 2}
           y1={opening.y}
@@ -56,7 +58,7 @@ function doorGlyph(opening: OpeningMarker) {
     );
   }
   return (
-    <g key={opening.id}>
+    <g key={opening.id} pointerEvents="none">
       <line
         x1={opening.x}
         y1={opening.y - r / 2}
@@ -91,17 +93,70 @@ export default function ConceptPlan2D({
   geometry,
   selectedId,
   onSelect,
+  onRoomChange,
 }: Props) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [gesture, setGesture] = useState<null | {
+    roomId: string;
+    mode: "move" | "resize";
+    startX: number;
+    startY: number;
+    roomX: number;
+    roomY: number;
+    roomWidth: number;
+    roomDepth: number;
+  }>(null);
+
   const margin = 2.4;
   const vbX = -margin;
   const vbY = -margin;
   const vbW = lotWidth + margin * 2;
   const vbH = lotDepth + margin * 2;
 
+  const toSvgPoint = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return { x: 0, y: 0 };
+    const result = point.matrixTransform(matrix.inverse());
+    return { x: result.x, y: result.y };
+  };
+
+  const snap = (value: number) => Math.round(value * 4) / 4;
+
+  const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!gesture || !onRoomChange) return;
+    const point = toSvgPoint(event.clientX, event.clientY);
+    const dx = point.x - gesture.startX;
+    const dy = point.y - gesture.startY;
+
+    if (gesture.mode === "move") {
+      const room = rooms.find((item) => item.id === gesture.roomId);
+      if (!room || room.locked) return;
+      onRoomChange(gesture.roomId, {
+        x: snap(Math.max(0, Math.min(lotWidth - room.width, gesture.roomX + dx))),
+        y: snap(Math.max(0, Math.min(lotDepth - room.depth, gesture.roomY + dy))),
+      });
+      return;
+    }
+
+    onRoomChange(gesture.roomId, {
+      width: snap(Math.max(1, Math.min(lotWidth - gesture.roomX, gesture.roomWidth + dx))),
+      depth: snap(Math.max(1, Math.min(lotDepth - gesture.roomY, gesture.roomDepth + dy))),
+    });
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border bg-white shadow-inner">
       <svg
-        className="block h-auto w-full touch-manipulation"
+        ref={svgRef}
+        className="block h-auto w-full touch-none select-none"
+        onPointerMove={handlePointerMove}
+        onPointerUp={() => setGesture(null)}
+        onPointerCancel={() => setGesture(null)}
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -161,6 +216,22 @@ export default function ConceptPlan2D({
               key={room.id}
               role="button"
               tabIndex={0}
+              onPointerDown={(event) => {
+                onSelect(room.id);
+                if (!onRoomChange || room.locked) return;
+                const point = toSvgPoint(event.clientX, event.clientY);
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                setGesture({
+                  roomId: room.id,
+                  mode: "move",
+                  startX: point.x,
+                  startY: point.y,
+                  roomX: room.x,
+                  roomY: room.y,
+                  roomWidth: room.width,
+                  roomDepth: room.depth,
+                });
+              }}
               onClick={() => onSelect(room.id)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") onSelect(room.id);
@@ -237,6 +308,38 @@ export default function ConceptPlan2D({
                   )}
                 </>
               )}
+              {selected && onRoomChange && !room.locked && (
+                <g
+                  role="button"
+                  aria-label="Redimensionar ambiente"
+                  className="cursor-nwse-resize"
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    const point = toSvgPoint(event.clientX, event.clientY);
+                    setGesture({
+                      roomId: room.id,
+                      mode: "resize",
+                      startX: point.x,
+                      startY: point.y,
+                      roomX: room.x,
+                      roomY: room.y,
+                      roomWidth: room.width,
+                      roomDepth: room.depth,
+                    });
+                  }}
+                >
+                  <rect
+                    x={room.x + room.width - 0.22}
+                    y={room.y + room.depth - 0.22}
+                    width="0.44"
+                    height="0.44"
+                    rx="0.08"
+                    fill="#f97316"
+                    stroke="#ffffff"
+                    strokeWidth="0.05"
+                  />
+                </g>
+              )}
               {isPool && (
                 <>
                   <text
@@ -274,6 +377,7 @@ export default function ConceptPlan2D({
             stroke={wall.exterior ? "#111827" : "#334155"}
             strokeWidth={wall.exterior ? "0.16" : "0.095"}
             strokeLinecap="square"
+            pointerEvents="none"
           />
         ))}
 
@@ -282,7 +386,7 @@ export default function ConceptPlan2D({
           const half = 0.62;
           const horizontal = opening.orientation === "horizontal";
           return (
-            <g key={opening.id}>
+            <g key={opening.id} pointerEvents="none">
               <line
                 x1={horizontal ? opening.x - half : opening.x}
                 y1={horizontal ? opening.y : opening.y - half}
@@ -303,7 +407,7 @@ export default function ConceptPlan2D({
           );
         })}
 
-        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" />
+        <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" pointerEvents="none" />
       </svg>
     </div>
   );
