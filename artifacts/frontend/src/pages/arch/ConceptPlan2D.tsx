@@ -490,6 +490,12 @@ export default function ConceptPlan2D({
     startViewX: number;
     startViewY: number;
   }>(null);
+  const touchPointersRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  const pinchGestureRef = useRef<null | {
+    startDistance: number;
+    startView: { x: number; y: number; width: number; height: number };
+    worldFocus: { x: number; y: number };
+  }>(null);
 
   useEffect(() => {
     setView(fitView);
@@ -518,6 +524,80 @@ export default function ConceptPlan2D({
   };
 
   const resetView = () => setView(fitView);
+
+  const touchPair = () => {
+    const values = [...touchPointersRef.current.values()];
+    return values.length >= 2 ? [values[0], values[1]] as const : null;
+  };
+
+  const handleTouchPointerDownCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "touch") return;
+    touchPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    const pair = touchPair();
+    if (!pair || !svgRef.current) return;
+
+    const [first, second] = pair;
+    const distance = Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY));
+    const midX = (first.clientX + second.clientX) / 2;
+    const midY = (first.clientY + second.clientY) / 2;
+    const rect = svgRef.current.getBoundingClientRect();
+    const focusX = view.x + ((midX - rect.left) / Math.max(1, rect.width)) * view.width;
+    const focusY = view.y + ((midY - rect.top) / Math.max(1, rect.height)) * view.height;
+
+    pinchGestureRef.current = {
+      startDistance: distance,
+      startView: { ...view },
+      worldFocus: { x: focusX, y: focusY },
+    };
+    setPanGesture(null);
+    if (gesture) onEditEnd?.();
+    setGesture(null);
+  };
+
+  const handleTouchPointerMoveCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) return;
+    touchPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    const pinch = pinchGestureRef.current;
+    const pair = touchPair();
+    if (!pinch || !pair || !svgRef.current) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const [first, second] = pair;
+    const currentDistance = Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY));
+    const scale = pinch.startDistance / currentDistance;
+    const minWidth = Math.max(3, fitView.width * 0.18);
+    const maxWidth = fitView.width * 2.4;
+    const nextWidth = Math.max(minWidth, Math.min(maxWidth, pinch.startView.width * scale));
+    const ratio = nextWidth / pinch.startView.width;
+    const nextHeight = pinch.startView.height * ratio;
+    const midX = (first.clientX + second.clientX) / 2;
+    const midY = (first.clientY + second.clientY) / 2;
+    const rect = svgRef.current.getBoundingClientRect();
+    const screenX = (midX - rect.left) / Math.max(1, rect.width);
+    const screenY = (midY - rect.top) / Math.max(1, rect.height);
+
+    setView({
+      x: pinch.worldFocus.x - screenX * nextWidth,
+      y: pinch.worldFocus.y - screenY * nextHeight,
+      width: nextWidth,
+      height: nextHeight,
+    });
+  };
+
+  const handleTouchPointerEndCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "touch") return;
+    const wasPinching = Boolean(pinchGestureRef.current);
+    touchPointersRef.current.delete(event.pointerId);
+    if (touchPointersRef.current.size < 2) pinchGestureRef.current = null;
+    if (wasPinching) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPanGesture(null);
+      setGesture(null);
+    }
+  };
 
   const toSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -860,8 +940,12 @@ export default function ConceptPlan2D({
       </div>
       <svg
         ref={svgRef}
-        className={`block h-auto w-full touch-none select-none ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
+        className={`block h-auto min-h-[58vh] w-full touch-none select-none sm:min-h-0 ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
         onWheel={handleWheel}
+        onPointerDownCapture={handleTouchPointerDownCapture}
+        onPointerMoveCapture={handleTouchPointerMoveCapture}
+        onPointerUpCapture={handleTouchPointerEndCapture}
+        onPointerCancelCapture={handleTouchPointerEndCapture}
         onPointerDown={(event) => {
           if (interactionMode === "navigate") {
             event.preventDefault();
@@ -1180,7 +1264,7 @@ export default function ConceptPlan2D({
                         });
                       }}
                     >
-                      <circle cx={hx} cy={hy} r="0.52" fill="transparent" />
+                      <circle cx={hx} cy={hy} r="0.72" fill="transparent" />
                       <circle
                         cx={hx}
                         cy={hy}
@@ -1281,7 +1365,7 @@ export default function ConceptPlan2D({
                         });
                       }}
                     >
-                      <circle cx={hx} cy={hy} r="0.48" fill="transparent" />
+                      <circle cx={hx} cy={hy} r="0.68" fill="transparent" />
                       <circle cx={hx} cy={hy} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
                     </g>
                   ))}
@@ -1313,7 +1397,7 @@ export default function ConceptPlan2D({
                           });
                         }}
                       >
-                        <circle cx={mid.x} cy={mid.y} r="0.48" fill="transparent" />
+                        <circle cx={mid.x} cy={mid.y} r="0.68" fill="transparent" />
                         <rect
                           x={mid.x - 0.16}
                           y={mid.y - 0.16}
@@ -1542,7 +1626,7 @@ export default function ConceptPlan2D({
                 x2={wall.x2}
                 y2={wall.y2}
                 stroke="transparent"
-                strokeWidth="0.75"
+                strokeWidth="0.95"
               />
               <line
                 x1={wall.x1}
@@ -1650,7 +1734,7 @@ export default function ConceptPlan2D({
                 x2={horizontal ? opening.x + half : opening.x}
                 y2={horizontal ? opening.y : opening.y + half}
                 stroke="transparent"
-                strokeWidth="0.72"
+                strokeWidth="1.0"
               />
               <ParametricOpeningSymbol opening={opening} selected={selectedOpening} />
               {selectedOpening && (

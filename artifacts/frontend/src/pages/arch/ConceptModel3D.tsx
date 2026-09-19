@@ -1,4 +1,4 @@
-import { useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenings";
@@ -573,6 +573,8 @@ export default function ConceptModel3D({
     startX: number;
     startRotation: number;
   }>(null);
+  const touchPointersRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  const pinchZoomRef = useRef<null | { startDistance: number; startZoom: number }>(null);
 
   const normalizeRotation = (value: number) => ((value % 360) + 360) % 360;
   const resetCamera = () => {
@@ -606,6 +608,46 @@ export default function ConceptModel3D({
       const delta = event.deltaY > 0 ? -0.08 : 0.08;
       return Math.max(0.55, Math.min(1.75, Number((value + delta).toFixed(2))));
     });
+  };
+
+  const handleTouchPointerDownCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "touch") return;
+    touchPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    const points = [...touchPointersRef.current.values()];
+    if (points.length < 2) return;
+    const [first, second] = points;
+    pinchZoomRef.current = {
+      startDistance: Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)),
+      startZoom: zoom,
+    };
+    setOrbitGesture(null);
+  };
+
+  const handleTouchPointerMoveCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) return;
+    touchPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    const pinch = pinchZoomRef.current;
+    const points = [...touchPointersRef.current.values()];
+    if (!pinch || points.length < 2) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const [first, second] = points;
+    const distance = Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY));
+    const next = pinch.startZoom * (distance / pinch.startDistance);
+    setZoom(Math.max(0.55, Math.min(1.75, Number(next.toFixed(3)))));
+  };
+
+  const handleTouchPointerEndCapture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "touch") return;
+    const wasPinching = Boolean(pinchZoomRef.current);
+    touchPointersRef.current.delete(event.pointerId);
+    if (touchPointersRef.current.size < 2) pinchZoomRef.current = null;
+    if (wasPinching) {
+      event.preventDefault();
+      event.stopPropagation();
+      setOrbitGesture(null);
+    }
   };
 
   const visibleLevels = useMemo(
@@ -690,6 +732,10 @@ export default function ConceptModel3D({
 
       <svg
         viewBox={`${-sceneWidth / 2} ${-sceneHeight / 2} ${sceneWidth} ${sceneHeight}`}
+        onPointerDownCapture={handleTouchPointerDownCapture}
+        onPointerMoveCapture={handleTouchPointerMoveCapture}
+        onPointerUpCapture={handleTouchPointerEndCapture}
+        onPointerCancelCapture={handleTouchPointerEndCapture}
         onPointerDown={handleOrbitStart}
         onPointerMove={handleOrbitMove}
         onPointerUp={handleOrbitEnd}
