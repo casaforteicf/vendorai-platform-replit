@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 
 type Props = {
@@ -127,7 +127,7 @@ export default function ConceptPlan2D({
 
   const snap = (value: number) => Math.round(value * 4) / 4;
 
-  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+  const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (!gesture || !onRoomChange) return;
     const point = toSvgPoint(event.clientX, event.clientY);
     const dx = point.x - gesture.startX;
