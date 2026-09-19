@@ -38,6 +38,8 @@ type RoomKind =
   | "garagem"
   | "gourmet"
   | "piscina"
+  | "circulacao"
+  | "escada"
   | "outro";
 
 type Room = {
@@ -110,6 +112,8 @@ const roomDefaults: Record<RoomKind, Omit<Room, "id" | "x" | "y" | "floor">> = {
   garagem: { kind: "garagem", label: "Garagem 2 vagas", width: 5.8, depth: 5.5 },
   gourmet: { kind: "gourmet", label: "Gourmet", width: 4, depth: 3.5 },
   piscina: { kind: "piscina", label: "Piscina", width: 6, depth: 3 },
+  circulacao: { kind: "circulacao", label: "Circulação", width: 1.2, depth: 5 },
+  escada: { kind: "escada", label: "Escada", width: 2.2, depth: 3.8 },
   outro: { kind: "outro", label: "Outro ambiente", width: 3, depth: 3 },
 };
 
