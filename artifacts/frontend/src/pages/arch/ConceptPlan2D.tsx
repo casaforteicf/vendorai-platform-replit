@@ -30,7 +30,7 @@ function doorGlyph(opening: OpeningMarker) {
   const r = 0.82;
   if (opening.orientation === "horizontal") {
     return (
-      <g key={opening.id}>
+      <g key={opening.id} pointerEvents="none">
         <line
           x1={opening.x - r / 2}
           y1={opening.y}
@@ -58,7 +58,7 @@ function doorGlyph(opening: OpeningMarker) {
     );
   }
   return (
-    <g key={opening.id}>
+    <g key={opening.id} pointerEvents="none">
       <line
         x1={opening.x}
         y1={opening.y - r / 2}
