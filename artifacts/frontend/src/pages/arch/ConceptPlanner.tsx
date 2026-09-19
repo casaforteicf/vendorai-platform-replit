@@ -610,45 +610,63 @@ export default function ConceptPlanner() {
         )}
 
         {step === 1 && (
-          <section className="mx-auto max-w-3xl rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+          <section className="mx-auto max-w-5xl rounded-3xl border bg-card p-5 shadow-sm sm:p-8">
             <div className="flex items-center gap-3">
               <Home className="h-7 w-7 text-orange-500" />
               <div>
-                <h2 className="text-xl font-semibold">2. Como será a casa?</h2>
-                <p className="text-sm text-muted-foreground">Defina só o essencial. O layout será montado depois.</p>
+                <h2 className="text-xl font-semibold">2. Escolha uma tipologia de partida</h2>
+                <p className="text-sm text-muted-foreground">Você não começa do zero. Escolha uma casa-base coerente e personalize depois.</p>
               </div>
             </div>
-            <div className="mt-7 grid gap-4 sm:grid-cols-3">
-              {[1, 2, 3].map((count) => (
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {CONCEPT_TYPOLOGIES.map((item) => (
                 <button
-                  key={count}
+                  key={item.id}
                   type="button"
-                  onClick={() => {
-                    setFloors(count);
-                    setActiveFloor(Math.min(activeFloor, count - 1));
-                  }}
-                  className={[
-                    "rounded-2xl border p-5 text-left transition",
-                    floors === count ? "border-orange-500 bg-orange-500/5 ring-2 ring-orange-500/15" : "hover:border-foreground/30",
-                  ].join(" ")}
+                  onClick={() => applyTypology(item.id)}
+                  className={typology === item.id
+                    ? "rounded-2xl border border-orange-500 bg-orange-500/5 p-5 text-left ring-2 ring-orange-500/10"
+                    : "rounded-2xl border p-5 text-left transition hover:border-slate-400 hover:bg-muted/30"}
                 >
-                  <Layers3 className="h-6 w-6" />
-                  <div className="mt-3 font-semibold">{count === 1 ? "Casa térrea" : count === 2 ? "Sobrado" : "3 pavimentos"}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{count} nível{count > 1 ? "eis" : ""} para organizar</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{item.title}</div>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.subtitle}</div>
+                    </div>
+                    <Layers3 className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-1">{item.floors === 1 ? "Térrea" : "Sobrado"}</span>
+                    <span className="rounded-full bg-muted px-2 py-1">≈ {item.suggestedArea} m²</span>
+                    <span className="rounded-full bg-muted px-2 py-1">{item.rooms.length} ambientes</span>
+                  </div>
                 </button>
               ))}
             </div>
-            <label className="mt-6 block space-y-2 text-sm font-medium">
-              Área aproximada desejada
-              <div className="flex items-center rounded-xl border bg-background px-3">
-                <input className="h-12 w-full bg-transparent outline-none" type="number" min={40} value={desiredArea} onChange={(e) => setDesiredArea(Math.max(40, Number(e.target.value) || 40))} />
-                <span className="text-muted-foreground">m²</span>
+
+            <div className="mt-6 grid gap-4 rounded-2xl border bg-muted/25 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+              <label className="block space-y-2 text-sm font-medium">
+                Área aproximada desejada
+                <div className="flex items-center rounded-xl border bg-background px-3">
+                  <input
+                    className="h-12 w-full bg-transparent outline-none"
+                    type="number"
+                    min={40}
+                    value={desiredArea}
+                    onChange={(e) => setDesiredArea(Math.max(40, Number(e.target.value) || 40))}
+                  />
+                  <span className="text-muted-foreground">m²</span>
+                </div>
+              </label>
+              <div className="rounded-xl bg-background px-4 py-3 text-xs text-muted-foreground">
+                A tipologia define a lógica inicial; medidas e ambientes continuam editáveis.
               </div>
-            </label>
+            </div>
           </section>
         )}
 
-        {step === 2 && (
+                {step === 2 && (
           <section className="grid gap-5 lg:grid-cols-[320px_1fr]">
             <aside className="rounded-3xl border bg-card p-5 shadow-sm">
               <h2 className="text-lg font-semibold">3. Ambientes</h2>
@@ -709,37 +727,57 @@ export default function ConceptPlanner() {
         )}
 
         {step === 3 && (
-          <section className="mx-auto max-w-4xl rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+          <section className="mx-auto max-w-4xl rounded-3xl border bg-card p-5 shadow-sm sm:p-8">
             <div className="flex items-center gap-3">
               <Sparkles className="h-7 w-7 text-orange-500" />
               <div>
-                <h2 className="text-xl font-semibold">4. Onde você prefere cada parte?</h2>
-                <p className="text-sm text-muted-foreground">O sistema organiza sozinho; você só indica prioridades.</p>
+                <h2 className="text-xl font-semibold">4. Prioridades do projeto</h2>
+                <p className="text-sm text-muted-foreground">Estas escolhas agora alteram de verdade a organização da planta.</p>
               </div>
             </div>
+
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {[
-                "Garagem na frente",
-                "Suíte principal nos fundos",
-                "Cozinha perto do gourmet",
-                "Gourmet perto da piscina",
-                "Quartos separados da área social",
-                "Sala integrada com a cozinha",
-              ].map((text, index) => (
-                <label key={text} className="flex cursor-pointer items-center gap-3 rounded-2xl border p-4">
-                  <input type="checkbox" defaultChecked={index < 4} className="h-4 w-4 accent-orange-500" />
-                  <span className="text-sm font-medium">{text}</span>
-                </label>
+              {([
+                ["garageFront", "Garagem na frente", "Prioriza acesso direto de veículos pela rua."],
+                ["masterRear", "Suíte principal mais reservada", "Leva a suíte para a faixa mais íntima da implantação."],
+                ["kitchenNearGourmet", "Cozinha perto do gourmet", "Aproxima preparo e lazer para reduzir circulação."],
+                ["gourmetNearPool", "Gourmet conectado à piscina", "Cria um conjunto de lazer no fundo do lote."],
+                ["privateAwaySocial", "Quartos afastados da área social", "Separa ruído e circulação social da área íntima."],
+                ["livingIntegratedKitchen", "Sala integrada com cozinha", "Mantém social e cozinha na mesma faixa funcional."],
+              ] as Array<[LayoutPreferenceKey, string, string]>).map(([key, title, description]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleLayoutPreference(key)}
+                  className={layoutPreferences[key]
+                    ? "flex items-start gap-3 rounded-2xl border border-orange-500 bg-orange-500/5 p-4 text-left"
+                    : "flex items-start gap-3 rounded-2xl border p-4 text-left hover:bg-muted/30"}
+                >
+                  <span className={layoutPreferences[key]
+                    ? "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-orange-500 text-white"
+                    : "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border"}>
+                    {layoutPreferences[key] && <Check className="h-3.5 w-3.5" />}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">{title}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
+                  </span>
+                </button>
               ))}
             </div>
-            <button type="button" onClick={() => organize()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white">
+
+            <button
+              type="button"
+              onClick={() => organize()}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
+            >
               <Sparkles className="h-4 w-4" />
-              Organizar para mim
+              Recalcular planta com essas prioridades
             </button>
           </section>
         )}
 
-        {step === 4 && (
+                {step === 4 && (
           <section className="grid min-h-[680px] gap-5 xl:grid-cols-[260px_1fr_310px]">
             <aside className="rounded-3xl border bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between">
