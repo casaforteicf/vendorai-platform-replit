@@ -29,6 +29,11 @@ export type OpeningMarker = {
   y: number;
   orientation: "horizontal" | "vertical";
   roomId: string;
+  width?: number;
+  height?: number;
+  sillHeight?: number;
+  openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
+  swing?: "left" | "right";
 };
 
 export type ConceptGeometry = {

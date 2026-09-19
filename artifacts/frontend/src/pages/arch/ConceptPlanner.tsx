@@ -80,6 +80,11 @@ type CustomOpening = {
   floor: number;
   type: "door" | "window";
   offset: number;
+  width?: number;
+  height?: number;
+  sillHeight?: number;
+  openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
+  swing?: "left" | "right";
 };
 
 type SpaceProfile = {
@@ -697,6 +702,11 @@ export default function ConceptPlanner() {
         floor: activeFloor,
         type: source.type,
         offset,
+        width: source.type === "door" ? 0.90 : 1.20,
+        height: source.type === "door" ? 2.10 : 1.20,
+        sillHeight: source.type === "door" ? 0 : 0.90,
+        openingStyle: source.type === "door" ? "hinged" : "sliding",
+        swing: "left",
       });
     }
 
@@ -785,6 +795,11 @@ export default function ConceptPlanner() {
             y,
             orientation: horizontal ? "horizontal" as const : "vertical" as const,
             roomId: `custom-wall:${wall.id}`,
+            width: opening.width,
+            height: opening.height,
+            sillHeight: opening.sillHeight,
+            openingStyle: opening.openingStyle,
+            swing: opening.swing,
           }];
         }),
     [customOpenings, customWalls, activeFloor],
@@ -887,6 +902,11 @@ export default function ConceptPlanner() {
             y: wall.y1 + (wall.y2 - wall.y1) * offset,
             orientation: horizontal ? "horizontal" as const : "vertical" as const,
             roomId: `custom-wall:${wall.id}`,
+            width: opening.width,
+            height: opening.height,
+            sillHeight: opening.sillHeight,
+            openingStyle: opening.openingStyle,
+            swing: opening.swing,
           }];
         });
       const floorClosedSpaces = detectClosedSpaces(
@@ -990,6 +1010,9 @@ export default function ConceptPlanner() {
     [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
   );
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
+  const selectedCustomOpening = selectedOpening
+    ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
+    : null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
 
   const addCustomWall = (wall: CustomWall) => {
@@ -1181,12 +1204,36 @@ export default function ConceptPlanner() {
       floor: wall.floor,
       type,
       offset: 0.5,
+      width: type === "door" ? 0.90 : 1.20,
+      height: type === "door" ? 2.10 : 1.20,
+      sillHeight: type === "door" ? 0 : 0.90,
+      openingStyle: type === "door" ? "hinged" : "sliding",
+      swing: "left",
     };
     setCustomOpenings((prev) => [...prev, opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
     setSelectedOpeningId(opening.id);
     setSelectedCustomWallId(null);
+  };
+
+  const updateCustomOpeningParams = (
+    openingId: string,
+    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
+  ) => {
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => prev.map((opening) => {
+      if (opening.id !== openingId) return opening;
+      const next = { ...opening, ...patch };
+      const isDoor = next.type === "door";
+      return {
+        ...next,
+        width: Math.max(0.5, Math.min(4, next.width ?? (isDoor ? 0.9 : 1.2))),
+        height: Math.max(0.5, Math.min(2.8, next.height ?? (isDoor ? 2.1 : 1.2))),
+        sillHeight: isDoor ? 0 : Math.max(0, Math.min(2.2, next.sillHeight ?? 0.9)),
+      };
+    }));
+    pushRoomHistory(before);
   };
 
   const deleteCustomOpening = (openingId: string) => {
@@ -1267,6 +1314,21 @@ export default function ConceptPlanner() {
       y: selectedOpening.y,
       type: nextType,
     });
+    const custom = customOpenings.find((opening) => opening.id === selectedOpening.id);
+    if (custom) {
+      setCustomOpenings((prev) => prev.map((opening) =>
+        opening.id === selectedOpening.id
+          ? {
+              ...opening,
+              type: nextType,
+              width: nextType === "door" ? Math.min(opening.width ?? 0.9, 1.4) : Math.max(opening.width ?? 1.2, 0.8),
+              height: nextType === "door" ? 2.1 : 1.2,
+              sillHeight: nextType === "door" ? 0 : 0.9,
+              openingStyle: nextType === "door" ? "hinged" : "sliding",
+            }
+          : opening
+      ));
+    }
     pushRoomHistory(before);
   };
 
@@ -2314,6 +2376,96 @@ export default function ConceptPlanner() {
                               Arraste na planta ou use o ajuste fino abaixo.
                             </div>
                           </div>
+                          {selectedCustomOpening && (
+                            <div className="space-y-3 rounded-xl border bg-background p-3">
+                              <div className="text-xs font-semibold text-muted-foreground">Dimensões do vão</div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <label className="text-xs font-medium">
+                                  Largura (m)
+                                  <input
+                                    type="number"
+                                    min="0.5"
+                                    max="4"
+                                    step="0.05"
+                                    value={(selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)).toFixed(2)}
+                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { width: Number(event.target.value) })}
+                                    className="mt-1 h-10 w-full rounded-lg border px-2"
+                                  />
+                                </label>
+                                <label className="text-xs font-medium">
+                                  Altura (m)
+                                  <input
+                                    type="number"
+                                    min="0.5"
+                                    max="2.8"
+                                    step="0.05"
+                                    value={(selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)).toFixed(2)}
+                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { height: Number(event.target.value) })}
+                                    className="mt-1 h-10 w-full rounded-lg border px-2"
+                                  />
+                                </label>
+                              </div>
+                              {selectedOpening.type === "window" && (
+                                <label className="block text-xs font-medium">
+                                  Peitoril (m)
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="2.2"
+                                    step="0.05"
+                                    value={(selectedCustomOpening.sillHeight ?? 0.9).toFixed(2)}
+                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: Number(event.target.value) })}
+                                    className="mt-1 h-10 w-full rounded-lg border px-2"
+                                  />
+                                </label>
+                              )}
+                              <label className="block text-xs font-medium">
+                                Tipo de abertura
+                                <select
+                                  value={selectedCustomOpening.openingStyle ?? (selectedOpening.type === "door" ? "hinged" : "sliding")}
+                                  onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
+                                    openingStyle: event.target.value as CustomOpening["openingStyle"],
+                                  })}
+                                  className="mt-1 h-10 w-full rounded-lg border bg-background px-2"
+                                >
+                                  {selectedOpening.type === "door" ? (
+                                    <>
+                                      <option value="hinged">Giro</option>
+                                      <option value="sliding">Correr</option>
+                                      <option value="fixed">Fixa</option>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <option value="sliding">Correr</option>
+                                      <option value="fixed">Fixa</option>
+                                      <option value="tilt_turn">Oscilobatente</option>
+                                      <option value="hinged">Abrir</option>
+                                    </>
+                                  )}
+                                </select>
+                              </label>
+                              {selectedOpening.type === "door" && (selectedCustomOpening.openingStyle ?? "hinged") === "hinged" && (
+                                <div>
+                                  <div className="mb-1 text-xs font-medium">Sentido de abertura</div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {(["left", "right"] as const).map((swing) => (
+                                      <button
+                                        key={swing}
+                                        type="button"
+                                        onClick={() => updateCustomOpeningParams(selectedOpening.id, { swing })}
+                                        className={(selectedCustomOpening.swing ?? "left") === swing
+                                          ? "rounded-lg border border-orange-400 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-800"
+                                          : "rounded-lg border px-3 py-2 text-xs font-semibold"}
+                                      >
+                                        {swing === "left" ? "Esquerda" : "Direita"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           <div className="grid grid-cols-2 gap-2">
                             <button
                               type="button"

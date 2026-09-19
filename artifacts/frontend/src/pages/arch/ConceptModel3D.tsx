@@ -137,7 +137,7 @@ function splitWallForOpenings(
     })
     .map((opening) => {
       const along = vertical ? opening.y : opening.x;
-      const width = opening.type === "door" ? 0.95 : 1.35;
+      const width = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
       return {
         ...opening,
         start: Math.max(wallStart, along - width / 2),
@@ -171,11 +171,20 @@ function splitWallForOpenings(
 
     const openingSegment = makeSegment(opening.start, opening.end);
     if (openingSegment) {
-      if (opening.type === "door") {
-        pieces.push({ wall: openingSegment, zMin: 2.1, zMax: WALL_HEIGHT, kind: "lintel" });
-      } else {
-        pieces.push({ wall: openingSegment, zMin: 0, zMax: 0.9, kind: "sill" });
-        pieces.push({ wall: openingSegment, zMin: 2.1, zMax: WALL_HEIGHT, kind: "lintel" });
+      const openingHeight = Math.max(
+        0.5,
+        Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
+      );
+      const sillHeight = opening.type === "door"
+        ? 0
+        : Math.max(0, Math.min(WALL_HEIGHT - 0.3, opening.sillHeight ?? 0.9));
+      const headHeight = Math.min(WALL_HEIGHT, sillHeight + openingHeight);
+
+      if (sillHeight > 0.04) {
+        pieces.push({ wall: openingSegment, zMin: 0, zMax: sillHeight, kind: "sill" });
+      }
+      if (headHeight < WALL_HEIGHT - 0.04) {
+        pieces.push({ wall: openingSegment, zMin: headHeight, zMax: WALL_HEIGHT, kind: "lintel" });
       }
     }
     cursor = Math.max(cursor, opening.end);
