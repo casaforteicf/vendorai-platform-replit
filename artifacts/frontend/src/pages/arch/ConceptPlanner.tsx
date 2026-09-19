@@ -30,7 +30,7 @@ import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
-import { detectClosedSpaces, type ClosedSpace } from "./conceptWallNetwork";
+import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 
 type RoomKind =
   | "sala"
@@ -884,6 +884,108 @@ export default function ConceptPlanner() {
   };
 
   const selectedCustomWall = customWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+  const customWallTopology = useMemo(
+    () =>
+      buildOrthogonalWallTopology(
+        customWalls
+          .filter((wall) => wall.floor === activeFloor)
+          .map((wall) => ({
+            id: wall.id,
+            x1: wall.x1,
+            y1: wall.y1,
+            x2: wall.x2,
+            y2: wall.y2,
+          })),
+      ),
+    [customWalls, activeFloor],
+  );
+
+  const moveTopologyJunction = (
+    refs: WallTopologyEndpointRef[],
+    rawPoint: { x: number; y: number },
+  ) => {
+    if (refs.length < 2) return;
+    const before = editStartRef.current ?? snapshotEditor();
+    const target = {
+      x: Math.max(0, Math.min(lotWidth, Math.round(rawPoint.x * 4) / 4)),
+      y: Math.max(0, Math.min(lotDepth, Math.round(rawPoint.y * 4) / 4)),
+    };
+
+    const original = customWallsRef.current;
+    const byId = new Map(original.map((wall) => [wall.id, { ...wall }]));
+    const endpointKey = (x: number, y: number) =>
+      `${Math.round(x * 1000) / 1000}:${Math.round(y * 1000) / 1000}`;
+
+    const endpointNodes = new Map<string, WallTopologyEndpointRef[]>();
+    for (const wall of original.filter((item) => item.floor === activeFloor)) {
+      const entries = [
+        { key: endpointKey(wall.x1, wall.y1), ref: { wallId: wall.id, endpoint: "start" as const } },
+        { key: endpointKey(wall.x2, wall.y2), ref: { wallId: wall.id, endpoint: "end" as const } },
+      ];
+      for (const entry of entries) {
+        endpointNodes.set(entry.key, [...(endpointNodes.get(entry.key) ?? []), entry.ref]);
+      }
+    }
+
+    const startWall = byId.get(refs[0].wallId);
+    if (!startWall) return;
+    const startPoint = refs[0].endpoint === "start"
+      ? { x: startWall.x1, y: startWall.y1 }
+      : { x: startWall.x2, y: startWall.y2 };
+    const startKey = endpointKey(startPoint.x, startPoint.y);
+
+    const queue: Array<{ key: string; axis: "x" | "y"; value: number }> = [
+      { key: startKey, axis: "x", value: target.x },
+      { key: startKey, axis: "y", value: target.y },
+    ];
+    const visited = new Set<string>();
+
+    while (queue.length) {
+      const current = queue.shift()!;
+      const visitKey = `${current.key}:${current.axis}`;
+      if (visited.has(visitKey)) continue;
+      visited.add(visitKey);
+
+      const nodeRefs = endpointNodes.get(current.key) ?? [];
+      for (const ref of nodeRefs) {
+        const wall = byId.get(ref.wallId);
+        if (!wall) continue;
+        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+        const remote = ref.endpoint === "start"
+          ? { x: wall.x2, y: wall.y2, endpoint: "end" as const }
+          : { x: wall.x1, y: wall.y1, endpoint: "start" as const };
+        const remoteKeyBefore = endpointKey(remote.x, remote.y);
+
+        if (current.axis === "x") {
+          if (horizontal) {
+            if (ref.endpoint === "start") wall.x1 = current.value;
+            else wall.x2 = current.value;
+          } else {
+            wall.x1 = current.value;
+            wall.x2 = current.value;
+            queue.push({ key: remoteKeyBefore, axis: "x", value: current.value });
+          }
+        } else if (horizontal) {
+          wall.y1 = current.value;
+          wall.y2 = current.value;
+          queue.push({ key: remoteKeyBefore, axis: "y", value: current.value });
+        } else {
+          if (ref.endpoint === "start") wall.y1 = current.value;
+          else wall.y2 = current.value;
+        }
+      }
+    }
+
+    const next = original.map((wall) => byId.get(wall.id) ?? wall);
+    const invalid = next.some((wall) =>
+      wall.floor === activeFloor &&
+      Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) < 0.5
+    );
+    if (invalid) return;
+
+    setCustomWalls(next);
+    if (!editStartRef.current) pushRoomHistory(before);
+  };
 
   const addOpeningToCustomWall = (wallId: string, type: "door" | "window") => {
     const wall = customWalls.find((item) => item.id === wallId);
@@ -1534,6 +1636,9 @@ export default function ConceptPlanner() {
                             ? `${closedSpaces.length} área${closedSpaces.length > 1 ? "s" : ""} fechada${closedSpaces.length > 1 ? "s" : ""} · ${closedArea.toFixed(1)} m²`
                             : "Nenhuma área fechada"}
                         </div>
+                        <div className="rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
+                          {customWallTopology.nodes.filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2).length} junções · {customWallTopology.segments.length} segmentos topológicos
+                        </div>
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
@@ -1676,6 +1781,8 @@ export default function ConceptPlanner() {
                         }}
                         onDeleteCustomWall={deleteCustomWall}
                         onUpdateCustomWall={updateCustomWall}
+                        topologyNodes={customWallTopology.nodes}
+                        onMoveTopologyJunction={moveTopologyJunction}
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
@@ -1928,7 +2035,7 @@ export default function ConceptPlanner() {
                         </div>
                       ) : !selectedWall ? (
                         <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          Selecione uma parede derivada dos ambientes ou uma parede livre desenhada na planta.
+                          Selecione uma parede ou uma junção da rede. Nós roxos representam encontros editáveis; cruzamentos/T detectados pela topologia aparecem na malha.
                         </div>
                       ) : (
                         <div className="mt-4 space-y-4">
