@@ -293,6 +293,15 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ];
 
     const enforceArqdorContext = () => {
+      // As inserções abaixo (insertAdjacentElement) são mutações de DOM
+      // observadas pelo MutationObserver criado logo mais abaixo. Sem
+      // desconectar antes de mexer no DOM, cada inserção podia disparar o
+      // próprio observer de novo — e se o React re-renderizasse esse trecho
+      // do menu (removendo os links injetados) entre um ciclo e outro, o
+      // efeito reinseria e o observer reagia de novo, travando a aba
+      // (era exatamente esse loop que prendia contas com Arqdor habilitado
+      // num "Entrando..." infinito, mesmo com o login já concluído).
+      observer.disconnect();
       const roots = Array.from(
         document.querySelectorAll<HTMLAnchorElement>('a[data-arqdor-tool-entry="true"]'),
       );
@@ -372,11 +381,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           element.style.display = "none";
         });
       });
+
+      observer.observe(document.body, { childList: true, subtree: true });
     };
 
-    enforceArqdorContext();
     const observer = new MutationObserver(enforceArqdorContext);
-    observer.observe(document.body, { childList: true, subtree: true });
+    enforceArqdorContext();
 
     return () => {
       observer.disconnect();
