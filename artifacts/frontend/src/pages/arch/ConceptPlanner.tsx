@@ -353,7 +353,9 @@ export default function ConceptPlanner() {
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
       } catch {
-        if (!cancelled) setSaveState("error");
+        // A falha ao recuperar um rascunho anterior não significa que o novo projeto
+        // não pode ser salvo. Evita exibir um falso "Não foi possível salvar" ao abrir.
+        if (!cancelled) setSaveState("idle");
       }
     };
 
