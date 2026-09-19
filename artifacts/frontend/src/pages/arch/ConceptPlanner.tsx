@@ -449,7 +449,7 @@ export default function ConceptPlanner() {
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
   const visibleRooms = wallFirstActive
-    ? rooms.filter((r) => r.floor === activeFloor && r.kind === "escada")
+    ? rooms.filter((r) => r.floor === activeFloor && (r.kind === "escada" || r.kind === "piscina"))
     : rooms.filter((r) => r.floor === activeFloor);
   const currentArea = useMemo(() => {
     const legacyArea = rooms
@@ -624,6 +624,25 @@ export default function ConceptPlanner() {
       setSelectedId(next.id);
       setInteractionMode("room");
       setSelectedClosedSpaceId(null);
+      pushRoomHistory(before);
+      return;
+    }
+
+    if (kind === "piscina" && wallFirstActive) {
+      const existing = rooms.find((room) => room.floor === activeFloor && room.kind === "piscina");
+      if (existing) {
+        setSelectedId(existing.id);
+        setInteractionMode("room");
+        return;
+      }
+
+      const before = snapshotEditor();
+      const next = createRoom("piscina", activeFloor);
+      next.x = Math.max(0.5, Math.min(lotWidth - next.width - 0.5, (lotWidth - next.width) / 2));
+      next.y = Math.max(0.5, lotDepth - next.depth - 0.75);
+      setRooms((prev) => [...prev, next]);
+      setSelectedId(next.id);
+      setInteractionMode("room");
       pushRoomHistory(before);
       return;
     }
@@ -2746,34 +2765,52 @@ export default function ConceptPlanner() {
                           ["piscina", Waves, "Piscina", "from-sky-50 to-cyan-100"],
                           ["gourmet", ChefHat, "Gourmet", "from-amber-50 to-orange-100"],
                           ["garagem", CarFront, "Garagem", "from-slate-50 to-slate-200"],
-                        ] as Array<[RoomKind, typeof Home, string, string]>).map(([kind, Icon, label, gradient]) => (
-                          <button
-                            key={kind}
-                            type="button"
-                            disabled={wallFirstActive}
-                            onClick={() => addRoom(kind)}
-                            className="overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            <div className={`grid h-24 place-items-center bg-gradient-to-br ${gradient}`}>
-                              <Icon className="h-9 w-9 text-slate-700" />
-                            </div>
-                            <div className="flex items-center justify-between p-3">
-                              <span className="text-sm font-semibold">{label}</span>
-                              <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-                            </div>
-                          </button>
-                        ))}
+                        ] as Array<[RoomKind, typeof Home, string, string]>).map(([kind, Icon, label, gradient]) => {
+                          const classifySpace = wallFirstActive && (kind === "gourmet" || kind === "garagem");
+                          return (
+                            <button
+                              key={kind}
+                              type="button"
+                              onClick={() => {
+                                if (classifySpace) {
+                                  setInteractionMode("space");
+                                  setEditorLibraryTab("rooms");
+                                  setSelectedId(null);
+                                  return;
+                                }
+                                addRoom(kind);
+                              }}
+                              className="overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
+                            >
+                              <div className={`grid h-24 place-items-center bg-gradient-to-br ${gradient}`}>
+                                <Icon className="h-9 w-9 text-slate-700" />
+                              </div>
+                              <div className="p-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-semibold">{label}</span>
+                                  <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                                </div>
+                                <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                  {classifySpace ? "Classificar espaço fechado" : "Inserir no lote"}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                         <button
                           type="button"
-                          disabled
-                          className="overflow-hidden rounded-2xl border bg-background text-left opacity-55"
+                          onClick={() => {
+                            setEditorView("facade");
+                            setLibraryOpen(false);
+                          }}
+                          className="overflow-hidden rounded-xl border bg-white text-left hover:border-emerald-300 hover:shadow-sm"
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-emerald-50 to-green-100">
                             <Trees className="h-9 w-9 text-emerald-700" />
                           </div>
                           <div className="p-3">
                             <div className="text-sm font-semibold">Paisagismo</div>
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">Biblioteca em preparação</div>
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">Abrir composição externa</div>
                           </div>
                         </button>
                       </div>
