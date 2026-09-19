@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import "./planner5d-reference.css";
 import { useLocation } from "wouter";
 import LegacyRenderStudioPage from "./RenderStudioPageLegacy";
 import { useRenderStudioPersistentBootstrap } from "@/modules/arqdor/hooks/useRenderStudioPersistentBootstrap";
@@ -818,7 +819,7 @@ export default function RenderStudioPage() {
   }
 
   return (
-    <div ref={shellRef} className="arqdor-studio-v3">
+    <div ref={shellRef} className="arqdor-reference-ui arqdor-studio-v3">
       <style>{SHELL_STYLES}</style>
       <button className="arqdor-back-btn" onClick={handleBack} aria-label="Voltar para a tela anterior" title="Voltar para a tela anterior">
         <span aria-hidden="true">←</span>
