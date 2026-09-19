@@ -3566,7 +3566,6 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
               )}
-            </div>
           </section>
         )}
 
