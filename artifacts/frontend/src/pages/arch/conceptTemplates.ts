@@ -35,6 +35,8 @@ export type TemplateRoom = {
     | "garagem"
     | "gourmet"
     | "piscina"
+    | "circulacao"
+    | "escada"
     | "outro";
   label: string;
   width: number;
@@ -64,6 +66,7 @@ export const CONCEPT_TYPOLOGIES: Array<{
       { kind: "quarto", label: "Quarto 2", width: 3.2, depth: 3.0, floor: 0 },
       { kind: "banheiro", label: "Banheiro", width: 2.2, depth: 1.6, floor: 0 },
       { kind: "lavanderia", label: "Lavanderia", width: 2.4, depth: 2.0, floor: 0 },
+      { kind: "circulacao", label: "Circulação", width: 1.2, depth: 4.8, floor: 0 },
     ],
   },
   {
@@ -81,6 +84,7 @@ export const CONCEPT_TYPOLOGIES: Array<{
       { kind: "quarto", label: "Quarto 2", width: 3.2, depth: 3.0, floor: 0 },
       { kind: "banheiro", label: "Banheiro social", width: 2.4, depth: 1.6, floor: 0 },
       { kind: "lavanderia", label: "Lavanderia", width: 2.5, depth: 2.0, floor: 0 },
+      { kind: "circulacao", label: "Hall íntimo", width: 1.2, depth: 5.5, floor: 0 },
     ],
   },
   {
@@ -99,6 +103,7 @@ export const CONCEPT_TYPOLOGIES: Array<{
       { kind: "banheiro", label: "Banheiro social", width: 2.4, depth: 1.6, floor: 0 },
       { kind: "lavanderia", label: "Lavanderia", width: 2.5, depth: 2.0, floor: 0 },
       { kind: "gourmet", label: "Espaço gourmet", width: 4.8, depth: 3.8, floor: 0 },
+      { kind: "circulacao", label: "Hall íntimo", width: 1.2, depth: 5.8, floor: 0 },
       { kind: "piscina", label: "Piscina", width: 6.0, depth: 3.0, floor: 0 },
     ],
   },
@@ -114,6 +119,10 @@ export const CONCEPT_TYPOLOGIES: Array<{
       { kind: "cozinha", label: "Cozinha", width: 3.8, depth: 3.5, floor: 0 },
       { kind: "lavanderia", label: "Lavanderia", width: 2.5, depth: 2.0, floor: 0 },
       { kind: "gourmet", label: "Espaço gourmet", width: 4.5, depth: 3.6, floor: 0 },
+      { kind: "escada", label: "Escada", width: 2.2, depth: 3.8, floor: 0 },
+      { kind: "circulacao", label: "Hall social", width: 1.2, depth: 4.2, floor: 0 },
+      { kind: "escada", label: "Escada", width: 2.2, depth: 3.8, floor: 1 },
+      { kind: "circulacao", label: "Hall íntimo", width: 1.2, depth: 5.5, floor: 1 },
       { kind: "suite", label: "Suíte", width: 4.2, depth: 3.6, floor: 1 },
       { kind: "quarto", label: "Quarto 1", width: 3.2, depth: 3.0, floor: 1 },
       { kind: "quarto", label: "Quarto 2", width: 3.2, depth: 3.0, floor: 1 },
@@ -133,6 +142,10 @@ export const CONCEPT_TYPOLOGIES: Array<{
       { kind: "lavanderia", label: "Lavanderia", width: 2.5, depth: 2.0, floor: 0 },
       { kind: "gourmet", label: "Espaço gourmet", width: 5.0, depth: 4.0, floor: 0 },
       { kind: "piscina", label: "Piscina", width: 6.0, depth: 3.0, floor: 0 },
+      { kind: "escada", label: "Escada", width: 2.3, depth: 4.0, floor: 0 },
+      { kind: "circulacao", label: "Hall social", width: 1.2, depth: 4.5, floor: 0 },
+      { kind: "escada", label: "Escada", width: 2.3, depth: 4.0, floor: 1 },
+      { kind: "circulacao", label: "Hall íntimo", width: 1.2, depth: 6.0, floor: 1 },
       { kind: "suite", label: "Suíte master", width: 4.8, depth: 4.0, floor: 1 },
       { kind: "quarto", label: "Quarto 1", width: 3.3, depth: 3.1, floor: 1 },
       { kind: "quarto", label: "Quarto 2", width: 3.3, depth: 3.1, floor: 1 },
