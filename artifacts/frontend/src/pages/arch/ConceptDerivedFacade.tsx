@@ -138,7 +138,7 @@ function Roof({
   if (params.roof === "misto") {
     const splitMeters = widthMeters * params.roofMixedRatio;
     const flatHeight = params.roofParapetHeight * pxPerMeterY;
-    const pitchedWidth = Math.max(0.1, widthMeters - splitMeters + params.roofOverhang);
+    const pitchedWidth = Math.max(0.1, widthMeters - splitMeters + params.roofOverhang * 2);
     const pitchedDepth = depthMeters + params.roofOverhang * 2;
     const pitchedX = x + splitMeters * scaleX - params.roofOverhang * scaleX;
     const pitchedSource = { ...facade, roof: "aparente" as const };

@@ -420,9 +420,18 @@ export function roofPeakZ(bounds: RoofBounds, baseZ: number, source: RoofInput) 
 
 export function roofPlanBounds(bounds: RoofBounds, source: RoofInput) {
   const params = normalizeRoofParameters(source);
-  return params.roof === "platibanda"
-    ? bounds
-    : expandRoofBounds(bounds, params.roofOverhang);
+  if (params.roof === "platibanda") return bounds;
+  if (params.roof === "misto") {
+    const splitX = bounds.minX + roofBoundsWidth(bounds) * params.roofMixedRatio;
+    const pitched = expandRoofBounds({ ...bounds, minX: splitX }, params.roofOverhang);
+    return {
+      minX: bounds.minX,
+      minY: Math.min(bounds.minY, pitched.minY),
+      maxX: Math.max(bounds.maxX, pitched.maxX),
+      maxY: Math.max(bounds.maxY, pitched.maxY),
+    };
+  }
+  return expandRoofBounds(bounds, params.roofOverhang);
 }
 
 function pitchedPlanGuides(bounds: RoofBounds, params: NormalizedRoofParameters, prefix = "roof"): RoofPlanGuide[] {

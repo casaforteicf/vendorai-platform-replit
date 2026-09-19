@@ -6,6 +6,7 @@ import {
   expandRoofBounds,
   normalizeRoofParameters,
   roofFacadeRise,
+  roofPlanBounds,
 } from "./conceptRoof";
 
 const bounds = { minX: 1, minY: 2, maxX: 11, maxY: 8 };
@@ -69,6 +70,19 @@ describe("concept roof", () => {
     const low = roofFacadeRise(10, 6, { roof: "aparente", roofWaters: 2, roofPitchDeg: 10, roofRidgeOrientation: "y" });
     const high = roofFacadeRise(10, 6, { roof: "aparente", roofWaters: 2, roofPitchDeg: 40, roofRidgeOrientation: "y" });
     expect(high).toBeGreaterThan(low);
+  });
+
+  it("mantém o envelope misto coerente com o beiral apenas no trecho inclinado", () => {
+    expect(roofPlanBounds(bounds, {
+      roof: "misto",
+      roofMixedRatio: 0.5,
+      roofOverhang: 0.5,
+    })).toEqual({
+      minX: 1,
+      minY: 1.5,
+      maxX: 11.5,
+      maxY: 8.5,
+    });
   });
 
   it("mistura platibanda e telhado no mesmo objeto de cobertura", () => {
