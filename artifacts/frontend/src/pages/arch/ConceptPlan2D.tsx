@@ -19,6 +19,8 @@ const ROOM_FILL: Record<string, string> = {
   garagem: "#f8fafc",
   gourmet: "#fffaf5",
   piscina: "#e0f2fe",
+  circulacao: "#f8fafc",
+  escada: "#eef2f7",
   outro: "#ffffff",
 };
 
@@ -177,25 +179,62 @@ export default function ConceptPlan2D({
               />
               {!isPool && (
                 <>
-                  <text
-                    x={room.x + room.width / 2}
-                    y={room.y + room.depth / 2 - 0.12}
-                    textAnchor="middle"
-                    fontSize={Math.max(0.3, Math.min(0.44, room.width / 8))}
-                    fontWeight="750"
-                    fill="#0f172a"
-                  >
-                    {room.label}
-                  </text>
-                  <text
-                    x={room.x + room.width / 2}
-                    y={room.y + room.depth / 2 + 0.36}
-                    textAnchor="middle"
-                    fontSize="0.28"
-                    fill="#64748b"
-                  >
-                    {room.width.toFixed(2)} × {room.depth.toFixed(2)} m · {area.toFixed(1)} m²
-                  </text>
+                  {room.kind === "escada" && (
+                    <g opacity="0.8">
+                      {Array.from({ length: 7 }).map((_, step) => (
+                        <line
+                          key={step}
+                          x1={room.x + 0.18}
+                          y1={room.y + 0.35 + step * Math.max(0.2, (room.depth - 0.7) / 7)}
+                          x2={room.x + room.width - 0.18}
+                          y2={room.y + 0.35 + step * Math.max(0.2, (room.depth - 0.7) / 7)}
+                          stroke="#94a3b8"
+                          strokeWidth="0.035"
+                        />
+                      ))}
+                      <path
+                        d={`M ${room.x + room.width / 2} ${room.y + room.depth - 0.45} L ${room.x + room.width / 2} ${room.y + 0.65} M ${room.x + room.width / 2} ${room.y + 0.65} l -0.18 0.28 M ${room.x + room.width / 2} ${room.y + 0.65} l 0.18 0.28`}
+                        stroke="#64748b"
+                        strokeWidth="0.05"
+                        fill="none"
+                      />
+                    </g>
+                  )}
+                  {room.kind === "circulacao" ? (
+                    <text
+                      x={room.x + room.width / 2}
+                      y={room.y + room.depth / 2}
+                      textAnchor="middle"
+                      fontSize="0.24"
+                      fontWeight="700"
+                      fill="#64748b"
+                      transform={`rotate(-90 ${room.x + room.width / 2} ${room.y + room.depth / 2})`}
+                    >
+                      {room.label}
+                    </text>
+                  ) : (
+                    <>
+                      <text
+                        x={room.x + room.width / 2}
+                        y={room.y + room.depth / 2 - 0.12}
+                        textAnchor="middle"
+                        fontSize={room.kind === "escada" ? "0.28" : Math.max(0.3, Math.min(0.44, room.width / 8))}
+                        fontWeight="750"
+                        fill="#0f172a"
+                      >
+                        {room.label}
+                      </text>
+                      <text
+                        x={room.x + room.width / 2}
+                        y={room.y + room.depth / 2 + 0.36}
+                        textAnchor="middle"
+                        fontSize="0.28"
+                        fill="#64748b"
+                      >
+                        {room.width.toFixed(2)} × {room.depth.toFixed(2)} m · {area.toFixed(1)} m²
+                      </text>
+                    </>
+                  )}
                 </>
               )}
               {isPool && (

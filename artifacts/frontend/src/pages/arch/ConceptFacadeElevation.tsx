@@ -4,6 +4,7 @@ import type { ConceptRoomShape } from "./conceptGeometry";
 type Props = {
   rooms: ConceptRoomShape[];
   floors: number;
+  lotWidth?: number;
   facade: ConceptFacadePreferences;
 };
 
@@ -28,7 +29,7 @@ function materialColors(facade: ConceptFacadePreferences) {
   return { base, accent, frame };
 }
 
-export default function ConceptFacadeElevation({ rooms, floors, facade }: Props) {
+export default function ConceptFacadeElevation({ rooms, floors, lotWidth = 12, facade }: Props) {
   const colors = materialColors(facade);
   const garage = rooms.find((room) => room.kind === "garagem");
   const social = rooms.find((room) => room.kind === "sala");
@@ -39,14 +40,20 @@ export default function ConceptFacadeElevation({ rooms, floors, facade }: Props)
   const socialWidth = social ? Math.min(46, Math.max(34, social.width * 5.4)) : 40;
   const bodyWidth = Math.min(92, garageWidth + socialWidth + 10);
   const bodyX = (100 - bodyWidth) / 2;
-  const garageX = bodyX;
-  const socialX = bodyX + garageWidth;
+  const garageOnRight = Boolean(garage && garage.x + garage.width / 2 > lotWidth / 2);
+  const garageX = garageOnRight ? bodyX + bodyWidth - garageWidth : bodyX;
+  const socialX = garageOnRight ? bodyX : bodyX + garageWidth;
   const groundY = 61;
   const groundH = 24;
   const upperY = 37;
   const upperH = 24;
 
   const roofY = hasUpper ? upperY - 3 : groundY - 3;
+  const entranceX = garageOnRight
+    ? Math.max(bodyX + 4, garageX - 6)
+    : Math.min(bodyX + bodyWidth - 7, garageX + garageWidth + 2);
+  const wideGlass = facade.style === "minimalista" || facade.style === "tropical";
+  const strongVertical = facade.style === "industrial" || facade.style === "classico_contemporaneo";
   const styleShift =
     facade.style === "minimalista" ? 0 :
     facade.style === "industrial" ? 4 :
@@ -117,8 +124,16 @@ export default function ConceptFacadeElevation({ rooms, floors, facade }: Props)
           <line x1={garageX + garageWidth / 2} y1={groundY + 8} x2={garageX + garageWidth / 2} y2={groundY + groundH} />
         </g>
 
-        <rect x={socialX + 6} y={groundY + 7} width={Math.max(12, socialWidth - 13)} height="9.5" rx="0.5" fill={colors.frame} />
-        <rect x={socialX + socialWidth - 5} y={groundY + 8} width="3" height="14" rx="0.3" fill={colors.accent} />
+        <rect
+          x={socialX + (wideGlass ? 3 : 6)}
+          y={groundY + 7}
+          width={Math.max(12, socialWidth - (wideGlass ? 7 : 13))}
+          height={wideGlass ? "11.5" : "9.5"}
+          rx="0.5"
+          fill={colors.frame}
+        />
+        <rect x={entranceX} y={groundY + 7} width="3.8" height="15" rx="0.3" fill={colors.accent} />
+        <rect x={entranceX - 1.2} y={groundY + 4.6} width="6.2" height="1.2" rx="0.4" fill={colors.accent} />
 
         {hasUpper && (
           <>
@@ -127,10 +142,25 @@ export default function ConceptFacadeElevation({ rooms, floors, facade }: Props)
           </>
         )}
 
-        <rect x={socialX + 1} y={groundY + 5} width="3.6" height="17" rx="0.25" fill={colors.accent} />
+        {strongVertical && (
+          <rect x={garageOnRight ? bodyX + 3 : bodyX + bodyWidth - 6.5} y={groundY - 6} width="4.5" height="30" rx="0.25" fill={colors.accent} />
+        )}
 
         {facade.style === "tropical" && (
-          <rect x={socialX + 4} y={groundY + 3} width={socialWidth - 4} height="2.2" fill="#7c9a72" opacity="0.8" />
+          <>
+            <rect x={socialX + 3} y={groundY + 3} width={socialWidth - 3} height="2.2" fill="#8b6b4a" opacity="0.88" />
+            {Array.from({ length: 6 }).map((_, index) => (
+              <rect
+                key={index}
+                x={socialX + 4 + index * Math.max(2.4, (socialWidth - 8) / 6)}
+                y={groundY + 3}
+                width="0.45"
+                height="4.8"
+                fill="#8b6b4a"
+                opacity="0.82"
+              />
+            ))}
+          </>
         )}
 
         {facade.style === "industrial" && (
