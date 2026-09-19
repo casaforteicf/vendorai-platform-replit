@@ -80,6 +80,11 @@ type CustomOpening = {
   floor: number;
   type: "door" | "window";
   offset: number;
+  width?: number;
+  height?: number;
+  sillHeight?: number;
+  openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
+  swing?: "left" | "right";
 };
 
 type SpaceProfile = {
@@ -697,6 +702,11 @@ export default function ConceptPlanner() {
         floor: activeFloor,
         type: source.type,
         offset,
+        width: source.type === "door" ? 0.90 : 1.20,
+        height: source.type === "door" ? 2.10 : 1.20,
+        sillHeight: source.type === "door" ? 0 : 0.90,
+        openingStyle: source.type === "door" ? "hinged" : "sliding",
+        swing: "left",
       });
     }
 
@@ -785,6 +795,11 @@ export default function ConceptPlanner() {
             y,
             orientation: horizontal ? "horizontal" as const : "vertical" as const,
             roomId: `custom-wall:${wall.id}`,
+            width: opening.width,
+            height: opening.height,
+            sillHeight: opening.sillHeight,
+            openingStyle: opening.openingStyle,
+            swing: opening.swing,
           }];
         }),
     [customOpenings, customWalls, activeFloor],
@@ -887,6 +902,11 @@ export default function ConceptPlanner() {
             y: wall.y1 + (wall.y2 - wall.y1) * offset,
             orientation: horizontal ? "horizontal" as const : "vertical" as const,
             roomId: `custom-wall:${wall.id}`,
+            width: opening.width,
+            height: opening.height,
+            sillHeight: opening.sillHeight,
+            openingStyle: opening.openingStyle,
+            swing: opening.swing,
           }];
         });
       const floorClosedSpaces = detectClosedSpaces(
@@ -1181,12 +1201,36 @@ export default function ConceptPlanner() {
       floor: wall.floor,
       type,
       offset: 0.5,
+      width: type === "door" ? 0.90 : 1.20,
+      height: type === "door" ? 2.10 : 1.20,
+      sillHeight: type === "door" ? 0 : 0.90,
+      openingStyle: type === "door" ? "hinged" : "sliding",
+      swing: "left",
     };
     setCustomOpenings((prev) => [...prev, opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
     setSelectedOpeningId(opening.id);
     setSelectedCustomWallId(null);
+  };
+
+  const updateCustomOpeningParams = (
+    openingId: string,
+    patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
+  ) => {
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => prev.map((opening) => {
+      if (opening.id !== openingId) return opening;
+      const next = { ...opening, ...patch };
+      const isDoor = next.type === "door";
+      return {
+        ...next,
+        width: Math.max(0.5, Math.min(4, next.width ?? (isDoor ? 0.9 : 1.2))),
+        height: Math.max(0.5, Math.min(2.8, next.height ?? (isDoor ? 2.1 : 1.2))),
+        sillHeight: isDoor ? 0 : Math.max(0, Math.min(2.2, next.sillHeight ?? 0.9)),
+      };
+    }));
+    pushRoomHistory(before);
   };
 
   const deleteCustomOpening = (openingId: string) => {
@@ -1267,6 +1311,21 @@ export default function ConceptPlanner() {
       y: selectedOpening.y,
       type: nextType,
     });
+    const custom = customOpenings.find((opening) => opening.id === selectedOpening.id);
+    if (custom) {
+      setCustomOpenings((prev) => prev.map((opening) =>
+        opening.id === selectedOpening.id
+          ? {
+              ...opening,
+              type: nextType,
+              width: nextType === "door" ? Math.min(opening.width ?? 0.9, 1.4) : Math.max(opening.width ?? 1.2, 0.8),
+              height: nextType === "door" ? 2.1 : 1.2,
+              sillHeight: nextType === "door" ? 0 : 0.9,
+              openingStyle: nextType === "door" ? "hinged" : "sliding",
+            }
+          : opening
+      ));
+    }
     pushRoomHistory(before);
   };
 
