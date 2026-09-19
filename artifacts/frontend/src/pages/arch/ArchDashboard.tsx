@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./planner5d-reference.css";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +81,7 @@ export default function ArchDashboard() {
   const recentes        = [...projetos].slice(0, 5);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
