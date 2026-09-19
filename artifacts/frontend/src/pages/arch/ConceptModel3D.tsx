@@ -5,6 +5,7 @@ import { OPENING_WALL_HEIGHT, normalizeOpeningParameters } from "./conceptOpenin
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { buildStairLandings, buildStairTreads, type StairCarrier, type StairSlabOpening } from "./conceptStairs";
 import { buildRoofFaces, normalizeRoofParameters, roofPeakZ, type RoofInput } from "./conceptRoof";
+import { conceptObjectCorners, type ConceptObject } from "./conceptObjects";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -25,6 +26,7 @@ export type ConceptModelLevel = {
   labels: Record<string, string>;
   stairs: StairCarrier[];
   slabOpenings: StairSlabOpening[];
+  objects: ConceptObject[];
 };
 
 type Props = {
@@ -117,6 +119,36 @@ function wallPolygon(
   };
 }
 
+function objectVolumePolygons(
+  object: ConceptObject,
+  levelBase: number,
+  rotation: number,
+  lotWidth: number,
+  lotDepth: number,
+  zoom: number,
+) {
+  const footprint = conceptObjectCorners(object);
+  const base = footprint.map((point) => ({ ...point, z: levelBase }));
+  const top = footprint.map((point) => ({ ...point, z: levelBase + object.height }));
+  const projectPoints = (items: Point3[]) => items.map((point) => project(point, rotation, lotWidth, lotDepth, zoom));
+  return {
+    top: projectPoints(top),
+    sides: [
+      projectPoints([base[0], base[1], top[1], top[0]]),
+      projectPoints([base[1], base[2], top[2], top[1]]),
+      projectPoints([base[2], base[3], top[3], top[2]]),
+      projectPoints([base[3], base[0], top[0], top[3]]),
+    ],
+  };
+}
+
+function objectPalette(object: ConceptObject) {
+  if (object.category === "banheiro") return { top: "#dbeafe", side: "#bfdbfe", edge: "#64748b" };
+  if (object.category === "cozinha" || object.category === "eletro") return { top: "#e5e7eb", side: "#cbd5e1", edge: "#64748b" };
+  if (object.category === "decoracao") return { top: "#bbf7d0", side: "#86efac", edge: "#15803d" };
+  if (object.category === "armazenamento") return { top: "#d6c2a6", side: "#b59b7b", edge: "#6b5a47" };
+  return { top: "#ddd0bf", side: "#c3ad91", edge: "#6b5a47" };
+}
 function splitWallForOpenings(
   wall: { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number; exterior?: boolean },
   openings: OpeningMarker[],
@@ -315,6 +347,7 @@ export default function ConceptModel3D({
   );
   const openingCount = visibleLevels.reduce((sum, level) => sum + level.openings.length, 0);
   const spaceCount = visibleLevels.reduce((sum, level) => sum + level.closedSpaces.length, 0);
+  const objectCount = visibleLevels.reduce((sum, level) => sum + level.objects.length, 0);
 
   return (
     <div className="overflow-hidden rounded-2xl border bg-slate-950 shadow-sm">
@@ -555,6 +588,30 @@ export default function ConceptModel3D({
                 ));
                 return [...landings, ...treads];
               })}
+              {level.objects.flatMap((object) => {
+                const volume = objectVolumePolygons(object, levelBase, rotation, lotWidth, lotDepth, zoom);
+                const palette = objectPalette(object);
+                const sidePolygons = volume.sides.map((side, index) => (
+                  <polygon
+                    key={`${object.id}-side-${index}`}
+                    points={points(side)}
+                    fill={palette.side}
+                    fillOpacity="0.96"
+                    stroke={palette.edge}
+                    strokeWidth="0.035"
+                  />
+                ));
+                const topPolygon = (
+                  <polygon
+                    key={`${object.id}-top`}
+                    points={points(volume.top)}
+                    fill={palette.top}
+                    stroke={palette.edge}
+                    strokeWidth="0.04"
+                  />
+                );
+                return [...sidePolygons, topPolygon];
+              })}
             </g>
           );
         })}
@@ -576,7 +633,7 @@ export default function ConceptModel3D({
       </svg>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
-        <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços</span>
+        <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços · {objectCount} objetos</span>
         <span>
           Vista {Math.round(rotation)}° · cobertura {roofParams.roof === "platibanda" ? "platibanda" : `${roofParams.roofWaters} água${roofParams.roofWaters > 1 ? "s" : ""} · ${roofParams.roofPitchDeg.toFixed(0)}°`} · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm
         </span>
