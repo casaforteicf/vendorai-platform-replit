@@ -26,12 +26,6 @@ const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
   rustico_contemporaneo: "contemporary rustic residential architecture with natural materials and clean volumes",
 };
 
-const materialLabel: Record<ConceptFacadePreferences["primaryMaterial"], string> = {
-  pintura: "painted stucco/render",
-  madeira: "natural wood cladding",
-  pedra: "natural stone cladding",
-  concreto: "exposed architectural concrete",
-};
 
 const accentLabel: Record<ConceptFacadePreferences["accentMaterial"], string> = {
   nenhum: "no secondary accent material",
@@ -85,7 +79,7 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     `Site: rectangular lot ${input.lotWidth} x ${input.lotDepth} m. Building: ${input.floors} floor(s), target area approximately ${input.desiredArea} m².`,
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}; ${roofDetails}.`,
-    `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
+    `Main facade material: ${materialPrompt(materials.exteriorWall)}. Secondary accent direction: ${accentLabel[facade.accentMaterial]}.`,
     `Facade tone: ${facade.facadeTone}. Frames: ${frameLabel[facade.frameTone]}.`,
     `Material scheme — floors: ${floorMaterials}. Interior walls: ${materialPrompt(materials.interiorWall)}. Exterior walls: ${materialPrompt(materials.exteriorWall)}. Stairs: ${materialPrompt(materials.stair)}. Roof finish: ${materialPrompt(materials.roof)}.`,
     "Respect these specified materials and colors wherever their corresponding modeled surfaces are visible. Do not substitute unrelated finishes.",

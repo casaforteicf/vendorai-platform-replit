@@ -72,9 +72,11 @@ import {
 import {
   conceptFloorMaterial,
   defaultConceptMaterialScheme,
+  legacyFacadePrimaryMaterial,
   materialFromLibrary,
   materialOptionsFor,
   normalizeConceptMaterialScheme,
+  sanitizeConceptMaterialSchemeForFloors,
   type ConceptMaterialRef,
   type ConceptMaterialScheme,
 } from "./conceptMaterials";
@@ -724,7 +726,7 @@ export default function ConceptPlanner() {
         customOpenings: persistedCustomOpenings,
         spaceProfiles,
         objects: persistedObjects,
-        materials: normalizeConceptMaterialScheme(materialScheme),
+        materials: sanitizeConceptMaterialSchemeForFloors(materialScheme, floors),
       },
       rooms: persistedRooms,
       openingOverrides,
@@ -775,10 +777,18 @@ export default function ConceptPlanner() {
           },
         };
       }
-      const key = surface;
+
+      const selected = materialFromLibrary(materialId, normalized[surface]);
+      if (surface === "exteriorWall") {
+        setFacadePreferences((currentFacade) => ({
+          ...currentFacade,
+          primaryMaterial: legacyFacadePrimaryMaterial(selected),
+        }));
+      }
+
       return {
         ...normalized,
-        [key]: materialFromLibrary(materialId, normalized[key]),
+        [surface]: selected,
       };
     });
   };
@@ -2066,7 +2076,7 @@ export default function ConceptPlanner() {
               customOpenings: persistedCustomOpenings,
               spaceProfiles,
               objects: persistedObjects,
-              materials: normalizeConceptMaterialScheme(materialScheme),
+              materials: sanitizeConceptMaterialSchemeForFloors(materialScheme, floors),
             },
             rooms: persistedRooms,
             openingOverrides,

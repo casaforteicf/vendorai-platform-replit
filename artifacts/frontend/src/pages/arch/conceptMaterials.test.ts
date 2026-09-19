@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   conceptFloorMaterial,
   defaultConceptMaterialScheme,
+  legacyFacadePrimaryMaterial,
   materialFromLibrary,
   materialOptionsFor,
   normalizeConceptMaterialScheme,
+  sanitizeConceptMaterialSchemeForFloors,
   uniqueSchemeMaterials,
 } from "./conceptMaterials";
 
@@ -43,6 +45,24 @@ describe("concept materials", () => {
     const defaults = defaultConceptMaterialScheme();
     const stone = materialOptionsFor("exteriorWall").find((item) => item.pattern === "stone")!;
     expect(materialFromLibrary(stone.id, defaults.exteriorWall).id).toBe(stone.id);
+  });
+
+  it("espelha o material externo para o campo legado da fachada", () => {
+    const stone = materialOptionsFor("exteriorWall").find((item) => item.pattern === "stone")!;
+    const concrete = materialOptionsFor("exteriorWall").find((item) => item.pattern === "concrete")!;
+    expect(legacyFacadePrimaryMaterial(stone)).toBe("pedra");
+    expect(legacyFacadePrimaryMaterial(concrete)).toBe("concreto");
+  });
+
+  it("remove overrides de piso de pavimentos que não existem mais", () => {
+    const defaults = defaultConceptMaterialScheme();
+    const wood = materialOptionsFor("floor").find((item) => item.pattern === "wood")!;
+    const sanitized = sanitizeConceptMaterialSchemeForFloors({
+      ...defaults,
+      floorByLevel: { "0": wood, "2": wood },
+    }, 2);
+    expect(sanitized.floorByLevel["0"]?.id).toBe(wood.id);
+    expect(sanitized.floorByLevel["2"]).toBeUndefined();
   });
 
   it("retorna materiais únicos para sincronização com arq_materials", () => {

@@ -337,6 +337,28 @@ export function materialFromLibrary(
   return CONCEPT_MATERIAL_LIBRARY.find((material) => material.id === materialId) ?? fallback;
 }
 
+export function legacyFacadePrimaryMaterial(material: ConceptMaterialRef): "pintura" | "madeira" | "pedra" | "concreto" {
+  if (material.pattern === "wood" || material.category === "wood") return "madeira";
+  if (material.pattern === "stone" || material.category === "stone") return "pedra";
+  if (material.pattern === "concrete") return "concreto";
+  return "pintura";
+}
+
+export function sanitizeConceptMaterialSchemeForFloors(
+  source: Partial<ConceptMaterialScheme> | undefined,
+  floors: number,
+) {
+  const normalized = normalizeConceptMaterialScheme(source);
+  const floorCount = Math.max(1, Math.round(Number.isFinite(floors) ? floors : 1));
+  return {
+    ...normalized,
+    floorByLevel: Object.fromEntries(
+      Object.entries(normalized.floorByLevel)
+        .filter(([key]) => Number(key) >= 0 && Number(key) < floorCount),
+    ),
+  };
+}
+
 export function materialPrompt(material: ConceptMaterialRef) {
   return [
     material.name,
