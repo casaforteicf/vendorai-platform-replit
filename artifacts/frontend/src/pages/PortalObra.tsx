@@ -93,6 +93,16 @@ interface PortalData {
     versao: number;
     titulo?: string | null;
     bdiGlobal: string;
+    modoPrecificacao?: string | null;
+    custosIndiretosPct?: string | null;
+    administracaoPct?: string | null;
+    riscoPct?: string | null;
+    financeiroPct?: string | null;
+    impostosPct?: string | null;
+    comissaoPct?: string | null;
+    margemPct?: string | null;
+    descontoPct?: string | null;
+    areaReferencia?: string | null;
     etapas: Array<{
       id: string;
       nome: string;
@@ -288,9 +298,35 @@ export default function PortalObra() {
   const totalEtapas = etapas.length;
   const avgProgress = totalEtapas > 0 ? Math.round(etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas) : 0;
   const bdiGlobal = orcamento ? parseFloat(orcamento.bdiGlobal ?? "0") : 0;
-  const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + (item.bdi != null ? parseFloat(item.bdi) : bdiGlobal) / 100);
+  const detailedPricing = orcamento?.modoPrecificacao === "detalhada";
+  const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => {
+    const direct = parseFloat(item.quantidade) * parseFloat(item.custoUnitario);
+    if (detailedPricing) return direct;
+    return direct * (1 + (item.bdi != null ? parseFloat(item.bdi) : bdiGlobal) / 100);
+  };
   const etapaTotal = (etapa: NonNullable<PortalData["orcamento"]>["etapas"][0]) => etapa.itens.reduce((s, i) => s + itemTotal(i), 0);
-  const orcamentoTotalCalc = orcamento ? orcamento.etapas.reduce((s, e) => s + etapaTotal(e), 0) : 0;
+  const itensSubtotal = orcamento ? orcamento.etapas.reduce((s, e) => s + etapaTotal(e), 0) : 0;
+  const pricingNum = (value: string | null | undefined) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const custoEmpresarial = detailedPricing && orcamento
+    ? itensSubtotal * (1 + (
+        pricingNum(orcamento.custosIndiretosPct) +
+        pricingNum(orcamento.administracaoPct) +
+        pricingNum(orcamento.riscoPct) +
+        pricingNum(orcamento.financeiroPct)
+      ) / 100)
+    : itensSubtotal;
+  const vendaPct = orcamento
+    ? pricingNum(orcamento.impostosPct) + pricingNum(orcamento.comissaoPct) + pricingNum(orcamento.margemPct)
+    : 0;
+  const precoTabela = detailedPricing && vendaPct < 100
+    ? custoEmpresarial / Math.max(0.0001, 1 - vendaPct / 100)
+    : itensSubtotal;
+  const orcamentoTotalCalc = detailedPricing && orcamento
+    ? precoTabela * (1 - Math.min(100, pricingNum(orcamento.descontoPct)) / 100)
+    : itensSubtotal;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -320,7 +356,7 @@ export default function PortalObra() {
 
         {activeTab === "dados" && data.publication?.showOverview !== false ? <Section title="Dados da Obra" icon={<Building2 className="h-5 w-5" />}><InfoGrid items={[{ label: "Início", value: fmt(obra.dataInicio) },{ label: "Conclusão prevista", value: fmt(obra.dataFimPrevista) },{ label: "Conclusão real", value: fmt(obra.dataFimReal) },{ label: "Orçamento total", value: fmtMoney(obra.orcamentoTotal) },{ label: "Custo realizado", value: fmtMoney(obra.custoRealizado) },...(obra.orcamentoTotal && obra.custoRealizado ? [{ label: "% Executado (custo)", value: `${pct(obra.custoRealizado, obra.orcamentoTotal) ?? "—"}%` }] : [])]} /></Section> : null}
 
-        {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}{orcamento.bdiGlobal !== "0" ? ` · BDI ${orcamento.bdiGlobal}%` : ""}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade} {item.unidade} × {fmtMoney(item.custoUnitario)}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span></div></>}</Section> : null}
+        {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}{detailedPricing ? " · Precificação detalhada" : (orcamento.bdiGlobal !== "0" ? ` · BDI ${orcamento.bdiGlobal}%` : "")}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade} {item.unidade} × {fmtMoney(item.custoUnitario)}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div>{detailedPricing ? <div className="mt-4 grid gap-2 rounded-xl bg-gray-50 p-4 sm:grid-cols-2"><div><p className="text-xs text-gray-500">Custo direto</p><p className="font-semibold text-gray-800">{fmtMoney(itensSubtotal)}</p></div><div><p className="text-xs text-gray-500">Custo empresarial</p><p className="font-semibold text-gray-800">{fmtMoney(custoEmpresarial)}</p></div></div> : null}<div className="mt-3 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span></div></>}</Section> : null}
 
         {activeTab === "cronograma" && data.publication?.showSchedule !== false ? <Section title="Cronograma" icon={<Layers className="h-5 w-5" />}>{etapas.length === 0 ? <div className="py-8 text-center text-gray-400"><Calendar className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhuma etapa cadastrada.</p></div> : <div className="space-y-3">{etapas.map((etapa) => { const p = parseFloat(etapa.percentualExecutado ?? "0"); const st = ETAPA_STATUS[etapa.status] ?? { label: etapa.status, color: "bg-gray-100 text-gray-600", bar: "#94a3b8" }; const dias = etapa.dataInicioPrevista && etapa.dataFimPrevista ? Math.max(1, differenceInCalendarDays(parseISO(`${etapa.dataFimPrevista}T12:00:00`), parseISO(`${etapa.dataInicioPrevista}T12:00:00`))) : null; return <div key={etapa.id} className="rounded-xl border border-gray-200 bg-white p-4"><div className="mb-3 flex items-start justify-between gap-2"><div className="flex-1"><p className="text-sm font-medium text-gray-900">{etapa.nome}</p>{etapa.responsavel ? <p className="mt-0.5 text-xs text-gray-400">{etapa.responsavel}</p> : null}</div><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span></div><div className="mb-2 flex items-center gap-3"><ProgressBar value={p} color={st.bar} /><span className="w-10 text-right text-sm font-bold text-gray-700">{Math.round(p)}%</span></div><div className="mt-1 flex items-center gap-4 text-xs text-gray-400">{etapa.dataInicioPrevista ? <span>{fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span> : null}{dias ? <span>{dias} dias</span> : null}</div></div>; })}</div>}</Section> : null}
 
