@@ -74,6 +74,14 @@ type CustomWall = {
   thickness?: number;
 };
 
+type CustomOpening = {
+  id: string;
+  wallId: string;
+  floor: number;
+  type: "door" | "window";
+  offset: number;
+};
+
 type SpaceProfile = {
   id: string;
   floor: number;
@@ -86,6 +94,7 @@ type SpaceProfile = {
 type EditorSnapshot = {
   rooms: Room[];
   customWalls: CustomWall[];
+  customOpenings: CustomOpening[];
   openingOverrides: Record<string, OpeningOverride>;
 };
 
@@ -110,6 +119,7 @@ type ConceptDraftResponse = {
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+    customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
   };
   rooms: Room[];
@@ -248,6 +258,7 @@ export default function ConceptPlanner() {
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
+  const customOpeningsRef = useRef<CustomOpening[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
@@ -259,6 +270,7 @@ export default function ConceptPlanner() {
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
+  const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
@@ -278,6 +290,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     customWallsRef.current = customWalls;
   }, [customWalls]);
+
+  useEffect(() => {
+    customOpeningsRef.current = customOpenings;
+  }, [customOpenings]);
 
   useEffect(() => {
     openingOverridesRef.current = openingOverrides;
@@ -308,6 +324,7 @@ export default function ConceptPlanner() {
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
+        setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
@@ -334,7 +351,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, spaceProfiles },
+      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
       rooms,
       openingOverrides,
       customerProfile,
@@ -988,7 +1005,7 @@ export default function ConceptPlanner() {
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, spaceProfiles },
+            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
             rooms,
             openingOverrides,
             facadePreferences,
