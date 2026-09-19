@@ -260,7 +260,7 @@ function StepPill({ index, current, label }: { index: number; current: number; l
 }
 
 export default function ConceptPlanner() {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(4);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
   const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
@@ -269,8 +269,8 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
-  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("room");
-  const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
+  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("draw-wall");
+  const [rooms, setRooms] = useState<Room[]>([]);
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
   const customOpeningsRef = useRef<CustomOpening[]>([]);
@@ -287,7 +287,7 @@ export default function ConceptPlanner() {
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
-  const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([]);
+  const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([0]);
   const [showDimensions, setShowDimensions] = useState(true);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
@@ -303,7 +303,7 @@ export default function ConceptPlanner() {
   const wallFirstActive = wallFirstFloors.includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
-  const [editorLibraryTab, setEditorLibraryTab] = useState<"build" | "rooms" | "outdoor">("build");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
 
   const filteredTypologies = useMemo(() => {
     const query = modelSearch.trim().toLocaleLowerCase("pt-BR");
@@ -360,14 +360,20 @@ export default function ConceptPlanner() {
         setArchProjetoId(draft.archProjetoId ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
         const rawStep = Math.max(0, Math.min(STEPS.length - 1, draft.currentStep ?? 0));
-        setStep(rawStep <= 0 ? 0 : rawStep === 1 ? 1 : rawStep >= 6 ? 6 : 4);
+        setStep(rawStep >= 6 ? 6 : 4);
         setLotWidth(draft.lot?.width ?? 12);
         setLotDepth(draft.lot?.depth ?? 30);
         setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
         setDesiredArea(draft.configuration?.desiredArea ?? 145);
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
-        setWallFirstFloors(Array.isArray(draft.configuration?.wallFirstFloors) ? draft.configuration.wallFirstFloors : []);
+        setWallFirstFloors(
+          Array.isArray(draft.configuration?.wallFirstFloors) && draft.configuration.wallFirstFloors.length
+            ? draft.configuration.wallFirstFloors
+            : Array.isArray(draft.rooms) && draft.rooms.length
+              ? []
+              : [0],
+        );
         setShowDimensions(draft.configuration?.showDimensions ?? true);
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
         setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
@@ -477,6 +483,10 @@ export default function ConceptPlanner() {
     setCustomOpenings([]);
     setSpaceProfiles([]);
     setRooms(nextRooms);
+    setInteractionMode("room");
+    setEditorView("plan");
+    setEditorLibraryTab("build");
+    setStep(4);
   };
 
   const startBlankPlan = () => {
@@ -495,6 +505,7 @@ export default function ConceptPlanner() {
     setSelectedClosedSpaceId(null);
     setInteractionMode("draw-wall");
     setEditorView("plan");
+    setEditorLibraryTab("build");
     setStep(4);
   };
 
@@ -2130,6 +2141,8 @@ export default function ConceptPlanner() {
                   <div className="w-16 shrink-0 border-r bg-white py-3">
                     <div className="flex flex-col items-center gap-2">
                       {([
+                        ["site", Ruler, "Terreno"],
+                        ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
                         ["outdoor", Trees, "Externo"],
@@ -2147,33 +2160,132 @@ export default function ConceptPlanner() {
                         </button>
                       ))}
                       <div className="my-1 h-px w-8 bg-slate-200" />
-                      <button
-                        type="button"
-                        onClick={() => setStep(1)}
-                        title="Modelos"
-                        className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-                      >
-                        <LayoutGrid className="h-4.5 w-4.5" />
-                      </button>
                     </div>
                   </div>
                   <div className="min-w-0 flex-1">
                 <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
                   <div>
                     <div className="text-sm font-semibold">
-                      {editorLibraryTab === "build" ? "Construir" : editorLibraryTab === "rooms" ? "Ambientes" : "Área externa"}
+                      {editorLibraryTab === "site"
+                        ? "Terreno"
+                        : editorLibraryTab === "models"
+                          ? "Modelos"
+                          : editorLibraryTab === "build"
+                            ? "Construir"
+                            : editorLibraryTab === "rooms"
+                              ? "Ambientes"
+                              : "Área externa"}
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      {editorLibraryTab === "build"
-                        ? "Estrutura, paredes, aberturas e pavimentos"
-                        : editorLibraryTab === "rooms"
-                          ? "Organize os ambientes da residência"
-                          : "Garagem, lazer e elementos externos"}
+                      {editorLibraryTab === "site"
+                        ? "Dimensões e implantação do lote"
+                        : editorLibraryTab === "models"
+                          ? "Escolha uma base sem sair do editor"
+                          : editorLibraryTab === "build"
+                            ? "Estrutura, paredes, aberturas e pavimentos"
+                            : editorLibraryTab === "rooms"
+                              ? "Organize os ambientes da residência"
+                              : "Garagem, lazer e elementos externos"}
                     </div>
                   </div>
                 </div>
 
                 <div className="p-4">
+                  {editorLibraryTab === "site" && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="text-xs font-semibold">
+                          Largura
+                          <div className="mt-1 flex h-11 items-center rounded-xl border bg-white px-3">
+                            <input
+                              type="number"
+                              min={5}
+                              step={0.1}
+                              value={lotWidth}
+                              onChange={(event) => setLotWidth(Math.max(5, Number(event.target.value) || 5))}
+                              className="w-full bg-transparent text-sm font-semibold outline-none"
+                            />
+                            <span className="text-xs text-slate-400">m</span>
+                          </div>
+                        </label>
+                        <label className="text-xs font-semibold">
+                          Profundidade
+                          <div className="mt-1 flex h-11 items-center rounded-xl border bg-white px-3">
+                            <input
+                              type="number"
+                              min={10}
+                              step={0.1}
+                              value={lotDepth}
+                              onChange={(event) => setLotDepth(Math.max(10, Number(event.target.value) || 10))}
+                              className="w-full bg-transparent text-sm font-semibold outline-none"
+                            />
+                            <span className="text-xs text-slate-400">m</span>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className="rounded-xl border bg-slate-50 p-4">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Área do terreno</div>
+                        <div className="mt-1 text-2xl font-bold">{(lotWidth * lotDepth).toFixed(0)} m²</div>
+                        <div className="mt-1 text-xs text-slate-500">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</div>
+                      </div>
+
+                      <div className="rounded-xl border border-dashed p-3 text-xs leading-5 text-slate-500">
+                        O lote fica no próprio workspace. Você pode ajustar as dimensões a qualquer momento sem voltar etapas.
+                      </div>
+                    </div>
+                  )}
+
+                  {editorLibraryTab === "models" && (
+                    <div className="space-y-3">
+                      <label className="flex h-10 items-center gap-2 rounded-xl border bg-white px-3">
+                        <Search className="h-4 w-4 text-slate-400" />
+                        <input
+                          value={modelSearch}
+                          onChange={(event) => setModelSearch(event.target.value)}
+                          placeholder="Buscar modelo..."
+                          className="w-full bg-transparent text-sm outline-none"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={startBlankPlan}
+                        className="flex w-full items-center gap-3 rounded-xl border bg-white p-3 text-left hover:bg-slate-50"
+                      >
+                        <span className="grid h-12 w-12 place-items-center rounded-xl bg-slate-100">
+                          <Plus className="h-5 w-5 text-slate-600" />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold">Projeto vazio</span>
+                          <span className="block text-[11px] text-slate-500">Começar desenhando paredes</span>
+                        </span>
+                      </button>
+
+                      <div className="grid gap-3">
+                        {filteredTypologies.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => applyTypology(item.id)}
+                            className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-slate-300 hover:shadow-sm"
+                          >
+                            <div className="aspect-[16/8] overflow-hidden">
+                              <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
+                            </div>
+                            <div className="p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-semibold">{item.title}</div>
+                                <div className="text-[10px] font-semibold text-slate-500">≈ {item.suggestedArea} m²</div>
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500">{item.subtitle}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {editorLibraryTab === "build" && (
                     <>
                       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Construção</div>
