@@ -15,9 +15,14 @@ type Props = {
   selectedWallId?: string | null;
   onSelectWall?: (wallId: string | null) => void;
   onWallMove?: (wallId: string, delta: number) => void;
+  customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+  selectedCustomWallId?: string | null;
+  onCreateCustomWall?: (wall: { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }) => void;
+  onSelectCustomWall?: (wallId: string | null) => void;
+  onDeleteCustomWall?: (wallId: string) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
-  interactionMode?: "room" | "wall" | "opening";
+  interactionMode?: "room" | "wall" | "opening" | "draw-wall";
 };
 
 function formatMeters(value: number) {
@@ -118,11 +123,18 @@ export default function ConceptPlan2D({
   selectedWallId = null,
   onSelectWall,
   onWallMove,
+  customWalls = [],
+  selectedCustomWallId = null,
+  onCreateCustomWall,
+  onSelectCustomWall,
+  onDeleteCustomWall,
   onEditStart,
   onEditEnd,
   interactionMode = "room",
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
   const [gesture, setGesture] = useState<null | {
     roomId: string;
     openingId?: string;
@@ -156,9 +168,52 @@ export default function ConceptPlan2D({
 
   const snap = (value: number) => Math.round(value * 4) / 4;
 
+  const clampPoint = (point: { x: number; y: number }) => ({
+    x: snap(Math.max(0, Math.min(lotWidth, point.x))),
+    y: snap(Math.max(0, Math.min(lotDepth, point.y))),
+  });
+
+  const handleDrawWallPoint = (point: { x: number; y: number }) => {
+    const snapped = clampPoint(point);
+    if (!wallDrawStart) {
+      setWallDrawStart(snapped);
+      setWallDrawPreview(snapped);
+      return;
+    }
+
+    const dx = Math.abs(snapped.x - wallDrawStart.x);
+    const dy = Math.abs(snapped.y - wallDrawStart.y);
+    const end = dx >= dy
+      ? { x: snapped.x, y: wallDrawStart.y }
+      : { x: wallDrawStart.x, y: snapped.y };
+
+    const length = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
+    if (length >= 0.5 && onCreateCustomWall) {
+      onCreateCustomWall({
+        id: `custom-wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        floor: rooms[0]?.floor ?? 0,
+        x1: wallDrawStart.x,
+        y1: wallDrawStart.y,
+        x2: end.x,
+        y2: end.y,
+        thickness: 0.15,
+      });
+    }
+    setWallDrawStart(null);
+    setWallDrawPreview(null);
+  };
+
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!gesture || !onRoomChange) return;
     const point = toSvgPoint(event.clientX, event.clientY);
+    if (interactionMode === "draw-wall" && wallDrawStart) {
+      const snapped = clampPoint(point);
+      const dx = Math.abs(snapped.x - wallDrawStart.x);
+      const dy = Math.abs(snapped.y - wallDrawStart.y);
+      setWallDrawPreview(dx >= dy
+        ? { x: snapped.x, y: wallDrawStart.y }
+        : { x: wallDrawStart.x, y: snapped.y });
+    }
+    if (!gesture || !onRoomChange) return;
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
 
@@ -264,6 +319,12 @@ export default function ConceptPlan2D({
       <svg
         ref={svgRef}
         className="block h-auto w-full touch-none select-none"
+        onPointerDown={(event) => {
+          if (interactionMode !== "draw-wall") return;
+          event.preventDefault();
+          const point = toSvgPoint(event.clientX, event.clientY);
+          handleDrawWallPoint(point);
+        }}
         onPointerMove={handlePointerMove}
         onPointerUp={() => {
           if (gesture) onEditEnd?.();
@@ -272,6 +333,12 @@ export default function ConceptPlan2D({
         onPointerCancel={() => {
           if (gesture) onEditEnd?.();
           setGesture(null);
+        }}
+        onDoubleClick={() => {
+          if (interactionMode === "draw-wall") {
+            setWallDrawStart(null);
+            setWallDrawPreview(null);
+          }
         }}
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
@@ -503,6 +570,59 @@ export default function ConceptPlan2D({
             </g>
           );
         })}
+
+        {customWalls.map((wall) => {
+          const selected = selectedCustomWallId === wall.id;
+          return (
+            <g
+              key={wall.id}
+              className={interactionMode === "wall" ? "cursor-pointer" : ""}
+              onPointerDown={(event) => {
+                if (interactionMode !== "wall" || !onSelectCustomWall) return;
+                event.stopPropagation();
+                onSelectCustomWall(wall.id);
+              }}
+              onClick={(event) => {
+                if (interactionMode !== "wall" || !onSelectCustomWall) return;
+                event.stopPropagation();
+                onSelectCustomWall(wall.id);
+              }}
+            >
+              <line x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} stroke="transparent" strokeWidth="0.8" />
+              <line
+                x1={wall.x1}
+                y1={wall.y1}
+                x2={wall.x2}
+                y2={wall.y2}
+                stroke={selected ? "#f97316" : "#111827"}
+                strokeWidth={selected ? "0.21" : String(wall.thickness ?? 0.15)}
+                strokeLinecap="square"
+                pointerEvents="none"
+              />
+              {selected && (
+                <>
+                  <circle cx={wall.x1} cy={wall.y1} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" />
+                  <circle cx={wall.x2} cy={wall.y2} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" />
+                </>
+              )}
+            </g>
+          );
+        })}
+
+        {wallDrawStart && wallDrawPreview && (
+          <g pointerEvents="none">
+            <circle cx={wallDrawStart.x} cy={wallDrawStart.y} r="0.22" fill="#f97316" stroke="#fff" strokeWidth="0.05" />
+            <line
+              x1={wallDrawStart.x}
+              y1={wallDrawStart.y}
+              x2={wallDrawPreview.x}
+              y2={wallDrawPreview.y}
+              stroke="#f97316"
+              strokeWidth="0.16"
+              strokeDasharray="0.28 0.16"
+            />
+          </g>
+        )}
 
         {geometry.walls.map((wall) => {
           const selectedWall = selectedWallId === wall.id;

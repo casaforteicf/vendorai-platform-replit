@@ -77,7 +77,13 @@ type ConceptDraftResponse = {
   archProjetoId?: string | null;
   currentStep: number;
   lot: { width: number; depth: number };
-  configuration: { floors: number; desiredArea: number; typology?: ConceptTypology; layoutPreferences?: LayoutPreferences };
+  configuration: {
+    floors: number;
+    desiredArea: number;
+    typology?: ConceptTypology;
+    layoutPreferences?: LayoutPreferences;
+    customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+  };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
   customerProfile?: CustomerProfile;
@@ -210,7 +216,7 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
-  const [interactionMode, setInteractionMode] = useState<"room" | "wall" | "opening">("room");
+  const [interactionMode, setInteractionMode] = useState<"room" | "wall" | "opening" | "draw-wall">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const roomsRef = useRef<Room[]>(rooms);
   const editStartRef = useRef<Room[] | null>(null);
@@ -220,6 +226,8 @@ export default function ConceptPlanner() {
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
+  const [customWalls, setCustomWalls] = useState<Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -259,6 +267,7 @@ export default function ConceptPlanner() {
         setDesiredArea(draft.configuration?.desiredArea ?? 145);
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
+        setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -284,7 +293,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences },
+      configuration: { floors, desiredArea, typology, layoutPreferences, customWalls },
       rooms,
       openingOverrides,
       customerProfile,
@@ -501,6 +510,20 @@ export default function ConceptPlanner() {
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
 
+  const addCustomWall = (wall: { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }) => {
+    setCustomWalls((prev) => [...prev, wall]);
+    setSelectedCustomWallId(wall.id);
+    setSelectedWallId(null);
+    setInteractionMode("wall");
+  };
+
+  const deleteCustomWall = (wallId: string) => {
+    setCustomWalls((prev) => prev.filter((wall) => wall.id !== wallId));
+    setSelectedCustomWallId((current) => current === wallId ? null : current);
+  };
+
+  const selectedCustomWall = customWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+
   const moveWallById = (wallId: string, delta: number) => {
     if (!delta) return;
     const wall = geometry.walls.find((item) => item.id === wallId);
@@ -680,7 +703,7 @@ export default function ConceptPlanner() {
             status: "draft",
             currentStep: 5,
             lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea, typology, layoutPreferences },
+            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls },
             rooms,
             openingOverrides,
             facadePreferences,
@@ -1113,7 +1136,7 @@ export default function ConceptPlanner() {
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
-                            onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); }}
+                            onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
                             className={interactionMode === "room"
                               ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
                               : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
@@ -1131,7 +1154,16 @@ export default function ConceptPlanner() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setInteractionMode("opening"); setSelectedId(null); setSelectedWallId(null); }}
+                            onClick={() => { setInteractionMode("draw-wall"); setSelectedId(null); setSelectedWallId(null); setSelectedCustomWallId(null); setSelectedOpeningId(null); }}
+                            className={interactionMode === "draw-wall"
+                              ? "rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Desenhar parede
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setInteractionMode("opening"); setSelectedId(null); setSelectedWallId(null); setSelectedCustomWallId(null); }}
                             className={interactionMode === "opening"
                               ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
                               : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
@@ -1185,6 +1217,16 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                         }}
                         onWallMove={moveWallById}
+                        customWalls={customWalls.filter((wall) => wall.floor === activeFloor)}
+                        selectedCustomWallId={selectedCustomWallId}
+                        onCreateCustomWall={addCustomWall}
+                        onSelectCustomWall={(wallId) => {
+                          setSelectedCustomWallId(wallId);
+                          setSelectedWallId(null);
+                          setSelectedId(null);
+                          setSelectedOpeningId(null);
+                        }}
+                        onDeleteCustomWall={deleteCustomWall}
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
@@ -1193,8 +1235,10 @@ export default function ConceptPlanner() {
                         {interactionMode === "room"
                           ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
                           : interactionMode === "wall"
-                            ? "Paredes: selecione uma parede e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
-                            : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
+                            ? "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
+                            : interactionMode === "draw-wall"
+                              ? "Desenhar parede: toque no ponto inicial e depois no ponto final · o editor trava automaticamente em horizontal/vertical e grade de 25 cm."
+                              : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
                       </div>
                     </>
                   )}
@@ -1240,10 +1284,39 @@ export default function ConceptPlanner() {
 
                 {editorView === "plan" && (
                   <>
-                    {interactionMode === "wall" ? (
-                      !selectedWall ? (
+                    {interactionMode === "draw-wall" ? (
+                      <div className="mt-4 space-y-3">
+                        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+                          Toque no primeiro ponto da parede e depois no ponto final. O traço fica ortogonal automaticamente.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setInteractionMode("wall")}
+                          className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                        >
+                          Voltar para selecionar paredes
+                        </button>
+                      </div>
+                    ) : interactionMode === "wall" ? (
+                      selectedCustomWall ? (
+                        <div className="mt-4 space-y-4">
+                          <div className="rounded-xl bg-muted p-3">
+                            <div className="font-semibold">Parede livre</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)} m · espessura {((selectedCustomWall.thickness ?? 0.15) * 100).toFixed(0)} cm
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => deleteCustomWall(selectedCustomWall.id)}
+                            className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
+                          >
+                            Excluir parede livre
+                          </button>
+                        </div>
+                      ) : !selectedWall ? (
                         <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          Selecione uma parede na planta. Arraste para reposicioná-la mantendo os ambientes conectados.
+                          Selecione uma parede derivada dos ambientes ou uma parede livre desenhada na planta.
                         </div>
                       ) : (
                         <div className="mt-4 space-y-4">

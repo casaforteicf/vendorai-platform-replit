@@ -15,6 +15,15 @@ export type ArchConceptConfiguration = {
   desiredArea: number;
   typology?: "terrea_2q" | "terrea_3q" | "terrea_lazer" | "sobrado_3q" | "sobrado_master";
   layoutPreferences?: Record<string, boolean>;
+  customWalls?: Array<{
+    id: string;
+    floor: number;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    thickness?: number;
+  }>;
 };
 
 export type ArchConceptRoom = {
