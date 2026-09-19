@@ -37,6 +37,8 @@ import {
   useRequestUploadUrl,
   useListCategoriasProduto,
   getListCategoriasProdutoQueryKey,
+  useListComposicoes,
+  getListComposicoesQueryKey,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -46,6 +48,7 @@ import type {
   PaymentCompositionLineForma,
   PropostaTemplate,
   CategoriaProduto,
+  Composicao,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -1708,7 +1711,13 @@ export function CatalogoModal({
 }
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
-interface CartLine { produtoId: string; quantidade: number; precoUnitarioOverride?: number; nomeOverride?: string; }
+interface CartLine {
+  produtoId?: string;
+  composicaoId?: string;
+  quantidade: number;
+  precoUnitarioOverride?: number;
+  nomeOverride?: string;
+}
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
@@ -1787,7 +1796,7 @@ function newFreeItem(): FreeItem {
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
   
     // catalog mode
-    const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
+    const [cartLines, setCartLines] = useState<CartLine[]>([{ quantidade: 1 }]);
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
     // livre mode
@@ -1845,6 +1854,9 @@ function newFreeItem(): FreeItem {
       query: { queryKey: getListPropostaTemplatesQueryKey(tenantId), enabled: !!tenantId },
     });
     const activeCatalog     = catalog.filter((p) => p.ativo);
+    const { data: composicoes = [] } = useListComposicoes(tenantId, {}, {
+      query: { queryKey: getListComposicoesQueryKey(tenantId), enabled: !!tenantId && open },
+    });
   
     useEffect(() => {
       if (!open || initialProductIds.length === 0) return;
@@ -1853,11 +1865,16 @@ function newFreeItem(): FreeItem {
     }, [open, initialProductIds.join(",")]);
   
     // totals
-    const catTotal = cartLines.reduce((s, l) => {
-      const p = activeCatalog.find((p) => p.id === l.produtoId);
-      if (!p) return s;
-      const pu = l.precoUnitarioOverride !== undefined ? l.precoUnitarioOverride : parseFloat(p.precoBase);
-      return s + l.quantidade * pu;
+    const catTotal = cartLines.reduce((sum, line) => {
+      const produto = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
+      const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+      if (!produto && !composicao) return sum;
+
+      const basePrice = produto
+        ? parseFloat(produto.precoBase)
+        : Number(composicao?.custoTotal ?? 0);
+      const unitPrice = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
+      return sum + line.quantidade * unitPrice;
     }, 0);
     const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
 
@@ -1905,7 +1922,7 @@ function newFreeItem(): FreeItem {
     });
     setMode("catalogo");
     setSelectedTemplateSlug("");
-    setCartLines([{ produtoId: "", quantidade: 1 }]);
+    setCartLines([{ quantidade: 1 }]);
     setCartError("");
     setFreeItems([newFreeItem()]);
     setFreeError("");
@@ -1915,7 +1932,7 @@ function newFreeItem(): FreeItem {
   }
 
   // ── catalog helpers ───────────────────────────────────────────────────────
-  function addCatLine()    { setCartLines((p) => [...p, { produtoId: "", quantidade: 1 }]); }
+  function addCatLine()    { setCartLines((p) => [...p, { quantidade: 1 }]); }
   async function calcularOrcamentoM2(payload: {
   produtoId: string;
   superficies: Record<string, unknown>[];
@@ -1936,9 +1953,30 @@ function newFreeItem(): FreeItem {
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
-  function selectPlanProduct(i: number, produtoId: string) {
+  function selectBudgetItem(i: number, value: string) {
+    if (value.startsWith("composicao:")) {
+      const composicaoId = value.slice("composicao:".length);
+      updateCatLine(i, {
+        produtoId: undefined,
+        composicaoId,
+        precoUnitarioOverride: undefined,
+        nomeOverride: undefined,
+      });
+      return;
+    }
+
+    const produtoId = value.startsWith("produto:") ? value.slice("produto:".length) : value;
     const prod = activeCatalog.find((p) => p.id === produtoId);
-    if (!prod) { updateCatLine(i, { produtoId, nomeOverride: undefined }); return; }
+    if (!prod) {
+      updateCatLine(i, {
+        produtoId,
+        composicaoId: undefined,
+        precoUnitarioOverride: undefined,
+        nomeOverride: undefined,
+      });
+      return;
+    }
+
     const precoImpl = prod.precoImplantacao ? parseFloat(prod.precoImplantacao) : 0;
     const precoMens = prod.precoMensalidade ? parseFloat(prod.precoMensalidade) : 0;
     if (precoImpl > 0 && precoMens > 0) {
@@ -1949,7 +1987,12 @@ function newFreeItem(): FreeItem {
         ...prev.slice(i + 1),
       ]);
     } else {
-      updateCatLine(i, { produtoId, nomeOverride: undefined });
+      updateCatLine(i, {
+        produtoId,
+        composicaoId: undefined,
+        precoUnitarioOverride: undefined,
+        nomeOverride: undefined,
+      });
     }
   }
 
@@ -2041,13 +2084,37 @@ function newFreeItem(): FreeItem {
         }
       );
     } else if (mode === "catalogo") {
-      const valid = cartLines.filter((l) => l.produtoId);
-      if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
+      const valid = cartLines.filter((line) => line.produtoId || line.composicaoId);
+      if (!valid.length) { setCartError("Adicione pelo menos um produto ou composição."); return; }
       setCartError("");
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride, nome: l.nomeOverride || undefined })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
+        {
+          tenantId,
+          data: {
+            leadId: vals.leadId,
+            dealId: activeDealId,
+            titulo: vals.titulo,
+            validadeAte: vals.validadeAte || undefined,
+            observacoes: vals.observacoes || undefined,
+            formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined,
+            condPagamento: vals.condPagamento || undefined,
+            prazoEntrega: vals.prazoEntrega || undefined,
+            ...recFields,
+            itens: valid.map((line) => ({
+              ...(line.produtoId ? { produtoId: line.produtoId } : {}),
+              ...(line.composicaoId ? { composicaoId: line.composicaoId } : {}),
+              quantidade: line.quantidade,
+              precoUnitario: line.precoUnitarioOverride,
+              nome: line.nomeOverride || undefined,
+            })),
+            paymentCompositions: paymentComp?.length
+              ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl }))
+              : undefined,
+            skipAsaasBilling: skipAsaas,
+          } as any,
+        },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -2173,7 +2240,7 @@ function newFreeItem(): FreeItem {
             {/* Origens do orçamento: todas usam o mesmo fluxo e persistência real. */}
             <div className="rounded-lg border bg-muted/20 p-3">
               <p className="text-xs font-medium">Como deseja montar este orçamento?</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Use um modelo pronto, selecione produtos do catálogo ou informe itens livres.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Use um modelo pronto, selecione produtos ou composições, ou informe itens livres.</p>
             </div>
             <div className="flex rounded-lg border overflow-hidden text-sm">
               <button
@@ -2188,7 +2255,7 @@ function newFreeItem(): FreeItem {
                 onClick={() => setMode("catalogo")}
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "catalogo" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
-                Catálogo
+                Catálogo + Composições
               </button>
               <button
                 type="button"
@@ -2288,7 +2355,7 @@ function newFreeItem(): FreeItem {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs py-2">Produto</TableHead>
+                        <TableHead className="text-xs py-2">Produto / Composição</TableHead>
                         <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
                         <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
@@ -2297,17 +2364,38 @@ function newFreeItem(): FreeItem {
                     </TableHeader>
                     <TableBody>
                       {cartLines.map((line, idx) => {
-                        const prod = activeCatalog.find((p) => p.id === line.produtoId);
-                        const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : (prod ? parseFloat(prod.precoBase) : 0);
-                        const subtotal = prod ? line.quantidade * precoUnit : 0;
+                        const prod = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
+                        const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+                        const selected = prod || composicao;
+                        const basePrice = prod ? parseFloat(prod.precoBase) : Number(composicao?.custoTotal ?? 0);
+                        const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
+                        const subtotal = selected ? line.quantidade * precoUnit : 0;
+                        const unidade = prod?.unidade ?? composicao?.unidade ?? "";
+                        const selectValue = line.produtoId
+                          ? `produto:${line.produtoId}`
+                          : line.composicaoId
+                            ? `composicao:${line.composicaoId}`
+                            : "";
                         return (
                           <TableRow key={idx}>
                             <TableCell className="py-1.5">
-                              <Select value={line.produtoId} onValueChange={(v) => selectPlanProduct(idx, v)}>
-                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                              <Select value={selectValue} onValueChange={(value) => selectBudgetItem(idx, value)}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione produto ou composição…" /></SelectTrigger>
                                 <SelectContent>
                                   {activeCatalog.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>{p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}</SelectItem>
+                                    <SelectItem key={`produto-${p.id}`} value={`produto:${p.id}`}>
+                                      {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
+                                    </SelectItem>
+                                  ))}
+                                  {composicoes.length > 0 && (
+                                    <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Composições de obra
+                                    </div>
+                                  )}
+                                  {composicoes.map((item: Composicao) => (
+                                    <SelectItem key={`composicao-${item.id}`} value={`composicao:${item.id}`}>
+                                      [Composição] {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
+                                    </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -2334,9 +2422,28 @@ function newFreeItem(): FreeItem {
                                   placeholder="Descrição do item"
                                 />
                               )}
+                              {composicao && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  Composição de obra · {composicao.unidade} · custo atual {fmtCurrency(Number(composicao.custoTotal ?? 0))}
+                                </p>
+                              )}
                             </TableCell>
                             <TableCell className="py-1.5">
-                              <Input type="number" min={1} className="h-8 text-sm w-20" value={line.quantidade} onChange={(e) => updateCatLine(idx, { quantidade: Math.max(1, parseInt(e.target.value) || 1) })} />
+                              <Input
+                                type="number"
+                                min={composicao ? 0.0001 : 1}
+                                step={composicao ? 0.01 : 1}
+                                className="h-8 text-sm w-24"
+                                value={line.quantidade}
+                                onChange={(e) => {
+                                  const value = Number(e.target.value);
+                                  updateCatLine(idx, {
+                                    quantidade: composicao
+                                      ? Math.max(0.0001, Number.isFinite(value) ? value : 0.0001)
+                                      : Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1)),
+                                  });
+                                }}
+                              />
                             </TableCell>
                             <TableCell className="py-1.5">
                               <div className="relative flex items-center justify-end">
@@ -2346,15 +2453,15 @@ function newFreeItem(): FreeItem {
                                   min={0}
                                   step={0.01}
                                   className="h-8 text-sm text-right font-mono pl-7 w-32"
-                                  disabled={!prod}
+                                  disabled={!selected}
                                   placeholder="0,00"
-                                  value={prod ? (line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : parseFloat(prod.precoBase)) : ""}
+                                  value={selected ? precoUnit : ""}
                                   onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: parseFloat(e.target.value) || 0 })}
                                 />
-                                {prod && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{prod.unidade}</span>}
+                                {selected && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{unidade}</span>}
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{prod ? fmtCurrency(subtotal) : "—"}</TableCell>
+                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{selected ? fmtCurrency(subtotal) : "—"}</TableCell>
                             <TableCell className="py-1.5">
                               <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeCatLine(idx)} disabled={cartLines.length === 1}>
                                 <X className="h-3.5 w-3.5" />

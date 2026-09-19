@@ -5,6 +5,7 @@ import {
   db,
   propostasTable,
   produtosCatalogoTable,
+  composicoesTable,
   categoriasProdutoTable,
   propostaTemplatesTable,
   businessProfilesTable,
@@ -327,11 +328,15 @@ const fromCatalogoBodySchema = z.object({
   itens: z
     .array(
       z.object({
-        produtoId: z.string().min(1),
+        produtoId: z.string().min(1).optional(),
+        composicaoId: z.string().min(1).optional(),
         quantidade: z.number().positive(),
         precoUnitario: z.number().nonnegative().optional(),
         nome: z.string().optional(),
-      })
+      }).refine(
+        (item) => Boolean(item.produtoId) !== Boolean(item.composicaoId),
+        { message: "Informe produtoId ou composicaoId, mas não os dois." },
+      )
     )
     .min(1, "At least one item is required"),
 });
@@ -359,51 +364,95 @@ router.post(
       paymentCompositions,
     } = parsed.data;
 
-    const produtoIds = itens.map((i) => i.produtoId);
+    const produtoIds = itens.flatMap((item) => item.produtoId ? [item.produtoId] : []);
+    const composicaoIds = itens.flatMap((item) => item.composicaoId ? [item.composicaoId] : []);
 
-    const produtos = await db
-      .select()
-      .from(produtosCatalogoTable)
-      .where(
-        and(
-          eq(produtosCatalogoTable.tenantId, tenantId),
-          inArray(produtosCatalogoTable.id, produtoIds)
-        )
-      );
+    const produtos = produtoIds.length > 0
+      ? await db
+          .select()
+          .from(produtosCatalogoTable)
+          .where(
+            and(
+              eq(produtosCatalogoTable.tenantId, tenantId),
+              inArray(produtosCatalogoTable.id, produtoIds)
+            )
+          )
+      : [];
 
-    const missingIds = produtoIds.filter(
-      (id) => !produtos.find((p) => p.id === id)
+    const composicoes = composicaoIds.length > 0
+      ? await db
+          .select()
+          .from(composicoesTable)
+          .where(
+            and(
+              eq(composicoesTable.tenantId, tenantId),
+              inArray(composicoesTable.id, composicaoIds)
+            )
+          )
+      : [];
+
+    const missingProductIds = produtoIds.filter(
+      (id) => !produtos.find((produto) => produto.id === id)
     );
-    if (missingIds.length > 0) {
+    if (missingProductIds.length > 0) {
       res.status(422).json({
-        error: `Products not found or do not belong to this tenant: ${missingIds.join(", ")}`,
+        error: `Products not found or do not belong to this tenant: ${missingProductIds.join(", ")}`,
       });
       return;
     }
 
-    const inactiveProdutos = produtos.filter((p) => !p.ativo);
+    const missingCompositionIds = composicaoIds.filter(
+      (id) => !composicoes.find((composicao) => composicao.id === id)
+    );
+    if (missingCompositionIds.length > 0) {
+      res.status(422).json({
+        error: `Compositions not found or do not belong to this tenant: ${missingCompositionIds.join(", ")}`,
+      });
+      return;
+    }
+
+    const inactiveProdutos = produtos.filter((produto) => !produto.ativo);
     if (inactiveProdutos.length > 0) {
       res.status(422).json({
-        error: `Inactive products cannot be added to a proposta: ${inactiveProdutos.map((p) => p.nome).join(", ")}`,
+        error: `Inactive products cannot be added to a proposta: ${inactiveProdutos.map((produto) => produto.nome).join(", ")}`,
       });
       return;
     }
 
-    const produtoMap = new Map(produtos.map((p) => [p.id, p]));
+    const produtoMap = new Map(produtos.map((produto) => [produto.id, produto]));
+    const composicaoMap = new Map(composicoes.map((composicao) => [composicao.id, composicao]));
 
     let valorTotal = 0;
     const propostaItens = itens.map((item) => {
-      const produto = produtoMap.get(item.produtoId)!;
-      const valorUnitario = item.precoUnitario !== undefined && item.precoUnitario > 0
+      if (item.produtoId) {
+        const produto = produtoMap.get(item.produtoId)!;
+        const valorUnitario = item.precoUnitario !== undefined
+          ? item.precoUnitario
+          : parseFloat(produto.precoBase);
+        valorTotal += item.quantidade * valorUnitario;
+        return {
+          nome: item.nome || produto.nome,
+          quantidade: item.quantidade,
+          valorUnitario,
+          produtoId: produto.id,
+          sku: produto.sku ?? undefined,
+          unidade: produto.unidade ?? undefined,
+        };
+      }
+
+      const composicao = composicaoMap.get(item.composicaoId!)!;
+      const valorUnitario = item.precoUnitario !== undefined
         ? item.precoUnitario
-        : parseFloat(produto.precoBase);
+        : Number(composicao.custoTotal ?? 0);
       valorTotal += item.quantidade * valorUnitario;
       return {
-        nome: item.nome || produto.nome,
+        nome: item.nome || composicao.nome,
         quantidade: item.quantidade,
         valorUnitario,
-        produtoId: produto.id,
-        sku: produto.sku ?? undefined,
+        composicaoId: composicao.id,
+        sku: composicao.codigo ?? undefined,
+        descricao: composicao.descricao ?? undefined,
+        unidade: composicao.unidade,
       };
     });
 

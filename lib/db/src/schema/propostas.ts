@@ -30,6 +30,10 @@ export const propostaItemSchema = z.object({
   valorUnitario: z.number().nonnegative(),
   sku: z.string().optional(),
   descricao: z.string().optional(),
+  unidade: z.string().optional(),
+  // Referência opcional à composição de obra que originou o item.
+  // O preço do orçamento é um snapshot e não muda quando a composição muda depois.
+  composicaoId: z.string().optional(),
   // Referência opcional a produtos_catalogo.id — usada pelo Revenue Scout
   // (regra "sequencia_produto") para detectar compra de um produto específico.
   produtoId: z.string().optional(),
