@@ -4,11 +4,12 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { insumosTable } from "./insumos";
 
-const decimalOptional = z
+const decimalRequired = z
   .union([z.string(), z.number()])
   .transform((v) => String(v))
-  .pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal"))
-  .optional();
+  .pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal"));
+
+const decimalOptional = decimalRequired.optional();
 
 export const tabelasPrecosObrasTable = pgTable("tabelas_precos_obras", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -71,11 +72,11 @@ export const updateTabelaPrecosObrasSchema = createSelectSchema(tabelasPrecosObr
   .partial();
 
 export const insertTabelaPrecosObrasItemSchema = createInsertSchema(tabelaPrecosObrasItensTable, {
-  precoBase: decimalOptional,
+  precoBase: decimalRequired,
   freteUnitario: decimalOptional,
   impostosPercentual: decimalOptional,
   descontoPercentual: decimalOptional,
-  precoFinal: decimalOptional,
+  precoFinal: decimalRequired,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type TabelaPrecosObras = typeof tabelasPrecosObrasTable.$inferSelect;
