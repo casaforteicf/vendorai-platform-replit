@@ -254,7 +254,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
   const config = (concept.configuration ?? {}) as { floors?: number; desiredArea?: number };
   const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
-  const facade = (concept.facadePreferences ?? {}) as Record<string, string>;
+  const facade = (concept.facadePreferences ?? {}) as Record<string, unknown>;
   const customer = (concept.customerProfile ?? {}) as {
     name?: string;
     phone?: string;
@@ -326,7 +326,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
             arqdorConceptId: concept.id,
             desiredArea: config.desiredArea ?? null,
             floors: config.floors ?? null,
-            facadeStyle: facade.style ?? null,
+            facadeStyle: typeof facade.style === "string" ? facade.style : null,
+            roofType: typeof facade.roof === "string" ? facade.roof : null,
+            roofWaters: typeof facade.roofWaters === "number" ? facade.roofWaters : null,
+            roofPitchDeg: typeof facade.roofPitchDeg === "number" ? facade.roofPitchDeg : null,
           },
         })
         .returning();
@@ -371,10 +374,18 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `Pavimentos: ${config.floors ?? "—"}.`,
     `Área desejada: ${config.desiredArea ?? "—"} m².`,
     roomSummary ? `Ambientes: ${roomSummary}.` : null,
-    facade.style ? `Estilo: ${facade.style}.` : null,
-    facade.roof ? `Cobertura: ${facade.roof}.` : null,
-    facade.primaryMaterial ? `Material principal: ${facade.primaryMaterial}.` : null,
-    facade.accentMaterial ? `Destaque: ${facade.accentMaterial}.` : null,
+    typeof facade.style === "string" ? `Estilo: ${facade.style}.` : null,
+    typeof facade.roof === "string"
+      ? [
+          `Cobertura: ${facade.roof}`,
+          typeof facade.roofWaters === "number" && facade.roof !== "platibanda" ? `${facade.roofWaters} água(s)` : null,
+          typeof facade.roofPitchDeg === "number" && facade.roof !== "platibanda" ? `${facade.roofPitchDeg}°` : null,
+          typeof facade.roofOverhang === "number" && facade.roof !== "platibanda" ? `beiral ${facade.roofOverhang} m` : null,
+          typeof facade.roofParapetHeight === "number" && facade.roof !== "aparente" ? `platibanda ${facade.roofParapetHeight} m` : null,
+        ].filter(Boolean).join(" · ") + "."
+      : null,
+    typeof facade.primaryMaterial === "string" ? `Material principal: ${facade.primaryMaterial}.` : null,
+    typeof facade.accentMaterial === "string" ? `Destaque: ${facade.accentMaterial}.` : null,
     customer.budgetRange ? `Faixa de investimento informada: ${customer.budgetRange}.` : null,
     customer.timeframe ? `Prazo desejado: ${customer.timeframe}.` : null,
     customer.notes ? `Observações do cliente: ${customer.notes}.` : null,

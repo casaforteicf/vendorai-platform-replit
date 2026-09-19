@@ -1,4 +1,5 @@
 import type { ConceptFacadePreferences, VolumetryRoom } from "./ConceptVolumetry";
+import { normalizeRoofParameters } from "./conceptRoof";
 
 export type ConceptRenderBriefInput = {
   lotWidth: number;
@@ -52,13 +53,27 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
 
   const pool = input.rooms.find((room) => room.kind === "piscina");
   const facade = input.facade;
+  const roof = normalizeRoofParameters(facade);
+  const roofDetails = roof.roof === "platibanda"
+    ? `parapet height ${roof.roofParapetHeight.toFixed(2)} m`
+    : [
+        `${roof.roofWaters} roof plane(s)`,
+        `pitch ${roof.roofPitchDeg.toFixed(0)} degrees`,
+        `eave overhang ${roof.roofOverhang.toFixed(2)} m`,
+        roof.roofWaters === 1
+          ? `fall direction ${roof.roofSlopeDirection}`
+          : `ridge axis ${roof.roofRidgeOrientation}`,
+        roof.roof === "misto"
+          ? `parapet share ${Math.round(roof.roofMixedRatio * 100)}% and parapet height ${roof.roofParapetHeight.toFixed(2)} m`
+          : null,
+      ].filter(Boolean).join(", ");
 
   return [
     "Convert this conceptual FRONT ELEVATION and the structured plan data into a photorealistic exterior architectural photograph.",
     "CRITICAL PRESERVATION: preserve the number of floors, garage position, main entrance hierarchy, facade proportions, roof strategy and the major opening rhythm shown in the source elevation. Do not invent a different house.",
     `Site: rectangular lot ${input.lotWidth} x ${input.lotDepth} m. Building: ${input.floors} floor(s), target area approximately ${input.desiredArea} m².`,
     `Architectural direction: ${styleLabel[facade.style]}.`,
-    `Roof: ${roofLabel[facade.roof]}.`,
+    `Roof: ${roofLabel[facade.roof]}; ${roofDetails}.`,
     `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
     `Facade tone: ${facade.facadeTone}. Frames: ${frameLabel[facade.frameTone]}.`,
     `Landscaping intensity: ${facade.landscaping}. Use realistic Brazilian residential landscaping without blocking the architecture.`,
