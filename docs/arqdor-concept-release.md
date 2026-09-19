@@ -37,9 +37,15 @@ O branch está sincronizado com a `main` e preserva a implementação completa d
 
 ## Banco de dados
 
-**Não há migração de banco necessária para esta release.**
+**Há uma migration obrigatória nesta release.**
 
-As extensões de dados foram feitas em colunas JSONB já existentes:
+Migration:
+
+`2026091901_arch_concept_projects.sql`
+
+Ela cria a tabela `arch_concept_projects`, necessária para persistir o pré-projeto do Concept, com isolamento por tenant e usuário. O Railway aplica migrations pendentes no boot pelo runner oficial de `lib/db/migrations`.
+
+As extensões do editor continuam concentradas em JSONB:
 
 - `arch_concept_projects.configuration`
 - `arch_concept_projects.rooms`
@@ -53,13 +59,17 @@ As tabelas profissionais já possuem os campos usados pela promoção:
 
 ## Ordem de publicação
 
-1. Integrar o branch na `main`.
-2. Aguardar o Railway concluir o deploy do serviço `vendorai-platform-replit`.
+1. Publicar o branch em um backend Railway de validação.
+2. Confirmar que a migration `2026091901_arch_concept_projects.sql` foi aplicada.
 3. Confirmar status Railway `SUCCESS`.
 4. Confirmar healthcheck da API em `/api/auth/healthz`.
-5. Aguardar o frontend Cloudflare concluir o deploy da `main`.
-6. Confirmar Cloudflare `Deployed successfully`.
-7. Executar o smoke test abaixo.
+5. Executar o smoke test completo no branch.
+6. Somente se o smoke test passar, integrar o branch na `main`.
+7. Aguardar o deploy do serviço oficial `vendorai-platform-replit`.
+8. Confirmar Railway `SUCCESS` e healthcheck.
+9. Aguardar o frontend Cloudflare concluir o deploy da `main`.
+10. Confirmar Cloudflare `Deployed successfully`.
+11. Repetir o smoke test pós-merge.
 
 O backend deve entrar antes ou junto do frontend para que o salvamento do tenant efetivo esteja disponível quando o novo Concept abrir.
 
@@ -121,4 +131,4 @@ Se o backend falhar após integração:
 4. Confirmar `SUCCESS` e healthcheck.
 5. Reverter/republicar o frontend correspondente se necessário.
 
-Como não há migração de banco nesta release, o rollback não exige rollback de schema.
+A migration é aditiva: cria somente `arch_concept_projects`. Em rollback de aplicação, a tabela deve ser preservada para não perder pré-projetos já salvos; não executar `DROP TABLE` automaticamente.
