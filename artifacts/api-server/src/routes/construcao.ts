@@ -1555,9 +1555,9 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
   const rows = await db.select().from(composicoesTable).where(and(...filters)).orderBy(asc(composicoesTable.nome));
   if (rows.length === 0) return res.json(rows);
 
-  // O custo da composição é sempre calculado a partir da base atual de insumos.
-  // Se o item tiver preço fixo próprio, ele prevalece. Caso contrário, qualquer
-  // alteração no preço do insumo atualiza automaticamente a composição.
+  // O custo da composição é sempre calculado pela Tabela Mestre de Insumos.
+  // Não existe preço paralelo na composição: alterar o insumo atualiza todas
+  // as composições dependentes e os orçamentos que ainda podem ser recalculados.
   const itens = await db
     .select({
       composicaoId: composicaoInsumosTable.composicaoId,
@@ -1625,9 +1625,10 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
 
     if (parsedItens.data.length > 0) {
       await tx.insert(composicaoInsumosTable).values(
-        parsedItens.data.map(({ precoUnitario: _legacyOverride, ...item }) => ({
-          ...item,
+        parsedItens.data.map((item) => ({
           composicaoId: created.id,
+          insumoId: item.insumoId,
+          quantidade: item.quantidade,
         }))
       );
     }
@@ -1733,7 +1734,11 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
       await tx.delete(composicaoInsumosTable).where(eq(composicaoInsumosTable.composicaoId, composicaoId));
       if (parsedItens.length > 0) {
         await tx.insert(composicaoInsumosTable).values(
-          parsedItens.map(({ precoUnitario: _legacyOverride, ...item }) => item)
+          parsedItens.map((item) => ({
+            composicaoId: item.composicaoId,
+            insumoId: item.insumoId,
+            quantidade: item.quantidade,
+          }))
         );
       }
     }
