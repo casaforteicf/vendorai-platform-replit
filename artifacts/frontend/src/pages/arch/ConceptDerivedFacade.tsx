@@ -1,6 +1,7 @@
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import { normalizeOpeningParameters } from "./conceptOpenings";
+import { buildRoofFacadeProfile, normalizeRoofParameters } from "./conceptRoof";
 
 type Props = {
   lotWidth: number;
@@ -88,29 +89,70 @@ function frontOpenings(
 function Roof({
   x,
   y,
-  width,
+  widthMeters,
+  depthMeters,
+  scaleX,
+  pxPerMeterY,
   facade,
 }: {
   x: number;
   y: number;
-  width: number;
+  widthMeters: number;
+  depthMeters: number;
+  scaleX: number;
+  pxPerMeterY: number;
   facade: ConceptFacadePreferences;
 }) {
-  if (facade.roof === "platibanda") {
+  const params = normalizeRoofParameters(facade);
+  const pathFor = (
+    originX: number,
+    visibleWidth: number,
+    visibleDepth: number,
+    source: ConceptFacadePreferences,
+  ) => {
+    const profile = buildRoofFacadeProfile(visibleWidth, visibleDepth, source);
+    return profile
+      .map((point, index) =>
+        `${index === 0 ? "M" : "L"} ${originX + point.x * scaleX} ${y - point.z * pxPerMeterY}`
+      )
+      .join(" ") + " Z";
+  };
+
+  if (params.roof === "platibanda") {
+    const height = params.roofParapetHeight * pxPerMeterY;
     return (
       <>
-        <rect x={x} y={y - 2.1} width={width} height="2.1" fill="#747a80" />
-        <rect x={x + 0.6} y={y - 1.3} width={width - 1.2} height="1.1" fill="#9da3a8" opacity="0.45" />
+        <rect x={x} y={y - height} width={widthMeters * scaleX} height={height} fill="#747a80" />
+        <rect
+          x={x + 0.45}
+          y={y - height * 0.62}
+          width={Math.max(0, widthMeters * scaleX - 0.9)}
+          height={Math.max(0.5, height * 0.42)}
+          fill="#9da3a8"
+          opacity="0.45"
+        />
       </>
     );
   }
 
-  if (facade.roof === "misto") {
+  if (params.roof === "misto") {
+    const splitMeters = widthMeters * params.roofMixedRatio;
+    const flatHeight = params.roofParapetHeight * pxPerMeterY;
+    const pitchedWidth = Math.max(0.1, widthMeters - splitMeters + params.roofOverhang);
+    const pitchedDepth = depthMeters + params.roofOverhang * 2;
+    const pitchedX = x + splitMeters * scaleX - params.roofOverhang * scaleX;
+    const pitchedSource = { ...facade, roof: "aparente" as const };
     return (
       <>
-        <rect x={x} y={y - 1.7} width={width * 0.48} height="1.7" fill="#747a80" />
+        <rect
+          x={x}
+          y={y - flatHeight}
+          width={splitMeters * scaleX}
+          height={flatHeight}
+          fill="#747a80"
+        />
         <path
-          d={`M ${x + width * 0.42} ${y} L ${x + width * 0.72} ${y - 7.5} L ${x + width} ${y} Z`}
+          d={pathFor(pitchedX, pitchedWidth, pitchedDepth, pitchedSource)}
           fill="#76513f"
           stroke="#50382d"
           strokeWidth="0.55"
@@ -119,16 +161,19 @@ function Roof({
     );
   }
 
+  const overhang = params.roofOverhang;
+  const visibleWidth = widthMeters + overhang * 2;
+  const visibleDepth = depthMeters + overhang * 2;
+  const originX = x - overhang * scaleX;
   return (
     <path
-      d={`M ${x} ${y} L ${x + width / 2} ${y - 8.5} L ${x + width} ${y} Z`}
+      d={pathFor(originX, visibleWidth, visibleDepth, facade)}
       fill="#76513f"
       stroke="#50382d"
       strokeWidth="0.6"
     />
   );
 }
-
 export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props) {
   const colors = facadePalette(facade);
   const usable = levels
@@ -148,8 +193,15 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
   const topMaxX = topLevel?.segments.length
     ? Math.max(...topLevel.segments.flatMap((wall) => [wall.x1, wall.x2]))
     : lotWidth;
+  const topMinY = topLevel?.level.closedSpaces.length
+    ? Math.min(...topLevel.level.closedSpaces.map((space) => space.bounds.y))
+    : 0;
+  const topMaxY = topLevel?.level.closedSpaces.length
+    ? Math.max(...topLevel.level.closedSpaces.map((space) => space.bounds.y + space.bounds.height))
+    : Math.max(6, lotWidth * 0.7);
   const roofX = baseX + topMinX * scaleX;
-  const roofWidth = Math.max(16, (topMaxX - topMinX) * scaleX);
+  const roofWidthMeters = Math.max(1, topMaxX - topMinX);
+  const roofDepthMeters = Math.max(1, topMaxY - topMinY);
   const topWallHeight = topLevel
     ? Math.max(WALL_HEIGHT, topLevel.level.floorToFloorHeight - FLOOR_THICKNESS)
     : WALL_HEIGHT;
@@ -342,7 +394,17 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
           );
         })}
 
-        {usable.length > 0 && <Roof x={roofX} y={roofY} width={roofWidth} facade={facade} />}
+        {usable.length > 0 && (
+          <Roof
+            x={roofX}
+            y={roofY}
+            widthMeters={roofWidthMeters}
+            depthMeters={roofDepthMeters}
+            scaleX={scaleX}
+            pxPerMeterY={pxPerMeterY}
+            facade={facade}
+          />
+        )}
       </g>
 
       <g opacity={facade.landscaping === "leve" ? 0.58 : facade.landscaping === "intenso" ? 1 : 0.82}>
