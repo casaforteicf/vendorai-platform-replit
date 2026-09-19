@@ -20,7 +20,7 @@ import { callOpenAI } from "../lib/ai-gateway.js";
 import { findVerticalBlueprint, resolveVerticalBlueprint, type RegistryCapability } from "../lib/app_vertical_blueprints.js";
 
 const router: IRouter = Router();
-router.use(requireRole("super_admin"));
+router.use("/admin/app-builder", requireRole("super_admin"));
 
 const slugSchema = z
   .string()
