@@ -392,10 +392,25 @@ export default function ConceptPlanner() {
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
   const visibleRooms = wallFirstActive ? [] : rooms.filter((r) => r.floor === activeFloor);
-  const currentArea = useMemo(
-    () => rooms.filter((r) => r.kind !== "piscina").reduce((sum, r) => sum + r.width * r.depth, 0),
-    [rooms],
-  );
+  const currentArea = useMemo(() => {
+    const legacyArea = rooms
+      .filter((room) => room.kind !== "piscina" && !wallFirstFloors.includes(room.floor))
+      .reduce((sum, room) => sum + room.width * room.depth, 0);
+    const wallFirstArea = wallFirstFloors.reduce((sum, floor) => {
+      const floorWalls = customWalls
+        .filter((wall) => wall.floor === floor)
+        .map((wall) => ({
+          id: wall.id,
+          x1: wall.x1,
+          y1: wall.y1,
+          x2: wall.x2,
+          y2: wall.y2,
+        }));
+      return sum + detectClosedSpaces(floorWalls, lotWidth, lotDepth)
+        .reduce((area, space) => area + space.area, 0);
+    }, 0);
+    return legacyArea + wallFirstArea;
+  }, [rooms, wallFirstFloors, customWalls, lotWidth, lotDepth]);
 
   const applyTypology = (nextTypology: ConceptTypology) => {
     const template = CONCEPT_TYPOLOGIES.find((item) => item.id === nextTypology);
