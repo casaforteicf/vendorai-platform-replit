@@ -2387,6 +2387,11 @@ function newFreeItem(): FreeItem {
                                       {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
                                     </SelectItem>
                                   ))}
+                                  {composicoes.length > 0 && (
+                                    <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Composições de obra
+                                    </div>
+                                  )}
                                   {composicoes.map((item: Composicao) => (
                                     <SelectItem key={`composicao-${item.id}`} value={`composicao:${item.id}`}>
                                       [Composição] {item.nome}{item.codigo ? ` · ${item.codigo}` : ""}
@@ -2417,9 +2422,28 @@ function newFreeItem(): FreeItem {
                                   placeholder="Descrição do item"
                                 />
                               )}
+                              {composicao && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  Composição de obra · {composicao.unidade} · custo atual {fmtCurrency(Number(composicao.custoTotal ?? 0))}
+                                </p>
+                              )}
                             </TableCell>
                             <TableCell className="py-1.5">
-                              <Input type="number" min={1} className="h-8 text-sm w-20" value={line.quantidade} onChange={(e) => updateCatLine(idx, { quantidade: Math.max(1, parseInt(e.target.value) || 1) })} />
+                              <Input
+                                type="number"
+                                min={composicao ? 0.0001 : 1}
+                                step={composicao ? 0.01 : 1}
+                                className="h-8 text-sm w-24"
+                                value={line.quantidade}
+                                onChange={(e) => {
+                                  const value = Number(e.target.value);
+                                  updateCatLine(idx, {
+                                    quantidade: composicao
+                                      ? Math.max(0.0001, Number.isFinite(value) ? value : 0.0001)
+                                      : Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1)),
+                                  });
+                                }}
+                              />
                             </TableCell>
                             <TableCell className="py-1.5">
                               <div className="relative flex items-center justify-end">
