@@ -38,8 +38,14 @@ import {
   insertObraOrcamentoItemSchema,
   insertCompraObraSchema,
   insertInsumoSchema,
+  updateInsumoSchema,
   insertComposicaoSchema,
   insertComposicaoInsumoSchema,
+  tabelasPrecosObrasTable,
+  tabelaPrecosObrasItensTable,
+  insumoPrecoHistoricoTable,
+  insertTabelaPrecosObrasSchema,
+  insertTabelaPrecosObrasItemSchema,
   updateObraOrcamentoItemSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
