@@ -19,6 +19,7 @@ export type WallSegment = {
   x2: number;
   y2: number;
   exterior: boolean;
+  roomIds: string[];
 };
 
 export type OpeningMarker = {
@@ -74,15 +75,39 @@ export function buildConceptGeometry(
     ];
     for (const [x1, y1, x2, y2] of edges) {
       const key = keyOf(x1, y1, x2, y2);
-      if (wallMap.has(key)) sharedKeys.add(key);
-      else wallMap.set(key, { id: key, x1, y1, x2, y2, exterior: true });
+      const existing = wallMap.get(key);
+      if (existing) {
+        sharedKeys.add(key);
+        if (!existing.roomIds.includes(room.id)) existing.roomIds.push(room.id);
+      } else {
+        wallMap.set(key, { id: key, x1, y1, x2, y2, exterior: true, roomIds: [room.id] });
+      }
     }
   }
 
-  const walls = [...wallMap.values()].map((wall) => ({
-    ...wall,
-    exterior: !sharedKeys.has(wall.id),
-  }));
+  const walls = [...wallMap.values()].map((wall) => {
+    const sourceKey = wall.id;
+    const exterior = !sharedKeys.has(sourceKey);
+    const vertical = nearly(wall.x1, wall.x2);
+    const roomIds = [...wall.roomIds].sort();
+    let stableId = `wall-${roomIds.join("-")}-${vertical ? "v" : "h"}`;
+
+    if (roomIds.length === 1) {
+      const owner = floorRooms.find((room) => room.id === roomIds[0]);
+      if (owner) {
+        const side = vertical
+          ? nearly(wall.x1, owner.x) ? "left" : "right"
+          : nearly(wall.y1, owner.y) ? "top" : "bottom";
+        stableId = `wall-${owner.id}-${side}`;
+      }
+    }
+
+    return {
+      ...wall,
+      id: stableId,
+      exterior,
+    };
+  });
 
   const openings: OpeningMarker[] = [];
 

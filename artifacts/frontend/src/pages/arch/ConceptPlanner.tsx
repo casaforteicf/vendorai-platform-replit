@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,6 +13,7 @@ import {
   Maximize2,
   Plus,
   RotateCcw,
+  RotateCw,
   Sparkles,
   Trees,
   Waves,
@@ -209,11 +210,16 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "facade" | "render">("plan");
-  const [interactionMode, setInteractionMode] = useState<"room" | "opening">("room");
+  const [interactionMode, setInteractionMode] = useState<"room" | "wall" | "opening">("room");
   const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
+  const roomsRef = useRef<Room[]>(rooms);
+  const editStartRef = useRef<Room[] | null>(null);
+  const [roomHistory, setRoomHistory] = useState<Room[][]>([]);
+  const [roomFuture, setRoomFuture] = useState<Room[][]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -224,6 +230,10 @@ export default function ConceptPlanner() {
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
+
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
 
   useEffect(() => {
     let cancelled = false;
@@ -339,6 +349,52 @@ export default function ConceptPlanner() {
     setLayoutPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const snapshotRooms = (source: Room[] = roomsRef.current) =>
+    source.map((room) => ({ ...room }));
+
+  const pushRoomHistory = (before: Room[]) => {
+    setRoomHistory((history) => [...history.slice(-39), snapshotRooms(before)]);
+    setRoomFuture([]);
+  };
+
+  const beginRoomEdit = () => {
+    if (!editStartRef.current) editStartRef.current = snapshotRooms();
+  };
+
+  const endRoomEdit = () => {
+    const before = editStartRef.current;
+    editStartRef.current = null;
+    if (!before) return;
+    const after = roomsRef.current;
+    if (JSON.stringify(before) !== JSON.stringify(after)) pushRoomHistory(before);
+  };
+
+  const undoRooms = () => {
+    setRoomHistory((history) => {
+      const previous = history[history.length - 1];
+      if (!previous) return history;
+      setRoomFuture((future) => [snapshotRooms(), ...future].slice(0, 40));
+      setRooms(snapshotRooms(previous));
+      setSelectedId(null);
+      setSelectedWallId(null);
+      setSelectedOpeningId(null);
+      return history.slice(0, -1);
+    });
+  };
+
+  const redoRooms = () => {
+    setRoomFuture((future) => {
+      const next = future[0];
+      if (!next) return future;
+      setRoomHistory((history) => [...history.slice(-39), snapshotRooms()]);
+      setRooms(snapshotRooms(next));
+      setSelectedId(null);
+      setSelectedWallId(null);
+      setSelectedOpeningId(null);
+      return future.slice(1);
+    });
+  };
+
   const addRoom = (kind: RoomKind) => {
     if (SINGLETON_ROOM_KINDS.has(kind)) {
       const existing = rooms.find((room) => room.floor === activeFloor && room.kind === kind);
@@ -443,6 +499,61 @@ export default function ConceptPlanner() {
     [rooms, lotWidth, lotDepth, activeFloor],
   );
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
+  const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
+
+  const moveWallById = (wallId: string, delta: number) => {
+    if (!delta) return;
+    const wall = geometry.walls.find((item) => item.id === wallId);
+    if (!wall) return;
+
+    const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
+    const minSize = 1;
+    const epsilon = 0.08;
+
+    setRooms((prev) => {
+      const affected = prev.filter((room) => wall.roomIds.includes(room.id));
+      if (!affected.length || affected.some((room) => room.locked)) return prev;
+
+      const patches = new Map<string, Partial<Room>>();
+      for (const room of affected) {
+        if (vertical) {
+          const touchesLeft = Math.abs(room.x - wall.x1) < epsilon;
+          const touchesRight = Math.abs(room.x + room.width - wall.x1) < epsilon;
+          if (touchesLeft) {
+            const nextX = room.x + delta;
+            const nextWidth = room.width - delta;
+            if (nextX < 0 || nextWidth < minSize) return prev;
+            patches.set(room.id, { x: nextX, width: nextWidth });
+          } else if (touchesRight) {
+            const nextWidth = room.width + delta;
+            if (room.x + nextWidth > lotWidth || nextWidth < minSize) return prev;
+            patches.set(room.id, { width: nextWidth });
+          }
+        } else {
+          const touchesTop = Math.abs(room.y - wall.y1) < epsilon;
+          const touchesBottom = Math.abs(room.y + room.depth - wall.y1) < epsilon;
+          if (touchesTop) {
+            const nextY = room.y + delta;
+            const nextDepth = room.depth - delta;
+            if (nextY < 0 || nextDepth < minSize) return prev;
+            patches.set(room.id, { y: nextY, depth: nextDepth });
+          } else if (touchesBottom) {
+            const nextDepth = room.depth + delta;
+            if (room.y + nextDepth > lotDepth || nextDepth < minSize) return prev;
+            patches.set(room.id, { depth: nextDepth });
+          }
+        }
+      }
+
+      if (!patches.size) return prev;
+      return prev.map((room) => patches.has(room.id) ? { ...room, ...patches.get(room.id) } : room);
+    });
+  };
+
+  const nudgeSelectedWall = (delta: number) => {
+    if (!selectedWall) return;
+    moveWallById(selectedWall.id, delta);
+  };
 
   const moveOpening = (amount: number) => {
     if (!selectedOpening) return;
@@ -876,6 +987,24 @@ export default function ConceptPlanner() {
                 </div>
                 <button
                   type="button"
+                  onClick={undoRooms}
+                  disabled={!roomHistory.length}
+                  title="Desfazer"
+                  className="grid h-9 w-9 place-items-center rounded-xl border bg-background disabled:opacity-35"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={redoRooms}
+                  disabled={!roomFuture.length}
+                  title="Refazer"
+                  className="grid h-9 w-9 place-items-center rounded-xl border bg-background disabled:opacity-35"
+                >
+                  <RotateCw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => void saveConcept(4)}
                   className="rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
                 >
@@ -984,7 +1113,7 @@ export default function ConceptPlanner() {
                         <div className="inline-flex rounded-lg border bg-background p-1">
                           <button
                             type="button"
-                            onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); }}
+                            onClick={() => { setInteractionMode("room"); setSelectedOpeningId(null); setSelectedWallId(null); }}
                             className={interactionMode === "room"
                               ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
                               : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
@@ -993,7 +1122,16 @@ export default function ConceptPlanner() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setInteractionMode("opening"); setSelectedId(null); }}
+                            onClick={() => { setInteractionMode("wall"); setSelectedId(null); setSelectedOpeningId(null); }}
+                            className={interactionMode === "wall"
+                              ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Paredes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setInteractionMode("opening"); setSelectedId(null); setSelectedWallId(null); }}
                             className={interactionMode === "opening"
                               ? "rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
                               : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
@@ -1040,12 +1178,23 @@ export default function ConceptPlanner() {
                           setSelectedId(null);
                         }}
                         onOpeningChange={updateOpeningById}
+                        selectedWallId={selectedWallId}
+                        onSelectWall={(wallId) => {
+                          setSelectedWallId(wallId);
+                          setSelectedId(null);
+                          setSelectedOpeningId(null);
+                        }}
+                        onWallMove={moveWallById}
+                        onEditStart={beginRoomEdit}
+                        onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
                       />
                       <div className="mt-3 rounded-xl border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
                         {interactionMode === "room"
-                          ? "Ambientes: arraste para mover · 8 alças laranja ajustam paredes · snap magnético + grade de 25 cm."
-                          : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
+                          ? "Ambientes: arraste para mover · 8 alças laranja ajustam o perímetro · snap magnético + grade de 25 cm."
+                          : interactionMode === "wall"
+                            ? "Paredes: selecione uma parede e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
+                            : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
                       </div>
                     </>
                   )}
@@ -1091,7 +1240,50 @@ export default function ConceptPlanner() {
 
                 {editorView === "plan" && (
                   <>
-                    {interactionMode === "opening" ? (
+                    {interactionMode === "wall" ? (
+                      !selectedWall ? (
+                        <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                          Selecione uma parede na planta. Arraste para reposicioná-la mantendo os ambientes conectados.
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-4">
+                          <div className="rounded-xl bg-muted p-3">
+                            <div className="font-semibold">{selectedWall.exterior ? "Parede externa" : "Parede interna"}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {Math.abs(selectedWall.x1 - selectedWall.x2) < 0.01 ? "Vertical" : "Horizontal"} · {Math.hypot(selectedWall.x2 - selectedWall.x1, selectedWall.y2 - selectedWall.y1).toFixed(2)} m
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => nudgeSelectedWall(-0.25)}
+                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                            >
+                              − 25 cm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => nudgeSelectedWall(0.25)}
+                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
+                            >
+                              + 25 cm
+                            </button>
+                          </div>
+                          <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            {selectedWall.roomIds.length > 1
+                              ? "Parede compartilhada: os ambientes dos dois lados são ajustados juntos."
+                              : "Parede de perímetro: o contorno do ambiente é ajustado dentro do terreno."}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWallId(null)}
+                            className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold text-muted-foreground"
+                          >
+                            Fechar seleção
+                          </button>
+                        </div>
+                      )
+                    ) : interactionMode === "opening" ? (
                       !selectedOpening ? (
                         <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                           Selecione uma porta ou janela na planta para mover ou alterar o tipo.

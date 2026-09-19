@@ -12,7 +12,12 @@ type Props = {
   selectedOpeningId?: string | null;
   onSelectOpening?: (openingId: string | null) => void;
   onOpeningChange?: (openingId: string, patch: { x: number; y: number; type: "door" | "window" }) => void;
-  interactionMode?: "room" | "opening";
+  selectedWallId?: string | null;
+  onSelectWall?: (wallId: string | null) => void;
+  onWallMove?: (wallId: string, delta: number) => void;
+  onEditStart?: () => void;
+  onEditEnd?: () => void;
+  interactionMode?: "room" | "wall" | "opening";
 };
 
 function formatMeters(value: number) {
@@ -110,13 +115,19 @@ export default function ConceptPlan2D({
   selectedOpeningId = null,
   onSelectOpening,
   onOpeningChange,
+  selectedWallId = null,
+  onSelectWall,
+  onWallMove,
+  onEditStart,
+  onEditEnd,
   interactionMode = "room",
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [gesture, setGesture] = useState<null | {
     roomId: string;
     openingId?: string;
-    mode: "move" | "opening" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    wallId?: string;
+    mode: "move" | "wall" | "opening" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     startX: number;
     startY: number;
     roomX: number;
@@ -150,6 +161,16 @@ export default function ConceptPlan2D({
     const point = toSvgPoint(event.clientX, event.clientY);
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
+
+    if (gesture.mode === "wall" && gesture.wallId && onWallMove) {
+      const wall = geometry.walls.find((item) => item.id === gesture.wallId);
+      if (!wall) return;
+      const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
+      const rawDelta = vertical ? dx : dy;
+      onWallMove(wall.id, snap(rawDelta));
+      setGesture((current) => current ? { ...current, startX: point.x, startY: point.y } : current);
+      return;
+    }
 
     if (gesture.mode === "opening" && gesture.openingId && onOpeningChange) {
       const opening = geometry.openings.find((item) => item.id === gesture.openingId);
@@ -244,8 +265,14 @@ export default function ConceptPlan2D({
         ref={svgRef}
         className="block h-auto w-full touch-none select-none"
         onPointerMove={handlePointerMove}
-        onPointerUp={() => setGesture(null)}
-        onPointerCancel={() => setGesture(null)}
+        onPointerUp={() => {
+          if (gesture) onEditEnd?.();
+          setGesture(null);
+        }}
+        onPointerCancel={() => {
+          if (gesture) onEditEnd?.();
+          setGesture(null);
+        }}
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -306,7 +333,8 @@ export default function ConceptPlan2D({
               role="button"
               tabIndex={0}
               onPointerDown={(event) => {
-                if (interactionMode === "opening") return;
+                if (interactionMode !== "room") return;
+                onEditStart?.();
                 onSelect(room.id);
                 if (!onRoomChange || room.locked) return;
                 const point = toSvgPoint(event.clientX, event.clientY);
@@ -421,6 +449,7 @@ export default function ConceptPlan2D({
                       className={cursor}
                       onPointerDown={(event) => {
                         event.stopPropagation();
+                        onEditStart?.();
                         const point = toSvgPoint(event.clientX, event.clientY);
                         setGesture({
                           roomId: room.id,
@@ -475,19 +504,64 @@ export default function ConceptPlan2D({
           );
         })}
 
-        {geometry.walls.map((wall) => (
-          <line
-            key={wall.id}
-            x1={wall.x1}
-            y1={wall.y1}
-            x2={wall.x2}
-            y2={wall.y2}
-            stroke={wall.exterior ? "#111827" : "#334155"}
-            strokeWidth={wall.exterior ? "0.16" : "0.095"}
-            strokeLinecap="square"
-            pointerEvents="none"
-          />
-        ))}
+        {geometry.walls.map((wall) => {
+          const selectedWall = selectedWallId === wall.id;
+          const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
+          return (
+            <g
+              key={wall.id}
+              className={interactionMode === "wall" ? (vertical ? "cursor-ew-resize" : "cursor-ns-resize") : ""}
+              onPointerDown={(event) => {
+                if (interactionMode !== "wall" || !onSelectWall || !onWallMove) return;
+                event.stopPropagation();
+                onEditStart?.();
+                const point = toSvgPoint(event.clientX, event.clientY);
+                onSelectWall(wall.id);
+                setGesture({
+                  roomId: wall.roomIds[0] ?? "",
+                  wallId: wall.id,
+                  mode: "wall",
+                  startX: point.x,
+                  startY: point.y,
+                  roomX: 0,
+                  roomY: 0,
+                  roomWidth: 0,
+                  roomDepth: 0,
+                });
+              }}
+              onClick={(event) => {
+                if (interactionMode !== "wall" || !onSelectWall) return;
+                event.stopPropagation();
+                onSelectWall(wall.id);
+              }}
+            >
+              <line
+                x1={wall.x1}
+                y1={wall.y1}
+                x2={wall.x2}
+                y2={wall.y2}
+                stroke="transparent"
+                strokeWidth="0.75"
+              />
+              <line
+                x1={wall.x1}
+                y1={wall.y1}
+                x2={wall.x2}
+                y2={wall.y2}
+                stroke={selectedWall ? "#f97316" : wall.exterior ? "#111827" : "#334155"}
+                strokeWidth={selectedWall ? "0.20" : wall.exterior ? "0.16" : "0.095"}
+                strokeLinecap="square"
+                pointerEvents="none"
+              />
+              {selectedWall && (
+                <>
+                  <circle cx={wall.x1} cy={wall.y1} r="0.18" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
+                  <circle cx={wall.x2} cy={wall.y2} r="0.18" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
+                </>
+              )}
+            </g>
+          );
+        })}
 
         {geometry.openings.map((opening) => {
           const selectedOpening = selectedOpeningId === opening.id;
