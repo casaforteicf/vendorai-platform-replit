@@ -514,7 +514,13 @@ export default function ConceptPlanner() {
     setCustomWalls((prev) => [...prev, wall]);
     setSelectedCustomWallId(wall.id);
     setSelectedWallId(null);
-    setInteractionMode("wall");
+  };
+
+  const updateCustomWall = (
+    wallId: string,
+    patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>,
+  ) => {
+    setCustomWalls((prev) => prev.map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall));
   };
 
   const deleteCustomWall = (wallId: string) => {
@@ -1227,6 +1233,7 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                         }}
                         onDeleteCustomWall={deleteCustomWall}
+                        onUpdateCustomWall={updateCustomWall}
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
@@ -1287,14 +1294,14 @@ export default function ConceptPlanner() {
                     {interactionMode === "draw-wall" ? (
                       <div className="mt-4 space-y-3">
                         <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
-                          Toque no primeiro ponto da parede e depois no ponto final. O traço fica ortogonal automaticamente.
+                          Toque no primeiro ponto e continue tocando nos próximos pontos. Cada novo segmento parte do anterior, permitindo desenhar contornos em L, U e sequências ortogonais.
                         </div>
                         <button
                           type="button"
                           onClick={() => setInteractionMode("wall")}
                           className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold"
                         >
-                          Voltar para selecionar paredes
+                          Finalizar desenho
                         </button>
                       </div>
                     ) : interactionMode === "wall" ? (
@@ -1305,6 +1312,23 @@ export default function ConceptPlanner() {
                             <div className="mt-1 text-xs text-muted-foreground">
                               {Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)} m · espessura {((selectedCustomWall.thickness ?? 0.15) * 100).toFixed(0)} cm
                             </div>
+                          </div>
+                          <label className="block text-xs font-semibold">
+                            Espessura
+                            <select
+                              value={selectedCustomWall.thickness ?? 0.15}
+                              onChange={(event) => updateCustomWall(selectedCustomWall.id, { thickness: Number(event.target.value) })}
+                              className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                            >
+                              <option value={0.10}>10 cm</option>
+                              <option value={0.12}>12 cm</option>
+                              <option value={0.15}>15 cm</option>
+                              <option value={0.20}>20 cm</option>
+                              <option value={0.25}>25 cm</option>
+                            </select>
+                          </label>
+                          <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            Arraste os pontos laranja nas extremidades para alterar o comprimento mantendo a parede ortogonal.
                           </div>
                           <button
                             type="button"

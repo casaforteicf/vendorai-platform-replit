@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 
 type Props = {
@@ -20,6 +20,7 @@ type Props = {
   onCreateCustomWall?: (wall: { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }) => void;
   onSelectCustomWall?: (wallId: string | null) => void;
   onDeleteCustomWall?: (wallId: string) => void;
+  onUpdateCustomWall?: (wallId: string, patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
   interactionMode?: "room" | "wall" | "opening" | "draw-wall";
@@ -128,6 +129,7 @@ export default function ConceptPlan2D({
   onCreateCustomWall,
   onSelectCustomWall,
   onDeleteCustomWall,
+  onUpdateCustomWall,
   onEditStart,
   onEditEnd,
   interactionMode = "room",
@@ -139,7 +141,12 @@ export default function ConceptPlan2D({
     roomId: string;
     openingId?: string;
     wallId?: string;
-    mode: "move" | "wall" | "opening" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    customWallId?: string;
+    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    wallX1?: number;
+    wallY1?: number;
+    wallX2?: number;
+    wallY2?: number;
     startX: number;
     startY: number;
     roomX: number;
@@ -147,6 +154,13 @@ export default function ConceptPlan2D({
     roomWidth: number;
     roomDepth: number;
   }>(null);
+
+  useEffect(() => {
+    if (interactionMode !== "draw-wall") {
+      setWallDrawStart(null);
+      setWallDrawPreview(null);
+    }
+  }, [interactionMode]);
 
   const margin = 2.4;
   const vbX = -margin;
@@ -198,9 +212,11 @@ export default function ConceptPlan2D({
         y2: end.y,
         thickness: 0.15,
       });
+      setWallDrawStart(end);
+      setWallDrawPreview(end);
+      return;
     }
-    setWallDrawStart(null);
-    setWallDrawPreview(null);
+    setWallDrawPreview(wallDrawStart);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -216,6 +232,38 @@ export default function ConceptPlan2D({
     if (!gesture || !onRoomChange) return;
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
+
+    if (
+      (gesture.mode === "custom-wall-start" || gesture.mode === "custom-wall-end") &&
+      gesture.customWallId &&
+      onUpdateCustomWall
+    ) {
+      const wall = customWalls.find((item) => item.id === gesture.customWallId);
+      if (!wall) return;
+      const originalX1 = gesture.wallX1 ?? wall.x1;
+      const originalY1 = gesture.wallY1 ?? wall.y1;
+      const originalX2 = gesture.wallX2 ?? wall.x2;
+      const originalY2 = gesture.wallY2 ?? wall.y2;
+      const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
+      const snapped = clampPoint(point);
+
+      if (gesture.mode === "custom-wall-start") {
+        const next = horizontal
+          ? { x1: snapped.x, y1: originalY1 }
+          : { x1: originalX1, y1: snapped.y };
+        if (Math.hypot(originalX2 - next.x1, originalY2 - next.y1) >= 0.5) {
+          onUpdateCustomWall(wall.id, next);
+        }
+      } else {
+        const next = horizontal
+          ? { x2: snapped.x, y2: originalY2 }
+          : { x2: originalX2, y2: snapped.y };
+        if (Math.hypot(next.x2 - originalX1, next.y2 - originalY1) >= 0.5) {
+          onUpdateCustomWall(wall.id, next);
+        }
+      }
+      return;
+    }
 
     if (gesture.mode === "wall" && gesture.wallId && onWallMove) {
       const wall = geometry.walls.find((item) => item.id === gesture.wallId);
@@ -601,8 +649,39 @@ export default function ConceptPlan2D({
               />
               {selected && (
                 <>
-                  <circle cx={wall.x1} cy={wall.y1} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" />
-                  <circle cx={wall.x2} cy={wall.y2} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" />
+                  {([
+                    ["custom-wall-start", wall.x1, wall.y1],
+                    ["custom-wall-end", wall.x2, wall.y2],
+                  ] as const).map(([mode, hx, hy]) => (
+                    <g
+                      key={mode}
+                      className="cursor-crosshair"
+                      onPointerDown={(event) => {
+                        if (interactionMode !== "wall" || !onUpdateCustomWall) return;
+                        event.stopPropagation();
+                        onEditStart?.();
+                        const point = toSvgPoint(event.clientX, event.clientY);
+                        setGesture({
+                          roomId: "",
+                          customWallId: wall.id,
+                          mode,
+                          startX: point.x,
+                          startY: point.y,
+                          roomX: 0,
+                          roomY: 0,
+                          roomWidth: 0,
+                          roomDepth: 0,
+                          wallX1: wall.x1,
+                          wallY1: wall.y1,
+                          wallX2: wall.x2,
+                          wallY2: wall.y2,
+                        });
+                      }}
+                    >
+                      <circle cx={hx} cy={hy} r="0.48" fill="transparent" />
+                      <circle cx={hx} cy={hy} r="0.2" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
+                    </g>
+                  ))}
                 </>
               )}
             </g>
