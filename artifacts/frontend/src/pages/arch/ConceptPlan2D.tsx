@@ -29,6 +29,7 @@ type Props = {
   onDeleteCustomWall?: (wallId: string) => void;
   onUpdateCustomWall?: (wallId: string, patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>) => void;
   topologyNodes?: WallTopologyNode[];
+  showDimensions?: boolean;
   onMoveTopologyJunction?: (refs: WallTopologyEndpointRef[], point: { x: number; y: number }) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
@@ -119,6 +120,76 @@ function doorGlyph(opening: OpeningMarker) {
   );
 }
 
+
+function DimensionLine({
+  x1,
+  y1,
+  x2,
+  y2,
+  offsetX = 0,
+  offsetY = 0,
+  label,
+  tone = "#475569",
+}: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  offsetX?: number;
+  offsetY?: number;
+  label: string;
+  tone?: string;
+}) {
+  const ax = x1 + offsetX;
+  const ay = y1 + offsetY;
+  const bx = x2 + offsetX;
+  const by = y2 + offsetY;
+  const horizontal = Math.abs(y1 - y2) < 0.01;
+  const midX = (ax + bx) / 2;
+  const midY = (ay + by) / 2;
+
+  return (
+    <g pointerEvents="none">
+      <line x1={x1} y1={y1} x2={ax} y2={ay} stroke={tone} strokeOpacity="0.62" strokeWidth="0.035" />
+      <line x1={x2} y1={y2} x2={bx} y2={by} stroke={tone} strokeOpacity="0.62" strokeWidth="0.035" />
+      <line x1={ax} y1={ay} x2={bx} y2={by} stroke={tone} strokeWidth="0.04" />
+      {horizontal ? (
+        <>
+          <line x1={ax} y1={ay - 0.12} x2={ax} y2={ay + 0.12} stroke={tone} strokeWidth="0.04" />
+          <line x1={bx} y1={by - 0.12} x2={bx} y2={by + 0.12} stroke={tone} strokeWidth="0.04" />
+        </>
+      ) : (
+        <>
+          <line x1={ax - 0.12} y1={ay} x2={ax + 0.12} y2={ay} stroke={tone} strokeWidth="0.04" />
+          <line x1={bx - 0.12} y1={by} x2={bx + 0.12} y2={by} stroke={tone} strokeWidth="0.04" />
+        </>
+      )}
+      <rect
+        x={midX - 0.56}
+        y={midY - 0.22}
+        width="1.12"
+        height="0.42"
+        rx="0.09"
+        fill="#ffffff"
+        fillOpacity="0.94"
+        stroke={tone}
+        strokeOpacity="0.2"
+        strokeWidth="0.025"
+      />
+      <text
+        x={midX}
+        y={midY + 0.035}
+        textAnchor="middle"
+        fontSize="0.23"
+        fontWeight="800"
+        fill={tone}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
 export default function ConceptPlan2D({
   rooms,
   lotWidth,
@@ -145,6 +216,7 @@ export default function ConceptPlan2D({
   onDeleteCustomWall,
   onUpdateCustomWall,
   topologyNodes = [],
+  showDimensions = true,
   onMoveTopologyJunction,
   onEditStart,
   onEditEnd,
@@ -1124,6 +1196,52 @@ export default function ConceptPlan2D({
             </g>
           );
         })}
+
+        {showDimensions && (
+          <g>
+            <DimensionLine
+              x1={0}
+              y1={0}
+              x2={lotWidth}
+              y2={0}
+              offsetY={-1.15}
+              label={`${lotWidth.toFixed(2).replace(".", ",")} m`}
+              tone="#0f766e"
+            />
+            <DimensionLine
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={lotDepth}
+              offsetX={-1.15}
+              label={`${lotDepth.toFixed(2).replace(".", ",")} m`}
+              tone="#0f766e"
+            />
+            {customWalls
+              .filter((wall) => wallLength(wall) >= 0.5)
+              .map((wall) => {
+                const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+                const length = wallLength(wall);
+                const selected = selectedCustomWallId === wall.id;
+                const offset = selected ? 0.72 : 0.48;
+                const offsetX = horizontal ? 0 : (wall.x1 <= lotWidth / 2 ? -offset : offset);
+                const offsetY = horizontal ? (wall.y1 <= lotDepth / 2 ? -offset : offset) : 0;
+                return (
+                  <DimensionLine
+                    key={`dimension-${wall.id}`}
+                    x1={wall.x1}
+                    y1={wall.y1}
+                    x2={wall.x2}
+                    y2={wall.y2}
+                    offsetX={offsetX}
+                    offsetY={offsetY}
+                    label={`${length.toFixed(2).replace(".", ",")} m`}
+                    tone={selected ? "#ea580c" : "#64748b"}
+                  />
+                );
+              })}
+          </g>
+        )}
 
         {geometry.openings.map((opening) => {
           const selectedOpening = selectedOpeningId === opening.id;

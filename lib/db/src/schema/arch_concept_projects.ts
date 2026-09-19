@@ -16,6 +16,7 @@ export type ArchConceptConfiguration = {
   typology?: "terrea_2q" | "terrea_3q" | "terrea_lazer" | "sobrado_3q" | "sobrado_master";
   layoutPreferences?: Record<string, boolean>;
   wallFirstFloors?: number[];
+  showDimensions?: boolean;
   customWalls?: Array<{
     id: string;
     floor: number;
