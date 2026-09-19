@@ -1580,10 +1580,11 @@ export default function ConceptPlanner() {
   };
 
   const promoteToProject = async () => {
-    let projectConceptId = conceptId;
+    const projectConceptId = await saveConcept(6);
     if (!projectConceptId) {
-      projectConceptId = await saveConcept(6);
-      if (!projectConceptId) return;
+      setHandoffError("Salve o pré-projeto antes de enviar ao profissional.");
+      setHandoffState("error");
+      return null;
     }
 
     setHandoffState("sending");
