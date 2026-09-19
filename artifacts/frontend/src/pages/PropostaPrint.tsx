@@ -266,6 +266,42 @@ export default function PropostaPrint() {
     window.open(`https://wa.me/?text=${whatsappText}`, "_blank");
   }
 
+  async function updateExecutionStatus(itemIndex: number, status: "em_execucao" | "concluida") {
+    if (!proposta) return;
+    setUpdatingExecutionIndex(itemIndex);
+    try {
+      const response = await fetch(`/api/propostas/${proposta.id}/execucao/${itemIndex}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Não foi possível atualizar a execução.");
+      }
+
+      await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(proposta.id) });
+      toast({
+        title: status === "em_execucao" ? "Etapa iniciada" : "Etapa concluída",
+        description: status === "concluida"
+          ? "A etapa saiu da fila ativa e a próxima foi liberada."
+          : "Somente esta etapa está liberada para execução.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível avançar a etapa",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingExecutionIndex(null);
+    }
+  }
+
   // ── Item helpers ──────────────────────────────────────────────────────────
   function addItem() {
     setEItens((prev) => [
@@ -338,6 +374,25 @@ export default function PropostaPrint() {
   const jaVendido = proposta.status === "aceita";
   const podeVender = proposta.status === "rascunho" || proposta.status === "enviada" || proposta.status === "pendente";
   const podeEditar = !jaVendido || isGerente;
+
+  const itensExecucao = proposta.itens
+    .map((raw, originalIndex) => {
+      const item = raw as typeof raw & Partial<ItemEdit>;
+      return {
+        ...item,
+        originalIndex,
+        ordemExecucao: item.ordemExecucao ?? originalIndex + 1,
+        statusExecucao: item.statusExecucao ?? "pendente" as ItemExecucaoStatus,
+      };
+    })
+    .sort((a, b) => a.ordemExecucao - b.ordemExecucao);
+  const itensAtivosExecucao = itensExecucao.filter((item) => item.statusExecucao !== "concluida");
+  const etapaAtualExecucao = itensAtivosExecucao[0];
+  const etapasConcluidas = itensExecucao.length - itensAtivosExecucao.length;
+  const valorRestanteExecucao = itensAtivosExecucao.reduce(
+    (sum, item) => sum + item.quantidade * item.valorUnitario,
+    0
+  );
 
   // ── Edit sheet totals (live) ──────────────────────────────────────────────
   const editTotal = eItens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
