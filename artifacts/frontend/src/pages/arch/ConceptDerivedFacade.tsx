@@ -205,7 +205,9 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
   const topWallHeight = topLevel
     ? Math.max(WALL_HEIGHT, topLevel.level.floorToFloorHeight - FLOOR_THICKNESS)
     : WALL_HEIGHT;
-  const roofY = groundY - (topLevel?.level.elevation ?? 0) * pxPerMeterY - topWallHeight * pxPerMeterY;
+  const roofY = groundY
+    - (topLevel?.level.elevation ?? 0) * pxPerMeterY
+    - (topWallHeight + FLOOR_THICKNESS) * pxPerMeterY;
 
   return (
     <svg viewBox="0 0 120 76" className="block h-auto w-full" role="img" aria-label="Fachada derivada da geometria do pré-projeto">

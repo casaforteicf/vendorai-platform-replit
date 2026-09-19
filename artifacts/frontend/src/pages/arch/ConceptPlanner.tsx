@@ -583,6 +583,7 @@ export default function ConceptPlanner() {
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const wallFirstActive = wallFirstFloors.includes(activeFloor);
+  const resolvedRoof = normalizeRoofParameters(facadePreferences);
 
   useEffect(() => {
     roomsRef.current = rooms;
@@ -3604,7 +3605,12 @@ export default function ConceptPlanner() {
                   <div className="mt-4 space-y-2 text-sm">
                     {[
                       ["Estilo", facadePreferences.style.replaceAll("_", " ")],
-                      ["Cobertura", facadePreferences.roof],
+                      [
+                        "Cobertura",
+                        resolvedRoof.roof === "platibanda"
+                          ? `Platibanda · ${resolvedRoof.roofParapetHeight.toFixed(2)} m`
+                          : `${resolvedRoof.roof === "misto" ? "Mista" : "Telhado"} · ${resolvedRoof.roofWaters} água${resolvedRoof.roofWaters > 1 ? "s" : ""} · ${resolvedRoof.roofPitchDeg.toFixed(0)}° · beiral ${resolvedRoof.roofOverhang.toFixed(2)} m`,
+                      ],
                       ["Material principal", facadePreferences.primaryMaterial],
                       ["Material de destaque", facadePreferences.accentMaterial],
                       ["Tom", facadePreferences.facadeTone],
