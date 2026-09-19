@@ -134,6 +134,7 @@ const ArchConcept = lazy(() => import("@/pages/arch/ConceptPlanner"));
 // Construção
 const Obras = lazy(() => import("@/pages/Obras"));
 const ObraDetalhe = lazy(() => import("@/pages/ObraDetalhe"));
+const CustosOrcamentos = lazy(() => import("@/pages/CustosOrcamentos"));
 const Insumos = lazy(() => import("@/pages/Insumos"));
 const Composicoes = lazy(() => import("@/pages/Composicoes"));
 
@@ -707,6 +708,7 @@ function AppRoutes() {
         <Route path="/arch/portal/:token">{() => <ArchPortalCliente />}</Route>
         <Route path="/obras">{() => <ConstrucaoRoute component={Obras} />}</Route>
         <Route path="/obras/:obraId">{() => <ConstrucaoRoute component={ObraDetalhe} />}</Route>
+        <Route path="/custos-orcamentos">{() => <ConstrucaoRoute component={CustosOrcamentos} />}</Route>
         <Route path="/insumos">{() => <ConstrucaoRoute component={Insumos} />}</Route>
         <Route path="/composicoes">{() => <ConstrucaoRoute component={Composicoes} />}</Route>
         <Route path="/varejo/produtos">{() => <VarejoRoute component={VarejoProdutos} />}</Route>
