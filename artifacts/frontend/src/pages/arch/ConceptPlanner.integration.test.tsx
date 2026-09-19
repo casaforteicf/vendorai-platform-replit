@@ -76,6 +76,16 @@ describe("Arqdor Concept — fluxo integrado do editor", () => {
     expect(buildPanel?.className).toContain("fixed");
     await user.click(within(buildPanel as HTMLElement).getByRole("button", { name: /^fechar$/i }));
 
+    await user.click(screen.getByRole("button", { name: /^mais$/i }));
+    const toolsHeading = screen.getByText("Mais ferramentas");
+    const toolsPanel = toolsHeading.closest("aside");
+    expect(toolsPanel).not.toBeNull();
+    expect(toolsPanel?.className).toContain("fixed");
+    expect(within(toolsPanel as HTMLElement).getByRole("button", { name: /espaços/i })).toBeInTheDocument();
+    expect(within(toolsPanel as HTMLElement).getByRole("button", { name: /desenhar parede/i })).toBeInTheDocument();
+    expect(within(toolsPanel as HTMLElement).getByRole("button", { name: /cotas/i })).toBeInTheDocument();
+    await user.click(within(toolsPanel as HTMLElement).getByRole("button", { name: /^fechar$/i }));
+
     await user.click(screen.getByRole("button", { name: /ajustes/i }));
     const propertiesHeading = screen.getByText("Propriedades");
     const propertiesPanel = propertiesHeading.closest("aside");
