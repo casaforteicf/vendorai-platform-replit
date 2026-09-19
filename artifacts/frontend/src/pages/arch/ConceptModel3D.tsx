@@ -398,14 +398,14 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
-        className={`block h-[calc(100vh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_25%,#1e293b_0%,#0f172a_48%,#020617_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100vh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
         <defs>
           <linearGradient id="concept3d-floor" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#334155" />
-            <stop offset="100%" stopColor="#1e293b" />
+            <stop offset="0%" stopColor="#f8fafc" />
+            <stop offset="100%" stopColor="#d9e0e7" />
           </linearGradient>
           <linearGradient id="concept3d-wall" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={exteriorMaterial.baseColor} />
@@ -424,11 +424,19 @@ export default function ConceptModel3D({
             <stop offset="100%" stopColor="#4e382e" />
           </linearGradient>
           <filter id="concept3d-shadow" x="-30%" y="-30%" width="160%" height="180%">
-            <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" floodColor="#000000" floodOpacity="0.28" />
+            <feDropShadow dx="0.8" dy="1.8" stdDeviation="1.7" floodColor="#475569" floodOpacity="0.22" />
           </filter>
         </defs>
 
         <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" fillOpacity="0.34" stroke="#475569" strokeOpacity="0.55" strokeWidth="0.06" />
+        <ellipse
+          cx="0"
+          cy={Math.max(2.5, sceneHeight * 0.08)}
+          rx={Math.max(6, buildingWidth * 0.95 * zoom)}
+          ry={Math.max(2.2, buildingDepth * 0.28 * zoom)}
+          fill="#64748b"
+          opacity="0.11"
+        />
 
         {visibleLevels.map((level) => {
           const levelBase = level.floor * LEVEL_HEIGHT;
