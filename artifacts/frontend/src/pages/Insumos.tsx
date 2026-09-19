@@ -218,7 +218,7 @@ export default function Insumos() {
           continue;
         }
 
-        await createInsumo({ tenantId, data: {
+        const created = await createInsumo({ tenantId, data: {
           nome,
           unidade: row.unidade.trim(),
           ...(codigo ? { codigo } : {}),
@@ -226,9 +226,8 @@ export default function Insumos() {
           ...(row.categoria ? { categoria: row.categoria } : {}),
           ...(precoUnitario ? { precoUnitario } : {}),
         } as any });
-        const placeholder = { id: "", nome, codigo: codigo || null } as Insumo;
-        if (codigo) byKey.set(codigo.toLowerCase(), placeholder);
-        byKey.set(nome.toLowerCase(), placeholder);
+        if (codigo) byKey.set(codigo.toLowerCase(), created);
+        byKey.set(nome.toLowerCase(), created);
         imported += 1;
       }
       await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
