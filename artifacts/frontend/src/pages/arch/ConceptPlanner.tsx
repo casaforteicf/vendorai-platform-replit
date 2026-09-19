@@ -23,6 +23,10 @@ import {
   Send,
   Search,
   LayoutGrid,
+  Camera,
+  Ruler,
+  Share2,
+  ChevronDown,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
@@ -1850,7 +1854,7 @@ export default function ConceptPlanner() {
                               <div className="mt-0.5 text-xs text-muted-foreground">{item.subtitle}</div>
                             </div>
                             <div className="shrink-0 text-right">
-                              <div className="text-sm font-semibold">≈ {item.suggestedArea} m²</div>
+                              <div className="text-lg font-semibold">≈ {item.suggestedArea} m²</div>
                               <div className="text-[10px] text-muted-foreground">{item.rooms.length} ambientes</div>
                             </div>
                           </div>
@@ -2007,76 +2011,107 @@ export default function ConceptPlanner() {
         )}
 
         {step === 4 && (
-          <section className="min-h-screen overflow-hidden bg-[#eef1f4]">
-            <div className="flex h-14 items-center justify-between border-b border-slate-800 bg-[#111820] px-3 text-white shadow-sm sm:px-4">
-              <div className="flex min-w-0 items-center gap-3">
+          <section className="min-h-screen overflow-hidden bg-white">
+            <div className="relative flex h-16 items-center justify-between border-b bg-white px-3 text-slate-800 shadow-sm sm:px-4">
+              <div className="flex min-w-0 items-center gap-2">
                 <a
                   href="/arch"
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-white transition hover:bg-slate-50"
                   title="Voltar ao Arqdor"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </a>
-                <div className="hidden h-6 w-px bg-white/10 sm:block" />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">Meu pré-projeto</div>
-                  <div className="hidden text-[10px] text-slate-400 sm:block">
-                    Arqdor Concept · {lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m
-                  </div>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void saveConcept(4)}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-white text-slate-600 transition hover:bg-slate-50"
+                  title="Salvar projeto"
+                >
+                  <Check className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
+                  className="ml-1 inline-flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold shadow-sm"
+                  title="Alternar pavimento"
+                >
+                  <Layers3 className="h-4 w-4 text-slate-500" />
+                  <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                </button>
               </div>
 
-              <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 lg:flex">
-                <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
-                  {([
-                    ["plan", "2D"],
-                    ["model3d", "3D"],
-                    ["facade", "Fachada"],
-                    ["render", "Render"],
-                  ] as const).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setEditorView(value)}
-                      className={editorView === value
-                        ? "rounded-md bg-white px-4 py-1.5 text-xs font-semibold text-slate-950 shadow"
-                        : "rounded-md px-4 py-1.5 text-xs font-semibold text-slate-400 transition hover:text-white"}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <div className="inline-flex rounded-full border bg-slate-50 p-1 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setEditorView("plan")}
+                    className={editorView === "plan"
+                      ? "rounded-full bg-orange-500 px-5 py-2 text-xs font-bold text-white shadow-sm"
+                      : "rounded-full px-5 py-2 text-xs font-bold text-slate-500"}
+                  >
+                    2D
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorView("model3d")}
+                    className={editorView === "model3d"
+                      ? "rounded-full bg-orange-500 px-5 py-2 text-xs font-bold text-white shadow-sm"
+                      : "rounded-full px-5 py-2 text-xs font-bold text-slate-500"}
+                  >
+                    3D
+                  </button>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={undoRooms}
-                  disabled={!roomHistory.length}
-                  title="Desfazer"
-                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
+                  onClick={() => setEditorView("render")}
+                  className={editorView === "render"
+                    ? "hidden h-10 items-center gap-2 rounded-full bg-orange-50 px-3 text-xs font-semibold text-orange-700 md:inline-flex"
+                    : "hidden h-10 items-center gap-2 rounded-full px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 md:inline-flex"}
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <Sparkles className="h-4 w-4" />
+                  IA
                 </button>
                 <button
                   type="button"
-                  onClick={redoRooms}
-                  disabled={!roomFuture.length}
-                  title="Refazer"
-                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
+                  onClick={() => setEditorView("facade")}
+                  title="Fachada"
+                  className={editorView === "facade"
+                    ? "grid h-10 w-10 place-items-center rounded-full bg-orange-50 text-orange-700"
+                    : "grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"}
                 >
-                  <RotateCw className="h-4 w-4" />
+                  <Camera className="h-4 w-4" />
                 </button>
-                <div className="mx-1 hidden h-6 w-px bg-white/10 sm:block" />
-                <span className="hidden text-[10px] text-slate-400 md:block">
-                  {saveState === "saving" ? "Salvando…" : saveState === "saved" ? "Salvo" : saveState === "error" ? "Erro ao salvar" : ""}
-                </span>
                 <button
                   type="button"
-                  onClick={() => void saveConcept(4)}
-                  className="rounded-lg bg-orange-500 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-orange-600"
+                  onClick={() => setShowDimensions((value) => !value)}
+                  title="Cotas"
+                  className={showDimensions
+                    ? "grid h-10 w-10 place-items-center rounded-full bg-orange-50 text-orange-700"
+                    : "grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"}
                 >
-                  Salvar
+                  <Ruler className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFloors((value) => Math.min(3, value + 1))}
+                  title="Adicionar pavimento"
+                  className="grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void navigator.clipboard?.writeText(window.location.href); }}
+                  title="Copiar link do projeto"
+                  className="grid h-10 w-10 place-items-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600"
+                >
+                  <Share2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -2089,10 +2124,10 @@ export default function ConceptPlanner() {
               <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={rooms} facade={facadePreferences} />
             </div>
 
-            <div className="grid min-h-[calc(100vh-56px)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+            <div className="grid min-h-[calc(100vh-64px)] xl:grid-cols-[350px_minmax(0,1fr)]">
               <aside className="order-3 border-t bg-white xl:order-1 xl:border-r xl:border-t-0">
                 <div className="flex min-h-full">
-                  <div className="w-14 shrink-0 border-r bg-[#151d26] py-3 text-white">
+                  <div className="w-16 shrink-0 border-r bg-white py-3">
                     <div className="flex flex-col items-center gap-2">
                       {([
                         ["build", Layers3, "Construir"],
@@ -2105,25 +2140,25 @@ export default function ConceptPlanner() {
                           onClick={() => setEditorLibraryTab(value)}
                           title={label}
                           className={editorLibraryTab === value
-                            ? "grid h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm"
-                            : "grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white"}
+                            ? "grid h-11 w-11 place-items-center rounded-xl bg-orange-50 text-orange-600 shadow-sm"
+                            : "grid h-11 w-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"}
                         >
                           <Icon className="h-4.5 w-4.5" />
                         </button>
                       ))}
-                      <div className="my-1 h-px w-7 bg-white/10" />
+                      <div className="my-1 h-px w-8 bg-slate-200" />
                       <button
                         type="button"
                         onClick={() => setStep(1)}
                         title="Modelos"
-                        className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white"
+                        className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
                       >
                         <LayoutGrid className="h-4.5 w-4.5" />
                       </button>
                     </div>
                   </div>
                   <div className="min-w-0 flex-1">
-                <div className="sticky top-0 z-10 border-b bg-white p-4">
+                <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
                   <div>
                     <div className="text-sm font-semibold">
                       {editorLibraryTab === "build" ? "Construir" : editorLibraryTab === "rooms" ? "Ambientes" : "Área externa"}
@@ -2154,8 +2189,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={interactionMode === "draw-wall"
-                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left"
-                            : "group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"}
+                            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                            : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
                             <div className="relative h-12 w-14">
@@ -2180,8 +2215,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={(interactionMode === "room" || interactionMode === "space")
-                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left"
-                            : "group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"}
+                            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                            : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-orange-50 to-amber-50">
                             <Home className="h-10 w-10 text-orange-500" />
@@ -2201,8 +2236,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={interactionMode === "opening"
-                            ? "group overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left"
-                            : "group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"}
+                            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                            : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-sky-50 to-slate-50">
                             <div className="grid h-12 w-9 place-items-center rounded-t-lg border-4 border-slate-600 bg-white">
@@ -2219,7 +2254,7 @@ export default function ConceptPlanner() {
                           type="button"
                           disabled={wallFirstActive}
                           onClick={() => addRoom("escada")}
-                          className="group overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                          className="group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-stone-50 to-slate-100">
                             <div className="flex items-end gap-0.5">
@@ -2296,7 +2331,7 @@ export default function ConceptPlanner() {
                               key={kind}
                               type="button"
                               onClick={() => addRoom(kind)}
-                              className="overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm"
+                              className="overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"
                             >
                               <div className="grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-orange-50">
                                 <Icon className="h-8 w-8 text-slate-600" />
@@ -2326,7 +2361,7 @@ export default function ConceptPlanner() {
                             type="button"
                             disabled={wallFirstActive}
                             onClick={() => addRoom(kind)}
-                            className="overflow-hidden rounded-2xl border bg-background text-left hover:border-slate-400 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                            className="overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
                           >
                             <div className={`grid h-24 place-items-center bg-gradient-to-br ${gradient}`}>
                               <Icon className="h-9 w-9 text-slate-700" />
@@ -2399,9 +2434,9 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className="order-1 min-w-0 bg-[#dfe4e9] p-2 sm:p-3 xl:order-2">
-                <div className="mx-auto max-w-[1180px]">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/5 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+              <div className="order-1 min-w-0 overflow-hidden bg-[#f6f7f8] p-2 xl:order-2">
+                <div className="mx-auto max-w-[1450px]">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 py-1">
                     <div>
                       <div className="font-semibold">
                         {editorView === "plan"
@@ -2412,16 +2447,8 @@ export default function ConceptPlanner() {
                               ? "Fachada conceitual"
                               : "Render conceitual"}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {editorView === "plan"
-                          ? wallFirstActive
-                            ? "Desenhe as paredes e feche os ambientes. O 3D acompanha a planta automaticamente."
-                            : "Arraste para mover. Use as alças laranja nas bordas e cantos para ajustar o ambiente."
-                          : editorView === "model3d"
-                            ? "Veja em 3D exatamente o que foi desenhado na planta, sem criar um modelo separado."
-                            : editorView === "facade"
-                              ? "A fachada é derivada da mesma geometria 2D/3D, incluindo pavimentos e vãos do projeto."
-                              : "Visualização fotorrealista vinculada ao mesmo pré-projeto."}
+                      <div className="text-[11px] text-muted-foreground">
+                        {editorView === "plan" ? "Clique e desenhe diretamente na planta" : editorView === "model3d" ? "Visualização sincronizada" : editorView === "facade" ? "Elevação frontal" : "Render conceitual"}
                       </div>
                     </div>
                     {editorView === "plan" && (
@@ -2623,15 +2650,20 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <aside className="order-2 border-t bg-white xl:order-3 xl:border-l xl:border-t-0">
-                <div className="sticky top-0 z-10 flex h-14 items-center justify-between border-b px-4">
-                  <div>
-                    <div className="text-sm font-semibold">Propriedades</div>
-                    <div className="text-[10px] text-muted-foreground">Ajustes do item selecionado</div>
+              <aside className="fixed bottom-5 left-1/2 z-40 max-h-[230px] w-[min(900px,calc(100vw-32px))] -translate-x-1/2 overflow-auto rounded-2xl border bg-white/95 shadow-2xl backdrop-blur xl:left-[calc(50%+175px)]">
+                <div className="sticky top-0 z-10 flex h-10 items-center justify-between border-b bg-white/95 px-4">
+                  <div className="text-xs font-semibold">
+                    {interactionMode === "draw-wall"
+                      ? "Parede"
+                      : interactionMode === "opening"
+                        ? "Portas e janelas"
+                        : interactionMode === "space"
+                          ? "Ambiente"
+                          : "Propriedades"}
                   </div>
-                  <Maximize2 className="h-4 w-4 text-muted-foreground" />
+                  <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-                <div className="p-4">
+                <div className="p-3">
 
                 {editorView === "plan" && (
                   <>
@@ -3178,17 +3210,6 @@ export default function ConceptPlanner() {
                 )}
                 </div>
               </aside>
-            </div>
-            <div className="flex h-8 items-center justify-between border-t bg-white px-3 text-[10px] text-slate-500">
-              <div className="flex items-center gap-4">
-                <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Pavimento superior" : `Pavimento ${activeFloor + 1}`}</span>
-                <span>{currentArea.toFixed(1)} m² projetados</span>
-                <span>{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m de lote</span>
-              </div>
-              <div className="hidden items-center gap-4 sm:flex">
-                <span>{showDimensions ? "Cotas visíveis" : "Cotas ocultas"}</span>
-                <span className="font-medium text-emerald-600">{saveState === "saved" ? "Sincronizado" : saveState === "saving" ? "Salvando…" : ""}</span>
-              </div>
             </div>
           </section>
         )}
