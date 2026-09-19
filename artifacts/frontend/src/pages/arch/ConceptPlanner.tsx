@@ -120,6 +120,7 @@ type ConceptDraftResponse = {
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
     wallFirstFloors?: number[];
+    showDimensions?: boolean;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
@@ -275,6 +276,7 @@ export default function ConceptPlanner() {
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([]);
+  const [showDimensions, setShowDimensions] = useState(true);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
@@ -333,6 +335,7 @@ export default function ConceptPlanner() {
         setTypology(draft.configuration?.typology ?? "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setWallFirstFloors(Array.isArray(draft.configuration?.wallFirstFloors) ? draft.configuration.wallFirstFloors : []);
+        setShowDimensions(draft.configuration?.showDimensions ?? true);
         setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
         setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
@@ -361,7 +364,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, customWalls, customOpenings, spaceProfiles },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles },
       rooms,
       openingOverrides,
       customerProfile,
@@ -1824,6 +1827,15 @@ export default function ConceptPlanner() {
                         <div className="rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
                           {customWallTopology.nodes.filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2).length} junções · {customWallTopology.segments.length} segmentos topológicos
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowDimensions((value) => !value)}
+                          className={showDimensions
+                            ? "rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800"
+                            : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground"}
+                        >
+                          Cotas {showDimensions ? "ligadas" : "desligadas"}
+                        </button>
                         {wallFirstActive ? (
                           <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
                             <span>Rede de paredes = modelo principal</span>
@@ -1993,6 +2005,7 @@ export default function ConceptPlanner() {
                         onDeleteCustomWall={deleteCustomWall}
                         onUpdateCustomWall={updateCustomWall}
                         topologyNodes={customWallTopology.nodes}
+                        showDimensions={showDimensions}
                         onMoveTopologyJunction={moveTopologyJunction}
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
