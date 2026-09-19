@@ -503,12 +503,12 @@ export function validateConceptLayout(
   }
 
   const stair = current.find((room) => room.kind === "escada");
-  const hasOtherFloors = rooms.some((room) => room.floor !== floor);
-  if (hasOtherFloors && !stair) {
+  const hasFloorAbove = rooms.some((room) => room.floor === floor + 1);
+  if (hasFloorAbove && !stair) {
     issues.push({
       id: `stair-missing-${floor}`,
       severity: "error",
-      message: "Este pavimento precisa de uma escada para conectar os níveis.",
+      message: "Este pavimento precisa de uma escada para conectar ao nível superior.",
     });
   }
 
