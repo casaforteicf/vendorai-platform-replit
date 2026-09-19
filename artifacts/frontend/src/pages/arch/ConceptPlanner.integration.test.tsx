@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ConceptPlanner from "./ConceptPlanner";
 
@@ -12,10 +12,12 @@ function jsonResponse(body: unknown, ok = true) {
 }
 
 describe("Arqdor Concept — fluxo integrado do editor", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     vi.restoreAllMocks();
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
 
@@ -58,7 +60,7 @@ describe("Arqdor Concept — fluxo integrado do editor", () => {
     render(<ConceptPlanner />);
 
     await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith("/api/arch/concept-projects/latest")
+      expect(fetchMock).toHaveBeenCalledWith("/api/arch/concept-projects/latest")
     );
 
     await user.click(screen.getByRole("button", { name: /continuar/i }));
@@ -68,13 +70,18 @@ describe("Arqdor Concept — fluxo integrado do editor", () => {
     expect(await screen.findByText("Editor do pré-projeto")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /+ itens/i }));
-    expect(screen.getByText("Construção")).toBeInTheDocument();
+    const buildHeading = screen.getByText("Construção");
+    const buildPanel = buildHeading.closest("aside");
+    expect(buildPanel).not.toBeNull();
+    expect(buildPanel?.className).toContain("fixed");
+    await user.click(within(buildPanel as HTMLElement).getByRole("button", { name: /^fechar$/i }));
 
-    await user.click(screen.getByRole("button", { name: /^fechar$/i }));
     await user.click(screen.getByRole("button", { name: /ajustes/i }));
-    expect(screen.getByText("Propriedades")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /^fechar$/i }));
+    const propertiesHeading = screen.getByText("Propriedades");
+    const propertiesPanel = propertiesHeading.closest("aside");
+    expect(propertiesPanel).not.toBeNull();
+    expect(propertiesPanel?.className).toContain("fixed");
+    await user.click(within(propertiesPanel as HTMLElement).getByRole("button", { name: /^fechar$/i }));
     await user.click(screen.getByRole("button", { name: "3D" }));
     expect(screen.getByText(/Modelo 3D/)).toBeInTheDocument();
 
@@ -84,7 +91,7 @@ describe("Arqdor Concept — fluxo integrado do editor", () => {
     await user.click(screen.getByRole("button", { name: /^salvar$/i }));
 
     await waitFor(() => {
-      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const calls = fetchMock.mock.calls;
       const patch = calls
         .map(([request, options]) => ({ url: String(request), options: options as RequestInit | undefined }))
         .find((call) =>
