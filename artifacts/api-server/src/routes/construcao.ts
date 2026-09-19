@@ -11,6 +11,7 @@ import {
   db,
   obrasTable,
   tenantsTable,
+  usersTable,
   obraEtapasTable,
   obraEtapaMedicoesTable,
   obraDiarioTable,
@@ -73,22 +74,38 @@ function canAccessTenant(req: Express.Request, tid: string) {
   return isSuperAdmin(req) || tenantId(req) === tid;
 }
 
-// ─── Gate de vertical: todas as rotas com :tenantId exigem vertical=construcao ──
+// ─── Gate de vertical e posse: todas as rotas com :tenantId exigem
+// vertical de construção e confirmam o tenant ATUAL do usuário no banco.
+// Isso também corrige sessões cujo JWT ainda carrega um tenantId antigo após
+// migração/troca de tenant: a posse é validada no banco antes de sincronizar
+// o contexto da requisição, sem ampliar acesso entre empresas.
 router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
   if (isSuperAdmin(req)) return next();
-  const [tenant] = await db
-    .select({ vertical: tenantsTable.vertical })
+
+  const [scope] = await db
+    .select({
+      vertical: tenantsTable.vertical,
+      userTenantId: usersTable.tenantId,
+      userActive: usersTable.active,
+    })
     .from(tenantsTable)
+    .leftJoin(usersTable, eq(usersTable.id, req.user?.sub ?? ""))
     .where(eq(tenantsTable.id, tid));
-  // BUG CORRIGIDO (auditoria): comparava com o literal "construcao", que
-  // NUNCA bate com o nome real de nenhum segment_template no banco (ex:
-  // "Construção & Reforma") — o módulo inteiro era inacessível pra
-  // qualquer tenant real, só super_admin passava. Comparação por
-  // conteúdo (case-insensitive) em vez de string exata, resiliente a
-  // pequenas variações de nome do template no futuro.
-  if (!tenant?.vertical || !tenant.vertical.toLowerCase().includes("constru")) {
+
+  if (!scope?.vertical || !scope.vertical.toLowerCase().includes("constru")) {
     return res.status(403).json({ error: "Acesso restrito à vertical de construção civil." });
   }
+
+  // tenant-audit: reviewed — o usuário autenticado precisa pertencer no banco
+  // exatamente ao tenant da URL; JWT antigo só é sincronizado depois dessa prova.
+  if (!scope.userActive || scope.userTenantId !== tid) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  if (req.user?.tenantId !== tid) {
+    req.user.tenantId = tid;
+  }
+
   return next();
 });
 
@@ -983,6 +1000,174 @@ router.get("/tenants/:tenantId/insumos", async (req, res) => {
 
   const rows = await db.select().from(insumosTable).where(and(...filters)).orderBy(asc(insumosTable.nome));
   return res.json(rows);
+});
+
+const importInsumosEmLoteSchema = z.object({
+  rows: z.array(z.object({
+    codigo: z.string().trim().max(100).optional().nullable(),
+    nome: z.string().trim().min(1).max(500),
+    descricao: z.string().trim().max(2000).optional().nullable(),
+    unidade: z.string().trim().min(1).max(50),
+    precoUnitario: z.union([z.string(), z.number()]).optional().nullable(),
+    categoria: z.string().trim().max(255).optional().nullable(),
+  })).min(1).max(5000),
+});
+
+router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
+  // tenant-audit: reviewed — router.param("tenantId") confirma vertical e
+  // posse atual no banco; canAccessTenant confirma o contexto sincronizado.
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsedBody = importInsumosEmLoteSchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    return res.status(422).json({ error: parsedBody.error.message });
+  }
+
+  const validRows: Array<{
+    tenantId: string;
+    codigo?: string;
+    nome: string;
+    descricao?: string;
+    unidade: string;
+    precoUnitario?: string;
+    categoria?: string;
+  }> = [];
+  let invalidas = 0;
+
+  // Deduplica o próprio arquivo. Código é a chave principal; sem código,
+  // nome normalizado vira a chave. A última ocorrência vence.
+  const dedup = new Map<string, (typeof parsedBody.data.rows)[number]>();
+  for (const raw of parsedBody.data.rows) {
+    const codigo = raw.codigo?.trim() || "";
+    const nome = raw.nome.trim();
+    const key = codigo ? `codigo:${codigo.toLowerCase()}` : `nome:${nome.toLowerCase()}`;
+    dedup.set(key, raw);
+  }
+
+  for (const raw of dedup.values()) {
+    const payload = {
+      tenantId: tid,
+      nome: raw.nome.trim(),
+      unidade: raw.unidade.trim(),
+      ...(raw.codigo?.trim() ? { codigo: raw.codigo.trim() } : {}),
+      ...(raw.descricao?.trim() ? { descricao: raw.descricao.trim() } : {}),
+      ...(raw.categoria?.trim() ? { categoria: raw.categoria.trim() } : {}),
+      ...(raw.precoUnitario !== undefined && raw.precoUnitario !== null && String(raw.precoUnitario).trim() !== ""
+        ? { precoUnitario: String(raw.precoUnitario).trim() }
+        : {}),
+    };
+
+    const parsed = insertInsumoSchema.safeParse(payload);
+    if (!parsed.success) {
+      invalidas += 1;
+      continue;
+    }
+    validRows.push(parsed.data);
+  }
+
+  if (validRows.length === 0) {
+    return res.status(422).json({ error: "Nenhuma linha válida encontrada no arquivo." });
+  }
+
+  const existing = await db
+    .select()
+    .from(insumosTable)
+    .where(eq(insumosTable.tenantId, tid));
+
+  const byCodigo = new Map(
+    existing
+      .filter((item) => item.codigo?.trim())
+      .map((item) => [item.codigo!.trim().toLowerCase(), item] as const),
+  );
+  const byNome = new Map(existing.map((item) => [item.nome.trim().toLowerCase(), item] as const));
+
+  const novos: typeof validRows = [];
+  const atualizacoes: Array<{
+    id: string;
+    data: Partial<(typeof validRows)[number]>;
+    precoNovo?: number;
+    precoAnterior?: number | null;
+  }> = [];
+
+  for (const row of validRows) {
+    const found =
+      (row.codigo ? byCodigo.get(row.codigo.trim().toLowerCase()) : undefined)
+      ?? byNome.get(row.nome.trim().toLowerCase());
+
+    if (!found) {
+      novos.push(row);
+      continue;
+    }
+
+    const data: Partial<(typeof validRows)[number]> = {
+      nome: row.nome,
+      unidade: row.unidade,
+      ...(row.codigo ? { codigo: row.codigo } : {}),
+      ...(row.descricao !== undefined ? { descricao: row.descricao } : {}),
+      ...(row.categoria !== undefined ? { categoria: row.categoria } : {}),
+    };
+
+    let precoNovo: number | undefined;
+    const precoAnterior = found.precoUnitario == null ? null : numberOrZero(found.precoUnitario);
+    if (row.precoUnitario !== undefined) {
+      const candidate = numberOrZero(row.precoUnitario);
+      if (precoAnterior == null || Math.abs(candidate - precoAnterior) > 0.00005) {
+        precoNovo = candidate;
+      }
+    }
+
+    atualizacoes.push({ id: found.id, data, precoNovo, precoAnterior });
+  }
+
+  await db.transaction(async (tx) => {
+    if (novos.length > 0) {
+      await tx.insert(insumosTable).values(novos);
+    }
+
+    for (const update of atualizacoes) {
+      await tx
+        .update(insumosTable)
+        .set({ ...update.data, updatedAt: new Date() })
+        .where(and(eq(insumosTable.id, update.id), eq(insumosTable.tenantId, tid)));
+    }
+  });
+
+  let precosAtualizados = 0;
+  let composicoesRecalculadas = 0;
+  let orcamentosRecalculados = 0;
+  let orcamentosComAviso = 0;
+
+  // Preço usa o motor central fora da transação acima para registrar histórico
+  // e propagar apenas aos orçamentos que podem acompanhar a tabela mestre.
+  for (const update of atualizacoes) {
+    if (update.precoNovo === undefined) continue;
+    const impacto = await aplicarPrecoMestre({
+      tenantId: tid,
+      insumoId: update.id,
+      precoNovo: update.precoNovo,
+      origem: "importacao_csv",
+      alteradoPorId: (req as any).user?.sub ?? null,
+    });
+    if (!impacto) continue;
+    precosAtualizados += 1;
+    composicoesRecalculadas += impacto.composicoesRecalculadas;
+    orcamentosRecalculados += impacto.orcamentosRecalculados;
+    orcamentosComAviso += impacto.orcamentosComAviso;
+  }
+
+  return res.json({
+    totalRecebido: parsedBody.data.rows.length,
+    validos: validRows.length,
+    novos: novos.length,
+    existentesAtualizados: atualizacoes.length,
+    precosAtualizados,
+    invalidas,
+    duplicadasNoArquivo: parsedBody.data.rows.length - dedup.size,
+    composicoesRecalculadas,
+    orcamentosRecalculados,
+    orcamentosComAviso,
+  });
 });
 
 router.post("/tenants/:tenantId/insumos", async (req, res) => {

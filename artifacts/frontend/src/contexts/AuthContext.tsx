@@ -211,6 +211,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    if (!token || !meData) return;
+
+    const claims = decodeTokenClaims(token);
+    if (!claims) return;
+
+    const tokenIsStale =
+      claims.sub !== meData.id ||
+      claims.tenantId !== meData.tenantId ||
+      claims.platformRole !== meData.platformRole;
+
+    if (!tokenIsStale) return;
+
+    let cancelled = false;
+
+    void fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Session refresh failed: ${response.status}`);
+        return response.json() as Promise<{ token?: string; user?: User }>;
+      })
+      .then((refreshed) => {
+        if (cancelled || !refreshed.token) return;
+        localStorage.setItem(TOKEN_KEY, refreshed.token);
+        setToken(refreshed.token);
+        const nextUser = refreshed.user ?? meData;
+        setRawUser(nextUser);
+        persistCachedUser(nextUser);
+      })
+      .catch(() => {
+        // /auth/me já provou que a sessão atual é válida. Se a renovação
+        // transitória falhar, preservamos a sessão e tentamos novamente
+        // no próximo carregamento em vez de derrubar o usuário.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, meData?.id, meData?.tenantId, meData?.platformRole]);
+
+  useEffect(() => {
     if (meData) {
       setRawUser(meData);
       persistCachedUser(meData);

@@ -192,53 +192,61 @@ export default function Insumos() {
     try {
       const rows = parseConstructionCsv(await importFile.text());
       if (!rows.length) throw new Error("O CSV está vazio ou não possui cabeçalho.");
-      const byKey = new Map<string, Insumo>();
-      for (const item of insumos) {
-        if (item.codigo?.trim()) byKey.set(item.codigo.trim().toLowerCase(), item);
-        byKey.set(item.nome.trim().toLowerCase(), item);
-      }
-      let imported = 0;
-      let updatedPrices = 0;
-      let ignored = 0;
-      for (const row of rows) {
-        const nome = row.nome?.trim();
-        const codigo = row.codigo?.trim();
-        const key = (codigo || nome || "").toLowerCase();
-        if (!nome || !row.unidade?.trim() || !key) { ignored += 1; continue; }
 
-        const precoUnitario = csvDecimal(row.preco_unitario);
-        const existing = byKey.get(key) ?? byKey.get(nome.toLowerCase());
-        if (existing) {
-          if (precoUnitario && Number(existing.precoUnitario ?? 0) !== Number(precoUnitario)) {
-            await updateInsumo({ tenantId, insumoId: existing.id, data: { precoUnitario } as any });
-            updatedPrices += 1;
-          } else {
-            ignored += 1;
-          }
-          continue;
-        }
+      const normalizedRows = rows
+        .map((row) => {
+          const nome = row.nome?.trim() ?? "";
+          const unidade = row.unidade?.trim() ?? "";
+          const precoUnitario = csvDecimal(row.preco_unitario);
+          return {
+            ...(row.codigo?.trim() ? { codigo: row.codigo.trim() } : {}),
+            nome,
+            ...(row.descricao?.trim() ? { descricao: row.descricao.trim() } : {}),
+            unidade,
+            ...(precoUnitario ? { precoUnitario } : {}),
+            ...(row.categoria?.trim() ? { categoria: row.categoria.trim() } : {}),
+          };
+        })
+        .filter((row) => row.nome && row.unidade);
 
-        const created = await createInsumo({ tenantId, data: {
-          nome,
-          unidade: row.unidade.trim(),
-          ...(codigo ? { codigo } : {}),
-          ...(row.descricao ? { descricao: row.descricao } : {}),
-          ...(row.categoria ? { categoria: row.categoria } : {}),
-          ...(precoUnitario ? { precoUnitario } : {}),
-        } as any });
-        if (codigo) byKey.set(codigo.toLowerCase(), created);
-        byKey.set(nome.toLowerCase(), created);
-        imported += 1;
+      if (!normalizedRows.length) {
+        throw new Error("Nenhuma linha válida encontrada. Confira as colunas nome e unidade.");
       }
+
+      const response = await fetch(`/api/tenants/${tenantId}/insumos/importar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: normalizedRows }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          result?.message
+          ?? (typeof result?.error === "string" ? result.error : null)
+          ?? "Não foi possível importar os insumos.",
+        );
+      }
+
       await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
       toast({
-        title: `${imported} insumo(s) novo(s) · ${updatedPrices} preço(s) atualizado(s)`,
-        description: ignored ? `${ignored} linha(s) sem alteração ou inválida(s) foram ignoradas.` : undefined,
+        title: `${result.novos ?? 0} novo(s) · ${result.existentesAtualizados ?? 0} existente(s) sincronizado(s)`,
+        description: [
+          result.precosAtualizados ? `${result.precosAtualizados} preço(s) atualizado(s)` : null,
+          result.duplicadasNoArquivo ? `${result.duplicadasNoArquivo} duplicata(s) no arquivo consolidada(s)` : null,
+          result.invalidas ? `${result.invalidas} linha(s) inválida(s) ignorada(s)` : null,
+        ].filter(Boolean).join(" · ") || "Importação concluída.",
       });
-      setImportOpen(false); setImportFile(null);
+      setImportOpen(false);
+      setImportFile(null);
     } catch (error) {
-      toast({ title: "Não foi possível importar o CSV", description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.", variant: "destructive" });
-    } finally { setImporting(false); }
+      toast({
+        title: "Não foi possível importar o CSV",
+        description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
   }
 
   function openPriceTable() {
