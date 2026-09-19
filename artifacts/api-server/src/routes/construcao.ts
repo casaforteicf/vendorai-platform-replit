@@ -1690,6 +1690,10 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate"
           unidade: i.unidade,
           quantidade: i.quantidade,
           custoUnitario: i.custoUnitario,
+          insumoId: i.insumoId,
+          composicaoId: i.composicaoId,
+          origemPreco: i.origemPreco,
+          precoAtualizadoEm: i.precoAtualizadoEm,
           bdi: i.bdi,
           ordem: i.ordem,
         }))
@@ -1697,6 +1701,7 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate"
     }
   }
 
+  await recalcularOrcamentoComTabelaAtual(tid, novo.id);
   return res.status(201).json(novo);
 });
 
@@ -1772,9 +1777,56 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:et
     .from(obraOrcamentosTable)
     .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
   if (!orc) return res.status(404).json({ error: "Orçamento not found" });
-  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+  if (orc.status === "aprovado" || orc.status === "contratado") {
+    return res.status(409).json({ error: "Orçamento aprovado/contratado não pode ser editado" });
+  }
 
-  const parsed = insertObraOrcamentoItemSchema.safeParse({ ...req.body, etapaId });
+  const source = req.body as Record<string, unknown>;
+  if (source.insumoId && source.composicaoId) {
+    return res.status(422).json({ error: "O item pode estar ligado a um insumo OU a uma composição, não aos dois." });
+  }
+
+  const data: Record<string, unknown> = { ...source, etapaId };
+
+  if (typeof source.insumoId === "string" && source.insumoId) {
+    const [insumo] = await db
+      .select({
+        id: insumosTable.id,
+        nome: insumosTable.nome,
+        unidade: insumosTable.unidade,
+        precoUnitario: insumosTable.precoUnitario,
+      })
+      .from(insumosTable)
+      .where(and(eq(insumosTable.id, source.insumoId), eq(insumosTable.tenantId, tid)));
+    if (!insumo) return res.status(404).json({ error: "Insumo não encontrado" });
+
+    data.nome = source.nome || insumo.nome;
+    data.unidade = source.unidade || insumo.unidade;
+    data.custoUnitario = insumo.precoUnitario ?? "0";
+    data.origemPreco = "insumo";
+    data.precoAtualizadoEm = new Date();
+  } else if (typeof source.composicaoId === "string" && source.composicaoId) {
+    const [composicao] = await db
+      .select({
+        id: composicoesTable.id,
+        nome: composicoesTable.nome,
+        unidade: composicoesTable.unidade,
+        custoTotal: composicoesTable.custoTotal,
+      })
+      .from(composicoesTable)
+      .where(and(eq(composicoesTable.id, source.composicaoId), eq(composicoesTable.tenantId, tid)));
+    if (!composicao) return res.status(404).json({ error: "Composição não encontrada" });
+
+    data.nome = source.nome || composicao.nome;
+    data.unidade = source.unidade || composicao.unidade;
+    data.custoUnitario = composicao.custoTotal ?? "0";
+    data.origemPreco = "composicao";
+    data.precoAtualizadoEm = new Date();
+  } else {
+    data.origemPreco = "manual";
+  }
+
+  const parsed = insertObraOrcamentoItemSchema.safeParse(data);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
   const [row] = await db.insert(obraOrcamentoItensTable).values(parsed.data).returning();
