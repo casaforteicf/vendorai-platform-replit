@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet, AlertCircle, Maximize2, Minimize2 } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet, AlertCircle, Maximize2, Minimize2, Layers } from "lucide-react";
 import type { Insumo } from "@workspace/api-client-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
@@ -410,6 +410,9 @@ export default function Insumos() {
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de materiais e insumos para alocação em obras</p>
         </div>
         <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => { window.location.href = "/composicoes"; }}>
+          <Layers className="h-4 w-4" />Composições
+        </Button>
         <Button size="sm" variant="outline" className="gap-2" onClick={openPriceTable}>
           <FileSpreadsheet className="h-4 w-4" />Tabela mestre
         </Button>
