@@ -181,10 +181,12 @@ function sortForVariant<T extends ConceptRoomShape>(rooms: T[], variant: number)
   const social = new Set(["sala", "cozinha", "gourmet"]);
   const privateKinds = new Set(["suite", "quarto", "banheiro"]);
   const service = new Set(["garagem", "lavanderia"]);
+  const circulation = new Set(["circulacao", "escada"]);
 
   return [...rooms].sort((a, b) => {
     const score = (room: ConceptRoomShape) => {
       if (room.kind === "garagem") return -10;
+      if (circulation.has(room.kind)) return -9;
       if (variant === 0) {
         if (service.has(room.kind)) return 0;
         if (social.has(room.kind)) return 1;
@@ -261,6 +263,11 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
     const center = Math.max(0, (lotWidth - room.width) / 2);
 
     if (room.kind === "garagem") return { x: variant === 1 ? right : 0.6, y: front };
+    if (room.kind === "escada") {
+      const lower = rooms.find((candidate) => candidate.kind === "escada" && candidate.floor === floor - 1);
+      return lower ? { x: lower.x, y: lower.y } : { x: center, y: Math.max(front + 4, middle - 2) };
+    }
+    if (room.kind === "circulacao") return { x: center, y: Math.max(middle, privateBand - 2) };
     if (room.kind === "sala") return { x: variant === 2 ? center : 0.6, y: middle };
     if (room.kind === "cozinha") return {
       x: preferences?.livingIntegratedKitchen === false ? right : Math.max(0.6, lotWidth * 0.48),
@@ -290,7 +297,56 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
         if (!fits(room, x, y) || !touchesBuilding(room, x, y)) continue;
         const dx = x - target.x;
         const dy = y - target.y;
-        candidates.push({ x, y, distance: dx * dx + dy * dy });
+        let score = dx * dx + dy * dy;
+
+        const touches = placed.filter((neighbor) => {
+          const verticalTouch =
+            (nearly(x + room.width, neighbor.x) || nearly(x, neighbor.x + neighbor.width)) &&
+            overlap(y, y + room.depth, neighbor.y, neighbor.y + neighbor.depth) >= 0.8;
+          const horizontalTouch =
+            (nearly(y + room.depth, neighbor.y) || nearly(y, neighbor.y + neighbor.depth)) &&
+            overlap(x, x + room.width, neighbor.x, neighbor.x + neighbor.width) >= 0.8;
+          return verticalTouch || horizontalTouch;
+        });
+
+        const adjacentKinds = new Set(touches.map((neighbor) => neighbor.kind));
+        const reward = (kind: string, value: number) => {
+          if (adjacentKinds.has(kind)) score -= value;
+        };
+        const penalize = (kind: string, value: number) => {
+          if (adjacentKinds.has(kind)) score += value;
+        };
+
+        if (room.kind === "cozinha") {
+          reward("sala", 18);
+          reward("gourmet", 22);
+          reward("lavanderia", 10);
+        } else if (room.kind === "gourmet") {
+          reward("cozinha", 22);
+          reward("sala", 8);
+        } else if (room.kind === "lavanderia") {
+          reward("cozinha", 18);
+          penalize("quarto", 8);
+          penalize("suite", 8);
+        } else if (room.kind === "banheiro") {
+          reward("circulacao", 24);
+          reward("suite", 10);
+          reward("quarto", 8);
+          reward("lavanderia", 5);
+        } else if (room.kind === "quarto" || room.kind === "suite") {
+          reward("circulacao", 28);
+          reward("banheiro", 8);
+          penalize("garagem", 20);
+          penalize("gourmet", 10);
+        } else if (room.kind === "circulacao") {
+          reward("sala", 12);
+          reward("escada", 20);
+        } else if (room.kind === "escada") {
+          reward("circulacao", 24);
+          reward("sala", 10);
+        }
+
+        candidates.push({ x, y, distance: score });
       }
     }
 
@@ -415,6 +471,64 @@ export function validateConceptLayout(
       roomId: garage.id,
       message: "A garagem está distante da frente do terreno.",
     });
+  }
+
+  const stair = current.find((room) => room.kind === "escada");
+  const hasOtherFloors = rooms.some((room) => room.floor !== floor);
+  if (hasOtherFloors && !stair) {
+    issues.push({
+      id: `stair-missing-${floor}`,
+      severity: "error",
+      message: "Este pavimento precisa de uma escada para conectar os níveis.",
+    });
+  }
+
+  if (stair && floor > 0) {
+    const lowerStair = rooms.find((room) => room.kind === "escada" && room.floor === floor - 1);
+    if (lowerStair) {
+      const ox = overlap(stair.x, stair.x + stair.width, lowerStair.x, lowerStair.x + lowerStair.width);
+      const oy = overlap(stair.y, stair.y + stair.depth, lowerStair.y, lowerStair.y + lowerStair.depth);
+      if (ox < Math.min(stair.width, lowerStair.width) * 0.7 || oy < Math.min(stair.depth, lowerStair.depth) * 0.7) {
+        issues.push({
+          id: `stair-align-${stair.id}`,
+          severity: "error",
+          roomId: stair.id,
+          message: "A escada não está alinhada com o pavimento inferior.",
+        });
+      }
+    }
+  }
+
+  const circulation = current.find((room) => room.kind === "circulacao");
+  const privateRooms = current.filter((room) => room.kind === "quarto" || room.kind === "suite");
+  if (privateRooms.length >= 2 && !circulation) {
+    issues.push({
+      id: `circulation-missing-${floor}`,
+      severity: "warning",
+      message: "A área íntima precisa de hall/circulação para evitar acesso por dentro de outros quartos.",
+    });
+  }
+
+  for (const room of privateRooms) {
+    const adjacent = current.filter((neighbor) => {
+      if (neighbor.id === room.id) return false;
+      const verticalTouch =
+        (nearly(room.x + room.width, neighbor.x) || nearly(room.x, neighbor.x + neighbor.width)) &&
+        overlap(room.y, room.y + room.depth, neighbor.y, neighbor.y + neighbor.depth) >= 0.8;
+      const horizontalTouch =
+        (nearly(room.y + room.depth, neighbor.y) || nearly(room.y, neighbor.y + neighbor.depth)) &&
+        overlap(room.x, room.x + room.width, neighbor.x, neighbor.x + neighbor.width) >= 0.8;
+      return verticalTouch || horizontalTouch;
+    });
+    const hasGoodAccess = adjacent.some((neighbor) => ["circulacao", "sala", "escada"].includes(neighbor.kind));
+    if (!hasGoodAccess) {
+      issues.push({
+        id: `private-access-${room.id}`,
+        severity: "warning",
+        roomId: room.id,
+        message: `${room.label} não tem acesso claro por hall ou circulação.`,
+      });
+    }
   }
 
   const gourmet = current.find((room) => room.kind === "gourmet");
