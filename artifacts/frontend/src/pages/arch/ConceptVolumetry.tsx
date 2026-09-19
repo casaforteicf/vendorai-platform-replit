@@ -97,12 +97,19 @@ function IsoScene({
   const scene = useMemo(() => {
     const width = 900;
     const height = 650;
-    const cx = lotWidth / 2;
-    const cy = lotDepth / 2;
-    const horizontalScale = Math.min(24, 560 / Math.max(1, lotWidth + lotDepth));
-    const zScale = horizontalScale * 1.1;
+    const occupiedRooms = rooms.length ? rooms : [{ x: 0, y: 0, width: lotWidth, depth: lotDepth } as VolumetryRoom];
+    const minX = Math.min(...occupiedRooms.map((room) => room.x));
+    const minY = Math.min(...occupiedRooms.map((room) => room.y));
+    const maxX = Math.max(...occupiedRooms.map((room) => room.x + room.width));
+    const maxY = Math.max(...occupiedRooms.map((room) => room.y + room.depth));
+    const occupiedWidth = Math.max(6, maxX - minX);
+    const occupiedDepth = Math.max(6, maxY - minY);
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const horizontalScale = Math.min(42, 700 / Math.max(10, occupiedWidth + occupiedDepth));
+    const zScale = horizontalScale * 1.18;
     const centerX = width / 2;
-    const centerY = 420;
+    const centerY = 430;
 
     const project = (x: number, y: number, z: number): Point => {
       const rotated = rotatePoint(x, y, cx, cy, rotation);
@@ -182,20 +189,21 @@ function IsoScene({
         </filter>
       </defs>
 
-      <polygon points={polygon(scene.terrain)} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="2" />
+      <polygon points={polygon(scene.terrain)} fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1.5" opacity="0.72" />
       <polyline
         points={polygon([...scene.terrain, scene.terrain[0]])}
         fill="none"
-        stroke="#64748b"
+        stroke="#94a3b8"
         strokeDasharray="6 6"
-        strokeWidth="1.5"
+        strokeWidth="1.2"
+        opacity="0.75"
       />
 
       {facade?.landscaping !== "leve" && (
         <g opacity={facade?.landscaping === "intenso" ? 0.95 : 0.72}>
-          <circle cx="130" cy="500" r="18" fill="#86efac" />
+          <circle cx="130" cy="500" r="14" fill="#86efac" />
           <circle cx="160" cy="520" r="12" fill="#4ade80" />
-          <circle cx="760" cy="470" r="20" fill="#86efac" />
+          <circle cx="760" cy="470" r="15" fill="#86efac" />
           {facade?.landscaping === "intenso" && <circle cx="720" cy="520" r="14" fill="#22c55e" />}
         </g>
       )}

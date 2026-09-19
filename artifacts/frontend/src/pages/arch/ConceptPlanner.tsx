@@ -125,6 +125,18 @@ function createRoom(kind: RoomKind, floor = 0): Room {
   };
 }
 
+function normalizeDraftRooms(input: Room[]) {
+  const singletonKinds = new Set<RoomKind>(["sala", "cozinha", "garagem", "lavanderia", "gourmet", "piscina"]);
+  const seen = new Set<string>();
+  return input.filter((room) => {
+    if (!singletonKinds.has(room.kind)) return true;
+    const key = `${room.floor}:${room.kind}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function autoArrange(rooms: Room[], lotWidth: number, lotDepth: number, floor: number) {
   const floorRooms = rooms.filter((r) => r.floor === floor);
   const others = rooms.filter((r) => r.floor !== floor);
@@ -233,7 +245,7 @@ export default function ConceptPlanner() {
         setLotDepth(draft.lot?.depth ?? 30);
         setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
         setDesiredArea(draft.configuration?.desiredArea ?? 180);
-        setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? draft.rooms : []);
+        setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
         setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
@@ -786,7 +798,7 @@ export default function ConceptPlanner() {
               </div>
               {viewMode === "2d" ? (
                 <div className="space-y-3">
-                  <div className="relative mx-auto h-[560px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
+                  <div className="relative mx-auto h-[460px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 sm:h-[560px] bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
                                 {visibleRooms.map((room) => {
                                   const left = room.x * scaleX;
                                   const top = room.y * scaleY;
@@ -1139,7 +1151,7 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <div data-concept-render-source="true" className="mt-4 h-[590px] overflow-hidden rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-50 to-slate-100">
+              <div data-concept-render-source="true" className="mt-4 h-[430px] overflow-hidden rounded-2xl border-2 border-slate-300 sm:h-[590px] bg-gradient-to-b from-slate-50 to-slate-100">
                 <ConceptVolumetry
                   rooms={rooms}
                   lotWidth={lotWidth}
@@ -1289,7 +1301,7 @@ export default function ConceptPlanner() {
                     </div>
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Conceitual</span>
                   </div>
-                  <div className="mt-4 h-[460px] overflow-hidden rounded-2xl border bg-gradient-to-b from-slate-50 to-slate-100">
+                  <div className="mt-4 h-[360px] overflow-hidden rounded-2xl border bg-gradient-to-b from-slate-50 to-slate-100 sm:h-[460px]">
                     <ConceptVolumetry
                       rooms={rooms}
                       lotWidth={lotWidth}
