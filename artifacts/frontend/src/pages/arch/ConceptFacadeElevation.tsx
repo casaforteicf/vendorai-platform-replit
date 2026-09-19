@@ -32,7 +32,6 @@ export default function ConceptFacadeElevation({ rooms, floors, facade }: Props)
   const colors = materialColors(facade);
   const garage = rooms.find((room) => room.kind === "garagem");
   const social = rooms.find((room) => room.kind === "sala");
-  const kitchen = rooms.find((room) => room.kind === "cozinha");
   const upperRooms = rooms.filter((room) => room.floor > 0);
   const hasUpper = floors > 1 && upperRooms.length > 0;
 
