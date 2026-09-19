@@ -1588,121 +1588,351 @@ export default function ConceptPlanner() {
 
       )}
 
-      <main className={step === 4 ? "w-full p-0" : "mx-auto max-w-[1500px] p-4 sm:p-6"}>
+      <main className={step === 4 ? "w-full p-0" : step === 0 ? "w-full p-3 sm:p-4" : "mx-auto max-w-[1500px] p-4 sm:p-6"}>
         {step === 0 && (
-          <section className="grid gap-5 xl:grid-cols-[380px_1fr]">
-            <aside className="rounded-3xl border bg-card p-6 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-orange-500/10 text-orange-600">
-                  <Trees className="h-5 w-5" />
+          <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+            <div className="flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-orange-500 text-white shadow-sm">
+                  <Home className="h-5 w-5" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-semibold">Defina o lote</h2>
-                  <p className="text-sm text-muted-foreground">Só precisamos das medidas para começar.</p>
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <label className="space-y-2 text-sm font-medium">
-                  Largura
-                  <div className="flex items-center rounded-xl border bg-background px-3">
-                    <input
-                      className="h-12 w-full bg-transparent text-lg font-semibold outline-none"
-                      type="number"
-                      min={5}
-                      value={lotWidth}
-                      onChange={(e) => setLotWidth(Math.max(5, Number(e.target.value) || 5))}
-                    />
-                    <span className="text-sm text-muted-foreground">m</span>
-                  </div>
-                </label>
-                <label className="space-y-2 text-sm font-medium">
-                  Comprimento
-                  <div className="flex items-center rounded-xl border bg-background px-3">
-                    <input
-                      className="h-12 w-full bg-transparent text-lg font-semibold outline-none"
-                      type="number"
-                      min={10}
-                      value={lotDepth}
-                      onChange={(e) => setLotDepth(Math.max(10, Number(e.target.value) || 10))}
-                    />
-                    <span className="text-sm text-muted-foreground">m</span>
-                  </div>
-                </label>
-              </div>
-
-              <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Área do terreno</div>
-                <div className="mt-1 text-2xl font-bold text-slate-900">{(lotWidth * lotDepth).toFixed(0)} m²</div>
-                <div className="mt-1 text-xs leading-5 text-slate-500">
-                  Na próxima etapa você compara propostas de planta geradas para este lote.
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-slate-950">Novo projeto residencial</div>
+                  <div className="text-xs text-slate-500">Arqdor Concept · Planta 2D</div>
                 </div>
               </div>
 
-              <div className="mt-5 border-t pt-4 text-xs leading-5 text-muted-foreground">
-                Terreno irregular, esquina, recuos e topografia entram como parâmetros avançados sem ocupar esta etapa inicial.
-              </div>
-            </aside>
-
-            <div className="rounded-3xl border bg-card p-5 shadow-sm sm:p-7">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Implantação</div>
-                  <h3 className="mt-1 text-lg font-semibold">Veja o lote enquanto informa as medidas</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">A frente fica na base do desenho e as cotas atualizam em tempo real.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="hidden items-center gap-1 rounded-xl border bg-slate-50 p-1 md:flex">
+                  <button type="button" className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-950 shadow-sm">
+                    2D
+                  </button>
+                  <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-400">
+                    3D
+                  </button>
                 </div>
-                <div className="rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-slate-600">
-                  {lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m
-                </div>
-              </div>
-
-              <div className="mt-5 flex min-h-[430px] items-center justify-center rounded-2xl border bg-slate-50/80 p-6">
-                <svg
-                  className="h-[390px] w-full max-w-3xl"
-                  viewBox={`0 0 ${Math.max(16, lotWidth + 8)} ${Math.max(24, lotDepth + 8)}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  role="img"
-                  aria-label="Representação do terreno"
+                <button
+                  type="button"
+                  onClick={() => void saveConcept()}
+                  disabled={saveState === "saving" || saveState === "loading"}
+                  className="rounded-xl border bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <rect
-                    x="4"
-                    y="3"
-                    width={lotWidth}
-                    height={lotDepth}
-                    fill="#ffffff"
-                    stroke="#64748b"
-                    strokeWidth="0.12"
-                    strokeDasharray="0.35 0.22"
-                  />
-                  <line x1="4" y1="1.8" x2={4 + lotWidth} y2="1.8" stroke="#0f766e" strokeWidth="0.06" />
-                  <line x1="2.7" y1="3" x2="2.7" y2={3 + lotDepth} stroke="#0f766e" strokeWidth="0.06" />
-                  <text x={4 + lotWidth / 2} y="1.25" textAnchor="middle" fontSize="0.55" fontWeight="800" fill="#0f766e">
-                    {lotWidth.toFixed(2).replace(".", ",")} m
-                  </text>
-                  <text
-                    x="1.7"
-                    y={3 + lotDepth / 2}
-                    textAnchor="middle"
-                    fontSize="0.55"
-                    fontWeight="800"
-                    fill="#0f766e"
-                    transform={`rotate(-90 1.7 ${3 + lotDepth / 2})`}
-                  >
-                    {lotDepth.toFixed(2).replace(".", ",")} m
-                  </text>
-                  <text
-                    x={4 + lotWidth / 2}
-                    y={4 + lotDepth}
-                    textAnchor="middle"
-                    fontSize="0.62"
-                    fontWeight="800"
-                    letterSpacing="0.12"
-                    fill="#475569"
-                  >
-                    FRENTE / ACESSO
-                  </text>
-                </svg>
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"
+                >
+                  Gerar propostas
+                  <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
+            </div>
+
+            <div className="grid min-h-[690px] bg-slate-100/70 xl:grid-cols-[68px_260px_minmax(0,1fr)_300px]">
+              <nav className="flex border-r bg-white p-2 xl:flex-col xl:items-center">
+                <div className="flex gap-2 overflow-x-auto xl:flex-col">
+                  <button
+                    type="button"
+                    title="Selecionar"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    <Search className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Terreno"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500/10 text-orange-600"
+                  >
+                    <Trees className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    title="Modelos"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    <LayoutGrid className="h-5 w-5" />
+                  </button>
+                  <div className="mx-1 hidden h-px w-8 bg-slate-200 xl:block" />
+                  <button
+                    type="button"
+                    disabled
+                    title="Ambientes — disponível após escolher uma proposta"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-300"
+                  >
+                    <Layers3 className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="Visualização 3D — disponível após criar a planta"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-300"
+                  >
+                    <Maximize2 className="h-5 w-5" />
+                  </button>
+                </div>
+              </nav>
+
+              <aside className="border-r bg-white p-5">
+                <div className="flex items-center gap-2">
+                  <Trees className="h-5 w-5 text-orange-500" />
+                  <div>
+                    <h2 className="font-semibold text-slate-950">Terreno</h2>
+                    <p className="text-xs text-slate-500">Defina a área de trabalho.</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">Largura</span>
+                    <div className="flex h-11 items-center rounded-xl border bg-white px-3 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100">
+                      <input
+                        className="w-full bg-transparent text-sm font-semibold text-slate-950 outline-none"
+                        type="number"
+                        min={5}
+                        value={lotWidth}
+                        onChange={(e) => setLotWidth(Math.max(5, Number(e.target.value) || 5))}
+                      />
+                      <span className="text-xs font-medium text-slate-400">m</span>
+                    </div>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">Comprimento</span>
+                    <div className="flex h-11 items-center rounded-xl border bg-white px-3 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100">
+                      <input
+                        className="w-full bg-transparent text-sm font-semibold text-slate-950 outline-none"
+                        type="number"
+                        min={10}
+                        value={lotDepth}
+                        onChange={(e) => setLotDepth(Math.max(10, Number(e.target.value) || 10))}
+                      />
+                      <span className="text-xs font-medium text-slate-400">m</span>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="mt-5 rounded-xl border bg-slate-50 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Área total</div>
+                  <div className="mt-1 text-2xl font-bold tracking-tight text-slate-950">{(lotWidth * lotDepth).toFixed(0)} m²</div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-emerald-700">
+                    <Check className="h-4 w-4" />
+                    Medidas válidas
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Configurações rápidas</div>
+                  <div className="space-y-1">
+                    {[
+                      ["Frente do lote", "Inferior"],
+                      ["Tipo", "Retangular"],
+                      ["Unidade", "Metros"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-center justify-between rounded-lg px-2 py-2 text-xs">
+                        <span className="text-slate-500">{label}</span>
+                        <span className="font-semibold text-slate-800">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Ver modelos para este lote
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </aside>
+
+              <div className="relative min-h-[560px] overflow-hidden bg-[#f7f8fa]">
+                <div
+                  className="absolute inset-0 opacity-70"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(#dfe3e8 1px, transparent 1px), linear-gradient(90deg, #dfe3e8 1px, transparent 1px), linear-gradient(#edf0f3 1px, transparent 1px), linear-gradient(90deg, #edf0f3 1px, transparent 1px)",
+                    backgroundSize: "100px 100px, 100px 100px, 20px 20px, 20px 20px",
+                  }}
+                />
+
+                <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
+                  <button type="button" className="rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white">
+                    Planta
+                  </button>
+                  <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-400">
+                    Implantação 3D
+                  </button>
+                </div>
+
+                <div className="absolute right-4 top-4 z-10 flex items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
+                  <button type="button" disabled title="Desfazer" className="grid h-9 w-9 place-items-center rounded-lg text-slate-300">
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                  <button type="button" disabled title="Refazer" className="grid h-9 w-9 place-items-center rounded-lg text-slate-300">
+                    <RotateCw className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="relative z-[1] flex h-full min-h-[620px] items-center justify-center p-10">
+                  <svg
+                    className="h-[520px] w-full max-w-[760px] drop-shadow-sm"
+                    viewBox={`0 0 ${Math.max(22, lotWidth + 14)} ${Math.max(32, lotDepth + 15)}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    role="img"
+                    aria-label="Editor do terreno"
+                  >
+                    <rect
+                      x="7"
+                      y="5"
+                      width={lotWidth}
+                      height={lotDepth}
+                      rx="0.1"
+                      fill="#ffffff"
+                      stroke="#1f2937"
+                      strokeWidth="0.16"
+                    />
+
+                    <line x1="7" y1="3.3" x2={7 + lotWidth} y2="3.3" stroke="#64748b" strokeWidth="0.06" />
+                    <line x1="5.3" y1="5" x2="5.3" y2={5 + lotDepth} stroke="#64748b" strokeWidth="0.06" />
+                    <line x1="7" y1="3" x2="7" y2="3.7" stroke="#64748b" strokeWidth="0.06" />
+                    <line x1={7 + lotWidth} y1="3" x2={7 + lotWidth} y2="3.7" stroke="#64748b" strokeWidth="0.06" />
+                    <line x1="5" y1="5" x2="5.7" y2="5" stroke="#64748b" strokeWidth="0.06" />
+                    <line x1="5" y1={5 + lotDepth} x2="5.7" y2={5 + lotDepth} stroke="#64748b" strokeWidth="0.06" />
+
+                    <text x={7 + lotWidth / 2} y="2.65" textAnchor="middle" fontSize="0.62" fontWeight="700" fill="#334155">
+                      {lotWidth.toFixed(2).replace(".", ",")} m
+                    </text>
+                    <text
+                      x="4.15"
+                      y={5 + lotDepth / 2}
+                      textAnchor="middle"
+                      fontSize="0.62"
+                      fontWeight="700"
+                      fill="#334155"
+                      transform={`rotate(-90 4.15 ${5 + lotDepth / 2})`}
+                    >
+                      {lotDepth.toFixed(2).replace(".", ",")} m
+                    </text>
+
+                    <rect
+                      x="7"
+                      y={6 + lotDepth}
+                      width={lotWidth}
+                      height="2.2"
+                      rx="0.5"
+                      fill="#e5e7eb"
+                    />
+                    <line
+                      x1={8}
+                      y1={7.1 + lotDepth}
+                      x2={6 + lotWidth}
+                      y2={7.1 + lotDepth}
+                      stroke="#ffffff"
+                      strokeWidth="0.09"
+                      strokeDasharray="0.8 0.55"
+                    />
+                    <text
+                      x={7 + lotWidth / 2}
+                      y={9.25 + lotDepth}
+                      textAnchor="middle"
+                      fontSize="0.55"
+                      fontWeight="800"
+                      letterSpacing="0.09"
+                      fill="#475569"
+                    >
+                      FRENTE / ACESSO
+                    </text>
+                  </svg>
+                </div>
+
+                <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 text-xs text-slate-500 shadow-sm backdrop-blur">
+                  <span>Escala 1:100</span>
+                  <span className="text-slate-300">•</span>
+                  <span>Grade 0,50 m</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-emerald-700">Snap ativo</span>
+                </div>
+              </div>
+
+              <aside className="border-l bg-white p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-slate-950">Propriedades</h3>
+                    <p className="text-xs text-slate-500">Terreno selecionado</p>
+                  </div>
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-orange-500/10 text-orange-600">
+                    <Trees className="h-4 w-4" />
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-xl border p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Dimensões</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-slate-50 p-2.5">
+                        <div className="text-[10px] text-slate-400">Largura</div>
+                        <div className="mt-0.5 text-sm font-semibold text-slate-900">{lotWidth.toFixed(1)} m</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-2.5">
+                        <div className="text-[10px] text-slate-400">Profundidade</div>
+                        <div className="mt-0.5 text-sm font-semibold text-slate-900">{lotDepth.toFixed(1)} m</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Resumo</div>
+                    <div className="mt-3 space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Área</span>
+                        <span className="font-semibold text-slate-900">{(lotWidth * lotDepth).toFixed(0)} m²</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Perímetro</span>
+                        <span className="font-semibold text-slate-900">{(2 * (lotWidth + lotDepth)).toFixed(0)} m</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Formato</span>
+                        <span className="font-semibold text-slate-900">Retangular</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-orange-50 p-3 text-xs leading-5 text-orange-900">
+                    Próximo passo: o Arqdor compara modelos compatíveis com estas dimensões e abre a planta no mesmo editor.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600"
+                >
+                  Continuar
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </aside>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-white px-4 py-2 text-[11px] text-slate-500">
+              <div className="flex items-center gap-3">
+                <span>Projeto local</span>
+                <span>•</span>
+                <span>{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</span>
+              </div>
+              <span>
+                {saveState === "saving"
+                  ? "Salvando..."
+                  : saveState === "saved"
+                    ? "Alterações salvas"
+                    : saveState === "error"
+                      ? "Falha ao salvar"
+                      : "Ainda não salvo"}
+              </span>
             </div>
           </section>
         )}
