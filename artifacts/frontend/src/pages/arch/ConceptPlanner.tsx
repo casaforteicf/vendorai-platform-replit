@@ -3041,6 +3041,7 @@ export default function ConceptPlanner() {
                       Nome
                       <input
                         value={customerProfile.name ?? ""}
+                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, name: event.target.value }))}
                         placeholder="Nome do cliente"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
@@ -3050,6 +3051,7 @@ export default function ConceptPlanner() {
                       WhatsApp / telefone
                       <input
                         value={customerProfile.phone ?? ""}
+                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, phone: event.target.value }))}
                         placeholder="(49) 99999-9999"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
@@ -3060,6 +3062,7 @@ export default function ConceptPlanner() {
                       <input
                         type="email"
                         value={customerProfile.email ?? ""}
+                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, email: event.target.value }))}
                         placeholder="cliente@email.com"
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none"
@@ -3069,6 +3072,7 @@ export default function ConceptPlanner() {
                       Faixa de investimento
                       <select
                         value={customerProfile.budgetRange ?? ""}
+                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, budgetRange: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, budgetRange: event.target.value }))}
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
                       >
@@ -3083,6 +3087,7 @@ export default function ConceptPlanner() {
                       Quando pretende começar?
                       <select
                         value={customerProfile.timeframe ?? ""}
+                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, timeframe: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, timeframe: event.target.value }))}
                         className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
                       >
@@ -3097,6 +3102,7 @@ export default function ConceptPlanner() {
                       Observações
                       <textarea
                         value={customerProfile.notes ?? ""}
+                        onInput={(event) => setCustomerProfile((prev) => ({ ...prev, notes: event.currentTarget.value }))}
                         onChange={(event) => setCustomerProfile((prev) => ({ ...prev, notes: event.target.value }))}
                         placeholder="Preferências, prioridades, limitações ou qualquer detalhe importante."
                         rows={3}
