@@ -55,6 +55,14 @@ import {
   type StairParameters,
 } from "./conceptStairs";
 import { defaultRoofParameters, normalizeRoofParameters, type RoofWaterCount } from "./conceptRoof";
+import {
+  CONCEPT_OBJECT_CATEGORIES,
+  CONCEPT_OBJECT_PRESETS,
+  createConceptObjectFromPreset,
+  normalizeConceptObject,
+  objectCategoryLabel,
+  type ConceptObject,
+} from "./conceptObjects";
 
 type RoomKind =
   | "sala"
@@ -192,6 +200,7 @@ type EditorSnapshot = {
   rooms: Room[];
   customWalls: CustomWall[];
   customOpenings: CustomOpening[];
+  objects: ConceptObject[];
   wallFirstFloors: number[];
   openingOverrides: Record<string, OpeningOverride>;
 };
@@ -221,6 +230,7 @@ type ConceptDraftResponse = {
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
+    objects?: ConceptObject[];
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -551,11 +561,12 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
-  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("room");
+  const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "object" | "draw-wall" | "navigate">("room");
   const [rooms, setRooms] = useState<Room[]>(() => normalizeDraftRooms(buildTypologyRooms("terrea_3q") as Room[]));
   const roomsRef = useRef<Room[]>(rooms);
   const customWallsRef = useRef<CustomWall[]>([]);
   const customOpeningsRef = useRef<CustomOpening[]>([]);
+  const objectsRef = useRef<ConceptObject[]>([]);
   const wallFirstFloorsRef = useRef<number[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const editStartRef = useRef<EditorSnapshot | null>(null);
@@ -567,8 +578,10 @@ export default function ConceptPlanner() {
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
+  const [objects, setObjects] = useState<ConceptObject[]>([]);
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([]);
   const [showDimensions, setShowDimensions] = useState(true);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
@@ -596,6 +609,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     customOpeningsRef.current = customOpenings;
   }, [customOpenings]);
+
+  useEffect(() => {
+    objectsRef.current = objects;
+  }, [objects]);
 
   useEffect(() => {
     wallFirstFloorsRef.current = wallFirstFloors;
@@ -640,6 +657,13 @@ export default function ConceptPlanner() {
         setCustomWalls(loadedCustomWalls);
         setCustomOpenings(loadedCustomOpenings);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
+        const loadedLotWidth = draft.lot?.width ?? 12;
+        const loadedLotDepth = draft.lot?.depth ?? 30;
+        setObjects(
+          Array.isArray(draft.configuration?.objects)
+            ? draft.configuration.objects.map((object) => normalizeConceptObject(object, loadedLotWidth, loadedLotDepth))
+            : []
+        );
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -663,6 +687,7 @@ export default function ConceptPlanner() {
     setSaveState("saving");
     const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
     const persistedRooms = normalizeDraftRooms(rooms);
+    const persistedObjects = objects.map((object) => normalizeConceptObject(object, lotWidth, lotDepth));
     const payload = {
       title: "Meu pré-projeto",
       status: "draft",
@@ -678,6 +703,7 @@ export default function ConceptPlanner() {
         customWalls,
         customOpenings: persistedCustomOpenings,
         spaceProfiles,
+        objects: persistedObjects,
       },
       rooms: persistedRooms,
       openingOverrides,
@@ -708,7 +734,9 @@ export default function ConceptPlanner() {
   };
 
   const selected = rooms.find((r) => r.id === selectedId) ?? null;
+  const selectedObject = objects.find((object) => object.id === selectedObjectId) ?? null;
   const visibleRooms = wallFirstActive ? [] : rooms.filter((r) => r.floor === activeFloor);
+  const visibleObjects = objects.filter((object) => object.floor === activeFloor);
   const currentArea = useMemo(() => {
     const legacyArea = rooms
       .filter((room) => room.kind !== "piscina" && !wallFirstFloors.includes(room.floor))
@@ -754,6 +782,8 @@ export default function ConceptPlanner() {
     setWallFirstFloors([]);
     setCustomWalls([]);
     setCustomOpenings([]);
+    setObjects([]);
+    setSelectedObjectId(null);
     setSpaceProfiles([]);
     setRooms(normalizeDraftRooms(nextRooms));
   };
@@ -766,6 +796,7 @@ export default function ConceptPlanner() {
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
     customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
+    objects: objectsRef.current.map((object) => ({ ...object })),
     wallFirstFloors: [...wallFirstFloorsRef.current],
     openingOverrides: Object.fromEntries(
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
@@ -776,6 +807,7 @@ export default function ConceptPlanner() {
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
     customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
+    objects: snapshot.objects.map((object) => ({ ...object })),
     wallFirstFloors: [...snapshot.wallFirstFloors],
     openingOverrides: Object.fromEntries(
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
@@ -787,12 +819,14 @@ export default function ConceptPlanner() {
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
     setCustomOpenings(cloned.customOpenings);
+    setObjects(cloned.objects);
     setWallFirstFloors(cloned.wallFirstFloors);
     setOpeningOverrides(cloned.openingOverrides);
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
     setSelectedOpeningId(null);
+    setSelectedObjectId(null);
   };
 
   const pushRoomHistory = (before: EditorSnapshot) => {
@@ -1279,9 +1313,12 @@ export default function ConceptPlanner() {
               .filter((room) => room.floor === floorIndex - 1 && room.kind === "escada")
               .flatMap((room) => buildStairSlabOpenings(room))
           : [],
+        objects: objects
+          .filter((object) => object.floor === floorIndex)
+          .map((object) => normalizeConceptObject(object, lotWidth, lotDepth)),
       };
     });
-  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles, wallFirstFloors]);
+  }, [floors, rooms, objects, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles, wallFirstFloors]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
@@ -1599,6 +1636,53 @@ export default function ConceptPlanner() {
     setSelectedOpeningId((current) => current === openingId ? null : current);
   };
 
+  const addConceptObject = (presetId: string) => {
+    const preset = CONCEPT_OBJECT_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    const before = snapshotEditor();
+    const focus = selectedClosedSpace?.centroid ?? { x: lotWidth / 2, y: Math.min(lotDepth / 2, 8) };
+    const created = normalizeConceptObject(
+      createConceptObjectFromPreset(
+        preset,
+        activeFloor,
+        focus.x,
+        focus.y,
+        `concept-object-${uid()}`,
+      ),
+      lotWidth,
+      lotDepth,
+    );
+    setObjects((prev) => [...prev, created]);
+    setSelectedObjectId(created.id);
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    pushRoomHistory(before);
+  };
+
+  const updateConceptObject = (objectId: string, patch: Partial<ConceptObject>, recordHistory = false) => {
+    const before = recordHistory ? snapshotEditor() : null;
+    setObjects((prev) => prev.map((object) =>
+      object.id === objectId
+        ? normalizeConceptObject({ ...object, ...patch }, lotWidth, lotDepth)
+        : object
+    ));
+    if (before) pushRoomHistory(before);
+  };
+
+  const rotateConceptObject = (objectId: string, delta: number) => {
+    const object = objects.find((item) => item.id === objectId);
+    if (!object) return;
+    updateConceptObject(objectId, { rotationDeg: object.rotationDeg + delta }, true);
+  };
+
+  const deleteConceptObject = (objectId: string) => {
+    const before = snapshotEditor();
+    setObjects((prev) => prev.filter((object) => object.id !== objectId));
+    setSelectedObjectId((current) => current === objectId ? null : current);
+    pushRoomHistory(before);
+  };
   const moveWallById = (wallId: string, delta: number) => {
     if (!delta) return;
     const wall = geometry.walls.find((item) => item.id === wallId);
@@ -1794,6 +1878,7 @@ export default function ConceptPlanner() {
 
           const persistedCustomOpenings = normalizeCustomOpeningsForWalls(customOpenings, customWalls, true);
           const persistedRooms = normalizeDraftRooms(rooms);
+          const persistedObjects = objects.map((object) => normalizeConceptObject(object, lotWidth, lotDepth));
           const payload = {
             title: "Meu pré-projeto",
             status: "draft",
@@ -1809,6 +1894,7 @@ export default function ConceptPlanner() {
               customWalls,
               customOpenings: persistedCustomOpenings,
               spaceProfiles,
+              objects: persistedObjects,
             },
             rooms: persistedRooms,
             openingOverrides,
@@ -2360,6 +2446,22 @@ export default function ConceptPlanner() {
                           >
                             Portas e janelas
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInteractionMode("object");
+                              setSelectedId(null);
+                              setSelectedOpeningId(null);
+                              setSelectedWallId(null);
+                              setSelectedCustomWallId(null);
+                              setSelectedClosedSpaceId(null);
+                            }}
+                            className={interactionMode === "object"
+                              ? "rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white"
+                              : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground"}
+                          >
+                            Móveis e objetos
+                          </button>
                         </div>
                         {!wallFirstActive && (
                           <>
@@ -2412,12 +2514,14 @@ export default function ConceptPlanner() {
                         onSelect={(roomId) => {
                           setSelectedId(roomId);
                           setSelectedOpeningId(null);
+                          setSelectedObjectId(null);
                         }}
                         onRoomChange={updateRoomById}
                         selectedOpeningId={selectedOpeningId}
                         onSelectOpening={(openingId) => {
                           setSelectedOpeningId(openingId);
                           setSelectedId(null);
+                          setSelectedObjectId(null);
                         }}
                         onOpeningChange={updateOpeningById}
                         selectedWallId={selectedWallId}
@@ -2425,6 +2529,7 @@ export default function ConceptPlanner() {
                           setSelectedWallId(wallId);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
+                          setSelectedObjectId(null);
                         }}
                         onWallMove={moveWallById}
                         customWalls={customWalls.filter((wall) => wall.floor === activeFloor)}
@@ -2433,6 +2538,17 @@ export default function ConceptPlanner() {
                               .filter((room) => room.floor === activeFloor - 1 && room.kind === "escada")
                               .flatMap((room) => buildStairSlabOpenings(room))
                           : []}
+                        objects={visibleObjects}
+                        selectedObjectId={selectedObjectId}
+                        onSelectObject={(objectId) => {
+                          setSelectedObjectId(objectId);
+                          setSelectedId(null);
+                          setSelectedOpeningId(null);
+                          setSelectedWallId(null);
+                          setSelectedCustomWallId(null);
+                          setSelectedClosedSpaceId(null);
+                        }}
+                        onObjectChange={(objectId, patch) => updateConceptObject(objectId, patch)}
                         roof={facadePreferences}
                         showRoofPlan={activeFloor === floors - 1}
                         selectedCustomWallId={selectedCustomWallId}
@@ -2442,6 +2558,7 @@ export default function ConceptPlanner() {
                           setSelectedWallId(null);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
+                          setSelectedObjectId(null);
                         }}
                         onDeleteCustomWall={deleteCustomWall}
                         onUpdateCustomWall={updateCustomWall}
@@ -2465,7 +2582,9 @@ export default function ConceptPlanner() {
                               : "Paredes: selecione uma parede existente e arraste perpendicularmente · ambientes dos dois lados acompanham o ajuste."
                             : interactionMode === "draw-wall"
                               ? "Desenhar parede: cada segmento encaixa na rede existente; ao fechar um contorno, a área interna é detectada automaticamente."
-                              : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
+                              : interactionMode === "object"
+                                ? "Móveis e objetos: escolha na biblioteca, arraste na planta e ajuste rotação, dimensões e especificações."
+                                : "Portas e janelas: toque para selecionar e arraste ao longo da parede · ajuste fino de 25 cm nas propriedades."}
                       </div>
                     </>
                   )}
@@ -2742,6 +2861,114 @@ export default function ConceptPlanner() {
                           </button>
                         </div>
                       )
+                    ) : interactionMode === "object" ? (
+                      <div className="mt-4 space-y-4">
+                        <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">Biblioteca de móveis e objetos</div>
+                          <div className="mt-1 text-[11px] text-violet-900/75">
+                            Objetos independentes dos ambientes, compartilhados pela planta, 3D e persistência do projeto.
+                          </div>
+                        </div>
+
+                        {selectedObject && (
+                          <div className="space-y-3 rounded-xl border bg-background p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="font-semibold">{selectedObject.name}</div>
+                                <div className="text-[11px] text-muted-foreground">{objectCategoryLabel(selectedObject.category)} · pavimento {selectedObject.floor + 1}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => updateConceptObject(selectedObject.id, { locked: !selectedObject.locked }, true)}
+                                className={selectedObject.locked ? "rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white" : "rounded-lg border px-2 py-1 text-[11px] font-semibold"}
+                              >
+                                {selectedObject.locked ? "Bloqueado" : "Bloquear"}
+                              </button>
+                            </div>
+
+                            <label className="block text-xs font-medium">
+                              Nome
+                              <input
+                                value={selectedObject.name}
+                                onChange={(event) => updateConceptObject(selectedObject.id, { name: event.target.value }, true)}
+                                className="mt-1 h-10 w-full rounded-lg border px-2"
+                              />
+                            </label>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <label className="text-xs font-medium">Largura
+                                <input type="number" min="0.15" step="0.05" value={selectedObject.width.toFixed(2)} onChange={(event) => updateConceptObject(selectedObject.id, { width: Number(event.target.value) }, true)} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                              <label className="text-xs font-medium">Prof.
+                                <input type="number" min="0.15" step="0.05" value={selectedObject.depth.toFixed(2)} onChange={(event) => updateConceptObject(selectedObject.id, { depth: Number(event.target.value) }, true)} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                              <label className="text-xs font-medium">Altura
+                                <input type="number" min="0.05" step="0.05" value={selectedObject.height.toFixed(2)} onChange={(event) => updateConceptObject(selectedObject.id, { height: Number(event.target.value) }, true)} className="mt-1 h-10 w-full rounded-lg border px-2" />
+                              </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Rotação
+                                <div className="mt-1 flex items-center rounded-lg border px-2">
+                                  <input type="number" step="15" value={selectedObject.rotationDeg.toFixed(0)} onChange={(event) => updateConceptObject(selectedObject.id, { rotationDeg: Number(event.target.value) }, true)} className="h-10 w-full bg-transparent outline-none" />
+                                  <span className="text-xs text-muted-foreground">°</span>
+                                </div>
+                              </label>
+                              <label className="text-xs font-medium">Categoria
+                                <select value={selectedObject.category} onChange={(event) => updateConceptObject(selectedObject.id, { category: event.target.value as ConceptObject["category"] }, true)} className="mt-1 h-10 w-full rounded-lg border bg-background px-2">
+                                  {CONCEPT_OBJECT_CATEGORIES.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                                </select>
+                              </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <button type="button" onClick={() => rotateConceptObject(selectedObject.id, -90)} className="rounded-lg border px-3 py-2 text-xs font-semibold">↶ 90°</button>
+                              <button type="button" onClick={() => rotateConceptObject(selectedObject.id, 90)} className="rounded-lg border px-3 py-2 text-xs font-semibold">↷ 90°</button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs font-medium">Material
+                                <input value={selectedObject.material ?? ""} onChange={(event) => updateConceptObject(selectedObject.id, { material: event.target.value }, true)} className="mt-1 h-10 w-full rounded-lg border px-2" placeholder="Ex.: madeira" />
+                              </label>
+                              <label className="text-xs font-medium">Cor
+                                <input value={selectedObject.color ?? ""} onChange={(event) => updateConceptObject(selectedObject.id, { color: event.target.value }, true)} className="mt-1 h-10 w-full rounded-lg border px-2" placeholder="Ex.: freijó" />
+                              </label>
+                            </div>
+
+                            <button type="button" onClick={() => deleteConceptObject(selectedObject.id)} className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700">
+                              Excluir objeto
+                            </button>
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="mb-2 text-xs font-semibold text-muted-foreground">Adicionar ao pavimento atual</div>
+                          <div className="max-h-[440px] space-y-3 overflow-auto pr-1">
+                            {CONCEPT_OBJECT_CATEGORIES.map((category) => {
+                              const presets = CONCEPT_OBJECT_PRESETS.filter((preset) => preset.category === category.value);
+                              if (!presets.length) return null;
+                              return (
+                                <div key={category.value}>
+                                  <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{category.label}</div>
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    {presets.map((preset) => (
+                                      <button
+                                        key={preset.id}
+                                        type="button"
+                                        onClick={() => addConceptObject(preset.id)}
+                                        className="rounded-lg border bg-background px-2 py-2 text-left text-[11px] font-semibold hover:border-violet-300 hover:bg-violet-50"
+                                      >
+                                        <span className="block">{preset.name}</span>
+                                        <span className="mt-0.5 block font-normal text-muted-foreground">{preset.width.toFixed(2)} × {preset.depth.toFixed(2)} m</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
                     ) : interactionMode === "opening" ? (
                       !selectedOpening ? (
                         <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
