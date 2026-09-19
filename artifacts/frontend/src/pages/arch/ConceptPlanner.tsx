@@ -24,6 +24,8 @@ import {
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
+import ConceptFacadeElevation from "./ConceptFacadeElevation";
+import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 
 type RoomKind =
@@ -71,7 +73,7 @@ type ConceptDraftResponse = {
   archProjetoId?: string | null;
   currentStep: number;
   lot: { width: number; depth: number };
-  configuration: { floors: number; desiredArea: number };
+  configuration: { floors: number; desiredArea: number; typology?: ConceptTypology; layoutPreferences?: LayoutPreferences };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
   customerProfile?: CustomerProfile;
@@ -193,21 +195,12 @@ export default function ConceptPlanner() {
   const [step, setStep] = useState(0);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
+  const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
+  const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(DEFAULT_LAYOUT_PREFERENCES);
   const [floors, setFloors] = useState(1);
-  const [desiredArea, setDesiredArea] = useState(180);
+  const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
-  const [rooms, setRooms] = useState<Room[]>([
-    createRoom("garagem"),
-    createRoom("sala"),
-    createRoom("cozinha"),
-    createRoom("suite"),
-    createRoom("quarto"),
-    createRoom("quarto"),
-    createRoom("banheiro"),
-    createRoom("lavanderia"),
-    createRoom("gourmet"),
-    createRoom("piscina"),
-  ]);
+  const [rooms, setRooms] = useState<Room[]>(() => buildTypologyRooms("terrea_3q") as Room[]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
@@ -245,7 +238,9 @@ export default function ConceptPlanner() {
         setLotWidth(draft.lot?.width ?? 12);
         setLotDepth(draft.lot?.depth ?? 30);
         setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
-        setDesiredArea(draft.configuration?.desiredArea ?? 180);
+        setDesiredArea(draft.configuration?.desiredArea ?? 145);
+        setTypology(draft.configuration?.typology ?? "terrea_3q");
+        setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -271,7 +266,7 @@ export default function ConceptPlanner() {
       status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea },
+      configuration: { floors, desiredArea, typology, layoutPreferences },
       rooms,
       openingOverrides,
       customerProfile,
@@ -307,6 +302,34 @@ export default function ConceptPlanner() {
     [rooms],
   );
 
+  const applyTypology = (nextTypology: ConceptTypology) => {
+    const template = CONCEPT_TYPOLOGIES.find((item) => item.id === nextTypology);
+    if (!template) return;
+
+    let nextRooms = buildTypologyRooms(nextTypology) as Room[];
+    for (let floor = 0; floor < template.floors; floor += 1) {
+      nextRooms = generateLayoutVariant(
+        nextRooms,
+        lotWidth,
+        lotDepth,
+        floor,
+        layoutVariant,
+        layoutPreferences,
+      ) as Room[];
+    }
+
+    setTypology(nextTypology);
+    setFloors(template.floors);
+    setDesiredArea(template.suggestedArea);
+    setActiveFloor(0);
+    setSelectedId(null);
+    setRooms(nextRooms);
+  };
+
+  const toggleLayoutPreference = (key: LayoutPreferenceKey) => {
+    setLayoutPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const addRoom = (kind: RoomKind) => {
     const next = createRoom(kind, activeFloor);
     setRooms((prev) => autoArrange([...prev, next], lotWidth, lotDepth, activeFloor));
@@ -320,7 +343,7 @@ export default function ConceptPlanner() {
 
   const organize = (variant = layoutVariant) => {
     setLayoutVariant(variant);
-    setRooms((prev) => generateLayoutVariant(prev, lotWidth, lotDepth, activeFloor, variant));
+    setRooms((prev) => generateLayoutVariant(prev, lotWidth, lotDepth, activeFloor, variant, layoutPreferences));
   };
 
   const swapPosition = (room: Room, direction: "left" | "right" | "up" | "down") => {
