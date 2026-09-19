@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Layers, Pencil, Trash2, Search, ChevronDown, ChevronUp, X, Upload, Download } from "lucide-react";
+import { Plus, Layers, Pencil, Trash2, Search, ChevronDown, ChevronUp, X, Upload, Download, Package } from "lucide-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
 
@@ -393,6 +393,9 @@ export default function Composicoes() {
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de composições para alocação em obras</p>
         </div>
         <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => { window.location.href = "/insumos"; }}>
+          <Package className="h-4 w-4" />Insumos
+        </Button>
         <Dialog open={importOpen} onOpenChange={setImportOpen}>
           <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar CSV</Button></DialogTrigger>
           <DialogContent className="w-full max-w-2xl">
