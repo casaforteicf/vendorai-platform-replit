@@ -1,4 +1,8 @@
 import type { ConceptFacadePreferences, VolumetryRoom } from "./ConceptVolumetry";
+import {
+  getFacadeMaterial,
+  type FacadeDesignState,
+} from "./conceptFacadeDesign";
 
 export type ConceptRenderBriefInput = {
   lotWidth: number;
@@ -7,6 +11,7 @@ export type ConceptRenderBriefInput = {
   desiredArea: number;
   rooms: VolumetryRoom[];
   facade: ConceptFacadePreferences;
+  facadeDesign?: FacadeDesignState;
 };
 
 const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
@@ -52,6 +57,22 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
 
   const pool = input.rooms.find((room) => room.kind === "piscina");
   const facade = input.facade;
+  const design = input.facadeDesign;
+  const surfaceSummary = design
+    ? [
+        `main walls: ${getFacadeMaterial(design.surfaceMaterials.main).name}`,
+        `accent: ${getFacadeMaterial(design.surfaceMaterials.accent).name}`,
+        `garage: ${getFacadeMaterial(design.surfaceMaterials.garage).name}`,
+        `entrance: ${getFacadeMaterial(design.surfaceMaterials.entrance).name}`,
+        `paving: ${getFacadeMaterial(design.surfaceMaterials.paving).name}`,
+        `frames: ${getFacadeMaterial(design.surfaceMaterials.frames).name}`,
+      ].join("; ")
+    : null;
+  const volumeSummary = design?.volumes.length
+    ? design.volumes.map((volume) =>
+        `${volume.label} (${volume.kind}), position ${volume.x.toFixed(0)}%/${volume.y.toFixed(0)}%, size ${volume.width.toFixed(0)}% x ${volume.height.toFixed(0)}%, projection ${volume.depth.toFixed(1)} m, material ${getFacadeMaterial(volume.materialId).name}`
+      ).join("; ")
+    : null;
 
   return [
     "Convert this conceptual FRONT ELEVATION and the structured plan data into a photorealistic exterior architectural photograph.",
@@ -59,9 +80,15 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     `Site: rectangular lot ${input.lotWidth} x ${input.lotDepth} m. Building: ${input.floors} floor(s), target area approximately ${input.desiredArea} m².`,
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
-    `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
+    surfaceSummary
+      ? `Exact facade material schedule selected by the user: ${surfaceSummary}. Preserve these assignments.`
+      : `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
     `Facade tone: ${facade.facadeTone}. Frames: ${frameLabel[facade.frameTone]}.`,
     `Landscaping intensity: ${facade.landscaping}. Use realistic Brazilian residential landscaping without blocking the architecture.`,
+    design ? `Lighting scenario selected in editor: ${design.lighting}. Landscaping visibility: ${design.showLandscaping ? "on" : "off"}.` : "",
+    volumeSummary
+      ? `CRITICAL VOLUMETRY PRESERVATION: preserve these added facade volumes and their relative positions/projections: ${volumeSummary}.`
+      : "Do not invent decorative facade volumes that are not present in the source elevation.",
     pool
       ? `Preserve the pool exactly at its modeled position and approximate size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m.`
       : "Do not invent a swimming pool.",

@@ -35,7 +35,13 @@ import { type ConceptFacadePreferences } from "./ConceptVolumetry";
 import ConceptPlan2D from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
+import ConceptFacadeEditor from "./ConceptFacadeEditor";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
+import {
+  DEFAULT_FACADE_DESIGN,
+  normalizeFacadeDesign,
+  type FacadeDesignState,
+} from "./conceptFacadeDesign";
 import { buildTypologyRooms, CONCEPT_TYPOLOGIES, DEFAULT_LAYOUT_PREFERENCES, type ConceptTypology, type LayoutPreferences, type LayoutPreferenceKey } from "./conceptTemplates";
 import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
@@ -143,6 +149,7 @@ type ConceptDraftResponse = {
   openingOverrides: Record<string, OpeningOverride>;
   customerProfile?: CustomerProfile;
   facadePreferences?: ConceptFacadePreferences;
+  facadeDesign?: FacadeDesignState;
   conceptRender?: {
     renderId?: string;
     status?: "idle" | "processing" | "completed" | "error";
@@ -297,6 +304,7 @@ export default function ConceptPlanner() {
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
+  const [facadeDesign, setFacadeDesign] = useState<FacadeDesignState>(DEFAULT_FACADE_DESIGN);
   const [conceptRender, setConceptRender] = useState<ConceptDraftResponse["conceptRender"]>({ status: "idle" });
   const [renderError, setRenderError] = useState<string | null>(null);
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
@@ -385,6 +393,7 @@ export default function ConceptPlanner() {
         setOpeningOverrides(draft.openingOverrides ?? {});
         setCustomerProfile(draft.customerProfile ?? {});
         setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
+        setFacadeDesign(normalizeFacadeDesign(draft.facadeDesign));
         setConceptRender(draft.conceptRender ?? { status: "idle" });
         setLayoutVariant(draft.selectedVariant ?? 0);
         setSaveState("saved");
@@ -413,6 +422,7 @@ export default function ConceptPlanner() {
       openingOverrides,
       customerProfile,
       facadePreferences,
+      facadeDesign,
       conceptRender,
       selectedVariant: layoutVariant,
     };
@@ -1453,6 +1463,7 @@ export default function ConceptPlanner() {
         desiredArea,
         rooms,
         facade: facadePreferences,
+        facadeDesign,
       });
 
       const response = await fetch("/api/arch/ai-render", {
@@ -1506,6 +1517,7 @@ export default function ConceptPlanner() {
             rooms,
             openingOverrides,
             facadePreferences,
+            facadeDesign,
             conceptRender: completed,
             selectedVariant: layoutVariant,
           };
@@ -2289,48 +2301,31 @@ export default function ConceptPlanner() {
 
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div className="inline-flex rounded-full border bg-slate-50 p-1 shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => setEditorView("plan")}
-                    className={editorView === "plan"
-                      ? "rounded-full bg-orange-500 px-5 py-2 text-xs font-bold text-white shadow-sm"
-                      : "rounded-full px-5 py-2 text-xs font-bold text-slate-500"}
-                  >
-                    2D
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditorView("model3d")}
-                    className={editorView === "model3d"
-                      ? "rounded-full bg-orange-500 px-5 py-2 text-xs font-bold text-white shadow-sm"
-                      : "rounded-full px-5 py-2 text-xs font-bold text-slate-500"}
-                  >
-                    3D
-                  </button>
+                  {([
+                    ["plan", "2D"],
+                    ["model3d", "3D"],
+                    ["facade", "Fachada"],
+                    ["render", "Resultado"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setEditorView(value);
+                        if (value !== "plan") setLibraryOpen(false);
+                      }}
+                      className={editorView === value
+                        ? "rounded-full bg-orange-500 px-4 py-2 text-xs font-bold text-white shadow-sm"
+                        : "rounded-full px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800"}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setEditorView("render")}
-                  className={editorView === "render"
-                    ? "hidden h-10 items-center gap-2 rounded-full bg-orange-50 px-3 text-xs font-semibold text-orange-700 md:inline-flex"
-                    : "hidden h-10 items-center gap-2 rounded-full px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 md:inline-flex"}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  IA
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditorView("facade")}
-                  title="Fachada"
-                  className={editorView === "facade"
-                    ? "grid h-10 w-10 place-items-center rounded-full bg-orange-50 text-orange-700"
-                    : "grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"}
-                >
-                  <Camera className="h-4 w-4" />
-                </button>
+                {editorView === "plan" && (
                 <button
                   type="button"
                   onClick={() => setShowDimensions((value) => !value)}
@@ -2341,6 +2336,7 @@ export default function ConceptPlanner() {
                 >
                   <Ruler className="h-4 w-4" />
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setFloors((value) => Math.min(3, value + 1))}
@@ -2365,7 +2361,13 @@ export default function ConceptPlanner() {
               className="fixed -left-[9999px] top-0 h-[650px] w-[900px] overflow-hidden"
               aria-hidden="true"
             >
-              <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} rooms={rooms} facade={facadePreferences} />
+              <ConceptDerivedFacade
+                lotWidth={lotWidth}
+                levels={modelLevels}
+                rooms={rooms}
+                facade={facadePreferences}
+                design={facadeDesign}
+              />
             </div>
 
             <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8]">
@@ -2965,23 +2967,33 @@ export default function ConceptPlanner() {
                       activeFloor={activeFloor}
                       levels={modelLevels}
                       roof={facadePreferences.roof}
+                      facadeDesign={facadeDesign}
                     />
                   )}
 
                   {editorView === "facade" && (
-                    <div data-concept-render-source="true" className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-                      <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
-                    </div>
+                    <ConceptFacadeEditor
+                      lotWidth={lotWidth}
+                      levels={modelLevels}
+                      rooms={rooms}
+                      facade={facadePreferences}
+                      design={facadeDesign}
+                      onFacadeChange={setFacadePreferences}
+                      onDesignChange={setFacadeDesign}
+                      onOpenRender={() => setEditorView("render")}
+                    />
                   )}
 
                   {editorView === "render" && (
-                    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                    <div className="grid min-h-[calc(100vh-64px)] place-items-center bg-slate-100 p-5">
                       {conceptRender?.resultImageUrl ? (
-                        <img
-                          src={conceptRender.resultImageUrl}
-                          alt="Render conceitual"
-                          className="max-h-[680px] w-full object-contain"
-                        />
+                        <div className="w-full max-w-6xl overflow-hidden rounded-2xl border bg-white shadow-xl">
+                          <img
+                            src={conceptRender.resultImageUrl}
+                            alt="Render conceitual"
+                            className="max-h-[calc(100vh-110px)] w-full object-contain"
+                          />
+                        </div>
                       ) : (
                         <div className="grid min-h-[420px] place-items-center text-center">
                           <div>
