@@ -200,25 +200,41 @@ export default function ConceptPlan2D({
                       />
                     </g>
                   )}
-                  <text
-                    x={room.x + room.width / 2}
-                    y={room.y + room.depth / 2 - 0.12}
-                    textAnchor="middle"
-                    fontSize={Math.max(0.3, Math.min(0.44, room.width / 8))}
-                    fontWeight="750"
-                    fill="#0f172a"
-                  >
-                    {room.label}
-                  </text>
-                  <text
-                    x={room.x + room.width / 2}
-                    y={room.y + room.depth / 2 + 0.36}
-                    textAnchor="middle"
-                    fontSize="0.28"
-                    fill="#64748b"
-                  >
-                    {room.width.toFixed(2)} × {room.depth.toFixed(2)} m · {area.toFixed(1)} m²
-                  </text>
+                  {room.kind === "circulacao" ? (
+                    <text
+                      x={room.x + room.width / 2}
+                      y={room.y + room.depth / 2}
+                      textAnchor="middle"
+                      fontSize="0.24"
+                      fontWeight="700"
+                      fill="#64748b"
+                      transform={`rotate(-90 ${room.x + room.width / 2} ${room.y + room.depth / 2})`}
+                    >
+                      {room.label}
+                    </text>
+                  ) : (
+                    <>
+                      <text
+                        x={room.x + room.width / 2}
+                        y={room.y + room.depth / 2 - 0.12}
+                        textAnchor="middle"
+                        fontSize={room.kind === "escada" ? "0.28" : Math.max(0.3, Math.min(0.44, room.width / 8))}
+                        fontWeight="750"
+                        fill="#0f172a"
+                      >
+                        {room.label}
+                      </text>
+                      <text
+                        x={room.x + room.width / 2}
+                        y={room.y + room.depth / 2 + 0.36}
+                        textAnchor="middle"
+                        fontSize="0.28"
+                        fill="#64748b"
+                      >
+                        {room.width.toFixed(2)} × {room.depth.toFixed(2)} m · {area.toFixed(1)} m²
+                      </text>
+                    </>
+                  )}
                 </>
               )}
               {isPool && (
