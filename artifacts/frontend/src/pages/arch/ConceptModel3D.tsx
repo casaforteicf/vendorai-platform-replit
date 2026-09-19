@@ -229,6 +229,11 @@ export default function ConceptModel3D({
     setZoom(1.32);
   };
 
+  const setCameraPreset = (nextRotation: number) => {
+    setRotation(normalizeRotation(nextRotation));
+    setZoom(1.32);
+  };
+
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -329,13 +334,13 @@ export default function ConceptModel3D({
     : { minX: frameBounds.minX, maxX: frameBounds.maxX, minY: frameBounds.minY, maxY: frameBounds.maxY };
 
   return (
-    <div className="relative h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
-      <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/72 px-4 py-3 text-white shadow-xl backdrop-blur">
+    <div className="relative h-[calc(100vh-64px)] overflow-hidden bg-[#edf1f4]">
+      <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/92 px-4 py-3 text-slate-800 shadow-xl backdrop-blur">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-white/60">Arraste horizontalmente para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
+          <div className="text-xs text-slate-500">Arraste para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {levels.length > 1 && (
