@@ -2,24 +2,22 @@ import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import { normalizeOpeningParameters } from "./conceptOpenings";
 import { buildRoofFacadeProfile, normalizeRoofParameters } from "./conceptRoof";
+import { normalizeConceptMaterialScheme, type ConceptMaterialScheme } from "./conceptMaterials";
 
 type Props = {
   lotWidth: number;
   levels: ConceptModelLevel[];
   facade: ConceptFacadePreferences;
+  materials: ConceptMaterialScheme;
 };
 
 const EPS = 0.08;
 const WALL_HEIGHT = 2.8;
 const FLOOR_THICKNESS = 0.16;
 
-function facadePalette(facade: ConceptFacadePreferences) {
-  const wall =
-    facade.primaryMaterial === "madeira" ? "#d6ae88" :
-    facade.primaryMaterial === "pedra" ? "#d6d1c8" :
-    facade.primaryMaterial === "concreto" ? "#c7ccd1" :
-    facade.facadeTone === "escuro" ? "#747a81" :
-    facade.facadeTone === "medio" ? "#dedbd5" : "#f2f0ec";
+function facadePalette(facade: ConceptFacadePreferences, materials: ConceptMaterialScheme) {
+  const normalizedMaterials = normalizeConceptMaterialScheme(materials);
+  const wall = normalizedMaterials.exteriorWall.color;
 
   const accent =
     facade.accentMaterial === "madeira" ? "#8f6247" :
@@ -94,6 +92,7 @@ function Roof({
   scaleX,
   pxPerMeterY,
   facade,
+  materials,
 }: {
   x: number;
   y: number;
@@ -102,8 +101,13 @@ function Roof({
   scaleX: number;
   pxPerMeterY: number;
   facade: ConceptFacadePreferences;
+  materials: ConceptMaterialScheme;
 }) {
   const params = normalizeRoofParameters(facade);
+  const materialScheme = normalizeConceptMaterialScheme(materials);
+  const roofColor = materialScheme.roof.color;
+  const roofEdge = materialScheme.roof.edgeColor ?? "#4d443f";
+  const parapetColor = materialScheme.exteriorWall.color;
   const pathFor = (
     originX: number,
     visibleWidth: number,
@@ -122,13 +126,13 @@ function Roof({
     const height = params.roofParapetHeight * pxPerMeterY;
     return (
       <>
-        <rect x={x} y={y - height} width={widthMeters * scaleX} height={height} fill="#747a80" />
+        <rect x={x} y={y - height} width={widthMeters * scaleX} height={height} fill={parapetColor} />
         <rect
           x={x + 0.45}
           y={y - height * 0.62}
           width={Math.max(0, widthMeters * scaleX - 0.9)}
           height={Math.max(0.5, height * 0.42)}
-          fill="#9da3a8"
+          fill={materialScheme.exteriorWall.secondaryColor ?? parapetColor}
           opacity="0.45"
         />
       </>
@@ -149,12 +153,12 @@ function Roof({
           y={y - flatHeight}
           width={splitMeters * scaleX}
           height={flatHeight}
-          fill="#747a80"
+          fill={parapetColor}
         />
         <path
           d={pathFor(pitchedX, pitchedWidth, pitchedDepth, pitchedSource)}
-          fill="#76513f"
-          stroke="#50382d"
+          fill={roofColor}
+          stroke={roofEdge}
           strokeWidth="0.55"
         />
       </>
@@ -168,14 +172,14 @@ function Roof({
   return (
     <path
       d={pathFor(originX, visibleWidth, visibleDepth, facade)}
-      fill="#76513f"
-      stroke="#50382d"
+      fill={roofColor}
+      stroke={roofEdge}
       strokeWidth="0.6"
     />
   );
 }
-export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props) {
-  const colors = facadePalette(facade);
+export default function ConceptDerivedFacade({ lotWidth, levels, facade, materials }: Props) {
+  const colors = facadePalette(facade, materials);
   const usable = levels
     .map((level) => ({ level, ...frontSegments(level) }))
     .filter((entry) => entry.segments.length > 0);
@@ -405,6 +409,7 @@ export default function ConceptDerivedFacade({ lotWidth, levels, facade }: Props
             scaleX={scaleX}
             pxPerMeterY={pxPerMeterY}
             facade={facade}
+            materials={materials}
           />
         )}
       </g>

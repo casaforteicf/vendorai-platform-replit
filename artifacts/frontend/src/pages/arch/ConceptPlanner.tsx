@@ -2775,7 +2775,7 @@ export default function ConceptPlanner() {
 
                   {editorView === "facade" && (
                     <div data-concept-render-source="true" className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-                      <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} />
+                      <ConceptDerivedFacade lotWidth={lotWidth} levels={modelLevels} facade={facadePreferences} materials={materialScheme} />
                     </div>
                   )}
 
