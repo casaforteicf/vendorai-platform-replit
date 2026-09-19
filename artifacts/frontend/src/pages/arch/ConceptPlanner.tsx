@@ -2475,7 +2475,12 @@ export default function ConceptPlanner() {
                     <button
                       key={kind}
                       type="button"
-                      onClick={() => { if (!wallFirstActive) addRoom(kind); }}
+                      onClick={() => {
+                        if (!wallFirstActive) {
+                          addRoom(kind);
+                          setMobilePanel("closed");
+                        }
+                      }}
                       disabled={wallFirstActive}
                       title={wallFirstActive ? "Neste pavimento os ambientes são derivados das paredes." : undefined}
                       className="flex items-center justify-between rounded-xl border bg-background px-3 py-2.5 text-left text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
@@ -2493,7 +2498,12 @@ export default function ConceptPlanner() {
                       <button
                         key={floor}
                         type="button"
-                        onClick={() => { setActiveFloor(floor); setSelectedId(null); setEditorView("plan"); }}
+                        onClick={() => {
+                          setActiveFloor(floor);
+                          setSelectedId(null);
+                          setEditorView("plan");
+                          setMobilePanel("closed");
+                        }}
                         className={activeFloor === floor
                           ? "rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background"
                           : "rounded-lg border bg-background px-3 py-2 text-xs font-semibold"}
@@ -2858,7 +2868,7 @@ export default function ConceptPlanner() {
                 mobilePanel === "properties"
                   ? "fixed inset-x-3 bottom-20 z-50 block max-h-[68vh] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl"
                   : "hidden",
-                "order-2 xl:static xl:order-3 xl:block xl:max-h-none xl:overflow-visible xl:rounded-none xl:border-0 xl:border-l xl:bg-background xl:p-4 xl:shadow-none",
+                "order-2 [&_input]:text-base [&_select]:text-base xl:static xl:order-3 xl:block xl:max-h-none xl:overflow-visible xl:rounded-none xl:border-0 xl:border-l xl:bg-background xl:p-4 xl:shadow-none xl:[&_input]:text-sm xl:[&_select]:text-sm",
               ].join(" ")}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Propriedades</div>
@@ -3853,7 +3863,7 @@ export default function ConceptPlanner() {
               </aside>
             </div>
 
-            <div className="fixed inset-x-2 bottom-2 z-30 grid grid-cols-7 gap-1 rounded-2xl border bg-background/95 p-1.5 shadow-2xl backdrop-blur xl:hidden">
+            <div className="fixed inset-x-2 bottom-2 z-30 grid grid-cols-7 gap-1 rounded-2xl border bg-background/95 p-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur xl:hidden">
               {([
                 ["navigate", "Mover"],
                 ["room", "Amb."],
