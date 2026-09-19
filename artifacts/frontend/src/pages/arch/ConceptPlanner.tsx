@@ -3017,565 +3017,199 @@ export default function ConceptPlanner() {
               </div>
 
               {editorView === "plan" && (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
-              <aside className="fixed bottom-4 left-1/2 z-40 max-h-[170px] w-[min(820px,calc(100vw-160px))] -translate-x-1/2 overflow-auto rounded-xl border bg-white/95 shadow-2xl backdrop-blur">
-                <div className="sticky top-0 z-10 flex h-9 items-center justify-between border-b bg-white/95 px-3">
-                  <div className="text-xs font-semibold">
-                    {interactionMode === "draw-wall"
-                      ? "Parede"
-                      : interactionMode === "opening"
-                        ? "Portas e janelas"
-                        : interactionMode === "space"
-                          ? "Ambiente"
-                          : "Propriedades"}
+              <aside className="fixed bottom-4 left-1/2 z-40 w-[min(1080px,calc(100vw-120px))] -translate-x-1/2 rounded-2xl border bg-white/96 px-3 py-2.5 shadow-2xl backdrop-blur">
+                {selectedCustomWall ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="mr-2 min-w-[130px]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Parede</div>
+                      <div className="mt-1 text-sm font-semibold">Parede livre</div>
+                    </div>
+                    <label className="text-[10px] font-semibold text-slate-500">
+                      Comprimento (m)
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.05"
+                        value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
+                        onChange={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.target.value))}
+                        className="mt-1 h-9 w-[105px] rounded-lg border px-2 text-xs font-semibold"
+                      />
+                    </label>
+                    <label className="text-[10px] font-semibold text-slate-500">
+                      Espessura
+                      <select
+                        value={selectedCustomWall.thickness ?? 0.15}
+                        onChange={(event) => updateCustomWall(selectedCustomWall.id, { thickness: Number(event.target.value) }, true)}
+                        className="mt-1 h-9 w-[100px] rounded-lg border bg-white px-2 text-xs"
+                      >
+                        <option value={0.10}>10 cm</option>
+                        <option value={0.12}>12 cm</option>
+                        <option value={0.15}>15 cm</option>
+                        <option value={0.20}>20 cm</option>
+                        <option value={0.25}>25 cm</option>
+                      </select>
+                    </label>
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Porta</button>
+                      <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Janela</button>
+                      <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50">Excluir</button>
+                    </div>
                   </div>
-                  <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-                <div className="p-3">
-
-                {editorView === "plan" && (
-                  <>
-                    {interactionMode === "navigate" ? (
-                      <div className="mt-4 space-y-3">
-                        <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                          Arraste o canvas para navegar. Use a roda do mouse ou os botões de zoom no canto superior da planta. O botão de enquadrar retorna à visão completa.
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setInteractionMode("room")}
-                          className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-                        >
-                          Voltar para editar
-                        </button>
-                      </div>
-                    ) : interactionMode === "space" ? (
-                      !selectedClosedSpace ? (
-                        <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          Selecione uma área fechada na planta para definir seu nome e uso.
-                        </div>
-                      ) : (
-                        <div className="mt-4 space-y-4">
-                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Espaço detectado</div>
-                            <div className="mt-1 text-lg font-bold text-emerald-950">{selectedClosedSpace.area.toFixed(1)} m²</div>
-                          </div>
-                          <label className="block text-xs font-semibold">
-                            Nome do ambiente
+                ) : selectedOpening ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="mr-2 min-w-[120px]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Abertura</div>
+                      <button type="button" onClick={toggleOpeningType} className="mt-1 text-sm font-semibold hover:text-orange-600">
+                        {selectedOpening.type === "door" ? "Porta" : "Janela"} ↔
+                      </button>
+                    </div>
+                    {selectedCustomOpening && (
+                      <>
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Largura (m)
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="4"
+                            step="0.05"
+                            value={(selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)).toFixed(2)}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { width: Number(event.target.value) })}
+                            className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Altura (m)
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="2.8"
+                            step="0.05"
+                            value={(selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)).toFixed(2)}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { height: Number(event.target.value) })}
+                            className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        {selectedOpening.type === "window" && (
+                          <label className="text-[10px] font-semibold text-slate-500">
+                            Peitoril (m)
                             <input
-                              value={selectedSpaceProfile?.label ?? ""}
-                              onChange={(event) => updateSelectedSpaceProfile({ label: event.target.value })}
-                              placeholder="Ex.: Sala de estar"
-                              className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                              type="number"
+                              min="0"
+                              max="2.2"
+                              step="0.05"
+                              value={(selectedCustomOpening.sillHeight ?? 0.9).toFixed(2)}
+                              onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: Number(event.target.value) })}
+                              className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                             />
                           </label>
-                          <label className="block text-xs font-semibold">
-                            Tipo
-                            <select
-                              value={selectedSpaceProfile?.kind ?? "outro"}
-                              onChange={(event) => updateSelectedSpaceProfile({ kind: event.target.value })}
-                              className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                            >
-                              <option value="sala">Sala / estar</option>
-                              <option value="cozinha">Cozinha</option>
-                              <option value="suite">Suíte</option>
-                              <option value="quarto">Quarto</option>
-                              <option value="banheiro">Banheiro</option>
-                              <option value="lavanderia">Lavanderia</option>
-                              <option value="garagem">Garagem</option>
-                              <option value="gourmet">Gourmet</option>
-                              <option value="circulacao">Circulação</option>
-                              <option value="escada">Escada</option>
-                              <option value="outro">Outro</option>
-                            </select>
-                          </label>
-                          <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-                            A classificação acompanha o espaço pela posição e área, mesmo após pequenos ajustes nas paredes.
-                          </div>
-                        </div>
-                      )
-                    ) : interactionMode === "draw-wall" ? (
-                      <div className="mt-4 space-y-3">
-                        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
-                          Toque no primeiro ponto e continue pelos vértices. Ao fechar o contorno, o sistema identifica automaticamente a área interna e calcula sua metragem.
-                        </div>
-                        <div className={closedSpaces.length
-                          ? "rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800"
-                          : "rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"}
-                        >
-                          {closedSpaces.length
-                            ? `Detectado: ${closedSpaces.length} espaço${closedSpaces.length > 1 ? "s" : ""} fechado${closedSpaces.length > 1 ? "s" : ""}, total ${closedArea.toFixed(1)} m².`
-                            : "Feche o perímetro com paredes conectadas para o Arqdor reconhecer o ambiente."}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setInteractionMode("wall")}
-                          className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                        >
-                          Finalizar desenho
-                        </button>
-                      </div>
-                    ) : interactionMode === "wall" ? (
-                      selectedCustomWall ? (
-                        <div className="mt-4 space-y-4">
-                          <div className="rounded-xl bg-muted p-3">
-                            <div className="font-semibold">Parede livre</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)} m · espessura {((selectedCustomWall.thickness ?? 0.15) * 100).toFixed(0)} cm
-                            </div>
-                          </div>
-                          <div>
-                            <div className="mb-2 text-xs font-semibold text-muted-foreground">Adicionar vão nesta parede</div>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")}
-                                className="rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-muted"
-                              >
-                                + Porta
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")}
-                                className="rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-muted"
-                              >
-                                + Janela
-                              </button>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <label className="block text-xs font-semibold">
-                              Comprimento exato (m)
-                              <input
-                                type="number"
-                                min="0.5"
-                                step="0.05"
-                                value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
-                                onChange={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.target.value))}
-                                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                              />
-                            </label>
-                            <label className="block text-xs font-semibold">
-                              Orientação
-                              <div className="mt-1 flex h-10 items-center rounded-xl border bg-muted/30 px-3 text-sm font-medium">
-                                {Math.abs(selectedCustomWall.y1 - selectedCustomWall.y2) < 0.01 ? "Horizontal" : "Vertical"}
-                              </div>
-                            </label>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <label className="block text-xs font-semibold">
-                              Início X (m)
-                              <input
-                                type="number"
-                                min="0"
-                                max={lotWidth}
-                                step="0.05"
-                                value={selectedCustomWall.x1.toFixed(2)}
-                                onChange={(event) => setCustomWallStart(selectedCustomWall.id, "x", Number(event.target.value))}
-                                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                              />
-                            </label>
-                            <label className="block text-xs font-semibold">
-                              Início Y (m)
-                              <input
-                                type="number"
-                                min="0"
-                                max={lotDepth}
-                                step="0.05"
-                                value={selectedCustomWall.y1.toFixed(2)}
-                                onChange={(event) => setCustomWallStart(selectedCustomWall.id, "y", Number(event.target.value))}
-                                className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                              />
-                            </label>
-                          </div>
-
-                          <label className="block text-xs font-semibold">
-                            Espessura
-                            <select
-                              value={selectedCustomWall.thickness ?? 0.15}
-                              onChange={(event) => updateCustomWall(selectedCustomWall.id, { thickness: Number(event.target.value) }, true)}
-                              className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                            >
-                              <option value={0.10}>10 cm</option>
-                              <option value={0.12}>12 cm</option>
-                              <option value={0.15}>15 cm</option>
-                              <option value={0.20}>20 cm</option>
-                              <option value={0.25}>25 cm</option>
-                            </select>
-                          </label>
-                          <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-                            Arraste as extremidades para edição rápida ou informe comprimento e coordenadas para ajuste preciso. Alterações numéricas também entram em Desfazer/Refazer.
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => deleteCustomWall(selectedCustomWall.id)}
-                            className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
+                        )}
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Abertura
+                          <select
+                            value={selectedCustomOpening.openingStyle ?? (selectedOpening.type === "door" ? "hinged" : "sliding")}
+                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { openingStyle: event.target.value as CustomOpening["openingStyle"] })}
+                            className="mt-1 h-9 w-[125px] rounded-lg border bg-white px-2 text-xs"
                           >
-                            Excluir parede livre
-                          </button>
-                        </div>
-                      ) : !selectedWall ? (
-                        <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          Selecione uma parede ou uma junção da rede. Nós roxos representam encontros editáveis; cruzamentos/T detectados pela topologia aparecem na malha.
-                        </div>
-                      ) : (
-                        <div className="mt-4 space-y-4">
-                          <div className="rounded-xl bg-muted p-3">
-                            <div className="font-semibold">{selectedWall.exterior ? "Parede externa" : "Parede interna"}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {Math.abs(selectedWall.x1 - selectedWall.x2) < 0.01 ? "Vertical" : "Horizontal"} · {Math.hypot(selectedWall.x2 - selectedWall.x1, selectedWall.y2 - selectedWall.y1).toFixed(2)} m
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => nudgeSelectedWall(-0.25)}
-                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                            >
-                              − 25 cm
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => nudgeSelectedWall(0.25)}
-                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                            >
-                              + 25 cm
-                            </button>
-                          </div>
-                          <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-                            {selectedWall.roomIds.length > 1
-                              ? "Parede compartilhada: os ambientes dos dois lados são ajustados juntos."
-                              : "Parede de perímetro: o contorno do ambiente é ajustado dentro do terreno."}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedWallId(null)}
-                            className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold text-muted-foreground"
-                          >
-                            Fechar seleção
-                          </button>
-                        </div>
-                      )
-                    ) : interactionMode === "opening" ? (
-                      !selectedOpening ? (
-                        <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          Selecione uma porta ou janela na planta para mover ou alterar o tipo.
-                        </div>
-                      ) : (
-                        <div className="mt-4 space-y-4">
-                          <div className="rounded-xl bg-muted p-3">
-                            <div className="font-semibold">{selectedOpening.type === "door" ? "Porta" : "Janela"}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Arraste na planta ou use o ajuste fino abaixo.
-                            </div>
-                          </div>
-                          {selectedCustomOpening && (
-                            <div className="space-y-3 rounded-xl border bg-background p-3">
-                              <div className="text-xs font-semibold text-muted-foreground">Dimensões do vão</div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <label className="text-xs font-medium">
-                                  Largura (m)
-                                  <input
-                                    type="number"
-                                    min="0.5"
-                                    max="4"
-                                    step="0.05"
-                                    value={(selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)).toFixed(2)}
-                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { width: Number(event.target.value) })}
-                                    className="mt-1 h-10 w-full rounded-lg border px-2"
-                                  />
-                                </label>
-                                <label className="text-xs font-medium">
-                                  Altura (m)
-                                  <input
-                                    type="number"
-                                    min="0.5"
-                                    max="2.8"
-                                    step="0.05"
-                                    value={(selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)).toFixed(2)}
-                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { height: Number(event.target.value) })}
-                                    className="mt-1 h-10 w-full rounded-lg border px-2"
-                                  />
-                                </label>
-                              </div>
-                              {selectedOpening.type === "window" && (
-                                <label className="block text-xs font-medium">
-                                  Peitoril (m)
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="2.2"
-                                    step="0.05"
-                                    value={(selectedCustomOpening.sillHeight ?? 0.9).toFixed(2)}
-                                    onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: Number(event.target.value) })}
-                                    className="mt-1 h-10 w-full rounded-lg border px-2"
-                                  />
-                                </label>
-                              )}
-                              <label className="block text-xs font-medium">
-                                Tipo de abertura
-                                <select
-                                  value={selectedCustomOpening.openingStyle ?? (selectedOpening.type === "door" ? "hinged" : "sliding")}
-                                  onChange={(event) => updateCustomOpeningParams(selectedOpening.id, {
-                                    openingStyle: event.target.value as CustomOpening["openingStyle"],
-                                  })}
-                                  className="mt-1 h-10 w-full rounded-lg border bg-background px-2"
-                                >
-                                  {selectedOpening.type === "door" ? (
-                                    <>
-                                      <option value="hinged">Giro</option>
-                                      <option value="sliding">Correr</option>
-                                      <option value="fixed">Fixa</option>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <option value="sliding">Correr</option>
-                                      <option value="fixed">Fixa</option>
-                                      <option value="tilt_turn">Oscilobatente</option>
-                                      <option value="hinged">Abrir</option>
-                                    </>
-                                  )}
-                                </select>
-                              </label>
-                              {selectedOpening.type === "door" && (selectedCustomOpening.openingStyle ?? "hinged") === "hinged" && (
-                                <div>
-                                  <div className="mb-1 text-xs font-medium">Sentido de abertura</div>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    {(["left", "right"] as const).map((swing) => (
-                                      <button
-                                        key={swing}
-                                        type="button"
-                                        onClick={() => updateCustomOpeningParams(selectedOpening.id, { swing })}
-                                        className={(selectedCustomOpening.swing ?? "left") === swing
-                                          ? "rounded-lg border border-orange-400 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-800"
-                                          : "rounded-lg border px-3 py-2 text-xs font-semibold"}
-                                      >
-                                        {swing === "left" ? "Esquerda" : "Direita"}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => moveOpening(-0.25)}
-                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                            >
-                              − 25 cm
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveOpening(0.25)}
-                              className="rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                            >
-                              + 25 cm
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={toggleOpeningType}
-                            className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                          >
-                            Trocar para {selectedOpening.type === "door" ? "janela" : "porta"}
-                          </button>
-                          {customOpenings.some((opening) => opening.id === selectedOpening.id) && (
-                            <button
-                              type="button"
-                              onClick={() => deleteCustomOpening(selectedOpening.id)}
-                              className="w-full rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
-                            >
-                              Excluir vão
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setSelectedOpeningId(null)}
-                            className="w-full rounded-xl border px-3 py-2.5 text-sm font-semibold text-muted-foreground"
-                          >
-                            Fechar seleção
-                          </button>
-                        </div>
-                      )
-                    ) : !selected ? (
-                      <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                        Selecione um ambiente na planta para editar medidas, posição e bloqueio.
-                      </div>
-                    ) : (
-                      <div className="mt-4 space-y-4">
-                        <div className="rounded-xl bg-muted p-3">
-                          <div className="font-semibold">{selected.label}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">{(selected.width * selected.depth).toFixed(1)} m²</div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <label className="text-xs font-medium">Largura
-                            <input type="number" step="0.1" value={selected.width} onChange={(e) => updateSelected({ width: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
-                          </label>
-                          <label className="text-xs font-medium">Profundidade
-                            <input type="number" step="0.1" value={selected.depth} onChange={(e) => updateSelected({ depth: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
-                          </label>
-                          <label className="text-xs font-medium">X
-                            <input type="number" step="0.25" value={selected.x} onChange={(e) => updateSelected({ x: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
-                          </label>
-                          <label className="text-xs font-medium">Y
-                            <input type="number" step="0.25" value={selected.y} onChange={(e) => updateSelected({ y: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 h-10 w-full rounded-lg border px-2" />
-                          </label>
-                        </div>
-                        <div>
-                          <div className="mb-2 text-xs font-semibold text-muted-foreground">Mover 25 cm</div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <span />
-                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "up")} className="rounded-lg border py-2 text-sm disabled:opacity-40">↑</button>
-                            <span />
-                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "left")} className="rounded-lg border py-2 text-sm disabled:opacity-40">←</button>
-                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "down")} className="rounded-lg border py-2 text-sm disabled:opacity-40">↓</button>
-                            <button type="button" disabled={selected.locked} onClick={() => swapPosition(selected, "right")} className="rounded-lg border py-2 text-sm disabled:opacity-40">→</button>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => updateSelected({ locked: !selected.locked })}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold"
-                        >
-                          <Lock className="h-4 w-4" /> {selected.locked ? "Desbloquear" : "Bloquear posição"}
-                        </button>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={duplicateSelectedRoom}
-                            disabled={SINGLETON_ROOM_KINDS.has(selected.kind)}
-                            className="rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-40"
-                          >
-                            Duplicar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={deleteSelectedRoom}
-                            className="rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      </div>
+                            <option value="hinged">Giro</option>
+                            <option value="sliding">Correr</option>
+                            <option value="fixed">Fixa</option>
+                            {selectedOpening.type === "window" && <option value="tilt_turn">Oscilobatente</option>}
+                          </select>
+                        </label>
+                      </>
                     )}
-
-                    {interactionMode === "room" && (
-                    <div className="mt-5 border-t pt-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-semibold">Validação</div>
-                        <span className={layoutIssues.some((issue) => issue.severity === "error")
-                          ? "rounded-full bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700"
-                          : layoutIssues.length
-                            ? "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700"
-                            : "rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700"}>
-                          {layoutIssues.some((issue) => issue.severity === "error") ? "Corrigir" : layoutIssues.length ? "Atenção" : "OK"}
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {layoutIssues.slice(0, 5).map((issue) => (
-                          <button
-                            key={issue.id}
-                            type="button"
-                            onClick={() => issue.roomId && setSelectedId(issue.roomId)}
-                            className={issue.severity === "error"
-                              ? "block w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs text-red-800"
-                              : "block w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"}
-                          >
-                            {issue.message}
-                          </button>
-                        ))}
-                        {layoutIssues.length === 0 && <div className="text-xs text-emerald-700">Sem conflitos básicos detectados.</div>}
-                      </div>
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button type="button" onClick={() => moveOpening(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
+                      <button type="button" onClick={() => moveOpening(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
+                      {customOpenings.some((opening) => opening.id === selectedOpening.id) && (
+                        <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                      )}
                     </div>
-                    )}
-                  </>
-                )}
-
-                {editorView === "model3d" && (
-                  <div className="mt-4 space-y-4">
-                    <div className="rounded-xl border bg-muted/30 p-4">
-                      <div className="text-sm font-semibold">Modelo sincronizado</div>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        Alterações feitas na planta 2D, nas paredes livres e nos espaços fechados alimentam esta visualização. Não existe um segundo modelo paralelo.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl bg-muted/50 p-3">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Paredes</div>
-                        <div className="mt-1 text-lg font-bold">{modelLevels.reduce((sum, level) => sum + level.walls.length + level.customWalls.length, 0)}</div>
-                      </div>
-                      <div className="rounded-xl bg-muted/50 p-3">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Espaços</div>
-                        <div className="mt-1 text-lg font-bold">{modelLevels.reduce((sum, level) => sum + level.closedSpaces.length, 0)}</div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setEditorView("plan")}
-                      className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-                    >
-                      Voltar para editar planta
-                    </button>
                   </div>
-                )}
-
-                {editorView === "facade" && (
-                  <div className="mt-4 space-y-4">
-                    <label className="block text-xs font-semibold">Estilo
+                ) : selectedClosedSpace ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="mr-2 min-w-[110px]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Ambiente</div>
+                      <div className="mt-1 text-sm font-semibold">{selectedClosedSpace.area.toFixed(1)} m²</div>
+                    </div>
+                    <label className="min-w-[220px] flex-1 text-[10px] font-semibold text-slate-500">
+                      Nome
+                      <input
+                        value={selectedSpaceProfile?.label ?? ""}
+                        onChange={(event) => updateSelectedSpaceProfile({ label: event.target.value })}
+                        placeholder="Ex.: Sala de estar"
+                        className="mt-1 h-9 w-full rounded-lg border px-3 text-xs font-semibold"
+                      />
+                    </label>
+                    <label className="text-[10px] font-semibold text-slate-500">
+                      Tipo
                       <select
-                        value={facadePreferences.style}
-                        onChange={(event) => setFacadePreferences((prev) => ({ ...prev, style: event.target.value as ConceptFacadePreferences["style"] }))}
-                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
+                        value={selectedSpaceProfile?.kind ?? "outro"}
+                        onChange={(event) => updateSelectedSpaceProfile({ kind: event.target.value })}
+                        className="mt-1 h-9 w-[150px] rounded-lg border bg-white px-2 text-xs"
                       >
-                        <option value="contemporaneo">Contemporâneo</option>
-                        <option value="minimalista">Minimalista</option>
-                        <option value="classico_contemporaneo">Clássico contemporâneo</option>
-                        <option value="tropical">Tropical</option>
-                        <option value="industrial">Industrial</option>
-                        <option value="rustico_contemporaneo">Rústico contemporâneo</option>
+                        <option value="sala">Sala / estar</option>
+                        <option value="cozinha">Cozinha</option>
+                        <option value="suite">Suíte</option>
+                        <option value="quarto">Quarto</option>
+                        <option value="banheiro">Banheiro</option>
+                        <option value="lavanderia">Lavanderia</option>
+                        <option value="garagem">Garagem</option>
+                        <option value="gourmet">Gourmet</option>
+                        <option value="circulacao">Circulação</option>
+                        <option value="escada">Escada</option>
+                        <option value="outro">Outro</option>
                       </select>
                     </label>
-                    <label className="block text-xs font-semibold">Cobertura
-                      <select
-                        value={facadePreferences.roof}
-                        onChange={(event) => setFacadePreferences((prev) => ({ ...prev, roof: event.target.value as ConceptFacadePreferences["roof"] }))}
-                        className="mt-1 h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                      >
-                        <option value="platibanda">Platibanda</option>
-                        <option value="aparente">Telhado aparente</option>
-                        <option value="misto">Misto</option>
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setStep(5)}
-                      className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-                    >
-                      Abrir ajustes completos de fachada
-                    </button>
                   </div>
-                )}
-
-                {editorView === "render" && (
-                  <div className="mt-4 space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => void generateConceptRender()}
-                      disabled={conceptRender?.status === "processing"}
-                      className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {conceptRender?.status === "processing"
-                        ? "Gerando render..."
-                        : conceptRender?.resultImageUrl
-                          ? "Gerar nova versão"
-                          : "Gerar render"}
-                    </button>
-                    {renderError && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{renderError}</div>}
+                ) : selectedWall ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="mr-2 min-w-[170px]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Parede</div>
+                      <div className="mt-1 text-sm font-semibold">
+                        {selectedWall.exterior ? "Externa" : "Interna"} · {Math.hypot(selectedWall.x2 - selectedWall.x1, selectedWall.y2 - selectedWall.y1).toFixed(2)} m
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => nudgeSelectedWall(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
+                    <button type="button" onClick={() => nudgeSelectedWall(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
+                    <button type="button" onClick={() => setSelectedWallId(null)} className="ml-auto h-9 rounded-lg border px-3 text-xs font-semibold text-slate-500">Fechar</button>
                   </div>
-                )}
-                </div>
+                ) : selected ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="mr-2 min-w-[145px]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Ambiente</div>
+                      <div className="mt-1 text-sm font-semibold">{selected.label} · {(selected.width * selected.depth).toFixed(1)} m²</div>
+                    </div>
+                    {([
+                      ["width", "Largura", selected.width],
+                      ["depth", "Prof.", selected.depth],
+                      ["x", "X", selected.x],
+                      ["y", "Y", selected.y],
+                    ] as const).map(([key, label, value]) => (
+                      <label key={key} className="text-[10px] font-semibold text-slate-500">
+                        {label} (m)
+                        <input
+                          type="number"
+                          step={key === "x" || key === "y" ? 0.25 : 0.1}
+                          value={value}
+                          onChange={(event) => updateSelected({
+                            [key]: key === "x" || key === "y"
+                              ? Math.max(0, Number(event.target.value) || 0)
+                              : Math.max(1, Number(event.target.value) || 1),
+                          })}
+                          className="mt-1 h-9 w-[86px] rounded-lg border px-2 text-xs font-semibold"
+                        />
+                      </label>
+                    ))}
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button type="button" onClick={() => updateSelected({ locked: !selected.locked })} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                        {selected.locked ? "Desbloquear" : "Bloquear"}
+                      </button>
+                      <button type="button" onClick={duplicateSelectedRoom} disabled={SINGLETON_ROOM_KINDS.has(selected.kind)} className="h-9 rounded-lg border px-3 text-xs font-semibold disabled:opacity-40">Duplicar</button>
+                      <button type="button" onClick={deleteSelectedRoom} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                    </div>
+                  </div>
+                ) : null}
               </aside>
               )}
           </section>
