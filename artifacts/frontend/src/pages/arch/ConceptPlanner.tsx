@@ -25,8 +25,6 @@ import {
   LayoutGrid,
   Camera,
   Ruler,
-  MessageCircle,
-  Settings2,
   Share2,
   ChevronDown,
 } from "lucide-react";
@@ -2035,7 +2033,9 @@ export default function ConceptPlanner() {
 
                 <button
                   type="button"
+                  onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
                   className="ml-1 inline-flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold shadow-sm"
+                  title="Alternar pavimento"
                 >
                   <Layers3 className="h-4 w-4 text-slate-500" />
                   <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
@@ -2099,13 +2099,6 @@ export default function ConceptPlanner() {
                 </button>
                 <button
                   type="button"
-                  title="Comentários"
-                  className="hidden h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50 sm:grid"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
                   onClick={() => setFloors((value) => Math.min(3, value + 1))}
                   title="Adicionar pavimento"
                   className="grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"
@@ -2114,14 +2107,8 @@ export default function ConceptPlanner() {
                 </button>
                 <button
                   type="button"
-                  title="Configurações"
-                  className="hidden h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50 sm:grid"
-                >
-                  <Settings2 className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  title="Compartilhar"
+                  onClick={() => { void navigator.clipboard?.writeText(window.location.href); }}
+                  title="Copiar link do projeto"
                   className="grid h-10 w-10 place-items-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600"
                 >
                   <Share2 className="h-4 w-4" />
