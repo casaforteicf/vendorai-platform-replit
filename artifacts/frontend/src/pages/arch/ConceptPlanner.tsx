@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { buildConceptGeometry, generateLayoutVariant, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import ConceptVolumetry, { type ConceptFacadePreferences } from "./ConceptVolumetry";
+import ConceptPlan2D from "./ConceptPlan2D";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 
 type RoomKind =
@@ -330,8 +331,6 @@ export default function ConceptPlanner() {
     updateSelected({ x: nextX, y: nextY });
   };
 
-  const scaleX = 100 / lotWidth;
-  const scaleY = 100 / lotDepth;
   const baseGeometry = useMemo(
     () => buildConceptGeometry(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor],
@@ -798,69 +797,19 @@ export default function ConceptPlanner() {
               </div>
               {viewMode === "2d" ? (
                 <div className="space-y-3">
-                  <div className="relative mx-auto h-[460px] max-w-[720px] overflow-hidden rounded-2xl border-2 border-slate-300 sm:h-[560px] bg-[linear-gradient(to_right,rgba(148,163,184,.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.14)_1px,transparent_1px)] bg-[size:24px_24px] p-2">
-                                {visibleRooms.map((room) => {
-                                  const left = room.x * scaleX;
-                                  const top = room.y * scaleY;
-                                  const width = Math.max(10, room.width * scaleX);
-                                  const height = Math.max(8, room.depth * scaleY);
-                                  return (
-                                    <button
-                                      key={room.id}
-                                      type="button"
-                                      onClick={() => setSelectedId(room.id)}
-                                      className={[
-                                        "absolute overflow-hidden rounded-md border-2 px-2 py-1 text-left shadow-sm transition",
-                                        room.kind === "piscina" ? "border-sky-400 bg-sky-100" : "border-slate-500 bg-white",
-                                        selectedId === room.id ? "ring-4 ring-orange-400/40" : "",
-                                      ].join(" ")}
-                                      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
-                                    >
-                                      <div className="truncate text-[11px] font-bold text-slate-800">{room.label}</div>
-                                      <div className="truncate text-[9px] text-slate-500">{room.width.toFixed(1)} × {room.depth.toFixed(1)} m</div>
-                                    </button>
-                                  );
-                                })}
-                                <svg
-                                  className="pointer-events-none absolute inset-2 z-20 h-[calc(100%-1rem)] w-[calc(100%-1rem)] overflow-visible"
-                                  viewBox={`0 0 ${lotWidth} ${lotDepth}`}
-                                  preserveAspectRatio="none"
-                                  aria-hidden="true"
-                                >
-                                  {geometry.walls.map((wall) => (
-                                    <line
-                                      key={wall.id}
-                                      x1={wall.x1}
-                                      y1={wall.y1}
-                                      x2={wall.x2}
-                                      y2={wall.y2}
-                                      stroke={wall.exterior ? "#0f172a" : "#334155"}
-                                      strokeWidth={wall.exterior ? 5 : 3}
-                                      vectorEffect="non-scaling-stroke"
-                                    />
-                                  ))}
-                                  {geometry.openings.map((opening) => {
-                                    const half = opening.type === "door" ? 0.45 : 0.6;
-                                    const horizontal = opening.orientation === "horizontal";
-                                    return (
-                                      <line
-                                        key={opening.id}
-                                        x1={horizontal ? opening.x - half : opening.x}
-                                        y1={horizontal ? opening.y : opening.y - half}
-                                        x2={horizontal ? opening.x + half : opening.x}
-                                        y2={horizontal ? opening.y : opening.y + half}
-                                        stroke={opening.type === "door" ? "#f97316" : "#0284c7"}
-                                        strokeWidth={opening.type === "door" ? 5 : 4}
-                                        vectorEffect="non-scaling-stroke"
-                                      />
-                                    );
-                                  })}
-                                </svg>
-                              </div>
-                  <div className="flex flex-wrap gap-4 text-[11px] text-muted-foreground">
-                    <span><strong className="text-slate-900">Parede externa</strong> linha escura</span>
-                    <span><strong className="text-orange-600">Porta sugerida</strong> laranja</span>
-                    <span><strong className="text-sky-600">Janela sugerida</strong> azul</span>
+                  <ConceptPlan2D
+                    rooms={visibleRooms}
+                    lotWidth={lotWidth}
+                    lotDepth={lotDepth}
+                    geometry={geometry}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                  />
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                    <span><strong className="text-slate-900">Planta conceitual</strong> cotas, paredes e ambientes</span>
+                    <span><strong className="text-slate-700">Portas</strong> com arco de abertura</span>
+                    <span><strong className="text-sky-700">Janelas</strong> em azul</span>
+                    <span><strong className="text-orange-600">Seleção</strong> ambiente em ajuste</span>
                   </div>
                 </div>
               ) : (
