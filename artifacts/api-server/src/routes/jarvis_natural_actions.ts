@@ -66,7 +66,18 @@ function resolveWindowHours(raw: unknown) {
 // Abertura proativa compartilhada entre web/mobile. Só leitura; não executa ações.
 router.get("/jarvis/proactivity", async (req, res) => {
   const tenantId = typeof req.user?.tenantId === "string" ? req.user.tenantId : null;
-  if (!tenantId) return res.status(403).json({ error: "Tenant obrigatório" });
+  if (!tenantId) {
+    return res.status(403).json({
+      error: "Tenant obrigatório",
+      diag: {
+        hasReqUser: !!req.user,
+        reqUserKeys: req.user ? Object.keys(req.user) : null,
+        reqUserRaw: req.user ?? null,
+        authHeaderPrefix: (req.headers["authorization"] || "").toString().slice(0, 20),
+        authHeaderLength: (req.headers["authorization"] || "").toString().length,
+      },
+    });
+  }
 
   const intelligence = await loadJarvisPriorityIntelligence(tenantId, 8);
   return res.json({

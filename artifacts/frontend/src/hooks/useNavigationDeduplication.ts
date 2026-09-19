@@ -240,8 +240,6 @@ function setSectionExpanded(container: HTMLElement, heading: HTMLElement, expand
 }
 
 function applyCollapsibleSections() {
-  const pathname = window.location.pathname;
-
   document.querySelectorAll<HTMLElement>("p").forEach((heading) => {
     const text = heading.textContent?.replace(/[⌄›]/g, "").replace(/\s+/g, " ").trim() ?? "";
     if (!isCollapsibleSectionHeading(text)) return;
@@ -254,14 +252,7 @@ function applyCollapsibleSections() {
     );
     if (sectionLinks.length === 0) return;
 
-    const containsActiveRoute = sectionLinks.some((link) => {
-      const href = link.getAttribute("href")?.split("?")[0] ?? "";
-      return Boolean(href) && (pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)));
-    });
-
-    heading.classList.add("cursor-pointer", "select-none");
-    heading.setAttribute("role", "button");
-    heading.setAttribute("tabindex", "0");
+    heading.classList.add("select-none");
     heading.dataset.vendoraiCollapsibleSection = "true";
 
     let indicator = heading.querySelector<HTMLElement>("[data-vendorai-section-indicator]");
@@ -273,23 +264,11 @@ function applyCollapsibleSections() {
       heading.appendChild(indicator);
     }
 
-    if (heading.dataset.vendoraiCollapsibleSectionBound !== "true") {
-      const toggle = () => {
-        const expanded = container.dataset.vendoraiSectionExpanded !== "true";
-        setSectionExpanded(container, heading, expanded);
-      };
-      heading.addEventListener("click", toggle);
-      heading.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        toggle();
-      });
-      heading.dataset.vendoraiCollapsibleSectionBound = "true";
-    }
-
-    const persisted = container.dataset.vendoraiSectionExpanded;
-    const expanded = containsActiveRoute || persisted === "true";
-    setSectionExpanded(container, heading, expanded);
+    // Igual aos grupos com botão: sempre expandido, sem depender de clique
+    // (o toggle dependia de um estado que outro observer da sidebar podia
+    // sobrescrever quase ao mesmo tempo, fazendo o clique parecer não
+    // fazer nada).
+    setSectionExpanded(container, heading, true);
   });
 }
 
@@ -309,8 +288,6 @@ function setCoreGroupExpanded(button: HTMLButtonElement, links: HTMLAnchorElemen
 }
 
 function applyCoreNavigationGroups() {
-  const pathname = window.location.pathname;
-
   CORE_NAVIGATION_GROUPS.forEach((group) => {
     document.querySelectorAll<HTMLAnchorElement>(`a[href="${group.hrefs[0]}"]`).forEach((firstLink) => {
       const container = firstLink.parentElement;
@@ -346,17 +323,14 @@ function applyCoreNavigationGroups() {
 
         button.append(label, indicator);
         firstLink.insertAdjacentElement("beforebegin", button);
-        button.addEventListener("click", () => {
-          setCoreGroupExpanded(button!, links, button!.dataset.vendoraiCoreExpanded !== "true");
-        });
       }
 
-      const containsActiveRoute = links.some((link) => {
-        const href = link.getAttribute("href")?.split("?")[0] ?? "";
-        return Boolean(href) && (pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)));
-      });
-      const persisted = button.dataset.vendoraiCoreExpanded;
-      setCoreGroupExpanded(button, links, containsActiveRoute || persisted === "true");
+      // Os grupos ficam sempre abertos agora — o toggle por clique dependia
+      // de um estado (persisted) que podia ser sobrescrito por outro dos
+      // vários observers de DOM desta sidebar rodando quase ao mesmo tempo,
+      // fazendo o clique parecer não fazer nada. Mais simples e confiável
+      // deixar tudo visível sem precisar clicar.
+      setCoreGroupExpanded(button, links, true);
     });
   });
 }
@@ -405,8 +379,12 @@ export function useNavigationDeduplication() {
         });
       });
 
-      applyCoreNavigationGroups();
-      applyCollapsibleSections();
+      // Desativado: o agrupamento sintético (criar botões/expandir seções
+      // via DOM direto) estava deixando os links reais de navegação
+      // inconsistentes/inclicáveis para alguns usuários. Os links originais,
+      // sem agrupamento visual, continuam funcionando normalmente.
+      // applyCoreNavigationGroups();
+      // applyCollapsibleSections();
 
       if (window.location.pathname === "/trabalho") {
         document.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
@@ -426,7 +404,15 @@ export function useNavigationDeduplication() {
     };
 
     applyPolicy();
-    const observer = new MutationObserver(applyPolicy);
+    const observer = new MutationObserver(() => {
+      // Mesmo padrão dos outros observers corrigidos hoje: applyPolicy pode
+      // inserir/mover elementos (childList), o que sem desconectar antes
+      // retrigger a si mesmo — e se o React re-renderizar esse trecho do
+      // menu no meio do caminho, isso podia entrar em loop e travar a aba.
+      observer.disconnect();
+      applyPolicy();
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
