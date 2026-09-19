@@ -745,6 +745,25 @@ export default function ConceptPlanner() {
     pushRoomHistory(before);
   };
 
+  const deactivateWallFirstFloor = () => {
+    if (!wallFirstActive) return;
+    const before = snapshotEditor();
+    setWallFirstFloors((prev) => prev.filter((floor) => floor !== activeFloor));
+    setCustomWalls((prev) => prev.filter((wall) =>
+      wall.floor !== activeFloor || !wall.id.startsWith(`wf-${activeFloor}-`)
+    ));
+    setCustomOpenings((prev) => prev.filter((opening) =>
+      opening.floor !== activeFloor || !opening.id.startsWith(`wf-opening-${activeFloor}-`)
+    ));
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedOpeningId(null);
+    setSelectedClosedSpaceId(null);
+    setInteractionMode("room");
+    pushRoomHistory(before);
+  };
+
   const customOpeningMarkers = useMemo(
     () =>
       customOpenings
@@ -1806,8 +1825,15 @@ export default function ConceptPlanner() {
                           {customWallTopology.nodes.filter((node) => node.segmentIds.length >= 3 || node.endpointRefs.length >= 2).length} junções · {customWallTopology.segments.length} segmentos topológicos
                         </div>
                         {wallFirstActive ? (
-                          <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
-                            Rede de paredes = modelo principal
+                          <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
+                            <span>Rede de paredes = modelo principal</span>
+                            <button
+                              type="button"
+                              onClick={deactivateWallFirstFloor}
+                              className="rounded-md border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
+                            >
+                              Reverter
+                            </button>
                           </div>
                         ) : (
                           <button
