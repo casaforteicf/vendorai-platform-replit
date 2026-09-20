@@ -47,6 +47,7 @@ import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
+import { blockingConceptIssues, buildCompletedRenderPatch, canAdvanceConceptLayout } from "./conceptWorkflow";
 
 type RoomKind =
   | "sala"
@@ -1132,6 +1133,7 @@ export default function ConceptPlanner() {
     () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
   );
+  const blockingLayoutIssues = blockingConceptIssues(layoutIssues);
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedCustomOpening = selectedOpening
     ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
@@ -1489,11 +1491,8 @@ export default function ConceptPlanner() {
   };
 
   const generateConceptRender = async () => {
-    let renderProjectId = conceptId;
-    if (!renderProjectId) {
-      renderProjectId = await saveConcept(5);
-      if (!renderProjectId) return;
-    }
+    const renderProjectId = await saveConcept(5);
+    if (!renderProjectId) return;
 
     setRenderError(null);
     setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
@@ -1555,26 +1554,11 @@ export default function ConceptPlanner() {
           };
           setConceptRender(completed);
 
-          const payload = {
-            title: "Meu pré-projeto",
-            status: "draft",
-            currentStep: 5,
-            lot: { width: lotWidth, depth: lotDepth },
-            configuration: { floors, desiredArea, typology, layoutPreferences, customWalls, customOpenings, spaceProfiles },
-            rooms,
-            openingOverrides,
-            facadePreferences,
-            facadeDesign,
-            conceptRender: completed,
-            selectedVariant: layoutVariant,
-          };
-          if (renderProjectId) {
-            await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-          }
+          await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildCompletedRenderPatch(completed)),
+          });
           return;
         }
 
@@ -2400,8 +2384,44 @@ export default function ConceptPlanner() {
                 >
                   <Share2 className="h-4 w-4" />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!canAdvanceConceptLayout(layoutIssues)) return;
+                    setStep(5);
+                    void saveConcept(5);
+                  }}
+                  disabled={blockingLayoutIssues.length > 0}
+                  title={blockingLayoutIssues.length > 0 ? "Corrija os erros da planta antes de avançar" : "Continuar para fachada"}
+                  className="ml-1 inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Fachada <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
             </div>
+
+            {layoutIssues.length > 0 && (
+              <div className="absolute right-4 top-20 z-40 w-[min(380px,calc(100vw-32px))] rounded-2xl border bg-white/95 p-3 shadow-lg backdrop-blur">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs font-bold text-slate-900">Validação da planta</div>
+                  <div className={blockingLayoutIssues.length > 0 ? "text-xs font-bold text-red-600" : "text-xs font-bold text-amber-600"}>
+                    {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                  </div>
+                </div>
+                <div className="mt-2 max-h-36 space-y-1.5 overflow-auto">
+                  {layoutIssues.slice(0, 6).map((issue) => (
+                    <div
+                      key={issue.id}
+                      className={issue.severity === "error"
+                        ? "rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700"
+                        : "rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-800"}
+                    >
+                      {issue.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div
               data-concept-render-source="true"
