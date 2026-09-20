@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { TENANT_A, TENANT_B, tokenA, tokenB } from "./helpers/auth.js";
 
-const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(() => ({
+const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockDbExecute, mockDbTransaction } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbUpdate: vi.fn(),
   mockDbDelete: vi.fn(),
   mockDbInsert: vi.fn(),
+  mockDbExecute: vi.fn(),
+  mockDbTransaction: vi.fn(),
 }));
 
 vi.mock("@workspace/db", () => {
@@ -19,6 +21,8 @@ vi.mock("@workspace/db", () => {
       update: mockDbUpdate,
       delete: mockDbDelete,
       insert: mockDbInsert,
+      execute: mockDbExecute,
+      transaction: mockDbTransaction,
     },
     archConceptProjectsTable: {
       id: "id",
@@ -140,6 +144,15 @@ const app = express();
 app.use(express.json());
 app.use("/api", authenticate, archRouter);
 
+const txDb = {
+  select: mockDbSelect,
+  update: mockDbUpdate,
+  delete: mockDbDelete,
+  insert: mockDbInsert,
+  execute: mockDbExecute,
+};
+
+
 const conceptA = {
   id: "concept-a",
   tenantId: TENANT_A,
@@ -182,6 +195,8 @@ function updateReturning(rows: unknown[]) {
 describe("Arqdor Concept — persistência e isolamento", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbExecute.mockResolvedValue({ rows: [{ pg_advisory_xact_lock: true }] });
+    mockDbTransaction.mockImplementation(async (callback: (tx: typeof txDb) => unknown) => callback(txDb));
   });
 
   it("carrega o último pré-projeto do próprio tenant/usuário", async () => {
@@ -259,6 +274,8 @@ describe("Arqdor Concept — persistência e isolamento", () => {
 describe("Arqdor Concept — handoff idempotente para Projeto Arqdor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbExecute.mockResolvedValue({ rows: [{ pg_advisory_xact_lock: true }] });
+    mockDbTransaction.mockImplementation(async (callback: (tx: typeof txDb) => unknown) => callback(txDb));
   });
 
   it("reutiliza archProjetoId já promovido e não cria projeto duplicado", async () => {

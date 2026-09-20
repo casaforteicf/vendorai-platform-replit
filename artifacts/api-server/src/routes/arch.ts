@@ -215,7 +215,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
-  const [concept] = await db
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`arqdor-concept-promote:${tid}:${id}`}))`);
+
+  const [concept] = await tx
     .select()
     .from(archConceptProjectsTable)
     .where(
@@ -230,7 +233,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
 
   if (concept.archProjetoId) {
-    const [existingProject] = await db
+    const [existingProject] = await tx
       .select()
       .from(archProjetosTable)
       .where(
@@ -284,7 +287,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
   if (customer.name?.trim()) {
     if (customer.email?.trim()) {
-      const [byEmail] = await db
+      const [byEmail] = await tx
         .select()
         .from(leadsTable)
         .where(
@@ -309,7 +312,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
 
     if (!leadId) {
       const assignedTo = await pickNextVendedor(tid, {});
-      const [lead] = await db
+      const [lead] = await tx
         .insert(leadsTable)
         .values({
           tenantId: tid,
@@ -334,7 +337,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     }
 
     if (leadId) {
-      const [existingDeal] = await db
+      const [existingDeal] = await tx
         .select()
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tid), eq(dealsTable.leadId, leadId)))
@@ -344,13 +347,13 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       if (existingDeal) {
         dealId = existingDeal.id;
       } else {
-        const [lead] = await db
+        const [lead] = await tx
           .select({ assignedTo: leadsTable.assignedTo })
           .from(leadsTable)
           .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tid)))
           .limit(1);
 
-        const [deal] = await db
+        const [deal] = await tx
           .insert(dealsTable)
           .values({
             tenantId: tid,
@@ -380,7 +383,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     customer.notes ? `Observações do cliente: ${customer.notes}.` : null,
   ].filter(Boolean).join("\n");
 
-  const [project] = await db
+  const [project] = await tx
     .insert(archProjetosTable)
     .values({
       tenantId: tid,
@@ -400,7 +403,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     })
     .returning();
 
-  await db
+  await tx
     .update(archConceptProjectsTable)
     .set({
       archProjetoId: project.id,
@@ -415,7 +418,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       ),
     );
 
-  await db
+  await tx
     .update(archAiRendersTable)
     .set({ projectId: project.id })
     .where(
@@ -432,8 +435,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     leadId,
     dealId,
   });
+  });
 });
-
 function getPortalBaseUrl(req: Request): string {
   // Mesmo achado do reset de senha: REPLIT_DOMAINS aponta pro backend
   // (Railway), não pro site (Vercel) -- link de portal do cliente
