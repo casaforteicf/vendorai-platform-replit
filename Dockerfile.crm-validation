@@ -6,10 +6,15 @@ RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 COPY . .
 RUN pnpm install --no-frozen-lockfile
 
-# Independent CRM release gate (Railway branch source): compile the actual frontend, run the focused
-# deal regression suite, and build the API bundle without depending on Vercel.
-RUN pnpm --filter @workspace/frontend build
+# Independent VendorAI P0 release gate on Railway.
+# Validates CRM, Obras, tenant integrity and production build without depending on Vercel/GitHub Actions.
 RUN pnpm --filter @workspace/api-server exec vitest run src/__tests__/deals-isolation.test.ts
-RUN pnpm --filter @workspace/api-server build
+RUN pnpm --filter @workspace/frontend exec vitest run src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
+RUN pnpm --filter @workspace/api-server audit:tenant:baseline
+RUN pnpm --filter @workspace/api-server audit:production-integrity
+RUN pnpm typecheck
+RUN pnpm --filter @workspace/api-server test
+RUN pnpm --filter @workspace/frontend test
+RUN pnpm build
 
-CMD ["node", "-e", "console.log('crm validation passed'); setInterval(() => {}, 2147483647)"]
+CMD ["node", "-e", "console.log('VendorAI P0 validation passed'); setInterval(() => {}, 2147483647)"]
