@@ -294,8 +294,9 @@ function normalizeDraftRooms(input: Room[]) {
 }
 
 function autoArrange(rooms: Room[], lotWidth: number, lotDepth: number, floor: number) {
-  const floorRooms = rooms.filter((r) => r.floor === floor);
-  const others = rooms.filter((r) => r.floor !== floor);
+  const normalizedRooms = Array.isArray(rooms) ? rooms : [];
+  const floorRooms = normalizedRooms.filter((r) => r.floor === floor);
+  const others = normalizedRooms.filter((r) => r.floor !== floor);
   const gap = 1;
   const result: Room[] = [];
   let cursorX = 0;
@@ -754,7 +755,7 @@ export default function ConceptPlanner() {
 
   const updateSelected = (patch: Partial<Room>) => {
     if (!selectedId) return;
-    setRooms((prev) => prev.map((room) => {
+    setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) => {
       if (room.id !== selectedId) return room;
       const next = { ...room, ...patch };
       const width = Math.max(1, Math.min(lotWidth, next.width));
@@ -770,13 +771,13 @@ export default function ConceptPlanner() {
   };
 
   const updateRoomById = (roomId: string, patch: Partial<Room>) => {
-    setRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, ...patch } : room)));
+    setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) => (room.id === roomId ? { ...room, ...patch } : room)));
   };
 
   const updateOpeningById = (openingId: string, patch: OpeningOverride) => {
-    const custom = customOpenings.find((opening) => opening.id === openingId);
+    const custom = safeCustomOpenings.find((opening) => opening.id === openingId);
     if (custom) {
-      const wall = customWalls.find((item) => item.id === custom.wallId);
+      const wall = safeCustomWalls.find((item) => item.id === custom.wallId);
       if (!wall) return;
       const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
       const start = horizontal ? wall.x1 : wall.y1;
@@ -786,7 +787,7 @@ export default function ConceptPlanner() {
       const offset = Math.abs(denominator) < 0.001
         ? custom.offset
         : Math.max(0.08, Math.min(0.92, (current - start) / denominator));
-      setCustomOpenings((prev) => prev.map((opening) =>
+      setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
         opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
       ));
       return;
@@ -838,7 +839,7 @@ export default function ConceptPlanner() {
 
   const deleteSelectedRoom = () => {
     if (!selected) return;
-    setRooms((prev) => prev.filter((room) => room.id !== selected.id));
+    setRooms((prev) => (Array.isArray(prev) ? prev : []).filter((room) => room.id !== selected.id));
     setSelectedId(null);
   };
 
@@ -849,9 +850,9 @@ export default function ConceptPlanner() {
   const activateWallFirstFloor = () => {
     if (wallFirstActive) return;
     const before = snapshotEditor();
-    const floorRooms = rooms.filter((room) => room.floor === activeFloor && room.kind !== "piscina");
-    const existingWalls = customWalls.filter((wall) => wall.floor === activeFloor);
-    const otherWalls = customWalls.filter((wall) => wall.floor !== activeFloor);
+    const floorRooms = safeRooms.filter((room) => room.floor === activeFloor && room.kind !== "piscina");
+    const existingWalls = safeCustomWalls.filter((wall) => wall.floor === activeFloor);
+    const otherWalls = safeCustomWalls.filter((wall) => wall.floor !== activeFloor);
 
     const keyOf = (wall: { x1: number; y1: number; x2: number; y2: number }) => {
       const a = [Math.round(wall.x1 * 100), Math.round(wall.y1 * 100)];
@@ -892,8 +893,8 @@ export default function ConceptPlanner() {
           opening.y <= Math.max(wall.y1, wall.y2) + 0.05;
       });
 
-    const existingOpenings = customOpenings.filter((opening) => opening.floor === activeFloor);
-    const otherOpenings = customOpenings.filter((opening) => opening.floor !== activeFloor);
+    const existingOpenings = safeCustomOpenings.filter((opening) => opening.floor === activeFloor);
+    const otherOpenings = safeCustomOpenings.filter((opening) => opening.floor !== activeFloor);
     const importedOpenings: CustomOpening[] = [];
 
     for (const opening of baseGeometry.openings) {
@@ -927,7 +928,7 @@ export default function ConceptPlanner() {
     }
 
     const derivedSpaces = detectClosedSpaces(floorWalls, lotWidth, lotDepth);
-    const existingProfiles = spaceProfiles.filter((profile) => profile.floor === activeFloor);
+    const existingProfiles = safeSpaceProfiles.filter((profile) => profile.floor === activeFloor);
     if (!existingProfiles.length && derivedSpaces.length) {
       const seededProfiles: SpaceProfile[] = derivedSpaces.map((space, index) => {
         const containing = floorRooms.find((room) =>
@@ -957,7 +958,7 @@ export default function ConceptPlanner() {
         };
       });
       setSpaceProfiles((prev) => [
-        ...prev.filter((profile) => profile.floor !== activeFloor),
+        ...(Array.isArray(prev) ? prev : []).filter((profile) => profile.floor !== activeFloor),
         ...seededProfiles,
       ]);
     }
@@ -977,11 +978,11 @@ export default function ConceptPlanner() {
   const deactivateWallFirstFloor = () => {
     if (!wallFirstActive) return;
     const before = snapshotEditor();
-    setWallFirstFloors((prev) => prev.filter((floor) => floor !== activeFloor));
-    setCustomWalls((prev) => prev.filter((wall) =>
+    setWallFirstFloors((prev) => (Array.isArray(prev) ? prev : []).filter((floor) => floor !== activeFloor));
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).filter((wall) =>
       wall.floor !== activeFloor || !wall.id.startsWith(`wf-${activeFloor}-`)
     ));
-    setCustomOpenings((prev) => prev.filter((opening) =>
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).filter((opening) =>
       opening.floor !== activeFloor || !opening.id.startsWith(`wf-opening-${activeFloor}-`)
     ));
     setSelectedId(null);
@@ -995,10 +996,10 @@ export default function ConceptPlanner() {
 
   const customOpeningMarkers = useMemo(
     () =>
-      customOpenings
+      safeCustomOpenings
         .filter((opening) => opening.floor === activeFloor)
         .flatMap((opening) => {
-          const wall = customWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
+          const wall = safeCustomWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
           if (!wall) return [];
           const offset = Math.max(0.08, Math.min(0.92, opening.offset));
           const x = wall.x1 + (wall.x2 - wall.x1) * offset;
@@ -1018,7 +1019,7 @@ export default function ConceptPlanner() {
             swing: opening.swing,
           }];
         }),
-    [customOpenings, customWalls, activeFloor],
+    [safeCustomOpenings, safeCustomWalls, activeFloor],
   );
   const geometry = useMemo(
     () => ({
@@ -1047,7 +1048,7 @@ export default function ConceptPlanner() {
             x2: wall.x2,
             y2: wall.y2,
           })),
-          ...customWalls
+          ...safeCustomWalls
             .filter((wall) => wall.floor === activeFloor)
             .map((wall) => ({
               id: wall.id,
@@ -1060,7 +1061,7 @@ export default function ConceptPlanner() {
         lotWidth,
         lotDepth,
       ),
-    [geometry.walls, customWalls, activeFloor, lotWidth, lotDepth],
+    [geometry.walls, safeCustomWalls, activeFloor, lotWidth, lotDepth],
   );
   const closedArea = closedSpaces.reduce((sum, space) => sum + space.area, 0);
   const spaceAssignments = useMemo(() => {
@@ -1068,7 +1069,7 @@ export default function ConceptPlanner() {
     const usedProfiles = new Set<string>();
 
     for (const space of closedSpaces) {
-      const candidates = spaceProfiles
+      const candidates = safeSpaceProfiles
         .filter((profile) => profile.floor === activeFloor && !usedProfiles.has(profile.id))
         .map((profile) => {
           const distance = Math.hypot(
@@ -1089,11 +1090,11 @@ export default function ConceptPlanner() {
     }
 
     return assignments;
-  }, [closedSpaces, spaceProfiles, activeFloor]);
+  }, [closedSpaces, safeSpaceProfiles, activeFloor]);
 
   const modelLevels = useMemo<ConceptModelLevel[]>(() => {
     return Array.from({ length: floors }, (_, floorIndex) => {
-      const base = buildConceptGeometry(rooms, lotWidth, lotDepth, floorIndex);
+      const base = buildConceptGeometry(safeRooms, lotWidth, lotDepth, floorIndex);
       const floorGeometry = {
         ...base,
         openings: base.openings.map((opening) => {
@@ -1101,10 +1102,10 @@ export default function ConceptPlanner() {
           return override ? { ...opening, ...override } : opening;
         }),
       };
-      const floorWallFirst = wallFirstFloors.includes(floorIndex);
-      const floorCustomWalls = customWalls.filter((wall) => wall.floor === floorIndex);
+      const floorWallFirst = safeWallFirstFloors.includes(floorIndex);
+      const floorCustomWalls = safeCustomWalls.filter((wall) => wall.floor === floorIndex);
       const legacyWalls = floorWallFirst ? [] : floorGeometry.walls;
-      const floorCustomOpeningMarkers = customOpenings
+      const floorCustomOpeningMarkers = safeCustomOpenings
         .filter((opening) => opening.floor === floorIndex)
         .flatMap((opening) => {
           const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
@@ -1149,7 +1150,7 @@ export default function ConceptPlanner() {
       const labels: Record<string, string> = {};
       const usedProfiles = new Set<string>();
       for (const space of floorClosedSpaces) {
-        const best = spaceProfiles
+        const best = safeSpaceProfiles
           .filter((profile) => profile.floor === floorIndex && !usedProfiles.has(profile.id))
           .map((profile) => {
             const distance = Math.hypot(
@@ -1177,7 +1178,7 @@ export default function ConceptPlanner() {
           ? floorCustomOpeningMarkers
           : [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
-        stairs: rooms
+        stairs: safeRooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
           .map((room) => ({
             id: room.id,
@@ -1188,7 +1189,7 @@ export default function ConceptPlanner() {
           })),
       };
     });
-  }, [floors, rooms, lotWidth, lotDepth, openingOverrides, customWalls, customOpenings, spaceProfiles, wallFirstFloors]);
+  }, [floors, safeRooms, lotWidth, lotDepth, openingOverrides, safeCustomWalls, safeCustomOpenings, safeSpaceProfiles, safeWallFirstFloors]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
@@ -1197,7 +1198,7 @@ export default function ConceptPlanner() {
     if (!selectedClosedSpace) return;
     const existing = spaceAssignments.get(selectedClosedSpace.id);
     if (existing) {
-      setSpaceProfiles((prev) => prev.map((profile) =>
+      setSpaceProfiles((prev) => (Array.isArray(prev) ? prev : []).map((profile) =>
         profile.id === existing.id
           ? {
               ...profile,
@@ -1228,7 +1229,7 @@ export default function ConceptPlanner() {
   const blockingLayoutIssues = blockingConceptIssues(layoutIssues);
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedCustomOpening = selectedOpening
-    ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
+    ? safeCustomOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
     : null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
 
@@ -1246,12 +1247,12 @@ export default function ConceptPlanner() {
     recordHistory = false,
   ) => {
     const before = recordHistory ? snapshotEditor() : null;
-    setCustomWalls((prev) => prev.map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall));
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((wall) => wall.id === wallId ? { ...wall, ...patch } : wall));
     if (before) pushRoomHistory(before);
   };
 
   const setCustomWallLength = (wallId: string, rawLength: number) => {
-    const wall = customWalls.find((item) => item.id === wallId);
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall || !Number.isFinite(rawLength)) return;
     const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), rawLength));
     const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
@@ -1260,18 +1261,18 @@ export default function ConceptPlanner() {
     if (horizontal) {
       const direction = wall.x2 >= wall.x1 ? 1 : -1;
       const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + length * direction));
-      setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x2, y2: item.y1 } : item));
+      setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x2, y2: item.y1 } : item));
     } else {
       const direction = wall.y2 >= wall.y1 ? 1 : -1;
       const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + length * direction));
-      setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x2: item.x1, y2 } : item));
+      setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x2: item.x1, y2 } : item));
     }
 
     pushRoomHistory(before);
   };
 
   const setCustomWallStart = (wallId: string, axis: "x" | "y", value: number) => {
-    const wall = customWalls.find((item) => item.id === wallId);
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall || !Number.isFinite(value)) return;
     const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
     const before = snapshotEditor();
@@ -1280,19 +1281,19 @@ export default function ConceptPlanner() {
       if (axis === "x") {
         const next = Math.max(0, Math.min(lotWidth, value));
         if (Math.abs(wall.x2 - next) < 0.5) return;
-        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x1: next } : item));
+        setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x1: next } : item));
       } else {
         const next = Math.max(0, Math.min(lotDepth, value));
-        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, y1: next, y2: next } : item));
+        setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, y1: next, y2: next } : item));
       }
     } else {
       if (axis === "x") {
         const next = Math.max(0, Math.min(lotWidth, value));
-        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, x1: next, x2: next } : item));
+        setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, x1: next, x2: next } : item));
       } else {
         const next = Math.max(0, Math.min(lotDepth, value));
         if (Math.abs(wall.y2 - next) < 0.5) return;
-        setCustomWalls((prev) => prev.map((item) => item.id === wallId ? { ...item, y1: next } : item));
+        setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? { ...item, y1: next } : item));
       }
     }
 
@@ -1301,13 +1302,13 @@ export default function ConceptPlanner() {
 
   const deleteCustomWall = (wallId: string) => {
     const before = snapshotEditor();
-    setCustomWalls((prev) => prev.filter((wall) => wall.id !== wallId));
-    setCustomOpenings((prev) => prev.filter((opening) => opening.wallId !== wallId));
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).filter((wall) => wall.id !== wallId));
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).filter((opening) => opening.wallId !== wallId));
     pushRoomHistory(before);
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
 
-  const selectedCustomWall = customWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
+  const selectedCustomWall = safeCustomWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
   const customWallTopology = useMemo(
     () =>
       buildOrthogonalWallTopology(
@@ -1412,7 +1413,7 @@ export default function ConceptPlanner() {
   };
 
   const addOpeningToCustomWall = (wallId: string, type: "door" | "window") => {
-    const wall = customWalls.find((item) => item.id === wallId);
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
     const before = snapshotEditor();
     const opening: CustomOpening = {
@@ -1439,7 +1440,7 @@ export default function ConceptPlanner() {
     patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
   ) => {
     const before = snapshotEditor();
-    setCustomOpenings((prev) => prev.map((opening) => {
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
       if (opening.id !== openingId) return opening;
       const next = { ...opening, ...patch };
       const isDoor = next.type === "door";
@@ -1455,7 +1456,7 @@ export default function ConceptPlanner() {
 
   const deleteCustomOpening = (openingId: string) => {
     const before = snapshotEditor();
-    setCustomOpenings((prev) => prev.filter((opening) => opening.id !== openingId));
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).filter((opening) => opening.id !== openingId));
     pushRoomHistory(before);
     setSelectedOpeningId((current) => current === openingId ? null : current);
   };
@@ -1470,7 +1471,7 @@ export default function ConceptPlanner() {
     const epsilon = 0.08;
 
     setRooms((prev) => {
-      const affected = prev.filter((room) => wall.roomIds.includes(room.id));
+      const affected = (Array.isArray(prev) ? prev : []).filter((room) => wall.roomIds.includes(room.id));
       if (!affected.length || affected.some((room) => room.locked)) return prev;
 
       const patches = new Map<string, Partial<Room>>();
@@ -1505,7 +1506,7 @@ export default function ConceptPlanner() {
       }
 
       if (!patches.size) return prev;
-      return prev.map((room) => patches.has(room.id) ? { ...room, ...patches.get(room.id) } : room);
+      return (Array.isArray(prev) ? prev : []).map((room) => patches.has(room.id) ? { ...room, ...patches.get(room.id) } : room);
     });
   };
 
@@ -1531,9 +1532,9 @@ export default function ConceptPlanner() {
       y: selectedOpening.y,
       type: nextType,
     });
-    const custom = customOpenings.find((opening) => opening.id === selectedOpening.id);
+    const custom = safeCustomOpenings.find((opening) => opening.id === selectedOpening.id);
     if (custom) {
-      setCustomOpenings((prev) => prev.map((opening) =>
+      setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
         opening.id === selectedOpening.id
           ? {
               ...opening,
@@ -3090,7 +3091,7 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                         }}
                         onWallMove={moveWallById}
-                        customWalls={customWalls.filter((wall) => wall.floor === activeFloor)}
+                        customWalls={safeCustomWalls.filter((wall) => wall.floor === activeFloor)}
                         selectedCustomWallId={selectedCustomWallId}
                         onCreateCustomWall={addCustomWall}
                         onSelectCustomWall={(wallId) => {
