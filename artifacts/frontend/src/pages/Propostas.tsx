@@ -1881,6 +1881,24 @@ function textMatchesStage(text: string, key: OrcamentoStageKey, etapaNome: strin
 
 function composicaoMatchesStage(item: Composicao, etapaNome: string, constructionSystem: ConstructionSystem = "icf") {
   const key = resolveOrcamentoStageKey(etapaNome);
+  const metadata = item as Composicao & {
+    etapaKey?: string | null;
+    sistemasConstrutivos?: string[] | null;
+    comumTodosSistemas?: boolean;
+    ativo?: boolean;
+  };
+
+  if (metadata.ativo === false) return false;
+
+  const explicitStageKey = metadata.etapaKey ?? null;
+  const expectedStageKey = key === "estrutura_icf" ? "estrutura" : key;
+  if (explicitStageKey) {
+    if (explicitStageKey !== expectedStageKey) return false;
+    if (metadata.comumTodosSistemas) return true;
+    const systems = Array.isArray(metadata.sistemasConstrutivos) ? metadata.sistemasConstrutivos : [];
+    return systems.includes(constructionSystem);
+  }
+
   const codigo = String(item.codigo ?? "").trim();
   const text = [item.nome, item.descricao, item.codigo].filter(Boolean).join(" ");
   const normalizedText = normalizeStageText(text);
