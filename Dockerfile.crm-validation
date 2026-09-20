@@ -1,0 +1,15 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY . .
+RUN pnpm install --no-frozen-lockfile
+
+# Independent CRM release gate (Railway branch source): compile the actual frontend, run the focused
+# deal regression suite, and build the API bundle without depending on Vercel.
+RUN pnpm --filter @workspace/frontend build
+RUN pnpm --filter @workspace/api-server exec vitest run src/__tests__/deals-isolation.test.ts
+RUN pnpm --filter @workspace/api-server build
+
+CMD ["node", "-e", "console.log('crm validation passed'); setInterval(() => {}, 2147483647)"]

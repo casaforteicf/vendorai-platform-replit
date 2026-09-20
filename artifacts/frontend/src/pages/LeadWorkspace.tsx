@@ -108,7 +108,18 @@ export default function LeadWorkspace() {
   const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId) } });
   const createDeal = useCreateDeal({ request });
   const updateStage = useUpdatePipelineStage();
-  const deal = useMemo(() => deals.find((d) => d.id === requestedDealId) ?? deals.find((d) => !["ganho", "perdido", "entregue", "concluido", "cancelado"].includes(d.etapa)) ?? deals[0] ?? null, [deals, requestedDealId]);
+  const deal = useMemo(() => {
+    const requested = deals.find((d) => d.id === requestedDealId);
+    if (requested) return requested;
+
+    const newestFirst = [...deals].reverse();
+    const terminal = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
+    return newestFirst.find((d) => !terminal.has(d.etapa) && !["em_aquecimento", "parceiro"].includes(d.etapa))
+      ?? newestFirst.find((d) => d.etapa === "em_aquecimento" && d.relationshipStage !== "aquecimento_retomado")
+      ?? newestFirst.find((d) => !terminal.has(d.etapa))
+      ?? newestFirst[0]
+      ?? null;
+  }, [deals, requestedDealId]);
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
@@ -180,7 +191,9 @@ export default function LeadWorkspace() {
   }
 
   function showAdvance() {
-    const stage = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
+    const stage = deal?.etapa === "em_aquecimento"
+      ? "novo"
+      : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
     setNextStage(stage);
     setOwner(deal?.assignedTo ?? user?.id ?? "");
     setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento");
@@ -251,13 +264,41 @@ export default function LeadWorkspace() {
     }
     setSaving(true);
     try {
+      if (deal.etapa === "em_aquecimento") {
+        const response = await fetch("/api/deals/" + deal.id + "/resume-commercial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({
+            responsavelId: owner,
+            atividadeTitulo: title.trim(),
+            atividadeDescricao: description.trim() || undefined,
+            dataVencimento: due ? new Date(due).toISOString() : undefined,
+            observacaoPassagem: note.trim() || undefined,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message ?? result.error ?? "Não foi possível retomar o atendimento.");
+
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+          qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+          qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
+        ]);
+        setOpen(false);
+        toast({
+          title: result.alreadyResumed ? "Atendimento já retomado" : "Novo ciclo comercial iniciado",
+          description: "O Aquecimento ficou no histórico e a próxima atividade foi atribuída a " + displayUser(owner) + ".",
+        });
+        return;
+      }
+
       const response = await fetch("/api/deals/" + deal.id, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ etapa: nextStage, handoff: { responsavelId: owner, atividadeTitulo: title.trim(), atividadeDescricao: description.trim() || undefined, dataVencimento: due ? new Date(due).toISOString() : undefined, observacaoPassagem: note.trim() || undefined } }) });
       const result = await response.json().catch(() => ({}));
       if (response.status === 202 && result.pendingApproval) {
         toast({ title: "Movimentação enviada para aprovação." });
         return;
       }
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível avançar.");
+      if (!response.ok) throw new Error(result.message ?? result.error ?? "Não foi possível avançar.");
       await Promise.all([
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
@@ -378,7 +419,12 @@ export default function LeadWorkspace() {
 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-xl">
-        <DialogHeader>\n          <DialogTitle>Avançar e definir a sequência</DialogTitle>\n          <DialogDescription className="sr-only">Defina a próxima etapa, o responsável, a atividade, o prazo e as observações deste atendimento.</DialogDescription>\n        </DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Avançar e definir a sequência</DialogTitle>
+          <DialogDescription>
+            Confirme a próxima etapa, o responsável e a atividade que ficará pendente após esta passagem.
+          </DialogDescription>
+        </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">Atual: <strong>{currentStage?.label ?? deal?.etapa}</strong> — responsável: <strong>{displayUser(deal?.assignedTo)}</strong></div>
           {pending.length > 0 && (
@@ -403,7 +449,11 @@ export default function LeadWorkspace() {
           <Field label="Nova etapa">
             <Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{stages.filter((s) => s.key !== deal?.etapa).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{stages.filter((s, index) => {
+                if (deal?.etapa === "em_aquecimento") return s.key === "novo";
+                if (s.key === "perdido") return s.key !== deal?.etapa;
+                return index > currentIndex && !["em_aquecimento", "parceiro"].includes(s.key);
+              }).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
 

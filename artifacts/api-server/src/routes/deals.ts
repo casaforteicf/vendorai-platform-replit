@@ -324,6 +324,147 @@ const dealHandoffSchema = z.object({
   dataVencimento: z.coerce.date().optional(),
   observacaoPassagem: z.string().trim().max(2000).optional(),
 });
+
+router.post("/deals/:id/resume-commercial", async (req, res) => {
+  const parsed = dealHandoffSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.id)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Deal not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && (userFn === "vendedor" || userFn === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
+    return;
+  }
+
+  if (existing.etapa !== "em_aquecimento") {
+    res.status(409).json({
+      error: "INVALID_RESUME_SOURCE_STAGE",
+      message: "Somente um atendimento em Aquecimento pode ser retomado por este fluxo.",
+    });
+    return;
+  }
+
+  if (!existing.leadId) {
+    res.status(422).json({
+      error: "DEAL_LEAD_REQUIRED",
+      message: "O atendimento precisa estar vinculado a um lead para ser retomado.",
+    });
+    return;
+  }
+
+  const [responsavel] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.id, parsed.data.responsavelId),
+      eq(usersTable.tenantId, existing.tenantId),
+    ))
+    .limit(1);
+
+  if (!responsavel) {
+    res.status(422).json({
+      error: "INVALID_NEXT_OWNER",
+      message: "O próximo responsável não pertence a esta empresa.",
+    });
+    return;
+  }
+
+  if (existing.relationshipStage === "aquecimento_retomado") {
+    const candidates = await db
+      .select()
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.tenantId, existing.tenantId),
+        eq(dealsTable.leadId, existing.leadId),
+      ))
+      .orderBy(desc(dealsTable.createdAt));
+
+    const active = candidates.find((item) =>
+      item.id !== existing.id &&
+      !["em_aquecimento", "parceiro", "ganho", "perdido", "entregue", "concluido", "cancelado"].includes(item.etapa)
+    );
+
+    if (active) {
+      res.json({ deal: active, resumedDealId: existing.id, alreadyResumed: true });
+      return;
+    }
+  }
+
+  const handoff = parsed.data;
+  const createdDeal = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(dealsTable)
+      .values({
+        tenantId: existing.tenantId,
+        leadId: existing.leadId,
+        titulo: existing.titulo + " — Retomada",
+        etapa: "novo",
+        assignedTo: handoff.responsavelId,
+      })
+      .returning();
+
+    if (!created) throw new Error("Failed to create resumed commercial deal");
+
+    await tx
+      .update(dealsTable)
+      .set({
+        relationshipStage: "aquecimento_retomado",
+        updatedAt: new Date(),
+      })
+      .where(eq(dealsTable.id, existing.id));
+
+    await tx.insert(activitiesTable).values({
+      tenantId: existing.tenantId,
+      leadId: existing.leadId,
+      dealId: created.id,
+      tipo: "tarefa",
+      titulo: handoff.atividadeTitulo,
+      descricao: [
+        handoff.atividadeDescricao,
+        handoff.observacaoPassagem ? "Passagem: " + handoff.observacaoPassagem : null,
+      ].filter(Boolean).join("\n") || null,
+      status: "pendente",
+      dataVencimento: handoff.dataVencimento ?? null,
+      responsavelId: handoff.responsavelId,
+    });
+
+    await tx.insert(activitiesTable).values({
+      tenantId: existing.tenantId,
+      leadId: existing.leadId,
+      dealId: existing.id,
+      tipo: "tarefa",
+      titulo: "Aquecimento retomado para novo ciclo comercial",
+      descricao: "Novo atendimento criado em Novo: " + created.titulo + ".",
+      status: "concluida",
+      concluidaEm: new Date(),
+      responsavelId: req.user?.sub ?? existing.assignedTo ?? null,
+    });
+
+    return created;
+  });
+
+  res.status(201).json({ deal: createdDeal, resumedDealId: existing.id, alreadyResumed: false });
+});
+
 router.patch("/deals/:id", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const { handoff: rawHandoff, ...dealBody } = body;
