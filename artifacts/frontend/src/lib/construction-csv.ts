@@ -3,7 +3,10 @@ export type CsvRow = Record<string, string>;
 const HEADER_ALIASES: Record<string, string> = {
   preco: "preco_unitario",
   preco_unitario_rs: "preco_unitario",
+  preco_unitario_r: "preco_unitario",
+  preco_r: "preco_unitario",
   valor_unitario: "preco_unitario",
+  valor_unitario_r: "preco_unitario",
   cod: "codigo",
   code: "codigo",
   composicao: "composicao_nome",
