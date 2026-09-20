@@ -112,6 +112,9 @@ import dealsRouter from "../routes/deals.js";
 const app = express();
 app.use(express.json());
 app.use("/api", authenticate, dealsRouter);
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+});
 
 const { setupSelectReturning, setupUpdateReturning, setupDeleteSuccess } = createDbHelpers({
   mockDbSelect,
@@ -177,6 +180,14 @@ describe("PATCH /api/deals/:id — cross-tenant isolation", () => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, titulo: "Updated Deal" }]);
+    mockDbTransaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({
+        select: mockDbSelect,
+        update: mockDbUpdate,
+        insert: mockDbInsert,
+        delete: mockDbDelete,
+      })
+    );
   });
 
   it("returns 403 when tenant A patches a record owned by tenant B", async () => {
@@ -293,6 +304,9 @@ describe("POST /api/deals/:id/resume-commercial — warming handoff", () => {
         observacaoPassagem: "Cliente retomou contato",
       });
 
+    if (res.status !== 201) {
+      throw new Error(`resume-commercial returned ${res.status}: ${JSON.stringify(res.body)}`);
+    }
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
       resumedDealId: "warming-b-1",
