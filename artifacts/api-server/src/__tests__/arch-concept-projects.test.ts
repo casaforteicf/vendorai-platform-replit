@@ -259,6 +259,24 @@ describe("Arqdor Concept — persistência e isolamento", () => {
     expect(res.body.currentStep).toBe(6);
   });
 
+  it("ignora status e archProjetoId forjados no PATCH comum", async () => {
+    const { set } = updateReturning([{ ...conceptA, currentStep: 5 }]);
+
+    const res = await request(app)
+      .patch("/api/arch/concept-projects/concept-a")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        currentStep: 5,
+        status: "submitted",
+        archProjetoId: "forged-project",
+      });
+
+    expect(res.status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ currentStep: 5 }));
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: expect.anything() }));
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ archProjetoId: expect.anything() }));
+  });
+
   it("retorna 404 quando PATCH não encontra linha do mesmo tenant/owner", async () => {
     updateReturning([]);
 

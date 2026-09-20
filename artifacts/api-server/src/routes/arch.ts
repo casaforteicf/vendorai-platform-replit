@@ -193,9 +193,14 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
   }
 
+  const { status: _status, archProjetoId: _archProjetoId, ...safeUpdates } = parsed.data as typeof parsed.data & {
+    status?: unknown;
+    archProjetoId?: unknown;
+  };
+
   const [updated] = await db
     .update(archConceptProjectsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...safeUpdates, updatedAt: new Date() })
     .where(
       and(
         eq(archConceptProjectsTable.id, id),

@@ -132,7 +132,7 @@ export const updateArchConceptProjectSchema = createSelectSchema(archConceptProj
   currentStep: z.coerce.number().int().min(0).max(10),
   selectedVariant: z.coerce.number().int().min(0).max(10),
 })
-  .omit({ id: true, tenantId: true, ownerUserId: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, tenantId: true, ownerUserId: true, archProjetoId: true, status: true, createdAt: true, updatedAt: true })
   .partial();
 
 export type ArchConceptProject = typeof archConceptProjectsTable.$inferSelect;
