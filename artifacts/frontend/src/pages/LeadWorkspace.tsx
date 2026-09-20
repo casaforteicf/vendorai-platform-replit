@@ -110,7 +110,8 @@ export default function LeadWorkspace() {
   const updateStage = useUpdatePipelineStage();
   const deal = useMemo(() => {
     const requested = deals.find((d) => d.id === requestedDealId);
-    if (requested) return requested;
+    const requestedIsResumedWarmup = requested?.etapa === "em_aquecimento" && requested.relationshipStage === "aquecimento_retomado";
+    if (requested && !requestedIsResumedWarmup) return requested;
 
     const newestFirst = [...deals].reverse();
     const terminal = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
@@ -285,6 +286,9 @@ export default function LeadWorkspace() {
           qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
         ]);
         setOpen(false);
+        if (result.deal?.id) {
+          navigate("/trabalho/" + id + "?dealId=" + encodeURIComponent(result.deal.id));
+        }
         toast({
           title: result.alreadyResumed ? "Atendimento já retomado" : "Novo ciclo comercial iniciado",
           description: "O Aquecimento ficou no histórico e a próxima atividade foi atribuída a " + displayUser(owner) + ".",
