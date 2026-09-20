@@ -58,6 +58,7 @@ const SENTINEL_INTERVAL_MS = 5 * 60 * 1000;
 let sentinelTimer: NodeJS.Timeout | null = null;
 let activeIncidentKey: string | null = null;
 let activeIncidentPersisted = false;
+let githubUnavailableLogged = false;
 let watchdog: SentinelWatchdog = {
   running: false,
   intervalMs: SENTINEL_INTERVAL_MS,
@@ -348,7 +349,16 @@ export async function getOperationalContext(): Promise<OperationalContext> {
   } catch (error) {
     githubAvailable = false;
     const message = error instanceof Error ? error.message : "unknown GitHub error";
-    console.warn("dev-ia sentinel: GitHub context unavailable", { error: message });
+
+    // GitHub integration is optional for the production runtime. When the
+    // credential is intentionally absent, keep the sentinel degraded but do
+    // not emit the same stderr warning every five minutes. Other GitHub
+    // failures remain visible, and a missing-token warning is emitted once
+    // per process so operators still have evidence of the degraded state.
+    if (message !== "GITHUB_DEV_TOKEN_MISSING" || !githubUnavailableLogged) {
+      console.warn("dev-ia sentinel: GitHub context unavailable", { error: message });
+      githubUnavailableLogged = true;
+    }
   }
 
   try {
