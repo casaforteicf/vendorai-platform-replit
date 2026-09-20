@@ -768,6 +768,7 @@ export default function Composicoes() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [applyingCatalog, setApplyingCatalog] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -779,6 +780,43 @@ export default function Composicoes() {
   });
   const { mutateAsync: createComposicao, isPending: isCreating } = useCreateComposicao();
   const { mutateAsync: deleteComposicao } = useDeleteComposicao();
+
+  async function handleApplyStandardCatalog() {
+    if (!tenantId || applyingCatalog) return;
+    setApplyingCatalog(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/tenants/${tenantId}/composicoes/catalogo-padrao/aplicar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error ?? "Não foi possível aplicar o catálogo padrão.");
+      }
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListComposicoesQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) }),
+      ]);
+
+      toast({
+        title: "Catálogo padrão atualizado",
+        description: `${result.composicoesCriadas ?? 0} composições e ${result.insumosCriados ?? 0} insumos adicionados. Itens existentes foram preservados.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao aplicar catálogo padrão",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setApplyingCatalog(false);
+    }
+  }
 
   async function handleCreate(data: Record<string, unknown>) {
     await createComposicao({ tenantId, data: data as any });
@@ -884,6 +922,16 @@ export default function Composicoes() {
             </div>
           </DialogContent>
         </Dialog>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2"
+          onClick={handleApplyStandardCatalog}
+          disabled={applyingCatalog}
+        >
+          <Package className="h-4 w-4" />
+          {applyingCatalog ? "Aplicando catálogo..." : "Catálogo padrão"}
+        </Button>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova composição</Button>
