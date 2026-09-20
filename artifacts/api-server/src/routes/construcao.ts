@@ -1552,7 +1552,15 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
   const filters = [eq(composicoesTable.tenantId, tid)];
   if (req.query.q) filters.push(ilike(composicoesTable.nome, `%${req.query.q}%`));
 
-  const rows = await db.select().from(composicoesTable).where(and(...filters)).orderBy(asc(composicoesTable.nome));
+  const rows = await db
+    .select()
+    .from(composicoesTable)
+    .where(and(...filters))
+    .orderBy(
+      asc(composicoesTable.etapaKey),
+      asc(composicoesTable.ordem),
+      asc(composicoesTable.nome),
+    );
   if (rows.length === 0) return res.json(rows);
 
   // O custo da composição é sempre calculado pela Tabela Mestre de Insumos.
