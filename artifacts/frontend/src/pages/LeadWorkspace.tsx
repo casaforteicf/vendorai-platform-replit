@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -378,7 +378,7 @@ export default function LeadWorkspace() {
 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-xl">
-        <DialogHeader><DialogTitle>Avançar e definir a sequência</DialogTitle></DialogHeader>
+        <DialogHeader>\n          <DialogTitle>Avançar e definir a sequência</DialogTitle>\n          <DialogDescription className="sr-only">Defina a próxima etapa, o responsável, a atividade, o prazo e as observações deste atendimento.</DialogDescription>\n        </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">Atual: <strong>{currentStage?.label ?? deal?.etapa}</strong> — responsável: <strong>{displayUser(deal?.assignedTo)}</strong></div>
           {pending.length > 0 && (
