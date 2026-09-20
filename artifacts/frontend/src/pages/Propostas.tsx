@@ -1730,24 +1730,41 @@ interface CartLine {
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
 const DEFAULT_ETAPA_ID = "etapa-inicial";
-const ETAPAS_OBRA_SUGERIDAS = [
-  "Projetos e legalização",
-  "Serviços preliminares",
-  "Terraplenagem",
-  "Fundações",
-  "Estrutura / ICF",
-  "Lajes",
-  "Cobertura",
-  "Instalações hidráulicas",
-  "Instalações elétricas",
-  "Esquadrias",
-  "Revestimentos",
-  "Forros e pintura",
-  "Acabamentos",
-  "Áreas externas",
-  "Energia solar e automação",
-  "Limpeza e entrega",
+type ConstructionSystem = "icf" | "alvenaria" | "steel_frame" | "wood_frame" | "madeira" | "concreto" | "outro";
+
+const CONSTRUCTION_SYSTEMS: Array<{ value: ConstructionSystem; label: string; structureLabel: string }> = [
+  { value: "icf", label: "ICF", structureLabel: "Estrutura / ICF" },
+  { value: "alvenaria", label: "Alvenaria / tijolo", structureLabel: "Estrutura / Alvenaria" },
+  { value: "steel_frame", label: "Steel Frame", structureLabel: "Estrutura / Steel Frame" },
+  { value: "wood_frame", label: "Wood Frame", structureLabel: "Estrutura / Wood Frame" },
+  { value: "madeira", label: "Madeira", structureLabel: "Estrutura / Madeira" },
+  { value: "concreto", label: "Concreto armado", structureLabel: "Estrutura / Concreto armado" },
+  { value: "outro", label: "Outro sistema", structureLabel: "Estrutura / Sistema personalizado" },
 ];
+
+function getStageNamesForSystem(system: ConstructionSystem) {
+  const structureLabel = CONSTRUCTION_SYSTEMS.find((item) => item.value === system)?.structureLabel ?? "Estrutura";
+  return [
+    "Projetos e legalização",
+    "Serviços preliminares",
+    "Terraplenagem",
+    "Fundações",
+    structureLabel,
+    "Lajes",
+    "Cobertura",
+    "Instalações hidráulicas",
+    "Instalações elétricas",
+    "Esquadrias",
+    "Revestimentos",
+    "Forros e pintura",
+    "Acabamentos",
+    "Áreas externas",
+    "Energia solar e automação",
+    "Limpeza e entrega",
+  ];
+}
+
+const ETAPAS_OBRA_SUGERIDAS = getStageNamesForSystem("icf");
 
 // Pacote inicial de uma obra residencial ICF. O objetivo é abrir o orçamento
 // já com a sequência executiva e as composições principais, sem forçar opcionais
@@ -1862,16 +1879,32 @@ function textMatchesStage(text: string, key: OrcamentoStageKey, etapaNome: strin
   return STAGE_KEYWORDS[key].some((keyword) => normalized.includes(keyword));
 }
 
-function composicaoMatchesStage(item: Composicao, etapaNome: string) {
+function composicaoMatchesStage(item: Composicao, etapaNome: string, constructionSystem: ConstructionSystem = "icf") {
   const key = resolveOrcamentoStageKey(etapaNome);
   const codigo = String(item.codigo ?? "").trim();
   const text = [item.nome, item.descricao, item.codigo].filter(Boolean).join(" ");
+  const normalizedText = normalizeStageText(text);
 
   if (key === "preliminares" && /^1\.1\./.test(codigo)) return true;
   if (key === "terraplenagem" && /^1\.2\.(1|3)$/.test(codigo)) return true;
   if (key === "fundacoes" && /^1\.2\.2$/.test(codigo)) return true;
-  if (key === "estrutura_icf" && (/^2\.1\./.test(codigo) || /^2\.2\.(1|3)$/.test(codigo) || /^2\.3\./.test(codigo))) return true;
-  if (key === "lajes" && /^2\.2\.2$/.test(codigo)) return true;
+
+  if (key === "estrutura_icf") {
+    if (constructionSystem === "icf") {
+      return /^2\.1\./.test(codigo) || /^2\.2\.(1|3)$/.test(codigo) || /^2\.3\./.test(codigo) || /\bicf\b/.test(normalizedText);
+    }
+    const terms: Record<Exclude<ConstructionSystem, "icf">, string[]> = {
+      alvenaria: ["alvenaria", "tijolo", "bloco ceramico", "bloco concreto", "verga", "contraverga"],
+      steel_frame: ["steel frame", "steel", "lsf", "perfil galvanizado", "placa cimenticia", "osb"],
+      wood_frame: ["wood frame", "wood", "ossatura madeira", "osb"],
+      madeira: ["madeira", "clt", "mlc", "estrutura de madeira"],
+      concreto: ["concreto armado", "pilar", "viga", "armadura", "forma", "concreto estrutural"],
+      outro: [],
+    };
+    return terms[constructionSystem].some((term) => normalizedText.includes(term));
+  }
+
+  if (key === "lajes" && /^2\.2\.2$/.test(codigo) && constructionSystem === "icf") return true;
   if (key === "cobertura" && /^6\.3\.(3|4|6)$/.test(codigo)) return true;
   if (key === "hidraulica" && /^4\.(1|2|3|4)\./.test(codigo)) return true;
   if (key === "eletrica" && /^3\./.test(codigo)) return true;
@@ -1894,11 +1927,15 @@ function produtoMatchesStage(item: ProdutoCatalogo, etapaNome: string) {
   return textMatchesStage(text, key, etapaNome);
 }
 
-function buildStandardIcfBudget(composicoes: Composicao[]) {
-  const etapas: OrcamentoEtapaDraft[] = ETAPAS_OBRA_SUGERIDAS.map((nome, index) => ({
+function buildStandardStages(system: ConstructionSystem): OrcamentoEtapaDraft[] {
+  return getStageNamesForSystem(system).map((nome, index) => ({
     id: index === 0 ? DEFAULT_ETAPA_ID : `etapa-padrao-${index + 1}`,
     nome,
   }));
+}
+
+function buildStandardIcfBudget(composicoes: Composicao[]) {
+  const etapas: OrcamentoEtapaDraft[] = buildStandardStages("icf");
   const etapaByKey = new Map(etapas.map((etapa) => [resolveOrcamentoStageKey(etapa.nome), etapa]));
 
   const lines: CartLine[] = composicoes
@@ -1992,6 +2029,7 @@ function newFreeItem(): FreeItem {
     // mode
     const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
+    const [constructionSystem, setConstructionSystem] = useState<ConstructionSystem>("icf");
   
     // catálogo + composições organizados por grupos de etapa
     const [orcamentoEtapas, setOrcamentoEtapas] = useState<OrcamentoEtapaDraft[]>([
@@ -2077,15 +2115,18 @@ function newFreeItem(): FreeItem {
 
     useEffect(() => {
       if (!open || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
-      const standard = buildStandardIcfBudget(composicoes);
-      if (standard.lines.length === 0) return;
-
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
-      setOrcamentoEtapas(standard.etapas);
-      setCartLines(standard.lines);
+      if (constructionSystem === "icf") {
+        const standard = buildStandardIcfBudget(composicoes);
+        setOrcamentoEtapas(standard.etapas);
+        setCartLines(standard.lines);
+      } else {
+        setOrcamentoEtapas(buildStandardStages(constructionSystem));
+        setCartLines([]);
+      }
       setShowAllByStage({});
-    }, [open, composicoes, initialProductIds.join(",")]);
+    }, [open, composicoes, constructionSystem, initialProductIds.join(",")]);
   
     // totals
     const catTotal = cartLines.reduce((sum, line) => {
@@ -2145,7 +2186,8 @@ function newFreeItem(): FreeItem {
     });
     setMode("catalogo");
     setSelectedTemplateSlug("");
-    setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: ETAPAS_OBRA_SUGERIDAS[0] }]);
+    setConstructionSystem("icf");
+    setOrcamentoEtapas([{ id: DEFAULT_ETAPA_ID, nome: getStageNamesForSystem("icf")[0] }]);
     setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
     setCartError("");
     setShowAllByStage({});
@@ -2158,6 +2200,28 @@ function newFreeItem(): FreeItem {
   }
 
   // ── catálogo por grupos de etapa ───────────────────────────────────────────
+  function changeConstructionSystem(system: ConstructionSystem) {
+    setConstructionSystem(system);
+    standardBudgetAppliedRef.current = true;
+    setShowAllByStage({});
+
+    if (system === "icf") {
+      const standard = buildStandardIcfBudget(composicoes);
+      setOrcamentoEtapas(standard.etapas);
+      setCartLines(standard.lines);
+      toast({ title: "Sistema construtivo: ICF", description: "Pacote padrão ICF carregado nas etapas correspondentes." });
+      return;
+    }
+
+    setOrcamentoEtapas(buildStandardStages(system));
+    setCartLines([]);
+    const label = CONSTRUCTION_SYSTEMS.find((item) => item.value === system)?.label ?? "Outro sistema";
+    toast({
+      title: `Sistema construtivo: ${label}`,
+      description: "As etapas foram preparadas sem inserir composições ICF. Selecione as composições específicas deste sistema em cada etapa.",
+    });
+  }
+
   function addEtapaDraft() {
     setOrcamentoEtapas((prev) => {
       const ordem = prev.length;
@@ -2168,6 +2232,7 @@ function newFreeItem(): FreeItem {
   }
 
   function addMissingStandardIcfItems() {
+    if (constructionSystem !== "icf") return;
     const standard = buildStandardIcfBudget(composicoes);
     if (standard.lines.length === 0) {
       toast({
@@ -2579,6 +2644,25 @@ function newFreeItem(): FreeItem {
               )} />
             </div>
 
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[280px_1fr] md:items-end">
+              <div className="space-y-1.5">
+                <Label>Sistema construtivo</Label>
+                <Select value={constructionSystem} onValueChange={(value) => changeConstructionSystem(value as ConstructionSystem)}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o sistema construtivo" /></SelectTrigger>
+                  <SelectContent>
+                    {CONSTRUCTION_SYSTEMS.map((system) => (
+                      <SelectItem key={system.value} value={system.value}>{system.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                {constructionSystem === "icf"
+                  ? "ICF usa o pacote automático já cadastrado."
+                  : "As etapas comuns são criadas automaticamente, mas não carregamos composições ICF neste sistema."}
+              </div>
+            </div>
+
             {/* Origens do orçamento: todas usam o mesmo fluxo e persistência real. */}
             <div className="rounded-lg border bg-muted/20 p-3">
               <p className="text-xs font-medium">Como deseja montar este orçamento?</p>
@@ -2691,13 +2775,17 @@ function newFreeItem(): FreeItem {
                   <div>
                     <p className="text-sm font-semibold">Etapas do Orçamento</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      O orçamento ICF inicia com as etapas e composições principais. Remova o que não se aplica, ajuste quantidades e adicione opcionais dentro da etapa correspondente.
+                      {constructionSystem === "icf"
+                        ? "O orçamento ICF inicia com as etapas e composições principais. Remova o que não se aplica, ajuste quantidades e adicione opcionais dentro da etapa correspondente."
+                        : "As etapas seguem a sequência executiva do sistema escolhido. Adicione somente as composições compatíveis com esse método construtivo."}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={addMissingStandardIcfItems}>
-                      <Package className="h-3.5 w-3.5 mr-1" /> Completar pacote padrão ICF
-                    </Button>
+                    {constructionSystem === "icf" && (
+                      <Button type="button" variant="outline" size="sm" onClick={addMissingStandardIcfItems}>
+                        <Package className="h-3.5 w-3.5 mr-1" /> Completar pacote padrão ICF
+                      </Button>
+                    )}
                     <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
                       <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
                     </Button>
@@ -2705,7 +2793,7 @@ function newFreeItem(): FreeItem {
                 </div>
 
                 <datalist id="etapas-obras-sugeridas">
-                  {ETAPAS_OBRA_SUGERIDAS.map((nome) => <option key={nome} value={nome} />)}
+                  {getStageNamesForSystem(constructionSystem).map((nome) => <option key={nome} value={nome} />)}
                 </datalist>
 
                 {orcamentoEtapas.map((etapa, etapaIndex) => {
@@ -2720,7 +2808,7 @@ function newFreeItem(): FreeItem {
                     showAllForStage || selectedProductIds.has(item.id) || produtoMatchesStage(item, etapa.nome)
                   );
                   const composicoesEtapa = composicoes.filter((item: Composicao) =>
-                    showAllForStage || selectedComposicaoIds.has(item.id) || composicaoMatchesStage(item, etapa.nome)
+                    showAllForStage || selectedComposicaoIds.has(item.id) || composicaoMatchesStage(item, etapa.nome, constructionSystem)
                   );
 
                   const etapaTotal = stageEntries.reduce((sum, { line }) => {
