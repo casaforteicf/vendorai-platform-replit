@@ -32,38 +32,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
+  crm-p0:
+    name: P0 CRM
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version-file: ".node-version"
-          cache: "pnpm"
+          node-version: "24"
+      - name: Enable pnpm
+        run: npm install --global pnpm@10.26.1
+      - run: pnpm install --frozen-lockfile
+      - name: CRM deal isolation regression
+        run: pnpm --filter @workspace/api-server exec vitest run --config vitest.config.ts src/__tests__/deals-isolation.test.ts
 
-      - name: Enable Corepack
-        run: corepack enable
+  obras-p0:
+    name: P0 Obras
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm
+        run: npm install --global pnpm@10.26.1
+      - run: pnpm install --frozen-lockfile
+      - name: Obras portal regressions
+        run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Root typecheck
-        run: pnpm typecheck
-
-      - name: Backend tests
-        run: pnpm --filter @workspace/api-server test
-
-      - name: Frontend tests
-        run: pnpm --filter @workspace/frontend test
-
+  tenant-integrity:
+    name: Tenant + Production Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm
+        run: npm install --global pnpm@10.26.1
+      - run: pnpm install --frozen-lockfile
       - name: Tenant isolation baseline
         run: pnpm --filter @workspace/api-server audit:tenant:baseline
-
       - name: Production integrity audit
         run: pnpm --filter @workspace/api-server audit:production-integrity
 
+  full-validation:
+    name: Typecheck + Tests + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm
+        run: npm install --global pnpm@10.26.1
+      - run: pnpm install --frozen-lockfile
+      - name: Root typecheck
+        run: pnpm typecheck
+      - name: Backend tests
+        run: pnpm --filter @workspace/api-server test
+      - name: Frontend tests
+        run: pnpm --filter @workspace/frontend test
       - name: Build all production packages
         run: pnpm build
