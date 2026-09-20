@@ -25,25 +25,33 @@ function currentBundleRecoveryKey() {
 }
 
 async function clearObsoleteFrontendState() {
-  try {
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+  const cleanup = async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+      }
+    } catch {
+      // Recovery is best-effort. Never block the CRM because cleanup failed.
     }
-  } catch {
-    // Recovery is best-effort. Never block the CRM because cleanup failed.
-  }
 
-  try {
-    if ("caches" in window) {
-      const cacheNames = await caches.keys();
-      await Promise.allSettled(cacheNames.map((cacheName) => caches.delete(cacheName)));
+    try {
+      if ("caches" in window) {
+        const cacheNames = await caches.keys();
+        await Promise.allSettled(cacheNames.map((cacheName) => caches.delete(cacheName)));
+      }
+    } catch {
+      // Same principle: cleanup must stay fail-open.
     }
-  } catch {
-    // Same principle: cleanup must stay fail-open.
-  }
+  };
+
+  // Android WebViews can leave Service Worker/Cache APIs pending indefinitely.
+  // Recovery must always proceed to navigation instead of freezing the app.
+  await Promise.race([
+    cleanup(),
+    new Promise<void>((resolve) => window.setTimeout(resolve, 1_500)),
+  ]);
 }
-
 function wasRecoveredRecently() {
   try {
     const lastRecoveryAt = Number(sessionStorage.getItem(RECOVERY_AT_KEY) || "0");

@@ -33,25 +33,33 @@ function markBundleRecoveryTried() {
 }
 
 async function clearObsoleteFrontendState() {
-  try {
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+  const cleanup = async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+      }
+    } catch {
+      // Recuperação best-effort: a limpeza não pode impedir o reload.
     }
-  } catch {
-    // Recuperação best-effort: a limpeza não pode impedir o reload.
-  }
 
-  try {
-    if ("caches" in window) {
-      const cacheNames = await caches.keys();
-      await Promise.allSettled(cacheNames.map((cacheName) => caches.delete(cacheName)));
+    try {
+      if ("caches" in window) {
+        const cacheNames = await caches.keys();
+        await Promise.allSettled(cacheNames.map((cacheName) => caches.delete(cacheName)));
+      }
+    } catch {
+      // Mesmo princípio para Cache Storage.
     }
-  } catch {
-    // Mesmo princípio para Cache Storage.
-  }
+  };
+
+  // Alguns WebViews Android podem deixar APIs de SW/Cache penduradas.
+  // A recuperação nunca pode ficar presa na tela "Carregando a versão atual".
+  await Promise.race([
+    cleanup(),
+    new Promise<void>((resolve) => window.setTimeout(resolve, 1_500)),
+  ]);
 }
-
 function isKnownStaleAssetError(error: Error) {
   return (
     CHUNK_ERROR_PATTERN.test(error.message) ||

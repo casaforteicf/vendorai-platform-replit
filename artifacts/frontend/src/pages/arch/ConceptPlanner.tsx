@@ -387,7 +387,7 @@ export default function ConceptPlanner() {
   const [archProjetoId, setArchProjetoId] = useState<string | null>(null);
   const [handoffState, setHandoffState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [handoffError, setHandoffError] = useState<string | null>(null);
-  const wallFirstActive = wallFirstFloors.includes(activeFloor);
+  const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
@@ -694,7 +694,7 @@ export default function ConceptPlanner() {
 
   const addRoom = (kind: RoomKind) => {
     if (kind === "escada" && wallFirstActive) {
-      const existing = rooms.find((room) => room.floor === activeFloor && room.kind === "escada");
+      const existing = safeRooms.find((room) => room.floor === activeFloor && room.kind === "escada");
       if (existing) {
         setSelectedId(existing.id);
         setInteractionMode("room");
@@ -3298,7 +3298,7 @@ export default function ConceptPlanner() {
                     <div className="ml-auto flex items-center gap-1.5">
                       <button type="button" onClick={() => moveOpening(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
                       <button type="button" onClick={() => moveOpening(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
-                      {customOpenings.some((opening) => opening.id === selectedOpening.id) && (
+                      {safeCustomOpenings.some((opening) => opening.id === selectedOpening.id) && (
                         <button type="button" onClick={() => deleteCustomOpening(selectedOpening.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
                       )}
                     </div>
