@@ -294,8 +294,9 @@ function normalizeDraftRooms(input: Room[]) {
 }
 
 function autoArrange(rooms: Room[], lotWidth: number, lotDepth: number, floor: number) {
-  const floorRooms = safeRooms.filter((r) => r.floor === floor);
-  const others = safeRooms.filter((r) => r.floor !== floor);
+  const normalizedRooms = Array.isArray(rooms) ? rooms : [];
+  const floorRooms = normalizedRooms.filter((r) => r.floor === floor);
+  const others = normalizedRooms.filter((r) => r.floor !== floor);
   const gap = 1;
   const result: Room[] = [];
   let cursorX = 0;
