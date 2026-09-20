@@ -57,10 +57,10 @@ jobs:
         run: pnpm --filter @workspace/api-server test
 
       - name: P0 CRM deal isolation regression
-        run: pnpm --filter @workspace/api-server exec vitest run src/__tests__/deals-isolation.test.ts
+        run: pnpm --filter @workspace/api-server exec vitest run --config vitest.config.ts src/__tests__/deals-isolation.test.ts
 
       - name: P0 Obras client portal regression
-        run: pnpm --filter @workspace/frontend exec vitest run src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
+        run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
 
       - name: Frontend tests
         run: pnpm --filter @workspace/frontend test
