@@ -38,12 +38,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Enable Corepack
-        run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".node-version"
-          cache: "pnpm"
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.26.1 --activate
       - run: pnpm install --frozen-lockfile
       - name: CRM deal isolation regression
         run: pnpm --filter @workspace/api-server exec vitest run --config vitest.config.ts src/__tests__/deals-isolation.test.ts
@@ -54,12 +53,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Enable Corepack
-        run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".node-version"
-          cache: "pnpm"
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.26.1 --activate
       - run: pnpm install --frozen-lockfile
       - name: Obras portal regressions
         run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
@@ -70,12 +68,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Enable Corepack
-        run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".node-version"
-          cache: "pnpm"
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.26.1 --activate
       - run: pnpm install --frozen-lockfile
       - name: Tenant isolation baseline
         run: pnpm --filter @workspace/api-server audit:tenant:baseline
@@ -88,12 +85,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Enable Corepack
-        run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".node-version"
-          cache: "pnpm"
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.26.1 --activate
       - run: pnpm install --frozen-lockfile
       - name: Root typecheck
         run: pnpm typecheck
