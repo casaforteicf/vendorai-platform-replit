@@ -532,16 +532,24 @@ export default function ConceptPlanner() {
     }
   };
 
-  const selected = rooms.find((r) => r.id === selectedId) ?? null;
+  // Defensive normalization: older/corrupt persisted drafts can hydrate array state as undefined.
+  // Keep the editor usable instead of crashing on .filter/.find.
+  const safeRooms = Array.isArray(rooms) ? rooms : [];
+  const safeCustomWalls = Array.isArray(customWalls) ? customWalls : [];
+  const safeCustomOpenings = Array.isArray(customOpenings) ? customOpenings : [];
+  const safeWallFirstFloors = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
+  const safeSpaceProfiles = Array.isArray(spaceProfiles) ? spaceProfiles : [];
+
+  const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
   const visibleRooms = wallFirstActive
-    ? rooms.filter((r) => r.floor === activeFloor && (r.kind === "escada" || r.kind === "piscina"))
-    : rooms.filter((r) => r.floor === activeFloor);
+    ? safeRooms.filter((r) => r.floor === activeFloor && (r.kind === "escada" || r.kind === "piscina"))
+    : safeRooms.filter((r) => r.floor === activeFloor);
   const currentArea = useMemo(() => {
-    const legacyArea = rooms
-      .filter((room) => room.kind !== "piscina" && !wallFirstFloors.includes(room.floor))
+    const legacyArea = safeRooms
+      .filter((room) => room.kind !== "piscina" && !safeWallFirstFloors.includes(room.floor))
       .reduce((sum, room) => sum + room.width * room.depth, 0);
-    const wallFirstArea = wallFirstFloors.reduce((sum, floor) => {
-      const floorWalls = customWalls
+    const wallFirstArea = safeWallFirstFloors.reduce((sum, floor) => {
+      const floorWalls = safeCustomWalls
         .filter((wall) => wall.floor === floor)
         .map((wall) => ({
           id: wall.id,
@@ -554,7 +562,7 @@ export default function ConceptPlanner() {
         .reduce((area, space) => area + space.area, 0);
     }, 0);
     return legacyArea + wallFirstArea;
-  }, [rooms, wallFirstFloors, customWalls, lotWidth, lotDepth]);
+  }, [safeRooms, safeWallFirstFloors, safeCustomWalls, lotWidth, lotDepth]);
 
   const applyTypology = (nextTypology: ConceptTypology) => {
     const template = CONCEPT_TYPOLOGIES.find((item) => item.id === nextTypology);
