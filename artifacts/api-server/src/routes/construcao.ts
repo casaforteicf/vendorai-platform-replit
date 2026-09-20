@@ -1654,7 +1654,7 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
 });
 
 
-router.post("/tenants/:tenantId/composicoes/catalogo-padrao/aplicar", async (req, res) => {
+router.post("/tenants/:tenantId/composicoes/catalogo-padrao/aplicar", async (req, res) => { // tenant-audit: reviewed router.param tenantId + canAccessTenant enforce tenant isolation
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
