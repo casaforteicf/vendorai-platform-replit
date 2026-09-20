@@ -194,6 +194,80 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+function finiteNumber(value: unknown, fallback: number, min?: number, max?: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min ?? -Infinity, Math.min(max ?? Infinity, parsed));
+}
+
+function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
+  if (!Array.isArray(input)) return [];
+  const validKinds = new Set<RoomKind>([
+    "sala", "cozinha", "suite", "quarto", "banheiro", "lavanderia",
+    "garagem", "gourmet", "piscina", "circulacao", "escada", "outro",
+  ]);
+  return normalizeDraftRooms(input.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const raw = candidate as Partial<Room>;
+    const kind = validKinds.has(raw.kind as RoomKind) ? raw.kind as RoomKind : "outro";
+    const defaults = roomDefaults[kind];
+    return [{
+      id: typeof raw.id === "string" && raw.id ? raw.id : `room-loaded-${index}-${uid()}`,
+      kind,
+      label: typeof raw.label === "string" && raw.label.trim() ? raw.label : defaults.label,
+      width: finiteNumber(raw.width, defaults.width, 0.5, 50),
+      depth: finiteNumber(raw.depth, defaults.depth, 0.5, 50),
+      floor: Math.round(finiteNumber(raw.floor, 0, 0, Math.max(0, floorCount - 1))),
+      x: finiteNumber(raw.x, 0, 0, 200),
+      y: finiteNumber(raw.y, 0, 0, 200),
+      locked: Boolean(raw.locked),
+    }];
+  }));
+}
+
+function normalizeLoadedWalls(input: unknown, floorCount: number): CustomWall[] {
+  if (!Array.isArray(input)) return [];
+  return input.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const raw = candidate as Partial<CustomWall>;
+    const wall: CustomWall = {
+      id: typeof raw.id === "string" && raw.id ? raw.id : `wall-loaded-${index}-${uid()}`,
+      floor: Math.round(finiteNumber(raw.floor, 0, 0, Math.max(0, floorCount - 1))),
+      x1: finiteNumber(raw.x1, 0, 0, 200),
+      y1: finiteNumber(raw.y1, 0, 0, 200),
+      x2: finiteNumber(raw.x2, 1, 0, 200),
+      y2: finiteNumber(raw.y2, 0, 0, 200),
+      thickness: finiteNumber(raw.thickness, 0.15, 0.05, 1),
+    };
+    return Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) >= 0.25 ? [wall] : [];
+  });
+}
+
+function normalizeLoadedOpenings(input: unknown, walls: CustomWall[]): CustomOpening[] {
+  if (!Array.isArray(input)) return [];
+  const wallIds = new Set(walls.map((wall) => wall.id));
+  return input.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const raw = candidate as Partial<CustomOpening>;
+    if (typeof raw.wallId !== "string" || !wallIds.has(raw.wallId)) return [];
+    const type = raw.type === "window" ? "window" : "door";
+    return [{
+      id: typeof raw.id === "string" && raw.id ? raw.id : `opening-loaded-${index}-${uid()}`,
+      wallId: raw.wallId,
+      floor: Math.round(finiteNumber(raw.floor, 0, 0, 2)),
+      type,
+      offset: finiteNumber(raw.offset, 0.5, 0.02, 0.98),
+      width: finiteNumber(raw.width, type === "door" ? 0.9 : 1.2, 0.5, 4),
+      height: finiteNumber(raw.height, type === "door" ? 2.1 : 1.2, 0.5, 2.8),
+      sillHeight: type === "door" ? 0 : finiteNumber(raw.sillHeight, 0.9, 0, 2.2),
+      openingStyle: ["hinged", "sliding", "fixed", "tilt_turn"].includes(String(raw.openingStyle))
+        ? raw.openingStyle
+        : type === "door" ? "hinged" : "sliding",
+      swing: raw.swing === "right" ? "right" : "left",
+    }];
+  });
+}
+
 function createRoom(kind: RoomKind, floor = 0): Room {
   const base = roomDefaults[kind];
   return {
@@ -374,25 +448,35 @@ export default function ConceptPlanner() {
         if (draft.archProjetoId) setHandoffState("sent");
         const rawStep = draft.currentStep ?? 0;
         setStep(normalizeConceptStep(rawStep, STEPS.length - 1));
-        setLotWidth(draft.lot?.width ?? 12);
-        setLotDepth(draft.lot?.depth ?? 30);
-        setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
-        setDesiredArea(draft.configuration?.desiredArea ?? 145);
-        setTypology(draft.configuration?.typology ?? "terrea_3q");
+        const loadedFloors = Math.round(finiteNumber(draft.configuration?.floors, 1, 1, 3));
+        const loadedWalls = normalizeLoadedWalls(draft.configuration?.customWalls, loadedFloors);
+        const loadedOpenings = normalizeLoadedOpenings(draft.configuration?.customOpenings, loadedWalls);
+        const loadedRooms = normalizeLoadedRooms(draft.rooms, loadedFloors);
+
+        setLotWidth(finiteNumber(draft.lot?.width, 12, 5, 100));
+        setLotDepth(finiteNumber(draft.lot?.depth, 30, 10, 200));
+        setFloors(loadedFloors);
+        setActiveFloor((current) => Math.min(Math.max(0, current), loadedFloors - 1));
+        setDesiredArea(finiteNumber(draft.configuration?.desiredArea, 145, 20, 2000));
+        setTypology(CONCEPT_TYPOLOGIES.some((item) => item.id === draft.configuration?.typology)
+          ? draft.configuration?.typology as ConceptTypology
+          : "terrea_3q");
         setLayoutPreferences({ ...DEFAULT_LAYOUT_PREFERENCES, ...(draft.configuration?.layoutPreferences ?? {}) });
         setWallFirstFloors(
           Array.isArray(draft.configuration?.wallFirstFloors) && draft.configuration.wallFirstFloors.length
             ? draft.configuration.wallFirstFloors
-            : Array.isArray(draft.rooms) && draft.rooms.length
+                .map((floor) => Math.round(finiteNumber(floor, 0, 0, loadedFloors - 1)))
+                .filter((floor, index, values) => values.indexOf(floor) === index)
+            : loadedRooms.length
               ? []
               : [0],
         );
         setShowDimensions(draft.configuration?.showDimensions ?? true);
-        setCustomWalls(Array.isArray(draft.configuration?.customWalls) ? draft.configuration.customWalls : []);
-        setCustomOpenings(Array.isArray(draft.configuration?.customOpenings) ? draft.configuration.customOpenings : []);
+        setCustomWalls(loadedWalls);
+        setCustomOpenings(loadedOpenings);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
-        setRooms(Array.isArray(draft.rooms) && draft.rooms.length ? normalizeDraftRooms(draft.rooms) : []);
-        setOpeningOverrides(draft.openingOverrides ?? {});
+        setRooms(loadedRooms);
+        setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
         setFacadePreferences(draft.facadePreferences ?? DEFAULT_FACADE);
         setFacadeDesign(normalizeFacadeDesign(draft.facadeDesign));
@@ -2299,7 +2383,7 @@ export default function ConceptPlanner() {
 
         {step === 4 && (
           <section className="min-h-screen overflow-hidden bg-white">
-            <div className="relative flex h-16 items-center justify-between border-b bg-white px-3 text-slate-800 shadow-sm sm:px-4">
+            <div className="relative flex min-h-16 flex-wrap items-center justify-between gap-2 border-b bg-white px-2 py-2 text-slate-800 shadow-sm sm:px-4 lg:h-16 lg:flex-nowrap lg:py-0">
               <div className="flex min-w-0 items-center gap-2">
                 <a
                   href="/arch"
@@ -2321,7 +2405,7 @@ export default function ConceptPlanner() {
                 <button
                   type="button"
                   onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
-                  className="ml-1 inline-flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold shadow-sm"
+                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold shadow-sm sm:inline-flex"
                   title="Alternar pavimento"
                 >
                   <Layers3 className="h-4 w-4 text-slate-500" />
@@ -2330,8 +2414,8 @@ export default function ConceptPlanner() {
                 </button>
               </div>
 
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <div className="inline-flex rounded-full border bg-slate-50 p-1 shadow-sm">
+              <div className="order-3 w-full min-w-0 lg:absolute lg:left-1/2 lg:top-1/2 lg:order-none lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
+                <div className="flex w-full snap-x overflow-x-auto rounded-full border bg-slate-50 p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inline-flex lg:w-auto">
                   {([
                     ["plan", "2D"],
                     ["model3d", "3D"],
@@ -2346,8 +2430,8 @@ export default function ConceptPlanner() {
                         if (value !== "plan") setLibraryOpen(false);
                       }}
                       className={editorView === value
-                        ? "rounded-full bg-orange-500 px-4 py-2 text-xs font-bold text-white shadow-sm"
-                        : "rounded-full px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800"}
+                        ? "shrink-0 snap-center rounded-full bg-orange-500 px-3 py-2 text-xs font-bold text-white shadow-sm sm:px-4"
+                        : "shrink-0 snap-center rounded-full px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 sm:px-4"}
                     >
                       {label}
                     </button>
@@ -2355,15 +2439,15 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex shrink-0 items-center gap-1">
                 {editorView === "plan" && (
                 <button
                   type="button"
                   onClick={() => setShowDimensions((value) => !value)}
                   title="Cotas"
                   className={showDimensions
-                    ? "grid h-10 w-10 place-items-center rounded-full bg-orange-50 text-orange-700"
-                    : "grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"}
+                    ? "hidden h-10 w-10 place-items-center rounded-full bg-orange-50 text-orange-700 sm:grid"
+                    : "hidden h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50 sm:grid"}
                 >
                   <Ruler className="h-4 w-4" />
                 </button>
@@ -2372,7 +2456,7 @@ export default function ConceptPlanner() {
                   type="button"
                   onClick={() => setFloors((value) => Math.min(3, value + 1))}
                   title="Adicionar pavimento"
-                  className="grid h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50"
+                  className="hidden h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50 sm:grid"
                 >
                   <Plus className="h-5 w-5" />
                 </button>
@@ -2380,7 +2464,7 @@ export default function ConceptPlanner() {
                   type="button"
                   onClick={() => { void navigator.clipboard?.writeText(window.location.href); }}
                   title="Copiar link do projeto"
-                  className="grid h-10 w-10 place-items-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600"
+                  className="hidden h-10 w-10 place-items-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600 sm:grid"
                 >
                   <Share2 className="h-4 w-4" />
                 </button>
@@ -2393,7 +2477,7 @@ export default function ConceptPlanner() {
                   }}
                   disabled={blockingLayoutIssues.length > 0}
                   title={blockingLayoutIssues.length > 0 ? "Corrija os erros da planta antes de avançar" : "Continuar para fachada"}
-                  className="ml-1 inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="ml-1 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-slate-900 px-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:gap-2 sm:px-3"
                 >
                   Fachada <ArrowRight className="h-4 w-4" />
                 </button>
@@ -2438,9 +2522,9 @@ export default function ConceptPlanner() {
             </div>
 
             <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8]">
-              <aside className="absolute inset-y-0 left-0 z-30 border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]">
+              <aside className="absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]">
                 <div className="flex min-h-full">
-                  <div className="w-16 shrink-0 border-r bg-white py-3">
+                  <div className="w-14 shrink-0 border-r bg-white py-3 sm:w-16">
                     <div className="flex flex-col items-center gap-2">
                       {([
                         ["site", Ruler, "Terreno"],
@@ -2468,7 +2552,7 @@ export default function ConceptPlanner() {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen ? "w-[300px] min-w-0 flex-1 bg-white" : "hidden"}>
+                  <div className={libraryOpen ? "w-[calc(100vw-56px)] max-w-[300px] min-w-0 flex-1 bg-white sm:w-[300px]" : "hidden"}>
                 <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -2879,7 +2963,7 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8] pl-16">
+              <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16">
                 <div className="h-full w-full">
                   {editorView === "plan" && (
                       <div className="flex flex-wrap items-center gap-2">
