@@ -3046,7 +3046,6 @@ function newFreeItem(): FreeItem {
                                           isComposition={Boolean(composicao)}
                                           onChange={(quantidade) => updateCatLine(idx, { quantidade })}
                                         />
-                                        />
                                       </TableCell>
 
                                       <TableCell className="py-1.5">
