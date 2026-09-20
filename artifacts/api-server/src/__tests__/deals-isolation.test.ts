@@ -10,12 +10,13 @@ import {
 } from "./helpers/auth.js";
 import { MockRow, createDbHelpers } from "./helpers/isolation.js";
 
-const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
+const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockDbTransaction } = vi.hoisted(
   () => ({
     mockDbSelect: vi.fn(),
     mockDbUpdate: vi.fn(),
     mockDbDelete: vi.fn(),
     mockDbInsert: vi.fn(),
+    mockDbTransaction: vi.fn(),
   })
 );
 
@@ -25,6 +26,7 @@ vi.mock("@workspace/db", () => ({
     update: mockDbUpdate,
     delete: mockDbDelete,
     insert: mockDbInsert,
+    transaction: mockDbTransaction,
   },
   dealsTable: {
     id: "id",
@@ -214,6 +216,92 @@ describe("PATCH /api/deals/:id — cross-tenant isolation", () => {
       .send({ titulo: "Updated Deal" });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/deals/:id/resume-commercial — warming handoff", () => {
+  const warmingDeal: MockRow = {
+    id: "warming-b-1",
+    tenantId: TENANT_B,
+    leadId: "lead-b-1",
+    titulo: "Casa ICF",
+    etapa: "em_aquecimento",
+    assignedTo: "owner-b-1",
+    relationshipStage: "aquecimento_lead",
+  };
+
+  function queueLimitedSelect(rows: MockRow[]) {
+    const limit = vi.fn().mockResolvedValue(rows);
+    const where = vi.fn().mockReturnValue({ limit });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where }),
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("preserves tenant isolation when another tenant tries to resume the warming card", async () => {
+    queueLimitedSelect([warmingDeal]);
+
+    const res = await request(app)
+      .post("/api/deals/warming-b-1/resume-commercial")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        responsavelId: "owner-b-1",
+        atividadeTitulo: "Preparar proposta",
+      });
+
+    expect(res.status).toBe(403);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("atomically creates a new commercial cycle and keeps the warming card in history", async () => {
+    queueLimitedSelect([warmingDeal]);
+    queueLimitedSelect([{ id: "owner-b-1", tenantId: TENANT_B }]);
+
+    const createdDeal = {
+      ...warmingDeal,
+      id: "commercial-b-2",
+      etapa: "novo",
+      titulo: "Casa ICF — Retomada",
+    };
+
+    const txInsert = vi.fn(() => {
+      const returning = vi.fn().mockResolvedValue([createdDeal]);
+      const values = vi.fn().mockReturnValue({ returning });
+      return { values };
+    });
+    const txUpdate = vi.fn(() => {
+      const where = vi.fn().mockResolvedValue(undefined);
+      const set = vi.fn().mockReturnValue({ where });
+      return { set };
+    });
+
+    mockDbTransaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({ insert: txInsert, update: txUpdate })
+    );
+
+    const res = await request(app)
+      .post("/api/deals/warming-b-1/resume-commercial")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({
+        responsavelId: "owner-b-1",
+        atividadeTitulo: "Preparar proposta",
+        atividadeDescricao: "Levar solução técnica",
+        observacaoPassagem: "Cliente retomou contato",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      resumedDealId: "warming-b-1",
+      alreadyResumed: false,
+      deal: { id: "commercial-b-2", etapa: "novo" },
+    });
+    expect(mockDbTransaction).toHaveBeenCalledTimes(1);
+    expect(txInsert).toHaveBeenCalledTimes(3);
+    expect(txUpdate).toHaveBeenCalledTimes(1);
   });
 });
 
