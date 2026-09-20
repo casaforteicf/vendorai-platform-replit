@@ -1,0 +1,69 @@
+name: VendorAI Stability Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/api-server/**"
+      - "artifacts/frontend/**"
+      - "lib/**"
+      - "scripts/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".node-version"
+      - ".github/workflows/vendorai-stability-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/api-server/**"
+      - "artifacts/frontend/**"
+      - "lib/**"
+      - "scripts/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".node-version"
+      - ".github/workflows/vendorai-stability-gate.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: vendorai-stability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+          cache: "pnpm"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Root typecheck
+        run: pnpm typecheck
+
+      - name: Backend tests
+        run: pnpm --filter @workspace/api-server test
+
+      - name: Frontend tests
+        run: pnpm --filter @workspace/frontend test
+
+      - name: Tenant isolation baseline
+        run: pnpm --filter @workspace/api-server audit:tenant:baseline
+
+      - name: Production integrity audit
+        run: pnpm --filter @workspace/api-server audit:production-integrity
+
+      - name: Build all production packages
+        run: pnpm build
