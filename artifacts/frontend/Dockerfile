@@ -11,6 +11,7 @@ RUN corepack enable \
 COPY . .
 
 RUN pnpm install --no-frozen-lockfile \
+  && pnpm --filter @workspace/frontend test \
   && pnpm --filter @workspace/frontend build
 
 ENV NODE_ENV=production
