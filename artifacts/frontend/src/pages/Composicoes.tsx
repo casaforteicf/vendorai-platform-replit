@@ -17,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -25,6 +26,44 @@ import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/con
 import { useToast } from "@/hooks/use-toast";
 
 const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx"];
+
+const ETAPAS_COMPOSICAO = [
+  ["projetos_legalizacao", "Projetos e legalização"],
+  ["preliminares", "Serviços preliminares"],
+  ["terraplenagem", "Terraplenagem"],
+  ["fundacoes", "Fundações"],
+  ["estrutura", "Estrutura / paredes"],
+  ["lajes", "Lajes"],
+  ["cobertura", "Cobertura"],
+  ["hidraulica", "Instalações hidráulicas"],
+  ["eletrica", "Instalações elétricas"],
+  ["esquadrias", "Esquadrias"],
+  ["revestimentos", "Revestimentos"],
+  ["forros_pintura", "Forros e pintura"],
+  ["acabamentos", "Acabamentos"],
+  ["areas_externas", "Áreas externas"],
+  ["solar_automacao", "Energia solar e automação"],
+  ["limpeza_entrega", "Limpeza e entrega"],
+] as const;
+
+const SISTEMAS_CONSTRUTIVOS = [
+  ["icf", "ICF"],
+  ["alvenaria", "Alvenaria / tijolo"],
+  ["steel_frame", "Steel Frame"],
+  ["wood_frame", "Wood Frame"],
+  ["madeira", "Madeira"],
+  ["concreto", "Concreto armado"],
+  ["outro", "Outro"],
+] as const;
+
+type EtapaKey = typeof ETAPAS_COMPOSICAO[number][0];
+type SistemaConstrutivo = typeof SISTEMAS_CONSTRUTIVOS[number][0];
+
+const etapaLabel = (key?: string | null) =>
+  ETAPAS_COMPOSICAO.find(([value]) => value === key)?.[1] ?? "Sem etapa";
+
+const sistemaLabel = (key: string) =>
+  SISTEMAS_CONSTRUTIVOS.find(([value]) => value === key)?.[1] ?? key;
 
 function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; composicaoId: string }) {
   const { data, isLoading } = useGetComposicao(tenantId, composicaoId, {
@@ -115,7 +154,16 @@ function ComposicaoForm({
   isPending,
 }: {
   tenantId: string;
-  initial?: { nome?: string; descricao?: string; unidade?: string; codigo?: string };
+  initial?: {
+    nome?: string;
+    descricao?: string;
+    unidade?: string;
+    codigo?: string;
+    etapaKey?: EtapaKey | "";
+    sistemasConstrutivos?: string[];
+    comumTodosSistemas?: boolean;
+    ativo?: boolean;
+  };
   initialItems?: InsumoItem[];
   onSave: (data: Record<string, unknown>) => void | Promise<void>;
   onCancel: () => void;
@@ -126,6 +174,10 @@ function ComposicaoForm({
     descricao: initial?.descricao ?? "",
     unidade: initial?.unidade ?? "m²",
     codigo: initial?.codigo ?? "",
+    etapaKey: initial?.etapaKey ?? "",
+    sistemasConstrutivos: initial?.sistemasConstrutivos ?? [],
+    comumTodosSistemas: initial?.comumTodosSistemas ?? false,
+    ativo: initial?.ativo ?? true,
   });
   const [itens, setItens] = useState<InsumoItem[]>(initialItems ?? []);
   const [insumoSearch, setInsumoSearch] = useState("");
@@ -229,6 +281,14 @@ function ComposicaoForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.etapaKey) {
+      toast({ title: "Selecione a etapa da composição", variant: "destructive" });
+      return;
+    }
+    if (!form.comumTodosSistemas && form.sistemasConstrutivos.length === 0) {
+      toast({ title: "Selecione ao menos um sistema construtivo", variant: "destructive" });
+      return;
+    }
     setSavingPrices(true);
     try {
       let priceChanges = 0;
@@ -268,7 +328,10 @@ function ComposicaoForm({
         });
       }
 
-      const payload: Record<string, unknown> = { ...form };
+      const payload: Record<string, unknown> = {
+        ...form,
+        sistemasConstrutivos: form.comumTodosSistemas ? [] : form.sistemasConstrutivos,
+      };
       Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
       payload.itens = itens.map((i) => ({
         insumoId: i.insumoId,
@@ -306,6 +369,74 @@ function ComposicaoForm({
         <div className="sm:col-span-2 space-y-2">
           <Label>Descrição</Label>
           <Input value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Etapa da obra *</Label>
+          <select
+            required
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+            value={form.etapaKey}
+            onChange={(e) => setForm((f) => ({ ...f, etapaKey: e.target.value as EtapaKey }))}
+          >
+            <option value="">Selecione a etapa</option>
+            {ETAPAS_COMPOSICAO.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Status</Label>
+          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
+            <Checkbox
+              checked={form.ativo}
+              onCheckedChange={(checked) => setForm((f) => ({ ...f, ativo: checked === true }))}
+            />
+            Ativa e disponível em orçamentos
+          </label>
+        </div>
+
+        <div className="sm:col-span-2 rounded-lg border p-3 space-y-3">
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox
+              checked={form.comumTodosSistemas}
+              onCheckedChange={(checked) => setForm((f) => ({
+                ...f,
+                comumTodosSistemas: checked === true,
+                sistemasConstrutivos: checked === true ? [] : f.sistemasConstrutivos,
+              }))}
+            />
+            <span>
+              <span className="font-medium">Comum a todos os sistemas construtivos</span>
+              <span className="block text-xs text-muted-foreground">
+                Use para elétrica, hidráulica, pintura, limpeza e outras composições que não dependem do método estrutural.
+              </span>
+            </span>
+          </label>
+
+          {!form.comumTodosSistemas && (
+            <div className="space-y-2">
+              <Label>Sistemas construtivos *</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SISTEMAS_CONSTRUTIVOS.map(([value, label]) => {
+                  const checked = form.sistemasConstrutivos.includes(value);
+                  return (
+                    <label key={value} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(next) => setForm((f) => ({
+                          ...f,
+                          sistemasConstrutivos: next === true
+                            ? [...new Set([...f.sistemasConstrutivos, value])]
+                            : f.sistemasConstrutivos.filter((item) => item !== value),
+                        }))}
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -510,7 +641,17 @@ function ComposicaoEditDialog({
   composicao,
 }: {
   tenantId: string;
-  composicao: { id: string; nome: string; descricao?: string | null; unidade: string; codigo?: string | null };
+  composicao: {
+    id: string;
+    nome: string;
+    descricao?: string | null;
+    unidade: string;
+    codigo?: string | null;
+    etapaKey?: string | null;
+    sistemasConstrutivos?: string[] | null;
+    comumTodosSistemas?: boolean;
+    ativo?: boolean;
+  };
 }) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
@@ -564,6 +705,10 @@ function ComposicaoEditDialog({
               descricao: detail.descricao ?? "",
               unidade: detail.unidade,
               codigo: detail.codigo ?? "",
+              etapaKey: detail.etapaKey ?? "",
+              sistemasConstrutivos: Array.isArray(detail.sistemasConstrutivos) ? detail.sistemasConstrutivos : [],
+              comumTodosSistemas: detail.comumTodosSistemas === true,
+              ativo: detail.ativo !== false,
             }}
             initialItems={initialItems}
             onSave={handleUpdate}
@@ -581,6 +726,8 @@ export default function Composicoes() {
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState("todos");
+  const [systemFilter, setSystemFilter] = useState("todos");
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -621,7 +768,7 @@ export default function Composicoes() {
       let imported = 0;
       let ignored = rows.length - [...groups.values()].reduce((sum, group) => sum + group.length, 0);
       for (const [key, group] of groups) {
-        const first = group[0];
+        const first = group[0] as any;
         const nome = (first.composicao_nome || first.nome || "").trim();
         const codigo = (first.composicao_codigo || first.codigo || "").trim();
         const unidade = (first.unidade || "un").trim();
@@ -635,11 +782,23 @@ export default function Composicoes() {
           return [{ insumoId: insumo.id, quantidade }];
         });
         if (!itens.length && group.some((row) => row.insumo_codigo || row.insumo_nome)) continue;
+        const etapaKey = String(first.etapa_key || first.etapa || "").trim() as EtapaKey;
+        const sistemasConstrutivos = String(first.sistemas_construtivos || first.sistemas || "")
+          .split(/[|,]/)
+          .map((item: string) => item.trim())
+          .filter((item: string) => SISTEMAS_CONSTRUTIVOS.some(([value]) => value === item)) as SistemaConstrutivo[];
+        const comumTodosSistemas = ["1", "true", "sim", "yes"].includes(
+          String(first.comum_todos_sistemas || first.comum || "").trim().toLowerCase()
+        );
         await createComposicao({ tenantId, data: {
           nome,
           unidade,
           ...(codigo ? { codigo } : {}),
           ...(first.descricao ? { descricao: first.descricao } : {}),
+          ...(ETAPAS_COMPOSICAO.some(([value]) => value === etapaKey) ? { etapaKey } : {}),
+          comumTodosSistemas: comumTodosSistemas || sistemasConstrutivos.length === 0,
+          sistemasConstrutivos: comumTodosSistemas ? [] : sistemasConstrutivos,
+          ativo: !["0", "false", "nao", "não"].includes(String(first.ativo || "").trim().toLowerCase()),
           ...(itens.length ? { itens } : {}),
         } as any });
         existing.add(key); existing.add(nome.toLowerCase()); imported += 1;
@@ -652,9 +811,16 @@ export default function Composicoes() {
     } finally { setImporting(false); }
   }
 
-  const filtered = composicoes.filter((c) =>
-    !search || c.nome.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = composicoes.filter((c) => {
+    const comp = c as any;
+    if (search && !c.nome.toLowerCase().includes(search.toLowerCase())) return false;
+    if (stageFilter !== "todos" && comp.etapaKey !== stageFilter) return false;
+    if (systemFilter !== "todos") {
+      const systems = Array.isArray(comp.sistemasConstrutivos) ? comp.sistemasConstrutivos : [];
+      if (!comp.comumTodosSistemas && !systems.includes(systemFilter)) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -676,7 +842,7 @@ export default function Composicoes() {
             <DialogHeader><DialogTitle>Importar composições detalhadas</DialogTitle></DialogHeader>
             <div className="space-y-4 text-sm">
               <p className="text-muted-foreground">Use uma linha para cada insumo. Repita os dados da composição nas linhas seguintes. O insumo deve estar previamente cadastrado e pode ser identificado pelo código ou nome.</p>
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-composicoes.csv", "composicao_codigo;composicao_nome;descricao;unidade;insumo_codigo;insumo_nome;quantidade\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-001;;7\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-002;;0,70\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-composicoes.csv", "composicao_codigo;composicao_nome;descricao;unidade;etapa_key;sistemas_construtivos;comum_todos_sistemas;ativo;insumo_codigo;insumo_nome;quantidade\nCOMP-001;Parede de alvenaria;Composição por m²;m²;estrutura;alvenaria;nao;sim;MAT-001;;12,5\nCOMP-001;Parede de alvenaria;Composição por m²;m²;estrutura;alvenaria;nao;sim;MAT-002;;4,0\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
               <Input type="file" accept=".csv,text/csv" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setImportOpen(false)}>Cancelar</Button><Button onClick={handleCsvImport} disabled={!importFile || importing}>{importing ? "Importando..." : "Importar"}</Button></div>
             </div>
@@ -694,9 +860,27 @@ export default function Composicoes() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar composição..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_220px_220px]">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar composição..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <select
+          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+          value={stageFilter}
+          onChange={(e) => setStageFilter(e.target.value)}
+        >
+          <option value="todos">Todas as etapas</option>
+          {ETAPAS_COMPOSICAO.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+        <select
+          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+          value={systemFilter}
+          onChange={(e) => setSystemFilter(e.target.value)}
+        >
+          <option value="todos">Todos os sistemas</option>
+          {SISTEMAS_CONSTRUTIVOS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
       </div>
 
       {isLoading ? (
@@ -720,6 +904,21 @@ export default function Composicoes() {
                           <span className="font-medium">{comp.nome}</span>
                           <span className="text-xs px-2 py-0.5 bg-muted rounded font-mono">{comp.unidade}</span>
                           {comp.codigo && <span className="text-xs text-muted-foreground font-mono">#{comp.codigo}</span>}
+                          {(comp as any).ativo === false && <span className="text-xs rounded bg-zinc-100 px-2 py-0.5 text-zinc-500">Inativa</span>}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <span className="text-[11px] rounded bg-blue-50 px-2 py-0.5 text-blue-700">
+                            {etapaLabel((comp as any).etapaKey)}
+                          </span>
+                          {(comp as any).comumTodosSistemas ? (
+                            <span className="text-[11px] rounded bg-emerald-50 px-2 py-0.5 text-emerald-700">Comum a todos</span>
+                          ) : (
+                            ((comp as any).sistemasConstrutivos ?? []).map((system: string) => (
+                              <span key={system} className="text-[11px] rounded bg-purple-50 px-2 py-0.5 text-purple-700">
+                                {sistemaLabel(system)}
+                              </span>
+                            ))
+                          )}
                         </div>
                         {comp.descricao && <p className="text-xs text-muted-foreground mt-0.5">{comp.descricao}</p>}
                         <div className="mt-1 flex items-center gap-2 text-xs">
