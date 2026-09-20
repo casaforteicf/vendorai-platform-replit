@@ -371,7 +371,7 @@ export default function ConceptPlanner() {
         setArchProjetoId(draft.archProjetoId ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
         const rawStep = Math.max(0, Math.min(STEPS.length - 1, draft.currentStep ?? 0));
-        setStep(rawStep >= 6 ? 6 : 4);
+        setStep(rawStep >= 6 ? 6 : rawStep >= 5 ? 5 : 4);
         setLotWidth(draft.lot?.width ?? 12);
         setLotDepth(draft.lot?.depth ?? 30);
         setFloors(Math.max(1, Math.min(3, draft.configuration?.floors ?? 1)));
@@ -1456,11 +1456,8 @@ export default function ConceptPlanner() {
   };
 
   const promoteToProject = async () => {
-    let projectConceptId = conceptId;
-    if (!projectConceptId) {
-      projectConceptId = await saveConcept(6);
-      if (!projectConceptId) return;
-    }
+    const projectConceptId = await saveConcept(6);
+    if (!projectConceptId) return;
 
     setHandoffState("sending");
     setHandoffError(null);
@@ -3774,7 +3771,7 @@ export default function ConceptPlanner() {
             <button
               type="button"
               disabled={step === 0}
-              onClick={() => setStep(step >= 6 ? 4 : step >= 4 ? 1 : 0)}
+              onClick={() => setStep(step >= 6 ? 5 : step >= 5 ? 4 : step >= 4 ? 1 : 0)}
               className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-40"
             >
               <ArrowLeft className="h-4 w-4" /> Voltar
@@ -3783,7 +3780,7 @@ export default function ConceptPlanner() {
               <button
                 type="button"
                 onClick={() => {
-                  const nextStep = step === 0 ? 1 : step === 1 ? 4 : 6;
+                  const nextStep = step === 0 ? 1 : step === 1 ? 4 : step === 4 ? 5 : 6;
                   if (nextStep === 4) {
                     setRooms((prev) =>
                       generateTypologyLayout(
@@ -3802,7 +3799,7 @@ export default function ConceptPlanner() {
                 }}
                 className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white"
               >
-                {step === 1 ? "Abrir editor" : step === 4 ? "Ver resultado" : "Continuar"} <ArrowRight className="h-4 w-4" />
+                {step === 1 ? "Abrir editor" : step === 4 ? "Ir para fachada" : step === 5 ? "Ver resultado" : "Continuar"} <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
               <button
