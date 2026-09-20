@@ -1749,6 +1749,41 @@ const ETAPAS_OBRA_SUGERIDAS = [
   "Limpeza e entrega",
 ];
 
+// Pacote inicial de uma obra residencial ICF. O objetivo é abrir o orçamento
+// já com a sequência executiva e as composições principais, sem forçar opcionais
+// como piscina, climatização, cisterna ou energia solar. Esses continuam
+// disponíveis no seletor filtrado da respectiva etapa.
+const ICF_DEFAULT_COMPOSITION_CODES = new Set([
+  // Projetos e legalização
+  "9.1.1", "9.2.3", "9.2.6", "9.2.7", "9.2.8",
+  // Serviços preliminares
+  "1.1.1", "1.1.2", "1.1.3",
+  // Terraplenagem
+  "1.2.1", "1.2.3",
+  // Fundações
+  "1.2.2",
+  // Estrutura / ICF
+  "2.1.1", "2.1.2", "2.1.3", "2.2.1", "2.2.3", "2.3.1",
+  // Lajes
+  "2.2.2",
+  // Cobertura
+  "6.3.3", "6.3.4", "6.3.6",
+  // Instalações hidráulicas
+  "4.1.1", "4.1.2", "4.2.1", "4.3.1", "4.3.2", "4.3.3", "4.4.1",
+  // Instalações elétricas
+  "3.1.1", "3.1.2", "3.1.3", "3.3.1",
+  // Esquadrias
+  "5.1.1", "5.1.2", "5.2.1", "5.2.2", "5.2.3", "5.3.2",
+  // Revestimentos
+  "4.5.1", "6.2.1", "6.2.3", "6.3.1",
+  // Forros e pintura
+  "6.1.1", "6.1.2", "6.3.5",
+  // Acabamentos
+  "6.4.2", "9.4.1", "9.4.2",
+  // Limpeza e entrega
+  "9.3.1", "9.3.2",
+]);
+
 type OrcamentoStageKey =
   | "preliminares"
   | "terraplenagem"
@@ -1859,6 +1894,30 @@ function produtoMatchesStage(item: ProdutoCatalogo, etapaNome: string) {
   return textMatchesStage(text, key, etapaNome);
 }
 
+function buildStandardIcfBudget(composicoes: Composicao[]) {
+  const etapas: OrcamentoEtapaDraft[] = ETAPAS_OBRA_SUGERIDAS.map((nome, index) => ({
+    id: index === 0 ? DEFAULT_ETAPA_ID : `etapa-padrao-${index + 1}`,
+    nome,
+  }));
+  const etapaByKey = new Map(etapas.map((etapa) => [resolveOrcamentoStageKey(etapa.nome), etapa]));
+
+  const lines: CartLine[] = composicoes
+    .filter((item) => ICF_DEFAULT_COMPOSITION_CODES.has(String(item.codigo ?? "").trim()))
+    .map((item) => {
+      const etapa = etapas.find((candidate) => composicaoMatchesStage(item, candidate.nome))
+        ?? etapaByKey.get("acabamentos")
+        ?? etapas[0];
+      return {
+        etapaId: etapa.id,
+        tipo: "composicao" as const,
+        composicaoId: item.id,
+        quantidade: 1,
+      };
+    });
+
+  return { etapas, lines };
+}
+
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
   pix: "PIX",
   boleto: "Boleto Bancário",
@@ -1944,6 +2003,7 @@ function newFreeItem(): FreeItem {
     const [cartError, setCartError] = useState("");
     const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
     const [showAllByStage, setShowAllByStage] = useState<Record<string, boolean>>({});
+    const standardBudgetAppliedRef = useRef(false);
     // livre mode
     const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
     const [freeError, setFreeError] = useState("");
@@ -2005,6 +2065,7 @@ function newFreeItem(): FreeItem {
   
     useEffect(() => {
       if (!open || initialProductIds.length === 0) return;
+      standardBudgetAppliedRef.current = true;
       setMode("catalogo");
       setCartLines(initialProductIds.map((produtoId) => ({
         etapaId: DEFAULT_ETAPA_ID,
@@ -2013,6 +2074,18 @@ function newFreeItem(): FreeItem {
         quantidade: 1,
       })));
     }, [open, initialProductIds.join(",")]);
+
+    useEffect(() => {
+      if (!open || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
+      const standard = buildStandardIcfBudget(composicoes);
+      if (standard.lines.length === 0) return;
+
+      standardBudgetAppliedRef.current = true;
+      setMode("catalogo");
+      setOrcamentoEtapas(standard.etapas);
+      setCartLines(standard.lines);
+      setShowAllByStage({});
+    }, [open, composicoes, initialProductIds.join(",")]);
   
     // totals
     const catTotal = cartLines.reduce((sum, line) => {
@@ -2076,6 +2149,7 @@ function newFreeItem(): FreeItem {
     setCartLines([{ etapaId: DEFAULT_ETAPA_ID, tipo: "produto", quantidade: 1 }]);
     setCartError("");
     setShowAllByStage({});
+    standardBudgetAppliedRef.current = false;
     setFreeItems([newFreeItem()]);
     setFreeError("");
     setContextoIA("");
@@ -2090,6 +2164,57 @@ function newFreeItem(): FreeItem {
       const id = `etapa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const nome = ETAPAS_OBRA_SUGERIDAS[ordem] ?? `Etapa ${ordem + 1}`;
       return [...prev, { id, nome }];
+    });
+  }
+
+  function addMissingStandardIcfItems() {
+    const standard = buildStandardIcfBudget(composicoes);
+    if (standard.lines.length === 0) {
+      toast({
+        title: "Pacote padrão ICF indisponível",
+        description: "As composições-base do modelo ICF não foram encontradas neste tenant.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const currentStageByKey = new Map(
+      orcamentoEtapas.map((etapa) => [resolveOrcamentoStageKey(etapa.nome), etapa])
+    );
+    const mergedStandardStages = standard.etapas.map((standardStage) => {
+      const key = resolveOrcamentoStageKey(standardStage.nome);
+      return currentStageByKey.get(key) ?? standardStage;
+    });
+    const standardKeys = new Set(mergedStandardStages.map((etapa) => resolveOrcamentoStageKey(etapa.nome)));
+    const customStages = orcamentoEtapas.filter((etapa) => !standardKeys.has(resolveOrcamentoStageKey(etapa.nome)));
+    const nextStages = [...mergedStandardStages, ...customStages];
+
+    const stageIdByKey = new Map(nextStages.map((etapa) => [resolveOrcamentoStageKey(etapa.nome), etapa.id]));
+    const existingCompositionIds = new Set(
+      cartLines.map((line) => line.composicaoId).filter(Boolean) as string[]
+    );
+
+    const missingLines = standard.lines
+      .filter((line) => line.composicaoId && !existingCompositionIds.has(line.composicaoId))
+      .map((line) => {
+        const composicao = composicoes.find((item) => item.id === line.composicaoId);
+        const matchingStage = composicao
+          ? nextStages.find((etapa) => composicaoMatchesStage(composicao, etapa.nome))
+          : undefined;
+        const stageKey = matchingStage ? resolveOrcamentoStageKey(matchingStage.nome) : "acabamentos";
+        return {
+          ...line,
+          etapaId: stageIdByKey.get(stageKey) ?? nextStages[0].id,
+        };
+      });
+
+    setOrcamentoEtapas(nextStages);
+    setCartLines((prev) => [...prev.filter((line) => line.produtoId || line.composicaoId), ...missingLines]);
+    toast({
+      title: "Pacote padrão ICF atualizado",
+      description: missingLines.length
+        ? `${missingLines.length} composição(ões) principal(is) adicionada(s) às etapas corretas.`
+        : "Todos os itens principais já estavam no orçamento.",
     });
   }
 
@@ -2566,12 +2691,17 @@ function newFreeItem(): FreeItem {
                   <div>
                     <p className="text-sm font-semibold">Etapas do Orçamento</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Cada etapa agrupa os produtos e composições executados no mesmo momento da obra.
+                      O orçamento ICF inicia com as etapas e composições principais. Remova o que não se aplica, ajuste quantidades e adicione opcionais dentro da etapa correspondente.
                     </p>
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={addMissingStandardIcfItems}>
+                      <Package className="h-3.5 w-3.5 mr-1" /> Completar pacote padrão ICF
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={addEtapaDraft}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Nova etapa
+                    </Button>
+                  </div>
                 </div>
 
                 <datalist id="etapas-obras-sugeridas">
