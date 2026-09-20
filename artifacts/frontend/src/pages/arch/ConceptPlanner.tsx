@@ -415,7 +415,6 @@ export default function ConceptPlanner() {
     setSaveState("saving");
     const payload = {
       title: "Meu pré-projeto",
-      status: "draft",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles },
