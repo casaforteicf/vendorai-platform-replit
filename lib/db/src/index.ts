@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
 import { applyPendingMigrations as _applyPendingMigrations } from "./apply-migrations.js";
+import { normalizeRuntimeConnectionString, safeConnectionTarget } from "./runtime-connection-string.js";
 
 const { Pool } = pg;
 
@@ -23,48 +24,12 @@ if (!rawConnectionString) {
   );
 }
 
-function normalizeRuntimeConnectionString(value: string): string {
-  if (!process.env.APP_DATABASE_URL) return value;
+const connectionString = normalizeRuntimeConnectionString(rawConnectionString, Boolean(process.env.APP_DATABASE_URL));
 
-  try {
-    const url = new URL(value);
-    let projectRef: string | null = null;
-
-    if (url.username === "postgres") {
-      url.username = "vendorai_app";
-    } else if (url.username.startsWith("postgres.")) {
-      projectRef = url.username.slice("postgres.".length);
-      url.username = `vendorai_app.${projectRef}`;
-    }
-
-    if (projectRef && url.hostname.endsWith(".pooler.supabase.com")) {
-      url.hostname = `db.${projectRef}.supabase.co`;
-      url.port = "5432";
-      url.username = "vendorai_app";
-      if (!url.searchParams.has("sslmode")) {
-        url.searchParams.set("sslmode", "require");
-      }
-    }
-
-    return url.toString();
-  } catch {
-    return value;
-  }
-}
-
-const connectionString = normalizeRuntimeConnectionString(rawConnectionString);
-
-try {
-  const diagnosticUrl = new URL(connectionString);
-  console.info("[db] connection target", {
-    protocol: diagnosticUrl.protocol,
-    username: diagnosticUrl.username,
-    hostname: diagnosticUrl.hostname,
-    port: diagnosticUrl.port || "(default)",
-    database: diagnosticUrl.pathname,
-    hasPassword: diagnosticUrl.password.length > 0,
-  });
-} catch {
+const connectionTarget = safeConnectionTarget(connectionString);
+if (connectionTarget) {
+  console.info("[db] connection target", connectionTarget);
+} else {
   console.info("[db] connection target could not be parsed");
 }
 
