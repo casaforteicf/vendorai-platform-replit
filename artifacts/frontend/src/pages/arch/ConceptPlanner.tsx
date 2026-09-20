@@ -47,6 +47,7 @@ import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
+import { blockingConceptIssues, buildCompletedRenderPatch, canAdvanceConceptLayout } from "./conceptWorkflow";
 
 type RoomKind =
   | "sala"
@@ -1132,7 +1133,7 @@ export default function ConceptPlanner() {
     () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
   );
-  const blockingLayoutIssues = layoutIssues.filter((issue) => issue.severity === "error");
+  const blockingLayoutIssues = blockingConceptIssues(layoutIssues);
   const selectedOpening = geometry.openings.find((opening) => opening.id === selectedOpeningId) ?? null;
   const selectedCustomOpening = selectedOpening
     ? customOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
@@ -1556,10 +1557,7 @@ export default function ConceptPlanner() {
           await fetch(`/api/arch/concept-projects/${renderProjectId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              currentStep: 5,
-              conceptRender: completed,
-            }),
+            body: JSON.stringify(buildCompletedRenderPatch(completed)),
           });
           return;
         }
@@ -2389,7 +2387,7 @@ export default function ConceptPlanner() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (blockingLayoutIssues.length > 0) return;
+                    if (!canAdvanceConceptLayout(layoutIssues)) return;
                     setStep(5);
                     void saveConcept(5);
                   }}
