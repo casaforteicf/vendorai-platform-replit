@@ -59,6 +59,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { BudgetQuantityInput } from "@/components/BudgetQuantityInput";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -3040,20 +3041,10 @@ function newFreeItem(): FreeItem {
                                       </TableCell>
 
                                       <TableCell className="py-1.5">
-                                        <Input
-                                          type="number"
-                                          min={composicao ? 0.0001 : 1}
-                                          step={composicao ? 0.01 : 1}
-                                          className="h-8 text-sm w-24"
+                                        <BudgetQuantityInput
                                           value={line.quantidade}
-                                          onChange={(e) => {
-                                            const value = Number(e.target.value);
-                                            updateCatLine(idx, {
-                                              quantidade: composicao
-                                                ? Math.max(0.0001, Number.isFinite(value) ? value : 0.0001)
-                                                : Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1)),
-                                            });
-                                          }}
+                                          isComposition={Boolean(composicao)}
+                                          onChange={(quantidade) => updateCatLine(idx, { quantidade })}
                                         />
                                       </TableCell>
 
