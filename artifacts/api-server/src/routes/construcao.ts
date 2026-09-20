@@ -984,6 +984,7 @@ router.get("/tenants/:tenantId/insumos", async (req, res) => {
   const filters = [eq(insumosTable.tenantId, tid)];
   if (req.query.q) filters.push(ilike(insumosTable.nome, `%${req.query.q}%`));
   if (req.query.categoria) filters.push(eq(insumosTable.categoria, req.query.categoria as string));
+  if (req.query.tipo) filters.push(eq(insumosTable.tipo, req.query.tipo as string));
 
   const rows = await db.select().from(insumosTable).where(and(...filters)).orderBy(asc(insumosTable.nome));
   return res.json(rows);
@@ -995,6 +996,7 @@ const importInsumosEmLoteSchema = z.object({
     nome: z.string().trim().min(1).max(500),
     descricao: z.string().trim().max(2000).optional().nullable(),
     unidade: z.string().trim().min(1).max(50),
+    tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico"]).optional().nullable(),
     precoUnitario: z.union([z.string(), z.number()]).optional().nullable(),
     categoria: z.string().trim().max(255).optional().nullable(),
   })).min(1).max(5000),
@@ -1017,6 +1019,7 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     nome: string;
     descricao?: string;
     unidade: string;
+    tipo?: "material" | "mao_de_obra" | "equipamento" | "servico";
     precoUnitario?: string;
     categoria?: string;
   }> = [];
@@ -1037,6 +1040,7 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
       tenantId: tid,
       nome: raw.nome.trim(),
       unidade: raw.unidade.trim(),
+      ...(raw.tipo ? { tipo: raw.tipo } : {}),
       ...(raw.codigo?.trim() ? { codigo: raw.codigo.trim() } : {}),
       ...(raw.descricao?.trim() ? { descricao: raw.descricao.trim() } : {}),
       ...(raw.categoria?.trim() ? { categoria: raw.categoria.trim() } : {}),
@@ -1090,6 +1094,7 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     const data: Partial<(typeof validRows)[number]> = {
       nome: row.nome,
       unidade: row.unidade,
+      ...(row.tipo ? { tipo: row.tipo } : {}),
       ...(row.codigo ? { codigo: row.codigo } : {}),
       ...(row.descricao !== undefined ? { descricao: row.descricao } : {}),
       ...(row.categoria !== undefined ? { categoria: row.categoria } : {}),

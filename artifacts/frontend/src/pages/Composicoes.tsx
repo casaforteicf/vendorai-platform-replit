@@ -25,7 +25,15 @@ import { Plus, Layers, Pencil, Trash2, Search, ChevronDown, ChevronUp, X, Upload
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
 
-const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx"];
+const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx", "h", "dia", "mês"];
+const UNIDADES_MAO_DE_OBRA = ["m²", "h", "dia", "mês"];
+
+const TIPOS_INSUMO = [
+  ["material", "Material"],
+  ["mao_de_obra", "Mão de obra"],
+  ["equipamento", "Equipamento"],
+  ["servico", "Serviço"],
+] as const;
 
 const ETAPAS_COMPOSICAO = [
   ["projetos_legalizacao", "Projetos e legalização"],
@@ -187,6 +195,7 @@ function ComposicaoForm({
   const [newInsumo, setNewInsumo] = useState({
     nome: "",
     unidade: "un",
+    tipo: "material",
     codigo: "",
     categoria: "",
     precoUnitario: "",
@@ -230,7 +239,7 @@ function ComposicaoForm({
     if (duplicated) {
       addInsumo(duplicated.id);
       setQuickCreateOpen(false);
-      setNewInsumo({ nome: "", unidade: "un", codigo: "", categoria: "", precoUnitario: "" });
+      setNewInsumo({ nome: "", unidade: "un", tipo: "material", codigo: "", categoria: "", precoUnitario: "" });
       toast({
         title: "Insumo já cadastrado",
         description: `${duplicated.nome} foi adicionado à composição.`,
@@ -244,6 +253,7 @@ function ComposicaoForm({
         data: {
           nome,
           unidade: newInsumo.unidade,
+          tipo: newInsumo.tipo,
           ...(newInsumo.codigo.trim() ? { codigo: newInsumo.codigo.trim() } : {}),
           ...(newInsumo.categoria.trim() ? { categoria: newInsumo.categoria.trim() } : {}),
           ...(newInsumo.precoUnitario.trim() ? { precoUnitario: newInsumo.precoUnitario.trim() } : {}),
@@ -265,7 +275,7 @@ function ComposicaoForm({
 
       setInsumoSearch("");
       setQuickCreateOpen(false);
-      setNewInsumo({ nome: "", unidade: "un", codigo: "", categoria: "", precoUnitario: "" });
+      setNewInsumo({ nome: "", unidade: "un", tipo: "material", codigo: "", categoria: "", precoUnitario: "" });
       toast({
         title: "Insumo cadastrado",
         description: `${created.nome} foi salvo na Tabela Mestre e adicionado à composição.`,
@@ -469,7 +479,10 @@ function ComposicaoForm({
                 {filteredInsumos.slice(0, 8).map((ins) => (
                   <button key={ins.id} type="button" onClick={() => addInsumo(ins.id)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between">
-                    <span>{ins.nome}</span>
+                    <span>
+                      {ins.nome}
+                      {(ins as any).tipo === "mao_de_obra" && <span className="ml-2 text-[10px] text-primary">Mão de obra</span>}
+                    </span>
                     <span className="text-xs text-muted-foreground font-mono">{ins.unidade}</span>
                   </button>
                 ))}
@@ -520,13 +533,31 @@ function ComposicaoForm({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Unidade *</Label>
+                <Label className="text-xs">Tipo *</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  value={newInsumo.tipo}
+                  onChange={(e) => {
+                    const tipo = e.target.value;
+                    setNewInsumo((prev) => ({
+                      ...prev,
+                      tipo,
+                      unidade: tipo === "mao_de_obra" && !UNIDADES_MAO_DE_OBRA.includes(prev.unidade) ? "h" : prev.unidade,
+                      categoria: tipo === "mao_de_obra" && !prev.categoria ? "Mão de obra" : prev.categoria,
+                    }));
+                  }}
+                >
+                  {TIPOS_INSUMO.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{newInsumo.tipo === "mao_de_obra" ? "Forma de cobrança *" : "Unidade *"}</Label>
                 <select
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
                   value={newInsumo.unidade}
                   onChange={(e) => setNewInsumo((prev) => ({ ...prev, unidade: e.target.value }))}
                 >
-                  {UNIDADES.map((unidade) => <option key={unidade} value={unidade}>{unidade}</option>)}
+                  {(newInsumo.tipo === "mao_de_obra" ? UNIDADES_MAO_DE_OBRA : UNIDADES).map((unidade) => <option key={unidade} value={unidade}>{unidade}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
@@ -576,7 +607,12 @@ function ComposicaoForm({
               return (
                 <div key={item.insumoId} className="flex flex-col gap-1.5 rounded-md border p-2 sm:border-0 sm:p-0 sm:flex-row sm:items-center sm:gap-2 text-sm">
                   <div className="flex items-center justify-between gap-2 sm:flex-1 sm:min-w-0">
-                    <span className="flex-1 truncate font-medium sm:font-normal">{ins?.nome ?? item.insumoId}</span>
+                    <span className="flex-1 truncate font-medium sm:font-normal">
+                      {ins?.nome ?? item.insumoId}
+                      {(ins as any)?.tipo === "mao_de_obra" && (
+                        <span className="ml-2 text-[10px] rounded bg-primary/10 px-1.5 py-0.5 text-primary">Mão de obra</span>
+                      )}
+                    </span>
                     <button type="button" className="sm:hidden text-muted-foreground" onClick={() => setItens((prev) => prev.filter((_, j) => j !== idx))}>
                       <X className="h-4 w-4" />
                     </button>

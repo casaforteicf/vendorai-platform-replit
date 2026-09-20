@@ -14,6 +14,8 @@ const decimalOptional = z
 
 // ─── Insumos (central materials registry) ────────────────────────────────────
 
+export const INSUMO_TIPOS = ["material", "mao_de_obra", "equipamento", "servico"] as const;
+
 export const insumosTable = pgTable("insumos", {
   id: text("id")
     .primaryKey()
@@ -24,6 +26,7 @@ export const insumosTable = pgTable("insumos", {
   nome: text("nome").notNull(),
   descricao: text("descricao"),
   unidade: text("unidade").notNull(),
+  tipo: text("tipo").notNull().default("material"),
   precoUnitario: numeric("preco_unitario", { precision: 15, scale: 4 }),
   categoria: text("categoria"),
   codigo: text("codigo"),
@@ -33,10 +36,12 @@ export const insumosTable = pgTable("insumos", {
 
 export const insertInsumoSchema = createInsertSchema(insumosTable, {
   precoUnitario: decimalOptional,
+  tipo: z.enum(INSUMO_TIPOS).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateInsumoSchema = createSelectSchema(insumosTable, {
   precoUnitario: decimalOptional,
+  tipo: z.enum(INSUMO_TIPOS).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();

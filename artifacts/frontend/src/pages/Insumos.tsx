@@ -20,16 +20,29 @@ import type { Insumo } from "@workspace/api-client-react";
 import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
 import { useToast } from "@/hooks/use-toast";
 
-const CATEGORIAS_PADRAO = ["Alvenaria", "Concreto", "Cobertura", "Elétrica", "Hidráulica", "Acabamento", "Estrutura", "Movimento de terra", "Ferramentas", "Outros"];
+const CATEGORIAS_PADRAO = ["Mão de obra", "Alvenaria", "Concreto", "Cobertura", "Elétrica", "Hidráulica", "Acabamento", "Estrutura", "Movimento de terra", "Ferramentas", "Outros"];
 const NOVA_CATEGORIA_VALUE = "__nova_categoria__";
 
-const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx"];
+const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx", "h", "dia", "mês"];
+const UNIDADES_MAO_DE_OBRA = ["m²", "h", "dia", "mês"];
+
+const TIPOS_INSUMO = [
+  ["material", "Material"],
+  ["mao_de_obra", "Mão de obra"],
+  ["equipamento", "Equipamento"],
+  ["servico", "Serviço"],
+] as const;
+
+function tipoLabel(value?: string | null) {
+  return TIPOS_INSUMO.find(([key]) => key === value)?.[1] ?? "Material";
+}
 
 type ImportRow = {
   codigo?: string;
   nome: string;
   descricao?: string;
   unidade: string;
+  tipo?: string;
   precoUnitario?: string;
   categoria?: string;
 };
@@ -53,6 +66,7 @@ function normalizeImportRows(rows: Record<string, string>[]): ImportRow[] {
         nome,
         ...(row.descricao?.trim() ? { descricao: row.descricao.trim() } : {}),
         unidade,
+        ...(row.tipo?.trim() ? { tipo: row.tipo.trim() } : {}),
         ...(precoUnitario ? { precoUnitario } : {}),
         ...(row.categoria?.trim() ? { categoria: row.categoria.trim() } : {}),
       };
@@ -83,6 +97,7 @@ function exportInsumos(items: Insumo[], format: "csv" | "xlsx") {
     nome: item.nome,
     descricao: item.descricao ?? "",
     unidade: item.unidade,
+    tipo: (item as any).tipo ?? "material",
     preco_unitario: item.precoUnitario ?? "",
     categoria: item.categoria ?? "",
   }));
@@ -116,12 +131,15 @@ function InsumoForm({
     nome: initial?.nome ?? "",
     descricao: initial?.descricao ?? "",
     unidade: initial?.unidade ?? "un",
+    tipo: (initial as any)?.tipo ?? "material",
     precoUnitario: initial?.precoUnitario ?? "",
     categoria: initial?.categoria ?? "",
     codigo: initial?.codigo ?? "",
   });
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+
+  const unitOptions = form.tipo === "mao_de_obra" ? UNIDADES_MAO_DE_OBRA : UNIDADES;
 
   const availableCategories = [...new Set([
     ...CATEGORIAS_PADRAO,
@@ -147,10 +165,31 @@ function InsumoForm({
           <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
         </div>
         <div className="space-y-2">
-          <Label>Unidade *</Label>
-          <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" value={form.unidade} onChange={(e) => setForm((f) => ({ ...f, unidade: e.target.value }))}>
-            {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+          <Label>Tipo *</Label>
+          <select
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+            value={form.tipo}
+            onChange={(e) => {
+              const tipo = e.target.value;
+              setForm((f) => ({
+                ...f,
+                tipo,
+                unidade: tipo === "mao_de_obra" && !UNIDADES_MAO_DE_OBRA.includes(f.unidade) ? "h" : f.unidade,
+                categoria: tipo === "mao_de_obra" && !f.categoria ? "Mão de obra" : f.categoria,
+              }));
+            }}
+          >
+            {TIPOS_INSUMO.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
+        </div>
+        <div className="space-y-2">
+          <Label>{form.tipo === "mao_de_obra" ? "Forma de cobrança *" : "Unidade *"}</Label>
+          <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" value={form.unidade} onChange={(e) => setForm((f) => ({ ...f, unidade: e.target.value }))}>
+            {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+          {form.tipo === "mao_de_obra" && (
+            <p className="text-xs text-muted-foreground">Preço pode ser informado por m², hora, dia ou mês.</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Preço unitário (R$)</Label>
@@ -233,6 +272,7 @@ export default function Insumos() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -378,6 +418,7 @@ export default function Insumos() {
 
   const filtered = insumos.filter((i) => {
     if (catFilter !== "all" && i.categoria !== catFilter) return false;
+    if (typeFilter !== "all" && ((i as any).tipo ?? "material") !== typeFilter) return false;
     if (search) {
       const term = search.toLowerCase();
       if (
@@ -405,9 +446,9 @@ export default function Insumos() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Package className="h-6 w-6 text-blue-500" />
-            Insumos e Materiais
+            Insumos, Materiais e Mão de Obra
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Cadastro central de materiais e insumos para alocação em obras</p>
+          <p className="text-sm text-muted-foreground mt-1">Cadastro central de materiais, serviços, equipamentos e mão de obra para as composições da obra</p>
         </div>
         <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" className="gap-2" onClick={() => { window.location.href = "/composicoes"; }}>
@@ -435,7 +476,7 @@ export default function Insumos() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <DialogTitle>Tabela Mestre de Preços</DialogTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">{priceFiltered.length} de {insumos.length} insumos</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{priceFiltered.length} de {insumos.length} itens de custo</p>
                 </div>
                 <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => setPriceTableFullscreen((value) => !value)}>
                   {priceTableFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -484,6 +525,7 @@ export default function Insumos() {
                   <tr>
                     <th className="text-left px-4 py-3 w-32">Código</th>
                     <th className="text-left px-4 py-3 min-w-72">Insumo</th>
+                    <th className="text-left px-4 py-3 w-32">Tipo</th>
                     <th className="text-left px-4 py-3 w-24">Un.</th>
                     <th className="text-left px-4 py-3 min-w-52">Categoria</th>
                     <th className="text-left px-4 py-3 w-40">Atualizado</th>
@@ -498,6 +540,7 @@ export default function Insumos() {
                         <div className="font-medium">{item.nome}</div>
                         {item.descricao && <div className="max-w-xl truncate text-xs text-muted-foreground">{item.descricao}</div>}
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground">{tipoLabel((item as any).tipo)}</td>
                       <td className="px-4 py-3">{item.unidade}</td>
                       <td className="px-4 py-3 text-muted-foreground">{item.categoria ?? "—"}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">
@@ -547,10 +590,10 @@ export default function Insumos() {
                 Aceita CSV, XLSX e XLS. O código é a chave principal: código existente atualiza o insumo; código novo cria um novo cadastro.
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-insumos.csv", "codigo;nome;descricao;unidade;preco_unitario;categoria\nMAT-001;Cimento CP II;Saco 50 kg;sc;39,90;Concreto\n")}>
+                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-insumos.csv", "codigo;nome;descricao;unidade;tipo;preco_unitario;categoria\nMAT-001;Cimento CP II;Saco 50 kg;sc;material;39,90;Concreto\nMO-0003;Pedreiro;Mão de obra por hora;h;mao_de_obra;31,17;Mão de obra\n")}>
                   <Download className="h-4 w-4" />Baixar modelo CSV
                 </Button>
-                <span className="text-xs text-muted-foreground">Campos: código, nome, descrição, unidade, preço unitário e categoria.</span>
+                <span className="text-xs text-muted-foreground">Campos: código, nome, descrição, unidade, tipo, preço unitário e categoria.</span>
               </div>
               <Input
                 type="file"
@@ -571,6 +614,7 @@ export default function Insumos() {
                     <tr>
                       <th className="px-3 py-2 text-left">Código</th>
                       <th className="px-3 py-2 text-left">Nome</th>
+                      <th className="px-3 py-2 text-left">Tipo</th>
                       <th className="px-3 py-2 text-left">Un.</th>
                       <th className="px-3 py-2 text-left">Categoria</th>
                       <th className="px-3 py-2 text-right">Preço</th>
@@ -581,6 +625,7 @@ export default function Insumos() {
                       <tr key={`${row.codigo ?? row.nome}-${index}`} className="border-b last:border-0">
                         <td className="px-3 py-2 font-mono text-muted-foreground">{row.codigo ?? "—"}</td>
                         <td className="px-3 py-2 font-medium">{row.nome}</td>
+                        <td className="px-3 py-2">{tipoLabel(row.tipo)}</td>
                         <td className="px-3 py-2">{row.unidade}</td>
                         <td className="px-3 py-2 text-muted-foreground">{row.categoria ?? "—"}</td>
                         <td className="px-3 py-2 text-right font-mono">{row.precoUnitario ? `R$ ${Number(row.precoUnitario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
@@ -616,11 +661,19 @@ export default function Insumos() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_260px_auto] md:items-center">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_200px_240px_auto] md:items-center">
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar por nome, código ou descrição..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <select
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option value="all">Todos os tipos</option>
+          {TIPOS_INSUMO.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
         <select
           className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
           value={catFilter}
@@ -683,6 +736,7 @@ export default function Insumos() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span><span className="font-medium text-foreground">Tipo:</span> {tipoLabel((insumo as any).tipo)}</span>
                     {insumo.categoria && (
                       <span><span className="font-medium text-foreground">Categoria:</span> {insumo.categoria}</span>
                     )}
@@ -709,6 +763,7 @@ export default function Insumos() {
                 <thead className="sticky top-0 z-10 bg-background">
                   <tr className="border-b bg-muted/30 shadow-sm">
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nome</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tipo</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Categoria</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Unidade</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Preço unitário</th>
@@ -723,6 +778,7 @@ export default function Insumos() {
                         <div className="font-medium">{insumo.nome}</div>
                         {insumo.descricao && <div className="text-xs text-muted-foreground">{insumo.descricao}</div>}
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground">{tipoLabel((insumo as any).tipo)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{insumo.categoria ?? "—"}</td>
                       <td className="px-4 py-3"><span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{insumo.unidade}</span></td>
                       <td className="px-4 py-3 text-right font-mono">
