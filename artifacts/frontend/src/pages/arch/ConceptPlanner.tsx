@@ -1455,7 +1455,9 @@ export default function ConceptPlanner() {
     pushRoomHistory(before);
   };
 
-  const promoteToProject = async () => {\n    const projectConceptId = await saveConcept(6);\n    if (!projectConceptId) return;
+  const promoteToProject = async () => {
+    const projectConceptId = await saveConcept(6);
+    if (!projectConceptId) return;
 
     setHandoffState("sending");
     setHandoffError(null);
