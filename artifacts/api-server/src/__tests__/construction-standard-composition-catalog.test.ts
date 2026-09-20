@@ -12,7 +12,6 @@ describe("Arqdor standard construction composition catalog", () => {
   it("covers the requested construction groups with stable codes", () => {
     const codes = new Set(STANDARD_CONSTRUCTION_COMPOSITIONS.map((item) => item.codigo));
 
-    expect(codes).toEqual(expect.objectContaining ? codes : codes);
     expect(codes.has("ARQ-REV-001")).toBe(true); // porcelanato
     expect(codes.has("ARQ-REV-002")).toBe(true); // revestimento parede
     expect(codes.has("ARQ-REV-003")).toBe(true); // basecoat
