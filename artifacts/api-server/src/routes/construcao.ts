@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { resolveAIKey } from "../lib/ai-gateway.js";
 import { and, or, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
+import { STANDARD_CONSTRUCTION_COMPOSITIONS } from "../data/construction-composition-catalog";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -1650,6 +1651,129 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
   });
 
   return res.status(201).json(composicao);
+});
+
+
+router.post("/tenants/:tenantId/composicoes/catalogo-padrao/aplicar", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const existingInsumos = await db
+    .select()
+    .from(insumosTable)
+    .where(eq(insumosTable.tenantId, tid));
+
+  const byCodigo = new Map(
+    existingInsumos
+      .filter((item) => item.codigo?.trim())
+      .map((item) => [item.codigo!.trim().toLowerCase(), item] as const),
+  );
+  const byNome = new Map(
+    existingInsumos.map((item) => [item.nome.trim().toLowerCase(), item] as const),
+  );
+
+  let insumosCriados = 0;
+  let composicoesCriadas = 0;
+  let composicoesExistentes = 0;
+
+  const getOrCreateInsumo = async (item: (typeof STANDARD_CONSTRUCTION_COMPOSITIONS)[number]["itens"][number]) => {
+    const codeKey = item.codigo.trim().toLowerCase();
+    const nameKey = item.nome.trim().toLowerCase();
+    const found = byCodigo.get(codeKey) ?? byNome.get(nameKey);
+    if (found) return found;
+
+    const payload = insertInsumoSchema.safeParse({
+      tenantId: tid,
+      codigo: item.codigo,
+      nome: item.nome,
+      descricao: "Insumo do catálogo padrão Arqdor. Preço deve ser definido/atualizado na Tabela Mestre de Preços.",
+      unidade: item.unidade,
+      tipo: item.tipo,
+      categoria: item.categoria,
+    });
+    if (!payload.success) {
+      throw new Error(`Falha ao preparar insumo ${item.codigo}: ${payload.error.message}`);
+    }
+
+    const [created] = await db.insert(insumosTable).values(payload.data).returning();
+    byCodigo.set(codeKey, created);
+    byNome.set(nameKey, created);
+    insumosCriados += 1;
+    return created;
+  };
+
+  for (const template of STANDARD_CONSTRUCTION_COMPOSITIONS) {
+    const [existingComposition] = await db
+      .select({ id: composicoesTable.id })
+      .from(composicoesTable)
+      .where(and(
+        eq(composicoesTable.tenantId, tid),
+        eq(composicoesTable.codigo, template.codigo),
+      ));
+
+    if (existingComposition) {
+      composicoesExistentes += 1;
+      continue;
+    }
+
+    const insumosDaComposicao = [];
+    for (const item of template.itens) {
+      const insumo = await getOrCreateInsumo(item);
+      insumosDaComposicao.push({ item, insumo });
+    }
+
+    const precoPorInsumo = new Map(
+      insumosDaComposicao.map(({ insumo }) => [insumo.id, Number(insumo.precoUnitario ?? 0)] as const),
+    );
+    const custoTotal = insumosDaComposicao.reduce((sum, { item, insumo }) => {
+      return sum + Number(item.quantidade) * Number(precoPorInsumo.get(insumo.id) ?? 0);
+    }, 0);
+
+    const parsed = insertComposicaoSchema.safeParse({
+      tenantId: tid,
+      codigo: template.codigo,
+      nome: template.nome,
+      descricao: template.descricao,
+      unidade: template.unidade,
+      etapaKey: template.etapaKey,
+      sistemasConstrutivos: template.sistemasConstrutivos,
+      comumTodosSistemas: template.comumTodosSistemas,
+      ativo: true,
+      ordem: template.ordem,
+      custoTotal: custoTotal.toFixed(4),
+    });
+
+    if (!parsed.success) {
+      return res.status(422).json({
+        error: `Falha ao preparar composição ${template.codigo}: ${parsed.error.message}`,
+      });
+    }
+
+    await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(composicoesTable)
+        .values(parsed.data)
+        .returning();
+
+      await tx.insert(composicaoInsumosTable).values(
+        insumosDaComposicao.map(({ item, insumo }) => ({
+          composicaoId: created.id,
+          insumoId: insumo.id,
+          quantidade: item.quantidade,
+        })),
+      );
+    });
+
+    composicoesCriadas += 1;
+  }
+
+  return res.json({
+    catalogVersion: "2026-09-20",
+    totalCatalogo: STANDARD_CONSTRUCTION_COMPOSITIONS.length,
+    insumosCriados,
+    composicoesCriadas,
+    composicoesExistentes,
+  });
 });
 
 router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
