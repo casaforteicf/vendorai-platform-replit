@@ -1,4 +1,5 @@
 name: VendorAI Stability Gate
+# smoke validation for issue 1764
 
 on:
   pull_request:
