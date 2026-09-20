@@ -8,7 +8,7 @@ RUN pnpm install --no-frozen-lockfile
 
 # Independent VendorAI P0 release gate on Railway.
 # Validates CRM, Obras, tenant integrity and production build without depending on Vercel/GitHub Actions.
-RUN pnpm --filter @workspace/api-server exec vitest run src/__tests__/deals-isolation.test.ts
+RUN pnpm --filter @workspace/api-server exec vitest run src/__tests__/deals-isolation.test.ts\nRUN pnpm --filter @workspace/api-server exec vitest run src/__tests__/construction-tenant-guard.test.ts src/__tests__/construction-budget-composition-flow.test.ts
 RUN pnpm --filter @workspace/frontend exec vitest run src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
 RUN pnpm --filter @workspace/api-server audit:tenant:baseline
 RUN pnpm --filter @workspace/api-server audit:production-integrity
