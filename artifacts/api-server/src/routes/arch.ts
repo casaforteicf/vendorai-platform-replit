@@ -215,6 +215,9 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`arqdor-concept-promote:${tid}:${id}`}))`);
+
   const [concept] = await db
     .select()
     .from(archConceptProjectsTable)
@@ -432,8 +435,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     leadId,
     dealId,
   });
+  });
 });
-
 function getPortalBaseUrl(req: Request): string {
   // Mesmo achado do reset de senha: REPLIT_DOMAINS aponta pro backend
   // (Railway), não pro site (Vercel) -- link de portal do cliente
