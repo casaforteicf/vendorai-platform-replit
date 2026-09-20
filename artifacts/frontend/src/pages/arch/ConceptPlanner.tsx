@@ -281,10 +281,11 @@ function createRoom(kind: RoomKind, floor = 0): Room {
 
 const SINGLETON_ROOM_KINDS = new Set<RoomKind>(["sala", "cozinha", "garagem", "lavanderia", "gourmet", "piscina"]);
 
-function normalizeDraftRooms(input: Room[]) {
+function normalizeDraftRooms(input: Room[] | null | undefined) {
   const singletonKinds = SINGLETON_ROOM_KINDS;
   const seen = new Set<string>();
-  return input.filter((room) => {
+  const safeInput = Array.isArray(input) ? input : [];
+  return safeInput.filter((room) => {
     if (!singletonKinds.has(room.kind)) return true;
     const key = `${room.floor}:${room.kind}`;
     if (seen.has(key)) return false;
@@ -412,19 +413,19 @@ export default function ConceptPlanner() {
   }, [modelCategory, modelSearch]);
 
   useEffect(() => {
-    roomsRef.current = rooms;
+    roomsRef.current = Array.isArray(rooms) ? rooms : [];
   }, [rooms]);
 
   useEffect(() => {
-    customWallsRef.current = customWalls;
+    customWallsRef.current = Array.isArray(customWalls) ? customWalls : [];
   }, [customWalls]);
 
   useEffect(() => {
-    customOpeningsRef.current = customOpenings;
+    customOpeningsRef.current = Array.isArray(customOpenings) ? customOpenings : [];
   }, [customOpenings]);
 
   useEffect(() => {
-    wallFirstFloorsRef.current = wallFirstFloors;
+    wallFirstFloorsRef.current = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   }, [wallFirstFloors]);
 
   useEffect(() => {
@@ -713,7 +714,7 @@ export default function ConceptPlanner() {
 
       next.x = Math.max(0, Math.min(lotWidth - next.width, Math.round(targetX * 4) / 4));
       next.y = Math.max(0, Math.min(lotDepth - next.depth, Math.round(targetY * 4) / 4));
-      setRooms((prev) => [...prev, next]);
+      setRooms((prev) => [...(Array.isArray(prev) ? prev : []), next]);
       if (activeFloor < 2) setFloors((value) => Math.max(value, activeFloor + 2));
       setSelectedId(next.id);
       setInteractionMode("room");
@@ -734,7 +735,7 @@ export default function ConceptPlanner() {
       const next = createRoom("piscina", activeFloor);
       next.x = Math.max(0.5, Math.min(lotWidth - next.width - 0.5, (lotWidth - next.width) / 2));
       next.y = Math.max(0.5, lotDepth - next.depth - 0.75);
-      setRooms((prev) => [...prev, next]);
+      setRooms((prev) => [...(Array.isArray(prev) ? prev : []), next]);
       setSelectedId(next.id);
       setInteractionMode("room");
       pushRoomHistory(before);
@@ -749,7 +750,7 @@ export default function ConceptPlanner() {
       }
     }
     const next = createRoom(kind, activeFloor);
-    setRooms((prev) => autoArrange([...prev, next], lotWidth, lotDepth, activeFloor));
+    setRooms((prev) => autoArrange([...(Array.isArray(prev) ? prev : []), next], lotWidth, lotDepth, activeFloor));
     setSelectedId(next.id);
   };
 
@@ -833,7 +834,7 @@ export default function ConceptPlanner() {
       x: Math.max(0, Math.min(lotWidth - selected.width, selected.x + 0.5)),
       y: Math.max(0, Math.min(lotDepth - selected.depth, selected.y + 0.5)),
     };
-    setRooms((prev) => [...prev, copy]);
+    setRooms((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedId(copy.id);
   };
 
@@ -965,7 +966,7 @@ export default function ConceptPlanner() {
 
     setCustomWalls([...otherWalls, ...floorWalls]);
     setCustomOpenings([...otherOpenings, ...existingOpenings, ...importedOpenings]);
-    setWallFirstFloors((prev) => [...new Set([...prev, activeFloor])].sort((a, b) => a - b));
+    setWallFirstFloors((prev) => [...new Set([...(Array.isArray(prev) ? prev : []), activeFloor])].sort((a, b) => a - b));
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
@@ -1220,7 +1221,7 @@ export default function ConceptPlanner() {
       centroid: selectedClosedSpace.centroid,
       area: selectedClosedSpace.area,
     };
-    setSpaceProfiles((prev) => [...prev, created]);
+    setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), created]);
   };
   const layoutIssues = useMemo(
     () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
@@ -1235,7 +1236,7 @@ export default function ConceptPlanner() {
 
   const addCustomWall = (wall: CustomWall) => {
     const before = snapshotEditor();
-    setCustomWalls((prev) => [...prev, wall]);
+    setCustomWalls((prev) => [...(Array.isArray(prev) ? prev : []), wall]);
     pushRoomHistory(before);
     setSelectedCustomWallId(wall.id);
     setSelectedWallId(null);
@@ -1336,7 +1337,7 @@ export default function ConceptPlanner() {
       y: Math.max(0, Math.min(lotDepth, Math.round(rawPoint.y * 4) / 4)),
     };
 
-    const original = customWallsRef.current;
+    const original = Array.isArray(customWallsRef.current) ? customWallsRef.current : [];
     const byId = new Map(original.map((wall) => [wall.id, { ...wall }]));
     const endpointKey = (x: number, y: number) =>
       `${Math.round(x * 1000) / 1000}:${Math.round(y * 1000) / 1000}`;
@@ -1428,7 +1429,7 @@ export default function ConceptPlanner() {
       openingStyle: type === "door" ? "hinged" : "sliding",
       swing: "left",
     };
-    setCustomOpenings((prev) => [...prev, opening]);
+    setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
     setSelectedOpeningId(opening.id);
