@@ -686,7 +686,7 @@ export default function ConceptPlan2D({
   };
 
   return (
-    <div className="relative h-[calc(100vh-64px)] min-h-[620px] overflow-hidden bg-white">
+    <div className="relative h-[calc(100dvh-64px)] min-h-[420px] overflow-hidden bg-white sm:min-h-[620px]">
       <div className="absolute bottom-4 right-4 z-20 flex flex-col items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
         <button
           type="button"
@@ -720,8 +720,17 @@ export default function ConceptPlan2D({
       </div>
       <svg
         ref={svgRef}
-        className={`block h-full min-h-[620px] w-full touch-none select-none ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
+        className={`block h-full min-h-[420px] w-full touch-none select-none sm:min-h-[620px] ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
         onWheel={handleWheel}
+        onPointerDownCapture={(event) => {
+          if (["room", "wall", "opening", "draw-wall", "navigate"].includes(interactionMode)) {
+            try {
+              event.currentTarget.setPointerCapture(event.pointerId);
+            } catch {
+              // Alguns navegadores/WebViews podem não implementar pointer capture.
+            }
+          }
+        }}
         onPointerDown={(event) => {
           if (interactionMode === "navigate") {
             event.preventDefault();
@@ -745,12 +754,26 @@ export default function ConceptPlan2D({
           if (panGesture?.pointerId === event.pointerId) {
             setPanGesture(null);
           }
+          try {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          } catch {
+            // Compatibilidade com WebViews sem pointer capture completo.
+          }
           if (gesture) onEditEnd?.();
           setGesture(null);
         }}
         onPointerCancel={(event) => {
           if (panGesture?.pointerId === event.pointerId) {
             setPanGesture(null);
+          }
+          try {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          } catch {
+            // Compatibilidade com WebViews sem pointer capture completo.
           }
           if (gesture) onEditEnd?.();
           setGesture(null);
