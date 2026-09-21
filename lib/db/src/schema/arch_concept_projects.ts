@@ -58,6 +58,10 @@ export type ArchConceptConfiguration = {
     depth: number;
     rotation: number;
     materialId?: string;
+    catalogProductId?: string;
+    imageUrl?: string;
+    supplier?: string;
+    price?: number;
   }>;
   wallMaterials?: Record<string, string>;
 };

@@ -14,6 +14,10 @@ export type ConceptPlanObject = {
   depth: number;
   rotation: number;
   materialId?: string;
+  catalogProductId?: string;
+  imageUrl?: string;
+  supplier?: string;
+  price?: number;
 };
 
 type Props = {
@@ -51,7 +55,11 @@ type Props = {
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
-  onObjectDrop?: (preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">, point: { x: number; y: number }) => void;
+  onObjectDrop?: (
+    preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>,
+    point: { x: number; y: number },
+  ) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
@@ -895,7 +903,8 @@ export default function ConceptPlan2D({
           if (!raw) return;
           event.preventDefault();
           try {
-            const preset = JSON.parse(raw) as Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">;
+            const preset = JSON.parse(raw) as Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
+              Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>;
             if (!preset?.kind || !preset?.label) return;
             const point = clampPoint(toSvgPoint(event.clientX, event.clientY));
             onObjectDrop(preset, point);
@@ -1407,52 +1416,90 @@ export default function ConceptPlan2D({
                 stroke={selectedObject ? "#f97316" : objectMaterial(object).stroke}
                 strokeWidth={selectedObject ? "0.10" : "0.055"}
               />
-              {object.kind === "sofa" && (
+              {object.imageUrl && (
+                <>
+                  <defs>
+                    <clipPath id={`concept-object-image-clip-${object.id}`}>
+                      <rect
+                        x={object.x + 0.05}
+                        y={object.y + 0.05}
+                        width={Math.max(0.1, object.width - 0.1)}
+                        height={Math.max(0.1, object.depth - 0.1)}
+                        rx="0.10"
+                      />
+                    </clipPath>
+                  </defs>
+                  <image
+                    href={object.imageUrl}
+                    x={object.x + 0.05}
+                    y={object.y + 0.05}
+                    width={Math.max(0.1, object.width - 0.1)}
+                    height={Math.max(0.1, object.depth - 0.1)}
+                    preserveAspectRatio="xMidYMid slice"
+                    clipPath={`url(#concept-object-image-clip-${object.id})`}
+                    opacity={selectedObject ? "0.74" : "0.92"}
+                    pointerEvents="none"
+                  />
+                  <rect
+                    x={object.x + 0.05}
+                    y={object.y + 0.05}
+                    width={Math.max(0.1, object.width - 0.1)}
+                    height={Math.max(0.1, object.depth - 0.1)}
+                    rx="0.10"
+                    fill="none"
+                    stroke={selectedObject ? "#f97316" : "#ffffff"}
+                    strokeOpacity="0.75"
+                    strokeWidth={selectedObject ? "0.08" : "0.035"}
+                    pointerEvents="none"
+                  />
+                </>
+              )}
+              {!object.imageUrl && object.kind === "sofa" && (
                 <>
                   <rect x={object.x + 0.12} y={object.y + 0.12} width={Math.max(0.2, object.width - 0.24)} height={Math.max(0.2, object.depth * 0.36)} rx="0.10" fill={objectMaterial(object).detail} />
                   <line x1={object.x + object.width / 2} y1={object.y + object.depth * 0.48} x2={object.x + object.width / 2} y2={object.y + object.depth - 0.12} stroke={objectMaterial(object).stroke} strokeWidth="0.04" />
                 </>
               )}
-              {object.kind === "bed" && (
+              {!object.imageUrl && object.kind === "bed" && (
                 <>
                   <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.2, object.width - 0.20)} height={Math.max(0.2, object.depth - 0.20)} rx="0.08" fill={objectMaterial(object).fill} stroke="#cbd5e1" strokeWidth="0.035" />
                   <rect x={object.x + 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill={objectMaterial(object).detail} />
                   <rect x={object.x + object.width - Math.max(0.15, object.width * 0.32) - 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill={objectMaterial(object).detail} />
                 </>
               )}
-              {object.kind === "table" && (
+              {!object.imageUrl && object.kind === "table" && (
                 <ellipse cx={cx} cy={cy} rx={Math.max(0.2, object.width / 2 - 0.08)} ry={Math.max(0.2, object.depth / 2 - 0.08)} fill={objectMaterial(object).fill} stroke={objectMaterial(object).stroke} strokeWidth="0.04" />
               )}
-              {object.kind === "chair" && (
+              {!object.imageUrl && object.kind === "chair" && (
                 <>
                   <rect x={object.x + 0.10} y={object.y + 0.16} width={Math.max(0.18, object.width - 0.20)} height={Math.max(0.18, object.depth - 0.26)} rx="0.08" fill={objectMaterial(object).detail} />
                   <line x1={object.x + 0.10} y1={object.y + 0.12} x2={object.x + object.width - 0.10} y2={object.y + 0.12} stroke="#64748b" strokeWidth="0.07" />
                 </>
               )}
-              {object.kind === "cabinet" && (
+              {!object.imageUrl && object.kind === "cabinet" && (
                 <>
                   <line x1={cx} y1={object.y + 0.08} x2={cx} y2={object.y + object.depth - 0.08} stroke="#94a3b8" strokeWidth="0.035" />
                   <circle cx={cx - 0.10} cy={cy} r="0.035" fill="#475569" />
                   <circle cx={cx + 0.10} cy={cy} r="0.035" fill="#475569" />
                 </>
               )}
-              {object.kind === "tv" && (
+              {!object.imageUrl && object.kind === "tv" && (
                 <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.16, object.width - 0.20)} height={Math.max(0.12, object.depth - 0.20)} rx="0.04" fill={objectMaterial(object).fill} />
               )}
-              {object.kind === "plant" && (
+              {!object.imageUrl && object.kind === "plant" && (
                 <>
                   <circle cx={cx} cy={cy} r={Math.max(0.16, Math.min(object.width, object.depth) * 0.34)} fill="#86a97a" stroke="#3f6212" strokeWidth="0.04" />
                   <circle cx={cx - object.width * 0.16} cy={cy - object.depth * 0.08} r={Math.max(0.08, Math.min(object.width, object.depth) * 0.18)} fill="#bbd3a9" />
                   <circle cx={cx + object.width * 0.14} cy={cy + object.depth * 0.10} r={Math.max(0.07, Math.min(object.width, object.depth) * 0.16)} fill="#5f8a4f" />
                 </>
               )}
-              {object.kind === "lamp" && (
+              {!object.imageUrl && object.kind === "lamp" && (
                 <>
                   <circle cx={cx} cy={cy} r={Math.max(0.14, Math.min(object.width, object.depth) * 0.34)} fill="#fef3c7" stroke="#334155" strokeWidth="0.05" />
                   <circle cx={cx} cy={cy} r={Math.max(0.05, Math.min(object.width, object.depth) * 0.12)} fill="#f59e0b" />
                 </>
               )}
-              {object.kind === "rug" && (
+              {!object.imageUrl && object.kind === "rug" && (
                 <rect
                   x={object.x + 0.08}
                   y={object.y + 0.08}

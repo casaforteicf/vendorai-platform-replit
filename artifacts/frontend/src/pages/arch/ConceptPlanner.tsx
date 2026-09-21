@@ -361,6 +361,10 @@ function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlan
       depth,
       rotation: Math.round(finiteNumber(raw.rotation, 0, -360, 360)),
       materialId: typeof raw.materialId === "string" ? raw.materialId : undefined,
+      catalogProductId: typeof raw.catalogProductId === "string" ? raw.catalogProductId : undefined,
+      imageUrl: typeof raw.imageUrl === "string" ? raw.imageUrl : undefined,
+      supplier: typeof raw.supplier === "string" ? raw.supplier : undefined,
+      price: Number.isFinite(Number(raw.price)) ? Number(raw.price) : undefined,
     }];
   });
 }
@@ -1045,6 +1049,7 @@ export default function ConceptPlanner() {
     width: number,
     depth: number,
     point?: { x: number; y: number },
+    metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>,
   ) => {
     const before = snapshotEditor();
     const x = point
@@ -1063,6 +1068,7 @@ export default function ConceptPlanner() {
       x,
       y,
       rotation: 0,
+      ...(metadata ?? {}),
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), next]);
     setSelectedObjectId(next.id);
@@ -3594,9 +3600,25 @@ export default function ConceptPlanner() {
                                       label: item.nome,
                                       width: preset.width,
                                       depth: preset.depth,
+                                      catalogProductId: item.id,
+                                      imageUrl,
+                                      supplier: item.fornecedor ?? undefined,
+                                      price: price > 0 ? price : undefined,
                                     }));
                                   }}
-                                  onClick={() => addObject(preset.kind, item.nome, preset.width, preset.depth)}
+                                  onClick={() => addObjectAt(
+                                    preset.kind,
+                                    item.nome,
+                                    preset.width,
+                                    preset.depth,
+                                    undefined,
+                                    {
+                                      catalogProductId: item.id,
+                                      imageUrl,
+                                      supplier: item.fornecedor ?? undefined,
+                                      price: price > 0 ? price : undefined,
+                                    },
+                                  )}
                                   className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
                                 >
                                   <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
@@ -4203,7 +4225,19 @@ export default function ConceptPlanner() {
                           }
                         }}
                         onObjectChange={updateObjectById}
-                        onObjectDrop={(preset, point) => addObjectAt(preset.kind, preset.label, preset.width, preset.depth, point)}
+                        onObjectDrop={(preset, point) => addObjectAt(
+                          preset.kind,
+                          preset.label,
+                          preset.width,
+                          preset.depth,
+                          point,
+                          {
+                            catalogProductId: preset.catalogProductId,
+                            imageUrl: preset.imageUrl,
+                            supplier: preset.supplier,
+                            price: preset.price,
+                          },
+                        )}
                         onObjectRotate={rotateObject}
                         onObjectDuplicate={duplicateObject}
                         onObjectDelete={deleteObject}
@@ -4502,6 +4536,24 @@ export default function ConceptPlanner() {
                       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Objeto</div>
                       <div className="mt-1 text-sm font-semibold">{selectedObject.label}</div>
                     </div>
+                    {selectedObject.imageUrl && (
+                      <div className="flex w-full items-center gap-3 rounded-xl border bg-slate-50 p-2.5 md:order-first md:w-full">
+                        <img
+                          src={selectedObject.imageUrl}
+                          alt={selectedObject.label}
+                          className="h-16 w-20 shrink-0 rounded-lg object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-600">Produto real</div>
+                          <div className="mt-0.5 truncate text-xs font-semibold text-slate-900">{selectedObject.label}</div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            {[selectedObject.supplier, selectedObject.price
+                              ? selectedObject.price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                              : null].filter(Boolean).join(" · ")}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {([
                       ["width", "Largura", selectedObject.width],
                       ["depth", "Prof.", selectedObject.depth],
