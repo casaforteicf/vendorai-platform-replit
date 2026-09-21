@@ -819,7 +819,7 @@ export function SupportChatWidget() {
         </div>
       )}
 
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-4 right-4 z-50 md:hidden">
         {approvalQueue.length > 0 && !open && (
           <span className="absolute -right-1 -top-1 z-10 min-w-5 h-5 rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground flex items-center justify-center">
             {approvalQueue.length}
