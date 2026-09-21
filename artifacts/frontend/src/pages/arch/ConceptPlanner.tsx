@@ -467,6 +467,12 @@ export default function ConceptPlanner() {
   const [objects, setObjects] = useState<ConceptPlanObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [wallMaterials, setWallMaterials] = useState<Record<string, string>>({});
+  const [paintTool, setPaintTool] = useState<null | {
+    target: "object" | "wall" | "floor";
+    materialId: string;
+    name: string;
+    swatch: string;
+  }>(null);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -1032,6 +1038,68 @@ export default function ConceptPlanner() {
     const before = snapshotEditor();
     setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== objectId));
     setSelectedObjectId((current) => current === objectId ? null : current);
+    pushRoomHistory(before);
+  };
+
+  const armPaintTool = (
+    target: "object" | "wall" | "floor",
+    material: { id: string; name: string; swatch: string },
+  ) => {
+    setPaintTool({ target, materialId: material.id, name: material.name, swatch: material.swatch });
+    if (target === "wall") setInteractionMode("wall");
+    if (target === "floor") setInteractionMode(wallFirstActive ? "space" : "room");
+    setSelectedId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setSelectedObjectId(null);
+    setSelectedOpeningId(null);
+    closeLibraryOnMobile();
+  };
+
+  const applyFloorMaterialToRoom = (roomId: string, materialId: string) => {
+    const before = snapshotEditor();
+    setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) =>
+      room.id === roomId ? { ...room, floorMaterialId: materialId } : room
+    ));
+    pushRoomHistory(before);
+  };
+
+  const applyFloorMaterialToSpace = (spaceId: string, materialId: string) => {
+    const space = closedSpaces.find((item) => item.id === spaceId);
+    if (!space) return;
+    const before = snapshotEditor();
+    const existing = spaceAssignments.get(spaceId);
+    if (existing) {
+      setSpaceProfiles((prev) => (Array.isArray(prev) ? prev : []).map((profile) =>
+        profile.id === existing.id
+          ? { ...profile, floorMaterialId: materialId, centroid: space.centroid, area: space.area, floor: activeFloor }
+          : profile
+      ));
+    } else {
+      const profile: SpaceProfile = {
+        id: `space-profile-${uid()}`,
+        floor: activeFloor,
+        label: `Espaço ${safeSpaceProfiles.filter((item) => item.floor === activeFloor).length + 1}`,
+        kind: "outro",
+        centroid: space.centroid,
+        area: space.area,
+        floorMaterialId: materialId,
+      };
+      setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), profile]);
+    }
+    pushRoomHistory(before);
+  };
+
+  const applyWallMaterialToId = (wallId: string, materialId: string) => {
+    const before = snapshotEditor();
+    setWallMaterials((prev) => ({ ...(prev ?? {}), [wallId]: materialId }));
+    pushRoomHistory(before);
+  };
+
+  const applyObjectMaterialToId = (objectId: string, materialId: string) => {
+    const before = snapshotEditor();
+    updateObjectById(objectId, { materialId });
     pushRoomHistory(before);
   };
 
@@ -3452,10 +3520,8 @@ export default function ConceptPlanner() {
                                 key={material.id}
                                 type="button"
                                 onClick={() => {
-                                  const before = snapshotEditor();
-                                  updateObjectById(selectedObject.id, { materialId: material.id });
-                                  pushRoomHistory(before);
-                                  closeLibraryOnMobile();
+                                  applyObjectMaterialToId(selectedObject.id, material.id);
+                                  armPaintTool("object", material);
                                 }}
                                 className={selectedObject.materialId === material.id
                                   ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
@@ -3481,7 +3547,10 @@ export default function ConceptPlanner() {
                                 <button
                                   key={material.id}
                                   type="button"
-                                  onClick={() => setSelectedWallMaterial(material.id)}
+                                  onClick={() => {
+                                    setSelectedWallMaterial(material.id);
+                                    armPaintTool("wall", material);
+                                  }}
                                   className={currentMaterial === material.id
                                     ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
                                     : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
@@ -3513,7 +3582,10 @@ export default function ConceptPlanner() {
                                 <button
                                   key={material.id}
                                   type="button"
-                                  onClick={() => setSelectedSurfaceMaterial(material.id)}
+                                  onClick={() => {
+                                    setSelectedSurfaceMaterial(material.id);
+                                    armPaintTool("floor", material);
+                                  }}
                                   className={currentMaterial === material.id
                                     ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
                                     : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
@@ -3739,6 +3811,28 @@ export default function ConceptPlanner() {
 
                   {editorView === "plan" && (
                     <>
+                      {paintTool && (
+                        <div className="absolute left-1/2 top-16 z-[65] flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-orange-200 bg-white/95 px-3 py-2 shadow-xl backdrop-blur">
+                          <span className="h-7 w-7 shrink-0 rounded-lg border" style={{ background: paintTool.swatch }} />
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-bold text-slate-900">Pintar: {paintTool.name}</div>
+                            <div className="truncate text-[10px] text-slate-500">
+                              {paintTool.target === "wall"
+                                ? "Toque nas paredes para aplicar"
+                                : paintTool.target === "floor"
+                                  ? "Toque nos ambientes para aplicar"
+                                  : "Toque nos móveis para aplicar"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPaintTool(null)}
+                            className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                          >
+                            Encerrar
+                          </button>
+                        </div>
+                      )}
                       <ConceptPlan2D
                         rooms={visibleRooms}
                         lotWidth={lotWidth}
@@ -3748,6 +3842,10 @@ export default function ConceptPlanner() {
                         closedSpaces={closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
+                          if (spaceId && paintTool?.target === "floor") {
+                            applyFloorMaterialToSpace(spaceId, paintTool.materialId);
+                            return;
+                          }
                           setSelectedClosedSpaceId(spaceId);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
@@ -3764,6 +3862,10 @@ export default function ConceptPlanner() {
                         )}
                         selectedId={selectedId}
                         onSelect={(roomId) => {
+                          if (paintTool?.target === "floor") {
+                            applyFloorMaterialToRoom(roomId, paintTool.materialId);
+                            return;
+                          }
                           setSelectedId(roomId);
                           setSelectedOpeningId(null);
                           setSelectedObjectId(null);
@@ -3780,6 +3882,10 @@ export default function ConceptPlanner() {
                         onOpeningChange={updateOpeningById}
                         selectedWallId={selectedWallId}
                         onSelectWall={(wallId) => {
+                          if (wallId && paintTool?.target === "wall") {
+                            applyWallMaterialToId(wallId, paintTool.materialId);
+                            return;
+                          }
                           setSelectedWallId(wallId);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
@@ -3791,6 +3897,10 @@ export default function ConceptPlanner() {
                         selectedCustomWallId={selectedCustomWallId}
                         onCreateCustomWall={addCustomWall}
                         onSelectCustomWall={(wallId) => {
+                          if (wallId && paintTool?.target === "wall") {
+                            applyWallMaterialToId(wallId, paintTool.materialId);
+                            return;
+                          }
                           setSelectedCustomWallId(wallId);
                           setSelectedWallId(null);
                           setSelectedId(null);
@@ -3809,6 +3919,10 @@ export default function ConceptPlanner() {
                         objects={safeObjects}
                         selectedObjectId={selectedObjectId}
                         onSelectObject={(objectId) => {
+                          if (objectId && paintTool?.target === "object") {
+                            applyObjectMaterialToId(objectId, paintTool.materialId);
+                            return;
+                          }
                           setSelectedObjectId(objectId);
                           if (objectId) {
                             setSelectedId(null);
@@ -3830,6 +3944,7 @@ export default function ConceptPlanner() {
                         onOpenMaterials={openMaterialsForSelection}
                         onRoomDuplicate={duplicateRoomById}
                         onRoomDelete={deleteRoomById}
+                        paintTarget={paintTool?.target ?? null}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
