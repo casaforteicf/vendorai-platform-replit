@@ -123,6 +123,7 @@ type EditorSnapshot = {
   openingOverrides: Record<string, OpeningOverride>;
   objects: ConceptPlanObject[];
   spaceProfiles: SpaceProfile[];
+  wallMaterials: Record<string, string>;
 };
 
 type CustomerProfile = {
@@ -151,6 +152,7 @@ type ConceptDraftResponse = {
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptPlanObject[];
+    wallMaterials?: Record<string, string>;
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -188,6 +190,15 @@ const CONCEPT_FLOOR_MATERIALS = [
   { id: "pedra-natural", name: "Pedra natural", category: "Pedras", swatch: "#d6d3d1" },
   { id: "ceramica-clara", name: "Cerâmica clara", category: "Cerâmicas", swatch: "#f5f5f4" },
   { id: "vinilico-claro", name: "Vinílico claro", category: "Vinílicos", swatch: "#e5d3b3" },
+] as const;
+
+const CONCEPT_WALL_MATERIALS = [
+  { id: "pintura-branca", name: "Pintura branca", category: "Pinturas", swatch: "#f8fafc" },
+  { id: "pintura-cinza", name: "Pintura cinza", category: "Pinturas", swatch: "#cbd5e1" },
+  { id: "cimento-aparente", name: "Cimento aparente", category: "Cimentícios", swatch: "#9ca3af" },
+  { id: "madeira-ripada", name: "Madeira ripada", category: "Madeiras", swatch: "#b98a5f" },
+  { id: "pedra-cinza", name: "Pedra cinza", category: "Pedras", swatch: "#78716c" },
+  { id: "preto-fosco-parede", name: "Preto fosco", category: "Pinturas", swatch: "#1f2937" },
 ] as const;
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
@@ -414,6 +425,7 @@ export default function ConceptPlanner() {
   const wallFirstFloorsRef = useRef<number[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
   const objectsRef = useRef<ConceptPlanObject[]>([]);
+  const wallMaterialsRef = useRef<Record<string, string>>({});
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
   const [roomFuture, setRoomFuture] = useState<EditorSnapshot[]>([]);
@@ -430,6 +442,7 @@ export default function ConceptPlanner() {
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [objects, setObjects] = useState<ConceptPlanObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [wallMaterials, setWallMaterials] = useState<Record<string, string>>({});
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -490,6 +503,10 @@ export default function ConceptPlanner() {
   }, [objects]);
 
   useEffect(() => {
+    wallMaterialsRef.current = wallMaterials && typeof wallMaterials === "object" ? wallMaterials : {};
+  }, [wallMaterials]);
+
+  useEffect(() => {
     openingOverridesRef.current = openingOverrides;
   }, [openingOverrides]);
 
@@ -541,6 +558,7 @@ export default function ConceptPlanner() {
         setCustomOpenings(loadedOpenings);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
+        setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -568,7 +586,7 @@ export default function ConceptPlanner() {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials },
       rooms,
       openingOverrides,
       customerProfile,
@@ -699,6 +717,7 @@ export default function ConceptPlanner() {
     ),
     objects: objectsRef.current.map((object) => ({ ...object })),
     spaceProfiles: (Array.isArray(spaceProfiles) ? spaceProfiles : []).map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
+    wallMaterials: { ...wallMaterialsRef.current },
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
@@ -711,6 +730,7 @@ export default function ConceptPlanner() {
     ),
     objects: snapshot.objects.map((object) => ({ ...object })),
     spaceProfiles: snapshot.spaceProfiles.map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
+    wallMaterials: { ...snapshot.wallMaterials },
   });
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
@@ -722,6 +742,7 @@ export default function ConceptPlanner() {
     setOpeningOverrides(cloned.openingOverrides);
     setObjects(cloned.objects);
     setSpaceProfiles(cloned.spaceProfiles);
+    setWallMaterials(cloned.wallMaterials);
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
@@ -1424,6 +1445,7 @@ export default function ConceptPlanner() {
           : [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
         floorMaterials,
+        wallMaterials: Object.fromEntries([...legacyWalls, ...floorCustomWalls].map((wall) => [wall.id, wallMaterials[wall.id]]).filter(([, material]) => Boolean(material))),
         stairs: safeRooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
           .map((room) => ({
@@ -1435,7 +1457,7 @@ export default function ConceptPlanner() {
           })),
       };
     });
-  }, [floors, safeRooms, lotWidth, lotDepth, openingOverrides, safeCustomWalls, safeCustomOpenings, safeSpaceProfiles, safeWallFirstFloors]);
+  }, [floors, safeRooms, lotWidth, lotDepth, openingOverrides, safeCustomWalls, safeCustomOpenings, safeSpaceProfiles, safeWallFirstFloors, wallMaterials]);
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
@@ -1821,6 +1843,15 @@ export default function ConceptPlanner() {
       ));
     }
     pushRoomHistory(before);
+  };
+
+  const setSelectedWallMaterial = (materialId: string) => {
+    const wallId = selectedCustomWall?.id ?? selectedWall?.id;
+    if (!wallId) return;
+    const before = snapshotEditor();
+    setWallMaterials((prev) => ({ ...(prev ?? {}), [wallId]: materialId }));
+    pushRoomHistory(before);
+    closeLibraryOnMobile();
   };
 
   const promoteToProject = async () => {
@@ -3659,6 +3690,7 @@ export default function ConceptPlanner() {
                         onObjectDelete={deleteObject}
                         roomFloorMaterials={roomFloorMaterials}
                         spaceFloorMaterials={spaceFloorMaterials}
+                        wallMaterials={wallMaterials}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
