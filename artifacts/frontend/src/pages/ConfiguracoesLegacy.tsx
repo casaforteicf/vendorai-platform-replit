@@ -3172,7 +3172,7 @@ export default function Configuracoes() {
 
           {/* Threshold Settings Card — admin only */}
           {(isAdmin) && (
-            <div data-whatsapp-qr-card="true" className="rounded-xl border border-emerald-200 bg-card p-6 space-y-5">
+            <div className="rounded-xl border bg-card p-6 space-y-5">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">
                   <Brain className="h-4 w-4 text-primary" />
@@ -6826,7 +6826,7 @@ function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (
   }
 
   return (
-    <div className="rounded-xl border bg-card p-6 space-y-5">
+    <div data-whatsapp-qr-card="true" className="rounded-xl border border-emerald-200 bg-card p-6 space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="font-semibold text-base flex items-center gap-2">
