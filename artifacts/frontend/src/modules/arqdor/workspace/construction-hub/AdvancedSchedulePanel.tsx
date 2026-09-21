@@ -13,6 +13,11 @@ type Etapa = {
   status: string;
   percentualExecutado: number;
   responsavel?: string | null;
+  equipeNome?: string | null;
+  equipeQuantidade: number;
+  horasDia: number;
+  custoHoraPessoa: number;
+  produtividadeDia: number;
   custoPrevisto: number;
   pesoFisico: number;
   marco: boolean;
@@ -37,11 +42,46 @@ type Bundle = {
 
 type Props = { arqState?: any };
 
+type WorkCalendar = {
+  segunda: boolean;
+  terca: boolean;
+  quarta: boolean;
+  quinta: boolean;
+  sexta: boolean;
+  sabado: boolean;
+  domingo: boolean;
+  horasDia: number;
+  feriados: string[];
+};
+
+type BaselineEtapa = {
+  etapa_id?: string;
+  etapaId?: string;
+  nome: string;
+  data_inicio_prevista?: string | null;
+  data_fim_prevista?: string | null;
+  custo_previsto?: string | number | null;
+  peso_fisico?: string | number | null;
+  equipe_nome?: string | null;
+  equipe_quantidade?: number | null;
+  horas_dia?: string | number | null;
+};
+
+type BaselineBundle = {
+  baseline: { id: string; nome: string; created_at?: string; createdAt?: string } | null;
+  etapas: BaselineEtapa[];
+};
+
 type EtapaDraft = {
   nome: string;
   dataInicioPrevista: string;
   dataFimPrevista: string;
   responsavel: string;
+  equipeNome: string;
+  equipeQuantidade: string;
+  horasDia: string;
+  custoHoraPessoa: string;
+  produtividadeDia: string;
   custoPrevisto: string;
   pesoFisico: string;
   marco: boolean;
@@ -54,6 +94,11 @@ const EMPTY_NEW: NewEtapaDraft = {
   dataInicioPrevista: "",
   dataFimPrevista: "",
   responsavel: "",
+  equipeNome: "",
+  equipeQuantidade: "1",
+  horasDia: "8",
+  custoHoraPessoa: "0",
+  produtividadeDia: "0",
   custoPrevisto: "0",
   pesoFisico: "0",
   marco: false,
@@ -105,6 +150,11 @@ function normalizeEtapa(raw: any): Etapa {
     status: String(raw?.status ?? "pendente"),
     percentualExecutado: Number(raw?.percentualExecutado ?? raw?.percentual_executado ?? 0),
     responsavel: raw?.responsavel ?? null,
+    equipeNome: raw?.equipeNome ?? raw?.equipe_nome ?? null,
+    equipeQuantidade: Number(raw?.equipeQuantidade ?? raw?.equipe_quantidade ?? 1),
+    horasDia: Number(raw?.horasDia ?? raw?.horas_dia ?? 8),
+    custoHoraPessoa: Number(raw?.custoHoraPessoa ?? raw?.custo_hora_pessoa ?? 0),
+    produtividadeDia: Number(raw?.produtividadeDia ?? raw?.produtividade_dia ?? 0),
     custoPrevisto: Number(raw?.custoPrevisto ?? raw?.custo_previsto ?? 0),
     pesoFisico: Number(raw?.pesoFisico ?? raw?.peso_fisico ?? 0),
     marco: Boolean(raw?.marco),
@@ -183,6 +233,11 @@ function draftFrom(etapa: Etapa): EtapaDraft {
     dataInicioPrevista: etapa.dataInicioPrevista ?? "",
     dataFimPrevista: etapa.dataFimPrevista ?? "",
     responsavel: etapa.responsavel ?? "",
+    equipeNome: etapa.equipeNome ?? "",
+    equipeQuantidade: String(etapa.equipeQuantidade || 1),
+    horasDia: String(etapa.horasDia || 8),
+    custoHoraPessoa: String(etapa.custoHoraPessoa || 0),
+    produtividadeDia: String(etapa.produtividadeDia || 0),
     custoPrevisto: String(etapa.custoPrevisto || 0),
     pesoFisico: String(etapa.pesoFisico || 0),
     marco: etapa.marco,
@@ -379,6 +434,27 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [levelingResources, setLevelingResources] = useState(false);
+  const [calendar, setCalendar] = useState<WorkCalendar>({
+    segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
+    sabado: false, domingo: false, horasDia: 8, feriados: [],
+  });
+  const [savingCalendar, setSavingCalendar] = useState(false);
+  const [holidayDraft, setHolidayDraft] = useState("");
+  const [baseline, setBaseline] = useState<BaselineBundle>({ baseline: null, etapas: [] });
+  const [savingBaseline, setSavingBaseline] = useState(false);
+  const [scenario, setScenario] = useState({ etapaId: "", extraPeople: "0", delayDays: "0", workSaturday: false });
+  const [scenarioBusy, setScenarioBusy] = useState(false);
+  const [applyingScenario, setApplyingScenario] = useState(false);
+  const [scenarioResult, setScenarioResult] = useState<null | {
+    finishImpactDays: number;
+    originalFinish: string | null;
+    newFinish: string | null;
+    originalLaborCost: number;
+    scenarioLaborCost: number;
+    laborCostImpact: number;
+    changedStages: Array<{ etapaId: string; nome: string; startDeltaDays: number; endDeltaDays: number; newStart: string; newEnd: string }>;
+  }>(null);
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -392,13 +468,22 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       const obraId = String(ensured.obra?.id ?? "");
       if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
       if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
-      const raw = await api<any>(`/api/arch/construction/${obraId}`);
+      const [raw, calendarResult, baselineResult] = await Promise.all([
+        api<any>(`/api/arch/construction/${obraId}`),
+        api<{ calendar?: WorkCalendar }>(`/api/arch/construction/${obraId}/calendar`),
+        api<BaselineBundle>(`/api/arch/construction/${obraId}/baseline`),
+      ]);
       const etapas = (raw.etapas ?? []).map(normalizeEtapa);
       const dependencias = (raw.dependencias ?? []).map(normalizeDependencia);
       const compras = (raw.compras ?? []).map((item: any) => ({
         valorTotal: Number(item?.valorTotal ?? item?.valor_total ?? 0),
         status: item?.status ?? null,
       }));
+      setCalendar(calendarResult.calendar ?? {
+        segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
+        sabado: false, domingo: false, horasDia: 8, feriados: [],
+      });
+      setBaseline(baselineResult ?? { baseline: null, etapas: [] });
       setBundle({
         obra: {
           id: obraId,
@@ -486,6 +571,133 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     return ids;
   }, [bundle]);
 
+  const baselineSummary = useMemo(() => {
+    if (!baseline.baseline || !baseline.etapas.length || !bundle) {
+      return {
+        exists: false,
+        originalCost: 0,
+        currentCost: bundle?.etapas.reduce((sum, item) => sum + item.custoPrevisto, 0) ?? 0,
+        costVariance: 0,
+        originalFinish: null as Date | null,
+        currentFinish: null as Date | null,
+        finishVarianceDays: 0,
+        changedStages: 0,
+      };
+    }
+
+    const originalCost = baseline.etapas.reduce((sum, item) => sum + Number(item.custo_previsto ?? 0), 0);
+    const currentCost = bundle.etapas.reduce((sum, item) => sum + item.custoPrevisto, 0);
+    const originalEnds = baseline.etapas
+      .map((item) => dateValue(item.data_fim_prevista ?? null))
+      .filter(Boolean) as Date[];
+    const currentEnds = bundle.etapas
+      .map((item) => dateValue(item.dataFimPrevista))
+      .filter(Boolean) as Date[];
+    const originalFinish = originalEnds.length ? new Date(Math.max(...originalEnds.map((d) => d.getTime()))) : null;
+    const currentFinish = currentEnds.length ? new Date(Math.max(...currentEnds.map((d) => d.getTime()))) : null;
+    const finishVarianceDays = originalFinish && currentFinish ? diffDays(currentFinish, originalFinish) : 0;
+
+    const baselineByEtapa = new Map(
+      baseline.etapas.map((item) => [String(item.etapa_id ?? item.etapaId ?? ""), item]),
+    );
+    const changedStages = bundle.etapas.filter((item) => {
+      const base = baselineByEtapa.get(item.id);
+      if (!base) return false;
+      return (
+        (base.data_inicio_prevista ?? "") !== (item.dataInicioPrevista ?? "") ||
+        (base.data_fim_prevista ?? "") !== (item.dataFimPrevista ?? "") ||
+        Number(base.custo_previsto ?? 0) !== item.custoPrevisto
+      );
+    }).length;
+
+    return {
+      exists: true,
+      originalCost,
+      currentCost,
+      costVariance: currentCost - originalCost,
+      originalFinish,
+      currentFinish,
+      finishVarianceDays,
+      changedStages,
+    };
+  }, [baseline, bundle]);
+
+  const evm = useMemo(() => {
+    if (!bundle) {
+      return { bac: 0, pv: 0, ev: 0, ac: 0, cv: 0, sv: 0, cpi: 0, spi: 0, eac: 0, etc: 0, vac: 0 };
+    }
+
+    const now = new Date();
+    const baselineById = new Map(
+      baseline.etapas.map((item) => [String(item.etapa_id ?? item.etapaId ?? ""), item]),
+    );
+
+    const bac = baselineSummary.exists
+      ? baselineSummary.originalCost
+      : bundle.etapas.reduce((sum, item) => sum + item.custoPrevisto, 0);
+
+    let pv = 0;
+    let ev = 0;
+
+    for (const etapa of bundle.etapas) {
+      const base = baselineById.get(etapa.id);
+      const budgetCost = base ? Number(base.custo_previsto ?? 0) : etapa.custoPrevisto;
+      let plannedPct = 0;
+
+      if (base) {
+        plannedPct = plannedPercent({
+          ...etapa,
+          dataInicioPrevista: base.data_inicio_prevista ?? null,
+          dataFimPrevista: base.data_fim_prevista ?? null,
+          custoPrevisto: budgetCost,
+        }, now);
+      } else {
+        plannedPct = plannedPercent(etapa, now);
+      }
+
+      pv += budgetCost * plannedPct / 100;
+      ev += budgetCost * etapa.percentualExecutado / 100;
+    }
+
+    const ac = Math.max(0, Number(bundle.obra.custoRealizado ?? 0));
+    const cv = ev - ac;
+    const sv = ev - pv;
+    const cpi = ac > 0 ? ev / ac : ev > 0 ? 1 : 0;
+    const spi = pv > 0 ? ev / pv : ev > 0 ? 1 : 0;
+    const eac = cpi > 0 ? bac / cpi : bac;
+    const etc = Math.max(0, eac - ac);
+    const vac = bac - eac;
+
+    return { bac, pv, ev, ac, cv, sv, cpi, spi, eac, etc, vac };
+  }, [baseline, baselineSummary.exists, baselineSummary.originalCost, bundle]);
+
+  const resourceSummary = useMemo(() => {
+    const etapas = bundle?.etapas ?? [];
+    const laborCost = etapas.reduce((sum, item) => {
+      const days = durationDays(item);
+      return sum + days * Math.max(1, item.equipeQuantidade) * Math.max(0, item.horasDia) * Math.max(0, item.custoHoraPessoa);
+    }, 0);
+
+    const conflicts: Array<{ equipe: string; a: string; b: string }> = [];
+    for (let i = 0; i < etapas.length; i++) {
+      const a = etapas[i]!;
+      const aStart = dateValue(a.dataInicioPrevista);
+      const aEnd = dateValue(a.dataFimPrevista);
+      if (!a.equipeNome || !aStart || !aEnd || a.marco) continue;
+      for (let j = i + 1; j < etapas.length; j++) {
+        const b = etapas[j]!;
+        const bStart = dateValue(b.dataInicioPrevista);
+        const bEnd = dateValue(b.dataFimPrevista);
+        if (!b.equipeNome || !bStart || !bEnd || b.marco) continue;
+        if (a.equipeNome.trim().toLowerCase() !== b.equipeNome.trim().toLowerCase()) continue;
+        if (aStart <= bEnd && bStart <= aEnd) conflicts.push({ equipe: a.equipeNome, a: a.nome, b: b.nome });
+      }
+    }
+
+    const allocatedPeople = etapas.reduce((sum, item) => sum + (item.equipeNome ? Math.max(1, item.equipeQuantidade) : 0), 0);
+    return { laborCost, conflicts, allocatedPeople };
+  }, [bundle]);
+
   const timeline = useMemo(() => {
     const dates = (bundle?.etapas ?? []).flatMap((item) => [dateValue(item.dataInicioPrevista), dateValue(item.dataFimPrevista)]).filter(Boolean) as Date[];
     if (!dates.length) return null;
@@ -494,6 +706,69 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     const span = Math.max(1, end.getTime() - start.getTime());
     return { start, end, span };
   }, [bundle]);
+
+  async function simulateScenario() {
+    if (!bundle) return;
+    setScenarioBusy(true);
+    setError(null);
+    try {
+      const result = await api<{
+        finishImpactDays?: number;
+        originalFinish?: string | null;
+        newFinish?: string | null;
+        originalLaborCost?: number;
+        scenarioLaborCost?: number;
+        laborCostImpact?: number;
+        changedStages?: Array<{ etapaId: string; nome: string; startDeltaDays: number; endDeltaDays: number; newStart: string; newEnd: string }>;
+      }>(`/api/arch/construction/${bundle.obra.id}/simulate-scenario`, {
+        method: "POST",
+        body: JSON.stringify({
+          etapaId: scenario.etapaId || null,
+          extraPeople: Number(scenario.extraPeople || 0),
+          delayDays: Number(scenario.delayDays || 0),
+          workSaturday: scenario.workSaturday,
+        }),
+      });
+      setScenarioResult({
+        finishImpactDays: Number(result.finishImpactDays ?? 0),
+        originalFinish: result.originalFinish ?? null,
+        newFinish: result.newFinish ?? null,
+        originalLaborCost: Number(result.originalLaborCost ?? 0),
+        scenarioLaborCost: Number(result.scenarioLaborCost ?? 0),
+        laborCostImpact: Number(result.laborCostImpact ?? 0),
+        changedStages: result.changedStages ?? [],
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao simular cenário.");
+    } finally {
+      setScenarioBusy(false);
+    }
+  }
+
+  async function applyScenario() {
+    if (!bundle || !scenarioResult) return;
+    setApplyingScenario(true);
+    setError(null);
+    try {
+      await api(`/api/arch/construction/${bundle.obra.id}/simulate-scenario`, {
+        method: "POST",
+        body: JSON.stringify({
+          etapaId: scenario.etapaId || null,
+          extraPeople: Number(scenario.extraPeople || 0),
+          delayDays: Number(scenario.delayDays || 0),
+          workSaturday: scenario.workSaturday,
+          apply: true,
+        }),
+      });
+      setScheduleNotice("Cenário aplicado ao cronograma. A linha de base original foi preservada para comparação.");
+      setScenarioResult(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao aplicar cenário.");
+    } finally {
+      setApplyingScenario(false);
+    }
+  }
 
   async function generatePlanFromBudget() {
     if (!bundle || !meta.id) return;
@@ -528,6 +803,85 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     }
   }
 
+  async function createBaseline() {
+    if (!bundle) return;
+    setSavingBaseline(true);
+    setError(null);
+    try {
+      const result = await api<BaselineBundle>(`/api/arch/construction/${bundle.obra.id}/baseline`, {
+        method: "POST",
+        body: JSON.stringify({
+          nome: baseline.baseline ? "Nova linha de base" : "Linha de base inicial",
+        }),
+      });
+      setBaseline(result);
+      setScheduleNotice("Linha de base salva. A partir de agora o Arqdor compara o cronograma atual com o planejamento original.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar linha de base.");
+    } finally {
+      setSavingBaseline(false);
+    }
+  }
+
+  async function saveCalendar() {
+    if (!bundle) return;
+    setSavingCalendar(true);
+    setError(null);
+    try {
+      const result = await api<{ calendar: WorkCalendar }>(`/api/arch/construction/${bundle.obra.id}/calendar`, {
+        method: "PUT",
+        body: JSON.stringify(calendar),
+      });
+      setCalendar(result.calendar);
+      setScheduleNotice("Calendário de trabalho salvo. O nivelamento de equipes passa a respeitar os dias úteis e feriados definidos.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar calendário de trabalho.");
+    } finally {
+      setSavingCalendar(false);
+    }
+  }
+
+  function addHoliday() {
+    const value = holidayDraft.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    setCalendar((current) => ({
+      ...current,
+      feriados: Array.from(new Set([...current.feriados, value])).sort(),
+    }));
+    setHolidayDraft("");
+  }
+
+  async function levelResources() {
+    if (!bundle) return;
+    setLevelingResources(true);
+    setError(null);
+    setScheduleNotice(null);
+    try {
+      const result = await api<{
+        shiftedCount?: number;
+        conflictsResolved?: Array<{ equipe: string; etapaId: string; nome: string; days: number }>;
+        finishImpactDays?: number;
+        originalFinish?: string | null;
+        newFinish?: string | null;
+      }>(`/api/arch/construction/${bundle.obra.id}/level-resources`, {
+        method: "POST",
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const shifted = Number(result?.shiftedCount ?? 0);
+      const impact = Number(result?.finishImpactDays ?? 0);
+      setScheduleNotice(
+        shifted > 0
+          ? `Recursos nivelados: ${shifted} etapa(s) ajustada(s). Impacto no término da obra: ${impact > 0 ? "+" : ""}${impact} dia(s).`
+          : "Nenhum deslocamento foi necessário. As equipes já estão niveladas.",
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao nivelar recursos.");
+    } finally {
+      setLevelingResources(false);
+    }
+  }
+
   async function createEtapa() {
     if (!bundle || !newEtapa.nome.trim()) return;
     setSaving("new"); setError(null);
@@ -540,6 +894,11 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
           dataInicioPrevista: newEtapa.dataInicioPrevista || null,
           dataFimPrevista: newEtapa.dataFimPrevista || null,
           responsavel: newEtapa.responsavel || null,
+          equipeNome: newEtapa.equipeNome || null,
+          equipeQuantidade: Number(newEtapa.equipeQuantidade || 1),
+          horasDia: Number(newEtapa.horasDia || 8),
+          custoHoraPessoa: Number(newEtapa.custoHoraPessoa || 0),
+          produtividadeDia: Number(newEtapa.produtividadeDia || 0),
           custoPrevisto: Number(newEtapa.custoPrevisto || 0),
           pesoFisico: Number(newEtapa.pesoFisico || 0),
           marco: newEtapa.marco,
@@ -593,6 +952,11 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         body: JSON.stringify({
           nome: draft.nome,
           responsavel: draft.responsavel,
+          equipeNome: draft.equipeNome || null,
+          equipeQuantidade: Number(draft.equipeQuantidade || 1),
+          horasDia: Number(draft.horasDia || 8),
+          custoHoraPessoa: Number(draft.custoHoraPessoa || 0),
+          produtividadeDia: Number(draft.produtividadeDia || 0),
           custoPrevisto: Number(draft.custoPrevisto || 0),
           pesoFisico: Number(draft.pesoFisico || 0),
           marco: draft.marco,
@@ -673,6 +1037,14 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
             >
               {generatingPlan ? "Gerando planejamento…" : "Gerar planejamento do orçamento"}
             </button>
+            <button
+              type="button"
+              disabled={levelingResources || resourceSummary.conflicts.length === 0}
+              onClick={() => void levelResources()}
+              className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 disabled:opacity-40"
+            >
+              {levelingResources ? "Nivelando equipes…" : "Nivelar equipes"}
+            </button>
             <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Atualizar dados</button>
           </div>
         </div>
@@ -680,6 +1052,240 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
 
       {error ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div> : null}
       {scheduleNotice ? <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{scheduleNotice}</div> : null}
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Linha de base</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">Planejado original × atual × realizado</h3>
+            <p className="mt-1 text-xs text-slate-500">Salva um snapshot do cronograma para medir desvios de prazo e custo após os replanejamentos.</p>
+          </div>
+          <button
+            type="button"
+            disabled={savingBaseline}
+            onClick={() => void createBaseline()}
+            className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 disabled:opacity-50"
+          >
+            {savingBaseline ? "Salvando…" : baseline.baseline ? "Atualizar linha de base" : "Salvar linha de base"}
+          </button>
+        </div>
+
+        {baselineSummary.exists ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Metric label="Custo original" value={money(baselineSummary.originalCost)} hint="snapshot da baseline" />
+            <Metric
+              label="Desvio de custo"
+              value={money(baselineSummary.costVariance)}
+              hint={`atual ${money(baselineSummary.currentCost)}`}
+              danger={baselineSummary.costVariance > 0}
+            />
+            <Metric
+              label="Desvio de prazo"
+              value={`${baselineSummary.finishVarianceDays > 0 ? "+" : ""}${baselineSummary.finishVarianceDays} dias`}
+              hint={baselineSummary.originalFinish ? `original ${baselineSummary.originalFinish.toLocaleDateString("pt-BR")}` : "sem término original"}
+              danger={baselineSummary.finishVarianceDays > 0}
+            />
+            <Metric label="Etapas alteradas" value={String(baselineSummary.changedStages)} hint="datas ou custo diferentes da baseline" />
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-sm text-violet-700">
+            Nenhuma linha de base salva. Salve quando o planejamento estiver aprovado para preservar o cronograma original.
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Valor agregado</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">Controle executivo de custo e prazo</h3>
+          <p className="mt-1 text-xs text-slate-500">PV = valor planejado, EV = valor agregado, AC = custo real. CPI e SPI abaixo de 1 indicam desempenho desfavorável.</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric label="BAC" value={money(evm.bac)} hint="orçamento da baseline" />
+          <Metric label="PV" value={money(evm.pv)} hint="valor planejado até hoje" />
+          <Metric label="EV" value={money(evm.ev)} hint="valor agregado" />
+          <Metric label="AC" value={money(evm.ac)} hint="custo real" />
+          <Metric label="EAC" value={money(evm.eac)} hint="estimativa no término" danger={evm.eac > evm.bac && evm.bac > 0} />
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric label="CPI" value={evm.cpi ? evm.cpi.toFixed(2) : "—"} hint="EV ÷ AC" danger={evm.cpi > 0 && evm.cpi < 1} />
+          <Metric label="SPI" value={evm.spi ? evm.spi.toFixed(2) : "—"} hint="EV ÷ PV" danger={evm.spi > 0 && evm.spi < 1} />
+          <Metric label="Variação custo" value={money(evm.cv)} hint="EV − AC" danger={evm.cv < 0} />
+          <Metric label="Variação prazo" value={money(evm.sv)} hint="EV − PV" danger={evm.sv < 0} />
+          <Metric label="ETC / VAC" value={`${money(evm.etc)} / ${money(evm.vac)}`} hint="a concluir / margem vs BAC" danger={evm.vac < 0} />
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Simulador de cenários</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">E se mudarmos equipe, calendário ou prazo?</h3>
+          <p className="mt-1 text-xs text-slate-500">Simulação sem gravação. Compare impacto em término e custo de mão de obra antes de replanejar.</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1.3fr_160px_160px_auto_auto] lg:items-end">
+          <label className="text-[11px] font-semibold text-slate-500">
+            Etapa
+            <select value={scenario.etapaId} onChange={(e) => setScenario((current) => ({ ...current, etapaId: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
+              <option value="">Todas / apenas calendário</option>
+              {bundle.etapas.filter((item) => !item.marco).map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] font-semibold text-slate-500">
+            Pessoas +/-
+            <input type="number" min="-20" max="50" value={scenario.extraPeople} onChange={(e) => setScenario((current) => ({ ...current, extraPeople: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+          </label>
+          <label className="text-[11px] font-semibold text-slate-500">
+            Atraso na etapa
+            <div className="mt-1 flex items-center gap-2">
+              <input type="number" min="0" max="365" value={scenario.delayDays} onChange={(e) => setScenario((current) => ({ ...current, delayDays: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              <span className="text-xs text-slate-400">dias</span>
+            </div>
+          </label>
+          <label className={`flex h-10 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${scenario.workSaturday ? "border-violet-200 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-600"}`}>
+            <input type="checkbox" checked={scenario.workSaturday} onChange={(e) => setScenario((current) => ({ ...current, workSaturday: e.target.checked }))} />
+            Trabalhar sábado
+          </label>
+          <button type="button" disabled={scenarioBusy} onClick={() => void simulateScenario()} className="h-10 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
+            {scenarioBusy ? "Simulando…" : "Simular"}
+          </button>
+        </div>
+
+        {scenarioResult ? (
+          <div className="mt-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label="Impacto no término"
+                value={`${scenarioResult.finishImpactDays > 0 ? "+" : ""}${scenarioResult.finishImpactDays} dias`}
+                hint={scenarioResult.newFinish ? `novo término ${new Date(`${scenarioResult.newFinish}T12:00:00`).toLocaleDateString("pt-BR")}` : "sem término"}
+                danger={scenarioResult.finishImpactDays > 0}
+              />
+              <Metric label="Mão de obra atual" value={money(scenarioResult.originalLaborCost)} hint="cenário vigente" />
+              <Metric
+                label="Mão de obra cenário"
+                value={money(scenarioResult.scenarioLaborCost)}
+                hint={`variação ${money(scenarioResult.laborCostImpact)}`}
+                danger={scenarioResult.laborCostImpact > 0}
+              />
+              <Metric label="Etapas impactadas" value={String(scenarioResult.changedStages.length)} hint="mudanças de datas simuladas" />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-violet-800">Cenário pronto para decisão</p>
+                <p className="text-[11px] text-violet-600">Ao aplicar, o cronograma atual será atualizado e a baseline permanecerá intacta.</p>
+              </div>
+              <button
+                type="button"
+                disabled={applyingScenario}
+                onClick={() => void applyScenario()}
+                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {applyingScenario ? "Aplicando…" : "Aplicar este cenário"}
+              </button>
+            </div>
+
+            {scenarioResult.changedStages.length ? (
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100">
+                <div className="grid grid-cols-[1fr_90px_90px_110px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <span>Etapa</span><span>Início Δ</span><span>Fim Δ</span><span>Novo fim</span>
+                </div>
+                {scenarioResult.changedStages.slice(0, 10).map((item) => (
+                  <div key={item.etapaId} className="grid grid-cols-[1fr_90px_90px_110px] gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
+                    <span className="truncate font-medium text-slate-700">{item.nome}</span>
+                    <span>{item.startDeltaDays > 0 ? "+" : ""}{item.startDeltaDays}d</span>
+                    <span>{item.endDeltaDays > 0 ? "+" : ""}{item.endDeltaDays}d</span>
+                    <span>{new Date(`${item.newEnd}T12:00:00`).toLocaleDateString("pt-BR")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">O cenário não altera as datas atuais do cronograma.</div>
+            )}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Calendário de trabalho</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">Dias úteis, jornada e feriados</h3>
+            <p className="mt-1 text-xs text-slate-500">Usado pelo nivelamento para calcular duração e deslocamentos em dias de trabalho.</p>
+          </div>
+          <button
+            type="button"
+            disabled={savingCalendar}
+            onClick={() => void saveCalendar()}
+            className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {savingCalendar ? "Salvando…" : "Salvar calendário"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_160px_1fr]">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-500">Dias de trabalho</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([
+                ["segunda","Seg"],["terca","Ter"],["quarta","Qua"],["quinta","Qui"],["sexta","Sex"],["sabado","Sáb"],["domingo","Dom"],
+              ] as const).map(([key,label]) => (
+                <label key={key} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${calendar[key] ? "border-violet-200 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-500"}`}>
+                  <input
+                    type="checkbox"
+                    checked={calendar[key]}
+                    onChange={(e) => setCalendar((current) => ({ ...current, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="text-[11px] font-semibold text-slate-500">
+            Jornada padrão
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min="0.5"
+                max="24"
+                step="0.5"
+                value={calendar.horasDia}
+                onChange={(e) => setCalendar((current) => ({ ...current, horasDia: Number(e.target.value || 8) }))}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+              <span className="text-xs text-slate-400">h/dia</span>
+            </div>
+          </label>
+          <div>
+            <p className="text-[11px] font-semibold text-slate-500">Feriados / dias sem trabalho</p>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="date"
+                value={holidayDraft}
+                onChange={(e) => setHolidayDraft(e.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+              <button type="button" onClick={addHoliday} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Adicionar</button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {calendar.feriados.map((date) => (
+                <button
+                  key={date}
+                  type="button"
+                  title="Remover feriado"
+                  onClick={() => setCalendar((current) => ({ ...current, feriados: current.feriados.filter((item) => item !== date) }))}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] text-slate-600 hover:bg-rose-50 hover:text-rose-700"
+                >
+                  {new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR")} ×
+                </button>
+              ))}
+              {!calendar.feriados.length ? <span className="text-[10px] text-slate-400">Nenhum feriado cadastrado.</span> : null}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Previsto hoje" value={`${metrics.planned.toFixed(0)}%`} hint="avanço planejado" />
@@ -689,6 +1295,36 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         <Metric label="Valor produzido" value={money(metrics.earned)} hint={`previsto hoje ${money(metrics.plannedCostEarned)}`} />
         <Metric label="Compras" value={money(metrics.purchases)} hint={metrics.scheduledFinish ? `término ${metrics.scheduledFinish.toLocaleDateString("pt-BR")}` : "sem término definido"} />
       </section>
+
+      <section className="grid gap-3 md:grid-cols-3">
+        <Metric label="Pessoas alocadas" value={String(resourceSummary.allocatedPeople)} hint="soma das equipes por etapa" />
+        <Metric label="Mão de obra planejada" value={money(resourceSummary.laborCost)} hint="dias × pessoas × horas × custo/h" />
+        <Metric label="Conflitos de equipe" value={String(resourceSummary.conflicts.length)} hint="mesma equipe em atividades simultâneas" danger={resourceSummary.conflicts.length > 0} />
+      </section>
+
+      {resourceSummary.conflicts.length ? (
+        <section className="rounded-3xl border border-rose-200 bg-rose-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-rose-800">Sobrecarga de recursos detectada</p>
+              <p className="mt-0.5 text-[11px] text-rose-600">O nivelamento move somente etapas pendentes, preservando atividades em andamento ou concluídas.</p>
+            </div>
+            <button
+              type="button"
+              disabled={levelingResources}
+              onClick={() => void levelResources()}
+              className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {levelingResources ? "Nivelando…" : "Resolver conflitos"}
+            </button>
+          </div>
+          <div className="mt-2 space-y-1 text-xs text-rose-700">
+            {resourceSummary.conflicts.slice(0, 8).map((conflict, index) => (
+              <p key={`${conflict.equipe}-${index}`}><b>{conflict.equipe}</b>: {conflict.a} × {conflict.b}</p>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-5 2xl:grid-cols-[430px_1fr]">
         <div className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
@@ -701,6 +1337,16 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
               <label className="text-xs text-slate-500">Término<input type="date" value={newEtapa.dataFimPrevista} onChange={(e) => setNewEtapa((v) => ({ ...v, dataFimPrevista: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
             </div>
             <input value={newEtapa.responsavel} onChange={(e) => setNewEtapa((v) => ({ ...v, responsavel: e.target.value }))} placeholder="Responsável" className="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm" />
+            <div className="rounded-2xl border border-slate-100 p-3">
+              <p className="text-xs font-semibold text-slate-600">Recursos da etapa</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input value={newEtapa.equipeNome} onChange={(e) => setNewEtapa((v) => ({ ...v, equipeNome: e.target.value }))} placeholder="Equipe / recurso" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="1" value={newEtapa.equipeQuantidade} onChange={(e) => setNewEtapa((v) => ({ ...v, equipeQuantidade: e.target.value }))} placeholder="Pessoas" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="0.5" max="24" step="0.5" value={newEtapa.horasDia} onChange={(e) => setNewEtapa((v) => ({ ...v, horasDia: e.target.value }))} placeholder="Horas/dia" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="0" step="0.01" value={newEtapa.custoHoraPessoa} onChange={(e) => setNewEtapa((v) => ({ ...v, custoHoraPessoa: e.target.value }))} placeholder="R$/hora/pessoa" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="0" step="0.001" value={newEtapa.produtividadeDia} onChange={(e) => setNewEtapa((v) => ({ ...v, produtividadeDia: e.target.value }))} placeholder="Produtividade/dia" className="col-span-2 rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs text-slate-500">Custo previsto<input type="number" min="0" value={newEtapa.custoPrevisto} onChange={(e) => setNewEtapa((v) => ({ ...v, custoPrevisto: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
               <label className="text-xs text-slate-500">Peso físico %<input type="number" min="0" max="100" value={newEtapa.pesoFisico} onChange={(e) => setNewEtapa((v) => ({ ...v, pesoFisico: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
@@ -752,6 +1398,18 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
                     <label className="text-[11px] font-medium text-slate-500">Peso %<input type="number" min="0" max="100" value={draft.pesoFisico} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, pesoFisico: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
                   </div>
                   <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end"><label className="text-[11px] font-medium text-slate-500">Responsável<input value={draft.responsavel} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, responsavel: e.target.value } }))} placeholder="Pessoa ou equipe" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label><label className="flex h-10 items-center gap-2 rounded-xl bg-slate-50 px-3 text-xs"><input type="checkbox" checked={draft.marco} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, marco: e.target.checked } }))} /> Marco</label></div>
+                  {!draft.marco ? (
+                    <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+                      <div className="grid gap-2 md:grid-cols-5">
+                        <label className="text-[11px] text-slate-500">Equipe<input value={draft.equipeNome} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, equipeNome: e.target.value } }))} placeholder="Ex.: Equipe ICF" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">Pessoas<input type="number" min="1" value={draft.equipeQuantidade} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, equipeQuantidade: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">Horas/dia<input type="number" min="0.5" max="24" step="0.5" value={draft.horasDia} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, horasDia: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">R$/hora/pessoa<input type="number" min="0" step="0.01" value={draft.custoHoraPessoa} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, custoHoraPessoa: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">Produtividade/dia<input type="number" min="0" step="0.001" value={draft.produtividadeDia} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, produtividadeDia: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                      </div>
+                      <p className="mt-2 text-[10px] text-slate-400">Custo de mão de obra estimado nesta etapa: {money(durationDays(etapa) * Number(draft.equipeQuantidade || 1) * Number(draft.horasDia || 8) * Number(draft.custoHoraPessoa || 0))}</p>
+                    </div>
+                  ) : null}
                 </div>
                 <button type="button" disabled={saving === etapa.id} onClick={() => void saveEtapa(etapa.id)} className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving === etapa.id ? "Salvando…" : "Salvar etapa"}</button>
               </div>
