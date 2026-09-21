@@ -2132,6 +2132,74 @@ export default function ConceptPlanner() {
         }];
       });
 
+    const windowClearances = safeCustomOpenings
+      .filter((opening) => opening.floor === activeFloor && opening.type === "window")
+      .flatMap((opening) => {
+        const wall = boundaryWalls.find((item) => item.id === opening.wallId);
+        if (!wall) return [];
+        const offset = Math.max(0.02, Math.min(0.98, opening.offset));
+        const px = wall.x1 + (wall.x2 - wall.x1) * offset;
+        const py = wall.y1 + (wall.y2 - wall.y1) * offset;
+        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+        const width = Math.max(0.8, opening.width ?? 1.2);
+        return [{
+          x: horizontal ? px - width / 2 - 0.20 : px - 0.42,
+          y: horizontal ? py - 0.42 : py - width / 2 - 0.20,
+          width: horizontal ? width + 0.40 : 0.84,
+          height: horizontal ? 0.84 : width + 0.40,
+        }];
+      });
+
+    const wallUsableIntervals = (side: "top" | "bottom" | "left" | "right") => {
+      const horizontal = side === "top" || side === "bottom";
+      const wallCoord = side === "top" ? bounds.y
+        : side === "bottom" ? bounds.y + bounds.height
+          : side === "left" ? bounds.x
+            : bounds.x + bounds.width;
+      const start = horizontal ? bounds.x : bounds.y;
+      const end = horizontal ? bounds.x + bounds.width : bounds.y + bounds.height;
+      const blocked = safeCustomOpenings
+        .filter((opening) => opening.floor === activeFloor)
+        .flatMap((opening) => {
+          const wall = boundaryWalls.find((item) => item.id === opening.wallId);
+          if (!wall) return [];
+          const wallHorizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+          if (wallHorizontal !== horizontal) return [];
+          const matchesSide = horizontal ? Math.abs(wall.y1 - wallCoord) <= 0.08 : Math.abs(wall.x1 - wallCoord) <= 0.08;
+          if (!matchesSide) return [];
+          const axisStart = horizontal ? wall.x1 : wall.y1;
+          const axisEnd = horizontal ? wall.x2 : wall.y2;
+          const center = axisStart + (axisEnd - axisStart) * opening.offset;
+          const half = Math.max(0.35, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2) + 0.18;
+          return [{ start: center - half, end: center + half }];
+        })
+        .sort((a, b) => a.start - b.start);
+
+      const intervals: Array<{ start: number; end: number }> = [];
+      let cursor = start + 0.15;
+      for (const block of blocked) {
+        const bStart = Math.max(start, block.start);
+        const bEnd = Math.min(end, block.end);
+        if (bStart - cursor >= 0.55) intervals.push({ start: cursor, end: bStart });
+        cursor = Math.max(cursor, bEnd);
+      }
+      if (end - 0.15 - cursor >= 0.55) intervals.push({ start: cursor, end: end - 0.15 });
+      return intervals.sort((a, b) => (b.end - b.start) - (a.end - a.start));
+    };
+
+    const bestWallSide = (() => {
+      const sides = (["top", "bottom", "left", "right"] as const).map((side) => ({
+        side,
+        intervals: wallUsableIntervals(side),
+      }));
+      return sides
+        .map((entry) => ({
+          ...entry,
+          score: entry.intervals[0] ? entry.intervals[0].end - entry.intervals[0].start : 0,
+        }))
+        .sort((a, b) => b.score - a.score)[0];
+    })();
+
     const overlaps = (
       a: { x: number; y: number; width: number; depth: number },
       b: { x: number; y: number; width: number; depth?: number; height?: number },
@@ -2146,9 +2214,16 @@ export default function ConceptPlanner() {
       );
     };
 
+    const preferredSide = bestWallSide?.score > 0.8 ? bestWallSide.side : null;
+    const effectiveLandscape = preferredSide === "left" || preferredSide === "right"
+      ? false
+      : preferredSide === "top" || preferredSide === "bottom"
+        ? true
+        : landscape;
+
     let presets: FurnishPreset[] = [];
     if (kind === "sala" || kind === "gourmet") {
-      presets = landscape
+      presets = effectiveLandscape
         ? [
             place("sofa", "Sofá 3 lugares", 2.2, 0.9, cx - 1.1, innerY + 0.12, 0, "top"),
             place("table", "Mesa centro", 1.1, 0.6, cx - 0.55, cy - 0.3, 0, "center"),
@@ -2162,7 +2237,7 @@ export default function ConceptPlanner() {
             place("chair", "Poltrona", 0.8, 0.8, cx - 0.4, innerY + 0.12, 0, "top"),
           ];
     } else if (kind === "quarto" || kind === "suite") {
-      presets = landscape
+      presets = effectiveLandscape
         ? [
             place("bed", "Cama casal", 1.6, 2.0, cx - 0.8, innerY + 0.12, 0, "top"),
             place("cabinet", "Guarda-roupa", Math.min(1.8, innerWidth * 0.55), 0.6, innerX + 0.10, bounds.y + bounds.height - 0.92, 0, "bottom"),
@@ -2176,7 +2251,7 @@ export default function ConceptPlanner() {
             place("lamp", "Abajur", 0.35, 0.35, innerX + 0.18, Math.min(bounds.y + bounds.height - 0.70, cy + 0.82), 90, "left"),
           ];
     } else if (kind === "cozinha") {
-      presets = landscape
+      presets = effectiveLandscape
         ? [
             place("cabinet", "Balcão cozinha", Math.min(2.2, innerWidth - 0.2), 0.6, innerX + 0.1, innerY + 0.1, 0, "top"),
             place("cabinet", "Armário cozinha", Math.min(1.8, innerWidth * 0.5), 0.6, innerX + 0.1, bounds.y + bounds.height - 0.92, 0, "bottom"),
@@ -2249,9 +2324,14 @@ export default function ConceptPlanner() {
         const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
         const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
         const candidate = { x, y, width: item.width, depth: item.depth };
-        const hitsFurniture = occupied.some((other) => overlaps(candidate, other, 0.14));
         const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
-        if (!hitsFurniture && !hitsDoor) {
+        const wallMounted = item.kind === "tv" || item.kind === "cabinet" || item.kind === "bed" || item.kind === "sofa";
+        const hitsWindow = wallMounted && windowClearances.some((clearance) => overlaps(candidate, clearance, 0.03));
+        const minFurnitureGap =
+          item.kind === "chair" || item.kind === "table" ? 0.45 :
+          item.kind === "bed" || item.kind === "sofa" ? 0.35 : 0.25;
+        const hitsCirculation = occupied.some((other) => overlaps(candidate, other, minFurnitureGap));
+        if (!hitsCirculation && !hitsDoor && !hitsWindow) {
           accepted = { x, y };
           break;
         }
