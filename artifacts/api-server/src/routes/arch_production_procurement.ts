@@ -697,6 +697,8 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
       ),
     ]);
     const etapas = etapasResult.rows;
+    const calendar = await getWorkCalendar(tid, obraId);
+    const cpm = buildCpm(etapas, dependenciasResult.rows, calendar);
     const weightedBase = etapas.reduce((sum: number, item: any) => sum + Number(item.peso_fisico ?? 0), 0);
     const percentualGeral = etapas.length
       ? weightedBase > 0
@@ -736,12 +738,38 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
       },
       etapas,
       dependencias: dependenciasResult.rows,
+      cpm,
       diario: diarioResult.rows,
       compras: comprasResult.rows,
       medicoes: medicoesResult.rows,
     });
   } catch (err) {
     logger.error({ err }, "arch/construction bundle error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.get("/arch/construction/:obraId/cpm", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const [stagesResult, depsResult, calendar] = await Promise.all([
+      pool.query(`SELECT id, nome, data_inicio_prevista, data_fim_prevista, marco FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`, [obraId]),
+      pool.query(`SELECT etapa_id, depende_de_etapa_id, tipo, defasagem_dias FROM obra_etapa_dependencias WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at ASC`, [obraId, tid]),
+      getWorkCalendar(tid, obraId),
+    ]);
+
+    const cpm = buildCpm(stagesResult.rows, depsResult.rows, calendar);
+    if (!cpm.valid) {
+      res.status(409).json(cpm);
+      return;
+    }
+    res.json(cpm);
+  } catch (err) {
+    logger.error({ err }, "arch/construction CPM error");
     next(err);
   }
 });
