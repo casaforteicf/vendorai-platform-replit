@@ -362,7 +362,7 @@ export default function ConceptPlan2D({
     customWallId?: string;
     objectId?: string;
     junctionRefs?: WallTopologyEndpointRef[];
-    mode: "move" | "object" | "object-resize-se" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    mode: "move" | "object" | "object-resize-n" | "object-resize-s" | "object-resize-e" | "object-resize-w" | "object-resize-ne" | "object-resize-nw" | "object-resize-se" | "object-resize-sw" | "object-rotate" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -378,6 +378,9 @@ export default function ConceptPlan2D({
     objectWidth?: number;
     objectDepth?: number;
     objectRotation?: number;
+    objectCenterX?: number;
+    objectCenterY?: number;
+    objectStartAngle?: number;
   }>(null);
 
   useEffect(() => {
@@ -704,17 +707,67 @@ export default function ConceptPlan2D({
       return;
     }
 
-    if (gesture.mode === "object-resize-se" && gesture.objectId && onObjectChange) {
+    if (gesture.mode.startsWith("object-resize-") && gesture.objectId && onObjectChange) {
       const object = objects.find((item) => item.id === gesture.objectId);
       if (!object) return;
       const radians = ((gesture.objectRotation ?? object.rotation) * Math.PI) / 180;
       const localDx = dx * Math.cos(radians) + dy * Math.sin(radians);
       const localDy = -dx * Math.sin(radians) + dy * Math.cos(radians);
+      const baseX = gesture.objectX ?? object.x;
+      const baseY = gesture.objectY ?? object.y;
       const baseWidth = gesture.objectWidth ?? object.width;
       const baseDepth = gesture.objectDepth ?? object.depth;
-      const width = snap(Math.max(0.3, Math.min(lotWidth - object.x, baseWidth + localDx)));
-      const depth = snap(Math.max(0.3, Math.min(lotDepth - object.y, baseDepth + localDy)));
-      onObjectChange(object.id, { width, depth });
+      const minSize = 0.3;
+      const mode = gesture.mode.replace("object-resize-", "");
+
+      let nextX = baseX;
+      let nextY = baseY;
+      let nextWidth = baseWidth;
+      let nextDepth = baseDepth;
+
+      if (mode.includes("e")) {
+        nextWidth = Math.max(minSize, baseWidth + localDx);
+      }
+      if (mode.includes("s")) {
+        nextDepth = Math.max(minSize, baseDepth + localDy);
+      }
+      if (mode.includes("w")) {
+        const proposedWidth = Math.max(minSize, baseWidth - localDx);
+        nextX = baseX + (baseWidth - proposedWidth);
+        nextWidth = proposedWidth;
+      }
+      if (mode.includes("n")) {
+        const proposedDepth = Math.max(minSize, baseDepth - localDy);
+        nextY = baseY + (baseDepth - proposedDepth);
+        nextDepth = proposedDepth;
+      }
+
+      nextX = Math.max(0, Math.min(lotWidth - minSize, nextX));
+      nextY = Math.max(0, Math.min(lotDepth - minSize, nextY));
+      nextWidth = Math.max(minSize, Math.min(lotWidth - nextX, nextWidth));
+      nextDepth = Math.max(minSize, Math.min(lotDepth - nextY, nextDepth));
+
+      onObjectChange(object.id, {
+        x: snap(nextX),
+        y: snap(nextY),
+        width: snap(nextWidth),
+        depth: snap(nextDepth),
+      });
+      return;
+    }
+
+    if (gesture.mode === "object-rotate" && gesture.objectId && onObjectChange) {
+      const object = objects.find((item) => item.id === gesture.objectId);
+      if (!object) return;
+      const centerX = gesture.objectCenterX ?? (object.x + object.width / 2);
+      const centerY = gesture.objectCenterY ?? (object.y + object.depth / 2);
+      const startAngle = gesture.objectStartAngle ?? Math.atan2(gesture.startY - centerY, gesture.startX - centerX);
+      const currentAngle = Math.atan2(point.y - centerY, point.x - centerX);
+      const deltaDegrees = ((currentAngle - startAngle) * 180) / Math.PI;
+      const baseRotation = gesture.objectRotation ?? object.rotation;
+      const normalized = ((baseRotation + deltaDegrees) % 360 + 360) % 360;
+      const snappedRotation = Math.round(normalized / 5) * 5;
+      onObjectChange(object.id, { rotation: snappedRotation % 360 });
       return;
     }
 
@@ -1592,9 +1645,110 @@ export default function ConceptPlan2D({
                   <text x={cx} y={object.y - 0.16} textAnchor="middle" fontSize="0.22" fontWeight="800" fill="#c2410c" pointerEvents="none">
                     {object.label}
                   </text>
+
+                  <g pointerEvents="none">
+                    <rect
+                      x={object.x - 0.08}
+                      y={object.y - 0.08}
+                      width={object.width + 0.16}
+                      height={object.depth + 0.16}
+                      rx="0.10"
+                      fill="none"
+                      stroke="#f97316"
+                      strokeWidth="0.045"
+                      strokeDasharray="0.14 0.10"
+                    />
+                    <rect
+                      x={cx - 0.72}
+                      y={object.y + object.depth + 0.18}
+                      width="1.44"
+                      height="0.42"
+                      rx="0.10"
+                      fill="#ffffff"
+                      fillOpacity="0.96"
+                      stroke="#fdba74"
+                      strokeWidth="0.025"
+                    />
+                    <text x={cx} y={object.y + object.depth + 0.46} textAnchor="middle" fontSize="0.20" fontWeight="800" fill="#9a3412">
+                      {`${object.width.toFixed(2)} × ${object.depth.toFixed(2)} m`}
+                    </text>
+                  </g>
+
+                  {([
+                    ["nw", object.x, object.y, "cursor-nwse-resize"],
+                    ["n", cx, object.y, "cursor-ns-resize"],
+                    ["ne", object.x + object.width, object.y, "cursor-nesw-resize"],
+                    ["e", object.x + object.width, cy, "cursor-ew-resize"],
+                    ["se", object.x + object.width, object.y + object.depth, "cursor-nwse-resize"],
+                    ["s", cx, object.y + object.depth, "cursor-ns-resize"],
+                    ["sw", object.x, object.y + object.depth, "cursor-nesw-resize"],
+                    ["w", object.x, cy, "cursor-ew-resize"],
+                  ] as const).map(([handle, hx, hy, cursorClass]) => (
+                    <g
+                      key={handle}
+                      role="button"
+                      className={cursorClass}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        onEditStart?.();
+                        onSelectObject?.(object.id);
+                        if (!onObjectChange) return;
+                        const point = toSvgPoint(event.clientX, event.clientY);
+                        event.currentTarget.setPointerCapture?.(event.pointerId);
+                        setGesture({
+                          roomId: "",
+                          objectId: object.id,
+                          mode: `object-resize-${handle}` as
+                            | "object-resize-n"
+                            | "object-resize-s"
+                            | "object-resize-e"
+                            | "object-resize-w"
+                            | "object-resize-ne"
+                            | "object-resize-nw"
+                            | "object-resize-se"
+                            | "object-resize-sw",
+                          startX: point.x,
+                          startY: point.y,
+                          roomX: 0,
+                          roomY: 0,
+                          roomWidth: 0,
+                          roomDepth: 0,
+                          objectX: object.x,
+                          objectY: object.y,
+                          objectWidth: object.width,
+                          objectDepth: object.depth,
+                          objectRotation: object.rotation,
+                        });
+                      }}
+                    >
+                      <circle cx={hx} cy={hy} r="0.30" fill="transparent" />
+                      <rect
+                        x={hx - 0.11}
+                        y={hy - 0.11}
+                        width="0.22"
+                        height="0.22"
+                        rx="0.045"
+                        fill="#ffffff"
+                        stroke="#f97316"
+                        strokeWidth="0.055"
+                        pointerEvents="none"
+                      />
+                    </g>
+                  ))}
+
+                  <line
+                    x1={cx}
+                    y1={object.y}
+                    x2={cx}
+                    y2={object.y - 0.72}
+                    stroke="#f97316"
+                    strokeWidth="0.04"
+                    strokeDasharray="0.10 0.08"
+                    pointerEvents="none"
+                  />
                   <g
                     role="button"
-                    className="cursor-nwse-resize"
+                    className="cursor-grab active:cursor-grabbing"
                     onPointerDown={(event) => {
                       event.stopPropagation();
                       onEditStart?.();
@@ -1605,7 +1759,7 @@ export default function ConceptPlan2D({
                       setGesture({
                         roomId: "",
                         objectId: object.id,
-                        mode: "object-resize-se",
+                        mode: "object-rotate",
                         startX: point.x,
                         startY: point.y,
                         roomX: 0,
@@ -1617,13 +1771,18 @@ export default function ConceptPlan2D({
                         objectWidth: object.width,
                         objectDepth: object.depth,
                         objectRotation: object.rotation,
+                        objectCenterX: cx,
+                        objectCenterY: cy,
+                        objectStartAngle: Math.atan2(point.y - cy, point.x - cx),
                       });
                     }}
                   >
-                    <circle cx={object.x + object.width} cy={object.y + object.depth} r="0.34" fill="#ffffff" stroke="#f97316" strokeWidth="0.07" />
-                    <circle cx={object.x + object.width} cy={object.y + object.depth} r="0.12" fill="#f97316" pointerEvents="none" />
+                    <circle cx={cx} cy={object.y - 0.82} r="0.30" fill="transparent" />
+                    <circle cx={cx} cy={object.y - 0.82} r="0.15" fill="#ffffff" stroke="#f97316" strokeWidth="0.06" />
+                    <path d={`M ${cx - 0.06} ${object.y - 0.82} A 0.06 0.06 0 1 1 ${cx + 0.03} ${object.y - 0.87}`} fill="none" stroke="#f97316" strokeWidth="0.035" pointerEvents="none" />
                   </g>
-                  <g transform={`translate(${cx - 1.05} ${object.y - 0.92})`}>
+
+                  <g transform={`translate(${cx - 1.05} ${object.y - 1.28})`}>
                     <rect width="2.1" height="0.58" rx="0.18" fill="#0f172a" opacity="0.96" />
                     <g
                       role="button"
