@@ -552,16 +552,40 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     if (!bundle) return;
     const draft = drafts[etapaId];
     if (!draft) return;
-    setSaving(etapaId); setError(null);
+    setSaving(etapaId); setError(null); setScheduleNotice(null);
     try {
       await api(`/api/arch/construction/${bundle.obra.id}/etapas/${etapaId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          ...draft,
+          nome: draft.nome,
+          responsavel: draft.responsavel,
           custoPrevisto: Number(draft.custoPrevisto || 0),
           pesoFisico: Number(draft.pesoFisico || 0),
+          marco: draft.marco,
+          ...(!draft.dataInicioPrevista || !draft.dataFimPrevista
+            ? { dataInicioPrevista: draft.dataInicioPrevista || null, dataFimPrevista: draft.dataFimPrevista || null }
+            : {}),
         }),
       });
+
+      if (draft.dataInicioPrevista && draft.dataFimPrevista) {
+        const result = await api<{ cascadedCount?: number }>(
+          `/api/arch/construction/${bundle.obra.id}/etapas/${etapaId}/reschedule`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              dataInicioPrevista: draft.dataInicioPrevista,
+              dataFimPrevista: draft.dataFimPrevista,
+            }),
+          },
+        );
+        const cascadedCount = Number(result?.cascadedCount ?? 0);
+        setScheduleNotice(
+          cascadedCount > 0
+            ? `Etapa salva e cronograma recalculado: ${cascadedCount} sucessora${cascadedCount === 1 ? "" : "s"} ajustada${cascadedCount === 1 ? "" : "s"}.`
+            : "Etapa salva sem necessidade de deslocar sucessoras.",
+        );
+      }
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Erro ao atualizar etapa."); }
     finally { setSaving(null); }
