@@ -582,7 +582,7 @@ export default function ConceptModel3D({
                       fill={floor3dMaterial(level.floorMaterials?.[space.id])?.fill ?? (level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1")}
                       fillOpacity={level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
                       stroke={floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
-                      strokeOpacity={level.floorMaterials?.[space.id] ? "0.68" : "0.35"
+                      strokeOpacity={level.floorMaterials?.[space.id] ? "0.68" : "0.35"}
                       strokeWidth="0.04"
                     />
                   ))}
