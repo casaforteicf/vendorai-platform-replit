@@ -13,7 +13,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronLeft, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram, SlidersHorizontal, RotateCcw,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram, SlidersHorizontal, RotateCcw, Mail, LifeBuoy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCustomizeOpen, setSidebarCustomizeOpen] = useState(false);
+  const [footerUtilitiesOpen, setFooterUtilitiesOpen] = useState(false);
   const [sidebarPreferenceSaving, setSidebarPreferenceSaving] = useState<string | null>(null);
   const [sidebarPreferenceError, setSidebarPreferenceError] = useState<string | null>(null);
   const isSuperAdmin = user?.platformRole === "super_admin";
@@ -989,16 +990,47 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   function UserFooter() {
     return (
       <div className="p-4 border-t">
-        <div className="flex items-center gap-3 mb-3 px-2">
+        <button
+          type="button"
+          onClick={() => setFooterUtilitiesOpen((open) => !open)}
+          className="w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-sidebar-accent/70 transition-colors"
+          aria-expanded={footerUtilitiesOpen}
+          aria-label={footerUtilitiesOpen ? "Recolher conta e ferramentas" : "Abrir conta e ferramentas"}
+        >
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
             {user?.name?.charAt(0).toUpperCase() || "U"}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+            <p className="text-[11px] text-muted-foreground truncate">Conta & ferramentas</p>
           </div>
-        </div>
-        <div className="mb-1 space-y-1">
+          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", footerUtilitiesOpen && "rotate-180")} />
+        </button>
+
+        <div
+          className={cn(
+            "mt-2 space-y-1 overflow-hidden transition-all",
+            footerUtilitiesOpen ? "max-h-[520px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+          )}
+          aria-hidden={!footerUtilitiesOpen}
+        >
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+            <Mail className="h-4 w-4 shrink-0" />
+            <span className="truncate">{user?.email}</span>
+          </div>
+
+          <div data-vendorai-footer-assistant-slot className="w-full" />
+          <div data-vendorai-footer-usage-slot className="w-full" />
+
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("vendorai:open-support"))}
+            className="w-full flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground transition-colors"
+          >
+            <LifeBuoy className="h-4 w-4" />
+            Suporte
+          </button>
+
           {isTenantAdmin && user?.tenantId && (
             <button
               type="button"
@@ -1009,6 +1041,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Personalizar menu
             </button>
           )}
+
           <Link
             href="/faq"
             className={cn(
@@ -1021,16 +1054,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <HelpCircle className="h-4 w-4" />
             Ajuda / FAQ
           </Link>
+
           <NovidadesBell />
+
+          <Button
+            variant="outline"
+            className="w-full justify-start text-muted-foreground hover:text-foreground min-h-[40px]"
+            onClick={logout}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sair
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          className="w-full justify-start text-muted-foreground hover:text-foreground min-h-[44px]"
-          onClick={logout}
-        >
-          <LogOut className="h-4 w-4 mr-2" />
-          Sair
-        </Button>
       </div>
     );
   }
