@@ -41,7 +41,10 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => void;
+  onObjectRotate?: (objectId: string) => void;
+  onObjectDuplicate?: (objectId: string) => void;
+  onObjectDelete?: (objectId: string) => void;
   onObjectEditStart?: () => void;
   onObjectEditEnd?: () => void;
   selectedWallId?: string | null;
@@ -505,6 +508,9 @@ export default function ConceptModel3D({
   selectedObjectId = null,
   onSelectObject,
   onObjectChange,
+  onObjectRotate,
+  onObjectDuplicate,
+  onObjectDelete,
   onObjectEditStart,
   onObjectEditEnd,
   selectedWallId = null,
@@ -577,6 +583,25 @@ export default function ConceptModel3D({
       x: rotatedX * Math.cos(radians) + rotatedY * Math.sin(radians),
       y: -rotatedX * Math.sin(radians) + rotatedY * Math.cos(radians),
     };
+  };
+
+
+  const scaleObject = (objectId: string, factor: number) => {
+    if (!onObjectChange) return;
+    const object = objects.find((item) => item.id === objectId);
+    if (!object) return;
+    onObjectEditStart?.();
+    const nextWidth = Math.max(0.3, Math.min(lotWidth, Number((object.width * factor).toFixed(2))));
+    const nextDepth = Math.max(0.3, Math.min(lotDepth, Number((object.depth * factor).toFixed(2))));
+    const centerX = object.x + object.width / 2;
+    const centerY = object.y + object.depth / 2;
+    onObjectChange(object.id, {
+      width: nextWidth,
+      depth: nextDepth,
+      x: Math.max(0, Math.min(lotWidth - nextWidth, Number((centerX - nextWidth / 2).toFixed(2)))),
+      y: Math.max(0, Math.min(lotDepth - nextDepth, Number((centerY - nextDepth / 2).toFixed(2)))),
+    });
+    onObjectEditEnd?.();
   };
 
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -730,7 +755,7 @@ export default function ConceptModel3D({
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-slate-500">Arraste o fundo para orbitar · arraste objetos para mover · pinça no celular ou roda do mouse para zoom.</div>
+          <div className="text-xs text-slate-500">Arraste o fundo para orbitar · arraste objetos para mover · use o gizmo para girar, redimensionar, duplicar ou excluir · pinça no celular ou roda do mouse para zoom.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {onRenderView && (
@@ -1149,6 +1174,50 @@ export default function ConceptModel3D({
                     </g>
                   );
                 })}
+                {selectedObjectId === object.id && (() => {
+                  const gizmo = project(
+                    {
+                      x: object.x + object.width / 2,
+                      y: object.y + object.depth / 2,
+                      z: zBase + 1.75,
+                    },
+                    rotation,
+                    projectionWidth,
+                    projectionDepth,
+                    zoom,
+                  );
+                  const actions = [
+                    { key: "rotate", label: "↻", title: "Girar 90°", run: () => onObjectRotate?.(object.id) },
+                    { key: "smaller", label: "−", title: "Diminuir", run: () => scaleObject(object.id, 0.9) },
+                    { key: "larger", label: "+", title: "Aumentar", run: () => scaleObject(object.id, 1.1) },
+                    { key: "duplicate", label: "⧉", title: "Duplicar", run: () => onObjectDuplicate?.(object.id) },
+                    { key: "delete", label: "×", title: "Excluir", run: () => onObjectDelete?.(object.id) },
+                  ];
+                  const buttonWidth = 0.92;
+                  const toolbarWidth = actions.length * buttonWidth + 0.28;
+                  return (
+                    <g transform={`translate(${gizmo.x - toolbarWidth / 2} ${gizmo.y - 0.5})`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                      <rect x="0" y="0" width={toolbarWidth} height="0.92" rx="0.24" fill="#0f172a" fillOpacity="0.94" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="0.04" />
+                      {actions.map((action, index) => (
+                        <g
+                          key={action.key}
+                          transform={`translate(${0.14 + index * buttonWidth} 0.10)`}
+                          className="cursor-pointer"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            action.run();
+                          }}
+                        >
+                          <rect width="0.78" height="0.72" rx="0.18" fill={action.key === "delete" ? "#7f1d1d" : "#1e293b"} />
+                          <text x="0.39" y="0.49" textAnchor="middle" fontSize="0.42" fontWeight="800" fill="#f8fafc">
+                            {action.label}
+                          </text>
+                          <title>{action.title}</title>
+                        </g>
+                      ))}
+                    </g>
+                  );
+                })()}
               </g>
             );
           })}
