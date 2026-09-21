@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
+import { authenticate } from "../middlewares/auth.js";
 import { and, eq, desc, asc, inArray } from "drizzle-orm";
 import {
   db,
@@ -805,6 +806,124 @@ router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res
   if (!result.rows[0]) return res.status(409).json({ error: "A decisão foi alterada antes desta resposta. Atualize o portal." });
 
   return res.json({ ok: true, decision: result.rows[0] });
+});
+
+function canManagePortal(req: any, tenantId: string) {
+  return req?.user?.role === "super_admin" || req?.user?.tenantId === tenantId;
+}
+
+router.get("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `SELECT * FROM obra_portal_documents WHERE tenant_id=$1 AND obra_id=$2 ORDER BY categoria, created_at DESC`,
+    [tenantId, obraId],
+  );
+  return res.json({ documents: result.rows });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const categoria = String(req.body?.categoria ?? "documento").trim();
+  const titulo = String(req.body?.titulo ?? "").trim();
+  const url = String(req.body?.url ?? "").trim();
+  if (!titulo || !url) return res.status(422).json({ error: "Título e URL são obrigatórios." });
+  const result = await pool.query(
+    `INSERT INTO obra_portal_documents
+      (id,tenant_id,obra_id,categoria,titulo,descricao,url,mime_type,versao,publicado_cliente)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [
+      crypto.randomUUID(), tenantId, obraId, categoria, titulo,
+      req.body?.descricao ?? null, url, req.body?.mimeType ?? null,
+      req.body?.versao ?? null, req.body?.publicadoCliente === true,
+    ],
+  );
+  return res.status(201).json({ document: result.rows[0] });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/documents/:documentId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const documentId = String(req.params.documentId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `UPDATE obra_portal_documents
+        SET categoria=COALESCE($1,categoria),
+            titulo=COALESCE($2,titulo),
+            descricao=COALESCE($3,descricao),
+            url=COALESCE($4,url),
+            mime_type=COALESCE($5,mime_type),
+            versao=COALESCE($6,versao),
+            publicado_cliente=COALESCE($7,publicado_cliente),
+            updated_at=now()
+      WHERE id=$8 AND tenant_id=$9 AND obra_id=$10
+      RETURNING *`,
+    [
+      req.body?.categoria ?? null, req.body?.titulo ?? null, req.body?.descricao ?? null,
+      req.body?.url ?? null, req.body?.mimeType ?? null, req.body?.versao ?? null,
+      typeof req.body?.publicadoCliente === "boolean" ? req.body.publicadoCliente : null,
+      documentId, tenantId, obraId,
+    ],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Documento não encontrado." });
+  return res.json({ document: result.rows[0] });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/portal/support", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const [tickets, messages] = await Promise.all([
+    pool.query(
+      `SELECT t.*, u.nome AS cliente_nome, u.email AS cliente_email
+         FROM obra_portal_support_tickets t
+         LEFT JOIN obra_portal_users u ON u.id=t.portal_user_id
+        WHERE t.tenant_id=$1 AND t.obra_id=$2 ORDER BY t.created_at DESC`,
+      [tenantId, obraId],
+    ),
+    pool.query(
+      `SELECT * FROM obra_portal_messages WHERE tenant_id=$1 AND obra_id=$2 ORDER BY created_at ASC LIMIT 500`,
+      [tenantId, obraId],
+    ),
+  ]);
+  return res.json({ tickets: tickets.rows, messages: messages.rows });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/support/:ticketId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const ticketId = String(req.params.ticketId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const status = ["aberto","em_atendimento","aguardando_cliente","resolvido","fechado"].includes(String(req.body?.status))
+    ? String(req.body.status) : null;
+  if (!status) return res.status(422).json({ error: "Status inválido." });
+  const result = await pool.query(
+    `UPDATE obra_portal_support_tickets
+        SET status=$1, updated_at=now(),
+            closed_at=CASE WHEN $1 IN ('resolvido','fechado') THEN now() ELSE NULL END
+      WHERE id=$2 AND tenant_id=$3 AND obra_id=$4 RETURNING *`,
+    [status, ticketId, tenantId, obraId],
+  );
+  return res.json({ ticket: result.rows[0] ?? null });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/portal/messages", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const mensagem = String(req.body?.mensagem ?? "").trim();
+  if (!mensagem) return res.status(422).json({ error: "Mensagem vazia." });
+  const autorNome = String(req.user?.name ?? req.user?.email ?? "Equipe");
+  const result = await pool.query(
+    `INSERT INTO obra_portal_messages
+      (id,tenant_id,obra_id,portal_user_id,autor_tipo,autor_nome,mensagem)
+     VALUES ($1,$2,$3,null,'equipe',$4,$5) RETURNING *`,
+    [crypto.randomUUID(), tenantId, obraId, autorNome, mensagem],
+  );
+  return res.status(201).json({ message: result.rows[0] });
 });
 
 router.post("/portal/obra/:token/aprovar-orcamento", async (req, res) => {
