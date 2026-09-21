@@ -14,6 +14,10 @@ export type ConceptPlanObject = {
   depth: number;
   rotation: number;
   materialId?: string;
+  catalogProductId?: string;
+  imageUrl?: string;
+  supplier?: string;
+  price?: number;
 };
 
 type Props = {
@@ -51,7 +55,11 @@ type Props = {
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
-  onObjectDrop?: (preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">, point: { x: number; y: number }) => void;
+  onObjectDrop?: (
+    preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>,
+    point: { x: number; y: number },
+  ) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
@@ -895,7 +903,8 @@ export default function ConceptPlan2D({
           if (!raw) return;
           event.preventDefault();
           try {
-            const preset = JSON.parse(raw) as Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">;
+            const preset = JSON.parse(raw) as Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
+              Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>;
             if (!preset?.kind || !preset?.label) return;
             const point = clampPoint(toSvgPoint(event.clientX, event.clientY));
             onObjectDrop(preset, point);
@@ -1407,6 +1416,44 @@ export default function ConceptPlan2D({
                 stroke={selectedObject ? "#f97316" : objectMaterial(object).stroke}
                 strokeWidth={selectedObject ? "0.10" : "0.055"}
               />
+              {object.imageUrl && (
+                <>
+                  <defs>
+                    <clipPath id={`concept-object-image-clip-${object.id}`}>
+                      <rect
+                        x={object.x + 0.05}
+                        y={object.y + 0.05}
+                        width={Math.max(0.1, object.width - 0.1)}
+                        height={Math.max(0.1, object.depth - 0.1)}
+                        rx="0.10"
+                      />
+                    </clipPath>
+                  </defs>
+                  <image
+                    href={object.imageUrl}
+                    x={object.x + 0.05}
+                    y={object.y + 0.05}
+                    width={Math.max(0.1, object.width - 0.1)}
+                    height={Math.max(0.1, object.depth - 0.1)}
+                    preserveAspectRatio="xMidYMid slice"
+                    clipPath={`url(#concept-object-image-clip-${object.id})`}
+                    opacity={selectedObject ? "0.74" : "0.92"}
+                    pointerEvents="none"
+                  />
+                  <rect
+                    x={object.x + 0.05}
+                    y={object.y + 0.05}
+                    width={Math.max(0.1, object.width - 0.1)}
+                    height={Math.max(0.1, object.depth - 0.1)}
+                    rx="0.10"
+                    fill="none"
+                    stroke={selectedObject ? "#f97316" : "#ffffff"}
+                    strokeOpacity="0.75"
+                    strokeWidth={selectedObject ? "0.08" : "0.035"}
+                    pointerEvents="none"
+                  />
+                </>
+              )}
               {object.kind === "sofa" && (
                 <>
                   <rect x={object.x + 0.12} y={object.y + 0.12} width={Math.max(0.2, object.width - 0.24)} height={Math.max(0.2, object.depth * 0.36)} rx="0.10" fill={objectMaterial(object).detail} />
