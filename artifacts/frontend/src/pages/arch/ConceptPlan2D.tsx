@@ -2647,7 +2647,7 @@ export default function ConceptPlan2D({
                         pointerEvents="none"
                       />
                     </g>
-                  )))}
+                  ))}
                 </>
               )}
             </g>
