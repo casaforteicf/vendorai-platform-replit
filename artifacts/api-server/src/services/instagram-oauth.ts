@@ -200,21 +200,71 @@ export async function exchangeShortCodeForToken(
 }
 
 async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedTokenResponse> {
-  const url = new URL(META_LONG_LIVED_BASE);
-  url.searchParams.set("grant_type", "ig_exchange_token");
-  url.searchParams.set("client_secret", INSTAGRAM_APP_SECRET ?? "");
-  url.searchParams.set("access_token", shortToken);
+  const params = new URLSearchParams({
+    grant_type: "ig_exchange_token",
+    client_secret: INSTAGRAM_APP_SECRET ?? "",
+    access_token: shortToken,
+  });
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const body = await res.text();
-    logger.error({ status: res.status, body }, "Falha ao converter para long-lived token");
-    throw new Error(`Instagram long-lived token exchange failed: ${res.status} ${body}`);
+  async function requestExchange(method: "GET" | "POST") {
+    const url = new URL(META_LONG_LIVED_BASE);
+    const init: RequestInit = { method };
+    if (method === "GET") {
+      for (const [key, value] of params.entries()) url.searchParams.set(key, value);
+    } else {
+      init.headers = { "Content-Type": "application/x-www-form-urlencoded" };
+      init.body = params.toString();
+    }
+
+    const response = await fetch(url.toString(), init);
+    const body = await response.text();
+    return { response, body };
   }
 
-  const data = (await res.json()) as LongLivedTokenResponse;
-  logger.info({ expiresIn: data.expires_in }, "Long-lived token obtido");
-  return data;
+  const primary = await requestExchange("GET");
+  if (primary.response.ok) {
+    const data = JSON.parse(primary.body) as LongLivedTokenResponse;
+    logger.info({ expiresIn: data.expires_in }, "Long-lived token obtido");
+    return data;
+  }
+
+  const shouldRetryWithPost =
+    primary.response.status === 400 &&
+    primary.body.includes("Unsupported request - method type: get");
+
+  if (shouldRetryWithPost) {
+    logger.warn(
+      { status: primary.response.status },
+      "Meta rejeitou GET no long-lived token; tentando compatibilidade via POST",
+    );
+    const fallback = await requestExchange("POST");
+    if (fallback.response.ok) {
+      const data = JSON.parse(fallback.body) as LongLivedTokenResponse;
+      logger.info({ expiresIn: data.expires_in, method: "POST" }, "Long-lived token obtido");
+      return data;
+    }
+
+    logger.error(
+      {
+        getStatus: primary.response.status,
+        getBody: primary.body,
+        postStatus: fallback.response.status,
+        postBody: fallback.body,
+      },
+      "Falha ao converter para long-lived token via GET e POST",
+    );
+    throw new Error(
+      `Instagram long-lived token exchange failed: GET ${primary.response.status} ${primary.body}; POST ${fallback.response.status} ${fallback.body}`,
+    );
+  }
+
+  logger.error(
+    { status: primary.response.status, body: primary.body },
+    "Falha ao converter para long-lived token",
+  );
+  throw new Error(
+    `Instagram long-lived token exchange failed: ${primary.response.status} ${primary.body}`,
+  );
 }
 
 export async function fetchUserPages(token: string): Promise<PageAccount[]> {
