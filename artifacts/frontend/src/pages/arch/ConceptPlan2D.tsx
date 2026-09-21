@@ -55,6 +55,8 @@ type Props = {
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
+  roomFloorMaterials?: Record<string, string>;
+  spaceFloorMaterials?: Record<string, string>;
 };
 
 function formatMeters(value: number) {
@@ -111,6 +113,20 @@ function objectMaterial(object: ConceptPlanObject) {
       : object.kind === "tv" ? "preto-fosco"
       : "tecido-cinza"
   ];
+}
+
+const FLOOR_MATERIAL_FILL: Record<string, string> = {
+  "porcelanato-claro": "#e7e5e4",
+  "cimento-queimado": "#d1d5db",
+  "madeira-carvalho": "#dbc5a5",
+  "madeira-nogueira": "#9a775d",
+  "pedra-natural": "#d6d3d1",
+  "ceramica-clara": "#f5f5f4",
+  "vinilico-claro": "#e5d3b3",
+};
+
+function floorMaterialFill(id?: string) {
+  return id ? FLOOR_MATERIAL_FILL[id] : undefined;
 }
 
 const ROOM_FILL: Record<string, string> = {
@@ -297,6 +313,8 @@ export default function ConceptPlan2D({
   onObjectRotate,
   onObjectDuplicate,
   onObjectDelete,
+  roomFloorMaterials = {},
+  spaceFloorMaterials = {},
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -436,6 +454,12 @@ export default function ConceptPlan2D({
     startViewX: number;
     startViewY: number;
   }>(null);
+  const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<null | {
+    startDistance: number;
+    startView: { x: number; y: number; width: number; height: number };
+    anchor: { x: number; y: number };
+  }>(null);
 
   const autoFitKey = `${activeFloor}:${rooms.length}:${customWalls.length}:${closedSpaces.length}:${objects.length}:${geometry.walls.length}:${lotWidth}:${lotDepth}`;
   useEffect(() => {
@@ -535,6 +559,30 @@ export default function ConceptPlan2D({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinchRef.current && touchPointersRef.current.size >= 2) {
+        const points = [...touchPointersRef.current.values()].slice(0, 2);
+        const distance = Math.max(8, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+        const factor = pinchRef.current.startDistance / distance;
+        const startView = pinchRef.current.startView;
+        const minWidth = Math.max(2.5, fitView.width * 0.16);
+        const maxWidth = Math.max(fitView.width * 2.8, lotWidth + 8);
+        const nextWidth = Math.max(minWidth, Math.min(maxWidth, startView.width * factor));
+        const ratio = nextWidth / startView.width;
+        const nextHeight = startView.height * ratio;
+        const anchor = pinchRef.current.anchor;
+        const fx = (anchor.x - startView.x) / startView.width;
+        const fy = (anchor.y - startView.y) / startView.height;
+        setView({
+          x: anchor.x - nextWidth * fx,
+          y: anchor.y - nextHeight * fy,
+          width: nextWidth,
+          height: nextHeight,
+        });
+        return;
+      }
+    }
     if (panGesture && interactionMode === "navigate") {
       const svg = svgRef.current;
       if (!svg) return;
@@ -830,6 +878,22 @@ export default function ConceptPlan2D({
           }
         }}
         onPointerDownCapture={(event) => {
+          if (event.pointerType === "touch") {
+            touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (touchPointersRef.current.size === 2) {
+              const points = [...touchPointersRef.current.values()];
+              const distance = Math.max(8, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+              const centerX = (points[0].x + points[1].x) / 2;
+              const centerY = (points[0].y + points[1].y) / 2;
+              pinchRef.current = {
+                startDistance: distance,
+                startView: { ...view },
+                anchor: toSvgPoint(centerX, centerY),
+              };
+              setGesture(null);
+              setPanGesture(null);
+            }
+          }
           if (["room", "wall", "opening", "draw-wall", "navigate"].includes(interactionMode)) {
             try {
               event.currentTarget.setPointerCapture(event.pointerId);
@@ -858,6 +922,10 @@ export default function ConceptPlan2D({
         }}
         onPointerMove={handlePointerMove}
         onPointerUp={(event) => {
+          if (event.pointerType === "touch") {
+            touchPointersRef.current.delete(event.pointerId);
+            if (touchPointersRef.current.size < 2) pinchRef.current = null;
+          }
           if (panGesture?.pointerId === event.pointerId) {
             setPanGesture(null);
           }
@@ -872,6 +940,10 @@ export default function ConceptPlan2D({
           setGesture(null);
         }}
         onPointerCancel={(event) => {
+          if (event.pointerType === "touch") {
+            touchPointersRef.current.delete(event.pointerId);
+            if (touchPointersRef.current.size < 2) pinchRef.current = null;
+          }
           if (panGesture?.pointerId === event.pointerId) {
             setPanGesture(null);
           }
@@ -980,7 +1052,7 @@ export default function ConceptPlan2D({
                   y={cell.y}
                   width={cell.width}
                   height={cell.height}
-                  fill={selectedSpace ? "#fed7aa" : index % 2 === 0 ? "#dbeafe" : "#dcfce7"}
+                  fill={selectedSpace ? "#fed7aa" : floorMaterialFill(spaceFloorMaterials[space.id]) ?? (index % 2 === 0 ? "#dbeafe" : "#dcfce7")}
                   opacity={selectedSpace ? "0.42" : "0.28"}
                   stroke={selectedSpace ? "#f97316" : "none"}
                   strokeWidth={selectedSpace ? "0.035" : "0"}
@@ -1027,7 +1099,7 @@ export default function ConceptPlan2D({
 
         {rooms.map((room) => {
           const selected = selectedId === room.id;
-          const fill = ROOM_FILL[room.kind] ?? "#ffffff";
+          const fill = floorMaterialFill(roomFloorMaterials[room.id]) ?? ROOM_FILL[room.kind] ?? "#ffffff";
           const isPool = room.kind === "piscina";
           const area = room.width * room.depth;
           const labelLines = splitRoomLabel(room.label);

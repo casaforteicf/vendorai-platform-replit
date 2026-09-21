@@ -20,6 +20,7 @@ export type ConceptModelLevel = {
   closedSpaces: ClosedSpace[];
   openings: OpeningMarker[];
   labels: Record<string, string>;
+  floorMaterials?: Record<string, string>;
   stairs: Array<{
     id: string;
     x: number;
@@ -240,6 +241,20 @@ function splitWallForOpenings(
   const after = makeSegment(cursor, wallEnd);
   if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
   return pieces;
+}
+
+const FLOOR_3D_MATERIALS: Record<string, { fill: string; edge: string }> = {
+  "porcelanato-claro": { fill: "#e7e5e4", edge: "#a8a29e" },
+  "cimento-queimado": { fill: "#cbd5e1", edge: "#64748b" },
+  "madeira-carvalho": { fill: "#d6c2a8", edge: "#8b7355" },
+  "madeira-nogueira": { fill: "#9a775d", edge: "#574437" },
+  "pedra-natural": { fill: "#d6d3d1", edge: "#78716c" },
+  "ceramica-clara": { fill: "#f5f5f4", edge: "#a8a29e" },
+  "vinilico-claro": { fill: "#e5d3b3", edge: "#a16207" },
+};
+
+function floor3dMaterial(id?: string) {
+  return id ? FLOOR_3D_MATERIALS[id] : undefined;
 }
 
 const OBJECT_3D_MATERIALS: Record<string, { top: string; sideA: string; sideB: string }> = {
@@ -564,10 +579,10 @@ export default function ConceptModel3D({
                         levelBase,
                         rotation, projectionWidth, projectionDepth, zoom,
                       ))}
-                      fill={level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1"}
-                      fillOpacity={level.floor === activeFloor ? "0.42" : "0.28"}
-                      stroke="#94a3b8"
-                      strokeOpacity="0.35"
+                      fill={floor3dMaterial(level.floorMaterials?.[space.id])?.fill ?? (level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1")}
+                      fillOpacity={level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
+                      stroke={floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
+                      strokeOpacity={level.floorMaterials?.[space.id] ? "0.68" : "0.35"
                       strokeWidth="0.04"
                     />
                   ))}

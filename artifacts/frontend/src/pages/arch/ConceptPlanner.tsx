@@ -73,6 +73,7 @@ type Room = {
   x: number;
   y: number;
   locked?: boolean;
+  floorMaterialId?: string;
 };
 
 type OpeningOverride = {
@@ -111,6 +112,7 @@ type SpaceProfile = {
   kind: string;
   centroid: { x: number; y: number };
   area: number;
+  floorMaterialId?: string;
 };
 
 type EditorSnapshot = {
@@ -120,6 +122,7 @@ type EditorSnapshot = {
   wallFirstFloors: number[];
   openingOverrides: Record<string, OpeningOverride>;
   objects: ConceptPlanObject[];
+  spaceProfiles: SpaceProfile[];
 };
 
 type CustomerProfile = {
@@ -175,6 +178,16 @@ const CONCEPT_OBJECT_MATERIALS = [
   { id: "madeira-escura", name: "Madeira escura", category: "Madeiras", swatch: "#8b6b52" },
   { id: "preto-fosco", name: "Preto fosco", category: "Lacas e metais", swatch: "#334155" },
   { id: "branco-fosco", name: "Branco fosco", category: "Lacas e metais", swatch: "#ffffff" },
+] as const;
+
+const CONCEPT_FLOOR_MATERIALS = [
+  { id: "porcelanato-claro", name: "Porcelanato claro", category: "Porcelanatos", swatch: "#e7e5e4" },
+  { id: "cimento-queimado", name: "Cimento queimado", category: "Cimentícios", swatch: "#d1d5db" },
+  { id: "madeira-carvalho", name: "Carvalho natural", category: "Madeiras", swatch: "#dbc5a5" },
+  { id: "madeira-nogueira", name: "Nogueira", category: "Madeiras", swatch: "#9a775d" },
+  { id: "pedra-natural", name: "Pedra natural", category: "Pedras", swatch: "#d6d3d1" },
+  { id: "ceramica-clara", name: "Cerâmica clara", category: "Cerâmicas", swatch: "#f5f5f4" },
+  { id: "vinilico-claro", name: "Vinílico claro", category: "Vinílicos", swatch: "#e5d3b3" },
 ] as const;
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
@@ -233,6 +246,7 @@ function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
       x: finiteNumber(raw.x, 0, 0, 200),
       y: finiteNumber(raw.y, 0, 0, 200),
       locked: Boolean(raw.locked),
+      floorMaterialId: typeof raw.floorMaterialId === "string" ? raw.floorMaterialId : undefined,
     }];
   }));
 }
@@ -684,6 +698,7 @@ export default function ConceptPlanner() {
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
     objects: objectsRef.current.map((object) => ({ ...object })),
+    spaceProfiles: (Array.isArray(spaceProfiles) ? spaceProfiles : []).map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
@@ -695,6 +710,7 @@ export default function ConceptPlanner() {
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
     objects: snapshot.objects.map((object) => ({ ...object })),
+    spaceProfiles: snapshot.spaceProfiles.map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
   });
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
@@ -705,6 +721,7 @@ export default function ConceptPlanner() {
     setWallFirstFloors(cloned.wallFirstFloors);
     setOpeningOverrides(cloned.openingOverrides);
     setObjects(cloned.objects);
+    setSpaceProfiles(cloned.spaceProfiles);
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
@@ -960,6 +977,40 @@ export default function ConceptPlanner() {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== objectId));
     setSelectedObjectId((current) => current === objectId ? null : current);
     pushRoomHistory(before);
+  };
+
+  const setSelectedSurfaceMaterial = (materialId: string) => {
+    const before = snapshotEditor();
+    if (selected) {
+      setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) =>
+        room.id === selected.id ? { ...room, floorMaterialId: materialId } : room
+      ));
+      pushRoomHistory(before);
+      closeLibraryOnMobile();
+      return;
+    }
+    if (selectedClosedSpace) {
+      const existing = spaceAssignments.get(selectedClosedSpace.id);
+      if (existing) {
+        setSpaceProfiles((prev) => (Array.isArray(prev) ? prev : []).map((profile) =>
+          profile.id === existing.id
+            ? { ...profile, floorMaterialId: materialId, centroid: selectedClosedSpace.centroid, area: selectedClosedSpace.area, floor: activeFloor }
+            : profile
+        ));
+      } else {
+        const profile: SpaceProfile = {
+          id: `space-profile-${uid()}`,
+          floor: activeFloor,
+          label: `Espaço ${safeSpaceProfiles.filter((item) => item.floor === activeFloor).length + 1}`,
+          kind: "outro",
+          centroid: selectedClosedSpace.centroid,
+          area: selectedClosedSpace.area,
+          floorMaterialId: materialId,
+        };
+        setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), profile]);
+      }
+      closeLibraryOnMobile();
+    }
   };
 
   const organize = (variant = layoutVariant) => {
@@ -1255,6 +1306,24 @@ export default function ConceptPlanner() {
     return assignments;
   }, [closedSpaces, safeSpaceProfiles, activeFloor]);
 
+  const roomFloorMaterials = useMemo(
+    () => Object.fromEntries(
+      safeRooms
+        .filter((room) => room.floor === activeFloor && room.floorMaterialId)
+        .map((room) => [room.id, room.floorMaterialId as string]),
+    ),
+    [safeRooms, activeFloor],
+  );
+
+  const spaceFloorMaterials = useMemo(
+    () => Object.fromEntries(
+      [...spaceAssignments.entries()]
+        .filter(([, profile]) => profile.floorMaterialId)
+        .map(([spaceId, profile]) => [spaceId, profile.floorMaterialId as string]),
+    ),
+    [spaceAssignments],
+  );
+
   const modelLevels = useMemo<ConceptModelLevel[]>(() => {
     return Array.from({ length: floors }, (_, floorIndex) => {
       const base = buildConceptGeometry(safeRooms, lotWidth, lotDepth, floorIndex);
@@ -1311,6 +1380,7 @@ export default function ConceptPlanner() {
       );
 
       const labels: Record<string, string> = {};
+      const floorMaterials: Record<string, string> = {};
       const usedProfiles = new Set<string>();
       for (const space of floorClosedSpaces) {
         const best = safeSpaceProfiles
@@ -1328,7 +1398,19 @@ export default function ConceptPlanner() {
 
         if (best) {
           labels[space.id] = best.profile.label;
+          if (best.profile.floorMaterialId) floorMaterials[space.id] = best.profile.floorMaterialId;
           usedProfiles.add(best.profile.id);
+        } else if (!floorWallFirst) {
+          const ownerRoom = safeRooms
+            .filter((room) => room.floor === floorIndex)
+            .find((room) =>
+              space.centroid.x >= room.x - 0.15 &&
+              space.centroid.x <= room.x + room.width + 0.15 &&
+              space.centroid.y >= room.y - 0.15 &&
+              space.centroid.y <= room.y + room.depth + 0.15
+            );
+          if (ownerRoom?.floorMaterialId) floorMaterials[space.id] = ownerRoom.floorMaterialId;
+          if (ownerRoom?.label && !labels[space.id]) labels[space.id] = ownerRoom.label;
         }
       }
 
@@ -1341,6 +1423,7 @@ export default function ConceptPlanner() {
           ? floorCustomOpeningMarkers
           : [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
+        floorMaterials,
         stairs: safeRooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
           .map((room) => ({
@@ -3213,37 +3296,81 @@ export default function ConceptPlanner() {
 
                   {editorLibraryTab === "materials" && (
                     <>
-                      <div className="mb-3 flex items-center justify-between">
+                      <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Materiais</div>
-                        <span className="text-[10px] text-slate-400">
-                          {selectedObject ? selectedObject.label : "Selecione um móvel"}
+                        <span className="truncate text-[10px] text-slate-400">
+                          {selectedObject
+                            ? selectedObject.label
+                            : selected
+                              ? selected.label
+                              : selectedClosedSpace
+                                ? selectedSpaceProfile?.label ?? "Ambiente"
+                                : "Selecione um elemento"}
                         </span>
                       </div>
-                      {!selectedObject ? (
-                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-                          Selecione um móvel ou objeto na planta e depois escolha o acabamento.
-                        </div>
+
+                      {selectedObject ? (
+                        <>
+                          <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento do móvel</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {CONCEPT_OBJECT_MATERIALS.map((material) => (
+                              <button
+                                key={material.id}
+                                type="button"
+                                onClick={() => {
+                                  const before = snapshotEditor();
+                                  updateObjectById(selectedObject.id, { materialId: material.id });
+                                  pushRoomHistory(before);
+                                  closeLibraryOnMobile();
+                                }}
+                                className={selectedObject.materialId === material.id
+                                  ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                  : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                              >
+                                <div className="h-16 border-b" style={{ background: material.swatch }} />
+                                <div className="p-3">
+                                  <div className="text-sm font-semibold">{material.name}</div>
+                                  <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : selected || selectedClosedSpace ? (
+                        <>
+                          <div className="mb-3 text-xs font-semibold text-slate-600">Piso do ambiente</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {CONCEPT_FLOOR_MATERIALS.map((material) => {
+                              const currentMaterial = selected?.floorMaterialId ?? selectedSpaceProfile?.floorMaterialId;
+                              return (
+                                <button
+                                  key={material.id}
+                                  type="button"
+                                  onClick={() => setSelectedSurfaceMaterial(material.id)}
+                                  className={currentMaterial === material.id
+                                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                                >
+                                  <div className="relative h-16 overflow-hidden border-b" style={{ background: material.swatch }}>
+                                    {(material.id.includes("madeira") || material.id === "vinilico-claro") && (
+                                      <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 18px, #5b4636 18px 19px)" }} />
+                                    )}
+                                    {(material.id.includes("porcelanato") || material.id.includes("ceramica")) && (
+                                      <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "linear-gradient(#78716c 1px, transparent 1px), linear-gradient(90deg, #78716c 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+                                    )}
+                                  </div>
+                                  <div className="p-3">
+                                    <div className="text-sm font-semibold">{material.name}</div>
+                                    <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
                       ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                          {CONCEPT_OBJECT_MATERIALS.map((material) => (
-                            <button
-                              key={material.id}
-                              type="button"
-                              onClick={() => {
-                                updateObjectById(selectedObject.id, { materialId: material.id });
-                                closeLibraryOnMobile();
-                              }}
-                              className={selectedObject.materialId === material.id
-                                ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                                : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
-                            >
-                              <div className="h-16 border-b" style={{ background: material.swatch }} />
-                              <div className="p-3">
-                                <div className="text-sm font-semibold">{material.name}</div>
-                                <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
-                              </div>
-                            </button>
-                          ))}
+                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                          Selecione um móvel ou um ambiente na planta. O painel mostra automaticamente os materiais compatíveis.
                         </div>
                       )}
                     </>
@@ -3530,6 +3657,8 @@ export default function ConceptPlanner() {
                         onObjectRotate={rotateObject}
                         onObjectDuplicate={duplicateObject}
                         onObjectDelete={deleteObject}
+                        roomFloorMaterials={roomFloorMaterials}
+                        spaceFloorMaterials={spaceFloorMaterials}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
