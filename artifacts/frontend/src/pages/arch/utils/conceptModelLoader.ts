@@ -47,7 +47,7 @@ export async function loadCachedConceptModel(THREE: any, url: string) {
   if (!pending) {
     const loader = new THREE.GLTFLoader();
     loader.setCrossOrigin?.("anonymous");
-    pending = queuedLoad(() => new Promise((resolve, reject) => {
+    pending = queuedLoad<any>(() => new Promise<any>((resolve, reject) => {
       loader.load(
         url,
         (gltf: any) => resolve(gltf?.scene ?? gltf?.scenes?.[0]),
