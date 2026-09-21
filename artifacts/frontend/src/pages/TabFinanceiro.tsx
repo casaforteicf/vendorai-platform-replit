@@ -38,12 +38,25 @@ interface Lancamento {
 
 interface DreData {
   orcamentoTotal: number;
+  custoOrcado: number;
   totalGasto: number;
   totalPago: number;
   totalPendente: number;
   saldo: number;
+  desvioCusto: number;
+  percentualCustoRealizado: number;
+  margemOrcada: number;
+  margemOrcadaPct: number;
+  orcamentoFonte: "orcamento_obra" | "obra_manual";
+  orcamentoVinculado?: {
+    id: string;
+    versao: number;
+    titulo?: string | null;
+    status: string;
+  } | null;
   porTipo: Array<{ tipo: string; total: number }>;
-  etapas: Array<{ id: string; nome: string; totalGasto: number }>;
+  etapas: Array<{ id: string; nome: string; custoOrcado: number; totalGasto: number; desvio: number | null }>;
+  orcamentoEtapas: Array<{ id: string; nome: string; custoOrcado: number; valorVenda: number }>;
   semEtapa: number;
 }
 
@@ -270,55 +283,117 @@ function LancamentoForm({ initial, etapas, onSave, onCancel, saving, title }: La
 
 function DrePanel({ dre }: { dre: DreData }) {
   const [expanded, setExpanded] = useState(false);
-  const pct = dre.orcamentoTotal > 0 ? Math.min(100, (dre.totalGasto / dre.orcamentoTotal) * 100) : 0;
-  const over = dre.saldo < 0;
+  const pct = Math.max(0, dre.percentualCustoRealizado ?? 0);
+  const over = dre.desvioCusto < 0;
+  const hasStructuredBudget = dre.orcamentoFonte === "orcamento_obra" && !!dre.orcamentoVinculado;
 
   return (
     <div className="border rounded-xl overflow-hidden">
       <div
-        className="flex items-center justify-between px-4 py-3 bg-muted/40 cursor-pointer"
+        className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/40 cursor-pointer"
         onClick={() => setExpanded((v) => !v)}
       >
-        <div className="flex items-center gap-2 font-semibold text-sm">
-          <BarChart3 className="h-4 w-4 text-blue-600" />
-          DRE Simplificado
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-semibold text-sm">
+            <BarChart3 className="h-4 w-4 text-blue-600" />
+            Custos x Orçamento
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground truncate">
+            {hasStructuredBudget
+              ? `Vinculado ao orçamento V${dre.orcamentoVinculado!.versao}${dre.orcamentoVinculado!.titulo ? ` — ${dre.orcamentoVinculado!.titulo}` : ""} • ${dre.orcamentoVinculado!.status}`
+              : "Sem orçamento estruturado vinculado — referência pelo valor global da obra"}
+          </div>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
       </div>
 
-      {/* ── Summary row always visible ── */}
-      <div className="grid grid-cols-4 divide-x text-center px-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 text-center px-0">
         {[
-          { label: "Orçado",    value: fmtBRL(dre.orcamentoTotal), icon: DollarSign,   color: "text-blue-600" },
-          { label: "Gasto",     value: fmtBRL(dre.totalGasto),     icon: TrendingDown,  color: "text-orange-600" },
-          { label: "Pago",      value: fmtBRL(dre.totalPago),      icon: CheckCircle2,  color: "text-emerald-600" },
-          { label: "Saldo",     value: fmtBRL(dre.saldo),          icon: over ? AlertCircle : TrendingUp, color: over ? "text-red-600" : "text-emerald-700" },
-        ].map((c) => (
-          <div key={c.label} className="py-3 px-2">
-            <c.icon className={`h-3.5 w-3.5 mx-auto mb-1 ${c.color}`} />
-            <p className={`text-sm font-semibold ${c.color}`}>{c.value}</p>
-            <p className="text-[10px] text-muted-foreground">{c.label}</p>
+          { label: "Custo orçado", value: fmtBRL(dre.custoOrcado), color: "text-blue-700" },
+          { label: "Custo realizado", value: fmtBRL(dre.totalGasto), color: "text-orange-600" },
+          { label: over ? "Estouro de custo" : "Saldo de custo", value: fmtBRL(Math.abs(dre.desvioCusto)), color: over ? "text-red-600" : "text-emerald-700" },
+          { label: "Orçamento / contrato", value: fmtBRL(dre.orcamentoTotal), color: "text-slate-700" },
+        ].map((item) => (
+          <div key={item.label} className="py-3 px-2">
+            <p className={`text-sm font-semibold ${item.color}`}>{item.value}</p>
+            <p className="text-[10px] text-muted-foreground">{item.label}</p>
           </div>
         ))}
       </div>
 
-      {/* ── Progress bar ── */}
-      <div className="px-4 pb-3">
+      <div className="px-4 pb-3 pt-3 border-t">
         <div className="h-2 bg-muted rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${over ? "bg-red-500" : pct > 80 ? "bg-amber-500" : "bg-blue-500"}`}
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
-        <p className="text-xs text-muted-foreground mt-1">{pct.toFixed(1)}% do orçamento utilizado</p>
+        <div className="flex items-center justify-between gap-3 mt-1">
+          <p className="text-xs text-muted-foreground">{pct.toFixed(1)}% do custo orçado consumido</p>
+          {over && <p className="text-xs font-medium text-red-600">Acima do previsto</p>}
+        </div>
       </div>
 
-      {/* ── Expanded details ── */}
       {expanded && (
-        <div className="border-t px-4 py-4 space-y-4">
+        <div className="border-t px-4 py-4 space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="rounded-lg border p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pago</p>
+              <p className="text-sm font-semibold text-emerald-700 mt-1">{fmtBRL(dre.totalPago)}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">A pagar</p>
+              <p className="text-sm font-semibold text-amber-700 mt-1">{fmtBRL(dre.totalPendente)}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">BDI / margem orçada</p>
+              <p className="text-sm font-semibold mt-1">{fmtBRL(dre.margemOrcada)}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Margem orçada</p>
+              <p className="text-sm font-semibold mt-1">{dre.margemOrcadaPct.toFixed(1)}%</p>
+            </div>
+          </div>
+
+          {dre.etapas.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Compatibilização por etapa</p>
+                <div className="hidden md:flex items-center gap-4 text-[10px] text-muted-foreground">
+                  <span>Orçado</span><span>Realizado</span><span>Desvio</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {dre.etapas.map((e) => {
+                  const etapaOver = e.desvio != null && e.desvio < 0;
+                  return (
+                    <div key={e.id} className="rounded-lg border px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium truncate">{e.nome}</span>
+                        <span className={`text-xs font-semibold ${etapaOver ? "text-red-600" : "text-emerald-700"}`}>
+                          {e.desvio == null ? "Sem referência" : etapaOver ? `+${fmtBRL(Math.abs(e.desvio))}` : fmtBRL(e.desvio)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-1 text-xs text-muted-foreground">
+                        <span>Orçado: {e.custoOrcado > 0 ? fmtBRL(e.custoOrcado) : "—"}</span>
+                        <span className="text-right">Realizado: {fmtBRL(e.totalGasto)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {dre.semEtapa > 0 && (
+                  <div className="flex items-center justify-between rounded-lg border border-dashed px-3 py-2 text-sm">
+                    <span className="text-muted-foreground italic">Lançamentos sem etapa</span>
+                    <span className="font-medium">{fmtBRL(dre.semEtapa)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {dre.porTipo.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Por tipo de documento</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Custos por tipo de documento</p>
               <div className="space-y-1.5">
                 {dre.porTipo.map((t) => (
                   <div key={t.tipo} className="flex items-center justify-between text-sm">
@@ -330,32 +405,14 @@ function DrePanel({ dre }: { dre: DreData }) {
             </div>
           )}
 
-          {dre.etapas.some((e) => e.totalGasto > 0) && (
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Por etapa</p>
-              <div className="space-y-1.5">
-                {dre.etapas.filter((e) => e.totalGasto > 0).map((e) => (
-                  <div key={e.id} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground truncate max-w-[200px]">{e.nome}</span>
-                    <span className="font-medium">{fmtBRL(e.totalGasto)}</span>
-                  </div>
-                ))}
-                {dre.semEtapa > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground italic">Sem etapa</span>
-                    <span className="font-medium">{fmtBRL(dre.semEtapa)}</span>
-                  </div>
-                )}
-              </div>
+          {!hasStructuredBudget && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                Para compatibilizar corretamente custo previsto x realizado por etapa, crie ou aprove uma versão na aba Orçamento desta obra.
+              </span>
             </div>
           )}
-
-          <div className="pt-2 border-t">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">A pagar (pendente)</span>
-              <span className="font-medium text-amber-700">{fmtBRL(dre.totalPendente)}</span>
-            </div>
-          </div>
         </div>
       )}
     </div>
