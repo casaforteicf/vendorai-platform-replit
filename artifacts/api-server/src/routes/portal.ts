@@ -651,7 +651,8 @@ router.get("/portal/obra/:token", async (req, res) => {
     }
   }
 
-  const privateDocuments = (authenticated && (config.showDocuments || config.showContracts || config.showManuals))
+  const canReadPrivateLibrary = !config.requireLogin || authenticated;
+  const privateDocuments = (canReadPrivateLibrary && (config.showDocuments || config.showContracts || config.showManuals))
     ? (await pool.query(
         `SELECT id,categoria,titulo,descricao,url,mime_type,versao,created_at
            FROM obra_portal_documents
@@ -665,7 +666,7 @@ router.get("/portal/obra/:token", async (req, res) => {
   const manuals = config.showManuals ? privateDocuments.filter((item: any) => ["manual","garantia"].includes(item.categoria)) : [];
   const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","manual","garantia"].includes(item.categoria)) : [];
 
-  const invoices = (authenticated && config.showInvoices)
+  const invoices = (canReadPrivateLibrary && config.showInvoices)
     ? (await pool.query(
         `SELECT id,numero,fornecedor,valor,data_emissao,data_vencimento,status,descricao,documento_url
            FROM obra_lancamentos
