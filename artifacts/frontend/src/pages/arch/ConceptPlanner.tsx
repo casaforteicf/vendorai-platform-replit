@@ -5088,26 +5088,57 @@ export default function ConceptPlanner() {
 
                         {conceptRender?.resultImageUrl ? (
                           <div className="overflow-hidden rounded-2xl border bg-white shadow-xl">
-                            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                               <div>
-                                <div className="text-sm font-semibold">
-                                  {conceptRender.renderView === "interior" ? "Render interior / vista 3D" : "Render de fachada"}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="text-sm font-semibold">
+                                    {conceptRender.renderView === "interior" ? "Render interior / vista 3D" : "Render de fachada"}
+                                  </div>
+                                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                                    4K · 3840×2160
+                                  </span>
                                 </div>
-                                <div className="text-[11px] text-muted-foreground">
+                                <div className="mt-1 text-[11px] text-muted-foreground">
                                   {conceptRender.generatedAt
                                     ? new Date(conceptRender.generatedAt).toLocaleString("pt-BR")
                                     : "Render atual"}
+                                  <span className="mx-1.5">•</span>
+                                  preservação estrutural do projeto
                                 </div>
                               </div>
-                              {conceptRender.status === "processing" && (
-                                <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">Gerando...</span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {conceptRender.status === "processing" && (
+                                  <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">Gerando 4K...</span>
+                                )}
+                                {conceptRender.resultImageUrl && conceptRender.status !== "processing" && (
+                                  <a
+                                    href={conceptRender.resultImageUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:text-orange-700"
+                                  >
+                                    Abrir imagem 4K
+                                  </a>
+                                )}
+                              </div>
                             </div>
                             <img
                               src={conceptRender.resultImageUrl}
                               alt="Render conceitual"
                               className="max-h-[calc(100dvh-260px)] w-full object-contain"
                             />
+                          </div>
+                        ) : conceptRender?.status === "processing" ? (
+                          <div className="grid min-h-[420px] place-items-center rounded-2xl border border-orange-200 bg-gradient-to-br from-white to-orange-50 text-center shadow-sm">
+                            <div className="max-w-md px-6">
+                              <div className="mx-auto h-12 w-12 animate-pulse rounded-2xl bg-orange-500/15 p-3 text-orange-600">
+                                <Sparkles className="h-6 w-6" />
+                              </div>
+                              <div className="mt-4 text-lg font-semibold">Gerando render arquitetônico 4K</div>
+                              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                                O Arqdor está usando a câmera atual do projeto, preservando paredes, aberturas, volumes e mobiliário para produzir a imagem final em 3840×2160.
+                              </p>
+                            </div>
                           </div>
                         ) : (
                           <div className="grid min-h-[420px] place-items-center rounded-2xl border bg-white text-center shadow-sm">
