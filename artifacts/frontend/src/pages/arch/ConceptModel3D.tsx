@@ -4,6 +4,7 @@ import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
+import ConceptWebGLScene from "./ConceptWebGLScene";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -539,6 +540,7 @@ export default function ConceptModel3D({
   const [showLabels, setShowLabels] = useState(true);
   const [interiorMode, setInteriorMode] = useState(false);
   const [lightingMode, setLightingMode] = useState<"day" | "sunset" | "night">("day");
+  const [webglReady, setWebglReady] = useState(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -1019,6 +1021,32 @@ export default function ConceptModel3D({
         </div>
       </div>
 
+      <ConceptWebGLScene
+        lotWidth={lotWidth}
+        lotDepth={lotDepth}
+        activeFloor={activeFloor}
+        levels={levels}
+        objects={Array.isArray(objects) ? objects : []}
+        selectedObjectId={selectedObjectId}
+        showAllFloors={showAllFloors}
+        interiorMode={interiorMode}
+        showRoof={showRoof}
+        lightingMode={lightingMode}
+        onReady={setWebglReady}
+        onSelectObject={(objectId) => {
+          onSelectObject?.(objectId);
+          if (objectId) {
+            onSelectWall?.(null);
+            onSelectCustomWall?.(null);
+            onSelectClosedSpace?.(null);
+            onSelectOpening?.(null);
+          }
+        }}
+        onObjectChange={onObjectChange}
+        onObjectEditStart={onObjectEditStart}
+        onObjectEditEnd={onObjectEditEnd}
+      />
+
       <svg
         ref={svgRef}
         data-concept-model3d-source="true"
@@ -1036,7 +1064,7 @@ export default function ConceptModel3D({
           onSelectClosedSpace?.(null);
           onSelectOpening?.(null);
         }}
-        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none ${paintTool ? "cursor-crosshair" : cameraPan || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none transition-opacity ${webglReady ? "pointer-events-none opacity-0" : "opacity-100"} ${paintTool ? "cursor-crosshair" : cameraPan || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
