@@ -445,6 +445,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [savingBaseline, setSavingBaseline] = useState(false);
   const [scenario, setScenario] = useState({ etapaId: "", extraPeople: "0", delayDays: "0", workSaturday: false });
   const [scenarioBusy, setScenarioBusy] = useState(false);
+  const [applyingScenario, setApplyingScenario] = useState(false);
   const [scenarioResult, setScenarioResult] = useState<null | {
     finishImpactDays: number;
     originalFinish: string | null;
@@ -741,6 +742,31 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       setError(err instanceof Error ? err.message : "Erro ao simular cenário.");
     } finally {
       setScenarioBusy(false);
+    }
+  }
+
+  async function applyScenario() {
+    if (!bundle || !scenarioResult) return;
+    setApplyingScenario(true);
+    setError(null);
+    try {
+      await api(`/api/arch/construction/${bundle.obra.id}/simulate-scenario`, {
+        method: "POST",
+        body: JSON.stringify({
+          etapaId: scenario.etapaId || null,
+          extraPeople: Number(scenario.extraPeople || 0),
+          delayDays: Number(scenario.delayDays || 0),
+          workSaturday: scenario.workSaturday,
+          apply: true,
+        }),
+      });
+      setScheduleNotice("Cenário aplicado ao cronograma. A linha de base original foi preservada para comparação.");
+      setScenarioResult(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao aplicar cenário.");
+    } finally {
+      setApplyingScenario(false);
     }
   }
 
@@ -1144,6 +1170,21 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
                 danger={scenarioResult.laborCostImpact > 0}
               />
               <Metric label="Etapas impactadas" value={String(scenarioResult.changedStages.length)} hint="mudanças de datas simuladas" />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-violet-800">Cenário pronto para decisão</p>
+                <p className="text-[11px] text-violet-600">Ao aplicar, o cronograma atual será atualizado e a baseline permanecerá intacta.</p>
+              </div>
+              <button
+                type="button"
+                disabled={applyingScenario}
+                onClick={() => void applyScenario()}
+                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {applyingScenario ? "Aplicando…" : "Aplicar este cenário"}
+              </button>
             </div>
 
             {scenarioResult.changedStages.length ? (
