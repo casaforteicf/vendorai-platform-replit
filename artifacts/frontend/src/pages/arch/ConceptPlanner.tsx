@@ -166,6 +166,16 @@ type ConceptDraftResponse = {
 const STEPS = ["Terreno", "Casa", "Ambientes", "Posições", "Layout", "Fachada", "Resultado"];
 const FLOW_STEPS = ["Lote", "Propostas", "Personalizar", "Resultado"];
 
+const CONCEPT_OBJECT_MATERIALS = [
+  { id: "tecido-cinza", name: "Tecido cinza", category: "Tecidos", swatch: "#cbd5e1" },
+  { id: "tecido-bege", name: "Tecido bege", category: "Tecidos", swatch: "#e7e5e4" },
+  { id: "linho-claro", name: "Linho claro", category: "Tecidos", swatch: "#f5f5f4" },
+  { id: "madeira-clara", name: "Madeira clara", category: "Madeiras", swatch: "#d6c2a8" },
+  { id: "madeira-escura", name: "Madeira escura", category: "Madeiras", swatch: "#8b6b52" },
+  { id: "preto-fosco", name: "Preto fosco", category: "Lacas e metais", swatch: "#334155" },
+  { id: "branco-fosco", name: "Branco fosco", category: "Lacas e metais", swatch: "#ffffff" },
+] as const;
+
 const DEFAULT_FACADE: ConceptFacadePreferences = {
   style: "contemporaneo",
   roof: "platibanda",
@@ -245,6 +255,7 @@ function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlan
       width,
       depth,
       rotation: Math.round(finiteNumber(raw.rotation, 0, -360, 360)),
+      materialId: typeof raw.materialId === "string" ? raw.materialId : undefined,
     }];
   });
 }
@@ -417,7 +428,7 @@ export default function ConceptPlanner() {
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
-  const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "outdoor">("build");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
   const closeLibraryOnMobile = () => {
@@ -873,7 +884,7 @@ export default function ConceptPlanner() {
   const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) =>
     addObjectAt(kind, label, width, depth);
 
-  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => {
+  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
       if (object.id !== objectId) return object;
       const width = Math.max(0.3, Math.min(lotWidth, patch.width ?? object.width));
@@ -2760,6 +2771,7 @@ export default function ConceptPlanner() {
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
                         ["furniture", LayoutGrid, "Móveis"],
+                        ["materials", Sparkles, "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as const).map(([value, Icon, label]) => (
                         <button
@@ -2796,7 +2808,9 @@ export default function ConceptPlanner() {
                                 ? "Ambientes"
                                 : editorLibraryTab === "furniture"
                                   ? "Móveis e objetos"
-                                  : "Área externa"}
+                                  : editorLibraryTab === "materials"
+                                    ? "Materiais"
+                                    : "Área externa"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
                         {editorLibraryTab === "site"
@@ -2809,7 +2823,9 @@ export default function ConceptPlanner() {
                                 ? "Organize os ambientes"
                                 : editorLibraryTab === "furniture"
                                   ? "Insira e mova itens na planta"
-                                  : "Lazer e área externa"}
+                                  : editorLibraryTab === "materials"
+                                    ? "Aplique no objeto selecionado"
+                                    : "Lazer e área externa"}
                       </div>
                     </div>
                     <button
@@ -3164,6 +3180,44 @@ export default function ConceptPlanner() {
                           </button>
                         ))}
                       </div>
+                    </>
+                  )}
+
+                  {editorLibraryTab === "materials" && (
+                    <>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Materiais</div>
+                        <span className="text-[10px] text-slate-400">
+                          {selectedObject ? selectedObject.label : "Selecione um móvel"}
+                        </span>
+                      </div>
+                      {!selectedObject ? (
+                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                          Selecione um móvel ou objeto na planta e depois escolha o acabamento.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {CONCEPT_OBJECT_MATERIALS.map((material) => (
+                            <button
+                              key={material.id}
+                              type="button"
+                              onClick={() => {
+                                updateObjectById(selectedObject.id, { materialId: material.id });
+                                closeLibraryOnMobile();
+                              }}
+                              className={selectedObject.materialId === material.id
+                                ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                            >
+                              <div className="h-16 border-b" style={{ background: material.swatch }} />
+                              <div className="p-3">
+                                <div className="text-sm font-semibold">{material.name}</div>
+                                <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -3608,6 +3662,19 @@ export default function ConceptPlanner() {
                         <option value={90}>90°</option>
                         <option value={180}>180°</option>
                         <option value={270}>270°</option>
+                      </select>
+                    </label>
+                    <label className="min-w-[150px] text-[10px] font-semibold text-slate-500">
+                      Material
+                      <select
+                        value={selectedObject.materialId ?? ""}
+                        onChange={(event) => updateObjectById(selectedObject.id, { materialId: event.target.value || undefined })}
+                        className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-xs"
+                      >
+                        <option value="">Automático</option>
+                        {CONCEPT_OBJECT_MATERIALS.map((material) => (
+                          <option key={material.id} value={material.id}>{material.name}</option>
+                        ))}
                       </select>
                     </label>
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
