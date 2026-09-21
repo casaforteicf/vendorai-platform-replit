@@ -429,15 +429,15 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
 
   return (
     <>
-      <Card data-testid="card-orcamento-revisoes">
+      <Card data-testid="card-orcamento-revisoes" className="min-w-0 max-w-full overflow-hidden">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center justify-between gap-3">
+          <CardTitle className="text-sm font-semibold flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="flex items-center gap-2 min-w-0">
               <Receipt className="h-4 w-4 shrink-0" />
               Orçamentos, negociações e revisões
               {orcamentos.length > 0 && <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>}
             </span>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openBudgetCreation}>
+            <Button size="sm" variant="outline" className="h-9 w-full text-xs gap-1 sm:h-7 sm:w-auto" onClick={openBudgetCreation}>
               <Plus className="h-3 w-3" />
               Novo orçamento
             </Button>
@@ -447,7 +447,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
           </p>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="min-w-0 overflow-hidden">
           {isLoading || loadingOrcamentos ? (
             <div className="space-y-2">
               {[1, 2, 3].map((item) => <div key={item} className="h-11 bg-muted animate-pulse rounded" />)}
@@ -463,7 +463,77 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="space-y-3 md:hidden">
+              {orcamentos.map((orc) => {
+                const labelValue = getOrcLabel(orc.status);
+                const labelConfig = ORCAMENTO_LABELS.find((item) => item.value === labelValue)!;
+                const terminal = isTerminalStatus(orc.status);
+                const changing = changingStatus === orc.id;
+                const revisions = revisoes.filter((revisao) => revisionMatchesBudget(revisao, orc));
+
+                return (
+                  <div key={orc.id} className="min-w-0 rounded-xl border bg-background p-3">
+                    <div className="flex min-w-0 items-start gap-2">
+                      <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-medium">{orc.titulo}</p>
+                        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                          {orc.numero && <span className="break-all">Nº {orc.numero}</span>}
+                          <span>{formatDate(orc.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-muted/40 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Valor</p>
+                        <p className="mt-0.5 text-sm font-semibold">{formatMoney(orc.valorTotal)}</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Situação</p>
+                        {terminal ? (
+                          <Badge variant="outline" className={`mt-1 max-w-full text-[10px] ${labelConfig.className}`}>
+                            {labelConfig.label}
+                          </Badge>
+                        ) : (
+                          <Select value={labelValue} onValueChange={(value) => handleChangeStatus(orc, value)} disabled={changing}>
+                            <SelectTrigger className={`mt-1 h-8 min-w-0 w-full text-[10px] ${labelConfig.className}`}>
+                              {changing ? <Loader2 className="h-3 w-3 animate-spin" /> : <SelectValue />}
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ORCAMENTO_LABELS.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </div>
+
+                    {revisions.length > 0 && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {revisions.length} rodada{revisions.length === 1 ? "" : "s"} de negociação/revisão
+                      </p>
+                    )}
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <a className="min-w-0" href={`${import.meta.env.BASE_URL}propostas/${orc.id}/print`}>
+                        <Button size="sm" variant="outline" className="w-full gap-1 text-xs">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Abrir
+                        </Button>
+                      </a>
+                      <Button size="sm" variant="outline" className="w-full gap-1 text-xs" onClick={() => downloadOrcamentoPdf(orc)}>
+                        <Download className="h-3.5 w-3.5" />
+                        PDF
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-lg border md:block">
               <Table>
                 <TableHeader>
                   <TableRow>

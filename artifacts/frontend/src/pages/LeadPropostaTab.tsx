@@ -758,19 +758,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">
       {/* Personalização da proposta */}
       <Card data-testid="card-proposta-config" className="order-2">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center justify-between">
-            <span className="flex items-center gap-2">
+        <CardHeader className="pb-3 min-w-0">
+          <CardTitle className="text-sm font-semibold flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span className="flex min-w-0 items-center gap-2">
               <Palette className="h-4 w-4" />
               Personalização da proposta
             </span>
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs gap-1"
+              className="h-9 w-full text-xs gap-1 sm:h-7 sm:w-auto"
               onClick={saveLeadFields}
               disabled={savingLead}
             >
@@ -1005,7 +1005,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   <p className="text-xs text-muted-foreground">
                     Nenhuma renderização encontrada.
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="mt-1 break-words text-xs text-muted-foreground">
                     Gere renders no módulo Arch para usar aqui.
                   </p>
                 </div>
@@ -1079,7 +1079,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 overflow-hidden">
           {loadingOrcamentos ? (
             <div className="space-y-2">
               {[1, 2].map((i) => <div key={i} className="h-14 bg-muted animate-pulse rounded" />)}
@@ -1171,7 +1171,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       </div>
 
       {/* Proposta comercial */}
-      <Card data-testid="card-propostas-geradas" className="order-4">
+      <Card data-testid="card-propostas-geradas" className="order-4 min-w-0 max-w-full overflow-hidden">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center justify-between">
             <span className="flex items-center gap-2">
@@ -1192,10 +1192,10 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </Button>
           </CardTitle>
           {/* Modelo de proposta por linha */}
-          <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
             {proposalLineTemplates.length > 0 ? (
               <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
-                <SelectTrigger className="h-8 w-full sm:w-[280px] text-xs">
+                <SelectTrigger className="h-9 min-w-0 w-full max-w-full text-xs sm:h-8 sm:w-[280px] [&>span]:truncate">
                   <SelectValue placeholder="Modelo da proposta" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1218,7 +1218,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         <CardContent>
           {/* Seletor de orçamento a incluir */}
           {orcamentos.length > 0 && (
-            <div className="mb-4 space-y-1 pb-4 border-b">
+            <div className="mb-4 min-w-0 space-y-1 overflow-hidden border-b pb-4">
               <label className="text-xs text-muted-foreground font-medium">
                 Orçamento a incluir na proposta
               </label>
@@ -1226,7 +1226,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 value={selectedOrcamentoId}
                 onValueChange={setSelectedOrcamentoId}
               >
-                <SelectTrigger className="h-8 text-sm">
+                <SelectTrigger className="h-10 min-w-0 w-full max-w-full text-sm [&>span]:truncate">
                   <SelectValue placeholder="Nenhum orçamento" />
                 </SelectTrigger>
                 <SelectContent>
