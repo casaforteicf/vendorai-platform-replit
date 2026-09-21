@@ -171,6 +171,9 @@ function ComposicaoForm({
     sistemasConstrutivos?: string[];
     comumTodosSistemas?: boolean;
     ativo?: boolean;
+    produtividadeDia?: string | number | null;
+    equipePadrao?: number | null;
+    horasDiaPadrao?: string | number | null;
   };
   initialItems?: InsumoItem[];
   onSave: (data: Record<string, unknown>) => void | Promise<void>;
@@ -186,6 +189,9 @@ function ComposicaoForm({
     sistemasConstrutivos: initial?.sistemasConstrutivos ?? [],
     comumTodosSistemas: initial?.comumTodosSistemas ?? false,
     ativo: initial?.ativo ?? true,
+    produtividadeDia: initial?.produtividadeDia == null ? "" : String(initial.produtividadeDia),
+    equipePadrao: String(initial?.equipePadrao ?? 1),
+    horasDiaPadrao: initial?.horasDiaPadrao == null ? "8" : String(initial.horasDiaPadrao),
   });
   const [itens, setItens] = useState<InsumoItem[]>(initialItems ?? []);
   const [insumoSearch, setInsumoSearch] = useState("");
@@ -299,6 +305,10 @@ function ComposicaoForm({
       toast({ title: "Selecione ao menos um sistema construtivo", variant: "destructive" });
       return;
     }
+    if (form.produtividadeDia.trim() && Number(form.produtividadeDia) <= 0) {
+      toast({ title: "Produtividade deve ser maior que zero ou ficar em branco", variant: "destructive" });
+      return;
+    }
     setSavingPrices(true);
     try {
       let priceChanges = 0;
@@ -340,6 +350,9 @@ function ComposicaoForm({
 
       const payload: Record<string, unknown> = {
         ...form,
+        produtividadeDia: form.produtividadeDia.trim() ? form.produtividadeDia.trim() : undefined,
+        equipePadrao: Math.max(1, Number(form.equipePadrao || 1)),
+        horasDiaPadrao: form.horasDiaPadrao.trim() || "8",
         sistemasConstrutivos: form.comumTodosSistemas ? [] : form.sistemasConstrutivos,
       };
       Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
@@ -403,6 +416,50 @@ function ComposicaoForm({
             />
             Ativa e disponível em orçamentos
           </label>
+        </div>
+
+        <div className="sm:col-span-2 rounded-lg border bg-muted/20 p-3">
+          <div className="mb-3">
+            <Label>Produtividade para planejamento automático</Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Informe a produção de 1 pessoa por dia para 1 unidade desta composição. O Arqdor usa quantidade ÷ produtividade ÷ equipe para sugerir a duração.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Produtividade/pessoa/dia</Label>
+              <Input
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                value={form.produtividadeDia}
+                onChange={(e) => setForm((f) => ({ ...f, produtividadeDia: e.target.value }))}
+                placeholder={`Ex.: 12 ${form.unidade}/pessoa/dia`}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Equipe padrão</Label>
+              <Input
+                type="number"
+                min="1"
+                max="500"
+                step="1"
+                value={form.equipePadrao}
+                onChange={(e) => setForm((f) => ({ ...f, equipePadrao: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Horas/dia padrão</Label>
+              <Input
+                type="number"
+                min="0.5"
+                max="24"
+                step="0.5"
+                value={form.horasDiaPadrao}
+                onChange={(e) => setForm((f) => ({ ...f, horasDiaPadrao: e.target.value }))}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="sm:col-span-2 rounded-lg border p-3 space-y-3">
@@ -687,6 +744,9 @@ function ComposicaoEditDialog({
     sistemasConstrutivos?: string[] | null;
     comumTodosSistemas?: boolean;
     ativo?: boolean;
+    produtividadeDia?: string | number | null;
+    equipePadrao?: number | null;
+    horasDiaPadrao?: string | number | null;
   };
 }) {
   const [open, setOpen] = useState(false);
@@ -745,6 +805,9 @@ function ComposicaoEditDialog({
               sistemasConstrutivos: Array.isArray(detail.sistemasConstrutivos) ? detail.sistemasConstrutivos : [],
               comumTodosSistemas: detail.comumTodosSistemas === true,
               ativo: detail.ativo !== false,
+              produtividadeDia: detail.produtividadeDia ?? "",
+              equipePadrao: detail.equipePadrao ?? 1,
+              horasDiaPadrao: detail.horasDiaPadrao ?? 8,
             }}
             initialItems={initialItems}
             onSave={handleUpdate}

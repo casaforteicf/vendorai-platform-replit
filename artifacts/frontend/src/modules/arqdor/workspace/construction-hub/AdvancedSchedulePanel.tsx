@@ -31,7 +31,17 @@ type Dependencia = {
   defasagemDias: number;
 };
 
-type Compra = { valorTotal: number; status?: string | null };
+type Compra = {
+  valorTotal: number;
+  status?: string | null;
+  descricao?: string | null;
+  fornecedor?: string | null;
+  etapaNome?: string | null;
+  dataNecessidade?: string | null;
+  dataLimiteCompra?: string | null;
+  prazoFornecedorDias: number;
+  riscoCronograma?: "ok" | "atencao" | "atrasado" | "sem_data" | string | null;
+};
 
 type Bundle = {
   obra: { id: string; nome: string; orcamentoTotal: number; custoRealizado: number };
@@ -479,6 +489,13 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       const compras = (raw.compras ?? []).map((item: any) => ({
         valorTotal: Number(item?.valorTotal ?? item?.valor_total ?? 0),
         status: item?.status ?? null,
+        descricao: item?.descricao ?? null,
+        fornecedor: item?.fornecedor ?? null,
+        etapaNome: item?.etapaNome ?? item?.etapa_nome ?? null,
+        dataNecessidade: item?.dataNecessidade ?? item?.data_necessidade_calculada ?? item?.data_necessidade ?? null,
+        dataLimiteCompra: item?.dataLimiteCompra ?? item?.data_limite_compra ?? null,
+        prazoFornecedorDias: Number(item?.prazoFornecedorDias ?? item?.prazo_fornecedor_dias ?? 0),
+        riscoCronograma: item?.riscoCronograma ?? item?.risco_cronograma ?? null,
       }));
       setCalendar(calendarResult.calendar ?? {
         segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
@@ -490,7 +507,13 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
           id: obraId,
           nome: String(raw.obra?.nome ?? meta.name),
           orcamentoTotal: Number(raw.obra?.orcamentoTotal ?? raw.obra?.orcamento_total ?? 0),
-          custoRealizado: Number(raw.obra?.custoRealizado ?? raw.obra?.custo_realizado ?? 0),
+          custoRealizado: Number(
+            raw.obra?.custoRealizadoCalculado
+            ?? raw.obra?.custo_realizado_calculado
+            ?? raw.obra?.custoRealizado
+            ?? raw.obra?.custo_realizado
+            ?? 0
+          ),
         },
         etapas,
         dependencias,
@@ -671,6 +694,15 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
 
     return { bac, pv, ev, ac, cv, sv, cpi, spi, eac, etc, vac };
   }, [baseline, baselineSummary.exists, baselineSummary.originalCost, bundle]);
+
+  const procurementSummary = useMemo(() => {
+    const compras = bundle?.compras ?? [];
+    const overdue = compras.filter((item) => item.riscoCronograma === "atrasado");
+    const attention = compras.filter((item) => item.riscoCronograma === "atencao");
+    const noDate = compras.filter((item) => item.riscoCronograma === "sem_data");
+    const open = compras.filter((item) => !["recebido", "cancelado", "concluido"].includes(String(item.status ?? "").toLowerCase()));
+    return { overdue, attention, noDate, open };
+  }, [bundle]);
 
   const resourceSummary = useMemo(() => {
     const etapas = bundle?.etapas ?? [];
@@ -1212,6 +1244,39 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
             ) : (
               <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">O cenário não altera as datas atuais do cronograma.</div>
             )}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Compras × cronograma</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">Risco de suprimentos por etapa</h3>
+          <p className="mt-1 text-xs text-slate-500">A data limite é calculada pela necessidade da etapa menos o prazo do fornecedor.</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Compras abertas" value={String(procurementSummary.open.length)} hint="ainda não concluídas" />
+          <Metric label="Atrasadas" value={String(procurementSummary.overdue.length)} hint="data limite já passou" danger={procurementSummary.overdue.length > 0} />
+          <Metric label="Atenção 7 dias" value={String(procurementSummary.attention.length)} hint="prazo de compra próximo" danger={procurementSummary.attention.length > 0} />
+          <Metric label="Sem data" value={String(procurementSummary.noDate.length)} hint="sem etapa/data de necessidade" danger={procurementSummary.noDate.length > 0} />
+        </div>
+
+        {(procurementSummary.overdue.length || procurementSummary.attention.length) ? (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100">
+            <div className="grid grid-cols-[1fr_1fr_110px_110px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <span>Compra</span><span>Etapa</span><span>Limite</span><span>Risco</span>
+            </div>
+            {[...procurementSummary.overdue, ...procurementSummary.attention].slice(0, 10).map((item, index) => (
+              <div key={`${item.descricao ?? "compra"}-${index}`} className="grid grid-cols-[1fr_1fr_110px_110px] gap-2 border-t border-slate-100 px-3 py-2 text-xs">
+                <span className="truncate font-medium text-slate-700">{item.descricao ?? "Compra"}</span>
+                <span className="truncate text-slate-500">{item.etapaNome ?? "Sem etapa"}</span>
+                <span className="text-slate-500">{item.dataLimiteCompra ? new Date(`${item.dataLimiteCompra}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</span>
+                <span className={item.riscoCronograma === "atrasado" ? "font-semibold text-rose-700" : "font-semibold text-amber-700"}>
+                  {item.riscoCronograma === "atrasado" ? "Atrasado" : "Atenção"}
+                </span>
+              </div>
+            ))}
           </div>
         ) : null}
       </section>
