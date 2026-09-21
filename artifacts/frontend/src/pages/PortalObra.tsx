@@ -33,8 +33,12 @@ const API = "/api";
 
 function fmt(d?: string | null) {
   if (!d) return "—";
-  try { return format(parseISO(`${d}T12:00:00`), "dd/MM/yyyy", { locale: ptBR }); }
-  catch { return d; }
+  try {
+    const value = String(d);
+    return format(parseISO(value.includes("T") ? value : `${value}T12:00:00`), "dd/MM/yyyy", { locale: ptBR });
+  } catch {
+    return String(d);
+  }
 }
 
 function fmtMoney(v?: string | number | null) {
