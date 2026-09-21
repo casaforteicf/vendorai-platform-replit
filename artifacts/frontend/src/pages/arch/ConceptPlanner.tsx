@@ -4021,6 +4021,17 @@ export default function ConceptPlanner() {
                       roof={facadePreferences.roof}
                       facadeDesign={facadeDesign}
                       objects={safeObjects}
+                      selectedObjectId={selectedObjectId}
+                      onSelectObject={(objectId) => {
+                        setSelectedObjectId(objectId);
+                        if (objectId) {
+                          setSelectedId(null);
+                          setSelectedOpeningId(null);
+                          setSelectedWallId(null);
+                          setSelectedCustomWallId(null);
+                          setSelectedClosedSpaceId(null);
+                        }
+                      }}
                     />
                   )}
 
@@ -4093,7 +4104,7 @@ export default function ConceptPlanner() {
                 ))}
               </div>
 
-              {editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
+              {((editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)) || (editorView === "model3d" && selectedObject)) && (
               <aside className="fixed inset-x-3 bottom-20 z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
                 <button
                   type="button"
@@ -4160,6 +4171,15 @@ export default function ConceptPlanner() {
                     </label>
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
                       <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Materiais</button>
+                      {editorView === "model3d" && (
+                        <button
+                          type="button"
+                          onClick={() => setEditorView("plan")}
+                          className="h-9 rounded-lg border px-3 text-xs font-semibold"
+                        >
+                          Editar no 2D
+                        </button>
+                      )}
                       <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold">Duplicar</button>
                       <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
                     </div>
