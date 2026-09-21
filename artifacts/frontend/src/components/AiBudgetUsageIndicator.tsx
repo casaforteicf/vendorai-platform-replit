@@ -188,6 +188,12 @@ export function AiBudgetUsageIndicator() {
       ? "border-amber-300 bg-amber-50 text-amber-900"
       : "border-border bg-background text-foreground";
 
+  const hideOnConceptMobile =
+    typeof window !== "undefined" &&
+    window.innerWidth < 768 &&
+    window.location.pathname.startsWith("/arch/concept");
+
+  if (hideOnConceptMobile) return null;
   if (!usage) return null;
 
   const panel = (

@@ -393,6 +393,7 @@ export default function ConceptPlanner() {
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(true);
+  const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
 
   const filteredTypologies = useMemo(() => {
     const query = modelSearch.trim().toLocaleLowerCase("pt-BR");
@@ -2495,27 +2496,82 @@ export default function ConceptPlanner() {
             </div>
 
             {layoutIssues.length > 0 && (
-              <div className="absolute right-4 top-20 z-40 w-[min(380px,calc(100vw-32px))] rounded-2xl border bg-white/95 p-3 shadow-lg backdrop-blur">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-bold text-slate-900">Validação da planta</div>
-                  <div className={blockingLayoutIssues.length > 0 ? "text-xs font-bold text-red-600" : "text-xs font-bold text-amber-600"}>
-                    {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileValidationOpen(true);
+                    setLibraryOpen(false);
+                  }}
+                  className={blockingLayoutIssues.length > 0
+                    ? "absolute right-3 top-20 z-40 rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 shadow md:hidden"
+                    : "absolute right-3 top-20 z-40 rounded-full border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700 shadow md:hidden"}
+                >
+                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                </button>
+
+                <div className="absolute right-4 top-20 z-40 hidden w-[min(380px,calc(100vw-32px))] rounded-2xl border bg-white/95 p-3 shadow-lg backdrop-blur md:block">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-bold text-slate-900">Validação da planta</div>
+                    <div className={blockingLayoutIssues.length > 0 ? "text-xs font-bold text-red-600" : "text-xs font-bold text-amber-600"}>
+                      {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                    </div>
+                  </div>
+                  <div className="mt-2 max-h-36 space-y-1.5 overflow-auto">
+                    {layoutIssues.slice(0, 6).map((issue) => (
+                      <div
+                        key={issue.id}
+                        className={issue.severity === "error"
+                          ? "rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700"
+                          : "rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-800"}
+                      >
+                        {issue.message}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="mt-2 max-h-36 space-y-1.5 overflow-auto">
-                  {layoutIssues.slice(0, 6).map((issue) => (
-                    <div
-                      key={issue.id}
-                      className={issue.severity === "error"
-                        ? "rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700"
-                        : "rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-800"}
-                    >
-                      {issue.message}
+
+                {mobileValidationOpen && (
+                  <div className="fixed inset-0 z-[80] md:hidden">
+                    <button
+                      type="button"
+                      aria-label="Fechar validação"
+                      onClick={() => setMobileValidationOpen(false)}
+                      className="absolute inset-0 bg-slate-950/35"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 max-h-[68vh] overflow-hidden rounded-t-3xl border-t bg-white shadow-2xl">
+                      <div className="flex items-center justify-between border-b px-4 py-4">
+                        <div>
+                          <div className="text-sm font-bold text-slate-950">Validação da planta</div>
+                          <div className={blockingLayoutIssues.length > 0 ? "mt-0.5 text-xs font-bold text-red-600" : "mt-0.5 text-xs font-bold text-amber-600"}>
+                            {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMobileValidationOpen(false)}
+                          className="grid h-9 w-9 place-items-center rounded-full border text-slate-500"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="max-h-[calc(68vh-74px)] space-y-2 overflow-y-auto px-4 py-4">
+                        {layoutIssues.map((issue) => (
+                          <div
+                            key={issue.id}
+                            className={issue.severity === "error"
+                              ? "rounded-xl bg-red-50 px-3 py-3 text-sm text-red-700"
+                              : "rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-900"}
+                          >
+                            {issue.message}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </div>
+                )}
+              </>
+            ))}
 
             <div
               data-concept-render-source="true"
@@ -2532,7 +2588,9 @@ export default function ConceptPlanner() {
             </div>
 
             <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8]">
-              <aside className="absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]">
+              <aside className={(selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
+                  ? "absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
+                  : "absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]"}>
                 <div className="flex min-h-full">
                   <div className="w-14 shrink-0 border-r bg-white py-3 sm:w-16">
                     <div className="flex flex-col items-center gap-2">
@@ -3110,7 +3168,7 @@ export default function ConceptPlanner() {
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
                       />
-                      <div className="absolute bottom-4 left-20 z-20 flex items-center gap-2">
+                      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
                           <button
                             type="button"
@@ -3158,7 +3216,7 @@ export default function ConceptPlanner() {
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
                       onDesignChange={setFacadeDesign}
-                      onOpenRender={() => setEditorView("render")}
+                      onOpenRender={() => { setEditorView("render"); void generateConceptRender(); }}
                     />
                   )}
 
@@ -3195,7 +3253,7 @@ export default function ConceptPlanner() {
               </div>
 
               {editorView === "plan" && (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
-              <aside className="fixed bottom-4 left-1/2 z-40 w-[min(1080px,calc(100vw-120px))] -translate-x-1/2 rounded-2xl border bg-white/96 px-3 py-2.5 shadow-2xl backdrop-blur">
+              <aside className="fixed inset-x-3 bottom-3 z-[70] max-h-[72vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
                 {selectedCustomWall ? (
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="mr-2 min-w-[130px]">
@@ -3227,7 +3285,7 @@ export default function ConceptPlanner() {
                         <option value={0.25}>25 cm</option>
                       </select>
                     </label>
-                    <div className="ml-auto flex items-center gap-1.5">
+                    <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Porta</button>
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Janela</button>
                       <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50">Excluir</button>
@@ -3296,7 +3354,7 @@ export default function ConceptPlanner() {
                         </label>
                       </>
                     )}
-                    <div className="ml-auto flex items-center gap-1.5">
+                    <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
                       <button type="button" onClick={() => moveOpening(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
                       <button type="button" onClick={() => moveOpening(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
                       {safeCustomOpenings.some((opening) => opening.id === selectedOpening.id) && (
@@ -3379,7 +3437,7 @@ export default function ConceptPlanner() {
                         />
                       </label>
                     ))}
-                    <div className="ml-auto flex items-center gap-1.5">
+                    <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
                       <button type="button" onClick={() => updateSelected({ locked: !selected.locked })} className="h-9 rounded-lg border px-3 text-xs font-semibold">
                         {selected.locked ? "Desbloquear" : "Bloquear"}
                       </button>
