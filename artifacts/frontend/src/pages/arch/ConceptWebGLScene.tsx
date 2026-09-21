@@ -55,6 +55,7 @@ type Runtime = {
 const THREE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
 const ORBIT_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.min.js";
 const TRANSFORM_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/TransformControls.min.js";
+const GLTF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.min.js";
 
 function loadScript(src: string) {
   const key = `__arqdor_script_${src}`;
@@ -175,6 +176,11 @@ export default function ConceptWebGLScene({
           await loadScript(TRANSFORM_SRC);
         } catch {
           // TransformControls is an enhancement. Orbit + real WebGL still remain available.
+        }
+        try {
+          await loadScript(GLTF_SRC);
+        } catch {
+          // Real catalog assets are optional. Parametric geometry remains as fallback.
         }
 
         if (cancelled || !hostRef.current) return;
@@ -489,6 +495,73 @@ export default function ConceptWebGLScene({
       mesh.receiveShadow = true;
       parent.add(mesh);
       return mesh;
+    };
+
+    const loadCatalogModel = (object: ConceptPlanObject, root: any) => {
+      if (!object.model3dUrl || !THREE.GLTFLoader) return;
+      const loader = new THREE.GLTFLoader();
+      loader.setCrossOrigin?.("anonymous");
+      loader.load(
+        object.model3dUrl,
+        (gltf: any) => {
+          if (runtime.objectGroups.get(object.id) !== root) return;
+          const model = gltf?.scene;
+          if (!model) return;
+
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          const center = new THREE.Vector3();
+          box.getSize(size);
+          box.getCenter(center);
+
+          const safeX = Math.max(0.01, size.x);
+          const safeY = Math.max(0.01, size.y);
+          const safeZ = Math.max(0.01, size.z);
+          const targetHeight: Record<ConceptPlanObject["kind"], number> = {
+            sofa: 0.90,
+            bed: 0.65,
+            table: 0.80,
+            chair: 0.95,
+            cabinet: 2.10,
+            tv: 1.30,
+            plant: 1.40,
+            lamp: 1.60,
+            rug: 0.08,
+          };
+          const scale = Math.min(
+            object.width / safeX,
+            object.depth / safeZ,
+            (targetHeight[object.kind] ?? 1) / safeY,
+          );
+
+          model.scale.setScalar(Math.max(0.001, scale));
+          model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+          model.traverse((node: any) => {
+            if (!node?.isMesh) return;
+            node.castShadow = true;
+            node.receiveShadow = true;
+            node.userData.objectId = object.id;
+            runtime.pickables.push(node);
+            if (node.material) {
+              const materials = Array.isArray(node.material) ? node.material : [node.material];
+              for (const material of materials) {
+                if ("envMapIntensity" in material) material.envMapIntensity = 0.8;
+                material.needsUpdate = true;
+              }
+            }
+          });
+
+          for (const child of [...root.children]) {
+            root.remove(child);
+            disposeTree(child);
+          }
+          root.add(model);
+        },
+        undefined,
+        () => {
+          // Keep parametric fallback when a remote model cannot be loaded.
+        },
+      );
     };
 
     const addWall = (
@@ -837,6 +910,7 @@ export default function ConceptWebGLScene({
           runtime.pickables.push(node);
         }
       });
+      loadCatalogModel(object, root);
     }
 
     if (showRoof && !interiorMode && showAllFloors) {
