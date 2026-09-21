@@ -528,6 +528,7 @@ export default function ConceptModel3D({
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
+  const [cameraPan, setCameraPan] = useState({ x: 0, y: 0 });
   const [showAllFloors, setShowAllFloors] = useState(true);
   const [showRoof, setShowRoof] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
@@ -537,6 +538,13 @@ export default function ConceptModel3D({
     pointerId: number;
     startX: number;
     startRotation: number;
+  }>(null);
+  const [panGesture, setPanGesture] = useState<null | {
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startPanX: number;
+    startPanY: number;
   }>(null);
   const [objectDrag, setObjectDrag] = useState<null | {
     pointerId: number;
@@ -556,17 +564,19 @@ export default function ConceptModel3D({
     rotation: number;
   }>(null);
   const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
-  const pinchRef = useRef<null | { distance: number; zoom: number }>(null);
+  const pinchRef = useRef<null | { distance: number; zoom: number; centerX: number; centerY: number; panX: number; panY: number }>(null);
 
   const normalizeRotation = (value: number) => ((value % 360) + 360) % 360;
   const resetCamera = () => {
     setRotation(35);
     setZoom(1.32);
+    setCameraPan({ x: 0, y: 0 });
   };
 
   const setCameraPreset = (nextRotation: number) => {
     setRotation(normalizeRotation(nextRotation));
     setZoom(1.32);
+    setCameraPan({ x: 0, y: 0 });
   };
 
   const clientToSvgPoint = (clientX: number, clientY: number) => {
@@ -614,20 +624,43 @@ export default function ConceptModel3D({
   };
 
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0) return;
     if (paintTool) return;
+    if (panGesture?.pointerId === event.pointerId) setPanGesture(null);
     if (event.pointerType === "touch") {
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (touchPointersRef.current.size === 2) {
         const points = [...touchPointersRef.current.values()];
+        const centerX = (points[0].x + points[1].x) / 2;
+        const centerY = (points[0].y + points[1].y) / 2;
         pinchRef.current = {
           distance: Math.max(8, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)),
           zoom,
+          centerX,
+          centerY,
+          panX: cameraPan.x,
+          panY: cameraPan.y,
         };
         setOrbitGesture(null);
+        setPanGesture(null);
         return;
       }
     }
+
+    if (event.button === 1 || event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setPanGesture({
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPanX: cameraPan.x,
+        startPanY: cameraPan.y,
+      });
+      setOrbitGesture(null);
+      return;
+    }
+
+    if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setOrbitGesture({
       pointerId: event.pointerId,
@@ -664,12 +697,34 @@ export default function ConceptModel3D({
       });
       return;
     }
+    if (panGesture && panGesture.pointerId === event.pointerId) {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+      const dx = (event.clientX - panGesture.startClientX) * (sceneWidth / rect.width);
+      const dy = (event.clientY - panGesture.startClientY) * (sceneHeight / rect.height);
+      setCameraPan({
+        x: panGesture.startPanX - dx,
+        y: panGesture.startPanY - dy,
+      });
+      return;
+    }
     if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pinchRef.current && touchPointersRef.current.size >= 2) {
         const points = [...touchPointersRef.current.values()].slice(0, 2);
         const distance = Math.max(8, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
         const nextZoom = Math.max(0.6, Math.min(2.35, pinchRef.current.zoom * (distance / pinchRef.current.distance)));
+        const centerX = (points[0].x + points[1].x) / 2;
+        const centerY = (points[0].y + points[1].y) / 2;
+        const rect = svgRef.current?.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+          const dx = (centerX - pinchRef.current.centerX) * (sceneWidth / rect.width);
+          const dy = (centerY - pinchRef.current.centerY) * (sceneHeight / rect.height);
+          setCameraPan({
+            x: pinchRef.current.panX - dx,
+            y: pinchRef.current.panY - dy,
+          });
+        }
         setZoom(Number(nextZoom.toFixed(2)));
         return;
       }
@@ -783,7 +838,7 @@ export default function ConceptModel3D({
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-slate-500">Arraste o fundo para orbitar · arraste objetos para mover · use o gizmo para girar, redimensionar, duplicar ou excluir · pinça no celular ou roda do mouse para zoom.</div>
+          <div className="text-xs text-slate-500">Arraste o fundo para orbitar · Shift+arraste ou botão do meio para pan · no celular use dois dedos para pan/zoom · arraste objetos para mover e use o gizmo para editar.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {onRenderView && (
@@ -896,7 +951,7 @@ export default function ConceptModel3D({
       <svg
         ref={svgRef}
         data-concept-model3d-source="true"
-        viewBox={`${-sceneWidth / 2} ${-sceneHeight / 2} ${sceneWidth} ${sceneHeight}`}
+        viewBox={`${-sceneWidth / 2 + cameraPan.x} ${-sceneHeight / 2 + cameraPan.y} ${sceneWidth} ${sceneHeight}`}
         onPointerDown={handleOrbitStart}
         onPointerMove={handleOrbitMove}
         onPointerUp={handleOrbitEnd}
@@ -908,7 +963,7 @@ export default function ConceptModel3D({
           onSelectCustomWall?.(null);
           onSelectClosedSpace?.(null);
         }}
-        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${paintTool ? "cursor-crosshair" : orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${paintTool ? "cursor-crosshair" : panGesture || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
