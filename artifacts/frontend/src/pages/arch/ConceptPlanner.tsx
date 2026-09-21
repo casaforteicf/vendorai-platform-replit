@@ -1092,12 +1092,10 @@ export default function ConceptPlanner() {
   const updateOpeningWidth = (openingId: string, width: number) => {
     const safeWidth = Math.max(0.5, Math.min(4, Number(width) || 0.5));
     const custom = safeCustomOpenings.find((opening) => opening.id === openingId);
-    if (!custom) return;
-    const before = snapshotEditor();
+    if (!custom || Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
       opening.id === openingId ? { ...opening, width: safeWidth } : opening
     ));
-    pushRoomHistory(before);
   };
 
   const addObjectAt = (

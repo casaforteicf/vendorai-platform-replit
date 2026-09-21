@@ -2122,27 +2122,6 @@ export default function ConceptPlan2D({
                           pointerEvents="none"
                         />
                         </g>
-                        <g pointerEvents="none">
-                          <rect
-                            x={mid.x - 0.42}
-                            y={mid.y + (horizontal ? 0.34 : -0.20)}
-                            width="0.84"
-                            height="0.34"
-                            rx="0.08"
-                            fill="#0f172a"
-                            fillOpacity="0.9"
-                          />
-                          <text
-                            x={mid.x}
-                            y={mid.y + (horizontal ? 0.57 : 0.03)}
-                            textAnchor="middle"
-                            fontSize="0.18"
-                            fontWeight="800"
-                            fill="#ffffff"
-                          >
-                            90°
-                          </text>
-                        </g>
                         {onUpdateCustomWall && (
                           <foreignObject
                             x={mid.x - (horizontal ? 0.72 : -0.28)}
@@ -2163,10 +2142,6 @@ export default function ConceptPlan2D({
                                 onClick={(event) => event.stopPropagation()}
                                 onKeyDown={(event) => {
                                   if (event.key === "Enter") {
-                                    const value = Number((event.currentTarget as HTMLInputElement).value);
-                                    if (Number.isFinite(value)) {
-                                      onUpdateCustomWall(wall.id, { thickness: Math.max(0.08, Math.min(0.5, value)) });
-                                    }
                                     (event.currentTarget as HTMLInputElement).blur();
                                   }
                                   if (event.key === "Escape") {
@@ -2176,9 +2151,10 @@ export default function ConceptPlan2D({
                                 }}
                                 onBlur={(event) => {
                                   const value = Number(event.currentTarget.value);
-                                  if (Number.isFinite(value)) {
-                                    onUpdateCustomWall(wall.id, { thickness: Math.max(0.08, Math.min(0.5, value)) });
-                                  }
+                                  if (!Number.isFinite(value)) return;
+                                  const next = Math.max(0.08, Math.min(0.5, value));
+                                  if (Math.abs(next - (wall.thickness ?? 0.15)) < 0.001) return;
+                                  onUpdateCustomWall(wall.id, { thickness: next });
                                 }}
                                 style={{
                                   width: "100%",
@@ -2217,8 +2193,6 @@ export default function ConceptPlan2D({
                                 onClick={(event) => event.stopPropagation()}
                                 onKeyDown={(event) => {
                                   if (event.key === "Enter") {
-                                    const value = Number((event.currentTarget as HTMLInputElement).value);
-                                    if (Number.isFinite(value)) onCustomWallLengthChange(wall.id, value);
                                     (event.currentTarget as HTMLInputElement).blur();
                                   }
                                   if (event.key === "Escape") {
@@ -2228,7 +2202,9 @@ export default function ConceptPlan2D({
                                 }}
                                 onBlur={(event) => {
                                   const value = Number(event.currentTarget.value);
-                                  if (Number.isFinite(value)) onCustomWallLengthChange(wall.id, value);
+                                  if (!Number.isFinite(value)) return;
+                                  if (Math.abs(value - length) < 0.001) return;
+                                  onCustomWallLengthChange(wall.id, value);
                                 }}
                                 style={{
                                   width: "100%",
