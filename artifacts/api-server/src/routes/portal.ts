@@ -266,6 +266,26 @@ router.get("/portal/obra/:token", async (req, res) => {
   const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable).where(eq(tenantsTable.id, obra.tenantId));
 
+  if (config.requireLogin && !authenticated) {
+    return res.json({
+      publication: config,
+      auth: {
+        required: true,
+        authenticated: false,
+        allowSelfRegistration: config.allowSelfRegistration,
+        user: null,
+      },
+      obra: {
+        id: obra.id,
+        nome: obra.nome,
+        clienteNome: obra.clienteNome,
+        status: obra.status,
+      },
+      tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
+      locked: true,
+    });
+  }
+
   const etapas = await db.select().from(obraEtapasTable)
     .where(eq(obraEtapasTable.obraId, obra.id))
     .orderBy(asc(obraEtapasTable.ordem));
@@ -549,8 +569,140 @@ router.get("/portal/obra/:token", async (req, res) => {
       )
     : null;
 
+  const today = new Date();
+  const executiveStages = etapaRows.map((item: any) => {
+    const startRaw = item.dataInicioPrevista ?? item.data_inicio_prevista;
+    const endRaw = item.dataFimPrevista ?? item.data_fim_prevista;
+    const start = startRaw ? new Date(`${String(startRaw).slice(0,10)}T12:00:00Z`) : null;
+    const end = endRaw ? new Date(`${String(endRaw).slice(0,10)}T12:00:00Z`) : null;
+    let plannedPercent = 0;
+    if (start && end) {
+      if (today >= end) plannedPercent = 100;
+      else if (today > start) plannedPercent = Math.max(0, Math.min(100, ((today.getTime() - start.getTime()) / Math.max(1, end.getTime() - start.getTime())) * 100));
+    }
+    const actualPercent = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0)));
+    const plannedCost = Number(item.custoPrevisto ?? item.custo_previsto ?? 0);
+    return {
+      etapaId: item.id,
+      nome: item.nome,
+      plannedPercent,
+      actualPercent,
+      variancePoints: actualPercent - plannedPercent,
+      plannedCost,
+      earnedValue: plannedCost * actualPercent / 100,
+      status: item.status,
+      dataInicioPrevista: startRaw ?? null,
+      dataFimPrevista: endRaw ?? null,
+    };
+  });
+  const plannedProgress = weightedBase > 0
+    ? executiveStages.reduce((sum, stage, index) => sum + stage.plannedPercent * Number(etapaRows[index]?.pesoFisico ?? etapaRows[index]?.peso_fisico ?? 0), 0) / weightedBase
+    : executiveStages.length ? executiveStages.reduce((sum, stage) => sum + stage.plannedPercent, 0) / executiveStages.length : 0;
+
+  const executiveBalance = config.showExecutiveBalance ? {
+    plannedProgress,
+    actualProgress: progressoGeral,
+    progressVariancePoints: progressoGeral - plannedProgress,
+    plannedCost: etapaRows.reduce((sum, item) => sum + Number(item.custoPrevisto ?? item.custo_previsto ?? 0), 0),
+    actualCost: custoRealizadoCalculado,
+    forecastDelivery: previsaoEntrega,
+    stages: executiveStages,
+  } : null;
+
+  let commercial: any = null;
+  if (config.showProposals) {
+    const projectResult = await pool.query(
+      `SELECT id, titulo, proposta_id FROM arch_projetos
+        WHERE obra_id=$1 AND tenant_id=$2
+        ORDER BY updated_at DESC LIMIT 1`,
+      [obra.id, obra.tenantId],
+    );
+    const project = projectResult.rows[0];
+    if (project) {
+      const [budgetResult, proposalResult] = await Promise.all([
+        pool.query(
+          `SELECT id,title,status,version,subtotal,discount_total,grand_total,client_notes,updated_at
+             FROM arch_budgets
+            WHERE project_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1`,
+          [project.id, obra.tenantId],
+        ),
+        pool.query(
+          `SELECT id,title,status,version,grand_total,expires_at,sent_at,viewed_at,approved_at,rejected_at,client_notes
+             FROM arch_proposals
+            WHERE project_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1`,
+          [project.id, obra.tenantId],
+        ),
+      ]);
+      const budget = budgetResult.rows[0] ?? null;
+      const proposal = proposalResult.rows[0] ?? null;
+      const proposalItems = proposal
+        ? (await pool.query(
+            `SELECT id,item,description,quantity,unit,total,approval_status,client_comment
+               FROM arch_proposal_items
+              WHERE proposal_id=$1 AND visible_to_client=true
+              ORDER BY sort_order ASC, created_at ASC`,
+            [proposal.id],
+          )).rows
+        : [];
+      commercial = { project: { id: project.id, titulo: project.titulo }, budget, proposal, proposalItems };
+    }
+  }
+
+  const privateDocuments = (authenticated && (config.showDocuments || config.showContracts || config.showManuals))
+    ? (await pool.query(
+        `SELECT id,categoria,titulo,descricao,url,mime_type,versao,created_at
+           FROM obra_portal_documents
+          WHERE obra_id=$1 AND tenant_id=$2 AND publicado_cliente=true
+          ORDER BY categoria ASC, created_at DESC`,
+        [obra.id, obra.tenantId],
+      )).rows
+    : [];
+
+  const contracts = config.showContracts ? privateDocuments.filter((item: any) => item.categoria === "contrato") : [];
+  const manuals = config.showManuals ? privateDocuments.filter((item: any) => ["manual","garantia"].includes(item.categoria)) : [];
+  const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","manual","garantia"].includes(item.categoria)) : [];
+
+  const invoices = (authenticated && config.showInvoices)
+    ? (await pool.query(
+        `SELECT id,numero,fornecedor,valor,data_emissao,data_vencimento,status,descricao,documento_url
+           FROM obra_lancamentos
+          WHERE obra_id=$1 AND tenant_id=$2 AND tipo='nota_fiscal'
+          ORDER BY data_emissao DESC NULLS LAST, created_at DESC LIMIT 100`,
+        [obra.id, obra.tenantId],
+      )).rows
+    : [];
+
+  const supportTickets = (authenticated && config.showSupport)
+    ? (await pool.query(
+        `SELECT id,assunto,descricao,prioridade,status,created_at,updated_at,closed_at
+           FROM obra_portal_support_tickets
+          WHERE obra_id=$1 AND tenant_id=$2 AND portal_user_id=$3
+          ORDER BY created_at DESC LIMIT 100`,
+        [obra.id, obra.tenantId, portalUser.id],
+      )).rows
+    : [];
+
+  const chatMessages = (authenticated && config.showChat)
+    ? (await pool.query(
+        `SELECT id,autor_tipo,autor_nome,mensagem,created_at
+           FROM obra_portal_messages
+          WHERE obra_id=$1 AND tenant_id=$2
+          ORDER BY created_at ASC LIMIT 300`,
+        [obra.id, obra.tenantId],
+      )).rows
+    : [];
+
   return res.json({
     publication: config,
+    auth: {
+      required: config.requireLogin,
+      authenticated,
+      allowSelfRegistration: config.allowSelfRegistration,
+      user: portalUser ? { id: portalUser.id, nome: portalUser.nome, email: portalUser.email, telefone: portalUser.telefone } : null,
+    },
+    locked: false,
     obra: {
       id: obra.id,
       nome: obra.nome,
@@ -587,6 +739,14 @@ router.get("/portal/obra/:token", async (req, res) => {
     financeiro,
     galeriaProjeto,
     fotosRecentes,
+    executiveBalance,
+    commercial,
+    contracts,
+    manuals,
+    projectDocuments,
+    invoices,
+    supportTickets,
+    chatMessages,
   });
 });
 
