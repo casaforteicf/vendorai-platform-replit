@@ -1852,6 +1852,26 @@ export default function ConceptPlanner() {
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
 
+  const updateCustomWallLength = (wallId: string, requestedLength: number) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const length = Math.max(0.5, Math.min(Math.max(lotWidth, lotDepth), Number(requestedLength) || 0.5));
+    const before = snapshotEditor();
+    const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+    const direction = horizontal
+      ? (wall.x2 >= wall.x1 ? 1 : -1)
+      : (wall.y2 >= wall.y1 ? 1 : -1);
+
+    if (horizontal) {
+      const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + direction * length));
+      updateCustomWall(wall.id, { x2, y2: wall.y1 });
+    } else {
+      const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + direction * length));
+      updateCustomWall(wall.id, { x2: wall.x1, y2 });
+    }
+    pushRoomHistory(before);
+  };
+
   const selectedCustomWall = safeCustomWalls.find((wall) => wall.id === selectedCustomWallId) ?? null;
   const customWallTopology = useMemo(
     () =>
@@ -4322,6 +4342,7 @@ export default function ConceptPlanner() {
                         }}
                         onDeleteCustomWall={deleteCustomWall}
                         onUpdateCustomWall={updateCustomWall}
+                        onCustomWallLengthChange={updateCustomWallLength}
                         topologyNodes={customWallTopology.nodes}
                         showDimensions={showDimensions}
                         onMoveTopologyJunction={moveTopologyJunction}
