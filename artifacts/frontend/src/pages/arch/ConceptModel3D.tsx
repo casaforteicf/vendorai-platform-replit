@@ -39,6 +39,8 @@ type Props = {
   roof: "platibanda" | "aparente" | "misto";
   facadeDesign?: FacadeDesignState;
   objects?: ConceptPlanObject[];
+  selectedObjectId?: string | null;
+  onSelectObject?: (objectId: string | null) => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -344,10 +346,15 @@ export default function ConceptModel3D({
   roof,
   facadeDesign,
   objects = [],
+  selectedObjectId = null,
+  onSelectObject,
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
   const [showAllFloors, setShowAllFloors] = useState(true);
+  const [showRoof, setShowRoof] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
+  const [interiorMode, setInteriorMode] = useState(false);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
     startX: number;
@@ -422,8 +429,10 @@ export default function ConceptModel3D({
   };
 
   const visibleLevels = useMemo(
-    () => showAllFloors ? (Array.isArray(levels) ? levels : []) : (Array.isArray(levels) ? levels : []).filter((level) => level.floor === activeFloor),
-    [levels, showAllFloors, activeFloor],
+    () => (showAllFloors && !interiorMode)
+      ? (Array.isArray(levels) ? levels : [])
+      : (Array.isArray(levels) ? levels : []).filter((level) => level.floor === activeFloor),
+    [levels, showAllFloors, activeFloor, interiorMode],
   );
 
   const frameSpaces = visibleLevels.flatMap((level) => level.closedSpaces);
@@ -521,6 +530,42 @@ export default function ConceptModel3D({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setInteriorMode((value) => {
+                const next = !value;
+                if (next) {
+                  setShowAllFloors(false);
+                  setShowRoof(false);
+                }
+                return next;
+              });
+            }}
+            className={interiorMode
+              ? "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"
+              : "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"}
+          >
+            {interiorMode ? "Interior ativo" : "Modo interior"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowRoof((value) => !value)}
+            className={showRoof
+              ? "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+              : "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"}
+          >
+            {showRoof ? "Ocultar cobertura" : "Mostrar cobertura"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowLabels((value) => !value)}
+            className={showLabels
+              ? "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+              : "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"}
+          >
+            {showLabels ? "Ocultar nomes" : "Mostrar nomes"}
+          </button>
           {levels.length > 1 && (
             <button
               type="button"
@@ -557,6 +602,7 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
+        onClick={() => onSelectObject?.(null)}
         className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
@@ -634,7 +680,7 @@ export default function ConceptModel3D({
                       strokeWidth="0.04"
                     />
                   ))}
-                  {(() => {
+                  {showLabels && (() => {
                     const labelPoint = project(
                       { x: space.centroid.x, y: space.centroid.y, z: levelBase + 0.18 },
                       rotation, projectionWidth, projectionDepth, zoom,
@@ -666,7 +712,7 @@ export default function ConceptModel3D({
                     );
                     const selectedWallMaterial = wall3dMaterial(level.wallMaterials?.[wall.id]);
                     return (
-                      <g key={`${level.floor}-${wall.id}-${piece.kind}-${index}`}>
+                      <g key={`${level.floor}-${wall.id}-${piece.kind}-${index}`} opacity={interiorMode && wall.exterior ? 0.28 : 1}>
                         <polygon
                           points={points(shape.sideA)}
                           fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
@@ -751,7 +797,7 @@ export default function ConceptModel3D({
         })}
 
         {objects
-          .filter((object) => showAllFloors || object.floor === activeFloor)
+          .filter((object) => (showAllFloors && !interiorMode) || object.floor === activeFloor)
           .map((object) => {
             const shape = boxPolygons(
               object,
@@ -763,15 +809,39 @@ export default function ConceptModel3D({
             );
             const colors = object3dMaterial(object);
             return (
-              <g key={`concept-object-3d-${object.id}`} filter="url(#concept3d-shadow)">
-                <polygon points={points(shape.sideA)} fill={colors.sideA} stroke="#475569" strokeWidth="0.045" />
-                <polygon points={points(shape.sideB)} fill={colors.sideB} stroke="#475569" strokeWidth="0.045" />
-                <polygon points={points(shape.top)} fill={colors.top} stroke="#475569" strokeWidth="0.045" />
+              <g
+                key={`concept-object-3d-${object.id}`}
+                filter="url(#concept3d-shadow)"
+                className={onSelectObject ? "cursor-pointer" : undefined}
+                onClick={(event) => {
+                  if (!onSelectObject) return;
+                  event.stopPropagation();
+                  onSelectObject(object.id);
+                }}
+              >
+                <polygon
+                  points={points(shape.sideA)}
+                  fill={colors.sideA}
+                  stroke={selectedObjectId === object.id ? "#f97316" : "#475569"}
+                  strokeWidth={selectedObjectId === object.id ? "0.10" : "0.045"}
+                />
+                <polygon
+                  points={points(shape.sideB)}
+                  fill={colors.sideB}
+                  stroke={selectedObjectId === object.id ? "#f97316" : "#475569"}
+                  strokeWidth={selectedObjectId === object.id ? "0.10" : "0.045"}
+                />
+                <polygon
+                  points={points(shape.top)}
+                  fill={colors.top}
+                  stroke={selectedObjectId === object.id ? "#f97316" : "#475569"}
+                  strokeWidth={selectedObjectId === object.id ? "0.10" : "0.045"}
+                />
               </g>
             );
           })}
 
-        {showAllFloors && facadeDesign?.volumes.map((volume) => {
+        {showAllFloors && !interiorMode && facadeDesign?.volumes.map((volume) => {
           const x1 = buildingBounds.minX + buildingWidth * (volume.x / 100);
           const x2 = Math.min(buildingBounds.maxX, x1 + buildingWidth * (volume.width / 100));
           const y = buildingBounds.minY - Math.max(0.08, volume.depth);
@@ -799,7 +869,7 @@ export default function ConceptModel3D({
           );
         })}
 
-        {showAllFloors && topBounds && roof === "platibanda" && (
+        {showRoof && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && (
           <polygon
             points={points(quad(
               topBounds.minX,
@@ -816,7 +886,7 @@ export default function ConceptModel3D({
           />
         )}
 
-        {showAllFloors && topBounds && (roof === "aparente" || roof === "misto") && (() => {
+        {showRoof && showAllFloors && !interiorMode && topBounds && (roof === "aparente" || roof === "misto") && (() => {
           const midY = (topBounds.minY + topBounds.maxY) / 2;
           const ridgeZ = topZ + Math.min(2.2, (topBounds.maxY - topBounds.minY) * 0.22);
           const leftPlane = [
