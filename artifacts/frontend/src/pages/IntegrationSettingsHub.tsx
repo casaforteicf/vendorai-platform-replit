@@ -102,7 +102,7 @@ export default function IntegrationSettingsHub() {
     {
       key: "whatsapp",
       label: "WhatsApp",
-      description: "Canal de atendimento e automações.",
+      description: "Conexão padrão via QR Code para atendimento e automações.",
       connected: status?.whatsapp?.connected === true,
       detail: status?.whatsapp?.phone || undefined,
     },
