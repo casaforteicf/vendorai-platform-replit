@@ -358,7 +358,10 @@ export default function ConceptPlan2D({
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
+  const pendingClosedSpaceSelectRef = useRef(false);
+  const previousClosedSpaceIdsRef = useRef(new Set<string>());
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({});
   const [gesture, setGesture] = useState<null | {
     roomId: string;
@@ -391,9 +394,23 @@ export default function ConceptPlan2D({
   useEffect(() => {
     if (interactionMode !== "draw-wall") {
       setWallDrawStart(null);
+      setWallChainOrigin(null);
       setWallDrawPreview(null);
+      pendingClosedSpaceSelectRef.current = false;
     }
   }, [interactionMode]);
+
+  useEffect(() => {
+    const currentIds = new Set(closedSpaces.map((space) => space.id));
+    if (pendingClosedSpaceSelectRef.current && onSelectClosedSpace) {
+      const created = closedSpaces.find((space) => !previousClosedSpaceIdsRef.current.has(space.id));
+      if (created) {
+        onSelectClosedSpace(created.id);
+        pendingClosedSpaceSelectRef.current = false;
+      }
+    }
+    previousClosedSpaceIdsRef.current = currentIds;
+  }, [closedSpaces, onSelectClosedSpace]);
 
   const [viewportAspect, setViewportAspect] = useState(16 / 9);
 
@@ -570,13 +587,21 @@ export default function ConceptPlan2D({
     const snapped = clampPoint(snappedToNetwork);
     if (!wallDrawStart) {
       setWallDrawStart(snapped);
+      setWallChainOrigin(snapped);
       setWallDrawPreview(snapped);
       return;
     }
 
     const rawEnd = orthogonalEnd(wallDrawStart, snapped);
     const networkEnd = snapPointToWallNetwork(rawEnd, wallNetwork, 0.35);
-    const end = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+    let end = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+    const closeThreshold = 0.42;
+    const nearOrigin = wallChainOrigin
+      ? Math.hypot(end.x - wallChainOrigin.x, end.y - wallChainOrigin.y) <= closeThreshold
+      : false;
+    if (nearOrigin && wallChainOrigin) {
+      end = wallChainOrigin;
+    }
 
     const length = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
     if (length >= 0.5 && onCreateCustomWall) {
@@ -589,8 +614,15 @@ export default function ConceptPlan2D({
         y2: end.y,
         thickness: 0.15,
       });
-      setWallDrawStart(end);
-      setWallDrawPreview(end);
+      if (nearOrigin) {
+        pendingClosedSpaceSelectRef.current = true;
+        setWallDrawStart(null);
+        setWallChainOrigin(null);
+        setWallDrawPreview(null);
+      } else {
+        setWallDrawStart(end);
+        setWallDrawPreview(end);
+      }
       return;
     }
     setWallDrawPreview(wallDrawStart);
@@ -654,7 +686,11 @@ export default function ConceptPlan2D({
       const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35);
       const orthogonal = orthogonalEnd(wallDrawStart, snapped);
       const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
-      setWallDrawPreview(clampPoint(orthogonalEnd(wallDrawStart, networkEnd)));
+      let preview = clampPoint(orthogonalEnd(wallDrawStart, networkEnd));
+      if (wallChainOrigin && Math.hypot(preview.x - wallChainOrigin.x, preview.y - wallChainOrigin.y) <= 0.42) {
+        preview = wallChainOrigin;
+      }
+      setWallDrawPreview(preview);
     }
     if (!gesture) return;
     const dx = point.x - gesture.startX;
@@ -2160,6 +2196,24 @@ export default function ConceptPlan2D({
 
         {wallDrawStart && wallDrawPreview && (
           <g pointerEvents="none">
+            {wallChainOrigin && (
+              <>
+                <circle
+                  cx={wallChainOrigin.x}
+                  cy={wallChainOrigin.y}
+                  r="0.34"
+                  fill="#fff7ed"
+                  stroke="#f97316"
+                  strokeWidth="0.06"
+                />
+                <circle
+                  cx={wallChainOrigin.x}
+                  cy={wallChainOrigin.y}
+                  r="0.12"
+                  fill="#f97316"
+                />
+              </>
+            )}
             <circle cx={wallDrawStart.x} cy={wallDrawStart.y} r="0.22" fill="#f97316" stroke="#fff" strokeWidth="0.05" />
             <line
               x1={wallDrawStart.x}
