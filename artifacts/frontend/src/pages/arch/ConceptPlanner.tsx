@@ -3292,37 +3292,81 @@ export default function ConceptPlanner() {
 
                   {editorLibraryTab === "materials" && (
                     <>
-                      <div className="mb-3 flex items-center justify-between">
+                      <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Materiais</div>
-                        <span className="text-[10px] text-slate-400">
-                          {selectedObject ? selectedObject.label : "Selecione um móvel"}
+                        <span className="truncate text-[10px] text-slate-400">
+                          {selectedObject
+                            ? selectedObject.label
+                            : selected
+                              ? selected.label
+                              : selectedClosedSpace
+                                ? selectedSpaceProfile?.label ?? "Ambiente"
+                                : "Selecione um elemento"}
                         </span>
                       </div>
-                      {!selectedObject ? (
-                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-                          Selecione um móvel ou objeto na planta e depois escolha o acabamento.
-                        </div>
+
+                      {selectedObject ? (
+                        <>
+                          <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento do móvel</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {CONCEPT_OBJECT_MATERIALS.map((material) => (
+                              <button
+                                key={material.id}
+                                type="button"
+                                onClick={() => {
+                                  const before = snapshotEditor();
+                                  updateObjectById(selectedObject.id, { materialId: material.id });
+                                  pushRoomHistory(before);
+                                  closeLibraryOnMobile();
+                                }}
+                                className={selectedObject.materialId === material.id
+                                  ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                  : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                              >
+                                <div className="h-16 border-b" style={{ background: material.swatch }} />
+                                <div className="p-3">
+                                  <div className="text-sm font-semibold">{material.name}</div>
+                                  <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : selected || selectedClosedSpace ? (
+                        <>
+                          <div className="mb-3 text-xs font-semibold text-slate-600">Piso do ambiente</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {CONCEPT_FLOOR_MATERIALS.map((material) => {
+                              const currentMaterial = selected?.floorMaterialId ?? selectedSpaceProfile?.floorMaterialId;
+                              return (
+                                <button
+                                  key={material.id}
+                                  type="button"
+                                  onClick={() => setSelectedSurfaceMaterial(material.id)}
+                                  className={currentMaterial === material.id
+                                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                                >
+                                  <div className="relative h-16 overflow-hidden border-b" style={{ background: material.swatch }}>
+                                    {(material.id.includes("madeira") || material.id === "vinilico-claro") && (
+                                      <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 18px, #5b4636 18px 19px)" }} />
+                                    )}
+                                    {(material.id.includes("porcelanato") || material.id.includes("ceramica")) && (
+                                      <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "linear-gradient(#78716c 1px, transparent 1px), linear-gradient(90deg, #78716c 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+                                    )}
+                                  </div>
+                                  <div className="p-3">
+                                    <div className="text-sm font-semibold">{material.name}</div>
+                                    <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
                       ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                          {CONCEPT_OBJECT_MATERIALS.map((material) => (
-                            <button
-                              key={material.id}
-                              type="button"
-                              onClick={() => {
-                                updateObjectById(selectedObject.id, { materialId: material.id });
-                                closeLibraryOnMobile();
-                              }}
-                              className={selectedObject.materialId === material.id
-                                ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                                : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
-                            >
-                              <div className="h-16 border-b" style={{ background: material.swatch }} />
-                              <div className="p-3">
-                                <div className="text-sm font-semibold">{material.name}</div>
-                                <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
-                              </div>
-                            </button>
-                          ))}
+                        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                          Selecione um móvel ou um ambiente na planta. O painel mostra automaticamente os materiais compatíveis.
                         </div>
                       )}
                     </>
