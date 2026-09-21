@@ -1281,6 +1281,28 @@ export default function ConceptModel3D({
                 );
                 const selected = selectedOpeningId === opening.id;
                 const isDoor = opening.type === "door";
+                const frameColor = lightingMode === "night" ? "#e2e8f0" : "#334155";
+                const rail = Math.min(0.08, Math.max(0.035, width * 0.06));
+                const zMin = levelBase + sill;
+                const zMax = levelBase + Math.min(WALL_HEIGHT, sill + height);
+                const frameSegments = opening.orientation === "vertical"
+                  ? [
+                      { x1: opening.x, y1: opening.y - width / 2, x2: opening.x, y2: opening.y - width / 2 + rail, thickness: 0.055, z0: zMin, z1: zMax },
+                      { x1: opening.x, y1: opening.y + width / 2 - rail, x2: opening.x, y2: opening.y + width / 2, thickness: 0.055, z0: zMin, z1: zMax },
+                    ]
+                  : [
+                      { x1: opening.x - width / 2, y1: opening.y, x2: opening.x - width / 2 + rail, y2: opening.y, thickness: 0.055, z0: zMin, z1: zMax },
+                      { x1: opening.x + width / 2 - rail, y1: opening.y, x2: opening.x + width / 2, y2: opening.y, thickness: 0.055, z0: zMin, z1: zMax },
+                    ];
+                const horizontalRails = [
+                  { z0: zMin, z1: Math.min(zMax, zMin + 0.07) },
+                  { z0: Math.max(zMin, zMax - 0.07), z1: zMax },
+                ];
+                const mullionSegment = !isDoor && opening.openingStyle !== "fixed"
+                  ? (opening.orientation === "vertical"
+                    ? { x1: opening.x, y1: opening.y - rail / 2, x2: opening.x, y2: opening.y + rail / 2, thickness: 0.05 }
+                    : { x1: opening.x - rail / 2, y1: opening.y, x2: opening.x + rail / 2, y2: opening.y, thickness: 0.05 })
+                  : null;
                 return (
                   <g
                     key={`${level.floor}-opening-3d-${opening.id}`}
@@ -1312,6 +1334,88 @@ export default function ConceptModel3D({
                       stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
+                    {!isDoor && (
+                      <>
+                        {frameSegments.map((frame, frameIndex) => {
+                          const frameShape = wallPolygon(
+                            frame,
+                            rotation,
+                            projectionWidth,
+                            projectionDepth,
+                            zoom,
+                            frame.z0,
+                            frame.z1,
+                          );
+                          return (
+                            <g key={`${opening.id}-frame-side-${frameIndex}`}>
+                              <polygon points={points(frameShape.sideA)} fill={frameColor} stroke={frameColor} strokeWidth="0.035" />
+                              <polygon points={points(frameShape.sideB)} fill={frameColor} stroke={frameColor} strokeWidth="0.035" />
+                              <polygon points={points(frameShape.top)} fill="#64748b" stroke={frameColor} strokeWidth="0.03" />
+                            </g>
+                          );
+                        })}
+                        {horizontalRails.map((railBand, railIndex) => {
+                          const railShape = wallPolygon(
+                            segment,
+                            rotation,
+                            projectionWidth,
+                            projectionDepth,
+                            zoom,
+                            railBand.z0,
+                            railBand.z1,
+                          );
+                          return (
+                            <g key={`${opening.id}-frame-horizontal-${railIndex}`}>
+                              <polygon points={points(railShape.sideA)} fill={frameColor} stroke={frameColor} strokeWidth="0.03" />
+                              <polygon points={points(railShape.sideB)} fill={frameColor} stroke={frameColor} strokeWidth="0.03" />
+                              <polygon points={points(railShape.top)} fill="#64748b" stroke={frameColor} strokeWidth="0.03" />
+                            </g>
+                          );
+                        })}
+                        {mullionSegment && (() => {
+                          const mullionShape = wallPolygon(
+                            mullionSegment,
+                            rotation,
+                            projectionWidth,
+                            projectionDepth,
+                            zoom,
+                            zMin + 0.06,
+                            zMax - 0.06,
+                          );
+                          return (
+                            <g>
+                              <polygon points={points(mullionShape.sideA)} fill={frameColor} stroke={frameColor} strokeWidth="0.03" />
+                              <polygon points={points(mullionShape.sideB)} fill={frameColor} stroke={frameColor} strokeWidth="0.03" />
+                              <polygon points={points(mullionShape.top)} fill="#64748b" stroke={frameColor} strokeWidth="0.03" />
+                            </g>
+                          );
+                        })()}
+                      </>
+                    )}
+                    {isDoor && (() => {
+                      const handlePoint = project(
+                        {
+                          x: opening.orientation === "vertical" ? opening.x + 0.02 : opening.x + width * 0.28,
+                          y: opening.orientation === "vertical" ? opening.y + width * 0.28 : opening.y + 0.02,
+                          z: levelBase + 1.0,
+                        },
+                        rotation,
+                        projectionWidth,
+                        projectionDepth,
+                        zoom,
+                      );
+                      return (
+                        <g pointerEvents="none">
+                          <circle cx={handlePoint.x} cy={handlePoint.y} r="0.10" fill="#f8fafc" stroke="#334155" strokeWidth="0.035" />
+                          <circle cx={handlePoint.x} cy={handlePoint.y} r="0.035" fill="#0f172a" />
+                        </g>
+                      );
+                    })()}
+                    {selected && (
+                      <g pointerEvents="none">
+                        <title>{`${isDoor ? "Porta" : "Janela"} · ${opening.openingStyle === "sliding" ? "correr" : opening.openingStyle === "tilt_turn" ? "oscilobatente" : opening.openingStyle === "fixed" ? "fixa" : "giro"} · ${width.toFixed(2)} × ${height.toFixed(2)} m`}</title>
+                      </g>
+                    )}
                   </g>
                 );
               })}
