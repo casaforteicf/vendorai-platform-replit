@@ -116,7 +116,7 @@ export function PortalDocumentLibrary({ title, items }: { title: string; items: 
   return items?.length ? <div className="divide-y overflow-hidden rounded-2xl border bg-white">{items.map((doc: any) => <a key={doc.id} href={doc.url ?? doc.documento_url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-gray-50"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{doc.titulo ?? doc.descricao ?? doc.numero ?? title}</p><p className="text-xs text-gray-400">{doc.categoria ?? doc.fornecedor ?? ""}{doc.versao ? ` · v${doc.versao}` : ""}</p></div><span className="text-xs font-semibold text-indigo-600">Abrir</span></a>)}</div> : <Empty text={`Nenhum ${title.toLowerCase()} publicado ainda.`} />;
 }
 
-export function PortalSupportChat({ token, sessionToken, tickets, messages, onRefresh }: { token: string; sessionToken: string; tickets: any[]; messages: any[]; onRefresh: () => void }) {
+export function PortalSupportChat({ token, sessionToken, tickets, messages, onRefresh, mode = "both" }: { token: string; sessionToken: string; tickets: any[]; messages: any[]; onRefresh: () => void; mode?: "support" | "chat" | "both" }) {
   const [support, setSupport] = useState({ assunto: "", descricao: "", prioridade: "normal" });
   const [message, setMessage] = useState("");
   const auth = { Authorization: `Bearer ${sessionToken}`, "Content-Type": "application/json" };
@@ -133,15 +133,15 @@ export function PortalSupportChat({ token, sessionToken, tickets, messages, onRe
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card icon={<Headphones className="h-5 w-5" />} title="Solicitações de suporte">
+    <div className={`grid gap-6 ${mode === "both" ? "lg:grid-cols-2" : ""}`}>
+      {mode !== "chat" ? <Card icon={<Headphones className="h-5 w-5" />} title="Solicitações de suporte">
         <div className="space-y-2"><input className="w-full rounded-xl border px-3 py-2 text-sm" placeholder="Assunto" value={support.assunto} onChange={(e) => setSupport({ ...support, assunto: e.target.value })} /><textarea className="min-h-24 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Descreva sua solicitação" value={support.descricao} onChange={(e) => setSupport({ ...support, descricao: e.target.value })} /><div className="flex gap-2"><select className="rounded-xl border px-3 py-2 text-sm" value={support.prioridade} onChange={(e) => setSupport({ ...support, prioridade: e.target.value })}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select><button onClick={createTicket} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Abrir ticket</button></div></div>
         <div className="mt-4 space-y-2">{tickets?.map((ticket: any) => <div key={ticket.id} className="rounded-xl bg-gray-50 p-3"><div className="flex justify-between"><p className="text-sm font-semibold">{ticket.assunto}</p><span className="text-xs text-gray-500">{ticket.status}</span></div><p className="mt-1 text-xs text-gray-500">{ticket.prioridade} · {date(ticket.created_at)}</p></div>)}</div>
-      </Card>
-      <Card icon={<MessageCircle className="h-5 w-5" />} title="Chat com a equipe">
+      </Card> : null}
+      {mode !== "support" ? <Card icon={<MessageCircle className="h-5 w-5" />} title="Chat com a equipe">
         <div className="max-h-80 space-y-2 overflow-y-auto rounded-xl bg-gray-50 p-3">{messages?.length ? messages.map((item: any) => <div key={item.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${item.autor_tipo === "cliente" ? "ml-auto bg-indigo-600 text-white" : "bg-white text-gray-700 shadow-sm"}`}><p>{item.mensagem}</p><p className={`mt-1 text-[10px] ${item.autor_tipo === "cliente" ? "text-indigo-200" : "text-gray-400"}`}>{item.autor_nome ?? (item.autor_tipo === "cliente" ? "Você" : "Equipe")} · {date(item.created_at)}</p></div>) : <p className="py-8 text-center text-sm text-gray-400">Nenhuma mensagem ainda.</p>}</div>
         <div className="mt-3 flex gap-2"><input className="flex-1 rounded-xl border px-3 py-2 text-sm" placeholder="Escreva uma mensagem..." value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }} /><button onClick={sendMessage} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Enviar</button></div>
-      </Card>
+      </Card> : null}
     </div>
   );
 }
