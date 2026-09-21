@@ -294,7 +294,7 @@ export default function ConceptModel3D({
   };
 
   const visibleLevels = useMemo(
-    () => showAllFloors ? levels : levels.filter((level) => level.floor === activeFloor),
+    () => showAllFloors ? (Array.isArray(levels) ? levels : []) : (Array.isArray(levels) ? levels : []).filter((level) => level.floor === activeFloor),
     [levels, showAllFloors, activeFloor],
   );
 
