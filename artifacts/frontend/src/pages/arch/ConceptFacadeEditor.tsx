@@ -243,8 +243,8 @@ export default function ConceptFacadeEditor({
   };
 
   return (
-    <div className="relative h-[calc(100vh-64px)] min-h-[680px] overflow-hidden bg-[#eef1f3]">
-      <div className="absolute left-4 top-4 z-30 flex overflow-hidden rounded-xl border bg-white shadow-lg">
+    <div className="relative h-[calc(100dvh-64px)] min-h-[520px] overflow-hidden bg-[#eef1f3] md:min-h-[680px]">
+      <div className="absolute inset-x-3 top-3 z-30 flex snap-x overflow-x-auto rounded-2xl border bg-white/95 p-1 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:inset-x-auto md:left-4 md:top-4 md:rounded-xl md:p-0">
         {([
           ["volumes", Box, "Volumes"],
           ["materials", PaintBucket, "Materiais"],
@@ -259,8 +259,8 @@ export default function ConceptFacadeEditor({
               setPanelOpen((open) => same ? !open : true);
             }}
             className={panel === value
-              ? "flex h-10 items-center gap-2 border-r bg-slate-900 px-3 text-xs font-semibold text-white last:border-r-0"
-              : "flex h-10 items-center gap-2 border-r bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 last:border-r-0"}
+              ? "flex h-10 shrink-0 snap-center items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white md:rounded-none md:border-r md:last:border-r-0"
+              : "flex h-10 shrink-0 snap-center items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 md:rounded-none md:border-r md:last:border-r-0"}
           >
             <Icon className="h-4 w-4" />
             {label}
@@ -269,7 +269,7 @@ export default function ConceptFacadeEditor({
       </div>
 
       {panelOpen && (
-      <div className="absolute left-4 top-16 z-30 w-[286px] max-h-[calc(100vh-100px)] overflow-auto rounded-2xl border bg-white shadow-xl">
+      <div className="fixed inset-x-2 bottom-20 z-40 max-h-[62vh] overflow-auto rounded-3xl border bg-white shadow-2xl md:absolute md:inset-x-auto md:bottom-auto md:left-4 md:top-16 md:z-30 md:w-[286px] md:max-h-[calc(100vh-100px)] md:rounded-2xl md:shadow-xl">
         <button
           type="button"
           onClick={() => setPanelOpen(false)}

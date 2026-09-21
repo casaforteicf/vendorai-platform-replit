@@ -394,6 +394,9 @@ export default function ConceptPlanner() {
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
+  const closeLibraryOnMobile = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) setLibraryOpen(false);
+  };
 
   const filteredTypologies = useMemo(() => {
     const query = modelSearch.trim().toLocaleLowerCase("pt-BR");
@@ -2128,7 +2131,7 @@ export default function ConceptPlanner() {
                 </div>
                 <button
                   type="button"
-                  onClick={startBlankPlan}
+                  onClick={() => { startBlankPlan(); closeLibraryOnMobile(); }}
                   className="mt-2 flex w-full items-center gap-3 rounded-xl border bg-background px-3 py-3 text-left hover:border-orange-300 hover:bg-orange-50/40"
                 >
                   <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100">
@@ -2194,7 +2197,7 @@ export default function ConceptPlanner() {
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => applyTypology(item.id)}
+                        onClick={() => { applyTypology(item.id); closeLibraryOnMobile(); }}
                         className="group text-left"
                       >
                         <div className={typology === item.id
@@ -2300,7 +2303,7 @@ export default function ConceptPlanner() {
                   ["piscina", Waves, "Piscina"],
                   ["outro", Plus, "Outro ambiente"],
                 ] as const).map(([kind, Icon, label]) => (
-                  <button key={kind} type="button" onClick={() => addRoom(kind)} className="flex items-center justify-between rounded-xl border px-3 py-3 text-left text-sm hover:bg-muted">
+                  <button key={kind} type="button" onClick={() => { addRoom(kind); closeLibraryOnMobile(); }} className="flex items-center justify-between rounded-xl border px-3 py-3 text-left text-sm hover:bg-muted">
                     <span className="flex items-center gap-2"><Icon className="h-4 w-4 text-muted-foreground" />{label}</span>
                     <Plus className="h-4 w-4" />
                   </button>
@@ -2627,8 +2630,8 @@ export default function ConceptPlanner() {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen ? "w-[calc(100vw-56px)] max-w-[300px] min-w-0 flex-1 bg-white sm:w-[300px]" : "hidden"}>
-                <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
+                  <div className={libraryOpen ? "fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-[300px] md:overflow-visible md:rounded-none md:border-0 md:shadow-none" : "hidden"}>
+                <div className="sticky top-0 z-10 rounded-t-3xl border-b bg-white px-4 py-3 md:rounded-none md:px-5 md:py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-base font-semibold">
@@ -2774,6 +2777,7 @@ export default function ConceptPlanner() {
                             setSelectedOpeningId(null);
                             setSelectedWallId(null);
                             setSelectedCustomWallId(null);
+                            closeLibraryOnMobile();
                           }}
                           className={interactionMode === "draw-wall"
                             ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
@@ -2821,6 +2825,7 @@ export default function ConceptPlanner() {
                             setSelectedId(null);
                             setSelectedWallId(null);
                             setSelectedCustomWallId(null);
+                            closeLibraryOnMobile();
                           }}
                           className={interactionMode === "opening"
                             ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
@@ -2839,7 +2844,7 @@ export default function ConceptPlanner() {
 
                         <button
                           type="button"
-                          onClick={() => addRoom("escada")}
+                          onClick={() => { addRoom("escada"); closeLibraryOnMobile(); }}
                           className="group overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
                         >
                           <div className="grid h-24 place-items-center bg-gradient-to-br from-stone-50 to-slate-100">
@@ -2955,6 +2960,7 @@ export default function ConceptPlanner() {
                                   return;
                                 }
                                 addRoom(kind);
+                                closeLibraryOnMobile();
                               }}
                               className="overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
                             >
@@ -3041,7 +3047,7 @@ export default function ConceptPlanner() {
               <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16">
                 <div className="h-full w-full">
                   {editorView === "plan" && (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="absolute left-16 right-3 top-3 z-20 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:left-20 md:right-auto">
                         <button
                           type="button"
                           onClick={() => {
@@ -3131,6 +3137,7 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                           setSelectedWallId(null);
                           setSelectedCustomWallId(null);
+                          closeLibraryOnMobile();
                         }}
                         closedSpaceLabels={Object.fromEntries(
                           closedSpaces.map((space) => [
@@ -3142,12 +3149,14 @@ export default function ConceptPlanner() {
                         onSelect={(roomId) => {
                           setSelectedId(roomId);
                           setSelectedOpeningId(null);
+                          closeLibraryOnMobile();
                         }}
                         onRoomChange={updateRoomById}
                         selectedOpeningId={selectedOpeningId}
                         onSelectOpening={(openingId) => {
                           setSelectedOpeningId(openingId);
                           setSelectedId(null);
+                          closeLibraryOnMobile();
                         }}
                         onOpeningChange={updateOpeningById}
                         selectedWallId={selectedWallId}
@@ -3155,6 +3164,7 @@ export default function ConceptPlanner() {
                           setSelectedWallId(wallId);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
+                          closeLibraryOnMobile();
                         }}
                         onWallMove={moveWallById}
                         customWalls={safeCustomWalls.filter((wall) => wall.floor === activeFloor)}
@@ -3165,6 +3175,7 @@ export default function ConceptPlanner() {
                           setSelectedWallId(null);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
+                          closeLibraryOnMobile();
                         }}
                         onDeleteCustomWall={deleteCustomWall}
                         onUpdateCustomWall={updateCustomWall}
@@ -3175,7 +3186,7 @@ export default function ConceptPlanner() {
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
                       />
-                      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
+                      <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
                           <button
                             type="button"
