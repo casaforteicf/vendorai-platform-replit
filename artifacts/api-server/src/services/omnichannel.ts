@@ -107,7 +107,7 @@ export class MessengerScopedIdMissingError extends Error {
 export class WhatsAppNotConnectedError extends Error {
   readonly statusCode = 422;
   constructor() {
-    super("WhatsApp não conectado. Configure as credenciais Meta WhatsApp Cloud API em Configurações > Integrações.");
+    super("WhatsApp não conectado. Abra Configurações > Integrações e conecte o número lendo o QR Code.");
     this.name = "WhatsAppNotConnectedError";
   }
 }
@@ -388,13 +388,13 @@ export async function sendDirectWhatsAppDocument(
     return;
   }
 
-  if (hasZapi) {
+  if (hasEvolution) {
+    await sendEvolutionDocument(config!.evolutionInstanceName!, phone, pdfBuffer, fileName, caption, log);
+  } else if (hasZapi) {
     await sendZapiDocument(
       config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
       phone, pdfBuffer, fileName, caption, log,
     );
-  } else if (hasEvolution) {
-    await sendEvolutionDocument(config!.evolutionInstanceName!, phone, pdfBuffer, fileName, caption, log);
   } else {
     // Meta: upload to Media API, then send as document message
     const mediaId = await uploadMediaToMeta(
@@ -592,19 +592,40 @@ export async function sendAgentAttachments(
   if (!attachments.length) return;
 
   const [config] = await db
-    .select({ metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId, metaAccessToken: agentConfigsTable.metaAccessToken })
+    .select({
+      evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
+      evolutionConnected: agentConfigsTable.evolutionConnected,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
+    })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.tenantId, tenantId))
     .limit(1);
 
-  if (!config?.metaPhoneNumberId || !config?.metaAccessToken) {
-    log.warn({ tenantId }, "omnichannel: skipping attachments — no meta credentials");
+  const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
+  const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
+
+  if (!hasEvolution && !hasMeta) {
+    log.warn({ tenantId }, "omnichannel: skipping attachments — WhatsApp QR not connected and no legacy Meta fallback");
     return;
   }
 
   for (const attachment of attachments) {
     try {
-      await sendMetaWhatsAppMedia(config.metaPhoneNumberId, config.metaAccessToken, phone, attachment, log);
+      if (hasEvolution) {
+        const buffer = await fetchMidiaBuffer(attachment.objectPath);
+        await sendEvolutionMedia(
+          config!.evolutionInstanceName!,
+          phone,
+          buffer,
+          attachment.mimeType,
+          attachment.name,
+          attachment.name,
+          log,
+        );
+      } else {
+        await sendMetaWhatsAppMedia(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, attachment, log);
+      }
     } catch (err) {
       log.error({ err, filename: attachment.name }, "omnichannel: failed to send attachment — skipping");
     }
@@ -639,11 +660,11 @@ export async function sendDirectWhatsAppMessage(
     throw new WhatsAppNotConnectedError();
   }
 
-  if (hasZapi) {
-    await sendZapiWhatsAppMessage(config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!, phone, message, log);
-    return undefined;
-  } else if (hasEvolution) {
+  if (hasEvolution) {
     await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, phone, message, log);
+    return undefined;
+  } else if (hasZapi) {
+    await sendZapiWhatsAppMessage(config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!, phone, message, log);
     return undefined;
   } else {
     return sendMetaWhatsAppMessage(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, message, log);
@@ -736,14 +757,19 @@ export async function sendOutgoingMessage(
       .limit(1);
     const connections = await db.select().from(whatsappConnectionsTable)
       .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active")));
+    const evolutionConnections = connections.filter((connection) => connection.provider === "evolution");
     selectedWhatsappConnection =
+      evolutionConnections.find((connection) => connection.id === latestConversation?.whatsappConnectionId) ??
+      evolutionConnections.find((connection) => connection.assignedUserId === lead.assignedTo) ??
+      evolutionConnections.find((connection) => connection.isDefault) ??
+      evolutionConnections[0] ??
       connections.find((connection) => connection.id === latestConversation?.whatsappConnectionId) ??
       connections.find((connection) => connection.assignedUserId === lead.assignedTo) ??
       connections.find((connection) => connection.isDefault) ??
       connections[0] ??
       null;
   }
-  // ── 2. WhatsApp: pick provider (Z-API takes priority over Meta) + send
+  // ── 2. WhatsApp: QR/Evolution é o provedor padrão; Z-API e Meta são fallback legado
   if (canal === "whatsapp") {
     const [config] = await db
       .select({
@@ -775,8 +801,16 @@ export async function sendOutgoingMessage(
       throw new WhatsAppNotConnectedError();
     }
 
-    if (hasZapi) {
-      // ── Z-API path (no 24h window restriction) ───────────────────────────
+    if (hasEvolution) {
+      // ── Evolution API path (QR Code padrão, sem restrição de janela de 24h) ──
+      if (input.midia) {
+        const buffer = await fetchMidiaBuffer(input.midia.objectPath);
+        await sendEvolutionMedia(evolutionInstance!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
+      } else {
+        await sendEvolutionWhatsAppMessage(evolutionInstance!, lead.telefone, conteudo, log);
+      }
+    } else if (hasZapi) {
+      // ── Z-API path legado (fallback) ──────────────────────────────────────
       if (input.midia) {
         await sendZapiMediaByUrl(
           config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
@@ -792,14 +826,6 @@ export async function sendOutgoingMessage(
           log,
           !!agentName
         );
-      }
-    } else if (hasEvolution) {
-      // ── Evolution API path (self-hosted, sem restrição de janela de 24h) ──
-      if (input.midia) {
-        const buffer = await fetchMidiaBuffer(input.midia.objectPath);
-        await sendEvolutionMedia(evolutionInstance!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
-      } else {
-        await sendEvolutionWhatsAppMessage(evolutionInstance!, lead.telefone, conteudo, log);
       }
     } else {
       // ── Meta Cloud API path (24h window enforced) ─────────────────────────
