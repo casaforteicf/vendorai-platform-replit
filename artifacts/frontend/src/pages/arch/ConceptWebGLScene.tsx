@@ -192,15 +192,14 @@ export default function ConceptWebGLScene({
             const target = transform.object;
             const objectId = target?.userData?.objectId;
             if (objectId && onObjectChange) {
-              const source = objects.find((item) => item.id === objectId);
-              if (source) {
-                const x = Math.max(0, Math.min(lotWidth - source.width, target.position.x + lotWidth / 2 - source.width / 2));
-                const y = Math.max(0, Math.min(lotDepth - source.depth, target.position.z + lotDepth / 2 - source.depth / 2));
-                onObjectChange(objectId, {
-                  x: Math.round(x * 20) / 20,
-                  y: Math.round(y * 20) / 20,
-                });
-              }
+              const width = Number(target?.userData?.modelWidth ?? 0.6);
+              const depth = Number(target?.userData?.modelDepth ?? 0.6);
+              const x = Math.max(0, Math.min(lotWidth - width, target.position.x + lotWidth / 2 - width / 2));
+              const y = Math.max(0, Math.min(lotDepth - depth, target.position.z + lotDepth / 2 - depth / 2));
+              onObjectChange(objectId, {
+                x: Math.round(x * 20) / 20,
+                y: Math.round(y * 20) / 20,
+              });
             }
             onObjectEditEnd?.();
           });
@@ -463,6 +462,8 @@ export default function ConceptWebGLScene({
       if (!visibleFloors.has(object.floor)) continue;
       const root = new THREE.Group();
       root.userData.objectId = object.id;
+      root.userData.modelWidth = object.width;
+      root.userData.modelDepth = object.depth;
       root.position.set(
         object.x + object.width / 2 - lotWidth / 2,
         object.floor * 2.96 + 0.16,
