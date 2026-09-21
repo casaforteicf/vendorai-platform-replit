@@ -80,6 +80,31 @@ async function ownedEtapa(tid: string, obraId: string, etapaId: string) {
   return result.rows[0] ?? null;
 }
 
+function scheduleDate(value: unknown): Date | null {
+  if (!value) return null;
+  const text = String(value).slice(0, 10);
+  const date = new Date(`${text}T12:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function scheduleIso(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function scheduleAddDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function scheduleDurationDays(start: Date, end: Date) {
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function scheduleLatest(a: Date | null, b: Date) {
+  return !a || b.getTime() > a.getTime() ? b : a;
+}
+
 async function addEvent(
   projectId: string,
   workOrderId: string | null,
@@ -439,6 +464,177 @@ archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaI
     res.json({ etapa: result.rows[0] });
   } catch (err) {
     logger.error({ err }, "arch/construction etapa PATCH error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId/reschedule", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const etapaId = String(req.params["etapaId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const start = scheduleDate(req.body?.dataInicioPrevista);
+    const end = scheduleDate(req.body?.dataFimPrevista);
+    if (!start || !end || end.getTime() < start.getTime()) {
+      res.status(400).json({ error: "Datas de início e término válidas são obrigatórias" }); return;
+    }
+
+    const [etapasResult, depsResult] = await Promise.all([
+      pool.query(
+        `SELECT id, nome, data_inicio_prevista, data_fim_prevista, marco
+           FROM obra_etapas
+          WHERE obra_id = $1
+          ORDER BY ordem ASC, created_at ASC`,
+        [obraId],
+      ),
+      pool.query(
+        `SELECT id, etapa_id, depende_de_etapa_id, tipo, defasagem_dias
+           FROM obra_etapa_dependencias
+          WHERE obra_id = $1 AND tenant_id = $2
+          ORDER BY created_at ASC`,
+        [obraId, tid],
+      ),
+    ]);
+
+    const byId = new Map<string, any>(etapasResult.rows.map((row: any) => [String(row.id), row]));
+    const root = byId.get(etapaId);
+    if (!root) { res.status(404).json({ error: "Etapa não encontrada" }); return; }
+
+    const successors = new Map<string, any[]>();
+    for (const dep of depsResult.rows) {
+      const predecessorId = String(dep.depende_de_etapa_id);
+      const list = successors.get(predecessorId) ?? [];
+      list.push(dep);
+      successors.set(predecessorId, list);
+    }
+
+    const planned = new Map<string, { start: Date; end: Date }>();
+    for (const row of etapasResult.rows) {
+      const rowStart = scheduleDate(row.data_inicio_prevista);
+      const rowEnd = scheduleDate(row.data_fim_prevista);
+      if (rowStart && rowEnd) planned.set(String(row.id), { start: rowStart, end: rowEnd });
+    }
+    planned.set(etapaId, { start, end });
+
+    const changed = new Set<string>([etapaId]);
+    const queue: string[] = [etapaId];
+    const processed = new Map<string, number>();
+
+    while (queue.length) {
+      const predecessorId = queue.shift()!;
+      const predecessor = planned.get(predecessorId);
+      if (!predecessor) continue;
+
+      for (const dep of successors.get(predecessorId) ?? []) {
+        const successorId = String(dep.etapa_id);
+        const successorRow = byId.get(successorId);
+        const successor = planned.get(successorId);
+        if (!successorRow || !successor) continue;
+
+        const duration = scheduleDurationDays(successor.start, successor.end);
+        const lag = Number(dep.defasagem_dias ?? 0);
+        const type = String(dep.tipo ?? "FS");
+        let requiredStart: Date;
+
+        if (type === "SS") {
+          requiredStart = scheduleAddDays(predecessor.start, lag);
+        } else if (type === "FF") {
+          const requiredEnd = scheduleAddDays(predecessor.end, lag);
+          requiredStart = scheduleAddDays(requiredEnd, -(duration - 1));
+        } else if (type === "SF") {
+          const requiredEnd = scheduleAddDays(predecessor.start, lag);
+          requiredStart = scheduleAddDays(requiredEnd, -(duration - 1));
+        } else {
+          requiredStart = scheduleAddDays(predecessor.end, lag + 1);
+        }
+
+        const depsForSuccessor = depsResult.rows.filter((item: any) => String(item.etapa_id) === successorId);
+        let constrainedStart: Date | null = null;
+
+        for (const incoming of depsForSuccessor) {
+          const pred = planned.get(String(incoming.depende_de_etapa_id));
+          if (!pred) continue;
+          const incomingLag = Number(incoming.defasagem_dias ?? 0);
+          const incomingType = String(incoming.tipo ?? "FS");
+          let candidate: Date;
+          if (incomingType === "SS") {
+            candidate = scheduleAddDays(pred.start, incomingLag);
+          } else if (incomingType === "FF") {
+            candidate = scheduleAddDays(scheduleAddDays(pred.end, incomingLag), -(duration - 1));
+          } else if (incomingType === "SF") {
+            candidate = scheduleAddDays(scheduleAddDays(pred.start, incomingLag), -(duration - 1));
+          } else {
+            candidate = scheduleAddDays(pred.end, incomingLag + 1);
+          }
+          constrainedStart = scheduleLatest(constrainedStart, candidate);
+        }
+
+        constrainedStart = scheduleLatest(constrainedStart, requiredStart);
+        if (!constrainedStart) continue;
+
+        // Auto-schedule is conservative: it only pushes dependent work forward when
+        // a constraint is violated. Earlier predecessor dates never erase a user's
+        // manually planned buffer/float.
+        if (successor.start.getTime() >= constrainedStart.getTime()) continue;
+
+        const next = {
+          start: constrainedStart,
+          end: scheduleAddDays(constrainedStart, duration - 1),
+        };
+        planned.set(successorId, next);
+        changed.add(successorId);
+
+        const count = (processed.get(successorId) ?? 0) + 1;
+        processed.set(successorId, count);
+        if (count > etapasResult.rows.length) {
+          res.status(409).json({ error: "Não foi possível recalcular o cronograma por dependências inconsistentes" });
+          return;
+        }
+        queue.push(successorId);
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const id of changed) {
+        const dates = planned.get(id);
+        if (!dates) continue;
+        await client.query(
+          `UPDATE obra_etapas
+              SET data_inicio_prevista = $1,
+                  data_fim_prevista = $2,
+                  updated_at = now()
+            WHERE id = $3 AND obra_id = $4`,
+          [scheduleIso(dates.start), scheduleIso(dates.end), id, obraId],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      updated: Array.from(changed).map((id) => {
+        const dates = planned.get(id)!;
+        return {
+          etapaId: id,
+          nome: byId.get(id)?.nome ?? "Etapa",
+          dataInicioPrevista: scheduleIso(dates.start),
+          dataFimPrevista: scheduleIso(dates.end),
+          cascading: id !== etapaId,
+        };
+      }),
+      cascadedCount: Math.max(0, changed.size - 1),
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction reschedule error");
     next(err);
   }
 });
