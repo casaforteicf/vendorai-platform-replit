@@ -27,6 +27,7 @@ type Props = {
   cameraPresetDegrees: number;
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
+  navigationMode?: "orbit" | "walk";
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -59,12 +60,21 @@ type Runtime = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   };
+  navigationMode: "orbit" | "walk";
+  walkKeys: Set<string>;
+  walkYaw: number;
+  walkPitch: number;
+  walkDragging: boolean;
+  walkLastPointer: { x: number; y: number } | null;
+  environmentTexture?: any;
 };
 
 const THREE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
 const ORBIT_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.min.js";
 const TRANSFORM_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/TransformControls.min.js";
 const GLTF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.min.js";
+const RGBE_SRC = "https://unpkg.com/three@0.128.0/examples/js/loaders/RGBELoader.js";
+const ARQDOR_HDRI = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr";
 
 function loadScript(src: string) {
   const key = `__arqdor_script_${src}`;
@@ -152,6 +162,7 @@ export default function ConceptWebGLScene({
   cameraPresetDegrees,
   cameraZoom,
   transformMode = "translate",
+  navigationMode = "orbit",
   paintTool = null,
   onReady,
   onSelectObject,
@@ -191,6 +202,11 @@ export default function ConceptWebGLScene({
           await loadScript(GLTF_SRC);
         } catch {
           // Real catalog assets are optional. Parametric geometry remains as fallback.
+        }
+        try {
+          await loadScript(RGBE_SRC);
+        } catch {
+          // HDRI is an enhancement. Existing physical lights remain as fallback.
         }
 
         if (cancelled || !hostRef.current) return;
@@ -272,8 +288,38 @@ export default function ConceptWebGLScene({
           pickables: [],
           animationFrame: 0,
           cameraGoal: null,
+          navigationMode: "orbit",
+          walkKeys: new Set(),
+          walkYaw: 0,
+          walkPitch: 0,
+          walkDragging: false,
+          walkLastPointer: null,
         };
         runtimeRef.current = runtime;
+
+        if (THREE.RGBELoader && THREE.PMREMGenerator) {
+          try {
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            pmrem.compileEquirectangularShader?.();
+            new THREE.RGBELoader().load(
+              ARQDOR_HDRI,
+              (hdrTexture: any) => {
+                try {
+                  const env = pmrem.fromEquirectangular(hdrTexture).texture;
+                  runtime.environmentTexture = env;
+                  scene.environment = env;
+                } finally {
+                  hdrTexture?.dispose?.();
+                  pmrem.dispose?.();
+                }
+              },
+              undefined,
+              () => pmrem.dispose?.(),
+            );
+          } catch {
+            // Keep physical lights/background if HDRI setup is unavailable.
+          }
+        }
 
         const resize = () => {
           const rect = host.getBoundingClientRect();
@@ -359,11 +405,69 @@ export default function ConceptWebGLScene({
         };
         renderer.domElement.addEventListener("click", handlePointer);
 
+        const handleWalkKeyDown = (event: KeyboardEvent) => {
+          if (runtime.navigationMode !== "walk") return;
+          const key = event.key.toLowerCase();
+          if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(key)) {
+            event.preventDefault();
+            runtime.walkKeys.add(key);
+          }
+        };
+        const handleWalkKeyUp = (event: KeyboardEvent) => {
+          runtime.walkKeys.delete(event.key.toLowerCase());
+        };
+        const handleWalkPointerDown = (event: PointerEvent) => {
+          if (runtime.navigationMode !== "walk" || event.button !== 0) return;
+          runtime.walkDragging = true;
+          runtime.walkLastPointer = { x: event.clientX, y: event.clientY };
+          renderer.domElement.setPointerCapture?.(event.pointerId);
+        };
+        const handleWalkPointerMove = (event: PointerEvent) => {
+          if (runtime.navigationMode !== "walk" || !runtime.walkDragging || !runtime.walkLastPointer) return;
+          const dx = event.clientX - runtime.walkLastPointer.x;
+          const dy = event.clientY - runtime.walkLastPointer.y;
+          runtime.walkLastPointer = { x: event.clientX, y: event.clientY };
+          runtime.walkYaw -= dx * 0.004;
+          runtime.walkPitch = Math.max(-1.25, Math.min(1.25, runtime.walkPitch - dy * 0.003));
+        };
+        const handleWalkPointerUp = () => {
+          runtime.walkDragging = false;
+          runtime.walkLastPointer = null;
+        };
+        window.addEventListener("keydown", handleWalkKeyDown);
+        window.addEventListener("keyup", handleWalkKeyUp);
+        renderer.domElement.addEventListener("pointerdown", handleWalkPointerDown);
+        renderer.domElement.addEventListener("pointermove", handleWalkPointerMove);
+        renderer.domElement.addEventListener("pointerup", handleWalkPointerUp);
+        renderer.domElement.addEventListener("pointercancel", handleWalkPointerUp);
+
         controls.addEventListener("start", () => {
           runtime.cameraGoal = null;
         });
 
         const loop = () => {
+          if (runtime.navigationMode === "walk") {
+            const forward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
+              - Number(runtime.walkKeys.has("s") || runtime.walkKeys.has("arrowdown"));
+            const strafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
+              - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
+            const speed = 0.12;
+            if (forward || strafe) {
+              camera.position.x += (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
+              camera.position.z += (-Math.cos(runtime.walkYaw) * forward - Math.sin(runtime.walkYaw) * strafe) * speed;
+              const maxX = Math.max(1, lotWidth / 2 - 0.25);
+              const maxZ = Math.max(1, lotDepth / 2 - 0.25);
+              camera.position.x = Math.max(-maxX, Math.min(maxX, camera.position.x));
+              camera.position.z = Math.max(-maxZ, Math.min(maxZ, camera.position.z));
+            }
+            const lookDistance = 5;
+            const cosPitch = Math.cos(runtime.walkPitch);
+            controls.target.set(
+              camera.position.x - Math.sin(runtime.walkYaw) * cosPitch * lookDistance,
+              camera.position.y + Math.sin(runtime.walkPitch) * lookDistance,
+              camera.position.z - Math.cos(runtime.walkYaw) * cosPitch * lookDistance,
+            );
+          }
           if (runtime.cameraGoal) {
             const goal = runtime.cameraGoal;
             camera.position.x += (goal.position.x - camera.position.x) * 0.14;
@@ -392,6 +496,11 @@ export default function ConceptWebGLScene({
 
         (runtime as any).observer = observer;
         (runtime as any).handlePointer = handlePointer;
+        (runtime as any).handleWalkKeyDown = handleWalkKeyDown;
+        (runtime as any).handleWalkKeyUp = handleWalkKeyUp;
+        (runtime as any).handleWalkPointerDown = handleWalkPointerDown;
+        (runtime as any).handleWalkPointerMove = handleWalkPointerMove;
+        (runtime as any).handleWalkPointerUp = handleWalkPointerUp;
 
         setEngineState("ready");
         onReady?.(true);
@@ -410,7 +519,15 @@ export default function ConceptWebGLScene({
       const runtime = runtimeRef.current;
       if (!runtime) return;
       cancelAnimationFrame(runtime.animationFrame);
-      (runtime as any).observer?.disconnect?.();
+      window.removeEventListener("keydown", (runtime as any).handleWalkKeyDown);
+      window.removeEventListener("keyup", (runtime as any).handleWalkKeyUp);
+      runtime.renderer.domElement.removeEventListener("pointerdown", (runtime as any).handleWalkPointerDown);
+      runtime.renderer.domElement.removeEventListener("pointermove", (runtime as any).handleWalkPointerMove);
+      runtime.renderer.domElement.removeEventListener("pointerup", (runtime as any).handleWalkPointerUp);
+      runtime.renderer.domElement.removeEventListener("pointercancel", (runtime as any).handleWalkPointerUp);
+      runtime.environmentTexture?.dispose?.();
+      // handleWalkKeyDownCleanupMarker
+            (runtime as any).observer?.disconnect?.();
       runtime.renderer.domElement.removeEventListener("click", (runtime as any).handlePointer);
       runtime.controls?.dispose?.();
       runtime.transform?.dispose?.();
@@ -423,7 +540,7 @@ export default function ConceptWebGLScene({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime || engineState !== "ready") return;
+    if (!runtime || engineState !== "ready" || runtime.navigationMode === "walk") return;
     const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
     const radians = (cameraPresetDegrees * Math.PI) / 180;
     const elevation = Math.max(5.5, radius * 0.54);
@@ -1053,6 +1170,43 @@ export default function ConceptWebGLScene({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+    runtime.navigationMode = navigationMode;
+    runtime.walkKeys.clear();
+    runtime.cameraGoal = null;
+    runtime.controls.enabled = navigationMode === "orbit";
+
+    if (navigationMode === "walk") {
+      const floorY = activeFloor * 2.96 + 1.62;
+      runtime.camera.position.y = floorY;
+      runtime.walkYaw = Math.atan2(-runtime.camera.position.x, -runtime.camera.position.z || -1);
+      runtime.walkPitch = 0;
+      const lookDistance = 5;
+      runtime.controls.target.set(
+        runtime.camera.position.x - Math.sin(runtime.walkYaw) * lookDistance,
+        floorY,
+        runtime.camera.position.z - Math.cos(runtime.walkYaw) * lookDistance,
+      );
+    } else {
+      const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
+      const radians = (cameraPresetDegrees * Math.PI) / 180;
+      runtime.cameraGoal = {
+        position: {
+          x: Math.sin(radians) * radius,
+          y: Math.max(5.5, radius * 0.54),
+          z: Math.cos(radians) * radius,
+        },
+        target: {
+          x: 0,
+          y: Math.max(1.5, levels.length * 1.15),
+          z: 0,
+        },
+      };
+    }
+  }, [activeFloor, cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth, navigationMode]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
     const transform = runtime?.transform;
     if (!runtime || !transform || engineState !== "ready") return;
     transform.setMode(transformMode);
@@ -1096,7 +1250,7 @@ export default function ConceptWebGLScene({
     });
 
     runtime.transform?.detach?.();
-    if (selectedObjectId) {
+    if (navigationMode === "orbit" && selectedObjectId) {
       const selected = runtime.objectGroups.get(selectedObjectId);
       if (selected) runtime.transform?.attach?.(selected);
     }
@@ -1107,6 +1261,7 @@ export default function ConceptWebGLScene({
     selectedObjectId,
     selectedOpeningId,
     selectedWallId,
+    navigationMode,
     objects,
   ]);
 
@@ -1128,7 +1283,7 @@ export default function ConceptWebGLScene({
       )}
       {engineState === "ready" && (
         <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-[11px] font-semibold text-white shadow-xl backdrop-blur">
-          3D Pro · seleção instantânea · câmera suave · arraste para orbitar · roda/pinça para zoom
+          3D Pro · IBL/HDRI · {navigationMode === "walk" ? "WASD/setas para caminhar · arraste para olhar" : "arraste para orbitar · roda/pinça para zoom"}
         </div>
       )}
     </div>
