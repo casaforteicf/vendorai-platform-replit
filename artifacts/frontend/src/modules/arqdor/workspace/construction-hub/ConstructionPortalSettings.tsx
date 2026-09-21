@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";
+import ConstructionPortalContentManager from "./ConstructionPortalContentManager";
 
 type Props = { arqState?: any };
 
@@ -230,6 +231,8 @@ export default function ConstructionPortalSettings({ arqState }: Props) {
           <span className="text-xs text-slate-400">Segurança: rascunhos e diários em revisão nunca são enviados ao portal.</span>
         </div>
       </section>
+
+      {tenantId && obraId ? <ConstructionPortalContentManager tenantId={tenantId} obraId={obraId} /> : null}
     </div>
   );
 }
