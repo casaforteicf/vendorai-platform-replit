@@ -2675,15 +2675,45 @@ export default function ConceptPlanner() {
     setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
 
     try {
-      const selector = source === "model3d"
-        ? "svg[data-concept-model3d-source='true']"
-        : "[data-concept-render-source='true'] svg";
-      const svg = document.querySelector<SVGSVGElement>(selector);
-      if (!svg) throw new Error(source === "model3d"
-        ? "Não foi possível localizar a vista 3D atual para gerar o render."
-        : "Não foi possível localizar a volumetria para gerar o render.");
+      let originalImage: string;
+      if (source === "model3d") {
+        const canvas = document.querySelector<HTMLCanvasElement>("canvas[data-concept-model3d-source='true']");
+        if (!canvas) {
+          throw new Error("Não foi possível localizar a câmera 3D atual para gerar o render.");
+        }
 
-      const originalImage = await svgElementToPngDataUrl(svg, source === "model3d" ? 1.9 : 1.7);
+        const targetWidth = 1920;
+        const targetHeight = 1080;
+        const exportCanvas = document.createElement("canvas");
+        exportCanvas.width = targetWidth;
+        exportCanvas.height = targetHeight;
+        const ctx = exportCanvas.getContext("2d");
+        if (!ctx) throw new Error("Não foi possível preparar a imagem da câmera 3D.");
+
+        const srcW = Math.max(1, canvas.width);
+        const srcH = Math.max(1, canvas.height);
+        const srcAspect = srcW / srcH;
+        const targetAspect = targetWidth / targetHeight;
+        let sx = 0;
+        let sy = 0;
+        let sw = srcW;
+        let sh = srcH;
+
+        if (srcAspect > targetAspect) {
+          sw = srcH * targetAspect;
+          sx = (srcW - sw) / 2;
+        } else if (srcAspect < targetAspect) {
+          sh = srcW / targetAspect;
+          sy = (srcH - sh) / 2;
+        }
+
+        ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
+        originalImage = exportCanvas.toDataURL("image/png", 1);
+      } else {
+        const svg = document.querySelector<SVGSVGElement>("[data-concept-render-source='true'] svg");
+        if (!svg) throw new Error("Não foi possível localizar a volumetria para gerar o render.");
+        originalImage = await svgElementToPngDataUrl(svg, 1.7);
+      }
       const brief = buildConceptRenderBrief({
         lotWidth,
         lotDepth,
@@ -2712,7 +2742,12 @@ export default function ConceptPlanner() {
           original_image_url: originalImage,
           mode: "preservar",
           ambiente: renderView === "interior" ? "interior" : "fachada",
-          user_notes: brief,
+          user_notes: [
+            brief,
+            "FINAL OUTPUT TARGET: luxury architectural visualization, physically plausible materials and lighting, ray-traced look, realistic glass, realistic water when present, natural contact shadows, balanced exposure, professional architectural photography composition, no geometry changes, no invented openings, no structural modifications.",
+          ].join("\n"),
+          output_resolution: "4k",
+          aspect_ratio: "16:9",
         }),
       });
 
