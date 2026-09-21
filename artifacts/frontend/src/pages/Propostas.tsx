@@ -13,6 +13,7 @@ import {
   getListPropostasQueryKey,
   useCreateProposta,
   useCreatePropostaFromCatalogo,
+  useUpdateProposta,
   useUpdatePropostaStatus,
   useDeleteProposta,
   useListTenantLeads,
@@ -32,6 +33,7 @@ import {
   getGetBusinessProfileByTenantQueryKey,
   useGetLead,
   getGetLeadQueryKey,
+  getGetPropostaQueryKey,
   useListPaymentMethods,
   getListPaymentMethodsQueryKey,
   useRequestUploadUrl,
@@ -2028,6 +2030,7 @@ function newFreeItem(): FreeItem {
     leadEmpresa,
     dealId: activeDealId,
     initialProductIds = [],
+    editingProposta,
     onSuccess,
   }: {
     open: boolean;
@@ -2040,6 +2043,7 @@ function newFreeItem(): FreeItem {
     leadEmpresa?: string;
     dealId?: string;
     initialProductIds?: string[];
+    editingProposta?: Proposta;
     onSuccess?: () => void;
   }) {
     const { toast } = useToast();
@@ -2068,9 +2072,11 @@ function newFreeItem(): FreeItem {
     const [contextoIA, setContextoIA] = useState("");
     const [showIAPanel, setShowIAPanel] = useState(false);
   
-    const defaultTitle = lockedLeadId
-      ? `Orçamento - ${leadNome || "Cliente"}`
-      : "";
+    const defaultTitle = editingProposta?.titulo ?? (
+      lockedLeadId
+        ? `Orçamento - ${leadNome || "Cliente"}`
+        : ""
+    );
   
     const form = useForm<PropostaFormValues>({
       resolver: zodResolver(propostaFormSchema),
@@ -2108,8 +2114,9 @@ function newFreeItem(): FreeItem {
       return acc;
     }, {} as Record<string, string>) ?? {};
   
-    const createFromCatMut     = useCreatePropostaFromCatalogo();
-    const createLivreMut       = useCreateProposta();
+    const createFromCatMut      = useCreatePropostaFromCatalogo();
+    const createLivreMut        = useCreateProposta();
+    const updateExistingMut     = useUpdateProposta();
     const createFromTemplateMut = useCreatePropostaFromTemplate();
     const { mutate: createDeal } = useCreateDeal();
     const { data: propostaTemplates = [] } = useListPropostaTemplates(tenantId, {
@@ -2121,7 +2128,95 @@ function newFreeItem(): FreeItem {
     });
   
     useEffect(() => {
-      if (!open || initialProductIds.length === 0) return;
+      if (!open || !editingProposta) return;
+
+      standardBudgetAppliedRef.current = true;
+      const currentItems = ((editingProposta.itens ?? []) as Array<any>);
+
+      form.reset({
+        leadId: editingProposta.leadId,
+        titulo: editingProposta.titulo,
+        validadeAte: editingProposta.validadeAte ? String(editingProposta.validadeAte).slice(0, 10) : "",
+        observacoes: editingProposta.observacoes ?? "",
+        formaPagamento: editingProposta.formaPagamento ?? "",
+        condPagamento: editingProposta.condPagamento ?? "",
+        prazoEntrega: editingProposta.prazoEntrega ?? "",
+        formaPagamentoMensalidade: (editingProposta as any).formaPagamentoMensalidade ?? "",
+        condPagamentoMensalidade: (editingProposta as any).condPagamentoMensalidade ?? "",
+        recorrente: editingProposta.recorrente ?? false,
+        valorMensal: editingProposta.valorMensal != null ? Number(editingProposta.valorMensal) : undefined,
+        prazoContratoMeses: editingProposta.prazoContratoMeses ?? undefined,
+        paymentCompositions: ((editingProposta as any).paymentCompositions ?? []).map((item: any) => ({
+          forma: item.forma ?? "",
+          valor: Number(item.valor ?? 0),
+          comprovanteUrl: item.comprovanteUrl ?? "",
+        })),
+        skipAsaasBilling: false,
+      });
+
+      const allStructured = currentItems.length > 0
+        && currentItems.every((item) => Boolean(item.produtoId || item.composicaoId));
+
+      if (currentItems.length === 0) {
+        // Orçamento legado vazio: abrir diretamente no construtor completo,
+        // sem criar uma cópia nem esconder as funções de etapas/composições.
+        setMode("catalogo");
+        setOrcamentoEtapas(buildStandardStages("icf"));
+        setCartLines([]);
+        setFreeItems([newFreeItem()]);
+      } else if (allStructured) {
+        setMode("catalogo");
+
+        const groups = new Map<string, OrcamentoEtapaDraft & { ordem: number }>();
+        currentItems.forEach((item, index) => {
+          const ordem = Number(item.etapaOrdem ?? item.ordemExecucao ?? index + 1);
+          const etapaId = String(item.etapaId ?? `etapa-existente-${ordem}`);
+          if (!groups.has(etapaId)) {
+            groups.set(etapaId, {
+              id: etapaId,
+              nome: item.etapaNome ?? `Etapa ${ordem}`,
+              ordem,
+            });
+          }
+        });
+
+        const etapas = Array.from(groups.values())
+          .sort((a, b) => a.ordem - b.ordem)
+          .map(({ id, nome }) => ({ id, nome }));
+
+        setOrcamentoEtapas(etapas.length ? etapas : buildStandardStages("icf"));
+        setCartLines(currentItems.map((item, index) => ({
+          etapaId: String(item.etapaId ?? etapas[0]?.id ?? DEFAULT_ETAPA_ID),
+          tipo: item.composicaoId ? "composicao" as const : "produto" as const,
+          produtoId: item.produtoId ?? undefined,
+          composicaoId: item.composicaoId ?? undefined,
+          quantidade: Number(item.quantidade ?? 1),
+          precoUnitarioOverride: Number(item.valorUnitario ?? 0),
+          nomeOverride: item.nome ?? undefined,
+        })));
+        setFreeItems([newFreeItem()]);
+      } else {
+        setMode("livre");
+        setFreeItems(currentItems.length
+          ? currentItems.map((item, index) => ({
+              id: String(item.id ?? `item-existente-${index}`),
+              nome: item.nome ?? "",
+              quantidade: Number(item.quantidade ?? 1),
+              valorUnitario: Number(item.valorUnitario ?? 0),
+            }))
+          : [newFreeItem()]
+        );
+        setOrcamentoEtapas(buildStandardStages("icf"));
+        setCartLines([]);
+      }
+
+      setCartError("");
+      setFreeError("");
+      setShowAllByStage({});
+    }, [open, editingProposta?.id]);
+
+    useEffect(() => {
+      if (!open || editingProposta || initialProductIds.length === 0) return;
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
       setCartLines(initialProductIds.map((produtoId) => ({
@@ -2133,7 +2228,7 @@ function newFreeItem(): FreeItem {
     }, [open, initialProductIds.join(",")]);
 
     useEffect(() => {
-      if (!open || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
+      if (!open || editingProposta || initialProductIds.length > 0 || standardBudgetAppliedRef.current || composicoes.length === 0) return;
       standardBudgetAppliedRef.current = true;
       setMode("catalogo");
       if (constructionSystem === "icf") {
@@ -2449,6 +2544,54 @@ function newFreeItem(): FreeItem {
     }
   }
 
+  function saveExistingBudget(data: Record<string, unknown>) {
+    if (!editingProposta) return false;
+
+    updateExistingMut.mutate(
+      { id: editingProposta.id, data: data as any },
+      {
+        onSuccess: async () => {
+          toast({ title: "Orçamento atualizado com sucesso" });
+          await qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+          await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(editingProposta.id) });
+          if (lockedLeadId) {
+            await qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
+          }
+          onSuccess?.();
+          handleClose();
+        },
+        onError: (error: any) => toast({
+          title: "Erro ao atualizar orçamento",
+          description: error?.message,
+          variant: "destructive",
+        }),
+      }
+    );
+    return true;
+  }
+
+  function existingExecutionFor(line: CartLine | undefined, index: number) {
+    if (!editingProposta) return {};
+    const itens = (editingProposta.itens ?? []) as Array<any>;
+    const byIdentity = line
+      ? itens.find((item) =>
+          String(item.etapaId ?? "") === String(line.etapaId ?? "")
+          && (
+            (line.produtoId && item.produtoId === line.produtoId)
+            || (line.composicaoId && item.composicaoId === line.composicaoId)
+          )
+        )
+      : undefined;
+    const current = byIdentity ?? itens[index];
+    return current
+      ? {
+          statusExecucao: current.statusExecucao ?? "pendente",
+          iniciadoEm: current.iniciadoEm,
+          executadoEm: current.executadoEm,
+        }
+      : { statusExecucao: "pendente" };
+  }
+
   // ── submit ────────────────────────────────────────────────────────────────
   function onSubmit(vals: PropostaFormValues) {
     const recFields = vals.recorrente
@@ -2511,6 +2654,61 @@ function newFreeItem(): FreeItem {
       setCartError("");
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
+
+      if (editingProposta) {
+        const materializedItems = valid.map((line, itemIndex) => {
+          const produto = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
+          const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
+          const basePrice = produto
+            ? Number(produto.precoBase ?? 0)
+            : Number(composicao?.custoTotal ?? 0);
+          const valorUnitario = line.precoUnitarioOverride !== undefined
+            ? Number(line.precoUnitarioOverride)
+            : basePrice;
+
+          return {
+            nome: line.nomeOverride?.trim() || produto?.nome || composicao?.nome || "Item do orçamento",
+            quantidade: Number(line.quantidade ?? 1),
+            valorUnitario,
+            ...(produto?.id ? { produtoId: produto.id } : {}),
+            ...(composicao?.id ? { composicaoId: composicao.id } : {}),
+            sku: produto?.sku ?? composicao?.codigo ?? undefined,
+            descricao: produto?.descricao ?? composicao?.descricao ?? undefined,
+            unidade: produto?.unidade ?? composicao?.unidade ?? undefined,
+            etapaId: line.etapaId,
+            etapaNome: etapaName.get(line.etapaId),
+            etapaOrdem: etapaOrder.get(line.etapaId),
+            ordemExecucao: itemIndex + 1,
+            ...existingExecutionFor(line, itemIndex),
+          };
+        });
+        const updatedTotal = materializedItems.reduce(
+          (sum, item) => sum + Number(item.quantidade) * Number(item.valorUnitario),
+          0
+        );
+
+        saveExistingBudget({
+          titulo: vals.titulo,
+          validadeAte: vals.validadeAte || undefined,
+          observacoes: vals.observacoes || undefined,
+          formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined,
+          condPagamento: vals.condPagamento || undefined,
+          prazoEntrega: vals.prazoEntrega || undefined,
+          ...recFields,
+          itens: materializedItems,
+          valorTotal: updatedTotal,
+          paymentCompositions: paymentComp?.length
+            ? paymentComp.map((pc) => ({
+                forma: pc.forma as PaymentCompositionLineForma,
+                valor: pc.valor,
+                comprovanteUrl: pc.comprovanteUrl,
+              }))
+            : undefined,
+          skipAsaasBilling: skipAsaas,
+        });
+        return;
+      }
+
       createFromCatMut.mutate(
         {
           tenantId,
@@ -2565,6 +2763,56 @@ function newFreeItem(): FreeItem {
       setFreeError("");
       const paymentComp2 = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas2 = vals.skipAsaasBilling;
+
+      if (editingProposta) {
+        const oldItems = (editingProposta.itens ?? []) as Array<any>;
+        const updatedItems = valid.map((item, index) => {
+          const previous = oldItems[index];
+          return {
+            nome: item.nome,
+            quantidade: Number(item.quantidade ?? 1),
+            valorUnitario: Number(item.valorUnitario ?? 0),
+            sku: previous?.sku,
+            descricao: previous?.descricao,
+            unidade: previous?.unidade,
+            produtoId: previous?.produtoId,
+            composicaoId: previous?.composicaoId,
+            etapaId: previous?.etapaId,
+            etapaNome: previous?.etapaNome,
+            etapaOrdem: previous?.etapaOrdem,
+            ordemExecucao: index + 1,
+            statusExecucao: previous?.statusExecucao ?? "pendente",
+            iniciadoEm: previous?.iniciadoEm,
+            executadoEm: previous?.executadoEm,
+          };
+        });
+        const updatedTotal = updatedItems.reduce(
+          (sum, item) => sum + Number(item.quantidade) * Number(item.valorUnitario),
+          0
+        );
+
+        saveExistingBudget({
+          titulo: vals.titulo,
+          validadeAte: vals.validadeAte || undefined,
+          observacoes: vals.observacoes || undefined,
+          formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined,
+          condPagamento: vals.condPagamento || undefined,
+          prazoEntrega: vals.prazoEntrega || undefined,
+          ...recFields,
+          itens: updatedItems,
+          valorTotal: updatedTotal,
+          paymentCompositions: paymentComp2?.length
+            ? paymentComp2.map((pc) => ({
+                forma: pc.forma as PaymentCompositionLineForma,
+                valor: pc.valor,
+                comprovanteUrl: pc.comprovanteUrl,
+              }))
+            : undefined,
+          skipAsaasBilling: skipAsaas2,
+        });
+        return;
+      }
+
       createLivreMut.mutate(
         { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
         {
@@ -2619,13 +2867,13 @@ function newFreeItem(): FreeItem {
     );
   }
 
-  const isPending = createFromCatMut.isPending || createLivreMut.isPending || createFromTemplateMut.isPending;
+  const isPending = createFromCatMut.isPending || createLivreMut.isPending || createFromTemplateMut.isPending || updateExistingMut.isPending;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-[96vw] xl:max-w-[1600px] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo Orçamento</DialogTitle>
+          <DialogTitle>{editingProposta ? "Editar Orçamento" : "Novo Orçamento"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -2688,13 +2936,15 @@ function newFreeItem(): FreeItem {
               <p className="text-xs text-muted-foreground mt-0.5">Use um modelo pronto, selecione produtos ou composições, ou informe itens livres.</p>
             </div>
             <div className="flex rounded-lg border overflow-hidden text-sm">
-              <button
-                type="button"
-                onClick={() => setMode("template")}
-                className={`flex-1 py-2 font-medium transition-colors ${mode === "template" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              >
-                Modelos de orçamento
-              </button>
+              {!editingProposta && (
+                <button
+                  type="button"
+                  onClick={() => setMode("template")}
+                  className={`flex-1 py-2 font-medium transition-colors ${mode === "template" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Modelos de orçamento
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setMode("catalogo")}
@@ -2709,13 +2959,15 @@ function newFreeItem(): FreeItem {
               >
                 Itens Livres
               </button>
-              <button
-                type="button"
-                onClick={() => setMode("importar")}
-                className={`flex-1 py-2 font-medium transition-colors ${mode === "importar" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              >
-                Importar de outro sistema
-              </button>
+              {!editingProposta && (
+                <button
+                  type="button"
+                  onClick={() => setMode("importar")}
+                  className={`flex-1 py-2 font-medium transition-colors ${mode === "importar" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Importar de outro sistema
+                </button>
+              )}
             </div>
 
             {/* ── TEMPLATE MODE ─────────────────────────────────────────────── */}
@@ -3529,7 +3781,7 @@ function newFreeItem(): FreeItem {
               <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancelar</Button>
               <Button type="submit" className="flex-1" disabled={isPending}>
                 {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Criar Orçamento
+                {editingProposta ? "Salvar Orçamento" : "Criar Orçamento"}
               </Button>
             </div>
           </form>
@@ -4150,11 +4402,13 @@ export default function Propostas() {
   const urlStatus = urlParams.get("status");
   const urlLeadId = urlParams.get("leadId") ?? undefined;
   const urlDealId = urlParams.get("dealId") ?? undefined;
+  const urlEditId = urlParams.get("edit") ?? undefined;
+  const returnTo = urlParams.get("returnTo") ?? undefined;
   const urlProductIds = (urlParams.get("productIds") ?? "").split(",").filter(Boolean);
   const openNewFromUrl = urlParams.get("new") === "1";
   const defaultStatus = urlStatus === "ativa" ? "enviada" : undefined;
 
-  const [modalOpen, setModalOpen] = useState(openNewFromUrl);
+  const [modalOpen, setModalOpen] = useState(openNewFromUrl || !!urlEditId);
   const [detailProposta, setDetailProposta] = useState<Proposta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Proposta | null>(null);
   const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
@@ -4174,6 +4428,22 @@ export default function Propostas() {
 
   const statusMut = useUpdatePropostaStatus();
   const deleteMut = useDeleteProposta();
+  const [, setLocation] = useLocation();
+
+  const editTarget = urlEditId
+    ? propostas.find((proposta) => proposta.id === urlEditId) ?? null
+    : null;
+
+  function closeBudgetModal() {
+    setModalOpen(false);
+    if (urlEditId && returnTo) {
+      setLocation(returnTo);
+      return;
+    }
+    if (urlEditId || openNewFromUrl) {
+      window.history.replaceState({}, "", "/propostas");
+    }
+  }
 
   // Build leadId → name map
   const leadMap = Object.fromEntries(leads.map((l) => [l.id, l.nome]));
@@ -4420,14 +4690,15 @@ export default function Propostas() {
 
       {/* Modals */}
       <PropostaModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        open={modalOpen && (!urlEditId || !!editTarget)}
+        onClose={closeBudgetModal}
         tenantId={tenantId}
         catalog={catalog}
-        leadId={openNewFromUrl ? urlLeadId : undefined}
-        dealId={openNewFromUrl ? urlDealId : undefined}
-        leadNome={openNewFromUrl && urlLeadId ? leadMap[urlLeadId] : undefined}
-        initialProductIds={openNewFromUrl ? urlProductIds : []}
+        leadId={editTarget?.leadId ?? (openNewFromUrl ? urlLeadId : undefined)}
+        dealId={editTarget?.dealId ?? (openNewFromUrl ? urlDealId : undefined)}
+        leadNome={editTarget ? (leadMap[editTarget.leadId] ?? undefined) : (openNewFromUrl && urlLeadId ? leadMap[urlLeadId] : undefined)}
+        initialProductIds={editTarget ? [] : (openNewFromUrl ? urlProductIds : [])}
+        editingProposta={editTarget ?? undefined}
       />
       <PropostaDetailSheet
         proposta={detailProposta}
