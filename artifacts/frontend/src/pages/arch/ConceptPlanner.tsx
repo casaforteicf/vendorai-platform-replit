@@ -392,7 +392,7 @@ export default function ConceptPlanner() {
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
-  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
 
   const filteredTypologies = useMemo(() => {
@@ -449,8 +449,10 @@ export default function ConceptPlanner() {
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         if (draft.archProjetoId) setHandoffState("sent");
-        const rawStep = draft.currentStep ?? 0;
-        setStep(normalizeConceptStep(rawStep, STEPS.length - 1));
+        // /arch/concept is now a single workspace: always reopen inside the editor.
+        // Legacy wizard steps remain only for migration compatibility and are not restored.
+        setStep(4);
+        setEditorView("plan");
         const loadedFloors = Math.round(finiteNumber(draft.configuration?.floors, 1, 1, 3));
         const loadedWalls = normalizeLoadedWalls(draft.configuration?.customWalls, loadedFloors);
         const loadedOpenings = normalizeLoadedOpenings(draft.configuration?.customOpenings, loadedWalls);
@@ -2404,6 +2406,11 @@ export default function ConceptPlanner() {
                   <ArrowLeft className="h-4 w-4" />
                 </a>
 
+                <div className="hidden min-w-0 sm:block">
+                  <div className="truncate text-sm font-semibold text-slate-950">Projeto residencial</div>
+                  <div className="text-[11px] text-slate-500">Arqdor Concept</div>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => void saveConcept(4)}
@@ -2431,12 +2438,13 @@ export default function ConceptPlanner() {
                     ["plan", "2D"],
                     ["model3d", "3D"],
                     ["facade", "Fachada"],
-                    ["render", "Resultado"],
+                    ["render", "Render"],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => {
+                        setStep(4);
                         setEditorView(value);
                         if (value !== "plan") setLibraryOpen(false);
                       }}
@@ -2482,13 +2490,12 @@ export default function ConceptPlanner() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!canAdvanceConceptLayout(layoutIssues)) return;
-                    setStep(5);
-                    void saveConcept(5);
+                    setEditorView("facade");
+                    setLibraryOpen(false);
+                    void saveConcept(4);
                   }}
-                  disabled={blockingLayoutIssues.length > 0}
-                  title={blockingLayoutIssues.length > 0 ? "Corrija os erros da planta antes de avançar" : "Continuar para fachada"}
-                  className="ml-1 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-slate-900 px-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:gap-2 sm:px-3"
+                  title="Abrir edição de fachada"
+                  className="ml-1 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-slate-900 px-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 sm:gap-2 sm:px-3"
                 >
                   Fachada <ArrowRight className="h-4 w-4" />
                 </button>
@@ -3252,8 +3259,32 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
+              <div className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
+                {([
+                  ["plan", "2D"],
+                  ["model3d", "3D"],
+                  ["facade", "Fachada"],
+                  ["render", "Render"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setStep(4);
+                      setEditorView(value);
+                      setLibraryOpen(false);
+                    }}
+                    className={editorView === value
+                      ? "flex-1 rounded-xl bg-slate-950 px-2 py-2.5 text-xs font-bold text-white"
+                      : "flex-1 rounded-xl px-2 py-2.5 text-xs font-semibold text-slate-500"}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               {editorView === "plan" && (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
-              <aside className="fixed inset-x-3 bottom-3 z-[70] max-h-[72vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
+              <aside className="fixed inset-x-3 bottom-20 z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
                 {selectedCustomWall ? (
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="mr-2 min-w-[130px]">
