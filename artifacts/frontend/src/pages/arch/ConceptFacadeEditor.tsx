@@ -481,91 +481,94 @@ export default function ConceptFacadeEditor({
       </div>
       )}
 
-      <div className="absolute inset-0">
-        <ConceptDerivedFacade
-          lotWidth={lotWidth}
-          levels={levels}
-          rooms={rooms}
-          facade={facade}
-          design={design}
-          selectedVolumeId={selectedVolumeId}
-          onSelectVolume={setSelectedVolumeId}
-          onVolumeChange={updateVolume}
-          selectedSurface={selectedSurface}
-          onSelectSurface={(surface) => {
-            if (!surface) return;
-            setSelectedSurface(surface);
-            setSelectedVolumeId(null);
-            setPanel("materials");
-            setPanelOpen(true);
-          }}
-        />
-      </div>
+      <div className="absolute inset-0 grid grid-cols-1 bg-slate-200 md:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+        <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-[#eef1f3]">
+          <ConceptDerivedFacade
+            lotWidth={lotWidth}
+            levels={levels}
+            rooms={rooms}
+            facade={facade}
+            design={design}
+            selectedVolumeId={selectedVolumeId}
+            onSelectVolume={setSelectedVolumeId}
+            onVolumeChange={updateVolume}
+            selectedSurface={selectedSurface}
+            onSelectSurface={(surface) => {
+              if (!surface) return;
+              setSelectedSurface(surface);
+              setSelectedVolumeId(null);
+              setPanel("materials");
+              setPanelOpen(true);
+            }}
+          />
 
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
-        <Sun className="h-4 w-4 text-orange-500" />
-        <span className="text-xs font-semibold">
-          {design.lighting === "day" ? "Dia" : design.lighting === "sunset" ? "Pôr do sol" : "Noite"}
-        </span>
-      </div>
-
-      <div className="absolute right-4 top-16 z-20 hidden w-[310px] overflow-hidden rounded-2xl border bg-white/96 shadow-2xl backdrop-blur md:block">
-        <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
-          <div>
-            <div className="text-xs font-bold text-slate-900">Fachada realista</div>
-            <div className="text-[10px] text-slate-500">Render atualizado a partir desta composição</div>
+          <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+            <Sun className="h-4 w-4 text-orange-500" />
+            <span className="text-xs font-semibold">
+              {design.lighting === "day" ? "Dia" : design.lighting === "sunset" ? "Pôr do sol" : "Noite"}
+            </span>
           </div>
-          {realisticPreviewLoading && (
-            <span className="rounded-full bg-orange-50 px-2 py-1 text-[9px] font-bold text-orange-700">Gerando...</span>
-          )}
         </div>
 
-        {realisticPreviewUrl ? (
-          <>
-            <div className="aspect-[16/10] overflow-hidden bg-slate-100">
-              <img
-                src={realisticPreviewUrl}
-                alt="Prévia realista da fachada"
-                className="h-full w-full object-cover"
-              />
+        <aside className="hidden min-w-0 flex-col bg-slate-950 md:flex">
+          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <div>
+              <div className="text-sm font-bold text-white">Visual realista</div>
+              <div className="mt-0.5 text-[11px] text-slate-400">Comparação direta com a composição arquitetônica</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 p-3">
-              <button
-                type="button"
-                onClick={onOpenRender}
-                disabled={realisticPreviewLoading}
-                className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                Atualizar render
-              </button>
-              <button
-                type="button"
-                onClick={onOpenGallery}
-                className="rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"
-              >
-                Ver galeria
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="p-4">
-            <div className="grid min-h-[150px] place-items-center rounded-xl border border-dashed bg-slate-50 text-center">
-              <div className="px-5">
-                <Sparkles className="mx-auto h-6 w-6 text-orange-500" />
-                <div className="mt-2 text-xs font-semibold text-slate-900">Ainda sem imagem realista</div>
-                <div className="mt-1 text-[10px] leading-4 text-slate-500">Gere uma fachada preservando volumes, materiais, esquadrias e iluminação.</div>
-                <button
-                  type="button"
-                  onClick={onOpenRender}
-                  disabled={realisticPreviewLoading}
-                  className="mt-3 rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {realisticPreviewLoading ? "Gerando..." : "Gerar visual realista"}
-                </button>
-              </div>
-            </div>
+            {realisticPreviewLoading && (
+              <span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-[10px] font-bold text-orange-300">Gerando...</span>
+            )}
           </div>
-        )}
+
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            {realisticPreviewUrl ? (
+              <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+                <img
+                  src={realisticPreviewUrl}
+                  alt="Prévia realista da fachada"
+                  className="max-h-[calc(100dvh-210px)] w-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="grid min-h-[360px] w-full place-items-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03] text-center">
+                <div className="max-w-[280px] px-6">
+                  <Sparkles className="mx-auto h-8 w-8 text-orange-400" />
+                  <div className="mt-4 text-sm font-semibold text-white">Gere a primeira fachada realista</div>
+                  <div className="mt-2 text-xs leading-5 text-slate-400">
+                    O render preserva volumes, materiais, esquadrias, cobertura e iluminação desta composição.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onOpenRender}
+                    disabled={realisticPreviewLoading}
+                    className="mt-5 rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
+                  >
+                    {realisticPreviewLoading ? "Gerando..." : "Gerar fachada realista"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 border-t border-white/10 p-4">
+            <button
+              type="button"
+              onClick={onOpenRender}
+              disabled={realisticPreviewLoading}
+              className="rounded-xl bg-orange-500 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {realisticPreviewUrl ? "Atualizar render" : "Gerar render"}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenGallery}
+              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs font-semibold text-white hover:bg-white/10"
+            >
+              Abrir galeria
+            </button>
+          </div>
+        </aside>
       </div>
 
       {selectedVolume && (
