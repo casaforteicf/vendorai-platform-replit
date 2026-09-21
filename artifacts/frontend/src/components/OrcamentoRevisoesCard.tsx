@@ -124,12 +124,29 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
     enabled: !!leadId && !!tenantId,
   });
 
-  const { data: propostasData = [], isLoading: loadingOrcamentos } = useListPropostas(
+  const { data: propostasLeadData = [], isLoading: loadingOrcamentosLead } = useListPropostas(
     tenantId,
     { leadId },
     { request: { headers: { Authorization: `Bearer ${token}` } } },
   );
-  const orcamentos = propostasData as unknown as Orcamento[];
+  const { data: propostasDealData = [], isLoading: loadingOrcamentosDeal } = useListPropostas(
+    tenantId,
+    { dealId: dealId ?? "" },
+    {
+      query: { enabled: !!tenantId && !!dealId },
+      request: { headers: { Authorization: `Bearer ${token}` } },
+    },
+  );
+
+  const orcamentos = Array.from(
+    new Map(
+      [
+        ...(propostasLeadData as unknown as Orcamento[]),
+        ...(propostasDealData as unknown as Orcamento[]),
+      ].map((orc) => [orc.id, orc] as const),
+    ).values(),
+  );
+  const loadingOrcamentos = loadingOrcamentosLead || (!!dealId && loadingOrcamentosDeal);
   const hasOrcamento = orcamentos.length > 0;
 
   const updatePropostaStatus = useUpdatePropostaStatus({
@@ -508,9 +525,10 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                                 <History className="h-3 w-3" />
                                 Nova revisão
                               </Button>
-                              <a href={`${import.meta.env.BASE_URL}propostas/${orc.id}/print`} target="_blank" rel="noopener noreferrer">
-                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver orçamento">
+                              <a href={`${import.meta.env.BASE_URL}propostas/${orc.id}/print`}>
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" title="Abrir orçamento existente">
                                   <ExternalLink className="h-3.5 w-3.5" />
+                                  Abrir orçamento
                                 </Button>
                               </a>
                               <Button size="icon" variant="ghost" className="h-7 w-7" title="Baixar PDF" onClick={() => void downloadOrcamentoPdf(orc)}>
