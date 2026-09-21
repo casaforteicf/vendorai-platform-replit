@@ -469,7 +469,27 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
     const [etapasResult, diarioResult, comprasResult, medicoesResult, dependenciasResult] = await Promise.all([
       pool.query(`SELECT * FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`, [obraId]),
       pool.query(`SELECT * FROM obra_diario WHERE obra_id = $1 ORDER BY data DESC, created_at DESC`, [obraId]),
-      pool.query(`SELECT * FROM compras_obras WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
+      pool.query(
+        `SELECT c.*,
+                e.nome AS etapa_nome,
+                COALESCE(c.data_necessidade, e.data_inicio_prevista) AS data_necessidade_calculada,
+                CASE
+                  WHEN COALESCE(c.data_necessidade, e.data_inicio_prevista) IS NULL THEN NULL
+                  ELSE COALESCE(c.data_necessidade, e.data_inicio_prevista) - COALESCE(c.prazo_fornecedor_dias, 0)
+                END AS data_limite_compra,
+                CASE
+                  WHEN lower(c.status) IN ('recebido','cancelado','concluido') THEN 'ok'
+                  WHEN COALESCE(c.data_necessidade, e.data_inicio_prevista) IS NULL THEN 'sem_data'
+                  WHEN (COALESCE(c.data_necessidade, e.data_inicio_prevista) - COALESCE(c.prazo_fornecedor_dias, 0)) < CURRENT_DATE THEN 'atrasado'
+                  WHEN (COALESCE(c.data_necessidade, e.data_inicio_prevista) - COALESCE(c.prazo_fornecedor_dias, 0)) <= CURRENT_DATE + 7 THEN 'atencao'
+                  ELSE 'ok'
+                END AS risco_cronograma
+           FROM compras_obras c
+           LEFT JOIN obra_etapas e ON e.id = c.etapa_id AND e.obra_id = c.obra_id
+          WHERE c.obra_id = $1 AND c.tenant_id = $2
+          ORDER BY COALESCE(c.data_necessidade, e.data_inicio_prevista) ASC NULLS LAST, c.created_at DESC`,
+        [obraId, tid],
+      ),
       pool.query(
         `SELECT m.* FROM obra_etapa_medicoes m INNER JOIN obra_etapas e ON e.id = m.etapa_id WHERE e.obra_id = $1 ORDER BY m.created_at DESC`,
         [obraId],
@@ -486,8 +506,37 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
         ? etapas.reduce((sum: number, item: any) => sum + Number(item.percentual_executado ?? 0) * Number(item.peso_fisico ?? 0), 0) / weightedBase
         : etapas.reduce((sum: number, item: any) => sum + Number(item.percentual_executado ?? 0), 0) / etapas.length
       : 0;
+
+    const comprasRealizadas = comprasResult.rows
+      .filter((item: any) => ["recebido", "parcial"].includes(String(item.status ?? "").toLowerCase()))
+      .reduce((sum: number, item: any) => sum + Number(item.valor_total ?? 0), 0);
+
+    const maoObraExecutadaEstimada = etapas.reduce((sum: number, item: any) => {
+      const percentual = Math.max(0, Math.min(100, Number(item.percentual_executado ?? 0))) / 100;
+      if (percentual <= 0) return sum;
+      const start = scheduleDate(item.data_inicio_prevista);
+      const end = scheduleDate(item.data_fim_prevista);
+      if (!start || !end) return sum;
+      const dias = scheduleDurationDays(start, end);
+      const custoPlanejadoMaoObra = dias
+        * Math.max(1, Number(item.equipe_quantidade ?? 1))
+        * Math.max(0, Number(item.horas_dia ?? 8))
+        * Math.max(0, Number(item.custo_hora_pessoa ?? 0));
+      return sum + custoPlanejadoMaoObra * percentual;
+    }, 0);
+
+    const custoRealizadoCalculado = comprasRealizadas + maoObraExecutadaEstimada;
     res.json({
-      obra: { ...obra, percentualGeral },
+      obra: {
+        ...obra,
+        percentualGeral,
+        custoRealizadoCalculado,
+        custoRealizadoDetalhe: {
+          comprasRecebidas: comprasRealizadas,
+          maoObraExecutadaEstimada,
+          fonte: "compras_recebidas_mais_mao_obra_proporcional_ao_avanco",
+        },
+      },
       etapas,
       dependencias: dependenciasResult.rows,
       diario: diarioResult.rows,
@@ -1762,15 +1811,27 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/compras", async
     const quantidade = Number(req.body?.quantidade ?? 0);
     const valorUnitario = Number(req.body?.valorUnitario ?? 0);
     const valorTotal = req.body?.valorTotal === undefined ? quantidade * valorUnitario : Number(req.body.valorTotal);
+    const etapaId = req.body?.etapaId ? String(req.body.etapaId) : null;
+    const prazoFornecedorDias = Math.max(0, Math.min(3650, Number(req.body?.prazoFornecedorDias ?? 0)));
+    let dataNecessidade = req.body?.dataNecessidade ? String(req.body.dataNecessidade).slice(0, 10) : null;
+
+    if (etapaId) {
+      const etapa = await ownedEtapa(tid, obraId, etapaId);
+      if (!etapa) { res.status(404).json({ error: "Etapa vinculada à compra não pertence a esta obra" }); return; }
+      dataNecessidade = dataNecessidade ?? etapa.data_inicio_prevista ?? null;
+    }
+
     const result = await pool.query(
       `INSERT INTO compras_obras (
-        id, tenant_id, obra_id, descricao, fornecedor, quantidade, valor_unitario,
-        valor_total, status, data_prevista, observacoes, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),now()) RETURNING *`,
+        id, tenant_id, obra_id, etapa_id, descricao, fornecedor, quantidade, valor_unitario,
+        valor_total, status, data_prevista, data_necessidade, prazo_fornecedor_dias,
+        observacoes, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),now()) RETURNING *`,
       [
-        crypto.randomUUID(), tid, obraId, descricao, req.body?.fornecedor ?? null,
+        crypto.randomUUID(), tid, obraId, etapaId, descricao, req.body?.fornecedor ?? null,
         String(quantidade), String(valorUnitario), String(valorTotal), req.body?.status ?? "pendente",
-        req.body?.dataPrevista || null, req.body?.observacoes ?? null,
+        req.body?.dataPrevista || null, dataNecessidade, prazoFornecedorDias,
+        req.body?.observacoes ?? null,
       ],
     );
     res.status(201).json({ compra: result.rows[0] });
