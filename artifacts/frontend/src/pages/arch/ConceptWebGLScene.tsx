@@ -18,6 +18,7 @@ type Props = {
   showAllFloors: boolean;
   interiorMode: boolean;
   showRoof: boolean;
+  roof: "platibanda" | "aparente" | "misto";
   lightingMode: LightingMode;
   cameraPresetDegrees: number;
   cameraZoom: number;
@@ -136,6 +137,7 @@ export default function ConceptWebGLScene({
   showAllFloors,
   interiorMode,
   showRoof,
+  roof,
   lightingMode,
   cameraPresetDegrees,
   cameraZoom,
@@ -704,6 +706,54 @@ export default function ConceptWebGLScene({
           }
         }
       }
+      for (const stair of level.stairs ?? []) {
+        const steps = 11;
+        const run = Math.max(1.2, stair.depth);
+        const width = Math.max(0.8, stair.width);
+        const stepDepth = run / steps;
+        const stepRise = 2.8 / steps;
+        for (let step = 0; step < steps; step += 1) {
+          const depth = stepDepth * (step + 1);
+          const stepMesh = makeBox(
+            modelRoot,
+            width,
+            stepRise * (step + 1),
+            stepDepth,
+            stair.x + width / 2 - lotWidth / 2,
+            floorBase + (stepRise * (step + 1)) / 2,
+            stair.y + depth - stepDepth / 2 - lotDepth / 2,
+            0xc9c2b8,
+          );
+          stepMesh.castShadow = true;
+          stepMesh.receiveShadow = true;
+        }
+
+        const handrailHeight = 0.92;
+        const railColor = 0x475569;
+        const railLeft = makeBox(
+          modelRoot,
+          0.045,
+          handrailHeight,
+          run,
+          stair.x + 0.06 - lotWidth / 2,
+          floorBase + 1.45,
+          stair.y + run / 2 - lotDepth / 2,
+          railColor,
+        );
+        const railRight = makeBox(
+          modelRoot,
+          0.045,
+          handrailHeight,
+          run,
+          stair.x + width - 0.06 - lotWidth / 2,
+          floorBase + 1.45,
+          stair.y + run / 2 - lotDepth / 2,
+          railColor,
+        );
+        railLeft.rotation.x = -Math.atan2(2.8, run);
+        railRight.rotation.x = -Math.atan2(2.8, run);
+      }
+
     }
 
     for (const object of objects) {
@@ -792,17 +842,62 @@ export default function ConceptWebGLScene({
     if (showRoof && !interiorMode && showAllFloors) {
       const highestFloor = Math.max(0, ...levels.map((level) => level.floor));
       const roofY = highestFloor * 2.96 + 3.02;
-      const roof = makeBox(
-        modelRoot,
-        Math.max(1, lotWidth * 0.82),
-        0.18,
-        Math.max(1, lotDepth * 0.62),
-        0,
-        roofY,
-        0,
-        0x5b4338,
-      );
-      roof.castShadow = true;
+      const roofWidth = Math.max(2, lotWidth * 0.86);
+      const roofDepth = Math.max(2, lotDepth * 0.68);
+
+      if (roof === "platibanda") {
+        const slab = makeBox(modelRoot, roofWidth, 0.16, roofDepth, 0, roofY, 0, 0x4b5563);
+        slab.castShadow = true;
+        for (const [x, z, w, d] of [
+          [0, -roofDepth / 2 + 0.08, roofWidth, 0.16],
+          [0, roofDepth / 2 - 0.08, roofWidth, 0.16],
+          [-roofWidth / 2 + 0.08, 0, 0.16, roofDepth],
+          [roofWidth / 2 - 0.08, 0, 0.16, roofDepth],
+        ] as const) {
+          makeBox(modelRoot, w, 0.48, d, x, roofY + 0.24, z, 0xf4f4f5);
+        }
+      } else {
+        const pitch = 0.42;
+        const halfDepth = roofDepth / 2;
+        const slopeLength = Math.sqrt(halfDepth * halfDepth + (halfDepth * pitch) * (halfDepth * pitch));
+        const roofMaterial = 0x6b4f3e;
+        const left = makeBox(
+          modelRoot,
+          roofWidth,
+          0.14,
+          slopeLength,
+          0,
+          roofY + halfDepth * pitch / 2,
+          -halfDepth / 2,
+          roofMaterial,
+        );
+        left.rotation.x = -Math.atan(pitch);
+        const right = makeBox(
+          modelRoot,
+          roofWidth,
+          0.14,
+          slopeLength,
+          0,
+          roofY + halfDepth * pitch / 2,
+          halfDepth / 2,
+          roofMaterial,
+        );
+        right.rotation.x = Math.atan(pitch);
+
+        if (roof === "misto") {
+          const frontSlab = makeBox(
+            modelRoot,
+            roofWidth * 0.36,
+            0.18,
+            roofDepth * 0.34,
+            -roofWidth * 0.24,
+            roofY + 0.10,
+            -roofDepth * 0.24,
+            0x4b5563,
+          );
+          frontSlab.castShadow = true;
+        }
+      }
     }
 
     if (transform && selectedObjectId) {
@@ -825,6 +920,7 @@ export default function ConceptWebGLScene({
     selectedWallId,
     showAllFloors,
     showRoof,
+    roof,
     visibleFloors,
   ]);
 
