@@ -2226,6 +2226,12 @@ export default function ConceptPlanner() {
     }
   };
 
+  const latestFacadeRenderUrl = useMemo(() => {
+    if (conceptRender?.renderView === "exterior" && conceptRender.resultImageUrl) return conceptRender.resultImageUrl;
+    const history = Array.isArray(conceptRender?.history) ? conceptRender.history : [];
+    return [...history].reverse().find((item) => item.renderView === "exterior")?.resultImageUrl ?? null;
+  }, [conceptRender]);
+
   const hasEditorSelection = Boolean(
     selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall,
   );
@@ -4325,7 +4331,10 @@ export default function ConceptPlanner() {
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
                       onDesignChange={setFacadeDesign}
-                      onOpenRender={() => { setEditorView("render"); void generateConceptRender({ source: "facade", renderView: "exterior" }); }}
+                      realisticPreviewUrl={latestFacadeRenderUrl}
+                      realisticPreviewLoading={conceptRender?.status === "processing"}
+                      onOpenRender={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
+                      onOpenGallery={() => setEditorView("render")}
                     />
                   )}
 
