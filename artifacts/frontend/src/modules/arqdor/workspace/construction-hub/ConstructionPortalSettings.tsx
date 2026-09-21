@@ -11,7 +11,13 @@ type PortalConfig = {
   showDiary: boolean;
   showDiaryPhotos: boolean;
   showFinancialSummary: boolean;
+  showFinancialDetails: boolean;
   showClientDecisions: boolean;
+  showMeasurements: boolean;
+  showMilestones: boolean;
+  showDocuments: boolean;
+  showProcurementSummary: boolean;
+  showProjectGallery: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -21,7 +27,13 @@ const DEFAULT_CONFIG: PortalConfig = {
   showDiary: true,
   showDiaryPhotos: true,
   showFinancialSummary: false,
+  showFinancialDetails: false,
   showClientDecisions: true,
+  showMeasurements: true,
+  showMilestones: true,
+  showDocuments: true,
+  showProcurementSummary: true,
+  showProjectGallery: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -52,12 +64,18 @@ function projectMeta(arqState: any, projectCtx: any) {
 }
 
 const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string; dependsOn?: keyof PortalConfig }> = [
-  { key: "showOverview", title: "Visão geral da obra", description: "Status, endereço e datas principais." },
-  { key: "showSchedule", title: "Cronograma", description: "Etapas, datas previstas e avanço físico." },
+  { key: "showOverview", title: "Visão geral da obra", description: "Status, endereço, avanço físico, etapa atual, próximas etapas e previsão de entrega." },
+  { key: "showSchedule", title: "Cronograma", description: "Etapas, datas previstas, responsáveis e avanço físico." },
+  { key: "showMilestones", title: "Marcos da obra", description: "Marcos previstos, concluídos e próximos eventos do cronograma.", dependsOn: "showSchedule" },
+  { key: "showMeasurements", title: "Medições", description: "Histórico de evolução física registrada nas etapas.", dependsOn: "showSchedule" },
   { key: "showBudget", title: "Orçamento", description: "Somente orçamento enviado ou aprovado." },
   { key: "showDiary", title: "Diário de obra", description: "Somente registros com status Aprovado." },
-  { key: "showDiaryPhotos", title: "Fotos do diário", description: "Fotos, vídeos e anexos apenas de diários aprovados.", dependsOn: "showDiary" },
-  { key: "showFinancialSummary", title: "Resumo financeiro", description: "Mostra orçamento total e custo realizado. Fica oculto por padrão." },
+  { key: "showDiaryPhotos", title: "Fotos do diário", description: "Fotos e vídeos apenas de diários aprovados.", dependsOn: "showDiary" },
+  { key: "showDocuments", title: "Documentos e anexos", description: "Anexos publicados em diários aprovados e documentos financeiros permitidos." },
+  { key: "showProjectGallery", title: "Galeria do projeto", description: "Renders concluídos/aprovados vinculados ao projeto Arqdor desta obra." },
+  { key: "showProcurementSummary", title: "Compras e suprimentos", description: "Resumo de compras críticas e entregas relacionadas às etapas." },
+  { key: "showFinancialSummary", title: "Resumo financeiro", description: "Mostra orçamento total, custo realizado e percentual consumido. Fica oculto por padrão." },
+  { key: "showFinancialDetails", title: "Detalhamento financeiro", description: "Lista lançamentos financeiros/documentos da obra. Requer Resumo financeiro.", dependsOn: "showFinancialSummary" },
   { key: "showClientDecisions", title: "Decisões do cliente", description: "Exibe somente decisões explicitamente publicadas para aprovação." },
 ];
 
