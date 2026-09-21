@@ -1473,7 +1473,7 @@ export default function ConceptPlanner() {
 
     setRooms((prev) => {
       const affected = (Array.isArray(prev) ? prev : []).filter((room) => wall.roomIds.includes(room.id));
-      if (!affected.length || affected.some((room) => room.locked)) return prev;
+      if (!affected.length || affected.some((room) => room.locked)) return Array.isArray(prev) ? prev : [];
 
       const patches = new Map<string, Partial<Room>>();
       for (const room of affected) {
@@ -1483,11 +1483,11 @@ export default function ConceptPlanner() {
           if (touchesLeft) {
             const nextX = room.x + delta;
             const nextWidth = room.width - delta;
-            if (nextX < 0 || nextWidth < minSize) return prev;
+            if (nextX < 0 || nextWidth < minSize) return Array.isArray(prev) ? prev : [];
             patches.set(room.id, { x: nextX, width: nextWidth });
           } else if (touchesRight) {
             const nextWidth = room.width + delta;
-            if (room.x + nextWidth > lotWidth || nextWidth < minSize) return prev;
+            if (room.x + nextWidth > lotWidth || nextWidth < minSize) return Array.isArray(prev) ? prev : [];
             patches.set(room.id, { width: nextWidth });
           }
         } else {
@@ -1496,17 +1496,17 @@ export default function ConceptPlanner() {
           if (touchesTop) {
             const nextY = room.y + delta;
             const nextDepth = room.depth - delta;
-            if (nextY < 0 || nextDepth < minSize) return prev;
+            if (nextY < 0 || nextDepth < minSize) return Array.isArray(prev) ? prev : [];
             patches.set(room.id, { y: nextY, depth: nextDepth });
           } else if (touchesBottom) {
             const nextDepth = room.depth + delta;
-            if (room.y + nextDepth > lotDepth || nextDepth < minSize) return prev;
+            if (room.y + nextDepth > lotDepth || nextDepth < minSize) return Array.isArray(prev) ? prev : [];
             patches.set(room.id, { depth: nextDepth });
           }
         }
       }
 
-      if (!patches.size) return prev;
+      if (!patches.size) return Array.isArray(prev) ? prev : [];
       return (Array.isArray(prev) ? prev : []).map((room) => patches.has(room.id) ? { ...room, ...patches.get(room.id) } : room);
     });
   };
@@ -2525,7 +2525,7 @@ export default function ConceptPlanner() {
               <ConceptDerivedFacade
                 lotWidth={lotWidth}
                 levels={modelLevels}
-                rooms={rooms}
+                rooms={safeRooms}
                 facade={facadePreferences}
                 design={facadeDesign}
               />
@@ -3153,7 +3153,7 @@ export default function ConceptPlanner() {
                     <ConceptFacadeEditor
                       lotWidth={lotWidth}
                       levels={modelLevels}
-                      rooms={rooms}
+                      rooms={safeRooms}
                       facade={facadePreferences}
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
@@ -3685,7 +3685,7 @@ export default function ConceptPlanner() {
                       ["Pavimentos", String(floors)],
                       ["Área desejada", `${desiredArea} m²`],
                       ["Área dos ambientes", `${currentArea.toFixed(0)} m²`],
-                      ["Ambientes", String(rooms.length)],
+                      ["Ambientes", String(safeRooms.length)],
                       ["Layout", ["Opção A", "Opção B", "Opção C"][layoutVariant] ?? "Personalizado"],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl bg-muted/50 p-3">
@@ -3699,7 +3699,7 @@ export default function ConceptPlanner() {
                 <div className="rounded-3xl border bg-card p-5 shadow-sm">
                   <h3 className="font-semibold">Programa de necessidades</h3>
                   <div className="mt-4 max-h-[360px] space-y-2 overflow-auto pr-1">
-                    {rooms.map((room) => (
+                    {safeRooms.map((room) => (
                       <div key={room.id} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
                         <div>
                           <div className="text-sm font-semibold">{room.label}</div>
