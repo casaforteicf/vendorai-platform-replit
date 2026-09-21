@@ -258,7 +258,7 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   label: string;
   width: number;
   depth: number;
-  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação";
+  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Elétrica" | "Hidráulica";
 }> = [
   { kind: "sofa", label: "Sofá 3 lugares", width: 2.20, depth: 0.90, category: "Sala" },
   { kind: "sofa", label: "Sofá 2 lugares", width: 1.70, depth: 0.90, category: "Sala" },
@@ -281,6 +281,13 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "rug", label: "Tapete quarto", width: 1.40, depth: 0.90, category: "Decoração" },
   { kind: "lamp", label: "Luminária de piso", width: 0.45, depth: 0.45, category: "Iluminação" },
   { kind: "lamp", label: "Abajur", width: 0.35, depth: 0.35, category: "Iluminação" },
+  { kind: "outlet", label: "Tomada", width: 0.40, depth: 0.40, category: "Elétrica" },
+  { kind: "switch", label: "Interruptor", width: 0.40, depth: 0.40, category: "Elétrica" },
+  { kind: "light_point", label: "Ponto de luz / plafon", width: 0.45, depth: 0.45, category: "Iluminação" },
+  { kind: "water_point", label: "Ponto de água", width: 0.40, depth: 0.40, category: "Hidráulica" },
+  { kind: "drain_point", label: "Ponto de esgoto", width: 0.40, depth: 0.40, category: "Hidráulica" },
+  { kind: "shower_point", label: "Ponto de chuveiro", width: 0.45, depth: 0.45, category: "Hidráulica" },
+  { kind: "faucet_point", label: "Ponto de torneira", width: 0.40, depth: 0.40, category: "Hidráulica" },
 ];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
@@ -346,20 +353,35 @@ function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
 
 function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlanObject[] {
   if (!Array.isArray(input)) return [];
-  const validKinds = new Set<ConceptPlanObject["kind"]>(["sofa", "bed", "table", "chair", "cabinet", "tv", "plant", "lamp", "rug"]);
+  const validKinds = new Set<ConceptPlanObject["kind"]>([
+    "sofa", "bed", "table", "chair", "cabinet", "tv", "plant", "lamp", "rug",
+    "outlet", "switch", "light_point", "water_point", "drain_point", "shower_point", "faucet_point",
+  ]);
   return input.flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const raw = candidate as Partial<ConceptPlanObject>;
     const kind = validKinds.has(raw.kind as ConceptPlanObject["kind"]) ? raw.kind as ConceptPlanObject["kind"] : "sofa";
     const width = finiteNumber(
       raw.width,
-      kind === "sofa" ? 2.2 : kind === "bed" ? 1.6 : kind === "plant" ? 0.65 : kind === "lamp" ? 0.45 : kind === "rug" ? 2.0 : 1.2,
+      kind === "sofa" ? 2.2
+        : kind === "bed" ? 1.6
+        : kind === "plant" ? 0.65
+        : kind === "lamp" || kind === "light_point" || kind === "shower_point" ? 0.45
+        : kind === "outlet" || kind === "switch" || kind === "water_point" || kind === "drain_point" || kind === "faucet_point" ? 0.40
+        : kind === "rug" ? 2.0
+        : 1.2,
       0.3,
       6,
     );
     const depth = finiteNumber(
       raw.depth,
-      kind === "sofa" ? 0.9 : kind === "bed" ? 2.0 : kind === "plant" ? 0.65 : kind === "lamp" ? 0.45 : kind === "rug" ? 1.5 : 0.8,
+      kind === "sofa" ? 0.9
+        : kind === "bed" ? 2.0
+        : kind === "plant" ? 0.65
+        : kind === "lamp" || kind === "light_point" || kind === "shower_point" ? 0.45
+        : kind === "outlet" || kind === "switch" || kind === "water_point" || kind === "drain_point" || kind === "faucet_point" ? 0.40
+        : kind === "rug" ? 1.5
+        : 0.8,
       0.3,
       6,
     );
