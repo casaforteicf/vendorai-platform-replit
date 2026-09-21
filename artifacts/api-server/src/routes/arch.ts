@@ -2545,6 +2545,8 @@ router.post("/arch/render", async (req, res) => {
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
 
+    const outputResolution = "4k" as const;
+    const aspectRatio = "16:9" as const;
     const baseBuffer = Buffer.from(b64, "base64");
     const targetSize = outputResolution === "2k"
       ? (aspectRatio === "16:9" ? { width: 2560, height: 1440 } : { width: 2304, height: 1536 })
@@ -2647,10 +2649,28 @@ async function executeRenderJob(opts: {
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
 
-    const buf       = Buffer.from(b64, "base64");
-    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
+    const baseBuffer = Buffer.from(b64, "base64");
+    const targetSize = outputResolution === "2k"
+      ? (aspectRatio === "16:9" ? { width: 2560, height: 1440 } : { width: 2304, height: 1536 })
+      : (aspectRatio === "16:9" ? { width: 3840, height: 2160 } : { width: 3072, height: 2048 });
+
+    const buf = await sharp(baseBuffer)
+      .resize(targetSize.width, targetSize.height, {
+        fit: "cover",
+        position: "centre",
+        kernel: sharp.kernel.lanczos3,
+      })
+      .sharpen({ sigma: 0.65, m1: 0.7, m2: 1.1 })
+      .png({ compressionLevel: 7, adaptiveFiltering: true })
+      .toBuffer();
+
+    const objPath = await storage.savePrivateBuffer(
+      buf,
+      "image/png",
+      `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
+    );
     const servePath = objPath.replace(/^\/objects\//, "");
-    const imageUrl  = `/api/storage/objects/${servePath}`;
+    const imageUrl = `/api/storage/objects/${servePath}`;
 
     await db.update(archAiRendersTable)
       .set({ status: "concluido", resultImageUrl: imageUrl, motor, prompt, concluidoEm: new Date() })
