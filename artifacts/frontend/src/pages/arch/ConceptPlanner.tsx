@@ -3332,11 +3332,13 @@ export default function ConceptPlanner() {
                         <span className="truncate text-[10px] text-slate-400">
                           {selectedObject
                             ? selectedObject.label
-                            : selected
-                              ? selected.label
-                              : selectedClosedSpace
-                                ? selectedSpaceProfile?.label ?? "Ambiente"
-                                : "Selecione um elemento"}
+                            : selectedCustomWall || selectedWall
+                              ? "Parede selecionada"
+                              : selected
+                                ? selected.label
+                                : selectedClosedSpace
+                                  ? selectedSpaceProfile?.label ?? "Ambiente"
+                                  : "Selecione um elemento"}
                         </span>
                       </div>
 
@@ -3365,6 +3367,39 @@ export default function ConceptPlanner() {
                                 </div>
                               </button>
                             ))}
+                          </div>
+                        </>
+                      ) : selectedCustomWall || selectedWall ? (
+                        <>
+                          <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento da parede</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {CONCEPT_WALL_MATERIALS.map((material) => {
+                              const wallId = selectedCustomWall?.id ?? selectedWall?.id ?? "";
+                              const currentMaterial = wallMaterials[wallId];
+                              return (
+                                <button
+                                  key={material.id}
+                                  type="button"
+                                  onClick={() => setSelectedWallMaterial(material.id)}
+                                  className={currentMaterial === material.id
+                                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"}
+                                >
+                                  <div className="relative h-16 overflow-hidden border-b" style={{ background: material.swatch }}>
+                                    {material.id === "madeira-ripada" && (
+                                      <div className="absolute inset-0 opacity-40" style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 10px, #5b4636 10px 12px)" }} />
+                                    )}
+                                    {material.id === "pedra-cinza" && (
+                                      <div className="absolute inset-0 opacity-25" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, #111827 0 1px, transparent 1px), radial-gradient(circle at 70% 60%, #111827 0 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
+                                    )}
+                                  </div>
+                                  <div className="p-3">
+                                    <div className="text-sm font-semibold">{material.name}</div>
+                                    <div className="mt-0.5 text-[10px] text-muted-foreground">{material.category}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
                           </div>
                         </>
                       ) : selected || selectedClosedSpace ? (
@@ -3401,7 +3436,7 @@ export default function ConceptPlanner() {
                         </>
                       ) : (
                         <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-                          Selecione um móvel ou um ambiente na planta. O painel mostra automaticamente os materiais compatíveis.
+                          Selecione um móvel, uma parede ou um ambiente na planta. O painel mostra automaticamente os materiais compatíveis.
                         </div>
                       )}
                     </>
