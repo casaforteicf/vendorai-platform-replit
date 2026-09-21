@@ -135,6 +135,35 @@ type CustomerProfile = {
   notes?: string;
 };
 
+type RealCatalogProduct = {
+  id: string;
+  nome: string;
+  categoria?: string | null;
+  subcategoria?: string | null;
+  fornecedor?: string | null;
+  precoBase?: string | number | null;
+  imagens?: string[] | null;
+  especificacoes?: Record<string, unknown> | null;
+};
+
+function inferCatalogFurniturePreset(item: RealCatalogProduct): {
+  kind: ConceptPlanObject["kind"];
+  width: number;
+  depth: number;
+} | null {
+  const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""}`.toLocaleLowerCase("pt-BR");
+  if (/sofá|sofa|poltrona|chaise/.test(text)) return { kind: "sofa", width: 2.1, depth: 0.9 };
+  if (/cama|colchão|colchao/.test(text)) return { kind: "bed", width: 1.6, depth: 2.0 };
+  if (/mesa/.test(text)) return { kind: "table", width: 1.4, depth: 0.8 };
+  if (/cadeira|banco|banqueta/.test(text)) return { kind: "chair", width: 0.55, depth: 0.55 };
+  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack/.test(text)) return { kind: "cabinet", width: 1.2, depth: 0.55 };
+  if (/televis|\btv\b|painel/.test(text)) return { kind: "tv", width: 1.6, depth: 0.25 };
+  if (/planta|vaso|folhagem/.test(text)) return { kind: "plant", width: 0.65, depth: 0.65 };
+  if (/luminária|luminaria|abajur|pendente|plafon/.test(text)) return { kind: "lamp", width: 0.45, depth: 0.45 };
+  if (/tapete/.test(text)) return { kind: "rug", width: 2.0, depth: 1.5 };
+  return null;
+}
+
 type ConceptDraftResponse = {
   id: string;
   status?: string;
@@ -525,6 +554,8 @@ export default function ConceptPlanner() {
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação">("Todos");
+  const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
+  const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
@@ -558,6 +589,43 @@ export default function ConceptPlanner() {
       return categoryMatch && queryMatch;
     });
   }, [furnitureSearch, furnitureCategory]);
+
+  useEffect(() => {
+    if (editorLibraryTab !== "furniture" || realCatalogProducts.length || realCatalogLoading) return;
+    let cancelled = false;
+    setRealCatalogLoading(true);
+    fetch("/api/arch/catalogo?limit=60")
+      .then(async (response) => response.ok ? response.json() : [])
+      .then((rows) => {
+        if (cancelled) return;
+        const products = Array.isArray(rows)
+          ? rows.filter((item): item is RealCatalogProduct =>
+              Boolean(item && typeof item === "object" && typeof item.nome === "string" && Array.isArray(item.imagens) && item.imagens.length > 0 && inferCatalogFurniturePreset(item))
+            )
+          : [];
+        setRealCatalogProducts(products);
+      })
+      .catch(() => {
+        if (!cancelled) setRealCatalogProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRealCatalogLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editorLibraryTab, realCatalogProducts.length, realCatalogLoading]);
+
+  const visibleRealCatalogProducts = useMemo(() => {
+    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    return realCatalogProducts.filter((item) => {
+      if (!query) return true;
+      return `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(query);
+    }).slice(0, 12);
+  }, [realCatalogProducts, furnitureSearch]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -3490,6 +3558,75 @@ export default function ConceptPlanner() {
                             {category}
                           </button>
                         ))}
+                      </div>
+
+                      {(realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
+                        <div className="mb-5">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">Produtos reais do catálogo</div>
+                              <div className="text-[10px] text-slate-500">Imagens cadastradas no tenant · clique para inserir no projeto</div>
+                            </div>
+                            {realCatalogLoading && <span className="text-[10px] font-semibold text-orange-600">Carregando...</span>}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            {visibleRealCatalogProducts.map((item) => {
+                              const preset = inferCatalogFurniturePreset(item);
+                              const imageUrl = item.imagens?.[0];
+                              if (!preset || !imageUrl) return null;
+                              const price = Number(item.precoBase ?? 0);
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  draggable
+                                  onDragStart={(event) => {
+                                    event.dataTransfer.effectAllowed = "copy";
+                                    event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({
+                                      kind: preset.kind,
+                                      label: item.nome,
+                                      width: preset.width,
+                                      depth: preset.depth,
+                                    }));
+                                  }}
+                                  onClick={() => addObject(preset.kind, item.nome, preset.width, preset.depth)}
+                                  className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
+                                >
+                                  <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                                    <img
+                                      src={imageUrl}
+                                      alt={item.nome}
+                                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                      loading="lazy"
+                                    />
+                                    <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
+                                      REAL
+                                    </span>
+                                  </div>
+                                  <div className="p-3">
+                                    <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
+                                    <div className="mt-1 text-[10px] text-slate-500">
+                                      {[item.categoria, item.fornecedor].filter(Boolean).join(" · ") || "Catálogo"}
+                                    </div>
+                                    {price > 0 && (
+                                      <div className="mt-2 text-xs font-bold text-slate-900">
+                                        {price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">Biblioteca paramétrica</div>
+                          <div className="text-[10px] text-slate-500">Itens genéricos editáveis em 2D e 3D</div>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
