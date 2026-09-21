@@ -3,13 +3,16 @@
  */
 import { Router, type IRouter } from "express";
 import multer from "multer";
-import { and, eq, desc, sum, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   db,
   obrasTable,
   obraEtapasTable,
   obraLancamentosTable,
+  obraOrcamentosTable,
+  obraOrcamentoEtapasTable,
+  obraOrcamentoItensTable,
   tenantsTable,
   insertObraLancamentoSchema,
   updateObraLancamentoSchema,
@@ -22,7 +25,9 @@ const router: IRouter = Router();
 // ─── Helper: recalcula custoRealizado da obra a partir dos lançamentos ────────
 async function recalcCustoRealizado(obraId: string, tenantId: string): Promise<void> {
   const [result] = await db
-    .select({ total: sql<string>`coalesce(sum(${obraLancamentosTable.valor}), '0')` })
+    .select({
+      total: sql<string>`coalesce(sum(case when ${obraLancamentosTable.status} != 'cancelado' then ${obraLancamentosTable.valor} else 0 end), '0')`,
+    })
     .from(obraLancamentosTable)
     .where(and(eq(obraLancamentosTable.obraId, obraId), eq(obraLancamentosTable.tenantId, tenantId)));
   await db
@@ -274,7 +279,7 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
   const { tenantId, obraId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  // Obra + orçamento total
+  // Obra + orçamento manual legado (fallback quando ainda não existe orçamento estruturado)
   const [obra] = await db
     .select({ orcamentoTotal: obrasTable.orcamentoTotal, nome: obrasTable.nome })
     .from(obrasTable)
@@ -282,7 +287,87 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
 
   if (!obra) return res.status(404).json({ error: "Obra não encontrada." });
 
-  // Etapas para linha de orçamento por etapa
+  // Vincula automaticamente o custo da obra à versão correta do orçamento:
+  // contratado > aprovado > versão mais recente não rejeitada.
+  const orcamentos = await db
+    .select({
+      id: obraOrcamentosTable.id,
+      versao: obraOrcamentosTable.versao,
+      titulo: obraOrcamentosTable.titulo,
+      status: obraOrcamentosTable.status,
+      bdiGlobal: obraOrcamentosTable.bdiGlobal,
+    })
+    .from(obraOrcamentosTable)
+    .where(
+      and(
+        eq(obraOrcamentosTable.tenantId, tenantId),
+        eq(obraOrcamentosTable.obraId, obraId),
+      ),
+    )
+    .orderBy(desc(obraOrcamentosTable.versao));
+
+  const orcamentoVinculado =
+    orcamentos.find((o) => o.status === "contratado") ??
+    orcamentos.find((o) => o.status === "aprovado") ??
+    orcamentos.find((o) => o.status !== "rejeitado") ??
+    null;
+
+  let custoOrcado = 0;
+  let orcamentoCalculado = 0;
+  let orcamentoEtapas: Array<{ id: string; nome: string; custoOrcado: number; valorVenda: number }> = [];
+
+  if (orcamentoVinculado) {
+    const etapasOrc = await db
+      .select({
+        id: obraOrcamentoEtapasTable.id,
+        nome: obraOrcamentoEtapasTable.nome,
+      })
+      .from(obraOrcamentoEtapasTable)
+      .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoVinculado.id));
+
+    const etapaIds = etapasOrc.map((e) => e.id);
+    const itensOrc = etapaIds.length > 0
+      ? await db
+          .select({
+            etapaId: obraOrcamentoItensTable.etapaId,
+            quantidade: obraOrcamentoItensTable.quantidade,
+            custoUnitario: obraOrcamentoItensTable.custoUnitario,
+            bdi: obraOrcamentoItensTable.bdi,
+          })
+          .from(obraOrcamentoItensTable)
+          .where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
+      : [];
+
+    const bdiGlobal = Number(orcamentoVinculado.bdiGlobal ?? 0);
+
+    orcamentoEtapas = etapasOrc.map((etapa) => {
+      const itens = itensOrc.filter((i) => i.etapaId === etapa.id);
+      const etapaCusto = itens.reduce(
+        (total, item) => total + Number(item.quantidade ?? 0) * Number(item.custoUnitario ?? 0),
+        0,
+      );
+      const etapaVenda = itens.reduce((total, item) => {
+        const base = Number(item.quantidade ?? 0) * Number(item.custoUnitario ?? 0);
+        const bdi = item.bdi != null ? Number(item.bdi) : bdiGlobal;
+        return total + base * (1 + bdi / 100);
+      }, 0);
+
+      return { id: etapa.id, nome: etapa.nome, custoOrcado: etapaCusto, valorVenda: etapaVenda };
+    });
+
+    custoOrcado = orcamentoEtapas.reduce((total, etapa) => total + etapa.custoOrcado, 0);
+    orcamentoCalculado = orcamentoEtapas.reduce((total, etapa) => total + etapa.valorVenda, 0);
+  }
+
+  const orcamentoTotal = orcamentoCalculado > 0
+    ? orcamentoCalculado
+    : Number(obra.orcamentoTotal ?? 0);
+
+  // Sem orçamento estruturado, mantém compatibilidade usando o valor global da obra
+  // também como base de custo, evitando quebrar obras antigas.
+  const custoOrcadoBase = custoOrcado > 0 ? custoOrcado : orcamentoTotal;
+
+  // Etapas de execução
   const etapas = await db
     .select({ id: obraEtapasTable.id, nome: obraEtapasTable.nome })
     .from(obraEtapasTable)
@@ -340,19 +425,64 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
     )
     .groupBy(obraLancamentosTable.tipo);
 
+  const totalGasto = Number(totais?.totalGasto ?? 0);
+  const normalizeEtapa = (nome: string) =>
+    nome
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+  const custoOrcadoPorNome = new Map(
+    orcamentoEtapas.map((e) => [normalizeEtapa(e.nome), e.custoOrcado] as const),
+  );
+
+  const etapasCompatibilizadas = etapas.map((e) => {
+    const gasto = lancamentosRows
+      .filter((l) => l.etapaId === e.id && l.status !== "cancelado")
+      .reduce((s, l) => s + Number(l.total), 0);
+    const previsto = custoOrcadoPorNome.get(normalizeEtapa(e.nome)) ?? 0;
+    return {
+      id: e.id,
+      nome: e.nome,
+      custoOrcado: previsto,
+      totalGasto: gasto,
+      desvio: previsto > 0 ? previsto - gasto : null,
+    };
+  });
+
+  const desvioCusto = custoOrcadoBase - totalGasto;
+  const percentualCustoRealizado = custoOrcadoBase > 0
+    ? (totalGasto / custoOrcadoBase) * 100
+    : 0;
+  const margemOrcada = orcamentoTotal - custoOrcadoBase;
+  const margemOrcadaPct = orcamentoTotal > 0 ? (margemOrcada / orcamentoTotal) * 100 : 0;
+
   return res.json({
-    orcamentoTotal: Number(obra.orcamentoTotal ?? 0),
-    totalGasto: Number(totais?.totalGasto ?? 0),
+    orcamentoTotal,
+    custoOrcado: custoOrcadoBase,
+    totalGasto,
     totalPago: Number(totais?.totalPago ?? 0),
     totalPendente: Number(totais?.totalPendente ?? 0),
-    saldo: Number(obra.orcamentoTotal ?? 0) - Number(totais?.totalGasto ?? 0),
+    // compatibilidade com clientes existentes: saldo continua sendo valor de venda menos gasto
+    saldo: orcamentoTotal - totalGasto,
+    desvioCusto,
+    percentualCustoRealizado,
+    margemOrcada,
+    margemOrcadaPct,
+    orcamentoFonte: orcamentoVinculado ? "orcamento_obra" : "obra_manual",
+    orcamentoVinculado: orcamentoVinculado
+      ? {
+          id: orcamentoVinculado.id,
+          versao: orcamentoVinculado.versao,
+          titulo: orcamentoVinculado.titulo,
+          status: orcamentoVinculado.status,
+        }
+      : null,
     porTipo: porTipo.map((p) => ({ tipo: p.tipo, total: Number(p.total) })),
-    etapas: etapas.map((e) => {
-      const gastos = lancamentosRows
-        .filter((l) => l.etapaId === e.id && l.status !== "cancelado")
-        .reduce((s, l) => s + Number(l.total), 0);
-      return { id: e.id, nome: e.nome, totalGasto: gastos };
-    }),
+    etapas: etapasCompatibilizadas,
+    orcamentoEtapas,
     semEtapa: lancamentosRows
       .filter((l) => !l.etapaId && l.status !== "cancelado")
       .reduce((s, l) => s + Number(l.total), 0),
