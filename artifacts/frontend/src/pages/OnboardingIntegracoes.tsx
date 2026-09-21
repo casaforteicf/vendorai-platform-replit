@@ -245,25 +245,6 @@ export default function OnboardingIntegracoes() {
     }
   }
 
-  async function connectWhatsApp() {
-    try {
-      const data = (await apiFetch("/api/auth/whatsapp")) as { url?: string };
-      if (!data.url) {
-        throw new Error(t("onboarding.integrations.metaUrlMissing"));
-      }
-      window.location.assign(data.url);
-    } catch (error) {
-      toast({
-        title: t("onboarding.integrations.whatsappConnectFailed"),
-        description:
-          error instanceof Error && error.message === t("onboarding.integrations.metaUrlMissing")
-            ? error.message
-            : t("onboarding.integrations.metaConfigCheck"),
-        variant: "destructive",
-      });
-    }
-  }
-
   async function connectWhatsAppQr() {
     if (!user?.tenantId) return;
     setWhatsappQrConnecting(true);
@@ -661,20 +642,19 @@ export default function OnboardingIntegracoes() {
                   {t("onboarding.integrations.whatsapp.text")}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button onClick={connectWhatsApp}>{t("onboarding.integrations.whatsapp.metaOfficial")}</Button>
                   <Button
-                    variant="outline"
                     onClick={connectWhatsAppQr}
                     disabled={whatsappQrConnecting}
                   >
                     {whatsappQrConnecting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
+                    <QrCode className="mr-2 h-4 w-4" />
                     {t("onboarding.integrations.whatsapp.connectQr")}
                   </Button>
                   <Button
                     variant="ghost"
-                    onClick={() => go("/configuracoes?tab=integracoes&installation=1")}
+                    onClick={() => go("/configuracoes?tab=integracoes&integration=whatsapp&installation=1")}
                   >
                     {t("onboarding.integrations.whatsapp.manageNumbers")}
                   </Button>
