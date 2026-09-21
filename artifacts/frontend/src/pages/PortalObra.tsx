@@ -635,6 +635,58 @@ export default function PortalObra() {
           </Section>
         ) : null}
 
+        {activeTab === "executivo" && data.publication?.showExecutiveBalance !== false ? (
+          <Section title="Balanço Executivo — Planejado × Executado" icon={<CircleDollarSign className="h-5 w-5" />}>
+            <PortalExecutiveBalance balance={executiveBalance} />
+          </Section>
+        ) : null}
+
+        {activeTab === "propostas" && data.publication?.showProposals !== false ? (
+          <Section title="Propostas e Orçamentos Comerciais" icon={<CircleDollarSign className="h-5 w-5" />}>
+            <PortalCommercial commercial={commercial} />
+          </Section>
+        ) : null}
+
+        {activeTab === "projetos" && data.publication?.showDocuments !== false ? (
+          <Section title="Projetos e Arquivos Técnicos" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Projetos" items={projectDocuments} />
+          </Section>
+        ) : null}
+
+        {activeTab === "contratos" && data.publication?.showContracts !== false ? (
+          <Section title="Contratos e Termos" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Contratos" items={contracts} />
+          </Section>
+        ) : null}
+
+        {activeTab === "manuais" && data.publication?.showManuals !== false ? (
+          <Section title="Manuais, Garantias e Entrega" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Manuais" items={manuals} />
+          </Section>
+        ) : null}
+
+        {activeTab === "notas" && data.publication?.showInvoices !== false ? (
+          <Section title="Notas Fiscais" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Notas fiscais" items={invoices} />
+          </Section>
+        ) : null}
+
+        {activeTab === "suporte" && data.publication?.showSupport !== false ? (
+          <Section title="Solicitações de Suporte" icon={<FileText className="h-5 w-5" />}>
+            {data.auth?.authenticated ? (
+              <PortalSupportChat token={token} sessionToken={portalSession} tickets={supportTickets} messages={[]} onRefresh={() => void loadPortal(portalSession)} />
+            ) : <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-500">Entre com sua conta para abrir e acompanhar solicitações.</div>}
+          </Section>
+        ) : null}
+
+        {activeTab === "chat" && data.publication?.showChat !== false ? (
+          <Section title="Chat com a Equipe da Obra" icon={<FileText className="h-5 w-5" />}>
+            {data.auth?.authenticated ? (
+              <PortalSupportChat token={token} sessionToken={portalSession} tickets={[]} messages={chatMessages} onRefresh={() => void loadPortal(portalSession)} />
+            ) : <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-500">Entre com sua conta para conversar com a equipe responsável.</div>}
+          </Section>
+        ) : null}
+
         <footer className="mt-4 border-t border-gray-200 py-6 text-center text-xs text-gray-400">Portal do Cliente — {tenant.name} · Este link é exclusivo para o acompanhamento desta obra.</footer>
       </main>
     </div>
