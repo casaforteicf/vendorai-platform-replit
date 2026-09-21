@@ -527,6 +527,13 @@ export default function ConceptWebGLScene({
             plant: 1.40,
             lamp: 1.60,
             rug: 0.08,
+            outlet: 0.22,
+            switch: 1.10,
+            light_point: 2.60,
+            water_point: 0.55,
+            drain_point: 0.08,
+            shower_point: 2.10,
+            faucet_point: 1.05,
           };
           const scale = Math.min(
             object.width / safeX,
