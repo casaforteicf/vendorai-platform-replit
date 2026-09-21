@@ -1765,6 +1765,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
       res.status(400).json({ error: "Datas de início e término válidas são obrigatórias" }); return;
     }
 
+    const calendar = await getWorkCalendar(tid, obraId);
     const [etapasResult, depsResult] = await Promise.all([
       pool.query(
         `SELECT id, nome, data_inicio_prevista, data_fim_prevista, marco
@@ -1817,21 +1818,21 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
         const successor = planned.get(successorId);
         if (!successorRow || !successor) continue;
 
-        const duration = scheduleDurationDays(successor.start, successor.end);
+        const duration = workDurationDays(successor.start, successor.end, calendar);
         const lag = Number(dep.defasagem_dias ?? 0);
         const type = String(dep.tipo ?? "FS");
         let requiredStart: Date;
 
         if (type === "SS") {
-          requiredStart = scheduleAddDays(predecessor.start, lag);
+          requiredStart = shiftWorkDays(predecessor.start, lag, calendar);
         } else if (type === "FF") {
-          const requiredEnd = scheduleAddDays(predecessor.end, lag);
-          requiredStart = scheduleAddDays(requiredEnd, -(duration - 1));
+          const requiredEnd = shiftWorkDays(predecessor.end, lag, calendar);
+          requiredStart = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else if (type === "SF") {
-          const requiredEnd = scheduleAddDays(predecessor.start, lag);
-          requiredStart = scheduleAddDays(requiredEnd, -(duration - 1));
+          const requiredEnd = shiftWorkDays(predecessor.start, lag, calendar);
+          requiredStart = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else {
-          requiredStart = scheduleAddDays(predecessor.end, lag + 1);
+          requiredStart = shiftWorkDays(predecessor.end, lag + 1, calendar);
         }
 
         const depsForSuccessor = depsResult.rows.filter((item: any) => String(item.etapa_id) === successorId);
@@ -1844,13 +1845,13 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
           const incomingType = String(incoming.tipo ?? "FS");
           let candidate: Date;
           if (incomingType === "SS") {
-            candidate = scheduleAddDays(pred.start, incomingLag);
+            candidate = shiftWorkDays(pred.start, incomingLag, calendar);
           } else if (incomingType === "FF") {
-            candidate = scheduleAddDays(scheduleAddDays(pred.end, incomingLag), -(duration - 1));
+            candidate = subtractWorkDays(shiftWorkDays(pred.end, incomingLag, calendar), duration - 1, calendar);
           } else if (incomingType === "SF") {
-            candidate = scheduleAddDays(scheduleAddDays(pred.start, incomingLag), -(duration - 1));
+            candidate = subtractWorkDays(shiftWorkDays(pred.start, incomingLag, calendar), duration - 1, calendar);
           } else {
-            candidate = scheduleAddDays(pred.end, incomingLag + 1);
+            candidate = shiftWorkDays(pred.end, incomingLag + 1, calendar);
           }
           constrainedStart = scheduleLatest(constrainedStart, candidate);
         }
@@ -1865,7 +1866,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
 
         const next = {
           start: constrainedStart,
-          end: scheduleAddDays(constrainedStart, duration - 1),
+          end: addWorkDays(constrainedStart, duration - 1, calendar),
         };
         planned.set(successorId, next);
         changed.add(successorId);
