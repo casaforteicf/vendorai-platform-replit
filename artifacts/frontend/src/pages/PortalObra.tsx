@@ -674,7 +674,7 @@ export default function PortalObra() {
         {activeTab === "suporte" && data.publication?.showSupport !== false ? (
           <Section title="Solicitações de Suporte" icon={<FileText className="h-5 w-5" />}>
             {data.auth?.authenticated ? (
-              <PortalSupportChat token={token} sessionToken={portalSession} tickets={supportTickets} messages={[]} onRefresh={() => void loadPortal(portalSession)} />
+              <PortalSupportChat token={token} sessionToken={portalSession} tickets={supportTickets} messages={[]} mode="support" onRefresh={() => void loadPortal(portalSession)} />
             ) : <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-500">Entre com sua conta para abrir e acompanhar solicitações.</div>}
           </Section>
         ) : null}
@@ -682,7 +682,7 @@ export default function PortalObra() {
         {activeTab === "chat" && data.publication?.showChat !== false ? (
           <Section title="Chat com a Equipe da Obra" icon={<FileText className="h-5 w-5" />}>
             {data.auth?.authenticated ? (
-              <PortalSupportChat token={token} sessionToken={portalSession} tickets={[]} messages={chatMessages} onRefresh={() => void loadPortal(portalSession)} />
+              <PortalSupportChat token={token} sessionToken={portalSession} tickets={[]} messages={chatMessages} mode="chat" onRefresh={() => void loadPortal(portalSession)} />
             ) : <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-500">Entre com sua conta para conversar com a equipe responsável.</div>}
           </Section>
         ) : null}
