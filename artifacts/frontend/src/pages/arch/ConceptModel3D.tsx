@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
@@ -347,6 +347,8 @@ export default function ConceptModel3D({
     startX: number;
     startRotation: number;
   }>(null);
+  const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<null | { distance: number; zoom: number }>(null);
 
   const normalizeRotation = (value: number) => ((value % 360) + 360) % 360;
   const resetCamera = () => {
@@ -361,6 +363,18 @@ export default function ConceptModel3D({
 
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
+    if (event.pointerType === "touch") {
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touchPointersRef.current.size === 2) {
+        const points = [...touchPointersRef.current.values()];
+        pinchRef.current = {
+          distance: Math.max(8, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)),
+          zoom,
+        };
+        setOrbitGesture(null);
+        return;
+      }
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
     setOrbitGesture({
       pointerId: event.pointerId,
@@ -370,12 +384,26 @@ export default function ConceptModel3D({
   };
 
   const handleOrbitMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinchRef.current && touchPointersRef.current.size >= 2) {
+        const points = [...touchPointersRef.current.values()].slice(0, 2);
+        const distance = Math.max(8, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+        const nextZoom = Math.max(0.6, Math.min(2.35, pinchRef.current.zoom * (distance / pinchRef.current.distance)));
+        setZoom(Number(nextZoom.toFixed(2)));
+        return;
+      }
+    }
     if (!orbitGesture || orbitGesture.pointerId !== event.pointerId) return;
     const delta = event.clientX - orbitGesture.startX;
     setRotation(normalizeRotation(orbitGesture.startRotation + delta * 0.45));
   };
 
   const handleOrbitEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch") {
+      touchPointersRef.current.delete(event.pointerId);
+      if (touchPointersRef.current.size < 2) pinchRef.current = null;
+    }
     if (orbitGesture?.pointerId === event.pointerId) setOrbitGesture(null);
   };
 
@@ -459,13 +487,13 @@ export default function ConceptModel3D({
     : { minX: frameBounds.minX, maxX: frameBounds.maxX, minY: frameBounds.minY, maxY: frameBounds.maxY };
 
   return (
-    <div className="relative h-[calc(100vh-64px)] overflow-hidden bg-[#edf1f4]">
+    <div className="relative h-[calc(100dvh-64px)] overflow-hidden bg-[#edf1f4]">
       <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/92 px-4 py-3 text-slate-800 shadow-xl backdrop-blur">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-slate-500">Arraste para orbitar · roda do mouse para zoom · mesma geometria do 2D.</div>
+          <div className="text-xs text-slate-500">Arraste para orbitar · pinça no celular ou roda do mouse para zoom · mesma geometria do 2D.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="hidden overflow-hidden rounded-xl border bg-slate-50 sm:flex">
@@ -523,7 +551,7 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
-        className={`block h-[calc(100vh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
