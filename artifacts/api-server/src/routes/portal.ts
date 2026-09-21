@@ -123,9 +123,9 @@ router.get("/portal/obra/:token", async (req, res) => {
   const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable).where(eq(tenantsTable.id, obra.tenantId));
 
-  const etapas = config.showSchedule
-    ? await db.select().from(obraEtapasTable).where(eq(obraEtapasTable.obraId, obra.id)).orderBy(asc(obraEtapasTable.ordem))
-    : [];
+  const etapas = await db.select().from(obraEtapasTable)
+    .where(eq(obraEtapasTable.obraId, obra.id))
+    .orderBy(asc(obraEtapasTable.ordem));
 
   let orcamentoComEtapas: any = null;
   if (config.showBudget) {
@@ -147,11 +147,16 @@ router.get("/portal/obra/:token", async (req, res) => {
   }
 
   let diario: any[] = [];
-  if (config.showDiary) {
+  if (config.showDiary || config.showDocuments || config.showDiaryPhotos) {
     diario = await db.select().from(obraDiarioTable)
       .where(and(eq(obraDiarioTable.obraId, obra.id), eq(obraDiarioTable.status, "aprovado")))
       .orderBy(desc(obraDiarioTable.data)).limit(12);
-    if (!config.showDiaryPhotos) diario = diario.map((entry) => ({ ...entry, fotos: [], videos: [], anexos: [] }));
+    if (!config.showDiaryPhotos) diario = diario.map((entry) => ({
+      ...entry,
+      fotos: [],
+      videos: [],
+      anexos: config.showDocuments ? entry.anexos : [],
+    }));
   }
 
   const ocorrencias = config.showDiary
@@ -183,6 +188,224 @@ router.get("/portal/obra/:token", async (req, res) => {
     decisions = result.rows;
   }
 
+  const etapaRows = etapas as any[];
+  const weightedBase = etapaRows.reduce((sum, item) => sum + Number(item.pesoFisico ?? item.peso_fisico ?? 0), 0);
+  const progressoGeral = etapaRows.length
+    ? weightedBase > 0
+      ? etapaRows.reduce((sum, item) => sum + Number(item.percentualExecutado ?? item.percentual_executado ?? 0) * Number(item.pesoFisico ?? item.peso_fisico ?? 0), 0) / weightedBase
+      : etapaRows.reduce((sum, item) => sum + Number(item.percentualExecutado ?? item.percentual_executado ?? 0), 0) / etapaRows.length
+    : 0;
+
+  const etapaAtual = config.showOverview && etapaRows.length
+    ? etapaRows
+        .filter((item) => Number(item.percentualExecutado ?? item.percentual_executado ?? 0) > 0 && Number(item.percentualExecutado ?? item.percentual_executado ?? 0) < 100)
+        .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0))[0] ?? null
+    : null;
+
+  const proximasEtapas = config.showOverview
+    ? etapaRows
+        .filter((item) => Number(item.percentualExecutado ?? item.percentual_executado ?? 0) <= 0)
+        .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0))
+        .slice(0, 4)
+    : [];
+
+  const marcos = config.showMilestones
+    ? etapaRows.filter((item) => Boolean(item.marco)).map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        status: item.status,
+        percentualExecutado: item.percentualExecutado ?? item.percentual_executado,
+        dataInicioPrevista: item.dataInicioPrevista ?? item.data_inicio_prevista,
+        dataFimPrevista: item.dataFimPrevista ?? item.data_fim_prevista,
+        dataFimReal: item.dataFimReal ?? item.data_fim_real,
+      }))
+    : [];
+
+  let medicoes: any[] = [];
+  if (config.showMeasurements && config.showSchedule) {
+    const result = await pool.query(
+      `SELECT m.id, m.etapa_id, e.nome AS etapa_nome, m.data,
+              m.percentual_anterior, m.percentual_novo, m.observacao, m.created_at
+         FROM obra_etapa_medicoes m
+         INNER JOIN obra_etapas e ON e.id = m.etapa_id
+        WHERE e.obra_id = $1
+        ORDER BY m.data DESC, m.created_at DESC
+        LIMIT 80`,
+      [obra.id],
+    );
+    medicoes = result.rows;
+  }
+
+  let documentos: any[] = config.showDocuments
+    ? diario.flatMap((entry: any) => {
+        const anexos = Array.isArray(entry.anexos) ? entry.anexos : [];
+        return anexos.map((anexo: any, index: number) => ({
+          id: `${entry.id}-${index}`,
+          diarioId: entry.id,
+          data: entry.data,
+          nome: anexo.name ?? anexo.caption ?? `Documento ${index + 1}`,
+          url: anexo.url,
+          mimeType: anexo.mimeType ?? null,
+          tipo: "diario",
+        }));
+      })
+    : [];
+
+  let compras: any[] = [];
+  if (config.showProcurementSummary) {
+    const result = await pool.query(
+      `SELECT c.id, c.descricao, c.fornecedor, c.status, c.prioridade,
+              c.data_prevista, c.data_efetuada, c.data_necessidade,
+              c.prazo_fornecedor_dias,
+              CASE WHEN $3::boolean THEN c.valor_total ELSE NULL END AS valor_total,
+              e.nome AS etapa_nome
+         FROM compras_obras c
+         LEFT JOIN obra_etapas e ON e.id = c.etapa_id AND e.obra_id = c.obra_id
+        WHERE c.obra_id = $1 AND c.tenant_id = $2
+        ORDER BY
+          CASE c.status WHEN 'recebido' THEN 2 WHEN 'cancelado' THEN 3 ELSE 0 END,
+          COALESCE(c.data_necessidade, e.data_inicio_prevista) ASC NULLS LAST,
+          c.created_at DESC
+        LIMIT 60`,
+      [obra.id, obra.tenantId, config.showFinancialSummary],
+    );
+    compras = result.rows;
+  }
+
+  const comprasRecebidas = config.showFinancialSummary
+    ? await pool.query(
+        `SELECT COALESCE(SUM(valor_total),0)::numeric AS total
+           FROM compras_obras
+          WHERE obra_id = $1 AND tenant_id = $2
+            AND lower(status) IN ('recebido','parcial')`,
+        [obra.id, obra.tenantId],
+      )
+    : null;
+
+  const maoObraExecutada = config.showFinancialSummary
+    ? etapaRows.reduce((sum: number, item: any) => {
+        const percentual = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0))) / 100;
+        if (percentual <= 0) return sum;
+        const inicio = item.dataInicioPrevista ?? item.data_inicio_prevista;
+        const fim = item.dataFimPrevista ?? item.data_fim_prevista;
+        if (!inicio || !fim) return sum;
+        const start = new Date(`${inicio}T12:00:00Z`);
+        const end = new Date(`${fim}T12:00:00Z`);
+        const dias = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+        const planejado = dias
+          * Math.max(1, Number(item.equipeQuantidade ?? item.equipe_quantidade ?? 1))
+          * Math.max(0, Number(item.horasDia ?? item.horas_dia ?? 8))
+          * Math.max(0, Number(item.custoHoraPessoa ?? item.custo_hora_pessoa ?? 0));
+        return sum + planejado * percentual;
+      }, 0)
+    : 0;
+
+  const custoRealizadoCalculado = config.showFinancialSummary
+    ? Number(comprasRecebidas?.rows?.[0]?.total ?? 0) + maoObraExecutada
+    : Number(obra.custoRealizado ?? 0);
+
+  let financeiro: any = null;
+  if (config.showFinancialSummary) {
+    const result = config.showFinancialDetails
+      ? await pool.query(
+          `SELECT id, tipo, fornecedor, numero, valor, data_emissao, data_vencimento,
+                  descricao, status, documento_url, observacoes
+             FROM obra_lancamentos
+            WHERE obra_id = $1 AND tenant_id = $2
+            ORDER BY COALESCE(data_vencimento, data_emissao) DESC NULLS LAST, created_at DESC
+            LIMIT 100`,
+          [obra.id, obra.tenantId],
+        )
+      : { rows: [] as any[] };
+
+    const lancamentos = result.rows;
+    const totalLancado = lancamentos.reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
+    const totalPago = lancamentos
+      .filter((item: any) => ["pago", "recebido", "quitado"].includes(String(item.status ?? "").toLowerCase()))
+      .reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
+    const totalPendente = lancamentos
+      .filter((item: any) => !["pago", "recebido", "quitado", "cancelado"].includes(String(item.status ?? "").toLowerCase()))
+      .reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
+
+    if (config.showDocuments && config.showFinancialDetails) {
+      const financialDocs = result.rows
+        .filter((item: any) => Boolean(item.documento_url))
+        .map((item: any) => ({
+          id: `financeiro-${item.id}`,
+          nome: item.descricao ?? item.numero ?? item.tipo ?? "Documento financeiro",
+          url: item.documento_url,
+          mimeType: null,
+          data: item.data_emissao ?? item.data_vencimento ?? null,
+          tipo: "financeiro",
+        }));
+      documentos = [...documentos, ...financialDocs];
+    }
+
+    financeiro = {
+      orcamentoTotal: Number(obra.orcamentoTotal ?? 0),
+      custoRealizado: custoRealizadoCalculado,
+      percentualConsumido: Number(obra.orcamentoTotal ?? 0) > 0
+        ? custoRealizadoCalculado / Number(obra.orcamentoTotal ?? 0) * 100
+        : 0,
+      totalLancado: config.showFinancialDetails ? totalLancado : null,
+      totalPago: config.showFinancialDetails ? totalPago : null,
+      totalPendente: config.showFinancialDetails ? totalPendente : null,
+      lancamentos: config.showFinancialDetails ? lancamentos : [],
+    };
+  }
+
+  let galeriaProjeto: any[] = [];
+  if (config.showProjectGallery) {
+    const projectResult = await pool.query(
+      `SELECT id, titulo
+         FROM arch_projetos
+        WHERE obra_id = $1 AND tenant_id = $2
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [obra.id, obra.tenantId],
+    );
+    const project = projectResult.rows[0];
+    if (project) {
+      const renders = await pool.query(
+        `SELECT id, ambiente, material_name, result_image_url, version_tag,
+                status, approved_at, approval_note, created_at
+           FROM arch_ai_renders
+          WHERE project_id = $1
+            AND tenant_id = $2
+            AND status = 'concluido'
+            AND approved_at IS NOT NULL
+            AND result_image_url IS NOT NULL
+          ORDER BY
+            CASE WHEN approved_at IS NOT NULL THEN 0 ELSE 1 END,
+            created_at DESC
+          LIMIT 40`,
+        [project.id, obra.tenantId],
+      );
+      galeriaProjeto = renders.rows;
+    }
+  }
+
+  const fotosRecentes = config.showDiaryPhotos
+    ? diario.flatMap((entry: any) => {
+        const fotos = Array.isArray(entry.fotos) ? entry.fotos : [];
+        return fotos.map((foto: any, index: number) => ({
+          id: `${entry.id}-foto-${index}`,
+          diarioId: entry.id,
+          data: entry.data,
+          url: foto.url,
+          caption: foto.caption ?? null,
+        }));
+      }).slice(0, 30)
+    : [];
+
+  const previsaoEntrega = config.showOverview
+    ? (
+        obra.dataFimPrevista
+        ?? etapaRows.map((item) => item.dataFimPrevista ?? item.data_fim_prevista).filter(Boolean).sort().at(-1)
+        ?? null
+      )
+    : null;
+
   return res.json({
     publication: config,
     obra: {
@@ -196,14 +419,31 @@ router.get("/portal/obra/:token", async (req, res) => {
       dataFimPrevista: config.showOverview ? obra.dataFimPrevista : null,
       dataFimReal: config.showOverview ? obra.dataFimReal : null,
       orcamentoTotal: config.showFinancialSummary ? obra.orcamentoTotal : null,
-      custoRealizado: config.showFinancialSummary ? obra.custoRealizado : null,
+      custoRealizado: config.showFinancialSummary ? String(custoRealizadoCalculado) : null,
     },
     tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
     orcamento: orcamentoComEtapas,
-    etapas,
-    diario,
+    etapas: config.showSchedule ? etapas : [],
+    diario: config.showDiary ? diario : [],
     ocorrencias,
     decisions,
+    resumo: config.showOverview ? {
+      progressoGeral,
+      etapaAtual,
+      proximasEtapas,
+      previsaoEntrega,
+      etapasConcluidas: etapaRows.filter((item) => Number(item.percentualExecutado ?? item.percentual_executado ?? 0) >= 100).length,
+      totalEtapas: etapaRows.length,
+      decisoesPendentes: decisions.length,
+      ocorrenciasAbertas: ocorrencias.length,
+    } : null,
+    marcos,
+    medicoes,
+    documentos,
+    compras,
+    financeiro,
+    galeriaProjeto,
+    fotosRecentes,
   });
 });
 

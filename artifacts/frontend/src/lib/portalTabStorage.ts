@@ -8,7 +8,7 @@
  * token-keyed entry so it does not accumulate indefinitely.
  */
 
-export const TAB_VALUES = ["dados", "orcamento", "cronograma", "diario"] as const;
+export const TAB_VALUES = ["dados", "cronograma", "medicoes", "diario", "galeria", "documentos", "compras", "financeiro", "orcamento"] as const;
 export type TabId = (typeof TAB_VALUES)[number];
 
 export const PORTAL_OBRA_PREFIX = "portal_tab_obra_";
