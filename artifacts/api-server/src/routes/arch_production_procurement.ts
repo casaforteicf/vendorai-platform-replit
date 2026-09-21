@@ -169,6 +169,30 @@ function addWorkDays(date: Date, days: number, calendar: WorkCalendar) {
   return current;
 }
 
+function previousWorkDay(date: Date, calendar: WorkCalendar) {
+  let previous = new Date(date);
+  for (let guard = 0; guard < 370; guard++) {
+    if (isWorkDay(previous, calendar)) return previous;
+    previous = scheduleAddDays(previous, -1);
+  }
+  return previous;
+}
+
+function subtractWorkDays(date: Date, days: number, calendar: WorkCalendar) {
+  if (days <= 0) return previousWorkDay(date, calendar);
+  let current = previousWorkDay(date, calendar);
+  let remaining = days;
+  while (remaining > 0) {
+    current = scheduleAddDays(current, -1);
+    if (isWorkDay(current, calendar)) remaining -= 1;
+  }
+  return current;
+}
+
+function shiftWorkDays(date: Date, days: number, calendar: WorkCalendar) {
+  return days >= 0 ? addWorkDays(date, days, calendar) : subtractWorkDays(date, Math.abs(days), calendar);
+}
+
 function workDurationDays(start: Date, end: Date, calendar: WorkCalendar) {
   let current = new Date(start);
   let count = 0;
@@ -1016,15 +1040,15 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/simulate-scenar
         const type = String(dep.tipo ?? "FS");
         let candidate: Date;
         if (type === "SS") {
-          candidate = addWorkDays(pred.start, Math.max(0, lag), calendar);
+          candidate = shiftWorkDays(pred.start, lag, calendar);
         } else if (type === "FF") {
-          const requiredEnd = addWorkDays(pred.end, Math.max(0, lag), calendar);
-          candidate = scheduleAddDays(requiredEnd, -(duration - 1));
+          const requiredEnd = shiftWorkDays(pred.end, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else if (type === "SF") {
-          const requiredEnd = addWorkDays(pred.start, Math.max(0, lag), calendar);
-          candidate = scheduleAddDays(requiredEnd, -(duration - 1));
+          const requiredEnd = shiftWorkDays(pred.start, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else {
-          candidate = addWorkDays(pred.end, Math.max(1, lag + 1), calendar);
+          candidate = shiftWorkDays(pred.end, lag + 1, calendar);
         }
         if (candidate > required) required = candidate;
       }
@@ -1235,13 +1259,15 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources
         const type = String(dep.tipo ?? "FS");
         let candidate: Date;
         if (type === "SS") {
-          candidate = scheduleAddDays(pred.start, lag);
+          candidate = shiftWorkDays(pred.start, lag, calendar);
         } else if (type === "FF") {
-          candidate = scheduleAddDays(scheduleAddDays(pred.end, lag), -(duration - 1));
+          const requiredEnd = shiftWorkDays(pred.end, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else if (type === "SF") {
-          candidate = scheduleAddDays(scheduleAddDays(pred.start, lag), -(duration - 1));
+          const requiredEnd = shiftWorkDays(pred.start, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else {
-          candidate = scheduleAddDays(pred.end, lag + 1);
+          candidate = shiftWorkDays(pred.end, lag + 1, calendar);
         }
         if (candidate > required) required = candidate;
       }
