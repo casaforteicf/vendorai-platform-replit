@@ -151,6 +151,7 @@ export const comprasObrasTable = pgTable("compras_obras", {
   dataPrevista: text("data_prevista"),
   dataEfetuada: text("data_efetuada"),
   dataNecessidade: date("data_necessidade", { mode: "string" }),
+  prazoFornecedorDias: integer("prazo_fornecedor_dias").notNull().default(0),
   solicitanteId: text("solicitante_id"),
   solicitanteNome: text("solicitante_nome"),
   aprovadoPorId: text("aprovado_por_id"),
