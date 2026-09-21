@@ -2265,6 +2265,72 @@ export default function ConceptPlanner() {
     setSelectedObjectId(null);
   };
 
+  useEffect(() => {
+    if (step !== WORKSPACE_STEP) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editingText =
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        Boolean(target?.isContentEditable);
+
+      const modifier = event.metaKey || event.ctrlKey;
+      if (modifier && event.key.toLowerCase() === "z") {
+        if (editingText) return;
+        event.preventDefault();
+        if (event.shiftKey) redoRooms();
+        else undoRooms();
+        return;
+      }
+
+      if (modifier && event.key.toLowerCase() === "y") {
+        if (editingText) return;
+        event.preventDefault();
+        redoRooms();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        if (editingText) return;
+        event.preventDefault();
+        if (paintTool) setPaintTool(null);
+        else clearEditorSelection();
+        return;
+      }
+
+      if ((event.key === "Delete" || event.key === "Backspace") && !editingText) {
+        if (selectedObject) {
+          event.preventDefault();
+          deleteObject(selectedObject.id);
+        } else if (selectedCustomWall) {
+          event.preventDefault();
+          deleteCustomWall(selectedCustomWall.id);
+        } else if (selectedOpening) {
+          event.preventDefault();
+          deleteCustomOpening(selectedOpening.id);
+        } else if (selected) {
+          event.preventDefault();
+          deleteRoomById(selected.id);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    step,
+    paintTool,
+    selectedObject,
+    selectedCustomWall,
+    selectedOpening,
+    selected,
+    roomHistory.length,
+    roomFuture.length,
+  ]);
+
   return (
     <div className="arqdor-reference-ui min-h-screen bg-muted/30">
       {false && (
@@ -2987,8 +3053,8 @@ export default function ConceptPlanner() {
         )}
 
         {step === 4 && (
-          <section className="min-h-screen overflow-hidden bg-[#eef1f4]">
-            <div className="relative flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-2 py-2 text-white shadow-[0_8px_30px_rgba(15,23,42,0.18)] sm:px-4 lg:h-16 lg:flex-nowrap lg:py-0">
+          <section className="min-h-screen overflow-hidden bg-[#eef1f4] arq-workspace-stage">
+            <div className="arq-app-bar relative flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-2 py-1.5 text-white shadow-[0_8px_30px_rgba(15,23,42,0.14)] sm:px-4 lg:h-14 lg:flex-nowrap lg:py-0">
               <div className="flex min-w-0 items-center gap-2">
                 <a
                   href="/arch"
@@ -3175,12 +3241,12 @@ export default function ConceptPlanner() {
               />
             </div>
 
-            <div className="relative min-h-[calc(100dvh-64px)] overflow-hidden bg-[#f6f7f8]">
+            <div className="arq-workspace-shell relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={(selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
-                  ? "absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
-                  : "absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]"}>
+                  ? "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
+                  : "arq-workspace-sidebar absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]"}>
                 <div className="flex min-h-full">
-                  <div className="w-14 shrink-0 border-r bg-white py-3 sm:w-16">
+                  <div className="arq-tool-rail w-14 shrink-0 border-r bg-white py-3 sm:w-16">
                     <div className="flex flex-col items-center gap-2">
                       {([
                         ["site", Ruler, "Terreno"],
@@ -4007,9 +4073,9 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className={`relative min-h-[calc(100dvh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16 ${hasEditorSelection && (editorView === "plan" || editorView === "model3d") ? "md:pr-[360px]" : ""}`}>
+              <div className={`arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16 ${hasEditorSelection && (editorView === "plan" || editorView === "model3d") ? "md:pr-[360px]" : ""}`}>
                 <div className="h-full w-full">
-                  <div className="absolute left-1/2 top-3 z-[55] hidden -translate-x-1/2 items-center gap-1 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur md:flex">
+                  <div className="arq-segmented absolute left-1/2 top-3 z-[55] hidden -translate-x-1/2 items-center gap-1 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur md:flex">
                     {([
                       ["plan", "2D"],
                       ["model3d", "3D"],
@@ -4543,7 +4609,7 @@ export default function ConceptPlanner() {
               </div>
 
               {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
-              <aside className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-y-3 md:left-auto md:right-3 md:bottom-auto md:w-[340px] md:max-h-[calc(100dvh-24px)] md:rounded-2xl md:border-slate-200 md:px-4 md:py-4 md:shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
+              <aside className="arq-workspace-inspector arq-inspector fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-y-3 md:left-auto md:right-3 md:bottom-auto md:w-[340px] md:max-h-[calc(100dvh-24px)] md:rounded-2xl md:border-slate-200 md:px-4 md:py-4 md:shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
                 <button
                   type="button"
                   onClick={clearEditorSelection}
