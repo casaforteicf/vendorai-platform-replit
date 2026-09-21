@@ -856,9 +856,9 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
                     peso_fisico = CASE WHEN COALESCE(peso_fisico, 0)::numeric = 0 THEN $2 ELSE peso_fisico END,
                     data_inicio_prevista = COALESCE(data_inicio_prevista, $3),
                     data_fim_prevista = COALESCE(data_fim_prevista, $4),
-                    equipe_quantidade = CASE WHEN $5::boolean THEN $6 ELSE equipe_quantidade END,
-                    horas_dia = CASE WHEN $5::boolean THEN $7 ELSE horas_dia END,
-                    produtividade_dia = CASE WHEN $5::boolean AND $8::numeric > 0 THEN $8 ELSE produtividade_dia END,
+                    equipe_quantidade = CASE WHEN $5::boolean AND COALESCE(produtividade_dia, 0)::numeric = 0 THEN $6 ELSE equipe_quantidade END,
+                    horas_dia = CASE WHEN $5::boolean AND COALESCE(produtividade_dia, 0)::numeric = 0 THEN $7 ELSE horas_dia END,
+                    produtividade_dia = CASE WHEN $5::boolean AND COALESCE(produtividade_dia, 0)::numeric = 0 AND $8::numeric > 0 THEN $8 ELSE produtividade_dia END,
                     updated_at = now()
               WHERE id = $9 AND obra_id = $10
               RETURNING *`,
