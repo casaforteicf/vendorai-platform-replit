@@ -18,6 +18,15 @@ type PortalConfig = {
   showDocuments: boolean;
   showProcurementSummary: boolean;
   showProjectGallery: boolean;
+  requireLogin: boolean;
+  allowSelfRegistration: boolean;
+  showExecutiveBalance: boolean;
+  showProposals: boolean;
+  showContracts: boolean;
+  showInvoices: boolean;
+  showManuals: boolean;
+  showSupport: boolean;
+  showChat: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -34,6 +43,15 @@ const DEFAULT_CONFIG: PortalConfig = {
   showDocuments: true,
   showProcurementSummary: true,
   showProjectGallery: true,
+  requireLogin: false,
+  allowSelfRegistration: true,
+  showExecutiveBalance: true,
+  showProposals: true,
+  showContracts: true,
+  showInvoices: true,
+  showManuals: true,
+  showSupport: true,
+  showChat: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -77,6 +95,15 @@ const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string
   { key: "showFinancialSummary", title: "Resumo financeiro", description: "Mostra orçamento total, custo realizado e percentual consumido. Fica oculto por padrão." },
   { key: "showFinancialDetails", title: "Detalhamento financeiro", description: "Lista lançamentos financeiros/documentos da obra. Requer Resumo financeiro.", dependsOn: "showFinancialSummary" },
   { key: "showClientDecisions", title: "Decisões do cliente", description: "Exibe somente decisões explicitamente publicadas para aprovação." },
+  { key: "showExecutiveBalance", title: "Balanço executivo", description: "Planejado × executado, avanço físico, custo e desvios por etapa." },
+  { key: "showProposals", title: "Propostas e orçamentos comerciais", description: "Mostra proposta/orçamento gerados e o status de aprovação." },
+  { key: "showContracts", title: "Contratos", description: "Documentos classificados como contrato e termos vinculados à obra." },
+  { key: "showInvoices", title: "Notas fiscais", description: "Documentos financeiros classificados como nota fiscal." },
+  { key: "showManuals", title: "Manuais e garantias", description: "Manuais técnicos, garantias e documentação de entrega." },
+  { key: "showSupport", title: "Solicitações de suporte", description: "Permite ao cliente abrir e acompanhar tickets da obra." },
+  { key: "showChat", title: "Chat com a equipe", description: "Canal de mensagens entre cliente e executores responsáveis." },
+  { key: "requireLogin", title: "Exigir login do cliente", description: "Protege o conteúdo do portal com conta e senha do cliente." },
+  { key: "allowSelfRegistration", title: "Permitir cadastro pelo cliente", description: "O cliente pode criar sua própria conta usando o link desta obra.", dependsOn: "requireLogin" },
 ];
 
 export default function ConstructionPortalSettings({ arqState }: Props) {
