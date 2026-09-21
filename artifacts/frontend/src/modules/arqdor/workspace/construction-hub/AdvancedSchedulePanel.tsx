@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceProject } from "../WorkspaceContext";
 
 type Etapa = {
@@ -136,6 +136,19 @@ function diffDays(a: Date, b: Date) {
   return Math.round((a.getTime() - b.getTime()) / 86_400_000);
 }
 
+function addCalendarDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function isoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function durationDays(etapa: Etapa) {
   const start = dateValue(etapa.dataInicioPrevista);
   const end = dateValue(etapa.dataFimPrevista);
@@ -182,6 +195,174 @@ function Metric({ label, value, hint, danger }: { label: string; value: string; 
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
       <p className={`mt-2 text-2xl font-semibold ${danger ? "text-rose-600" : "text-slate-950"}`}>{value}</p>
       {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+function DraggableScheduleGantt({
+  etapas,
+  timeline,
+  criticalIds,
+  onUpdateDates,
+}: {
+  etapas: Etapa[];
+  timeline: { start: Date; end: Date; span: number };
+  criticalIds: Set<string>;
+  onUpdateDates: (etapaId: string, start: string, end: string) => Promise<void>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [, forceUpdate] = useState(0);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const dragRef = useRef<{
+    etapaId: string;
+    mode: "move" | "left" | "right";
+    startX: number;
+    origOffset: number;
+    origDuration: number;
+    prevOffset: number;
+    prevDuration: number;
+  } | null>(null);
+
+  const LABEL_W = 176;
+  const ROW_H = 46;
+  const totalDays = Math.max(1, diffDays(timeline.end, timeline.start) + 1);
+  const scheduled = etapas.filter((item) => dateValue(item.dataInicioPrevista) && dateValue(item.dataFimPrevista));
+  const todayOffset = diffDays(new Date(), timeline.start);
+  const tickStep = Math.max(1, Math.ceil(totalDays / 8));
+  const ticks: number[] = [];
+  for (let day = 0; day < totalDays; day += tickStep) ticks.push(day);
+  if (ticks[ticks.length - 1] !== totalDays - 1) ticks.push(totalDays - 1);
+
+  function startDrag(e: React.MouseEvent, etapa: Etapa, mode: "move" | "left" | "right") {
+    const start = dateValue(etapa.dataInicioPrevista);
+    const end = dateValue(etapa.dataFimPrevista);
+    if (!start || !end || etapa.marco) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const offset = Math.max(0, diffDays(start, timeline.start));
+    const duration = Math.max(1, diffDays(end, start) + 1);
+    dragRef.current = {
+      etapaId: etapa.id,
+      mode,
+      startX: e.clientX,
+      origOffset: offset,
+      origDuration: duration,
+      prevOffset: offset,
+      prevDuration: duration,
+    };
+    forceUpdate((n) => n + 1);
+
+    function onMove(me: MouseEvent) {
+      if (!dragRef.current || !containerRef.current) return;
+      const timelineWidth = containerRef.current.getBoundingClientRect().width - LABEL_W;
+      if (timelineWidth <= 0) return;
+      const pxPerDay = timelineWidth / totalDays;
+      const deltaDays = Math.round((me.clientX - dragRef.current.startX) / pxPerDay);
+      const current = dragRef.current;
+
+      if (current.mode === "move") {
+        current.prevOffset = Math.max(0, current.origOffset + deltaDays);
+        current.prevDuration = current.origDuration;
+      } else if (current.mode === "left") {
+        const maxStart = current.origOffset + current.origDuration - 1;
+        const nextOffset = Math.max(0, Math.min(maxStart, current.origOffset + deltaDays));
+        current.prevOffset = nextOffset;
+        current.prevDuration = Math.max(1, current.origDuration - (nextOffset - current.origOffset));
+      } else {
+        current.prevOffset = current.origOffset;
+        current.prevDuration = Math.max(1, current.origDuration + deltaDays);
+      }
+      forceUpdate((n) => n + 1);
+    }
+
+    async function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      const current = dragRef.current;
+      dragRef.current = null;
+      forceUpdate((n) => n + 1);
+      if (!current) return;
+
+      const nextStart = addCalendarDays(timeline.start, current.prevOffset);
+      const nextEnd = addCalendarDays(nextStart, current.prevDuration - 1);
+      setSavingId(current.etapaId);
+      try {
+        await onUpdateDates(current.etapaId, isoDate(nextStart), isoDate(nextEnd));
+      } finally {
+        setSavingId(null);
+      }
+    }
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  if (!scheduled.length) {
+    return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">Defina início e término das etapas para montar o Gantt.</div>;
+  }
+
+  return (
+    <div className="select-none">
+      <div className="mb-1 flex text-[10px] text-slate-400" style={{ paddingLeft: LABEL_W }}>
+        <div className="relative h-5 flex-1 overflow-hidden">
+          {ticks.map((day) => (
+            <span key={day} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${(day / totalDays) * 100}%` }}>
+              {addCalendarDays(timeline.start, day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div ref={containerRef} className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
+        {scheduled.map((item, index) => {
+          const start = dateValue(item.dataInicioPrevista)!;
+          const end = dateValue(item.dataFimPrevista)!;
+          const drag = dragRef.current?.etapaId === item.id ? dragRef.current : null;
+          const baseOffset = Math.max(0, diffDays(start, timeline.start));
+          const baseDuration = Math.max(1, diffDays(end, start) + 1);
+          const offset = drag ? drag.prevOffset : baseOffset;
+          const duration = drag ? drag.prevDuration : baseDuration;
+          const left = (offset / totalDays) * 100;
+          const width = Math.max(item.marco ? 1.2 : 0.8, (duration / totalDays) * 100);
+          const critical = criticalIds.has(item.id);
+          const isDragging = Boolean(drag);
+          const isSaving = savingId === item.id;
+
+          return (
+            <div key={item.id} className={index < scheduled.length - 1 ? "flex items-center border-b border-slate-100" : "flex items-center"} style={{ height: ROW_H }}>
+              <div className="flex h-full shrink-0 items-center gap-2 border-r border-slate-100 bg-slate-50/70 px-3" style={{ width: LABEL_W }}>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-slate-700">{item.nome}</p>
+                  <p className="truncate text-[10px] text-slate-400">{item.marco ? "Marco" : item.responsavel || "Sem responsável"}</p>
+                </div>
+              </div>
+
+              <div className="relative h-full flex-1">
+                {ticks.map((day) => <div key={day} className="absolute inset-y-0 border-l border-slate-100" style={{ left: `${(day / totalDays) * 100}%` }} />)}
+                {todayOffset >= 0 && todayOffset < totalDays ? <div className="absolute inset-y-0 z-10 w-px bg-rose-400" style={{ left: `${(todayOffset / totalDays) * 100}%` }} /> : null}
+
+                <div
+                  title={item.marco ? "Marco do projeto" : "Arraste para mover · use as bordas para alterar início/fim"}
+                  className={`absolute top-1/2 flex h-7 -translate-y-1/2 items-center rounded-full shadow-sm ${item.marco ? "cursor-default" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "z-20 ring-2 ring-white ring-offset-1" : ""} ${isSaving ? "animate-pulse" : ""} ${critical ? "bg-rose-500" : "bg-violet-600"}`}
+                  style={{ left: `${left}%`, width: `${Math.min(100 - left, width)}%`, minWidth: item.marco ? 10 : 18 }}
+                  onMouseDown={(e) => startDrag(e, item, "move")}
+                >
+                  {!item.marco ? <div className="absolute inset-y-0 left-0 w-2 cursor-ew-resize rounded-l-full hover:bg-black/15" onMouseDown={(e) => startDrag(e, item, "left")} /> : null}
+                  <div className="absolute inset-y-0 left-0 rounded-full bg-black/15 pointer-events-none" style={{ width: `${Math.min(100, item.percentualExecutado)}%` }} />
+                  <span className="relative z-10 mx-auto px-2 text-[10px] font-bold text-white">{item.marco ? "◆" : `${item.percentualExecutado.toFixed(0)}%`}</span>
+                  {!item.marco ? <div className="absolute inset-y-0 right-0 w-2 cursor-ew-resize rounded-r-full hover:bg-black/15" onMouseDown={(e) => startDrag(e, item, "right")} /> : null}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
+        <span>Arraste a barra para mover a etapa · arraste as bordas para ajustar início/fim · linha vermelha = hoje.</span>
+        <span className="font-medium text-rose-500">Vermelho = caminho crítico</span>
+      </div>
     </div>
   );
 }
@@ -341,6 +522,21 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     finally { setSaving(null); }
   }
 
+  async function updateEtapaDates(etapaId: string, dataInicioPrevista: string, dataFimPrevista: string) {
+    if (!bundle) return;
+    setError(null);
+    try {
+      await api(`/api/arch/construction/${bundle.obra.id}/etapas/${etapaId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ dataInicioPrevista, dataFimPrevista }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar datas do cronograma.");
+      throw err;
+    }
+  }
+
   async function saveEtapa(etapaId: string) {
     if (!bundle) return;
     const draft = drafts[etapaId];
@@ -438,15 +634,12 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         <div className="space-y-5">
           <div className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-semibold">Linha do tempo</h3><p className="text-xs text-slate-500">O destaque identifica o caminho crítico calculado pelas dependências e durações.</p></div>{timeline ? <span className="text-xs text-slate-500">{timeline.start.toLocaleDateString("pt-BR")} → {timeline.end.toLocaleDateString("pt-BR")}</span> : null}</div>
-            <div className="mt-5 space-y-3">
-              {bundle.etapas.map((item) => {
-                const start = dateValue(item.dataInicioPrevista); const end = dateValue(item.dataFimPrevista);
-                const left = timeline && start ? ((start.getTime() - timeline.start.getTime()) / timeline.span) * 100 : 0;
-                const width = timeline && start && end ? Math.max(item.marco ? 1.2 : 3, ((Math.max(end.getTime(), start.getTime()) - start.getTime()) / timeline.span) * 100) : 0;
-                const critical = criticalIds.has(item.id);
-                return <div key={item.id} className="grid grid-cols-[150px_1fr_54px] items-center gap-3"><div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-700">{item.nome}</p><p className="text-[10px] text-slate-400">{item.marco ? "Marco" : item.responsavel || "Sem responsável"}</p></div><div className="relative h-8 overflow-hidden rounded-xl bg-slate-50">{timeline && start && end ? <div className={`absolute top-2 h-4 rounded-full ${critical ? "bg-rose-500" : "bg-violet-500"}`} style={{ left: `${Math.max(0, left)}%`, width: `${Math.min(100 - Math.max(0, left), width)}%` }}><div className="h-full rounded-full bg-slate-950/20" style={{ width: `${Math.min(100, item.percentualExecutado)}%` }} /></div> : <span className="absolute inset-0 flex items-center px-3 text-[10px] text-slate-400">Defina as datas</span>}</div><span className="text-right text-xs font-semibold">{item.percentualExecutado.toFixed(0)}%</span></div>;
-              })}
-              {!bundle.etapas.length ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">Adicione a primeira etapa.</div> : null}
+            <div className="mt-5">
+              {timeline ? (
+                <DraggableScheduleGantt etapas={bundle.etapas} timeline={timeline} criticalIds={criticalIds} onUpdateDates={updateEtapaDates} />
+              ) : (
+                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">Adicione etapas com datas para montar o Gantt.</div>
+              )}
             </div>
           </div>
 
