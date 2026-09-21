@@ -56,6 +56,7 @@ type Props = {
   onEditEnd?: () => void;
   interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall" | "navigate";
   objects?: ConceptPlanObject[];
+  previewObjects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
@@ -341,6 +342,7 @@ export default function ConceptPlan2D({
   onEditEnd,
   interactionMode = "room",
   objects = [],
+  previewObjects = [],
   selectedObjectId = null,
   onSelectObject,
   onObjectChange,
@@ -459,6 +461,10 @@ export default function ConceptPlan2D({
       include(object.x, object.y);
       include(object.x + object.width, object.y + object.depth);
     });
+    previewObjects.forEach((object) => {
+      include(object.x, object.y);
+      include(object.x + object.width, object.y + object.depth);
+    });
 
     if (!xs.length || !ys.length) {
       return { minX: 0, minY: 0, maxX: lotWidth, maxY: lotDepth, hasProject: false };
@@ -471,7 +477,7 @@ export default function ConceptPlan2D({
       maxY: Math.min(lotDepth, Math.max(...ys)),
       hasProject: true,
     };
-  }, [rooms, geometry.walls, customWalls, closedSpaces, objects, lotWidth, lotDepth]);
+  }, [rooms, geometry.walls, customWalls, closedSpaces, objects, previewObjects, lotWidth, lotDepth]);
 
   const fitView = useMemo(() => {
     const margin = projectBounds.hasProject ? 1.35 : 2.4;
@@ -1546,6 +1552,41 @@ export default function ConceptPlan2D({
                   </text>
                 </>
               )}
+            </g>
+          );
+        })}
+
+        {previewObjects.filter((object) => object.floor === activeFloor).map((object) => {
+          const cx = object.x + object.width / 2;
+          const cy = object.y + object.depth / 2;
+          return (
+            <g
+              key={`preview-${object.id}`}
+              transform={`rotate(${object.rotation} ${cx} ${cy})`}
+              pointerEvents="none"
+              opacity="0.52"
+            >
+              <rect
+                x={object.x}
+                y={object.y}
+                width={object.width}
+                height={object.depth}
+                rx="0.12"
+                fill={objectMaterial(object).fill}
+                stroke="#f97316"
+                strokeWidth="0.07"
+                strokeDasharray="0.16 0.10"
+              />
+              <text
+                x={cx}
+                y={cy + 0.05}
+                textAnchor="middle"
+                fontSize="0.20"
+                fontWeight="800"
+                fill="#c2410c"
+              >
+                {object.label}
+              </text>
             </g>
           );
         })}
