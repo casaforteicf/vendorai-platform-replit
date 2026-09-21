@@ -45,7 +45,21 @@ export type ArchConceptConfiguration = {
     kind: string;
     centroid: { x: number; y: number };
     area: number;
+    floorMaterialId?: string;
   }>;
+  objects?: Array<{
+    id: string;
+    kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug";
+    label: string;
+    floor: number;
+    x: number;
+    y: number;
+    width: number;
+    depth: number;
+    rotation: number;
+    materialId?: string;
+  }>;
+  wallMaterials?: Record<string, string>;
 };
 
 export type ArchConceptRoom = {
@@ -58,6 +72,7 @@ export type ArchConceptRoom = {
   x: number;
   y: number;
   locked?: boolean;
+  floorMaterialId?: string;
 };
 
 export type ArchConceptOpeningOverride = Record<
@@ -116,6 +131,15 @@ export const archConceptProjectsTable = pgTable("arch_concept_projects", {
     status?: "idle" | "processing" | "completed" | "error";
     resultImageUrl?: string;
     generatedAt?: string;
+    source?: "facade" | "model3d";
+    renderView?: "exterior" | "interior";
+    history?: Array<{
+      renderId: string;
+      resultImageUrl: string;
+      generatedAt: string;
+      source: "facade" | "model3d";
+      renderView: "exterior" | "interior";
+    }>;
     error?: string;
   }>().notNull().default({}),
   selectedVariant: integer("selected_variant").notNull().default(0),
