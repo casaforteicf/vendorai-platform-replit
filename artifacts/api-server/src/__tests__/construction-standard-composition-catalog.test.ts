@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { STANDARD_CONSTRUCTION_COMPOSITIONS } from "../data/construction-composition-catalog";
 
 const routeSource = readFileSync(new URL("../routes/construcao.ts", import.meta.url), "utf8");
+const bootstrapSource = readFileSync(
+  new URL("../lib/ensure-standard-construction-catalog.ts", import.meta.url),
+  "utf8",
+);
 const frontendSource = readFileSync(
   new URL("../../../frontend/src/pages/Composicoes.tsx", import.meta.url),
   "utf8",
@@ -25,6 +29,8 @@ describe("Arqdor standard construction composition catalog", () => {
     expect(codes.has("ARQ-HID-001")).toBe(true); // água fria
     expect(codes.has("ARQ-HID-002")).toBe(true); // água quente
     expect(codes.has("ARQ-HID-003")).toBe(true); // esgoto
+    expect(codes.has("ARQ-HID-004")).toBe(true); // chuveiro
+    expect(codes.has("ARQ-HID-005")).toBe(true); // torneira
     expect(codes.has("ARQ-ESQ-001")).toBe(true); // portão
     expect(codes.has("ARQ-EXT-001")).toBe(true); // muro
     expect(codes.has("ARQ-EXT-003")).toBe(true); // calçada concreto
@@ -48,11 +54,12 @@ describe("Arqdor standard construction composition catalog", () => {
     expect(routeSource).toContain(
       'router.post("/tenants/:tenantId/composicoes/catalogo-padrao/aplicar"',
     );
-    expect(routeSource).toContain("eq(composicoesTable.tenantId, tid)");
-    expect(routeSource).toContain("eq(composicoesTable.codigo, template.codigo)");
-    expect(routeSource).toContain("composicoesExistentes += 1");
-    expect(routeSource).toContain("insertInsumoSchema.safeParse");
-    expect(routeSource).not.toContain("precoUnitario: item.");
+    expect(routeSource).toContain("ensureStandardConstructionCatalog(tid)");
+    expect(bootstrapSource).toContain("eq(composicoesTable.tenantId, tenantId)");
+    expect(bootstrapSource).toContain("eq(composicoesTable.codigo, template.codigo)");
+    expect(bootstrapSource).toContain("composicoesExistentes += 1");
+    expect(bootstrapSource).toContain("insertInsumoSchema.safeParse");
+    expect(bootstrapSource).not.toContain("precoUnitario: item.");
   });
 
   it("exposes the catalog action in the compositions screen", () => {
