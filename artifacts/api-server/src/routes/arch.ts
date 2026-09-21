@@ -700,6 +700,50 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     `);
   }
 
+  await tx.execute(sql`
+    WITH composition_costs AS (
+      SELECT c.id, c.codigo,
+        COALESCE(SUM(CASE WHEN i.tipo = 'mao_de_obra' THEN 0 ELSE ci.quantidade::numeric * COALESCE(i.preco_unitario::numeric, 0) END), 0) AS material_value,
+        COALESCE(SUM(CASE WHEN i.tipo = 'mao_de_obra' THEN ci.quantidade::numeric * COALESCE(i.preco_unitario::numeric, 0) ELSE 0 END), 0) AS labor_value
+      FROM composicoes c
+      LEFT JOIN composicao_insumos ci ON ci.composicao_id = c.id
+      LEFT JOIN insumos i ON i.id = ci.insumo_id
+      WHERE c.tenant_id = ${tid} AND c.ativo = true
+      GROUP BY c.id, c.codigo
+    )
+    UPDATE arch_budget_items abi
+       SET composition_id = cc.id,
+           material_value = cc.material_value,
+           labor_value = cc.labor_value,
+           unit_total = cc.material_value + cc.labor_value,
+           total_material = abi.quantity::numeric * cc.material_value,
+           total_labor = abi.quantity::numeric * cc.labor_value,
+           total = abi.quantity::numeric * (cc.material_value + cc.labor_value),
+           updated_at = now()
+      FROM composition_costs cc
+     WHERE abi.budget_id = ${preBudgetId}
+       AND abi.tenant_id = ${tid}
+       AND abi.composition_code IS NOT NULL
+       AND lower(abi.composition_code) = lower(cc.codigo)
+  `);
+
+  await tx.execute(sql`
+    UPDATE arch_budgets b
+       SET subtotal_material = totals.material_total,
+           subtotal_labor = totals.labor_total,
+           subtotal = totals.material_total + totals.labor_total,
+           grand_total = GREATEST(0, totals.material_total + totals.labor_total),
+           updated_at = now()
+      FROM (
+        SELECT
+          COALESCE(SUM(total_material::numeric), 0) AS material_total,
+          COALESCE(SUM(total_labor::numeric), 0) AS labor_total
+        FROM arch_budget_items
+        WHERE budget_id = ${preBudgetId} AND deleted_at IS NULL
+      ) totals
+     WHERE b.id = ${preBudgetId}
+  `);
+
   await tx
     .update(archProjetosTable)
     .set({ obraId, updatedAt: new Date() })
