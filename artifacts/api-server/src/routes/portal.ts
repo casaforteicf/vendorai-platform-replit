@@ -236,7 +236,7 @@ router.get("/portal/obra/:token", async (req, res) => {
     medicoes = result.rows;
   }
 
-  let documentos = config.showDocuments
+  let documentos: any[] = config.showDocuments
     ? diario.flatMap((entry: any) => {
         const anexos = Array.isArray(entry.anexos) ? entry.anexos : [];
         return anexos.map((anexo: any, index: number) => ({
