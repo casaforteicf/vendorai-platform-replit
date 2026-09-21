@@ -25,8 +25,27 @@ export function snapPointToWallNetwork(
 ): WallNetworkPoint {
   const candidates: Array<{ point: WallNetworkPoint; distance: number; priority: number }> = [];
 
-  for (const wall of walls) {
-    if (wall.id === excludeWallId) continue;
+  const usableWalls = walls.filter((wall) => wall.id !== excludeWallId);
+
+  for (let i = 0; i < usableWalls.length; i += 1) {
+    for (let j = i + 1; j < usableWalls.length; j += 1) {
+      const a = usableWalls[i];
+      const b = usableWalls[j];
+      const aHorizontal = Math.abs(a.y1 - a.y2) < 0.01;
+      const bHorizontal = Math.abs(b.y1 - b.y2) < 0.01;
+      if (aHorizontal === bHorizontal) continue;
+      const h = aHorizontal ? a : b;
+      const v = aHorizontal ? b : a;
+      const point = { x: v.x1, y: h.y1 };
+      const withinH = point.x >= Math.min(h.x1, h.x2) - 0.01 && point.x <= Math.max(h.x1, h.x2) + 0.01;
+      const withinV = point.y >= Math.min(v.y1, v.y2) - 0.01 && point.y <= Math.max(v.y1, v.y2) + 0.01;
+      if (!withinH || !withinV) continue;
+      const d = distance(raw, point);
+      if (d <= threshold) candidates.push({ point, distance: d, priority: -1 });
+    }
+  }
+
+  for (const wall of usableWalls) {
 
     const endpoints = [
       { x: wall.x1, y: wall.y1 },
