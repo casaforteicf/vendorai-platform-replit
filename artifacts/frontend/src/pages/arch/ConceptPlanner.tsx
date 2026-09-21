@@ -4038,6 +4038,11 @@ export default function ConceptPlanner() {
                       onObjectChange={updateObjectById}
                       onObjectEditStart={beginRoomEdit}
                       onObjectEditEnd={endRoomEdit}
+                      paintTool={paintTool}
+                      onPaintObject={applyObjectMaterialToId}
+                      onPaintWall={applyWallMaterialToId}
+                      onPaintFloor={applyFloorMaterialToSpace}
+                      onCancelPaint={() => setPaintTool(null)}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
                         if (wallId) {
