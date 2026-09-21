@@ -146,6 +146,19 @@ type RealCatalogProduct = {
   especificacoes?: Record<string, unknown> | null;
 };
 
+function getCatalogModel3dUrl(item: RealCatalogProduct) {
+  const specs = item.especificacoes;
+  if (!specs || typeof specs !== "object") return undefined;
+  const keys = ["model3dUrl", "modelUrl", "glbUrl", "gltfUrl", "glb", "gltf", "modelo3d", "modelo_3d"];
+  for (const key of keys) {
+    const value = specs[key];
+    if (typeof value === "string" && /^https?:\/\//i.test(value) && /\.(glb|gltf)(\?|#|$)/i.test(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   kind: ConceptPlanObject["kind"];
   width: number;
@@ -365,6 +378,7 @@ function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlan
       imageUrl: typeof raw.imageUrl === "string" ? raw.imageUrl : undefined,
       supplier: typeof raw.supplier === "string" ? raw.supplier : undefined,
       price: Number.isFinite(Number(raw.price)) ? Number(raw.price) : undefined,
+      model3dUrl: typeof raw.model3dUrl === "string" ? raw.model3dUrl : undefined,
     }];
   });
 }
@@ -1049,7 +1063,7 @@ export default function ConceptPlanner() {
     width: number,
     depth: number,
     point?: { x: number; y: number },
-    metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>,
+    metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
   ) => {
     const before = snapshotEditor();
     const x = point
@@ -3604,6 +3618,7 @@ export default function ConceptPlanner() {
                                       imageUrl,
                                       supplier: item.fornecedor ?? undefined,
                                       price: price > 0 ? price : undefined,
+                                      model3dUrl: getCatalogModel3dUrl(item),
                                     }));
                                   }}
                                   onClick={() => addObjectAt(
@@ -3617,6 +3632,7 @@ export default function ConceptPlanner() {
                                       imageUrl,
                                       supplier: item.fornecedor ?? undefined,
                                       price: price > 0 ? price : undefined,
+                                      model3dUrl: getCatalogModel3dUrl(item),
                                     },
                                   )}
                                   className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
@@ -3631,6 +3647,11 @@ export default function ConceptPlanner() {
                                     <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
                                       REAL
                                     </span>
+                                    {getCatalogModel3dUrl(item) && (
+                                      <span className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-[9px] font-bold text-white shadow">
+                                        3D
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="p-3">
                                     <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
@@ -4236,6 +4257,7 @@ export default function ConceptPlanner() {
                             imageUrl: preset.imageUrl,
                             supplier: preset.supplier,
                             price: preset.price,
+                            model3dUrl: preset.model3dUrl,
                           },
                         )}
                         onObjectRotate={rotateObject}
