@@ -551,9 +551,16 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
         await client.query(
           `INSERT INTO obra_etapa_dependencias (
             id, tenant_id, obra_id, etapa_id, depende_de_etapa_id, tipo, defasagem_dias, created_at
-          ) VALUES ($1,$2,$3,$4,$5,'FS',0,now())
-          ON CONFLICT (etapa_id, depende_de_etapa_id)
-          DO UPDATE SET tipo = 'FS', defasagem_dias = 0`,
+          )
+          SELECT $1,$2,$3,$4,$5,'FS',0,now()
+          WHERE NOT EXISTS (
+            SELECT 1
+              FROM obra_etapa_dependencias
+             WHERE obra_id = $3
+               AND tenant_id = $2
+               AND etapa_id = $4
+               AND depende_de_etapa_id = $5
+          )`,
           [crypto.randomUUID(), tid, obraId, etapaId, predecessorId],
         );
       }
