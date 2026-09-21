@@ -22,6 +22,7 @@ type Props = {
   lightingMode: LightingMode;
   cameraPresetDegrees: number;
   cameraZoom: number;
+  transformMode?: "translate" | "rotate";
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -50,6 +51,10 @@ type Runtime = {
   objectGroups: Map<string, any>;
   pickables: any[];
   animationFrame: number;
+  cameraGoal: null | {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  };
 };
 
 const THREE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
@@ -142,6 +147,7 @@ export default function ConceptWebGLScene({
   lightingMode,
   cameraPresetDegrees,
   cameraZoom,
+  transformMode = "translate",
   paintTool = null,
   onReady,
   onSelectObject,
@@ -232,9 +238,11 @@ export default function ConceptWebGLScene({
               const depth = Number(target?.userData?.modelDepth ?? 0.6);
               const x = Math.max(0, Math.min(lotWidth - width, target.position.x + lotWidth / 2 - width / 2));
               const y = Math.max(0, Math.min(lotDepth - depth, target.position.z + lotDepth / 2 - depth / 2));
+              const rotation = ((-target.rotation.y * 180 / Math.PI) % 360 + 360) % 360;
               onObjectChange(objectId, {
                 x: Math.round(x * 20) / 20,
                 y: Math.round(y * 20) / 20,
+                rotation: (Math.round(rotation / 5) * 5) % 360,
               });
             }
             onObjectEditEnd?.();
@@ -258,6 +266,7 @@ export default function ConceptWebGLScene({
           objectGroups: new Map(),
           pickables: [],
           animationFrame: 0,
+          cameraGoal: null,
         };
         runtimeRef.current = runtime;
 
@@ -345,7 +354,31 @@ export default function ConceptWebGLScene({
         };
         renderer.domElement.addEventListener("click", handlePointer);
 
+        controls.addEventListener("start", () => {
+          runtime.cameraGoal = null;
+        });
+
         const loop = () => {
+          if (runtime.cameraGoal) {
+            const goal = runtime.cameraGoal;
+            camera.position.x += (goal.position.x - camera.position.x) * 0.14;
+            camera.position.y += (goal.position.y - camera.position.y) * 0.14;
+            camera.position.z += (goal.position.z - camera.position.z) * 0.14;
+            controls.target.x += (goal.target.x - controls.target.x) * 0.14;
+            controls.target.y += (goal.target.y - controls.target.y) * 0.14;
+            controls.target.z += (goal.target.z - controls.target.z) * 0.14;
+            const cameraDelta = Math.hypot(
+              goal.position.x - camera.position.x,
+              goal.position.y - camera.position.y,
+              goal.position.z - camera.position.z,
+            );
+            const targetDelta = Math.hypot(
+              goal.target.x - controls.target.x,
+              goal.target.y - controls.target.y,
+              goal.target.z - controls.target.z,
+            );
+            if (cameraDelta < 0.025 && targetDelta < 0.025) runtime.cameraGoal = null;
+          }
           controls.update();
           renderer.render(scene, camera);
           runtime.animationFrame = requestAnimationFrame(loop);
@@ -389,13 +422,18 @@ export default function ConceptWebGLScene({
     const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
     const radians = (cameraPresetDegrees * Math.PI) / 180;
     const elevation = Math.max(5.5, radius * 0.54);
-    runtime.camera.position.set(
-      Math.sin(radians) * radius,
-      elevation,
-      Math.cos(radians) * radius,
-    );
-    runtime.controls.target.set(0, Math.max(1.5, levels.length * 1.15), 0);
-    runtime.controls.update();
+    runtime.cameraGoal = {
+      position: {
+        x: Math.sin(radians) * radius,
+        y: elevation,
+        z: Math.cos(radians) * radius,
+      },
+      target: {
+        x: 0,
+        y: Math.max(1.5, levels.length * 1.15),
+        z: 0,
+      },
+    };
   }, [cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth]);
 
   useEffect(() => {
@@ -589,8 +627,7 @@ export default function ConceptWebGLScene({
       const baseY = floor * 2.96 + 0.16;
       const horizontal = Math.abs(dy) < 0.03;
       const vertical = Math.abs(dx) < 0.03;
-      const selected = custom ? selectedCustomWallId === wall.id : selectedWallId === wall.id;
-      const color = selected ? 0xf97316 : materialColor(materialId ?? "pintura-branca");
+      const color = materialColor(materialId ?? "pintura-branca");
 
       const addPiece = (
         alongStart: number,
@@ -724,7 +761,7 @@ export default function ConceptWebGLScene({
             cell.x + cell.width / 2 - lotWidth / 2,
             floorBase + 0.06,
             cell.y + cell.height / 2 - lotDepth / 2,
-            selectedClosedSpaceId === space.id ? 0xf97316 : floorMaterial,
+            floorMaterial,
           );
           floorMesh.userData.spaceId = space.id;
           runtime.pickables.push(floorMesh);
@@ -743,8 +780,7 @@ export default function ConceptWebGLScene({
         const height = Math.max(0.5, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
         const sill = opening.type === "door" ? 0.02 : Math.max(0.2, opening.sillHeight ?? 0.9);
         const glass = opening.type === "window";
-        const selectedOpening = selectedOpeningId === opening.id;
-        const frameColor = selectedOpening ? 0xf97316 : 0x334155;
+        const frameColor = 0x334155;
         const frameThickness = 0.055;
         const panelDepth = 0.035;
         const panel = makeBox(
@@ -755,11 +791,9 @@ export default function ConceptWebGLScene({
           opening.x - lotWidth / 2,
           floorBase + sill + height / 2,
           opening.y - lotDepth / 2,
-          selectedOpening
-            ? 0xf97316
-            : glass
-              ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
-              : 0x9a6b45,
+          glass
+            ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
+            : 0x9a6b45,
           { transparent: glass, opacity: glass ? 0.48 : 1 },
         );
         panel.userData.openingId = opening.id;
@@ -855,8 +889,7 @@ export default function ConceptWebGLScene({
       runtime.objectGroups.set(object.id, root);
       runtime.pickables.push(root);
 
-      const selected = object.id === selectedObjectId;
-      const baseColor = selected ? 0xf97316 : materialColor(object.materialId);
+      const baseColor = materialColor(object.materialId);
       const addLocalBox = (w: number, h: number, d: number, x: number, y: number, z: number, color = baseColor) =>
         makeBox(root, w, h, d, x, y, z, color);
 
@@ -867,7 +900,7 @@ export default function ConceptWebGLScene({
         addLocalBox(object.width * 0.12, 0.52, object.depth * 0.78, object.width * 0.44, 0.43, 0);
       } else if (object.kind === "bed") {
         addLocalBox(object.width * 0.96, 0.20, object.depth * 0.88, 0, 0.16, object.depth * 0.02);
-        addLocalBox(object.width * 0.92, 0.22, object.depth * 0.80, 0, 0.36, object.depth * 0.04, selected ? baseColor : 0xf5f1ea);
+        addLocalBox(object.width * 0.92, 0.22, object.depth * 0.80, 0, 0.36, object.depth * 0.04, 0xf5f1ea);
         addLocalBox(object.width * 0.96, 0.95, object.depth * 0.08, 0, 0.56, -object.depth * 0.46);
       } else if (object.kind === "table") {
         addLocalBox(object.width * 0.96, 0.10, object.depth * 0.96, 0, 0.74, 0);
@@ -883,18 +916,18 @@ export default function ConceptWebGLScene({
       } else if (object.kind === "cabinet") {
         addLocalBox(object.width, 2.05, object.depth, 0, 1.03, 0);
       } else if (object.kind === "tv") {
-        addLocalBox(object.width * 0.92, 1.0, Math.max(0.05, object.depth * 0.20), 0, 0.82, 0, selected ? baseColor : 0x111827);
+        addLocalBox(object.width * 0.92, 1.0, Math.max(0.05, object.depth * 0.20), 0, 0.82, 0, 0x111827);
       } else if (object.kind === "plant") {
         const pot = new THREE.Mesh(
           new THREE.CylinderGeometry(object.width * 0.22, object.width * 0.30, 0.42, 18),
-          makeMat(selected ? baseColor : 0x8b6b52),
+          makeMat(0x8b6b52),
         );
         pot.position.y = 0.21;
         pot.castShadow = true;
         root.add(pot);
         const crown = new THREE.Mesh(
           new THREE.SphereGeometry(Math.max(0.22, object.width * 0.42), 18, 12),
-          makeMat(selected ? baseColor : 0x5f8a4f),
+          makeMat(0x5f8a4f),
         );
         crown.scale.set(1, 1.35, 1);
         crown.position.y = 0.88;
@@ -902,10 +935,10 @@ export default function ConceptWebGLScene({
         root.add(crown);
       } else if (object.kind === "lamp") {
         addLocalBox(object.width * 0.58, 0.08, object.depth * 0.58, 0, 0.04, 0);
-        addLocalBox(0.05, 1.18, 0.05, 0, 0.63, 0, selected ? baseColor : 0x334155);
+        addLocalBox(0.05, 1.18, 0.05, 0, 0.63, 0, 0x334155);
         const shade = new THREE.Mesh(
           new THREE.CylinderGeometry(object.width * 0.22, object.width * 0.34, 0.38, 18),
-          makeMat(selected ? baseColor : 0xf3e1b7),
+          makeMat(0xf3e1b7),
         );
         shade.position.y = 1.35;
         shade.castShadow = true;
@@ -984,10 +1017,6 @@ export default function ConceptWebGLScene({
       }
     }
 
-    if (transform && selectedObjectId) {
-      const selected = runtime.objectGroups.get(selectedObjectId);
-      if (selected) transform.attach(selected);
-    }
   }, [
     activeFloor,
     engineState,
@@ -997,15 +1026,69 @@ export default function ConceptWebGLScene({
     lotDepth,
     lotWidth,
     objects,
+    showAllFloors,
+    showRoof,
+    roof,
+    visibleFloors,
+  ]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const transform = runtime?.transform;
+    if (!runtime || !transform || engineState !== "ready") return;
+    transform.setMode(transformMode);
+    transform.setSpace(transformMode === "rotate" ? "local" : "world");
+    transform.showX = transformMode === "translate";
+    transform.showY = transformMode === "rotate";
+    transform.showZ = transformMode === "translate";
+    transform.size = transformMode === "rotate" ? 0.95 : 0.8;
+  }, [engineState, transformMode]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+
+    const selectedKeys = new Set<string>();
+    if (selectedObjectId) selectedKeys.add(`object:${selectedObjectId}`);
+    if (selectedWallId) selectedKeys.add(`wall:${selectedWallId}`);
+    if (selectedCustomWallId) selectedKeys.add(`wall:${selectedCustomWallId}`);
+    if (selectedClosedSpaceId) selectedKeys.add(`space:${selectedClosedSpaceId}`);
+    if (selectedOpeningId) selectedKeys.add(`opening:${selectedOpeningId}`);
+
+    runtime.modelRoot.traverse((node: any) => {
+      if (!node?.isMesh) return;
+      const entityKey = node.userData?.objectId
+        ? `object:${node.userData.objectId}`
+        : node.userData?.wallId
+          ? `wall:${node.userData.wallId}`
+          : node.userData?.spaceId
+            ? `space:${node.userData.spaceId}`
+            : node.userData?.openingId
+              ? `opening:${node.userData.openingId}`
+              : null;
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      for (const material of materials) {
+        if (!material) continue;
+        if (material.emissive?.setHex) {
+          material.emissive.setHex(entityKey && selectedKeys.has(entityKey) ? 0xf97316 : 0x000000);
+          material.emissiveIntensity = entityKey && selectedKeys.has(entityKey) ? 0.42 : 0;
+        }
+      }
+    });
+
+    runtime.transform?.detach?.();
+    if (selectedObjectId) {
+      const selected = runtime.objectGroups.get(selectedObjectId);
+      if (selected) runtime.transform?.attach?.(selected);
+    }
+  }, [
+    engineState,
     selectedClosedSpaceId,
     selectedCustomWallId,
     selectedObjectId,
     selectedOpeningId,
     selectedWallId,
-    showAllFloors,
-    showRoof,
-    roof,
-    visibleFloors,
+    objects,
   ]);
 
   return (
@@ -1026,7 +1109,7 @@ export default function ConceptWebGLScene({
       )}
       {engineState === "ready" && (
         <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-[11px] font-semibold text-white shadow-xl backdrop-blur">
-          3D Pro · WebGL · arraste para orbitar · roda/pinça para zoom · selecione objeto para mover
+          3D Pro · seleção instantânea · câmera suave · arraste para orbitar · roda/pinça para zoom
         </div>
       )}
     </div>

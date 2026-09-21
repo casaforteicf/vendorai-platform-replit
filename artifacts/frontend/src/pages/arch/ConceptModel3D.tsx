@@ -548,6 +548,7 @@ export default function ConceptModel3D({
   const [interiorMode, setInteriorMode] = useState(false);
   const [lightingMode, setLightingMode] = useState<"day" | "sunset" | "night">("day");
   const [webglReady, setWebglReady] = useState(false);
+  const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -903,6 +904,28 @@ export default function ConceptModel3D({
           <div className="text-xs text-slate-500">{webglReady ? "WebGL com perspectiva, luz, sombras e gizmo real · selecione objetos, paredes, pisos e aberturas diretamente." : "Arraste o fundo para orbitar · arraste objetos para mover · pinça no celular ou roda do mouse para zoom."}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {webglReady && selectedObjectId && (
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setTransformMode("translate")}
+                className={transformMode === "translate"
+                  ? "bg-orange-500 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+              >
+                Mover
+              </button>
+              <button
+                type="button"
+                onClick={() => setTransformMode("rotate")}
+                className={transformMode === "rotate"
+                  ? "border-l border-orange-400 bg-orange-500 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+              >
+                Girar
+              </button>
+            </div>
+          )}
           {onRenderView && (
             <button
               type="button"
@@ -1048,6 +1071,7 @@ export default function ConceptModel3D({
         lightingMode={lightingMode}
         cameraPresetDegrees={rotation}
         cameraZoom={zoom}
+        transformMode={transformMode}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
