@@ -41,6 +41,12 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
+  selectedWallId?: string | null;
+  selectedCustomWallId?: string | null;
+  selectedClosedSpaceId?: string | null;
+  onSelectWall?: (wallId: string | null) => void;
+  onSelectCustomWall?: (wallId: string | null) => void;
+  onSelectClosedSpace?: (spaceId: string | null) => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -348,6 +354,12 @@ export default function ConceptModel3D({
   objects = [],
   selectedObjectId = null,
   onSelectObject,
+  selectedWallId = null,
+  selectedCustomWallId = null,
+  selectedClosedSpaceId = null,
+  onSelectWall,
+  onSelectCustomWall,
+  onSelectClosedSpace,
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
@@ -602,7 +614,12 @@ export default function ConceptModel3D({
         onPointerUp={handleOrbitEnd}
         onPointerCancel={handleOrbitEnd}
         onWheel={handleWheel}
-        onClick={() => onSelectObject?.(null)}
+        onClick={() => {
+          onSelectObject?.(null);
+          onSelectWall?.(null);
+          onSelectCustomWall?.(null);
+          onSelectClosedSpace?.(null);
+        }}
         className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
@@ -654,8 +671,9 @@ export default function ConceptModel3D({
               y2: wall.y2,
               thickness: wall.exterior ? 0.18 : 0.12,
               exterior: wall.exterior,
+              custom: false,
             })),
-            ...level.customWalls.map((wall) => ({ ...wall, exterior: false })),
+            ...level.customWalls.map((wall) => ({ ...wall, exterior: false, custom: true })),
           ];
 
           return (
@@ -674,10 +692,16 @@ export default function ConceptModel3D({
                         rotation, projectionWidth, projectionDepth, zoom,
                       ))}
                       fill={floor3dMaterial(level.floorMaterials?.[space.id])?.fill ?? (level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1")}
-                      fillOpacity={level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
-                      stroke={floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
-                      strokeOpacity={level.floorMaterials?.[space.id] ? "0.68" : "0.35"}
-                      strokeWidth="0.04"
+                      fillOpacity={selectedClosedSpaceId === space.id ? "0.96" : level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
+                      stroke={selectedClosedSpaceId === space.id ? "#f97316" : floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
+                      strokeOpacity={selectedClosedSpaceId === space.id ? "1" : level.floorMaterials?.[space.id] ? "0.68" : "0.35"}
+                      strokeWidth={selectedClosedSpaceId === space.id ? "0.10" : "0.04"}
+                      className={onSelectClosedSpace && level.floor === activeFloor ? "cursor-pointer" : undefined}
+                      onClick={(event) => {
+                        if (!onSelectClosedSpace || level.floor !== activeFloor) return;
+                        event.stopPropagation();
+                        onSelectClosedSpace(space.id);
+                      }}
                     />
                   ))}
                   {showLabels && (() => {
@@ -712,12 +736,22 @@ export default function ConceptModel3D({
                     );
                     const selectedWallMaterial = wall3dMaterial(level.wallMaterials?.[wall.id]);
                     return (
-                      <g key={`${level.floor}-${wall.id}-${piece.kind}-${index}`} opacity={interiorMode && wall.exterior ? 0.28 : 1}>
+                      <g
+                        key={`${level.floor}-${wall.id}-${piece.kind}-${index}`}
+                        opacity={interiorMode && wall.exterior ? 0.28 : 1}
+                        className={level.floor === activeFloor ? "cursor-pointer" : undefined}
+                        onClick={(event) => {
+                          if (level.floor !== activeFloor) return;
+                          event.stopPropagation();
+                          if (wall.custom) onSelectCustomWall?.(wall.id);
+                          else onSelectWall?.(wall.id);
+                        }}
+                      >
                         <polygon
                           points={points(shape.sideA)}
                           fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
-                          stroke="#475569"
-                          strokeWidth="0.055"
+                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#475569"}
+                          strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
                         <polygon
                           points={points(shape.sideB)}
@@ -728,8 +762,8 @@ export default function ConceptModel3D({
                         <polygon
                           points={points(shape.top)}
                           fill={selectedWallMaterial?.top ?? "url(#concept3d-wall)"}
-                          stroke="#64748b"
-                          strokeWidth="0.055"
+                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#64748b"}
+                          strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
                       </g>
                     );
