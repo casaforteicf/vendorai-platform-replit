@@ -377,6 +377,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -525,11 +526,21 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   async function updateEtapaDates(etapaId: string, dataInicioPrevista: string, dataFimPrevista: string) {
     if (!bundle) return;
     setError(null);
+    setScheduleNotice(null);
     try {
-      await api(`/api/arch/construction/${bundle.obra.id}/etapas/${etapaId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ dataInicioPrevista, dataFimPrevista }),
-      });
+      const result = await api<{ cascadedCount?: number; updated?: Array<{ etapaId: string; nome: string; cascading: boolean }> }>(
+        `/api/arch/construction/${bundle.obra.id}/etapas/${etapaId}/reschedule`,
+        {
+          method: "POST",
+          body: JSON.stringify({ dataInicioPrevista, dataFimPrevista }),
+        },
+      );
+      const cascadedCount = Number(result?.cascadedCount ?? 0);
+      setScheduleNotice(
+        cascadedCount > 0
+          ? `Cronograma recalculado: ${cascadedCount} etapa${cascadedCount === 1 ? "" : "s"} sucessora${cascadedCount === 1 ? "" : "s"} ajustada${cascadedCount === 1 ? "" : "s"} automaticamente.`
+          : "Datas atualizadas. Nenhuma etapa sucessora precisou ser deslocada.",
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao atualizar datas do cronograma.");
@@ -600,6 +611,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       </section>
 
       {error ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div> : null}
+      {scheduleNotice ? <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{scheduleNotice}</div> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Previsto hoje" value={`${metrics.planned.toFixed(0)}%`} hint="avanço planejado" />
