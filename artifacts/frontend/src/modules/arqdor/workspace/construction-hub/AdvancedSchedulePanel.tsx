@@ -1294,7 +1294,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
               />
               <Metric
                 label="Menor folga livre"
-                value={`${Math.min(...bundle.cpm.stages.map((stage) => stage.freeFloatDays), 0)} dias`}
+                value={`${bundle.cpm.stages.length ? Math.min(...bundle.cpm.stages.map((stage) => stage.freeFloatDays)) : 0} dias`}
                 hint="atraso sem empurrar sucessoras"
               />
             </div>
