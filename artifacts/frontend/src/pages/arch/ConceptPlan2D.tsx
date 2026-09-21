@@ -57,6 +57,7 @@ type Props = {
   onObjectDelete?: (objectId: string) => void;
   roomFloorMaterials?: Record<string, string>;
   spaceFloorMaterials?: Record<string, string>;
+  wallMaterials?: Record<string, string>;
 };
 
 function formatMeters(value: number) {
@@ -127,6 +128,19 @@ const FLOOR_MATERIAL_FILL: Record<string, string> = {
 
 function floorMaterialFill(id?: string) {
   return id ? FLOOR_MATERIAL_FILL[id] : undefined;
+}
+
+const WALL_MATERIAL_STROKE: Record<string, string> = {
+  "pintura-branca": "#cbd5e1",
+  "pintura-cinza": "#94a3b8",
+  "cimento-aparente": "#6b7280",
+  "madeira-ripada": "#8b5e3c",
+  "pedra-cinza": "#57534e",
+  "preto-fosco-parede": "#111827",
+};
+
+function wallMaterialStroke(id?: string) {
+  return id ? WALL_MATERIAL_STROKE[id] : undefined;
 }
 
 const ROOM_FILL: Record<string, string> = {
@@ -315,6 +329,7 @@ export default function ConceptPlan2D({
   onObjectDelete,
   roomFloorMaterials = {},
   spaceFloorMaterials = {},
+  wallMaterials = {},
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -1466,7 +1481,7 @@ export default function ConceptPlan2D({
                 y1={wall.y1}
                 x2={wall.x2}
                 y2={wall.y2}
-                stroke={selected ? "#f97316" : "#111827"}
+                stroke={selected ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? "#111827"}
                 strokeWidth={selected ? "0.21" : String(wall.thickness ?? 0.15)}
                 strokeLinecap="square"
                 pointerEvents="none"
@@ -1669,7 +1684,7 @@ export default function ConceptPlan2D({
                 y1={wall.y1}
                 x2={wall.x2}
                 y2={wall.y2}
-                stroke={selectedWall ? "#f97316" : wall.exterior ? "#111827" : "#334155"}
+                stroke={selectedWall ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? (wall.exterior ? "#111827" : "#334155")}
                 strokeWidth={selectedWall ? "0.20" : wall.exterior ? "0.16" : "0.095"}
                 strokeLinecap="square"
                 pointerEvents="none"
