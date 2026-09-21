@@ -404,6 +404,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [levelingResources, setLevelingResources] = useState(false);
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -580,6 +581,37 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     }
   }
 
+  async function levelResources() {
+    if (!bundle) return;
+    setLevelingResources(true);
+    setError(null);
+    setScheduleNotice(null);
+    try {
+      const result = await api<{
+        shiftedCount?: number;
+        conflictsResolved?: Array<{ equipe: string; etapaId: string; nome: string; days: number }>;
+        finishImpactDays?: number;
+        originalFinish?: string | null;
+        newFinish?: string | null;
+      }>(`/api/arch/construction/${bundle.obra.id}/level-resources`, {
+        method: "POST",
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const shifted = Number(result?.shiftedCount ?? 0);
+      const impact = Number(result?.finishImpactDays ?? 0);
+      setScheduleNotice(
+        shifted > 0
+          ? `Recursos nivelados: ${shifted} etapa(s) ajustada(s). Impacto no término da obra: ${impact > 0 ? "+" : ""}${impact} dia(s).`
+          : "Nenhum deslocamento foi necessário. As equipes já estão niveladas.",
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao nivelar recursos.");
+    } finally {
+      setLevelingResources(false);
+    }
+  }
+
   async function createEtapa() {
     if (!bundle || !newEtapa.nome.trim()) return;
     setSaving("new"); setError(null);
@@ -735,6 +767,14 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
             >
               {generatingPlan ? "Gerando planejamento…" : "Gerar planejamento do orçamento"}
             </button>
+            <button
+              type="button"
+              disabled={levelingResources || resourceSummary.conflicts.length === 0}
+              onClick={() => void levelResources()}
+              className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 disabled:opacity-40"
+            >
+              {levelingResources ? "Nivelando equipes…" : "Nivelar equipes"}
+            </button>
             <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Atualizar dados</button>
           </div>
         </div>
@@ -760,7 +800,20 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
 
       {resourceSummary.conflicts.length ? (
         <section className="rounded-3xl border border-rose-200 bg-rose-50 p-4">
-          <p className="text-sm font-semibold text-rose-800">Sobrecarga de recursos detectada</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-rose-800">Sobrecarga de recursos detectada</p>
+              <p className="mt-0.5 text-[11px] text-rose-600">O nivelamento move somente etapas pendentes, preservando atividades em andamento ou concluídas.</p>
+            </div>
+            <button
+              type="button"
+              disabled={levelingResources}
+              onClick={() => void levelResources()}
+              className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {levelingResources ? "Nivelando…" : "Resolver conflitos"}
+            </button>
+          </div>
           <div className="mt-2 space-y-1 text-xs text-rose-700">
             {resourceSummary.conflicts.slice(0, 8).map((conflict, index) => (
               <p key={`${conflict.equipe}-${index}`}><b>{conflict.equipe}</b>: {conflict.a} × {conflict.b}</p>
