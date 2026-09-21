@@ -152,7 +152,7 @@ function doorGlyph(opening: OpeningMarker) {
         <path
           d={`M ${opening.x - r / 2} ${opening.y + r} A ${r} ${r} 0 0 1 ${opening.x + r / 2} ${opening.y}`}
           fill="none"
-          stroke={objectMaterial(object).stroke}
+          stroke="#94a3b8"
           strokeWidth="0.04"
           strokeDasharray="0.08 0.06"
         />
@@ -891,16 +891,16 @@ export default function ConceptPlan2D({
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="#fcfcfd" />
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity="0.72" />
 
-        <line x1="0" y1="-0.55" x2={lotWidth} y2="-0.55" stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
-        <line x1="0" y1="-0.82" x2="0" y2="-0.25" stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
-        <line x1={lotWidth} y1="-0.82" x2={lotWidth} y2="-0.25" stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
+        <line x1="0" y1="-0.55" x2={lotWidth} y2="-0.55" stroke="#94a3b8" strokeWidth="0.035" />
+        <line x1="0" y1="-0.82" x2="0" y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
+        <line x1={lotWidth} y1="-0.82" x2={lotWidth} y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
         <text x={lotWidth / 2} y="-0.88" textAnchor="middle" fontSize="0.34" fontWeight="700" fill="#64748b">
           {formatMeters(lotWidth)} m
         </text>
 
-        <line x1="-0.55" y1="0" x2="-0.55" y2={lotDepth} stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
-        <line x1="-0.82" y1="0" x2="-0.25" y2="0" stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
-        <line x1="-0.82" y1={lotDepth} x2="-0.25" y2={lotDepth} stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
+        <line x1="-0.55" y1="0" x2="-0.55" y2={lotDepth} stroke="#94a3b8" strokeWidth="0.035" />
+        <line x1="-0.82" y1="0" x2="-0.25" y2="0" stroke="#94a3b8" strokeWidth="0.035" />
+        <line x1="-0.82" y1={lotDepth} x2="-0.25" y2={lotDepth} stroke="#94a3b8" strokeWidth="0.035" />
         <text
           x="-0.9"
           y={lotDepth / 2}
@@ -1068,7 +1068,7 @@ export default function ConceptPlan2D({
                           y1={room.y + 0.35 + step * Math.max(0.2, (room.depth - 0.7) / 7)}
                           x2={room.x + room.width - 0.18}
                           y2={room.y + 0.35 + step * Math.max(0.2, (room.depth - 0.7) / 7)}
-                          stroke={objectMaterial(object).stroke}
+                          stroke="#94a3b8"
                           strokeWidth="0.035"
                         />
                       ))}
@@ -1274,7 +1274,7 @@ export default function ConceptPlan2D({
               )}
               {object.kind === "cabinet" && (
                 <>
-                  <line x1={cx} y1={object.y + 0.08} x2={cx} y2={object.y + object.depth - 0.08} stroke={objectMaterial(object).stroke} strokeWidth="0.035" />
+                  <line x1={cx} y1={object.y + 0.08} x2={cx} y2={object.y + object.depth - 0.08} stroke="#94a3b8" strokeWidth="0.035" />
                   <circle cx={cx - 0.10} cy={cy} r="0.035" fill="#475569" />
                   <circle cx={cx + 0.10} cy={cy} r="0.035" fill="#475569" />
                 </>
