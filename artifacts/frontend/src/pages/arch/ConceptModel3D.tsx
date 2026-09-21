@@ -550,6 +550,7 @@ export default function ConceptModel3D({
   const [lightingMode, setLightingMode] = useState<"day" | "sunset" | "night">("day");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk">("orbit");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -976,6 +977,28 @@ export default function ConceptModel3D({
               </label>
             </div>
           )}
+          {webglReady && (
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setNavigationMode("orbit")}
+                className={navigationMode === "orbit"
+                  ? "bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+              >
+                Orbitar
+              </button>
+              <button
+                type="button"
+                onClick={() => setNavigationMode("walk")}
+                className={navigationMode === "walk"
+                  ? "border-l border-slate-700 bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+              >
+                Caminhar
+              </button>
+            </div>
+          )}
           {onRenderView && (
             <button
               type="button"
@@ -1122,6 +1145,7 @@ export default function ConceptModel3D({
         cameraPresetDegrees={rotation}
         cameraZoom={zoom}
         transformMode={transformMode}
+        navigationMode={navigationMode}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
