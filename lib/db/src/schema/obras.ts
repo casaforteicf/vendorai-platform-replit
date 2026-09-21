@@ -85,6 +85,11 @@ export const obraEtapasTable = pgTable("obra_etapas", {
   status: text("status").notNull().default("pendente"),
   percentualExecutado: numeric("percentual_executado", { precision: 5, scale: 2 }).notNull().default("0"),
   responsavel: text("responsavel"),
+  equipeNome: text("equipe_nome"),
+  equipeQuantidade: integer("equipe_quantidade").notNull().default(1),
+  horasDia: numeric("horas_dia", { precision: 5, scale: 2 }).notNull().default("8"),
+  custoHoraPessoa: numeric("custo_hora_pessoa", { precision: 12, scale: 2 }).notNull().default("0"),
+  produtividadeDia: numeric("produtividade_dia", { precision: 12, scale: 3 }).notNull().default("0"),
   custoPrevisto: numeric("custo_previsto", { precision: 15, scale: 2 }).notNull().default("0"),
   pesoFisico: numeric("peso_fisico", { precision: 7, scale: 4 }).notNull().default("0"),
   marco: boolean("marco").notNull().default(false),
@@ -94,12 +99,18 @@ export const obraEtapasTable = pgTable("obra_etapas", {
 
 export const insertObraEtapaSchema = createInsertSchema(obraEtapasTable, {
   percentualExecutado: decimalOptional,
+  horasDia: decimalOptional,
+  custoHoraPessoa: decimalOptional,
+  produtividadeDia: decimalOptional,
   custoPrevisto: decimalOptional,
   pesoFisico: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateObraEtapaSchema = createSelectSchema(obraEtapasTable, {
   percentualExecutado: decimalOptional,
+  horasDia: decimalOptional,
+  custoHoraPessoa: decimalOptional,
+  produtividadeDia: decimalOptional,
   custoPrevisto: decimalOptional,
   pesoFisico: decimalOptional,
 })
