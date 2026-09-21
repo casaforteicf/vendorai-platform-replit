@@ -50,9 +50,11 @@ type Props = {
   selectedWallId?: string | null;
   selectedCustomWallId?: string | null;
   selectedClosedSpaceId?: string | null;
+  selectedOpeningId?: string | null;
   onSelectWall?: (wallId: string | null) => void;
   onSelectCustomWall?: (wallId: string | null) => void;
   onSelectClosedSpace?: (spaceId: string | null) => void;
+  onSelectOpening?: (openingId: string | null) => void;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onPaintObject?: (objectId: string, materialId: string) => void;
   onPaintWall?: (wallId: string, materialId: string) => void;
@@ -516,9 +518,11 @@ export default function ConceptModel3D({
   selectedWallId = null,
   selectedCustomWallId = null,
   selectedClosedSpaceId = null,
+  selectedOpeningId = null,
   onSelectWall,
   onSelectCustomWall,
   onSelectClosedSpace,
+  onSelectOpening,
   paintTool = null,
   onPaintObject,
   onPaintWall,
@@ -972,6 +976,7 @@ export default function ConceptModel3D({
           onSelectWall?.(null);
           onSelectCustomWall?.(null);
           onSelectClosedSpace?.(null);
+          onSelectOpening?.(null);
         }}
         className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${paintTool ? "cursor-crosshair" : cameraPan || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
@@ -1131,6 +1136,73 @@ export default function ConceptModel3D({
                   })
                 )}
               </g>
+
+              {level.openings.map((opening) => {
+                const width = Math.max(0.5, opening.width ?? (opening.type === "door" ? 0.95 : 1.35));
+                const height = Math.max(0.5, Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
+                const sill = opening.type === "door"
+                  ? 0.02
+                  : Math.max(0, Math.min(WALL_HEIGHT - 0.3, opening.sillHeight ?? 0.9));
+                const segment = opening.orientation === "vertical"
+                  ? {
+                      x1: opening.x,
+                      y1: opening.y - width / 2,
+                      x2: opening.x,
+                      y2: opening.y + width / 2,
+                      thickness: 0.035,
+                    }
+                  : {
+                      x1: opening.x - width / 2,
+                      y1: opening.y,
+                      x2: opening.x + width / 2,
+                      y2: opening.y,
+                      thickness: 0.035,
+                    };
+                const shape = wallPolygon(
+                  segment,
+                  rotation,
+                  projectionWidth,
+                  projectionDepth,
+                  zoom,
+                  levelBase + sill,
+                  levelBase + Math.min(WALL_HEIGHT, sill + height),
+                );
+                const selected = selectedOpeningId === opening.id;
+                const isDoor = opening.type === "door";
+                return (
+                  <g
+                    key={`${level.floor}-opening-3d-${opening.id}`}
+                    className={level.floor === activeFloor ? "cursor-pointer" : undefined}
+                    onClick={(event) => {
+                      if (level.floor !== activeFloor) return;
+                      event.stopPropagation();
+                      onSelectOpening?.(opening.id);
+                    }}
+                  >
+                    <polygon
+                      points={points(shape.sideA)}
+                      fill={isDoor ? "#8b5e3c" : "#bfe3f7"}
+                      fillOpacity={isDoor ? "0.94" : "0.58"}
+                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
+                      strokeWidth={selected ? "0.12" : "0.055"}
+                    />
+                    <polygon
+                      points={points(shape.sideB)}
+                      fill={isDoor ? "#705441" : "#9dd2ef"}
+                      fillOpacity={isDoor ? "0.94" : "0.48"}
+                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
+                      strokeWidth={selected ? "0.12" : "0.055"}
+                    />
+                    <polygon
+                      points={points(shape.top)}
+                      fill={isDoor ? "#b98a5f" : "#dff3ff"}
+                      fillOpacity={isDoor ? "0.94" : "0.65"}
+                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
+                      strokeWidth={selected ? "0.12" : "0.055"}
+                    />
+                  </g>
+                );
+              })}
 
               {level.floor > 0 && (() => {
                 const lowerStairs = levels
