@@ -255,7 +255,12 @@ export default function ConceptWebGLScene({
         const host = hostRef.current;
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(46, 1, 0.05, 500);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+        const renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: true,
+        });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -264,6 +269,8 @@ export default function ConceptWebGLScene({
         renderer.toneMappingExposure = 1.05;
         if ("physicallyCorrectLights" in renderer) renderer.physicallyCorrectLights = true;
         renderer.domElement.className = "h-full w-full touch-none";
+        renderer.domElement.dataset.conceptModel3dSource = "true";
+        renderer.domElement.dataset.renderSource = "arqdor-webgl";
         host.replaceChildren(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);

@@ -1,6 +1,7 @@
 import { Router, type Request, type IRouter } from "express";
 import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray } from "drizzle-orm";
 import multer from "multer";
+import sharp from "sharp";
 import {
   db,
   archProjetosTable,
@@ -2544,8 +2545,25 @@ router.post("/arch/render", async (req, res) => {
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
 
-    const buf       = Buffer.from(b64, "base64");
-    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
+    const outputResolution = "4k";
+    const baseBuffer = Buffer.from(b64, "base64");
+    const targetSize = { width: 3840, height: 2160 };
+
+    const buf = await sharp(baseBuffer)
+      .resize(targetSize.width, targetSize.height, {
+        fit: "cover",
+        position: "centre",
+        kernel: sharp.kernel.lanczos3,
+      })
+      .sharpen({ sigma: 0.65, m1: 0.7, m2: 1.1 })
+      .png({ compressionLevel: 7, adaptiveFiltering: true })
+      .toBuffer();
+
+    const objPath   = await storage.savePrivateBuffer(
+      buf,
+      "image/png",
+      `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
+    );
     const servePath = objPath.replace(/^\/objects\//, "");
     const imageUrl  = `/api/storage/objects/${servePath}`;
 
@@ -2570,8 +2588,10 @@ async function executeRenderJob(opts: {
   originalImageUrl: string | null;
   prompt: string;
   log: import("pino").Logger;
+  outputResolution?: "2k" | "4k";
+  aspectRatio?: "16:9" | "3:2";
 }): Promise<void> {
-  const { tid, renderId, originalImageUrl, prompt, log } = opts;
+  const { tid, renderId, originalImageUrl, prompt, log, outputResolution = "4k", aspectRatio = "16:9" } = opts;
   const storage = new ObjectStorageService();
   let b64: string | undefined;
   let motor = "gpt-image-1";
@@ -2626,10 +2646,28 @@ async function executeRenderJob(opts: {
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
 
-    const buf       = Buffer.from(b64, "base64");
-    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
+    const baseBuffer = Buffer.from(b64, "base64");
+    const targetSize = outputResolution === "2k"
+      ? (aspectRatio === "16:9" ? { width: 2560, height: 1440 } : { width: 2304, height: 1536 })
+      : (aspectRatio === "16:9" ? { width: 3840, height: 2160 } : { width: 3072, height: 2048 });
+
+    const buf = await sharp(baseBuffer)
+      .resize(targetSize.width, targetSize.height, {
+        fit: "cover",
+        position: "centre",
+        kernel: sharp.kernel.lanczos3,
+      })
+      .sharpen({ sigma: 0.65, m1: 0.7, m2: 1.1 })
+      .png({ compressionLevel: 7, adaptiveFiltering: true })
+      .toBuffer();
+
+    const objPath = await storage.savePrivateBuffer(
+      buf,
+      "image/png",
+      `arch-render-${tid}-${outputResolution}-${targetSize.width}x${targetSize.height}-${Date.now()}.png`,
+    );
     const servePath = objPath.replace(/^\/objects\//, "");
-    const imageUrl  = `/api/storage/objects/${servePath}`;
+    const imageUrl = `/api/storage/objects/${servePath}`;
 
     await db.update(archAiRendersTable)
       .set({ status: "concluido", resultImageUrl: imageUrl, motor, prompt, concluidoEm: new Date() })
@@ -2725,6 +2763,8 @@ router.post("/arch/ai-render", async (req, res) => {
     estilo?: string;
     lighting?: string;
     angle?: string;
+    output_resolution?: "2k" | "4k";
+    aspect_ratio?: "16:9" | "3:2";
   };
 
   const ambiente        = body.ambiente ?? "sala";
@@ -2735,6 +2775,8 @@ router.post("/arch/ai-render", async (req, res) => {
   const estilo          = body.estilo ?? null;
   const lighting        = body.lighting ?? "auto";
   const angle           = body.angle ?? "frontal";
+  const outputResolution = body.output_resolution === "2k" ? "2k" : "4k";
+  const aspectRatio      = body.aspect_ratio === "3:2" ? "3:2" : "16:9";
 
   const prompt = buildAiRenderPrompt({ ambiente, mode, estilo, lighting, angle, userNotes });
 
@@ -2758,7 +2800,15 @@ router.post("/arch/ai-render", async (req, res) => {
   const log      = req.log;
 
   setImmediate(() => {
-    executeRenderJob({ tid, renderId, originalImageUrl, prompt, log }).catch(() => undefined);
+    executeRenderJob({
+      tid,
+      renderId,
+      originalImageUrl,
+      prompt,
+      log,
+      outputResolution,
+      aspectRatio,
+    }).catch(() => undefined);
   });
 
   req.log.info({ tenantId: tid, renderId, ambiente, mode }, "arch/ai-render: job criado");
@@ -2786,6 +2836,9 @@ router.get("/arch/ai-render/:id", async (req, res) => {
     ambiente:         job.ambiente,
     created_at:       job.createdAt,
     concluido_em:     job.concluidoEm ?? undefined,
+    output_resolution: "4k",
+    output_width: 3840,
+    output_height: 2160,
   });
 });
 
@@ -2843,7 +2896,15 @@ router.post("/arch/ai-render/:id/adjust", async (req, res) => {
   const log            = req.log;
 
   setImmediate(() => {
-    executeRenderJob({ tid, renderId, originalImageUrl: referenceImage, prompt, log }).catch(() => undefined);
+    executeRenderJob({
+      tid,
+      renderId,
+      originalImageUrl: referenceImage,
+      prompt,
+      log,
+      outputResolution: "4k",
+      aspectRatio: "16:9",
+    }).catch(() => undefined);
   });
 
   req.log.info({ tenantId: tid, renderId, parentId }, "arch/ai-render/adjust: job criado");
