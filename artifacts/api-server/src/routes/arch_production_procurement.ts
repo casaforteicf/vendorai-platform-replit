@@ -105,6 +105,88 @@ function scheduleLatest(a: Date | null, b: Date) {
   return !a || b.getTime() > a.getTime() ? b : a;
 }
 
+type WorkCalendar = {
+  segunda: boolean;
+  terca: boolean;
+  quarta: boolean;
+  quinta: boolean;
+  sexta: boolean;
+  sabado: boolean;
+  domingo: boolean;
+  horasDia: number;
+  feriados: string[];
+};
+
+const DEFAULT_WORK_CALENDAR: WorkCalendar = {
+  segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
+  sabado: false, domingo: false, horasDia: 8, feriados: [],
+};
+
+function normalizeWorkCalendar(raw: any): WorkCalendar {
+  const feriados = Array.isArray(raw?.feriados) ? raw.feriados.map((item: any) => String(item).slice(0, 10)) : [];
+  return {
+    segunda: raw?.segunda ?? true,
+    terca: raw?.terca ?? true,
+    quarta: raw?.quarta ?? true,
+    quinta: raw?.quinta ?? true,
+    sexta: raw?.sexta ?? true,
+    sabado: raw?.sabado ?? false,
+    domingo: raw?.domingo ?? false,
+    horasDia: Number(raw?.horasDia ?? raw?.horas_dia ?? 8),
+    feriados,
+  };
+}
+
+function isWorkDay(date: Date, calendar: WorkCalendar) {
+  if (calendar.feriados.includes(scheduleIso(date))) return false;
+  const day = date.getUTCDay();
+  if (day === 0) return calendar.domingo;
+  if (day === 1) return calendar.segunda;
+  if (day === 2) return calendar.terca;
+  if (day === 3) return calendar.quarta;
+  if (day === 4) return calendar.quinta;
+  if (day === 5) return calendar.sexta;
+  return calendar.sabado;
+}
+
+function nextWorkDay(date: Date, calendar: WorkCalendar) {
+  let next = new Date(date);
+  for (let guard = 0; guard < 370; guard++) {
+    if (isWorkDay(next, calendar)) return next;
+    next = scheduleAddDays(next, 1);
+  }
+  return next;
+}
+
+function addWorkDays(date: Date, days: number, calendar: WorkCalendar) {
+  if (days <= 0) return nextWorkDay(date, calendar);
+  let current = nextWorkDay(date, calendar);
+  let remaining = days;
+  while (remaining > 0) {
+    current = scheduleAddDays(current, 1);
+    if (isWorkDay(current, calendar)) remaining -= 1;
+  }
+  return current;
+}
+
+function workDurationDays(start: Date, end: Date, calendar: WorkCalendar) {
+  let current = new Date(start);
+  let count = 0;
+  for (let guard = 0; guard < 5000 && current <= end; guard++) {
+    if (isWorkDay(current, calendar)) count += 1;
+    current = scheduleAddDays(current, 1);
+  }
+  return Math.max(1, count);
+}
+
+async function getWorkCalendar(tid: string, obraId: string): Promise<WorkCalendar> {
+  const result = await pool.query(
+    `SELECT * FROM obra_calendarios WHERE obra_id = $1 AND tenant_id = $2 LIMIT 1`,
+    [obraId, tid],
+  );
+  return result.rows[0] ? normalizeWorkCalendar(result.rows[0]) : DEFAULT_WORK_CALENDAR;
+}
+
 async function addEvent(
   projectId: string,
   workOrderId: string | null,
@@ -390,6 +472,50 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
     });
   } catch (err) {
     logger.error({ err }, "arch/construction bundle error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.get("/arch/construction/:obraId/calendar", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    res.json({ calendar: await getWorkCalendar(tid, obraId) });
+  } catch (err) {
+    logger.error({ err }, "arch/construction calendar GET error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.put("/arch/construction/:obraId/calendar", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    const calendar = normalizeWorkCalendar(req.body ?? {});
+    const result = await pool.query(
+      `INSERT INTO obra_calendarios (
+         id, tenant_id, obra_id, segunda, terca, quarta, quinta, sexta, sabado, domingo, horas_dia, feriados, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,now(),now())
+       ON CONFLICT (obra_id)
+       DO UPDATE SET
+         segunda = EXCLUDED.segunda, terca = EXCLUDED.terca, quarta = EXCLUDED.quarta,
+         quinta = EXCLUDED.quinta, sexta = EXCLUDED.sexta, sabado = EXCLUDED.sabado,
+         domingo = EXCLUDED.domingo, horas_dia = EXCLUDED.horas_dia,
+         feriados = EXCLUDED.feriados, updated_at = now()
+       RETURNING *`,
+      [
+        crypto.randomUUID(), tid, obraId,
+        calendar.segunda, calendar.terca, calendar.quarta, calendar.quinta, calendar.sexta,
+        calendar.sabado, calendar.domingo, String(calendar.horasDia), JSON.stringify(calendar.feriados),
+      ],
+    );
+    res.json({ calendar: normalizeWorkCalendar(result.rows[0]) });
+  } catch (err) {
+    logger.error({ err }, "arch/construction calendar PUT error");
     next(err);
   }
 });
@@ -687,6 +813,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources
     const obraId = String(req.params["obraId"] ?? "");
     if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
 
+    const calendar = await getWorkCalendar(tid, obraId);
     const [etapasResult, depsResult] = await Promise.all([
       pool.query(
         `SELECT id, nome, ordem, status, marco, equipe_nome, equipe_quantidade,
@@ -781,17 +908,17 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources
         const id = String(row.id);
         const dates = planned.get(id);
         if (!dates) continue;
-        const duration = scheduleDurationDays(dates.start, dates.end);
+        const duration = workDurationDays(dates.start, dates.end, calendar);
         const movable = String(row.status ?? "pendente") === "pendente";
         let required = constrainedStart(id, duration, dates.start);
 
         if (occupiedUntil && required <= occupiedUntil) {
-          required = scheduleAddDays(occupiedUntil, 1);
+          required = addWorkDays(occupiedUntil, 1, calendar);
         }
 
         if (required > dates.start && movable) {
           const delta = Math.max(0, Math.round((required.getTime() - dates.start.getTime()) / 86_400_000));
-          planned.set(id, { start: required, end: scheduleAddDays(required, duration - 1) });
+          planned.set(id, { start: required, end: addWorkDays(required, duration - 1, calendar) });
           shifted.add(id);
           conflictsResolved.push({
             equipe: String(row.equipe_nome),
@@ -816,10 +943,10 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources
         const row = byId.get(id);
         const dates = planned.get(id);
         if (!row || !dates || String(row.status ?? "pendente") !== "pendente") continue;
-        const duration = scheduleDurationDays(dates.start, dates.end);
+        const duration = workDurationDays(dates.start, dates.end, calendar);
         const required = constrainedStart(id, duration, dates.start);
         if (required <= dates.start) continue;
-        planned.set(id, { start: required, end: scheduleAddDays(required, duration - 1) });
+        planned.set(id, { start: required, end: addWorkDays(required, duration - 1, calendar) });
         shifted.add(id);
         const seen = (guard.get(id) ?? 0) + 1;
         guard.set(id, seen);
