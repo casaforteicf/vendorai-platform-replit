@@ -1456,7 +1456,10 @@ export default function LeadDetail() {
             className="gap-1.5"
             onClick={() => {
               if (orcamentoExistente) {
-                setLocation(`/propostas/${orcamentoExistente.id}/print`);
+                const returnTo = `/leads/${id}`;
+                setLocation(
+                  `/propostas?edit=${encodeURIComponent(orcamentoExistente.id)}&returnTo=${encodeURIComponent(returnTo)}`
+                );
                 return;
               }
               setPropostaModalOpen(true);
