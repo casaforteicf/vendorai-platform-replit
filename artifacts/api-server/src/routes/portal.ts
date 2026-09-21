@@ -123,9 +123,9 @@ router.get("/portal/obra/:token", async (req, res) => {
   const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable).where(eq(tenantsTable.id, obra.tenantId));
 
-  const etapas = config.showSchedule
-    ? await db.select().from(obraEtapasTable).where(eq(obraEtapasTable.obraId, obra.id)).orderBy(asc(obraEtapasTable.ordem))
-    : [];
+  const etapas = await db.select().from(obraEtapasTable)
+    .where(eq(obraEtapasTable.obraId, obra.id))
+    .orderBy(asc(obraEtapasTable.ordem));
 
   let orcamentoComEtapas: any = null;
   if (config.showBudget) {
@@ -423,7 +423,7 @@ router.get("/portal/obra/:token", async (req, res) => {
     },
     tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
     orcamento: orcamentoComEtapas,
-    etapas,
+    etapas: config.showSchedule ? etapas : [],
     diario: config.showDiary ? diario : [],
     ocorrencias,
     decisions,
