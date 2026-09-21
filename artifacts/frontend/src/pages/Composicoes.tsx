@@ -305,6 +305,10 @@ function ComposicaoForm({
       toast({ title: "Selecione ao menos um sistema construtivo", variant: "destructive" });
       return;
     }
+    if (form.produtividadeDia.trim() && Number(form.produtividadeDia) <= 0) {
+      toast({ title: "Produtividade deve ser maior que zero ou ficar em branco", variant: "destructive" });
+      return;
+    }
     setSavingPrices(true);
     try {
       let priceChanges = 0;
@@ -426,7 +430,7 @@ function ComposicaoForm({
               <Label className="text-xs">Produtividade/pessoa/dia</Label>
               <Input
                 type="number"
-                min="0"
+                min="0.0001"
                 step="0.0001"
                 value={form.produtividadeDia}
                 onChange={(e) => setForm((f) => ({ ...f, produtividadeDia: e.target.value }))}
