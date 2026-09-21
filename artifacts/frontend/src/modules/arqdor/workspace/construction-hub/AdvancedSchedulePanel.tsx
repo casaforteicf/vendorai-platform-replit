@@ -13,6 +13,11 @@ type Etapa = {
   status: string;
   percentualExecutado: number;
   responsavel?: string | null;
+  equipeNome?: string | null;
+  equipeQuantidade: number;
+  horasDia: number;
+  custoHoraPessoa: number;
+  produtividadeDia: number;
   custoPrevisto: number;
   pesoFisico: number;
   marco: boolean;
@@ -42,6 +47,11 @@ type EtapaDraft = {
   dataInicioPrevista: string;
   dataFimPrevista: string;
   responsavel: string;
+  equipeNome: string;
+  equipeQuantidade: string;
+  horasDia: string;
+  custoHoraPessoa: string;
+  produtividadeDia: string;
   custoPrevisto: string;
   pesoFisico: string;
   marco: boolean;
@@ -54,6 +64,11 @@ const EMPTY_NEW: NewEtapaDraft = {
   dataInicioPrevista: "",
   dataFimPrevista: "",
   responsavel: "",
+  equipeNome: "",
+  equipeQuantidade: "1",
+  horasDia: "8",
+  custoHoraPessoa: "0",
+  produtividadeDia: "0",
   custoPrevisto: "0",
   pesoFisico: "0",
   marco: false,
@@ -105,6 +120,11 @@ function normalizeEtapa(raw: any): Etapa {
     status: String(raw?.status ?? "pendente"),
     percentualExecutado: Number(raw?.percentualExecutado ?? raw?.percentual_executado ?? 0),
     responsavel: raw?.responsavel ?? null,
+    equipeNome: raw?.equipeNome ?? raw?.equipe_nome ?? null,
+    equipeQuantidade: Number(raw?.equipeQuantidade ?? raw?.equipe_quantidade ?? 1),
+    horasDia: Number(raw?.horasDia ?? raw?.horas_dia ?? 8),
+    custoHoraPessoa: Number(raw?.custoHoraPessoa ?? raw?.custo_hora_pessoa ?? 0),
+    produtividadeDia: Number(raw?.produtividadeDia ?? raw?.produtividade_dia ?? 0),
     custoPrevisto: Number(raw?.custoPrevisto ?? raw?.custo_previsto ?? 0),
     pesoFisico: Number(raw?.pesoFisico ?? raw?.peso_fisico ?? 0),
     marco: Boolean(raw?.marco),
@@ -183,6 +203,11 @@ function draftFrom(etapa: Etapa): EtapaDraft {
     dataInicioPrevista: etapa.dataInicioPrevista ?? "",
     dataFimPrevista: etapa.dataFimPrevista ?? "",
     responsavel: etapa.responsavel ?? "",
+    equipeNome: etapa.equipeNome ?? "",
+    equipeQuantidade: String(etapa.equipeQuantidade || 1),
+    horasDia: String(etapa.horasDia || 8),
+    custoHoraPessoa: String(etapa.custoHoraPessoa || 0),
+    produtividadeDia: String(etapa.produtividadeDia || 0),
     custoPrevisto: String(etapa.custoPrevisto || 0),
     pesoFisico: String(etapa.pesoFisico || 0),
     marco: etapa.marco,
@@ -486,6 +511,33 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     return ids;
   }, [bundle]);
 
+  const resourceSummary = useMemo(() => {
+    const etapas = bundle?.etapas ?? [];
+    const laborCost = etapas.reduce((sum, item) => {
+      const days = durationDays(item);
+      return sum + days * Math.max(1, item.equipeQuantidade) * Math.max(0, item.horasDia) * Math.max(0, item.custoHoraPessoa);
+    }, 0);
+
+    const conflicts: Array<{ equipe: string; a: string; b: string }> = [];
+    for (let i = 0; i < etapas.length; i++) {
+      const a = etapas[i]!;
+      const aStart = dateValue(a.dataInicioPrevista);
+      const aEnd = dateValue(a.dataFimPrevista);
+      if (!a.equipeNome || !aStart || !aEnd || a.marco) continue;
+      for (let j = i + 1; j < etapas.length; j++) {
+        const b = etapas[j]!;
+        const bStart = dateValue(b.dataInicioPrevista);
+        const bEnd = dateValue(b.dataFimPrevista);
+        if (!b.equipeNome || !bStart || !bEnd || b.marco) continue;
+        if (a.equipeNome.trim().toLowerCase() !== b.equipeNome.trim().toLowerCase()) continue;
+        if (aStart <= bEnd && bStart <= aEnd) conflicts.push({ equipe: a.equipeNome, a: a.nome, b: b.nome });
+      }
+    }
+
+    const allocatedPeople = etapas.reduce((sum, item) => sum + (item.equipeNome ? Math.max(1, item.equipeQuantidade) : 0), 0);
+    return { laborCost, conflicts, allocatedPeople };
+  }, [bundle]);
+
   const timeline = useMemo(() => {
     const dates = (bundle?.etapas ?? []).flatMap((item) => [dateValue(item.dataInicioPrevista), dateValue(item.dataFimPrevista)]).filter(Boolean) as Date[];
     if (!dates.length) return null;
@@ -540,6 +592,11 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
           dataInicioPrevista: newEtapa.dataInicioPrevista || null,
           dataFimPrevista: newEtapa.dataFimPrevista || null,
           responsavel: newEtapa.responsavel || null,
+          equipeNome: newEtapa.equipeNome || null,
+          equipeQuantidade: Number(newEtapa.equipeQuantidade || 1),
+          horasDia: Number(newEtapa.horasDia || 8),
+          custoHoraPessoa: Number(newEtapa.custoHoraPessoa || 0),
+          produtividadeDia: Number(newEtapa.produtividadeDia || 0),
           custoPrevisto: Number(newEtapa.custoPrevisto || 0),
           pesoFisico: Number(newEtapa.pesoFisico || 0),
           marco: newEtapa.marco,
@@ -593,6 +650,11 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         body: JSON.stringify({
           nome: draft.nome,
           responsavel: draft.responsavel,
+          equipeNome: draft.equipeNome || null,
+          equipeQuantidade: Number(draft.equipeQuantidade || 1),
+          horasDia: Number(draft.horasDia || 8),
+          custoHoraPessoa: Number(draft.custoHoraPessoa || 0),
+          produtividadeDia: Number(draft.produtividadeDia || 0),
           custoPrevisto: Number(draft.custoPrevisto || 0),
           pesoFisico: Number(draft.pesoFisico || 0),
           marco: draft.marco,
@@ -690,6 +752,23 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         <Metric label="Compras" value={money(metrics.purchases)} hint={metrics.scheduledFinish ? `término ${metrics.scheduledFinish.toLocaleDateString("pt-BR")}` : "sem término definido"} />
       </section>
 
+      <section className="grid gap-3 md:grid-cols-3">
+        <Metric label="Pessoas alocadas" value={String(resourceSummary.allocatedPeople)} hint="soma das equipes por etapa" />
+        <Metric label="Mão de obra planejada" value={money(resourceSummary.laborCost)} hint="dias × pessoas × horas × custo/h" />
+        <Metric label="Conflitos de equipe" value={String(resourceSummary.conflicts.length)} hint="mesma equipe em atividades simultâneas" danger={resourceSummary.conflicts.length > 0} />
+      </section>
+
+      {resourceSummary.conflicts.length ? (
+        <section className="rounded-3xl border border-rose-200 bg-rose-50 p-4">
+          <p className="text-sm font-semibold text-rose-800">Sobrecarga de recursos detectada</p>
+          <div className="mt-2 space-y-1 text-xs text-rose-700">
+            {resourceSummary.conflicts.slice(0, 8).map((conflict, index) => (
+              <p key={`${conflict.equipe}-${index}`}><b>{conflict.equipe}</b>: {conflict.a} × {conflict.b}</p>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid gap-5 2xl:grid-cols-[430px_1fr]">
         <div className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
           <h3 className="text-lg font-semibold">Adicionar etapa ou marco</h3>
@@ -701,6 +780,16 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
               <label className="text-xs text-slate-500">Término<input type="date" value={newEtapa.dataFimPrevista} onChange={(e) => setNewEtapa((v) => ({ ...v, dataFimPrevista: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
             </div>
             <input value={newEtapa.responsavel} onChange={(e) => setNewEtapa((v) => ({ ...v, responsavel: e.target.value }))} placeholder="Responsável" className="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm" />
+            <div className="rounded-2xl border border-slate-100 p-3">
+              <p className="text-xs font-semibold text-slate-600">Recursos da etapa</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input value={newEtapa.equipeNome} onChange={(e) => setNewEtapa((v) => ({ ...v, equipeNome: e.target.value }))} placeholder="Equipe / recurso" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="1" value={newEtapa.equipeQuantidade} onChange={(e) => setNewEtapa((v) => ({ ...v, equipeQuantidade: e.target.value }))} placeholder="Pessoas" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="0.5" max="24" step="0.5" value={newEtapa.horasDia} onChange={(e) => setNewEtapa((v) => ({ ...v, horasDia: e.target.value }))} placeholder="Horas/dia" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="0" step="0.01" value={newEtapa.custoHoraPessoa} onChange={(e) => setNewEtapa((v) => ({ ...v, custoHoraPessoa: e.target.value }))} placeholder="R$/hora/pessoa" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input type="number" min="0" step="0.001" value={newEtapa.produtividadeDia} onChange={(e) => setNewEtapa((v) => ({ ...v, produtividadeDia: e.target.value }))} placeholder="Produtividade/dia" className="col-span-2 rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs text-slate-500">Custo previsto<input type="number" min="0" value={newEtapa.custoPrevisto} onChange={(e) => setNewEtapa((v) => ({ ...v, custoPrevisto: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
               <label className="text-xs text-slate-500">Peso físico %<input type="number" min="0" max="100" value={newEtapa.pesoFisico} onChange={(e) => setNewEtapa((v) => ({ ...v, pesoFisico: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
@@ -752,6 +841,18 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
                     <label className="text-[11px] font-medium text-slate-500">Peso %<input type="number" min="0" max="100" value={draft.pesoFisico} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, pesoFisico: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>
                   </div>
                   <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end"><label className="text-[11px] font-medium text-slate-500">Responsável<input value={draft.responsavel} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, responsavel: e.target.value } }))} placeholder="Pessoa ou equipe" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label><label className="flex h-10 items-center gap-2 rounded-xl bg-slate-50 px-3 text-xs"><input type="checkbox" checked={draft.marco} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, marco: e.target.checked } }))} /> Marco</label></div>
+                  {!draft.marco ? (
+                    <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+                      <div className="grid gap-2 md:grid-cols-5">
+                        <label className="text-[11px] text-slate-500">Equipe<input value={draft.equipeNome} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, equipeNome: e.target.value } }))} placeholder="Ex.: Equipe ICF" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">Pessoas<input type="number" min="1" value={draft.equipeQuantidade} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, equipeQuantidade: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">Horas/dia<input type="number" min="0.5" max="24" step="0.5" value={draft.horasDia} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, horasDia: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">R$/hora/pessoa<input type="number" min="0" step="0.01" value={draft.custoHoraPessoa} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, custoHoraPessoa: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                        <label className="text-[11px] text-slate-500">Produtividade/dia<input type="number" min="0" step="0.001" value={draft.produtividadeDia} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, produtividadeDia: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /></label>
+                      </div>
+                      <p className="mt-2 text-[10px] text-slate-400">Custo de mão de obra estimado nesta etapa: {money(durationDays(etapa) * Number(draft.equipeQuantidade || 1) * Number(draft.horasDia || 8) * Number(draft.custoHoraPessoa || 0))}</p>
+                    </div>
+                  ) : null}
                 </div>
                 <button type="button" disabled={saving === etapa.id} onClick={() => void saveEtapa(etapa.id)} className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving === etapa.id ? "Salvando…" : "Salvar etapa"}</button>
               </div>
