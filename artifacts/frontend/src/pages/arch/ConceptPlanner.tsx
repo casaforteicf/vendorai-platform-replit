@@ -3967,7 +3967,17 @@ export default function ConceptPlanner() {
                         }}
                         onOpeningChange={updateOpeningById}
                         selectedWallId={selectedWallId}
-                        onSelectWall={(wallId) => {
+                        onSelectOpening={(openingId) => {
+                        setSelectedOpeningId(openingId);
+                        if (openingId) {
+                          setSelectedObjectId(null);
+                          setSelectedWallId(null);
+                          setSelectedCustomWallId(null);
+                          setSelectedClosedSpaceId(null);
+                          setSelectedId(null);
+                        }
+                      }}
+                      onSelectWall={(wallId) => {
                           if (wallId && paintTool?.target === "wall") {
                             applyWallMaterialToId(wallId, paintTool.materialId);
                             return;
@@ -4073,6 +4083,7 @@ export default function ConceptPlanner() {
                       selectedWallId={selectedWallId}
                       selectedCustomWallId={selectedCustomWallId}
                       selectedClosedSpaceId={selectedClosedSpaceId}
+                      selectedOpeningId={selectedOpeningId}
                       onSelectObject={(objectId) => {
                         setSelectedObjectId(objectId);
                         if (objectId) {
@@ -4289,7 +4300,7 @@ export default function ConceptPlanner() {
                 ))}
               </div>
 
-              {((editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)) || (editorView === "model3d" && (selectedObject || selectedCustomWall || selectedClosedSpace || selectedWall))) && (
+              {((editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)) || (editorView === "model3d" && (selectedObject || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall))) && (
               <aside className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
                 <button
                   type="button"
@@ -4485,6 +4496,11 @@ export default function ConceptPlanner() {
                       </>
                     )}
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
+                      {editorView === "model3d" && (
+                        <button type="button" onClick={() => setEditorView("plan")} className="h-9 rounded-lg border px-3 text-xs font-semibold">
+                          Editar no 2D
+                        </button>
+                      )}
                       <button type="button" onClick={() => moveOpening(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
                       <button type="button" onClick={() => moveOpening(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
                       {safeCustomOpenings.some((opening) => opening.id === selectedOpening.id) && (
