@@ -3182,6 +3182,17 @@ export default function ConceptPlanner() {
                     </>
                   )}
 
+                  {safeObjects.filter((object) => object.floor === activeFloor).length > 0 && (
+                    <div className="mt-5 rounded-xl border bg-slate-50 p-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700">Objetos no pavimento</span>
+                        <span className="rounded-full bg-white px-2 py-1 font-bold text-slate-600">
+                          {safeObjects.filter((object) => object.floor === activeFloor).length}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-6 hidden border-t pt-4 xl:block">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">No projeto</div>
                     <div className="mt-3 max-h-64 space-y-1.5 overflow-auto">
@@ -3320,6 +3331,7 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                           setSelectedWallId(null);
                           setSelectedCustomWallId(null);
+                          setSelectedObjectId(null);
                           closeLibraryOnMobile();
                         }}
                         closedSpaceLabels={Object.fromEntries(
@@ -3332,6 +3344,7 @@ export default function ConceptPlanner() {
                         onSelect={(roomId) => {
                           setSelectedId(roomId);
                           setSelectedOpeningId(null);
+                          setSelectedObjectId(null);
                           closeLibraryOnMobile();
                         }}
                         onRoomChange={updateRoomById}
@@ -3339,6 +3352,7 @@ export default function ConceptPlanner() {
                         onSelectOpening={(openingId) => {
                           setSelectedOpeningId(openingId);
                           setSelectedId(null);
+                          setSelectedObjectId(null);
                           closeLibraryOnMobile();
                         }}
                         onOpeningChange={updateOpeningById}
@@ -3347,6 +3361,7 @@ export default function ConceptPlanner() {
                           setSelectedWallId(wallId);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
+                          setSelectedObjectId(null);
                           closeLibraryOnMobile();
                         }}
                         onWallMove={moveWallById}
@@ -3358,6 +3373,7 @@ export default function ConceptPlanner() {
                           setSelectedWallId(null);
                           setSelectedId(null);
                           setSelectedOpeningId(null);
+                          setSelectedObjectId(null);
                           closeLibraryOnMobile();
                         }}
                         onDeleteCustomWall={deleteCustomWall}
@@ -3419,6 +3435,7 @@ export default function ConceptPlanner() {
                       levels={modelLevels}
                       roof={facadePreferences.roof}
                       facadeDesign={facadeDesign}
+                      objects={safeObjects}
                     />
                   )}
 

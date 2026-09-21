@@ -3,6 +3,7 @@ import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
+import type { ConceptPlanObject } from "./ConceptPlan2D";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -35,6 +36,7 @@ type Props = {
   levels: ConceptModelLevel[];
   roof: "platibanda" | "aparente" | "misto";
   facadeDesign?: FacadeDesignState;
+  objects?: ConceptPlanObject[];
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -87,6 +89,49 @@ function quad(
     project({ x: x2, y: y2, z }, rotation, lotWidth, lotDepth, zoom),
     project({ x: x1, y: y2, z }, rotation, lotWidth, lotDepth, zoom),
   ];
+}
+
+function boxPolygons(
+  object: ConceptPlanObject,
+  sceneRotation: number,
+  lotWidth: number,
+  lotDepth: number,
+  zoom: number,
+  zBase: number,
+) {
+  const kindHeight: Record<ConceptPlanObject["kind"], number> = {
+    sofa: 0.82,
+    bed: 0.58,
+    table: 0.76,
+    chair: 0.88,
+    cabinet: 2.10,
+    tv: 1.25,
+  };
+  const zTop = zBase + (kindHeight[object.kind] ?? 0.8);
+  const cx = object.x + object.width / 2;
+  const cy = object.y + object.depth / 2;
+  const radians = (object.rotation * Math.PI) / 180;
+  const rotateLocal = (x: number, y: number) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return {
+      x: cx + dx * Math.cos(radians) - dy * Math.sin(radians),
+      y: cy + dx * Math.sin(radians) + dy * Math.cos(radians),
+    };
+  };
+  const corners = [
+    rotateLocal(object.x, object.y),
+    rotateLocal(object.x + object.width, object.y),
+    rotateLocal(object.x + object.width, object.y + object.depth),
+    rotateLocal(object.x, object.y + object.depth),
+  ];
+  const bottom = corners.map((p) => ({ ...p, z: zBase }));
+  const top = corners.map((p) => ({ ...p, z: zTop }));
+  return {
+    top: top.map((p) => project(p, sceneRotation, lotWidth, lotDepth, zoom)),
+    sideA: [bottom[0], bottom[1], top[1], top[0]].map((p) => project(p, sceneRotation, lotWidth, lotDepth, zoom)),
+    sideB: [bottom[1], bottom[2], top[2], top[1]].map((p) => project(p, sceneRotation, lotWidth, lotDepth, zoom)),
+  };
 }
 
 function wallPolygon(
@@ -244,6 +289,7 @@ export default function ConceptModel3D({
   levels,
   roof,
   facadeDesign,
+  objects = [],
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
@@ -605,6 +651,35 @@ export default function ConceptModel3D({
             </g>
           );
         })}
+
+        {objects
+          .filter((object) => showAllFloors || object.floor === activeFloor)
+          .map((object) => {
+            const shape = boxPolygons(
+              object,
+              rotation,
+              projectionWidth,
+              projectionDepth,
+              zoom,
+              object.floor * LEVEL_HEIGHT + FLOOR_THICKNESS,
+            );
+            const palette: Record<ConceptPlanObject["kind"], { top: string; sideA: string; sideB: string }> = {
+              sofa: { top: "#cbd5e1", sideA: "#94a3b8", sideB: "#64748b" },
+              bed: { top: "#f8fafc", sideA: "#e2e8f0", sideB: "#cbd5e1" },
+              table: { top: "#d6d3d1", sideA: "#a8a29e", sideB: "#78716c" },
+              chair: { top: "#e2e8f0", sideA: "#94a3b8", sideB: "#64748b" },
+              cabinet: { top: "#d6d3d1", sideA: "#a8a29e", sideB: "#78716c" },
+              tv: { top: "#334155", sideA: "#1e293b", sideB: "#0f172a" },
+            };
+            const colors = palette[object.kind];
+            return (
+              <g key={`concept-object-3d-${object.id}`} filter="url(#concept3d-shadow)">
+                <polygon points={points(shape.sideA)} fill={colors.sideA} stroke="#475569" strokeWidth="0.045" />
+                <polygon points={points(shape.sideB)} fill={colors.sideB} stroke="#475569" strokeWidth="0.045" />
+                <polygon points={points(shape.top)} fill={colors.top} stroke="#475569" strokeWidth="0.045" />
+              </g>
+            );
+          })}
 
         {showAllFloors && facadeDesign?.volumes.map((volume) => {
           const x1 = buildingBounds.minX + buildingWidth * (volume.x / 100);
