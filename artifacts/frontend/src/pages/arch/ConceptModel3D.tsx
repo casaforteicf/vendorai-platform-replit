@@ -21,6 +21,7 @@ export type ConceptModelLevel = {
   openings: OpeningMarker[];
   labels: Record<string, string>;
   floorMaterials?: Record<string, string>;
+  wallMaterials?: Record<string, string>;
   stairs: Array<{
     id: string;
     x: number;
@@ -241,6 +242,19 @@ function splitWallForOpenings(
   const after = makeSegment(cursor, wallEnd);
   if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
   return pieces;
+}
+
+const WALL_3D_MATERIALS: Record<string, { front: string; side: string; top: string }> = {
+  "pintura-branca": { front: "#f8fafc", side: "#e2e8f0", top: "#ffffff" },
+  "pintura-cinza": { front: "#cbd5e1", side: "#94a3b8", top: "#e2e8f0" },
+  "cimento-aparente": { front: "#9ca3af", side: "#6b7280", top: "#d1d5db" },
+  "madeira-ripada": { front: "#b98a5f", side: "#8b5e3c", top: "#d2a679" },
+  "pedra-cinza": { front: "#78716c", side: "#57534e", top: "#a8a29e" },
+  "preto-fosco-parede": { front: "#1f2937", side: "#111827", top: "#374151" },
+};
+
+function wall3dMaterial(id?: string) {
+  return id ? WALL_3D_MATERIALS[id] : undefined;
 }
 
 const FLOOR_3D_MATERIALS: Record<string, { fill: string; edge: string }> = {
@@ -616,11 +630,27 @@ export default function ConceptModel3D({
                       levelBase + piece.zMin,
                       levelBase + piece.zMax,
                     );
+                    const selectedWallMaterial = wall3dMaterial(level.wallMaterials?.[wall.id]);
                     return (
                       <g key={`${level.floor}-${wall.id}-${piece.kind}-${index}`}>
-                        <polygon points={points(shape.sideA)} fill={wall.exterior ? exteriorMaterial.baseColor : "#aab5c3"} stroke="#475569" strokeWidth="0.055" />
-                        <polygon points={points(shape.sideB)} fill="url(#concept3d-wall-side)" stroke="#475569" strokeWidth="0.055" />
-                        <polygon points={points(shape.top)} fill="url(#concept3d-wall)" stroke="#64748b" strokeWidth="0.055" />
+                        <polygon
+                          points={points(shape.sideA)}
+                          fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
+                          stroke="#475569"
+                          strokeWidth="0.055"
+                        />
+                        <polygon
+                          points={points(shape.sideB)}
+                          fill={selectedWallMaterial?.side ?? "url(#concept3d-wall-side)"}
+                          stroke="#475569"
+                          strokeWidth="0.055"
+                        />
+                        <polygon
+                          points={points(shape.top)}
+                          fill={selectedWallMaterial?.top ?? "url(#concept3d-wall)"}
+                          stroke="#64748b"
+                          strokeWidth="0.055"
+                        />
                       </g>
                     );
                   })
