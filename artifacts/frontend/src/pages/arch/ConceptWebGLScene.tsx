@@ -339,7 +339,7 @@ export default function ConceptWebGLScene({
         controls.update();
 
         const handlePointer = (event: PointerEvent) => {
-          if (!runtimeRef.current || runtime.transform?.dragging) return;
+          if (!runtimeRef.current || runtime.transform?.dragging || runtime.navigationMode === "walk") return;
           const rect = renderer.domElement.getBoundingClientRect();
           pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
           pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1279,6 +1279,30 @@ export default function ConceptWebGLScene({
       {engineState === "fallback" && (
         <div className="pointer-events-none absolute left-4 top-24 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 shadow">
           3D Pro indisponível neste navegador. Exibindo modo compatível.
+        </div>
+      )}
+      {engineState === "ready" && navigationMode === "walk" && (
+        <div data-walk-pad className="absolute bottom-20 right-4 z-20 grid grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-slate-950/75 p-2 shadow-2xl backdrop-blur md:bottom-5">
+          {[
+            ["", ""], ["w", "↑"], ["", ""],
+            ["a", "←"], ["s", "↓"], ["d", "→"],
+          ].map(([key, label], index) => key ? (
+            <button
+              key={key}
+              type="button"
+              className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/10 text-lg font-black text-white active:bg-orange-500"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                runtimeRef.current?.walkKeys.add(key);
+              }}
+              onPointerUp={() => runtimeRef.current?.walkKeys.delete(key)}
+              onPointerCancel={() => runtimeRef.current?.walkKeys.delete(key)}
+              onPointerLeave={() => runtimeRef.current?.walkKeys.delete(key)}
+              aria-label={`Mover ${label}`}
+            >
+              {label}
+            </button>
+          ) : <span key={`blank-${index}`} className="h-11 w-11" />)}
         </div>
       )}
       {engineState === "ready" && (
