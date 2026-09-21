@@ -58,6 +58,9 @@ type Props = {
   roomFloorMaterials?: Record<string, string>;
   spaceFloorMaterials?: Record<string, string>;
   wallMaterials?: Record<string, string>;
+  onOpenMaterials?: () => void;
+  onRoomDuplicate?: (roomId: string) => void;
+  onRoomDelete?: (roomId: string) => void;
 };
 
 function formatMeters(value: number) {
@@ -330,6 +333,9 @@ export default function ConceptPlan2D({
   roomFloorMaterials = {},
   spaceFloorMaterials = {},
   wallMaterials = {},
+  onOpenMaterials,
+  onRoomDuplicate,
+  onRoomDelete,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -1280,6 +1286,39 @@ export default function ConceptPlan2D({
 
                 </>
               )}
+              {selected && interactionMode === "room" && (
+                <g transform={`translate(${room.x + room.width / 2 - 1.05} ${Math.max(-0.75, room.y - 0.82)})`}>
+                  <rect width="2.10" height="0.56" rx="0.18" fill="#0f172a" opacity="0.96" />
+                  <g
+                    role="button"
+                    className="cursor-pointer"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); onOpenMaterials?.(); }}
+                  >
+                    <rect x="0.06" y="0.05" width="0.62" height="0.46" rx="0.12" fill="transparent" />
+                    <text x="0.37" y="0.36" textAnchor="middle" fontSize="0.20" fontWeight="900" fill="#fff">M</text>
+                  </g>
+                  <g
+                    role="button"
+                    className="cursor-pointer"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); onRoomDuplicate?.(room.id); }}
+                  >
+                    <rect x="0.74" y="0.05" width="0.62" height="0.46" rx="0.12" fill="transparent" />
+                    <text x="1.05" y="0.36" textAnchor="middle" fontSize="0.21" fontWeight="900" fill="#fff">⧉</text>
+                  </g>
+                  <g
+                    role="button"
+                    className="cursor-pointer"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); onRoomDelete?.(room.id); }}
+                  >
+                    <rect x="1.42" y="0.05" width="0.62" height="0.46" rx="0.12" fill="transparent" />
+                    <text x="1.73" y="0.36" textAnchor="middle" fontSize="0.22" fontWeight="900" fill="#fb7185">×</text>
+                  </g>
+                </g>
+              )}
+
               {isPool && (
                 <>
                   <text
@@ -1693,6 +1732,16 @@ export default function ConceptPlan2D({
                 <>
                   <circle cx={wall.x1} cy={wall.y1} r="0.18" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
                   <circle cx={wall.x2} cy={wall.y2} r="0.18" fill="#f97316" stroke="#fff" strokeWidth="0.05" pointerEvents="none" />
+                  <g
+                    transform={`translate(${(wall.x1 + wall.x2) / 2 - 0.38} ${(wall.y1 + wall.y2) / 2 - 0.78})`}
+                    role="button"
+                    className="cursor-pointer"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); onOpenMaterials?.(); }}
+                  >
+                    <rect width="0.76" height="0.54" rx="0.16" fill="#0f172a" opacity="0.96" />
+                    <text x="0.38" y="0.35" textAnchor="middle" fontSize="0.20" fontWeight="900" fill="#fff">M</text>
+                  </g>
                 </>
               )}
             </g>
