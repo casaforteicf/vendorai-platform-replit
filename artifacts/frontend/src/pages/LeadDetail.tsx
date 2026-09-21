@@ -981,6 +981,27 @@ export default function LeadDetail() {
     }
   );
 
+  const activeDealId = activeLeadDeal?.id ?? "";
+  const { data: dealPropostas = [], isLoading: dealPropostasLoading } = useListPropostas(
+    tenantId,
+    { dealId: activeDealId },
+    {
+      query: {
+        enabled: !!(tenantId && activeDealId),
+        queryKey: getListPropostasQueryKey(tenantId, { dealId: activeDealId }),
+      },
+    }
+  );
+
+  const orcamentosDoAtendimento = Array.from(
+    new Map(
+      [...(leadPropostas ?? []), ...(dealPropostas ?? [])].map((orcamento) => [orcamento.id, orcamento] as const),
+    ).values(),
+  );
+  const orcamentoExistente = [...orcamentosDoAtendimento].sort((a, b) =>
+    String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
+  )[0] ?? null;
+
   // ── Edição de status de atividade ─────────────────────────────────────────
   const [activityStatusEditId, setActivityStatusEditId] = useState<string | null>(null);
   const [activityStatusDraft, setActivityStatusDraft] = useState<string>("");
@@ -1367,11 +1388,18 @@ export default function LeadDetail() {
             size="sm"
             variant="outline"
             className="gap-1.5"
-            onClick={() => setPropostaModalOpen(true)}
+            onClick={() => {
+              if (orcamentoExistente) {
+                setLocation(`/propostas/${orcamentoExistente.id}/print`);
+                return;
+              }
+              setPropostaModalOpen(true);
+            }}
+            disabled={propostasLoading || dealPropostasLoading}
             data-testid="btn-new-budget"
           >
             <FileText className="h-4 w-4" />
-            Gerar orçamento
+            {orcamentoExistente ? "Abrir orçamento" : "Gerar orçamento"}
           </Button>
           <Button
             size="sm"
@@ -4038,7 +4066,7 @@ export default function LeadDetail() {
         open={vendidoOpen}
         onOpenChange={setVendidoOpen}
         leadNome={lead?.nome ?? lead?.empresa ?? "Lead"}
-        propostas={leadPropostas ?? []}
+        propostas={orcamentosDoAtendimento}
         deals={leadDeals ?? []}
         onSuccess={() => {
           void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
