@@ -108,6 +108,9 @@ function boxPolygons(
     chair: 0.88,
     cabinet: 2.10,
     tv: 1.25,
+    plant: 1.15,
+    lamp: 1.45,
+    rug: 0.06,
   };
   const zTop = zBase + (kindHeight[object.kind] ?? 0.8);
   const cx = object.x + object.width / 2;
@@ -279,13 +282,16 @@ const OBJECT_3D_MATERIALS: Record<string, { top: string; sideA: string; sideB: s
   "madeira-escura": { top: "#8b6b52", sideA: "#705441", sideB: "#574437" },
   "preto-fosco": { top: "#334155", sideA: "#1e293b", sideB: "#0f172a" },
   "branco-fosco": { top: "#ffffff", sideA: "#f1f5f9", sideB: "#cbd5e1" },
+  "folhagem-verde": { top: "#86a97a", sideA: "#5f8a4f", sideB: "#3f6212" },
 };
 
 function object3dMaterial(object: ConceptPlanObject) {
   return OBJECT_3D_MATERIALS[object.materialId ?? ""] ?? OBJECT_3D_MATERIALS[
     object.kind === "bed" ? "linho-claro"
       : object.kind === "table" || object.kind === "cabinet" ? "madeira-clara"
-      : object.kind === "tv" ? "preto-fosco"
+      : object.kind === "tv" || object.kind === "lamp" ? "preto-fosco"
+      : object.kind === "plant" ? "folhagem-verde"
+      : object.kind === "rug" ? "tecido-bege"
       : "tecido-cinza"
   ];
 }
