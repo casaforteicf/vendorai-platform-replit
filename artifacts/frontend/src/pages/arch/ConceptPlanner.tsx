@@ -2066,6 +2066,7 @@ export default function ConceptPlanner() {
     const innerHeight = Math.max(0.8, bounds.height - pad * 2);
     const cx = bounds.x + bounds.width / 2;
     const cy = bounds.y + bounds.height / 2;
+    const landscape = bounds.width >= bounds.height;
 
     type FurnishPreset = {
       kind: ConceptPlanObject["kind"];
@@ -2075,6 +2076,7 @@ export default function ConceptPlanner() {
       x: number;
       y: number;
       rotation?: number;
+      wallAffinity?: "top" | "bottom" | "left" | "right" | "center";
     };
 
     const place = (
@@ -2085,6 +2087,7 @@ export default function ConceptPlanner() {
       x: number,
       y: number,
       rotation = 0,
+      wallAffinity: FurnishPreset["wallAffinity"] = "center",
     ): FurnishPreset => ({
       kind: itemKind,
       label,
@@ -2093,74 +2096,182 @@ export default function ConceptPlanner() {
       x,
       y,
       rotation,
+      wallAffinity,
     });
+
+    const boundaryWalls = safeCustomWalls.filter((wall) => {
+      if (wall.floor !== activeFloor) return false;
+      const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+      if (horizontal) {
+        const onBoundary = Math.abs(wall.y1 - bounds.y) <= 0.08 || Math.abs(wall.y1 - (bounds.y + bounds.height)) <= 0.08;
+        const minX = Math.min(wall.x1, wall.x2);
+        const maxX = Math.max(wall.x1, wall.x2);
+        return onBoundary && maxX >= bounds.x - 0.08 && minX <= bounds.x + bounds.width + 0.08;
+      }
+      const onBoundary = Math.abs(wall.x1 - bounds.x) <= 0.08 || Math.abs(wall.x1 - (bounds.x + bounds.width)) <= 0.08;
+      const minY = Math.min(wall.y1, wall.y2);
+      const maxY = Math.max(wall.y1, wall.y2);
+      return onBoundary && maxY >= bounds.y - 0.08 && minY <= bounds.y + bounds.height + 0.08;
+    });
+
+    const doorClearances = safeCustomOpenings
+      .filter((opening) => opening.floor === activeFloor && opening.type === "door")
+      .flatMap((opening) => {
+        const wall = boundaryWalls.find((item) => item.id === opening.wallId);
+        if (!wall) return [];
+        const offset = Math.max(0.02, Math.min(0.98, opening.offset));
+        const px = wall.x1 + (wall.x2 - wall.x1) * offset;
+        const py = wall.y1 + (wall.y2 - wall.y1) * offset;
+        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+        const width = Math.max(0.7, opening.width ?? 0.9);
+        return [{
+          x: horizontal ? px - width / 2 - 0.45 : px - 0.70,
+          y: horizontal ? py - 0.70 : py - width / 2 - 0.45,
+          width: horizontal ? width + 0.90 : 1.40,
+          height: horizontal ? 1.40 : width + 0.90,
+        }];
+      });
+
+    const overlaps = (
+      a: { x: number; y: number; width: number; depth: number },
+      b: { x: number; y: number; width: number; depth?: number; height?: number },
+      margin = 0.12,
+    ) => {
+      const bDepth = b.depth ?? b.height ?? 0;
+      return !(
+        a.x + a.width + margin <= b.x ||
+        a.x >= b.x + b.width + margin ||
+        a.y + a.depth + margin <= b.y ||
+        a.y >= b.y + bDepth + margin
+      );
+    };
 
     let presets: FurnishPreset[] = [];
     if (kind === "sala" || kind === "gourmet") {
-      presets = [
-        place("sofa", "Sofá 3 lugares", 2.2, 0.9, cx - 1.1, innerY + 0.15),
-        place("table", "Mesa centro", 1.1, 0.6, cx - 0.55, cy - 0.3),
-        place("tv", "TV / painel", 1.6, 0.3, cx - 0.8, bounds.y + bounds.height - 0.62),
-        place("chair", "Poltrona", 0.8, 0.8, innerX + 0.15, cy - 0.4, 90),
-      ];
+      presets = landscape
+        ? [
+            place("sofa", "Sofá 3 lugares", 2.2, 0.9, cx - 1.1, innerY + 0.12, 0, "top"),
+            place("table", "Mesa centro", 1.1, 0.6, cx - 0.55, cy - 0.3, 0, "center"),
+            place("tv", "TV / painel", 1.6, 0.3, cx - 0.8, bounds.y + bounds.height - 0.60, 0, "bottom"),
+            place("chair", "Poltrona", 0.8, 0.8, innerX + 0.12, cy - 0.4, 90, "left"),
+          ]
+        : [
+            place("sofa", "Sofá 3 lugares", 0.9, 2.2, innerX + 0.12, cy - 1.1, 90, "left"),
+            place("table", "Mesa centro", 0.6, 1.1, cx - 0.3, cy - 0.55, 90, "center"),
+            place("tv", "TV / painel", 0.3, 1.6, bounds.x + bounds.width - 0.60, cy - 0.8, 90, "right"),
+            place("chair", "Poltrona", 0.8, 0.8, cx - 0.4, innerY + 0.12, 0, "top"),
+          ];
     } else if (kind === "quarto" || kind === "suite") {
-      presets = [
-        place("bed", "Cama casal", 1.6, 2.0, cx - 0.8, innerY + 0.15),
-        place("cabinet", "Guarda-roupa", Math.min(1.8, innerWidth * 0.55), 0.6, innerX + 0.10, bounds.y + bounds.height - 0.95),
-        place("lamp", "Abajur", 0.35, 0.35, Math.max(innerX, cx - 1.18), innerY + 0.22),
-        place("lamp", "Abajur", 0.35, 0.35, Math.min(bounds.x + bounds.width - 0.70, cx + 0.82), innerY + 0.22),
-      ];
+      presets = landscape
+        ? [
+            place("bed", "Cama casal", 1.6, 2.0, cx - 0.8, innerY + 0.12, 0, "top"),
+            place("cabinet", "Guarda-roupa", Math.min(1.8, innerWidth * 0.55), 0.6, innerX + 0.10, bounds.y + bounds.height - 0.92, 0, "bottom"),
+            place("lamp", "Abajur", 0.35, 0.35, Math.max(innerX, cx - 1.18), innerY + 0.18, 0, "top"),
+            place("lamp", "Abajur", 0.35, 0.35, Math.min(bounds.x + bounds.width - 0.70, cx + 0.82), innerY + 0.18, 0, "top"),
+          ]
+        : [
+            place("bed", "Cama casal", 2.0, 1.6, innerX + 0.12, cy - 0.8, 90, "left"),
+            place("cabinet", "Guarda-roupa", 0.6, Math.min(1.8, innerHeight * 0.55), bounds.x + bounds.width - 0.92, innerY + 0.10, 90, "right"),
+            place("lamp", "Abajur", 0.35, 0.35, innerX + 0.18, Math.max(innerY, cy - 1.18), 90, "left"),
+            place("lamp", "Abajur", 0.35, 0.35, innerX + 0.18, Math.min(bounds.y + bounds.height - 0.70, cy + 0.82), 90, "left"),
+          ];
     } else if (kind === "cozinha") {
-      presets = [
-        place("cabinet", "Balcão cozinha", Math.min(2.2, innerWidth - 0.2), 0.6, innerX + 0.1, innerY + 0.1),
-        place("cabinet", "Armário cozinha", Math.min(1.8, innerWidth * 0.5), 0.6, innerX + 0.1, bounds.y + bounds.height - 0.95),
-        place("table", "Mesa apoio", Math.min(1.2, innerWidth * 0.45), 0.7, cx - Math.min(1.2, innerWidth * 0.45) / 2, cy - 0.35),
-      ];
+      presets = landscape
+        ? [
+            place("cabinet", "Balcão cozinha", Math.min(2.2, innerWidth - 0.2), 0.6, innerX + 0.1, innerY + 0.1, 0, "top"),
+            place("cabinet", "Armário cozinha", Math.min(1.8, innerWidth * 0.5), 0.6, innerX + 0.1, bounds.y + bounds.height - 0.92, 0, "bottom"),
+            place("table", "Mesa apoio", Math.min(1.2, innerWidth * 0.45), 0.7, cx - Math.min(1.2, innerWidth * 0.45) / 2, cy - 0.35, 0, "center"),
+          ]
+        : [
+            place("cabinet", "Balcão cozinha", 0.6, Math.min(2.2, innerHeight - 0.2), innerX + 0.1, innerY + 0.1, 90, "left"),
+            place("cabinet", "Armário cozinha", 0.6, Math.min(1.8, innerHeight * 0.5), bounds.x + bounds.width - 0.92, innerY + 0.1, 90, "right"),
+            place("table", "Mesa apoio", 0.7, Math.min(1.2, innerHeight * 0.45), cx - 0.35, cy - Math.min(1.2, innerHeight * 0.45) / 2, 90, "center"),
+          ];
     } else if (kind === "banheiro") {
       presets = [
-        place("cabinet", "Gabinete banheiro", 0.8, 0.5, innerX + 0.08, innerY + 0.08),
-        place("shower_point", "Chuveiro", 0.45, 0.45, bounds.x + bounds.width - 0.82, innerY + 0.08),
-        place("water_point", "Ponto de água", 0.4, 0.4, innerX + 0.12, bounds.y + bounds.height - 0.78),
+        place("cabinet", "Gabinete banheiro", 0.8, 0.5, innerX + 0.08, innerY + 0.08, 0, "top"),
+        place("shower_point", "Chuveiro", 0.45, 0.45, bounds.x + bounds.width - 0.82, innerY + 0.08, 0, "top"),
+        place("water_point", "Ponto de água", 0.4, 0.4, innerX + 0.12, bounds.y + bounds.height - 0.78, 0, "bottom"),
       ];
     } else if (kind === "lavanderia") {
       presets = [
-        place("cabinet", "Armário lavanderia", Math.min(1.4, innerWidth * 0.55), 0.6, innerX + 0.08, innerY + 0.08),
-        place("water_point", "Ponto máquina", 0.4, 0.4, bounds.x + bounds.width - 0.78, innerY + 0.10),
-        place("drain_point", "Esgoto máquina", 0.4, 0.4, bounds.x + bounds.width - 0.78, innerY + 0.62),
+        place("cabinet", "Armário lavanderia", Math.min(1.4, innerWidth * 0.55), 0.6, innerX + 0.08, innerY + 0.08, 0, "top"),
+        place("water_point", "Ponto máquina", 0.4, 0.4, bounds.x + bounds.width - 0.78, innerY + 0.10, 0, "top"),
+        place("drain_point", "Esgoto máquina", 0.4, 0.4, bounds.x + bounds.width - 0.78, innerY + 0.62, 0, "right"),
       ];
     } else if (kind === "garagem") {
       presets = [
-        place("cabinet", "Armário garagem", 1.4, 0.55, innerX + 0.08, innerY + 0.08),
-        place("light_point", "Ponto de luz", 0.45, 0.45, cx - 0.225, cy - 0.225),
+        place("cabinet", "Armário garagem", 1.4, 0.55, innerX + 0.08, innerY + 0.08, 0, "top"),
+        place("light_point", "Ponto de luz", 0.45, 0.45, cx - 0.225, cy - 0.225, 0, "center"),
       ];
     } else if (kind === "circulacao") {
       presets = [
-        place("light_point", "Ponto de luz", 0.45, 0.45, cx - 0.225, cy - 0.225),
+        place("light_point", "Ponto de luz", 0.45, 0.45, cx - 0.225, cy - 0.225, 0, "center"),
       ];
     } else {
       presets = [
-        place("table", "Mesa", Math.min(1.2, innerWidth * 0.55), 0.7, cx - Math.min(1.2, innerWidth * 0.55) / 2, cy - 0.35),
-        place("chair", "Cadeira", 0.55, 0.55, cx - 0.275, Math.min(bounds.y + bounds.height - 0.9, cy + 0.55)),
+        place("table", "Mesa", Math.min(1.2, innerWidth * 0.55), 0.7, cx - Math.min(1.2, innerWidth * 0.55) / 2, cy - 0.35, 0, "center"),
+        place("chair", "Cadeira", 0.55, 0.55, cx - 0.275, Math.min(bounds.y + bounds.height - 0.9, cy + 0.55), 0, "center"),
       ];
     }
 
-    const created = presets
-      .filter((item) => item.width >= 0.3 && item.depth >= 0.3)
-      .map((item) => {
-        const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x));
-        const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y));
-        return {
-          id: `concept-object-${uid()}`,
-          kind: item.kind,
-          label: item.label,
-          floor: activeFloor,
-          width: item.width,
-          depth: item.depth,
-          x: Math.max(0, Math.min(lotWidth - item.width, x)),
-          y: Math.max(0, Math.min(lotDepth - item.depth, y)),
-          rotation: item.rotation ?? 0,
-        } satisfies ConceptPlanObject;
-      });
+    const existingInSpace = safeObjects.filter((object) =>
+      object.floor === activeFloor &&
+      object.x + object.width / 2 >= bounds.x &&
+      object.x + object.width / 2 <= bounds.x + bounds.width &&
+      object.y + object.depth / 2 >= bounds.y &&
+      object.y + object.depth / 2 <= bounds.y + bounds.height
+    );
+
+    const occupied: Array<{ x: number; y: number; width: number; depth: number }> = existingInSpace.map((object) => ({
+      x: object.x,
+      y: object.y,
+      width: object.width,
+      depth: object.depth,
+    }));
+
+    const created: ConceptPlanObject[] = [];
+    const offsets = [
+      [0, 0],
+      [0.35, 0],
+      [-0.35, 0],
+      [0, 0.35],
+      [0, -0.35],
+      [0.55, 0.35],
+      [-0.55, 0.35],
+      [0.55, -0.35],
+      [-0.55, -0.35],
+    ];
+
+    for (const item of presets.filter((preset) => preset.width >= 0.3 && preset.depth >= 0.3)) {
+      let accepted: { x: number; y: number } | null = null;
+      for (const [ox, oy] of offsets) {
+        const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
+        const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
+        const candidate = { x, y, width: item.width, depth: item.depth };
+        const hitsFurniture = occupied.some((other) => overlaps(candidate, other, 0.14));
+        const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
+        if (!hitsFurniture && !hitsDoor) {
+          accepted = { x, y };
+          break;
+        }
+      }
+      if (!accepted) continue;
+
+      const object: ConceptPlanObject = {
+        id: `concept-object-${uid()}`,
+        kind: item.kind,
+        label: item.label,
+        floor: activeFloor,
+        width: item.width,
+        depth: item.depth,
+        x: Math.max(0, Math.min(lotWidth - item.width, accepted.x)),
+        y: Math.max(0, Math.min(lotDepth - item.depth, accepted.y)),
+        rotation: item.rotation ?? 0,
+      };
+      created.push(object);
+      occupied.push({ x: object.x, y: object.y, width: object.width, depth: object.depth });
+    }
 
     if (!created.length) return;
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), ...created]);
