@@ -42,10 +42,15 @@ router.post("/tenants/:tenantId/evolution-whatsapp/connect", authenticate, async
     const webhookSecret = await ensureWebhookSecret(tenantId);
     const connectionId = crypto.randomUUID();
     const result = await connectInstance(tenantId, webhookSecret, req.log, connectionId);
+    if (result.alreadyConnected) {
+      await db.update(whatsappConnectionsTable)
+        .set({ isDefault: false, updatedAt: new Date() })
+        .where(eq(whatsappConnectionsTable.tenantId, tenantId));
+    }
     await db.insert(whatsappConnectionsTable).values({
       id: connectionId, tenantId, provider: "evolution", assignedUserId: req.user?.sub ?? null,
       evolutionInstanceName: result.instanceName, status: result.alreadyConnected ? "active" : "connecting",
-      isDefault: false, connectedAt: new Date(), updatedAt: new Date(),
+      isDefault: result.alreadyConnected, connectedAt: new Date(), updatedAt: new Date(),
     });
     return res.json({ ...result, connectionId });
   } catch (err) {
