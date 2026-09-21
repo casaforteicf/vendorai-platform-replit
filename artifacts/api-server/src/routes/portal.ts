@@ -814,7 +814,7 @@ function canManagePortal(req: any, tenantId: string) {
 }
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId ?? "");
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
   const obraId = String(req.params.obraId ?? "");
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const result = await pool.query(
@@ -825,7 +825,7 @@ router.get("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, as
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId ?? "");
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
   const obraId = String(req.params.obraId ?? "");
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const categoria = String(req.body?.categoria ?? "documento").trim();
@@ -846,7 +846,7 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, a
 });
 
 router.patch("/tenants/:tenantId/obras/:obraId/portal/documents/:documentId", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId ?? "");
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
   const obraId = String(req.params.obraId ?? "");
   const documentId = String(req.params.documentId ?? "");
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
@@ -874,7 +874,7 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/documents/:documentId", au
 });
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/support", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId ?? "");
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
   const obraId = String(req.params.obraId ?? "");
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const [tickets, messages] = await Promise.all([
@@ -894,7 +894,7 @@ router.get("/tenants/:tenantId/obras/:obraId/portal/support", authenticate, asyn
 });
 
 router.patch("/tenants/:tenantId/obras/:obraId/portal/support/:ticketId", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId ?? "");
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
   const obraId = String(req.params.obraId ?? "");
   const ticketId = String(req.params.ticketId ?? "");
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
@@ -912,7 +912,7 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/support/:ticketId", authen
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/portal/messages", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId ?? "");
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
   const obraId = String(req.params.obraId ?? "");
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const mensagem = String(req.body?.mensagem ?? "").trim();
