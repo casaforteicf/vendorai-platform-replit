@@ -909,12 +909,15 @@ export default function ConceptPlanner() {
 
   const deleteSelectedObject = () => {
     if (!selectedObjectId) return;
+    const before = snapshotEditor();
     setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== selectedObjectId));
     setSelectedObjectId(null);
+    pushRoomHistory(before);
   };
 
   const duplicateSelectedObject = () => {
     if (!selectedObject) return;
+    const before = snapshotEditor();
     const copy: ConceptPlanObject = {
       ...selectedObject,
       id: `concept-object-${uid()}`,
@@ -949,6 +952,7 @@ export default function ConceptPlanner() {
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedObjectId(copy.id);
+    pushRoomHistory(before);
   };
 
   const deleteObject = (objectId: string) => {
