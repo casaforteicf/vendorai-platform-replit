@@ -415,15 +415,155 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   // continua sendo a fonte canônica de custo.
   const desiredArea = Math.max(1, Number(config.desiredArea ?? 1));
   const floors = Math.max(1, Number(config.floors ?? 1));
-  const footprintArea = Math.max(1, desiredArea / floors);
   const conceptConfiguration = (concept.configuration ?? {}) as any;
+  const customWalls = Array.isArray(conceptConfiguration.customWalls) ? conceptConfiguration.customWalls : [];
   const customOpenings = Array.isArray(conceptConfiguration.customOpenings) ? conceptConfiguration.customOpenings : [];
-  const overrideOpenings = concept.openingOverrides && typeof concept.openingOverrides === "object"
-    ? Object.keys(concept.openingOverrides as Record<string, unknown>).length
-    : 0;
-  const openingCount = Math.max(1, customOpenings.length + overrideOpenings);
+  const indoorRooms = rooms.filter((room: any) => String(room.kind ?? "").toLowerCase() !== "piscina");
   const hasPool = rooms.some((room: any) => String(room.kind ?? "").toLowerCase() === "piscina");
   const hasGarage = rooms.some((room: any) => String(room.kind ?? "").toLowerCase() === "garagem");
+  const WALL_HEIGHT_M = 2.8;
+
+  const roomArea = (room: any) => Math.max(0, Number(room.width ?? 0)) * Math.max(0, Number(room.depth ?? 0));
+  const measuredFloorArea = indoorRooms.reduce((sum: number, room: any) => sum + roomArea(room), 0);
+  const effectiveArea = measuredFloorArea > 0 ? measuredFloorArea : desiredArea;
+  const areaByFloor = new Map<number, number>();
+  for (const room of indoorRooms) {
+    const floor = Math.max(0, Number(room.floor ?? 0));
+    areaByFloor.set(floor, (areaByFloor.get(floor) ?? 0) + roomArea(room));
+  }
+  const groundFloorArea = Math.max(1, areaByFloor.get(0) ?? effectiveArea / floors);
+  const topFloorArea = Math.max(1, areaByFloor.get(Math.max(0, floors - 1)) ?? effectiveArea / floors);
+  const roofFactor = facade.roof === "aparente" ? 1.15 : facade.roof === "misto" ? 1.1 : 1.04;
+  const roofArea = topFloorArea * roofFactor;
+
+  const coordKey = (value: unknown) => Math.round(Number(value ?? 0) * 100);
+  const edgeKey = (x1: unknown, y1: unknown, x2: unknown, y2: unknown, floor: unknown) => {
+    const a = [coordKey(x1), coordKey(y1)];
+    const b = [coordKey(x2), coordKey(y2)];
+    const ordered = a[0]! < b[0]! || (a[0] === b[0] && a[1]! <= b[1]!) ? [a, b] : [b, a];
+    return `${Number(floor ?? 0)}:${ordered[0]![0]}:${ordered[0]![1]}:${ordered[1]![0]}:${ordered[1]![1]}`;
+  };
+  const segmentLength = (x1: unknown, y1: unknown, x2: unknown, y2: unknown) =>
+    Math.hypot(Number(x2 ?? 0) - Number(x1 ?? 0), Number(y2 ?? 0) - Number(y1 ?? 0));
+
+  const wallMap = new Map<string, { length: number; owners: number }>();
+  for (const room of indoorRooms) {
+    const x = Number(room.x ?? 0);
+    const y = Number(room.y ?? 0);
+    const width = Math.max(0, Number(room.width ?? 0));
+    const depth = Math.max(0, Number(room.depth ?? 0));
+    const floor = Number(room.floor ?? 0);
+    const edges = [
+      [x, y, x + width, y],
+      [x + width, y, x + width, y + depth],
+      [x, y + depth, x + width, y + depth],
+      [x, y, x, y + depth],
+    ];
+    for (const [x1, y1, x2, y2] of edges) {
+      const key = edgeKey(x1, y1, x2, y2, floor);
+      const current = wallMap.get(key);
+      if (current) current.owners += 1;
+      else wallMap.set(key, { length: segmentLength(x1, y1, x2, y2), owners: 1 });
+    }
+  }
+
+  let exteriorWallLength = 0;
+  let internalWallLength = 0;
+  for (const wall of wallMap.values()) {
+    if (wall.owners > 1) internalWallLength += wall.length;
+    else exteriorWallLength += wall.length;
+  }
+  for (const wall of customWalls) {
+    internalWallLength += segmentLength(wall.x1, wall.y1, wall.x2, wall.y2);
+  }
+  const totalWallLength = exteriorWallLength + internalWallLength;
+
+  const overlap = (a1: number, a2: number, b1: number, b2: number) =>
+    Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+  const nearly = (a: number, b: number) => Math.abs(a - b) <= 0.05;
+  let derivedDoors = 0;
+  for (let i = 0; i < indoorRooms.length; i++) {
+    const a: any = indoorRooms[i];
+    for (let j = i + 1; j < indoorRooms.length; j++) {
+      const b: any = indoorRooms[j];
+      if (Number(a.floor ?? 0) !== Number(b.floor ?? 0)) continue;
+      const ax = Number(a.x ?? 0), ay = Number(a.y ?? 0), aw = Number(a.width ?? 0), ad = Number(a.depth ?? 0);
+      const bx = Number(b.x ?? 0), by = Number(b.y ?? 0), bw = Number(b.width ?? 0), bd = Number(b.depth ?? 0);
+      const verticalTouch =
+        (nearly(ax + aw, bx) || nearly(bx + bw, ax)) &&
+        overlap(ay, ay + ad, by, by + bd) >= 0.8;
+      const horizontalTouch =
+        (nearly(ay + ad, by) || nearly(by + bd, ay)) &&
+        overlap(ax, ax + aw, bx, bx + bw) >= 0.8;
+      if (verticalTouch || horizontalTouch) derivedDoors += 1;
+    }
+  }
+  const windowKinds = new Set(["sala", "cozinha", "suite", "quarto", "gourmet", "outro"]);
+  const derivedWindows = indoorRooms.filter((room: any) => windowKinds.has(String(room.kind ?? "").toLowerCase())).length;
+  const customDoorCount = customOpenings.filter((opening: any) => opening?.type === "door").length;
+  const customWindowCount = customOpenings.filter((opening: any) => opening?.type === "window").length;
+  const doorCount = derivedDoors + customDoorCount;
+  const windowCount = derivedWindows + customWindowCount;
+  const openingCount = Math.max(1, doorCount + windowCount);
+
+  const customOpeningArea = customOpenings.reduce((sum: number, opening: any) => {
+    const width = Math.max(0.4, Number(opening?.width ?? (opening?.type === "door" ? 0.9 : 1.2)));
+    const height = Math.max(0.4, Number(opening?.height ?? (opening?.type === "door" ? 2.1 : 1.2)));
+    return sum + width * height;
+  }, 0);
+  const defaultOpeningArea = derivedDoors * 0.9 * 2.1 + derivedWindows * 1.2 * 1.2;
+  const openingArea = customOpeningArea + defaultOpeningArea;
+  const exteriorWallAreaGross = exteriorWallLength * WALL_HEIGHT_M;
+  const internalWallFaceArea = internalWallLength * WALL_HEIGHT_M * 2;
+  const exteriorWallAreaNet = Math.max(0, exteriorWallAreaGross - openingArea);
+  const paintArea = internalWallFaceArea + exteriorWallAreaNet;
+
+  const wetKinds = new Set(["banheiro", "cozinha", "lavanderia"]);
+  const wetFloorArea = indoorRooms
+    .filter((room: any) => wetKinds.has(String(room.kind ?? "").toLowerCase()))
+    .reduce((sum: number, room: any) => sum + roomArea(room), 0);
+
+  const floorMaterialAreas = new Map<string, number>();
+  for (const room of indoorRooms) {
+    const material = String(room.floorMaterialId ?? "").trim();
+    if (!material) continue;
+    floorMaterialAreas.set(material, (floorMaterialAreas.get(material) ?? 0) + roomArea(room));
+  }
+
+  type ConceptQuantityItem = {
+    stage: string;
+    item: string;
+    unit: string;
+    quantity: number;
+    basis: "geometry" | "concept";
+  };
+  const quantityItems: ConceptQuantityItem[] = [
+    { stage: "Projeto", item: "Desenvolvimento e compatibilização do projeto", unit: "un", quantity: 1, basis: "concept" },
+    { stage: "Serviços preliminares", item: "Implantação e preparação do canteiro", unit: "m²", quantity: groundFloorArea, basis: "geometry" },
+    { stage: "Fundação", item: "Fundação — área de implantação medida", unit: "m²", quantity: groundFloorArea, basis: "geometry" },
+    { stage: "Estrutura e vedações", item: "Paredes — comprimento total medido", unit: "m", quantity: totalWallLength, basis: "geometry" },
+    { stage: "Estrutura e vedações", item: "Paredes externas — área bruta", unit: "m²", quantity: exteriorWallAreaGross, basis: "geometry" },
+    { stage: "Cobertura", item: `Cobertura — ${facade.roof ?? "conforme projeto"}`, unit: "m²", quantity: roofArea, basis: "geometry" },
+    { stage: "Esquadrias", item: "Portas previstas na planta", unit: "un", quantity: Math.max(0, doorCount), basis: "geometry" },
+    { stage: "Esquadrias", item: "Janelas previstas na planta", unit: "un", quantity: Math.max(0, windowCount), basis: "geometry" },
+    { stage: "Revestimentos", item: "Revestimento de piso — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry" },
+    ...(wetFloorArea > 0 ? [{ stage: "Revestimentos", item: "Áreas molhadas — piso medido", unit: "m²", quantity: wetFloorArea, basis: "geometry" as const }] : []),
+    { stage: "Forros", item: "Forro — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry" },
+    { stage: "Pintura", item: "Paredes — área líquida preliminar para pintura", unit: "m²", quantity: paintArea, basis: "geometry" },
+    { stage: "Fachada e externos", item: `Fachada ${facade.style ?? "conforme conceito"} — área externa líquida`, unit: "m²", quantity: exteriorWallAreaNet, basis: "geometry" },
+    ...(hasGarage ? [{ stage: "Garagem, calçadas e acessos", item: "Garagem — área desenhada", unit: "m²", quantity: rooms.filter((room: any) => String(room.kind ?? "").toLowerCase() === "garagem").reduce((sum: number, room: any) => sum + roomArea(room), 0), basis: "geometry" as const }] : []),
+    ...(hasPool ? [{ stage: "Piscina e área externa", item: "Piscina — área desenhada", unit: "m²", quantity: rooms.filter((room: any) => String(room.kind ?? "").toLowerCase() === "piscina").reduce((sum: number, room: any) => sum + roomArea(room), 0), basis: "geometry" as const }] : []),
+  ];
+
+  for (const [materialId, area] of floorMaterialAreas) {
+    quantityItems.push({
+      stage: "Revestimentos",
+      item: `Piso especificado — ${materialId}`,
+      unit: "m²",
+      quantity: area,
+      basis: "geometry",
+    });
+  }
 
   const obraId = crypto.randomUUID();
   const [obra] = await tx
@@ -442,22 +582,22 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     .returning();
 
   const executionStages = [
-    { nome: "Projeto", days: 10, unidade: "un", quantidade: 1, item: "Desenvolvimento e compatibilização do projeto" },
-    { nome: "Serviços preliminares", days: 5, unidade: "m²", quantidade: footprintArea, item: "Implantação e preparação do canteiro" },
-    { nome: "Fundação", days: Math.max(7, Math.ceil(footprintArea / 18)), unidade: "m²", quantidade: footprintArea, item: "Fundação da edificação" },
-    { nome: "Estrutura e vedações", days: Math.max(12, Math.ceil(desiredArea / 12)), unidade: "m²", quantidade: desiredArea, item: "Estrutura e paredes" },
-    { nome: "Cobertura", days: Math.max(5, Math.ceil(footprintArea / 25)), unidade: "m²", quantidade: footprintArea, item: `Cobertura — ${facade.roof ?? "conforme projeto"}` },
-    { nome: "Esquadrias", days: Math.max(4, Math.ceil(openingCount / 3)), unidade: "un", quantidade: openingCount, item: "Portas e janelas previstas no conceito" },
-    { nome: "Instalações elétricas e hidráulicas", days: Math.max(8, Math.ceil(desiredArea / 20)), unidade: "m²", quantidade: desiredArea, item: "Infraestrutura elétrica e hidráulica" },
-    { nome: "Revestimentos", days: Math.max(8, Math.ceil(desiredArea / 18)), unidade: "m²", quantidade: desiredArea, item: "Revestimentos internos e áreas molhadas" },
-    { nome: "Forros", days: Math.max(4, Math.ceil(desiredArea / 30)), unidade: "m²", quantidade: desiredArea, item: "Forros e fechamentos superiores" },
-    { nome: "Pintura", days: Math.max(6, Math.ceil(desiredArea / 22)), unidade: "m²", quantidade: desiredArea * 3, item: "Preparação e pintura" },
-    { nome: "Pisos", days: Math.max(6, Math.ceil(desiredArea / 25)), unidade: "m²", quantidade: desiredArea, item: "Pisos e rodapés" },
-    { nome: "Louças, metais e acabamentos", days: 5, unidade: "un", quantidade: 1, item: "Acabamentos finais" },
-    ...(hasGarage ? [{ nome: "Garagem, calçadas e acessos", days: 5, unidade: "m²", quantidade: footprintArea * 0.35, item: "Garagem, calçadas e acessos externos" }] : []),
-    ...(hasPool ? [{ nome: "Piscina e área externa", days: 10, unidade: "un", quantidade: 1, item: "Piscina prevista no pré-projeto" }] : []),
-    { nome: "Fachada e externos", days: 7, unidade: "m²", quantidade: footprintArea, item: `Fachada ${facade.style ?? "conforme conceito"}` },
-    { nome: "Limpeza, testes e entrega", days: 4, unidade: "un", quantidade: 1, item: "Limpeza final, testes e entrega" },
+    { nome: "Projeto", days: 10 },
+    { nome: "Serviços preliminares", days: 5 },
+    { nome: "Fundação", days: Math.max(7, Math.ceil(groundFloorArea / 18)) },
+    { nome: "Estrutura e vedações", days: Math.max(12, Math.ceil(totalWallLength / 10)) },
+    { nome: "Cobertura", days: Math.max(5, Math.ceil(roofArea / 25)) },
+    { nome: "Esquadrias", days: Math.max(4, Math.ceil(openingCount / 3)) },
+    { nome: "Instalações elétricas e hidráulicas", days: Math.max(8, Math.ceil(effectiveArea / 20)) },
+    { nome: "Revestimentos", days: Math.max(8, Math.ceil(effectiveArea / 18)) },
+    { nome: "Forros", days: Math.max(4, Math.ceil(effectiveArea / 30)) },
+    { nome: "Pintura", days: Math.max(6, Math.ceil(paintArea / 65)) },
+    { nome: "Pisos", days: Math.max(6, Math.ceil(effectiveArea / 25)) },
+    { nome: "Louças, metais e acabamentos", days: 5 },
+    ...(hasGarage ? [{ nome: "Garagem, calçadas e acessos", days: 5 }] : []),
+    ...(hasPool ? [{ nome: "Piscina e área externa", days: 10 }] : []),
+    { nome: "Fachada e externos", days: Math.max(5, Math.ceil(exteriorWallAreaNet / 40)) },
+    { nome: "Limpeza, testes e entrega", days: 4 },
   ];
 
   const today = new Date();
@@ -521,10 +661,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     )
   `);
 
-  for (let index = 0; index < executionStages.length; index++) {
-    const stage = executionStages[index]!;
+  for (let index = 0; index < quantityItems.length; index++) {
+    const item = quantityItems[index]!;
     const itemId = crypto.randomUUID();
-    const quantity = Number(stage.quantidade.toFixed ? stage.quantidade.toFixed(4) : stage.quantidade);
+    const quantity = Number(Math.max(0, item.quantity).toFixed(4));
     await tx.execute(sql`
       INSERT INTO arch_budget_items (
         id, tenant_id, budget_id, project_id, item, description, type,
@@ -533,8 +673,10 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
         created_at, updated_at
       ) VALUES (
         ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
-        ${stage.item}, ${`Etapa: ${stage.nome}. Quantitativo preliminar originado no Concept.`}, 'service',
-        ${quantity}, ${stage.unidade}, 0, 0, 0, 0, 0, 0, true, ${index + 1},
+        ${item.item},
+        ${`Etapa: ${item.stage}. Quantitativo ${item.basis === "geometry" ? "medido da geometria salva no Concept" : "originado da configuração do Concept"}.`},
+        'service', ${quantity}, ${item.unit},
+        0, 0, 0, 0, 0, 0, true, ${index + 1},
         now(), now()
       )
     `);
