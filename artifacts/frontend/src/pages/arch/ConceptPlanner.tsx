@@ -1092,25 +1092,41 @@ export default function ConceptPlanner() {
     updateSelected({ x: nextX, y: nextY });
   };
 
-  const duplicateSelectedRoom = () => {
-    if (!selected) return;
-    if (SINGLETON_ROOM_KINDS.has(selected.kind)) return;
+  const duplicateRoomById = (roomId: string) => {
+    const room = safeRooms.find((item) => item.id === roomId);
+    if (!room || SINGLETON_ROOM_KINDS.has(room.kind)) return;
+    const before = snapshotEditor();
     const copy: Room = {
-      ...selected,
+      ...room,
       id: uid(),
-      label: selected.label.replace(/\s+\d+$/, "") + " cópia",
+      label: room.label.replace(/\s+\d+$/, "") + " cópia",
       locked: false,
-      x: Math.max(0, Math.min(lotWidth - selected.width, selected.x + 0.5)),
-      y: Math.max(0, Math.min(lotDepth - selected.depth, selected.y + 0.5)),
+      x: Math.max(0, Math.min(lotWidth - room.width, room.x + 0.5)),
+      y: Math.max(0, Math.min(lotDepth - room.depth, room.y + 0.5)),
     };
     setRooms((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedId(copy.id);
+    pushRoomHistory(before);
+  };
+
+  const deleteRoomById = (roomId: string) => {
+    const before = snapshotEditor();
+    setRooms((prev) => (Array.isArray(prev) ? prev : []).filter((room) => room.id !== roomId));
+    setSelectedId((current) => current === roomId ? null : current);
+    pushRoomHistory(before);
+  };
+
+  const duplicateSelectedRoom = () => {
+    if (selected) duplicateRoomById(selected.id);
   };
 
   const deleteSelectedRoom = () => {
-    if (!selected) return;
-    setRooms((prev) => (Array.isArray(prev) ? prev : []).filter((room) => room.id !== selected.id));
-    setSelectedId(null);
+    if (selected) deleteRoomById(selected.id);
+  };
+
+  const openMaterialsForSelection = () => {
+    setEditorLibraryTab("materials");
+    setLibraryOpen(true);
   };
 
   const baseGeometry = useMemo(
@@ -3811,6 +3827,9 @@ export default function ConceptPlanner() {
                         roomFloorMaterials={roomFloorMaterials}
                         spaceFloorMaterials={spaceFloorMaterials}
                         wallMaterials={wallMaterials}
+                        onOpenMaterials={openMaterialsForSelection}
+                        onRoomDuplicate={duplicateRoomById}
+                        onRoomDelete={deleteRoomById}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -3987,6 +4006,7 @@ export default function ConceptPlanner() {
                       </select>
                     </label>
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
+                      <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Materiais</button>
                       <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold">Duplicar</button>
                       <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
                     </div>
@@ -4023,6 +4043,7 @@ export default function ConceptPlanner() {
                       </select>
                     </label>
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
+                      <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Materiais</button>
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "door")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Porta</button>
                       <button type="button" onClick={() => addOpeningToCustomWall(selectedCustomWall.id, "window")} className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50">+ Janela</button>
                       <button type="button" onClick={() => deleteCustomWall(selectedCustomWall.id)} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50">Excluir</button>
@@ -4134,6 +4155,7 @@ export default function ConceptPlanner() {
                         <option value="outro">Outro</option>
                       </select>
                     </label>
+                    <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Piso / materiais</button>
                   </div>
                 ) : selectedWall ? (
                   <div className="flex flex-wrap items-center gap-2">
@@ -4143,6 +4165,7 @@ export default function ConceptPlanner() {
                         {selectedWall.exterior ? "Externa" : "Interna"} · {Math.hypot(selectedWall.x2 - selectedWall.x1, selectedWall.y2 - selectedWall.y1).toFixed(2)} m
                       </div>
                     </div>
+                    <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Materiais</button>
                     <button type="button" onClick={() => nudgeSelectedWall(-0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">− 25 cm</button>
                     <button type="button" onClick={() => nudgeSelectedWall(0.25)} className="h-9 rounded-lg border px-3 text-xs font-semibold">+ 25 cm</button>
                     <button type="button" onClick={() => setSelectedWallId(null)} className="ml-auto h-9 rounded-lg border px-3 text-xs font-semibold text-slate-500">Fechar</button>
@@ -4175,6 +4198,7 @@ export default function ConceptPlanner() {
                       </label>
                     ))}
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
+                      <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Piso / materiais</button>
                       <button type="button" onClick={() => updateSelected({ locked: !selected.locked })} className="h-9 rounded-lg border px-3 text-xs font-semibold">
                         {selected.locked ? "Desbloquear" : "Bloquear"}
                       </button>
