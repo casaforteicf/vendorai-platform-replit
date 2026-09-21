@@ -119,6 +119,7 @@ type EditorSnapshot = {
   customOpenings: CustomOpening[];
   wallFirstFloors: number[];
   openingOverrides: Record<string, OpeningOverride>;
+  objects: ConceptPlanObject[];
 };
 
 type CustomerProfile = {
@@ -398,6 +399,7 @@ export default function ConceptPlanner() {
   const customOpeningsRef = useRef<CustomOpening[]>([]);
   const wallFirstFloorsRef = useRef<number[]>([]);
   const openingOverridesRef = useRef<Record<string, OpeningOverride>>({});
+  const objectsRef = useRef<ConceptPlanObject[]>([]);
   const editStartRef = useRef<EditorSnapshot | null>(null);
   const [roomHistory, setRoomHistory] = useState<EditorSnapshot[]>([]);
   const [roomFuture, setRoomFuture] = useState<EditorSnapshot[]>([]);
@@ -468,6 +470,10 @@ export default function ConceptPlanner() {
   useEffect(() => {
     wallFirstFloorsRef.current = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   }, [wallFirstFloors]);
+
+  useEffect(() => {
+    objectsRef.current = Array.isArray(objects) ? objects : [];
+  }, [objects]);
 
   useEffect(() => {
     openingOverridesRef.current = openingOverrides;
@@ -677,6 +683,7 @@ export default function ConceptPlanner() {
     openingOverrides: Object.fromEntries(
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
+    objects: objectsRef.current.map((object) => ({ ...object })),
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
@@ -687,6 +694,7 @@ export default function ConceptPlanner() {
     openingOverrides: Object.fromEntries(
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
+    objects: snapshot.objects.map((object) => ({ ...object })),
   });
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
@@ -696,10 +704,12 @@ export default function ConceptPlanner() {
     setCustomOpenings(cloned.customOpenings);
     setWallFirstFloors(cloned.wallFirstFloors);
     setOpeningOverrides(cloned.openingOverrides);
+    setObjects(cloned.objects);
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
     setSelectedOpeningId(null);
+    setSelectedObjectId(null);
   };
 
   const pushRoomHistory = (before: EditorSnapshot) => {
@@ -853,6 +863,7 @@ export default function ConceptPlanner() {
     depth: number,
     point?: { x: number; y: number },
   ) => {
+    const before = snapshotEditor();
     const x = point
       ? Math.max(0, Math.min(lotWidth - width, point.x - width / 2))
       : Math.max(0, Math.min(lotWidth - width, lotWidth / 2 - width / 2));
@@ -879,6 +890,7 @@ export default function ConceptPlanner() {
     setSelectedClosedSpaceId(null);
     setEditorView("plan");
     closeLibraryOnMobile();
+    pushRoomHistory(before);
   };
 
   const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) =>
@@ -897,12 +909,15 @@ export default function ConceptPlanner() {
 
   const deleteSelectedObject = () => {
     if (!selectedObjectId) return;
+    const before = snapshotEditor();
     setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== selectedObjectId));
     setSelectedObjectId(null);
+    pushRoomHistory(before);
   };
 
   const duplicateSelectedObject = () => {
     if (!selectedObject) return;
+    const before = snapshotEditor();
     const copy: ConceptPlanObject = {
       ...selectedObject,
       id: `concept-object-${uid()}`,
@@ -912,16 +927,20 @@ export default function ConceptPlanner() {
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedObjectId(copy.id);
+    pushRoomHistory(before);
   };
 
   const rotateObject = (objectId: string) => {
+    const before = snapshotEditor();
     const object = safeObjects.find((item) => item.id === objectId);
     if (!object) return;
     updateObjectById(objectId, { rotation: (object.rotation + 90) % 360 });
     setSelectedObjectId(objectId);
+    pushRoomHistory(before);
   };
 
   const duplicateObject = (objectId: string) => {
+    const before = snapshotEditor();
     const object = safeObjects.find((item) => item.id === objectId);
     if (!object) return;
     const copy: ConceptPlanObject = {
@@ -933,11 +952,14 @@ export default function ConceptPlanner() {
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedObjectId(copy.id);
+    pushRoomHistory(before);
   };
 
   const deleteObject = (objectId: string) => {
+    const before = snapshotEditor();
     setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== objectId));
     setSelectedObjectId((current) => current === objectId ? null : current);
+    pushRoomHistory(before);
   };
 
   const organize = (variant = layoutVariant) => {
@@ -3145,12 +3167,18 @@ export default function ConceptPlanner() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         {([
-                          ["sofa", "Sofá", 2.20, 0.90],
+                          ["sofa", "Sofá 3 lugares", 2.20, 0.90],
+                          ["sofa", "Sofá 2 lugares", 1.70, 0.90],
                           ["bed", "Cama casal", 1.60, 2.00],
-                          ["table", "Mesa", 1.40, 0.90],
+                          ["bed", "Cama solteiro", 0.90, 1.90],
+                          ["table", "Mesa jantar", 1.60, 0.90],
+                          ["table", "Mesa centro", 1.10, 0.60],
                           ["chair", "Cadeira", 0.55, 0.55],
+                          ["chair", "Poltrona", 0.85, 0.85],
                           ["cabinet", "Armário", 1.80, 0.60],
+                          ["cabinet", "Balcão", 1.20, 0.60],
                           ["tv", "TV / painel", 1.40, 0.35],
+                          ["tv", "Painel grande", 2.00, 0.35],
                         ] as Array<[ConceptPlanObject["kind"], string, number, number]>).map(([kind, label, width, depth]) => (
                           <button
                             key={kind}
