@@ -105,6 +105,112 @@ function scheduleLatest(a: Date | null, b: Date) {
   return !a || b.getTime() > a.getTime() ? b : a;
 }
 
+type WorkCalendar = {
+  segunda: boolean;
+  terca: boolean;
+  quarta: boolean;
+  quinta: boolean;
+  sexta: boolean;
+  sabado: boolean;
+  domingo: boolean;
+  horasDia: number;
+  feriados: string[];
+};
+
+const DEFAULT_WORK_CALENDAR: WorkCalendar = {
+  segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
+  sabado: false, domingo: false, horasDia: 8, feriados: [],
+};
+
+function normalizeWorkCalendar(raw: any): WorkCalendar {
+  const feriados = Array.isArray(raw?.feriados) ? raw.feriados.map((item: any) => String(item).slice(0, 10)) : [];
+  return {
+    segunda: raw?.segunda ?? true,
+    terca: raw?.terca ?? true,
+    quarta: raw?.quarta ?? true,
+    quinta: raw?.quinta ?? true,
+    sexta: raw?.sexta ?? true,
+    sabado: raw?.sabado ?? false,
+    domingo: raw?.domingo ?? false,
+    horasDia: Number(raw?.horasDia ?? raw?.horas_dia ?? 8),
+    feriados,
+  };
+}
+
+function isWorkDay(date: Date, calendar: WorkCalendar) {
+  if (calendar.feriados.includes(scheduleIso(date))) return false;
+  const day = date.getUTCDay();
+  if (day === 0) return calendar.domingo;
+  if (day === 1) return calendar.segunda;
+  if (day === 2) return calendar.terca;
+  if (day === 3) return calendar.quarta;
+  if (day === 4) return calendar.quinta;
+  if (day === 5) return calendar.sexta;
+  return calendar.sabado;
+}
+
+function nextWorkDay(date: Date, calendar: WorkCalendar) {
+  let next = new Date(date);
+  for (let guard = 0; guard < 370; guard++) {
+    if (isWorkDay(next, calendar)) return next;
+    next = scheduleAddDays(next, 1);
+  }
+  return next;
+}
+
+function addWorkDays(date: Date, days: number, calendar: WorkCalendar) {
+  if (days <= 0) return nextWorkDay(date, calendar);
+  let current = nextWorkDay(date, calendar);
+  let remaining = days;
+  while (remaining > 0) {
+    current = scheduleAddDays(current, 1);
+    if (isWorkDay(current, calendar)) remaining -= 1;
+  }
+  return current;
+}
+
+function previousWorkDay(date: Date, calendar: WorkCalendar) {
+  let previous = new Date(date);
+  for (let guard = 0; guard < 370; guard++) {
+    if (isWorkDay(previous, calendar)) return previous;
+    previous = scheduleAddDays(previous, -1);
+  }
+  return previous;
+}
+
+function subtractWorkDays(date: Date, days: number, calendar: WorkCalendar) {
+  if (days <= 0) return previousWorkDay(date, calendar);
+  let current = previousWorkDay(date, calendar);
+  let remaining = days;
+  while (remaining > 0) {
+    current = scheduleAddDays(current, -1);
+    if (isWorkDay(current, calendar)) remaining -= 1;
+  }
+  return current;
+}
+
+function shiftWorkDays(date: Date, days: number, calendar: WorkCalendar) {
+  return days >= 0 ? addWorkDays(date, days, calendar) : subtractWorkDays(date, Math.abs(days), calendar);
+}
+
+function workDurationDays(start: Date, end: Date, calendar: WorkCalendar) {
+  let current = new Date(start);
+  let count = 0;
+  for (let guard = 0; guard < 5000 && current <= end; guard++) {
+    if (isWorkDay(current, calendar)) count += 1;
+    current = scheduleAddDays(current, 1);
+  }
+  return Math.max(1, count);
+}
+
+async function getWorkCalendar(tid: string, obraId: string): Promise<WorkCalendar> {
+  const result = await pool.query(
+    `SELECT * FROM obra_calendarios WHERE obra_id = $1 AND tenant_id = $2 LIMIT 1`,
+    [obraId, tid],
+  );
+  return result.rows[0] ? normalizeWorkCalendar(result.rows[0]) : DEFAULT_WORK_CALENDAR;
+}
+
 async function addEvent(
   projectId: string,
   workOrderId: string | null,
@@ -394,6 +500,144 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
   }
 });
 
+archProductionProcurementRouter.get("/arch/construction/:obraId/baseline", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const baselineResult = await pool.query(
+      `SELECT * FROM obra_baselines
+        WHERE obra_id = $1 AND tenant_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [obraId, tid],
+    );
+    const baseline = baselineResult.rows[0] ?? null;
+    if (!baseline) { res.json({ baseline: null, etapas: [] }); return; }
+
+    const etapasResult = await pool.query(
+      `SELECT * FROM obra_baseline_etapas
+        WHERE baseline_id = $1
+        ORDER BY created_at ASC`,
+      [baseline.id],
+    );
+    res.json({ baseline, etapas: etapasResult.rows });
+  } catch (err) {
+    logger.error({ err }, "arch/construction baseline GET error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/baseline", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const etapasResult = await pool.query(
+      `SELECT id, nome, data_inicio_prevista, data_fim_prevista, custo_previsto, peso_fisico,
+              equipe_nome, equipe_quantidade, horas_dia
+         FROM obra_etapas
+        WHERE obra_id = $1
+        ORDER BY ordem ASC, created_at ASC`,
+      [obraId],
+    );
+    if (!etapasResult.rows.length) {
+      res.status(400).json({ error: "Adicione etapas antes de criar a linha de base" }); return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const baselineId = crypto.randomUUID();
+      const baselineResult = await client.query(
+        `INSERT INTO obra_baselines (id, tenant_id, obra_id, nome, observacao, created_at)
+         VALUES ($1,$2,$3,$4,$5,now())
+         RETURNING *`,
+        [
+          baselineId,
+          tid,
+          obraId,
+          String(req.body?.nome ?? "Linha de base"),
+          req.body?.observacao ? String(req.body.observacao) : null,
+        ],
+      );
+
+      for (const etapa of etapasResult.rows) {
+        await client.query(
+          `INSERT INTO obra_baseline_etapas (
+             id, baseline_id, etapa_id, nome, data_inicio_prevista, data_fim_prevista,
+             custo_previsto, peso_fisico, equipe_nome, equipe_quantidade, horas_dia, created_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())`,
+          [
+            crypto.randomUUID(), baselineId, etapa.id, etapa.nome,
+            etapa.data_inicio_prevista, etapa.data_fim_prevista,
+            String(etapa.custo_previsto ?? 0), String(etapa.peso_fisico ?? 0),
+            etapa.equipe_nome ?? null, Number(etapa.equipe_quantidade ?? 1), String(etapa.horas_dia ?? 8),
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      res.status(201).json({ baseline: baselineResult.rows[0], etapas: etapasResult.rows });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err }, "arch/construction baseline POST error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.get("/arch/construction/:obraId/calendar", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    res.json({ calendar: await getWorkCalendar(tid, obraId) });
+  } catch (err) {
+    logger.error({ err }, "arch/construction calendar GET error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.put("/arch/construction/:obraId/calendar", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    const calendar = normalizeWorkCalendar(req.body ?? {});
+    const result = await pool.query(
+      `INSERT INTO obra_calendarios (
+         id, tenant_id, obra_id, segunda, terca, quarta, quinta, sexta, sabado, domingo, horas_dia, feriados, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,now(),now())
+       ON CONFLICT (obra_id)
+       DO UPDATE SET
+         segunda = EXCLUDED.segunda, terca = EXCLUDED.terca, quarta = EXCLUDED.quarta,
+         quinta = EXCLUDED.quinta, sexta = EXCLUDED.sexta, sabado = EXCLUDED.sabado,
+         domingo = EXCLUDED.domingo, horas_dia = EXCLUDED.horas_dia,
+         feriados = EXCLUDED.feriados, updated_at = now()
+       RETURNING *`,
+      [
+        crypto.randomUUID(), tid, obraId,
+        calendar.segunda, calendar.terca, calendar.quarta, calendar.quinta, calendar.sexta,
+        calendar.sabado, calendar.domingo, String(calendar.horasDia), JSON.stringify(calendar.feriados),
+      ],
+    );
+    res.json({ calendar: normalizeWorkCalendar(result.rows[0]) });
+  } catch (err) {
+    logger.error({ err }, "arch/construction calendar PUT error");
+    next(err);
+  }
+});
+
 archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budget", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
@@ -606,13 +850,21 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas", async 
     const result = await pool.query(
       `INSERT INTO obra_etapas (
         id, obra_id, nome, descricao, ordem, data_inicio_prevista, data_fim_prevista,
-        status, percentual_executado, responsavel, custo_previsto, peso_fisico, marco,
+        status, percentual_executado, responsavel,
+        equipe_nome, equipe_quantidade, horas_dia, custo_hora_pessoa, produtividade_dia,
+        custo_previsto, peso_fisico, marco,
         created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,$10,$11,now(),now()) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,$10,$11,$12,$13,$14,$15,$16,now(),now()) RETURNING *`,
       [
         crypto.randomUUID(), obraId, nome, req.body?.descricao ?? null, Number(req.body?.ordem ?? 0),
         req.body?.dataInicioPrevista || null, req.body?.dataFimPrevista || null,
-        req.body?.responsavel || null, String(custoPrevisto), String(pesoFisico), Boolean(req.body?.marco),
+        req.body?.responsavel || null,
+        req.body?.equipeNome || null,
+        Math.max(1, Math.min(500, Number(req.body?.equipeQuantidade ?? 1))),
+        String(Math.max(0.5, Math.min(24, Number(req.body?.horasDia ?? 8)))),
+        String(Math.max(0, Number(req.body?.custoHoraPessoa ?? 0))),
+        String(Math.max(0, Number(req.body?.produtividadeDia ?? 0))),
+        String(custoPrevisto), String(pesoFisico), Boolean(req.body?.marco),
       ],
     );
     res.status(201).json({ etapa: result.rows[0] });
@@ -641,6 +893,11 @@ archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaI
       dataFimReal: { col: "data_fim_real", transform: (value) => value || null },
       status: { col: "status", transform: (value) => String(value) },
       responsavel: { col: "responsavel", transform: (value) => value ? String(value) : null },
+      equipeNome: { col: "equipe_nome", transform: (value) => value ? String(value) : null },
+      equipeQuantidade: { col: "equipe_quantidade", transform: (value) => Math.max(1, Math.min(500, Number(value ?? 1))) },
+      horasDia: { col: "horas_dia", transform: (value) => String(Math.max(0.5, Math.min(24, Number(value ?? 8)))) },
+      custoHoraPessoa: { col: "custo_hora_pessoa", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
+      produtividadeDia: { col: "produtividade_dia", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
       custoPrevisto: { col: "custo_previsto", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
       pesoFisico: { col: "peso_fisico", transform: (value) => String(Math.max(0, Math.min(100, Number(value ?? 0)))) },
       marco: { col: "marco", transform: (value) => Boolean(value) },
@@ -663,6 +920,487 @@ archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaI
     res.json({ etapa: result.rows[0] });
   } catch (err) {
     logger.error({ err }, "arch/construction etapa PATCH error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/simulate-scenario", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const selectedEtapaId = req.body?.etapaId ? String(req.body.etapaId) : null;
+    const extraPeople = Math.max(-499, Math.min(499, Number(req.body?.extraPeople ?? 0)));
+    const delayDays = Math.max(0, Math.min(365, Number(req.body?.delayDays ?? 0)));
+    const workSaturday = Boolean(req.body?.workSaturday);
+
+    const baseCalendar = await getWorkCalendar(tid, obraId);
+    const calendar: WorkCalendar = { ...baseCalendar, sabado: workSaturday ? true : baseCalendar.sabado };
+
+    const [etapasResult, depsResult] = await Promise.all([
+      pool.query(
+        `SELECT id, nome, ordem, status, marco, equipe_nome, equipe_quantidade, horas_dia,
+                custo_hora_pessoa, custo_previsto, data_inicio_prevista, data_fim_prevista
+           FROM obra_etapas
+          WHERE obra_id = $1
+          ORDER BY ordem ASC, created_at ASC`,
+        [obraId],
+      ),
+      pool.query(
+        `SELECT etapa_id, depende_de_etapa_id, tipo, defasagem_dias
+           FROM obra_etapa_dependencias
+          WHERE obra_id = $1 AND tenant_id = $2
+          ORDER BY created_at ASC`,
+        [obraId, tid],
+      ),
+    ]);
+
+    const rows = etapasResult.rows;
+    const planned = new Map<string, { start: Date; end: Date }>();
+    const original = new Map<string, { start: Date; end: Date }>();
+    const byId = new Map<string, any>();
+
+    for (const row of rows) {
+      const id = String(row.id);
+      byId.set(id, row);
+      const start = scheduleDate(row.data_inicio_prevista);
+      const end = scheduleDate(row.data_fim_prevista);
+      if (start && end) {
+        original.set(id, { start, end });
+        planned.set(id, { start: new Date(start), end: new Date(end) });
+      }
+    }
+
+    const incoming = new Map<string, any[]>();
+    const successors = new Map<string, any[]>();
+    for (const dep of depsResult.rows) {
+      const target = String(dep.etapa_id);
+      const predecessor = String(dep.depende_de_etapa_id);
+      incoming.set(target, [...(incoming.get(target) ?? []), dep]);
+      successors.set(predecessor, [...(successors.get(predecessor) ?? []), dep]);
+    }
+
+    const originalFinish = Array.from(original.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+
+    let originalLaborCost = 0;
+    let scenarioLaborCost = 0;
+
+    for (const row of rows) {
+      const id = String(row.id);
+      const dates = planned.get(id);
+      if (!dates || row.marco) continue;
+
+      const oldPeople = Math.max(1, Number(row.equipe_quantidade ?? 1));
+      const hours = Math.max(0, Number(row.horas_dia ?? calendar.horasDia));
+      const hourly = Math.max(0, Number(row.custo_hora_pessoa ?? 0));
+      const oldDuration = workDurationDays(dates.start, dates.end, baseCalendar);
+      originalLaborCost += oldDuration * oldPeople * hours * hourly;
+
+      if (selectedEtapaId === id && extraPeople !== 0 && String(row.status ?? "pendente") === "pendente") {
+        const newPeople = Math.max(1, oldPeople + extraPeople);
+        const effortPersonDays = oldDuration * oldPeople;
+        const newDuration = Math.max(1, Math.ceil(effortPersonDays / newPeople));
+        planned.set(id, {
+          start: dates.start,
+          end: addWorkDays(dates.start, newDuration - 1, calendar),
+        });
+      } else if (workSaturday) {
+        const duration = workDurationDays(dates.start, dates.end, baseCalendar);
+        planned.set(id, {
+          start: nextWorkDay(dates.start, calendar),
+          end: addWorkDays(nextWorkDay(dates.start, calendar), duration - 1, calendar),
+        });
+      }
+    }
+
+    if (selectedEtapaId && delayDays > 0) {
+      const dates = planned.get(selectedEtapaId);
+      const row = byId.get(selectedEtapaId);
+      if (dates && row && String(row.status ?? "pendente") === "pendente") {
+        const duration = workDurationDays(dates.start, dates.end, calendar);
+        const delayedStart = addWorkDays(dates.start, delayDays, calendar);
+        planned.set(selectedEtapaId, {
+          start: delayedStart,
+          end: addWorkDays(delayedStart, duration - 1, calendar),
+        });
+      }
+    }
+
+    function constrainedStart(etapaId: string, duration: number, currentStart: Date) {
+      let required = nextWorkDay(currentStart, calendar);
+      for (const dep of incoming.get(etapaId) ?? []) {
+        const pred = planned.get(String(dep.depende_de_etapa_id));
+        if (!pred) continue;
+        const lag = Number(dep.defasagem_dias ?? 0);
+        const type = String(dep.tipo ?? "FS");
+        let candidate: Date;
+        if (type === "SS") {
+          candidate = shiftWorkDays(pred.start, lag, calendar);
+        } else if (type === "FF") {
+          const requiredEnd = shiftWorkDays(pred.end, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
+        } else if (type === "SF") {
+          const requiredEnd = shiftWorkDays(pred.start, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
+        } else {
+          candidate = shiftWorkDays(pred.end, lag + 1, calendar);
+        }
+        if (candidate > required) required = candidate;
+      }
+      return nextWorkDay(required, calendar);
+    }
+
+    const seeds = selectedEtapaId ? [selectedEtapaId] : rows.map((row: any) => String(row.id));
+    const queue = [...seeds];
+    const guard = new Map<string, number>();
+
+    while (queue.length) {
+      const predecessorId = queue.shift()!;
+      for (const dep of successors.get(predecessorId) ?? []) {
+        const id = String(dep.etapa_id);
+        const row = byId.get(id);
+        const dates = planned.get(id);
+        if (!row || !dates || String(row.status ?? "pendente") !== "pendente") continue;
+        const duration = workDurationDays(dates.start, dates.end, calendar);
+        const required = constrainedStart(id, duration, dates.start);
+        if (required <= dates.start) continue;
+        planned.set(id, { start: required, end: addWorkDays(required, duration - 1, calendar) });
+        const seen = (guard.get(id) ?? 0) + 1;
+        guard.set(id, seen);
+        if (seen > rows.length) {
+          res.status(409).json({ error: "Dependências inconsistentes impediram a simulação" });
+          return;
+        }
+        queue.push(id);
+      }
+    }
+
+    for (const row of rows) {
+      const id = String(row.id);
+      const dates = planned.get(id);
+      if (!dates || row.marco) continue;
+      const oldPeople = Math.max(1, Number(row.equipe_quantidade ?? 1));
+      const people = selectedEtapaId === id ? Math.max(1, oldPeople + extraPeople) : oldPeople;
+      const hours = Math.max(0, Number(row.horas_dia ?? calendar.horasDia));
+      const hourly = Math.max(0, Number(row.custo_hora_pessoa ?? 0));
+      const duration = workDurationDays(dates.start, dates.end, calendar);
+      scenarioLaborCost += duration * people * hours * hourly;
+    }
+
+    const newFinish = Array.from(planned.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+
+    const changedStages = rows
+      .map((row: any) => {
+        const id = String(row.id);
+        const before = original.get(id);
+        const after = planned.get(id);
+        if (!before || !after) return null;
+        const startDelta = Math.round((after.start.getTime() - before.start.getTime()) / 86_400_000);
+        const endDelta = Math.round((after.end.getTime() - before.end.getTime()) / 86_400_000);
+        if (!startDelta && !endDelta) return null;
+        return {
+          etapaId: id,
+          nome: String(row.nome),
+          startDeltaDays: startDelta,
+          endDeltaDays: endDelta,
+          newStart: scheduleIso(after.start),
+          newEnd: scheduleIso(after.end),
+        };
+      })
+      .filter(Boolean);
+
+    const summary = {
+      inputs: { etapaId: selectedEtapaId, extraPeople, delayDays, workSaturday },
+      originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
+      newFinish: newFinish ? scheduleIso(newFinish) : null,
+      finishImpactDays: originalFinish && newFinish
+        ? Math.round((newFinish.getTime() - originalFinish.getTime()) / 86_400_000)
+        : 0,
+      originalLaborCost,
+      scenarioLaborCost,
+      laborCostImpact: scenarioLaborCost - originalLaborCost,
+      changedStages,
+    };
+
+    if (req.body?.apply === true) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        for (const item of changedStages as any[]) {
+          await client.query(
+            `UPDATE obra_etapas
+                SET data_inicio_prevista = $1,
+                    data_fim_prevista = $2,
+                    updated_at = now()
+              WHERE id = $3 AND obra_id = $4`,
+            [item.newStart, item.newEnd, item.etapaId, obraId],
+          );
+        }
+
+        if (selectedEtapaId && extraPeople !== 0) {
+          const row = byId.get(selectedEtapaId);
+          if (row && String(row.status ?? "pendente") === "pendente") {
+            const newPeople = Math.max(1, Number(row.equipe_quantidade ?? 1) + extraPeople);
+            await client.query(
+              `UPDATE obra_etapas
+                  SET equipe_quantidade = $1, updated_at = now()
+                WHERE id = $2 AND obra_id = $3`,
+              [newPeople, selectedEtapaId, obraId],
+            );
+          }
+        }
+
+        if (workSaturday && !baseCalendar.sabado) {
+          await client.query(
+            `INSERT INTO obra_calendarios (
+               id, tenant_id, obra_id, segunda, terca, quarta, quinta, sexta, sabado, domingo, horas_dia, feriados, created_at, updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11::jsonb,now(),now())
+             ON CONFLICT (obra_id)
+             DO UPDATE SET sabado = true, updated_at = now()`,
+            [
+              crypto.randomUUID(), tid, obraId,
+              baseCalendar.segunda, baseCalendar.terca, baseCalendar.quarta,
+              baseCalendar.quinta, baseCalendar.sexta, baseCalendar.domingo,
+              String(baseCalendar.horasDia), JSON.stringify(baseCalendar.feriados),
+            ],
+          );
+        }
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      res.json({ applied: true, ...summary });
+      return;
+    }
+
+    res.json({ applied: false, ...summary });
+  } catch (err) {
+    logger.error({ err }, "arch/construction simulate-scenario error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const calendar = await getWorkCalendar(tid, obraId);
+    const [etapasResult, depsResult] = await Promise.all([
+      pool.query(
+        `SELECT id, nome, ordem, status, marco, equipe_nome, equipe_quantidade,
+                data_inicio_prevista, data_fim_prevista
+           FROM obra_etapas
+          WHERE obra_id = $1
+          ORDER BY data_inicio_prevista ASC NULLS LAST, ordem ASC, created_at ASC`,
+        [obraId],
+      ),
+      pool.query(
+        `SELECT etapa_id, depende_de_etapa_id, tipo, defasagem_dias
+           FROM obra_etapa_dependencias
+          WHERE obra_id = $1 AND tenant_id = $2
+          ORDER BY created_at ASC`,
+        [obraId, tid],
+      ),
+    ]);
+
+    const rows = etapasResult.rows;
+    const original = new Map<string, { start: Date; end: Date }>();
+    const planned = new Map<string, { start: Date; end: Date }>();
+    const byId = new Map<string, any>();
+
+    for (const row of rows) {
+      const id = String(row.id);
+      byId.set(id, row);
+      const start = scheduleDate(row.data_inicio_prevista);
+      const end = scheduleDate(row.data_fim_prevista);
+      if (start && end) {
+        original.set(id, { start, end });
+        planned.set(id, { start: new Date(start), end: new Date(end) });
+      }
+    }
+
+    const originalFinish = Array.from(original.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+
+    const incoming = new Map<string, any[]>();
+    const successors = new Map<string, any[]>();
+    for (const dep of depsResult.rows) {
+      const target = String(dep.etapa_id);
+      const predecessor = String(dep.depende_de_etapa_id);
+      incoming.set(target, [...(incoming.get(target) ?? []), dep]);
+      successors.set(predecessor, [...(successors.get(predecessor) ?? []), dep]);
+    }
+
+    function constrainedStart(etapaId: string, duration: number, currentStart: Date) {
+      let required = new Date(currentStart);
+      for (const dep of incoming.get(etapaId) ?? []) {
+        const pred = planned.get(String(dep.depende_de_etapa_id));
+        if (!pred) continue;
+        const lag = Number(dep.defasagem_dias ?? 0);
+        const type = String(dep.tipo ?? "FS");
+        let candidate: Date;
+        if (type === "SS") {
+          candidate = shiftWorkDays(pred.start, lag, calendar);
+        } else if (type === "FF") {
+          const requiredEnd = shiftWorkDays(pred.end, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
+        } else if (type === "SF") {
+          const requiredEnd = shiftWorkDays(pred.start, lag, calendar);
+          candidate = subtractWorkDays(requiredEnd, duration - 1, calendar);
+        } else {
+          candidate = shiftWorkDays(pred.end, lag + 1, calendar);
+        }
+        if (candidate > required) required = candidate;
+      }
+      return required;
+    }
+
+    const resourceGroups = new Map<string, any[]>();
+    for (const row of rows) {
+      const name = String(row.equipe_nome ?? "").trim();
+      const dates = planned.get(String(row.id));
+      if (!name || !dates || row.marco) continue;
+      const key = name.toLowerCase();
+      resourceGroups.set(key, [...(resourceGroups.get(key) ?? []), row]);
+    }
+
+    const shifted = new Set<string>();
+    const conflictsResolved: Array<{ equipe: string; etapaId: string; nome: string; days: number }> = [];
+
+    for (const group of resourceGroups.values()) {
+      group.sort((a, b) => {
+        const aDates = planned.get(String(a.id))!;
+        const bDates = planned.get(String(b.id))!;
+        return aDates.start.getTime() - bDates.start.getTime() || Number(a.ordem ?? 0) - Number(b.ordem ?? 0);
+      });
+
+      let occupiedUntil: Date | null = null;
+      for (const row of group) {
+        const id = String(row.id);
+        const dates = planned.get(id);
+        if (!dates) continue;
+        const duration = workDurationDays(dates.start, dates.end, calendar);
+        const movable = String(row.status ?? "pendente") === "pendente";
+        let required = constrainedStart(id, duration, dates.start);
+
+        if (occupiedUntil && required <= occupiedUntil) {
+          required = addWorkDays(occupiedUntil, 1, calendar);
+        }
+
+        if (required > dates.start && movable) {
+          const delta = Math.max(0, Math.round((required.getTime() - dates.start.getTime()) / 86_400_000));
+          planned.set(id, { start: required, end: addWorkDays(required, duration - 1, calendar) });
+          shifted.add(id);
+          conflictsResolved.push({
+            equipe: String(row.equipe_nome),
+            etapaId: id,
+            nome: String(row.nome),
+            days: delta,
+          });
+        }
+
+        const effective = planned.get(id)!;
+        if (!occupiedUntil || effective.end > occupiedUntil) occupiedUntil = effective.end;
+      }
+    }
+
+    // Propagate all dependency constraints after resource leveling.
+    const queue = Array.from(shifted);
+    const guard = new Map<string, number>();
+    while (queue.length) {
+      const predecessorId = queue.shift()!;
+      for (const dep of successors.get(predecessorId) ?? []) {
+        const id = String(dep.etapa_id);
+        const row = byId.get(id);
+        const dates = planned.get(id);
+        if (!row || !dates || String(row.status ?? "pendente") !== "pendente") continue;
+        const duration = workDurationDays(dates.start, dates.end, calendar);
+        const required = constrainedStart(id, duration, dates.start);
+        if (required <= dates.start) continue;
+        planned.set(id, { start: required, end: addWorkDays(required, duration - 1, calendar) });
+        shifted.add(id);
+        const seen = (guard.get(id) ?? 0) + 1;
+        guard.set(id, seen);
+        if (seen > rows.length) {
+          res.status(409).json({ error: "Dependências inconsistentes impediram o nivelamento de recursos" });
+          return;
+        }
+        queue.push(id);
+      }
+    }
+
+    const newFinish = Array.from(planned.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+    const finishImpactDays = originalFinish && newFinish
+      ? Math.round((newFinish.getTime() - originalFinish.getTime()) / 86_400_000)
+      : 0;
+
+    if (req.body?.dryRun === true) {
+      res.json({
+        applied: false,
+        shiftedCount: shifted.size,
+        conflictsResolved,
+        finishImpactDays,
+        originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
+        newFinish: newFinish ? scheduleIso(newFinish) : null,
+      });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const id of shifted) {
+        const dates = planned.get(id);
+        if (!dates) continue;
+        await client.query(
+          `UPDATE obra_etapas
+              SET data_inicio_prevista = $1,
+                  data_fim_prevista = $2,
+                  updated_at = now()
+            WHERE id = $3 AND obra_id = $4`,
+          [scheduleIso(dates.start), scheduleIso(dates.end), id, obraId],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      applied: true,
+      shiftedCount: shifted.size,
+      conflictsResolved,
+      finishImpactDays,
+      originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
+      newFinish: newFinish ? scheduleIso(newFinish) : null,
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction level-resources error");
     next(err);
   }
 });
