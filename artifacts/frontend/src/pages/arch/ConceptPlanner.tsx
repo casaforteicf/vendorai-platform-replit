@@ -1140,7 +1140,7 @@ export default function ConceptPlanner() {
   const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) =>
     addObjectAt(kind, label, width, depth);
 
-  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => {
+  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
       if (object.id !== objectId) return object;
       const width = Math.max(0.3, Math.min(lotWidth, patch.width ?? object.width));
