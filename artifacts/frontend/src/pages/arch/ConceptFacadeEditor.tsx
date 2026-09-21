@@ -467,7 +467,7 @@ export default function ConceptFacadeEditor({
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
               >
                 <Sparkles className="h-4 w-4" />
-                Gerar resultado
+                Gerar fachada renderizada
               </button>
             )}
           </div>
