@@ -1442,6 +1442,33 @@ export default function ConceptPlanner() {
     setSelectedCustomWallId(null);
   };
 
+  const addOpeningPreset = (
+    wallId: string,
+    preset: Pick<CustomOpening, "type" | "width" | "height" | "sillHeight" | "openingStyle">,
+  ) => {
+    const wall = safeCustomWalls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const before = snapshotEditor();
+    const opening: CustomOpening = {
+      id: `custom-opening-${uid()}`,
+      wallId,
+      floor: wall.floor,
+      type: preset.type,
+      offset: 0.5,
+      width: preset.width,
+      height: preset.height,
+      sillHeight: preset.type === "door" ? 0 : preset.sillHeight,
+      openingStyle: preset.openingStyle,
+      swing: "left",
+    };
+    setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
+    pushRoomHistory(before);
+    setInteractionMode("opening");
+    setSelectedOpeningId(opening.id);
+    setSelectedCustomWallId(null);
+    closeLibraryOnMobile();
+  };
+
   const updateCustomOpeningParams = (
     openingId: string,
     patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing">>,
@@ -2862,6 +2889,34 @@ export default function ConceptPlanner() {
                       </div>
 
                       <div className="mt-5 border-t pt-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Portas e janelas</div>
+                          <span className="text-[10px] text-slate-400">{selectedCustomWall ? "Parede selecionada" : "Selecione uma parede"}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            ["Porta 90", { type: "door", width: 0.90, height: 2.10, sillHeight: 0, openingStyle: "hinged" }],
+                            ["Porta correr 160", { type: "door", width: 1.60, height: 2.10, sillHeight: 0, openingStyle: "sliding" }],
+                            ["Janela 120", { type: "window", width: 1.20, height: 1.20, sillHeight: 0.90, openingStyle: "sliding" }],
+                            ["Janela 180", { type: "window", width: 1.80, height: 1.20, sillHeight: 0.90, openingStyle: "sliding" }],
+                          ] as const).map(([label, preset]) => (
+                            <button
+                              key={label}
+                              type="button"
+                              disabled={!selectedCustomWall}
+                              onClick={() => selectedCustomWall && addOpeningPreset(selectedCustomWall.id, preset)}
+                              className="rounded-xl border bg-white px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40 hover:border-orange-300 hover:bg-orange-50/40"
+                            >
+                              <div className="text-xs font-semibold">{label}</div>
+                              <div className="mt-1 text-[10px] text-slate-500">
+                                {preset.width.toFixed(2).replace(".", ",")} × {preset.height.toFixed(2).replace(".", ",")} m
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 border-t pt-4">
                         <div className="flex items-center justify-between">
                           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pavimentos</div>
                           {floors < 3 && (
@@ -3059,8 +3114,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={interactionMode === "navigate"
-                            ? "rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
-                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                            ? "shrink-0 rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
                           Selecionar
                         </button>
@@ -3075,8 +3130,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={interactionMode === "draw-wall"
-                            ? "rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
-                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                            ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
                           + Parede
                         </button>
@@ -3089,8 +3144,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={(interactionMode === "room" || interactionMode === "space")
-                            ? "rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
-                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                            ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
                           Ambientes
                         </button>
@@ -3103,8 +3158,8 @@ export default function ConceptPlanner() {
                             setSelectedCustomWallId(null);
                           }}
                           className={interactionMode === "opening"
-                            ? "rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
-                            : "rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
+                            ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold"}
                         >
                           Portas / janelas
                         </button>
@@ -3296,6 +3351,20 @@ export default function ConceptPlanner() {
 
               {editorView === "plan" && (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
               <aside className="fixed inset-x-3 bottom-20 z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(null);
+                    setSelectedOpeningId(null);
+                    setSelectedWallId(null);
+                    setSelectedCustomWallId(null);
+                    setSelectedClosedSpaceId(null);
+                  }}
+                  className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border bg-white text-slate-500 shadow-sm md:hidden"
+                  aria-label="Fechar propriedades"
+                >
+                  <X className="h-4 w-4" />
+                </button>
                 {selectedCustomWall ? (
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="mr-2 min-w-[130px]">
