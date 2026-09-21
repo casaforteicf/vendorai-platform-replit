@@ -490,7 +490,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return isBaseVisible(item) && !hiddenSidebarItemKeys.has(item.href);
   }
 
-  const sidebarCustomizationItems = allNavItems.filter(isBaseVisible);
+  const sidebarCustomizationItems = [
+    { itemKey: "group:marketing", name: "Marketing", icon: Sparkles, section: "crm" },
+    { itemKey: "group:reports", name: "Relatórios", icon: BarChart3, section: "crm" },
+    ...allNavItems
+      .filter(isBaseVisible)
+      .map((item) => ({ itemKey: item.href, name: item.name, icon: item.icon, section: item.section })),
+  ];
 
   const navigation = allNavItems
     .filter(isVisible)
@@ -627,6 +633,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
 
         {/* Marketing submenu — fonte declarativa oficial */}
+        {!hiddenSidebarItemKeys.has("group:marketing") && (
         <div>
           <button
             onClick={() => setConteudoOpen((v) => !v)}
@@ -766,8 +773,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
+        )}
 
         {/* Relatórios submenu */}
+        {!hiddenSidebarItemKeys.has("group:reports") && (
         <div>
           <button
             onClick={() => setRelatoriosOpen((v) => !v)}
@@ -837,6 +846,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
+        )}
 
         {construcaoNav.length > 0 && (
           <div className="mt-3 pt-3 border-t">
@@ -1194,10 +1204,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             ) : (
               <div className="space-y-2">
                 {sidebarCustomizationItems.map((item) => {
-                  const visible = !hiddenSidebarItemKeys.has(item.href);
+                  const visible = !hiddenSidebarItemKeys.has(item.itemKey);
                   return (
                     <div
-                      key={item.href}
+                      key={item.itemKey}
                       className="flex items-center justify-between gap-4 rounded-xl border px-3.5 py-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -1213,7 +1223,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                       </div>
                       <Switch
                         checked={visible}
-                        onCheckedChange={(checked) => setSidebarItemVisible(item.href, checked)}
+                        onCheckedChange={(checked) => setSidebarItemVisible(item.itemKey, checked)}
                         disabled={sidebarPreferenceSaving !== null}
                         aria-label={`${visible ? "Ocultar" : "Mostrar"} ${item.name}`}
                       />
