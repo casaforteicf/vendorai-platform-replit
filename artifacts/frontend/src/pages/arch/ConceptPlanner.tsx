@@ -571,6 +571,13 @@ export default function ConceptPlanner() {
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
   const [objects, setObjects] = useState<ConceptPlanObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [furnishLayoutOptions, setFurnishLayoutOptions] = useState<Array<{
+    id: string;
+    score: number;
+    objects: ConceptPlanObject[];
+  }>>([]);
+  const [furnishLayoutSpaceId, setFurnishLayoutSpaceId] = useState<string | null>(null);
+
   const [wallMaterials, setWallMaterials] = useState<Record<string, string>>({});
   const [paintTool, setPaintTool] = useState<null | {
     target: "object" | "wall" | "floor";
@@ -1781,6 +1788,12 @@ export default function ConceptPlanner() {
     setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), created]);
   }, [selectedClosedSpace, selectedSpaceProfile, activeFloor, safeSpaceProfiles]);
 
+  useEffect(() => {
+    if (!selectedClosedSpaceId || furnishLayoutSpaceId === selectedClosedSpaceId) return;
+    setFurnishLayoutOptions([]);
+    setFurnishLayoutSpaceId(null);
+  }, [selectedClosedSpaceId, furnishLayoutSpaceId]);
+
   const layoutIssues = useMemo(
     () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
@@ -2056,7 +2069,6 @@ export default function ConceptPlanner() {
 
   const furnishSelectedSpace = () => {
     if (!selectedClosedSpace) return;
-    const before = snapshotEditor();
     const kind = selectedSpaceProfile?.kind ?? "outro";
     const bounds = selectedClosedSpace.bounds;
     const pad = 0.35;
@@ -2420,17 +2432,45 @@ export default function ConceptPlanner() {
       .map((mode) => buildCandidate(presets.map((item) => transformPreset(item, mode))))
       .sort((a, b) => b.score - a.score);
 
-    const created = variants[0]?.objects ?? [];
-    if (!created.length) return;
+    const options = variants
+      .filter((variant) => variant.objects.length > 0)
+      .slice(0, 3)
+      .map((variant, index) => ({
+        id: `layout-${index + 1}-${uid()}`,
+        score: variant.score,
+        objects: variant.objects,
+      }));
+
+    if (!options.length) return;
+    setFurnishLayoutOptions(options);
+    setFurnishLayoutSpaceId(selectedClosedSpace.id);
+    setEditorView("plan");
+  };
+
+  const applyFurnishLayoutOption = (optionId: string) => {
+    const option = furnishLayoutOptions.find((item) => item.id === optionId);
+    if (!option || !selectedClosedSpace || furnishLayoutSpaceId !== selectedClosedSpace.id) return;
+    const before = snapshotEditor();
+    const created = option.objects.map((object) => ({
+      ...object,
+      id: `concept-object-${uid()}`,
+    }));
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), ...created]);
-    setSelectedObjectId(created[0].id);
+    setSelectedObjectId(created[0]?.id ?? null);
     setSelectedId(null);
     setSelectedOpeningId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
     setSelectedClosedSpaceId(null);
+    setFurnishLayoutOptions([]);
+    setFurnishLayoutSpaceId(null);
     setEditorView("plan");
     pushRoomHistory(before);
+  };
+
+  const cancelFurnishLayoutOptions = () => {
+    setFurnishLayoutOptions([]);
+    setFurnishLayoutSpaceId(null);
   };
 
   const addOpeningPreset = (
@@ -5371,8 +5411,30 @@ export default function ConceptPlanner() {
                       onClick={furnishSelectedSpace}
                       className="h-9 rounded-lg border border-slate-800 bg-slate-900 px-3 text-xs font-semibold text-white"
                     >
-                      Mobiliar
+                      {furnishLayoutOptions.length && furnishLayoutSpaceId === selectedClosedSpace.id ? "Recalcular layouts" : "Mobiliar"}
                     </button>
+                    {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.map((option, index) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => applyFurnishLayoutOption(option.id)}
+                        className={index === 0
+                          ? "h-9 rounded-lg border border-orange-300 bg-orange-50 px-3 text-xs font-semibold text-orange-700"
+                          : "h-9 rounded-lg border px-3 text-xs font-semibold"}
+                        title={`Pontuação ${option.score.toFixed(0)}`}
+                      >
+                        Layout {index + 1} · {option.score.toFixed(0)}
+                      </button>
+                    ))}
+                    {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={cancelFurnishLayoutOptions}
+                        className="h-9 rounded-lg border px-3 text-xs font-semibold text-slate-500"
+                      >
+                        Cancelar
+                      </button>
+                    )}
                     {editorView === "model3d" && (
                       <button type="button" onClick={() => setEditorView("plan")} className="h-9 rounded-lg border px-3 text-xs font-semibold">Editar no 2D</button>
                     )}
