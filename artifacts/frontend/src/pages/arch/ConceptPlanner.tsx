@@ -3944,6 +3944,7 @@ export default function ConceptPlanner() {
                         onOpenMaterials={openMaterialsForSelection}
                         onRoomDuplicate={duplicateRoomById}
                         onRoomDelete={deleteRoomById}
+                        paintTarget={paintTool?.target ?? null}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
