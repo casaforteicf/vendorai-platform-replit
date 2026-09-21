@@ -457,8 +457,10 @@ function StepPill({ index, current, label }: { index: number; current: number; l
   );
 }
 
+const WORKSPACE_STEP = 4;
+
 export default function ConceptPlanner() {
-  const [step, setStep] = useState(4);
+  const [step, setStep] = useState(WORKSPACE_STEP);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
   const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
@@ -467,6 +469,14 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
+
+  useEffect(() => {
+    if (step !== WORKSPACE_STEP) {
+      setStep(WORKSPACE_STEP);
+      setEditorView("plan");
+    }
+  }, [step]);
+
   const [interactionMode, setInteractionMode] = useState<"room" | "space" | "wall" | "opening" | "draw-wall" | "navigate">("draw-wall");
   const [rooms, setRooms] = useState<Room[]>([]);
   const roomsRef = useRef<Room[]>(rooms);
@@ -2149,7 +2159,7 @@ export default function ConceptPlanner() {
 
   return (
     <div className="arqdor-reference-ui min-h-screen bg-muted/30">
-      {step !== 4 && (
+      {false && (
         <div className="border-b bg-background">
           <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -2205,7 +2215,7 @@ export default function ConceptPlanner() {
 
       )}
 
-      <main className={step === 4 ? "w-full p-0" : step === 0 ? "w-full p-3 sm:p-4" : "mx-auto max-w-[1500px] p-4 sm:p-6"}>
+      <main className="w-full p-0">
         {step === 0 && (
           <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
             <div className="flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3">
@@ -3068,7 +3078,7 @@ export default function ConceptPlanner() {
               />
             </div>
 
-            <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8]">
+            <div className="relative min-h-[calc(100dvh-64px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={(selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
                   ? "absolute inset-y-0 left-0 z-30 hidden max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)] md:block"
                   : "absolute inset-y-0 left-0 z-30 max-w-full border-r bg-white shadow-[8px_0_28px_rgba(15,23,42,0.08)]"}>
@@ -3808,7 +3818,7 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16">
+              <div className="relative min-h-[calc(100dvh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16">
                 <div className="h-full w-full">
                   {editorView === "plan" && (
                       <div className="absolute left-16 right-3 top-3 z-20 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:left-20 md:right-auto">
@@ -4022,7 +4032,7 @@ export default function ConceptPlanner() {
                         onRoomDelete={deleteRoomById}
                         paintTarget={paintTool?.target ?? null}
                       />
-                      <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
+                      <div className="absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
                           <button
                             type="button"
@@ -4252,7 +4262,7 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <div className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
+              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
                 {([
                   ["plan", "2D"],
                   ["model3d", "3D"],
@@ -4277,7 +4287,7 @@ export default function ConceptPlanner() {
               </div>
 
               {((editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)) || (editorView === "model3d" && (selectedObject || selectedCustomWall || selectedClosedSpace || selectedWall))) && (
-              <aside className="fixed inset-x-3 bottom-20 z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
+              <aside className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
                 <button
                   type="button"
                   onClick={() => {
