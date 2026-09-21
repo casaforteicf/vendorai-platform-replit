@@ -24,7 +24,7 @@ const CONFIG_SEARCH_INDEX = [
 ] as const;
 
 const INTEGRATION_FOCUS_ALIASES: Record<string, string[]> = {
-  whatsapp: ["whatsapp", "meta whatsapp", "central meta"],
+  whatsapp: ["whatsapp via qr code", "conectar via qr code", "qr code"],
   instagram: ["instagram"],
   "google-calendar": ["google calendar", "calendar"],
   "google-ads": ["google ads"],
@@ -125,7 +125,7 @@ export default function Configuracoes() {
         const data = await response.json() as IntegrationHealthPayload;
 
         const integrations = [
-          { key: "whatsapp", label: "WhatsApp", connected: data.whatsapp?.connected === true, detail: data.whatsapp?.phone || "Canal de atendimento" },
+          { key: "whatsapp", label: "WhatsApp", connected: data.whatsapp?.connected === true, detail: data.whatsapp?.phone || "Conexão padrão via QR Code" },
           { key: "instagram", label: "Instagram", connected: data.instagram?.connected === true, detail: data.instagram?.username ? `@${data.instagram.username.replace(/^@/, "")}` : "Mensagens e perfil" },
           { key: "google-calendar", label: "Google Calendar", connected: data.googleCalendar?.connected === true, detail: "Agenda e compromissos" },
           {
@@ -182,7 +182,7 @@ export default function Configuracoes() {
 
           const action = document.createElement("span");
           action.className = "integration-health__action";
-          action.textContent = item.connected ? "Gerenciar integração →" : item.attention ? "Revisar integração →" : "Conectar agora →";
+          action.textContent = item.connected ? "Gerenciar integração →" : item.attention ? "Revisar integração →" : item.key === "whatsapp" ? "Ler QR Code →" : "Conectar agora →";
 
           card.addEventListener("click", () => focusIntegration(item.key));
           card.append(header, detail, action);
