@@ -4,7 +4,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { resolveAIKey } from "../lib/ai-gateway.js";
 import { and, or, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
-import { STANDARD_CONSTRUCTION_COMPOSITIONS } from "../data/construction-composition-catalog";
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
