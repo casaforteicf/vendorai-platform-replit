@@ -88,6 +88,24 @@ export const tenantNavModulesTable = pgTable(
   ]
 );
 
+export const tenantSidebarPreferencesTable = pgTable(
+  "tenant_sidebar_preferences",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    isVisible: boolean("is_visible").notNull().default(true),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tenant_sidebar_preferences_tenant_item_uidx").on(table.tenantId, table.itemKey),
+  ]
+);
+
 export const insertTenantNavModuleSchema = createInsertSchema(tenantNavModulesTable).omit({
   id: true,
   updatedAt: true,
@@ -95,3 +113,11 @@ export const insertTenantNavModuleSchema = createInsertSchema(tenantNavModulesTa
 
 export type InsertTenantNavModule = z.infer<typeof insertTenantNavModuleSchema>;
 export type TenantNavModule = typeof tenantNavModulesTable.$inferSelect;
+
+export const insertTenantSidebarPreferenceSchema = createInsertSchema(tenantSidebarPreferencesTable).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertTenantSidebarPreference = z.infer<typeof insertTenantSidebarPreferenceSchema>;
+export type TenantSidebarPreference = typeof tenantSidebarPreferencesTable.$inferSelect;
