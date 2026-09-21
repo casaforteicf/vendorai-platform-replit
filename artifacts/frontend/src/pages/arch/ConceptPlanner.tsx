@@ -180,6 +180,7 @@ const CONCEPT_OBJECT_MATERIALS = [
   { id: "madeira-escura", name: "Madeira escura", category: "Madeiras", swatch: "#8b6b52" },
   { id: "preto-fosco", name: "Preto fosco", category: "Lacas e metais", swatch: "#334155" },
   { id: "branco-fosco", name: "Branco fosco", category: "Lacas e metais", swatch: "#ffffff" },
+  { id: "folhagem-verde", name: "Folhagem verde", category: "Vegetação", swatch: "#86a97a" },
 ] as const;
 
 const CONCEPT_FLOOR_MATERIALS = [
@@ -206,7 +207,7 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   label: string;
   width: number;
   depth: number;
-  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório";
+  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação";
 }> = [
   { kind: "sofa", label: "Sofá 3 lugares", width: 2.20, depth: 0.90, category: "Sala" },
   { kind: "sofa", label: "Sofá 2 lugares", width: 1.70, depth: 0.90, category: "Sala" },
@@ -223,6 +224,12 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "cabinet", label: "Armário", width: 1.80, depth: 0.60, category: "Cozinha" },
   { kind: "table", label: "Mesa escritório", width: 1.20, depth: 0.60, category: "Escritório" },
   { kind: "chair", label: "Cadeira escritório", width: 0.60, depth: 0.60, category: "Escritório" },
+  { kind: "plant", label: "Planta em vaso", width: 0.65, depth: 0.65, category: "Decoração" },
+  { kind: "plant", label: "Planta grande", width: 0.90, depth: 0.90, category: "Decoração" },
+  { kind: "rug", label: "Tapete sala", width: 2.00, depth: 1.50, category: "Decoração" },
+  { kind: "rug", label: "Tapete quarto", width: 1.40, depth: 0.90, category: "Decoração" },
+  { kind: "lamp", label: "Luminária de piso", width: 0.45, depth: 0.45, category: "Iluminação" },
+  { kind: "lamp", label: "Abajur", width: 0.35, depth: 0.35, category: "Iluminação" },
 ];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
@@ -288,13 +295,23 @@ function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
 
 function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlanObject[] {
   if (!Array.isArray(input)) return [];
-  const validKinds = new Set<ConceptPlanObject["kind"]>(["sofa", "bed", "table", "chair", "cabinet", "tv"]);
+  const validKinds = new Set<ConceptPlanObject["kind"]>(["sofa", "bed", "table", "chair", "cabinet", "tv", "plant", "lamp", "rug"]);
   return input.flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const raw = candidate as Partial<ConceptPlanObject>;
     const kind = validKinds.has(raw.kind as ConceptPlanObject["kind"]) ? raw.kind as ConceptPlanObject["kind"] : "sofa";
-    const width = finiteNumber(raw.width, kind === "sofa" ? 2.2 : kind === "bed" ? 1.6 : 1.2, 0.3, 6);
-    const depth = finiteNumber(raw.depth, kind === "sofa" ? 0.9 : kind === "bed" ? 2.0 : 0.8, 0.3, 6);
+    const width = finiteNumber(
+      raw.width,
+      kind === "sofa" ? 2.2 : kind === "bed" ? 1.6 : kind === "plant" ? 0.65 : kind === "lamp" ? 0.45 : kind === "rug" ? 2.0 : 1.2,
+      0.3,
+      6,
+    );
+    const depth = finiteNumber(
+      raw.depth,
+      kind === "sofa" ? 0.9 : kind === "bed" ? 2.0 : kind === "plant" ? 0.65 : kind === "lamp" ? 0.45 : kind === "rug" ? 1.5 : 0.8,
+      0.3,
+      6,
+    );
     return [{
       id: typeof raw.id === "string" && raw.id ? raw.id : `object-loaded-${index}-${uid()}`,
       kind,
@@ -488,7 +505,7 @@ export default function ConceptPlanner() {
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [furnitureSearch, setFurnitureSearch] = useState("");
-  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório">("Todos");
+  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação">("Todos");
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
@@ -3410,7 +3427,7 @@ export default function ConceptPlanner() {
                       </label>
 
                       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório"] as const).map((category) => (
+                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação"] as const).map((category) => (
                           <button
                             key={category}
                             type="button"
@@ -3462,6 +3479,27 @@ export default function ConceptPlanner() {
                                   <div className="absolute inset-x-1 top-1 h-7 rounded-lg border-2 border-slate-500 bg-slate-100" />
                                   <div className="absolute bottom-0 left-1 h-3 w-1 bg-slate-500" />
                                   <div className="absolute bottom-0 right-1 h-3 w-1 bg-slate-500" />
+                                </div>
+                              )}
+                              {kind === "plant" && (
+                                <div className="relative h-14 w-12">
+                                  <div className="absolute bottom-0 left-1/2 h-5 w-8 -translate-x-1/2 rounded-b-lg border-2 border-amber-800/60 bg-amber-100" />
+                                  <div className="absolute left-1/2 top-0 h-10 w-10 -translate-x-1/2 rounded-full bg-emerald-200 shadow-inner">
+                                    <div className="absolute left-1 top-3 h-5 w-5 rounded-full bg-emerald-400/80" />
+                                    <div className="absolute right-1 top-1 h-6 w-6 rounded-full bg-emerald-500/70" />
+                                  </div>
+                                </div>
+                              )}
+                              {kind === "lamp" && (
+                                <div className="relative h-14 w-12">
+                                  <div className="absolute left-1/2 top-1 h-8 w-8 -translate-x-1/2 rounded-full border-2 border-amber-400 bg-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.45)]" />
+                                  <div className="absolute bottom-1 left-1/2 h-8 w-1 -translate-x-1/2 bg-slate-600" />
+                                  <div className="absolute bottom-0 left-1/2 h-1 w-8 -translate-x-1/2 rounded bg-slate-700" />
+                                </div>
+                              )}
+                              {kind === "rug" && (
+                                <div className="relative h-10 w-16 rounded-xl border-2 border-stone-400 bg-stone-200 shadow-sm">
+                                  <div className="absolute inset-1 rounded-lg border border-dashed border-stone-400" />
                                 </div>
                               )}
                               {kind === "cabinet" && (
