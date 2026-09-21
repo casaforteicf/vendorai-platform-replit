@@ -156,6 +156,147 @@ function boxPolygons(
   };
 }
 
+type ObjectPrimitive = {
+  key: string;
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  zMin: number;
+  zMax: number;
+};
+
+function primitiveRect(
+  object: ConceptPlanObject,
+  key: string,
+  relX: number,
+  relY: number,
+  relW: number,
+  relD: number,
+  zMin: number,
+  zMax: number,
+): ObjectPrimitive {
+  const width = Math.max(0.04, object.width * relW);
+  const depth = Math.max(0.04, object.depth * relD);
+  const localCenterX = object.x + object.width * (relX + relW / 2);
+  const localCenterY = object.y + object.depth * (relY + relD / 2);
+  const objectCenterX = object.x + object.width / 2;
+  const objectCenterY = object.y + object.depth / 2;
+  const radians = (object.rotation * Math.PI) / 180;
+  const dx = localCenterX - objectCenterX;
+  const dy = localCenterY - objectCenterY;
+  const centerX = objectCenterX + dx * Math.cos(radians) - dy * Math.sin(radians);
+  const centerY = objectCenterY + dx * Math.sin(radians) + dy * Math.cos(radians);
+  return {
+    key,
+    x: centerX - width / 2,
+    y: centerY - depth / 2,
+    width,
+    depth,
+    zMin,
+    zMax,
+  };
+}
+
+function primitiveBoxPolygons(
+  primitive: ObjectPrimitive,
+  objectRotation: number,
+  sceneRotation: number,
+  lotWidth: number,
+  lotDepth: number,
+  zoom: number,
+) {
+  const cx = primitive.x + primitive.width / 2;
+  const cy = primitive.y + primitive.depth / 2;
+  const radians = (objectRotation * Math.PI) / 180;
+  const rotateLocal = (x: number, y: number) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return {
+      x: cx + dx * Math.cos(radians) - dy * Math.sin(radians),
+      y: cy + dx * Math.sin(radians) + dy * Math.cos(radians),
+    };
+  };
+  const corners = [
+    rotateLocal(primitive.x, primitive.y),
+    rotateLocal(primitive.x + primitive.width, primitive.y),
+    rotateLocal(primitive.x + primitive.width, primitive.y + primitive.depth),
+    rotateLocal(primitive.x, primitive.y + primitive.depth),
+  ];
+  const bottom = corners.map((p) => ({ ...p, z: primitive.zMin }));
+  const top = corners.map((p) => ({ ...p, z: primitive.zMax }));
+  return {
+    top: top.map((p) => project(p, sceneRotation, lotWidth, lotDepth, zoom)),
+    sideA: [bottom[0], bottom[1], top[1], top[0]].map((p) => project(p, sceneRotation, lotWidth, lotDepth, zoom)),
+    sideB: [bottom[1], bottom[2], top[2], top[1]].map((p) => project(p, sceneRotation, lotWidth, lotDepth, zoom)),
+  };
+}
+
+function objectPrimitives(object: ConceptPlanObject, zBase: number): ObjectPrimitive[] {
+  const p = (key: string, x: number, y: number, w: number, d: number, z0: number, z1: number) =>
+    primitiveRect(object, key, x, y, w, d, zBase + z0, zBase + z1);
+
+  switch (object.kind) {
+    case "sofa":
+      return [
+        p("seat", 0.05, 0.16, 0.90, 0.70, 0.12, 0.48),
+        p("back", 0.05, 0.02, 0.90, 0.18, 0.30, 0.86),
+        p("arm-left", 0.00, 0.12, 0.12, 0.76, 0.18, 0.70),
+        p("arm-right", 0.88, 0.12, 0.12, 0.76, 0.18, 0.70),
+      ];
+    case "bed":
+      return [
+        p("base", 0.02, 0.08, 0.96, 0.86, 0.08, 0.28),
+        p("mattress", 0.04, 0.10, 0.92, 0.80, 0.26, 0.54),
+        p("headboard", 0.02, 0.00, 0.96, 0.10, 0.16, 1.05),
+      ];
+    case "table":
+      return [
+        p("top", 0.02, 0.02, 0.96, 0.96, 0.68, 0.78),
+        p("leg-a", 0.08, 0.08, 0.12, 0.12, 0.02, 0.70),
+        p("leg-b", 0.80, 0.08, 0.12, 0.12, 0.02, 0.70),
+        p("leg-c", 0.08, 0.80, 0.12, 0.12, 0.02, 0.70),
+        p("leg-d", 0.80, 0.80, 0.12, 0.12, 0.02, 0.70),
+      ];
+    case "chair":
+      return [
+        p("seat", 0.08, 0.12, 0.84, 0.70, 0.42, 0.54),
+        p("back", 0.08, 0.02, 0.84, 0.16, 0.48, 0.92),
+        p("leg-a", 0.12, 0.14, 0.12, 0.12, 0.02, 0.44),
+        p("leg-b", 0.76, 0.14, 0.12, 0.12, 0.02, 0.44),
+        p("leg-c", 0.12, 0.72, 0.12, 0.12, 0.02, 0.44),
+        p("leg-d", 0.76, 0.72, 0.12, 0.12, 0.02, 0.44),
+      ];
+    case "cabinet":
+      return [
+        p("body", 0.02, 0.02, 0.96, 0.96, 0.02, 2.08),
+        p("plinth", 0.04, 0.04, 0.92, 0.92, 0.00, 0.10),
+      ];
+    case "tv":
+      return [
+        p("panel", 0.02, 0.18, 0.96, 0.64, 0.20, 1.30),
+        p("screen", 0.08, 0.12, 0.84, 0.16, 0.46, 1.16),
+      ];
+    case "plant":
+      return [
+        p("pot", 0.28, 0.28, 0.44, 0.44, 0.02, 0.42),
+        p("foliage-a", 0.14, 0.18, 0.72, 0.64, 0.40, 1.02),
+        p("foliage-b", 0.26, 0.10, 0.48, 0.80, 0.72, 1.28),
+      ];
+    case "lamp":
+      return [
+        p("base", 0.26, 0.26, 0.48, 0.48, 0.02, 0.10),
+        p("stem", 0.44, 0.44, 0.12, 0.12, 0.10, 1.22),
+        p("shade", 0.24, 0.24, 0.52, 0.52, 1.16, 1.52),
+      ];
+    case "rug":
+      return [p("rug", 0.00, 0.00, 1.00, 1.00, 0.01, 0.05)];
+    default:
+      return [p("body", 0, 0, 1, 1, 0.02, 0.8)];
+  }
+}
+
+
 function wallPolygon(
   wall: { x1: number; y1: number; x2: number; y2: number; thickness?: number },
   rotation: number,
@@ -935,15 +1076,9 @@ export default function ConceptModel3D({
         {objects
           .filter((object) => (showAllFloors && !interiorMode) || object.floor === activeFloor)
           .map((object) => {
-            const shape = boxPolygons(
-              object,
-              rotation,
-              projectionWidth,
-              projectionDepth,
-              zoom,
-              object.floor * LEVEL_HEIGHT + FLOOR_THICKNESS,
-            );
+            const zBase = object.floor * LEVEL_HEIGHT + FLOOR_THICKNESS;
             const colors = object3dMaterial(object);
+            const primitives = objectPrimitives(object, zBase);
             return (
               <g
                 key={`concept-object-3d-${object.id}`}
@@ -979,24 +1114,41 @@ export default function ConceptModel3D({
                   onSelectObject?.(object.id);
                 }}
               >
-                <polygon
-                  points={points(shape.sideA)}
-                  fill={colors.sideA}
-                  stroke={selectedObjectId === object.id ? "#f97316" : "#475569"}
-                  strokeWidth={selectedObjectId === object.id ? "0.10" : "0.045"}
-                />
-                <polygon
-                  points={points(shape.sideB)}
-                  fill={colors.sideB}
-                  stroke={selectedObjectId === object.id ? "#f97316" : "#475569"}
-                  strokeWidth={selectedObjectId === object.id ? "0.10" : "0.045"}
-                />
-                <polygon
-                  points={points(shape.top)}
-                  fill={colors.top}
-                  stroke={selectedObjectId === object.id ? "#f97316" : "#475569"}
-                  strokeWidth={selectedObjectId === object.id ? "0.10" : "0.045"}
-                />
+                {primitives.map((primitive, primitiveIndex) => {
+                  const shape = primitiveBoxPolygons(
+                    primitive,
+                    object.rotation,
+                    rotation,
+                    projectionWidth,
+                    projectionDepth,
+                    zoom,
+                  );
+                  const selectedStroke = selectedObjectId === object.id ? "#f97316" : "#475569";
+                  const selectedWidth = selectedObjectId === object.id ? "0.10" : "0.04";
+                  const tone = primitiveIndex % 3;
+                  return (
+                    <g key={`${object.id}-${primitive.key}`}>
+                      <polygon
+                        points={points(shape.sideA)}
+                        fill={tone === 0 ? colors.sideA : tone === 1 ? colors.sideB : colors.top}
+                        stroke={selectedStroke}
+                        strokeWidth={selectedWidth}
+                      />
+                      <polygon
+                        points={points(shape.sideB)}
+                        fill={tone === 0 ? colors.sideB : tone === 1 ? colors.top : colors.sideA}
+                        stroke={selectedStroke}
+                        strokeWidth={selectedWidth}
+                      />
+                      <polygon
+                        points={points(shape.top)}
+                        fill={colors.top}
+                        stroke={selectedStroke}
+                        strokeWidth={selectedWidth}
+                      />
+                    </g>
+                  );
+                })}
               </g>
             );
           })}
