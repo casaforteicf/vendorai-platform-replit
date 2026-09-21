@@ -413,9 +413,9 @@ function splitWallForOpenings(
 const WALL_3D_MATERIALS: Record<string, { front: string; side: string; top: string }> = {
   "pintura-branca": { front: "#f8fafc", side: "#e2e8f0", top: "#ffffff" },
   "pintura-cinza": { front: "#cbd5e1", side: "#94a3b8", top: "#e2e8f0" },
-  "cimento-aparente": { front: "#9ca3af", side: "#6b7280", top: "#d1d5db" },
-  "madeira-ripada": { front: "#b98a5f", side: "#8b5e3c", top: "#d2a679" },
-  "pedra-cinza": { front: "#78716c", side: "#57534e", top: "#a8a29e" },
+  "cimento-aparente": { front: "url(#wall-concrete)", side: "#6b7280", top: "#d1d5db" },
+  "madeira-ripada": { front: "url(#wall-wood-slat)", side: "#8b5e3c", top: "#d2a679" },
+  "pedra-cinza": { front: "url(#wall-stone-speckle)", side: "#57534e", top: "#a8a29e" },
   "preto-fosco-parede": { front: "#1f2937", side: "#111827", top: "#374151" },
 };
 
@@ -424,13 +424,13 @@ function wall3dMaterial(id?: string) {
 }
 
 const FLOOR_3D_MATERIALS: Record<string, { fill: string; edge: string }> = {
-  "porcelanato-claro": { fill: "#e7e5e4", edge: "#a8a29e" },
+  "porcelanato-claro": { fill: "url(#floor-tile-light)", edge: "#a8a29e" },
   "cimento-queimado": { fill: "#cbd5e1", edge: "#64748b" },
-  "madeira-carvalho": { fill: "#d6c2a8", edge: "#8b7355" },
-  "madeira-nogueira": { fill: "#9a775d", edge: "#574437" },
-  "pedra-natural": { fill: "#d6d3d1", edge: "#78716c" },
-  "ceramica-clara": { fill: "#f5f5f4", edge: "#a8a29e" },
-  "vinilico-claro": { fill: "#e5d3b3", edge: "#a16207" },
+  "madeira-carvalho": { fill: "url(#floor-wood-light)", edge: "#8b7355" },
+  "madeira-nogueira": { fill: "url(#floor-wood-dark)", edge: "#574437" },
+  "pedra-natural": { fill: "url(#floor-stone)", edge: "#78716c" },
+  "ceramica-clara": { fill: "url(#floor-tile-light)", edge: "#a8a29e" },
+  "vinilico-claro": { fill: "url(#floor-vinyl-light)", edge: "#a16207" },
 };
 
 function floor3dMaterial(id?: string) {
@@ -538,6 +538,7 @@ export default function ConceptModel3D({
   const [showRoof, setShowRoof] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [interiorMode, setInteriorMode] = useState(false);
+  const [lightingMode, setLightingMode] = useState<"day" | "sunset" | "night">("day");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -844,6 +845,45 @@ export default function ConceptModel3D({
       }
     : { minX: frameBounds.minX, maxX: frameBounds.maxX, minY: frameBounds.minY, maxY: frameBounds.maxY };
 
+  const lightingPalette = lightingMode === "night"
+    ? {
+        skyTop: "#111827",
+        skyBottom: "#334155",
+        ground: "#334155",
+        groundOpacity: 0.56,
+        shadow: "#020617",
+        shadowOpacity: 0.48,
+        ambientOverlay: "#0f172a",
+        ambientOpacity: 0.22,
+        window: "#fde68a",
+        windowOpacity: 0.92,
+      }
+    : lightingMode === "sunset"
+      ? {
+          skyTop: "#fef3c7",
+          skyBottom: "#f5b38f",
+          ground: "#c9b8a2",
+          groundOpacity: 0.42,
+          shadow: "#7c2d12",
+          shadowOpacity: 0.26,
+          ambientOverlay: "#fb923c",
+          ambientOpacity: 0.08,
+          window: "#dbeafe",
+          windowOpacity: 0.72,
+        }
+      : {
+          skyTop: "#ffffff",
+          skyBottom: "#dfe9f3",
+          ground: "#dbe4ea",
+          groundOpacity: 0.34,
+          shadow: "#475569",
+          shadowOpacity: 0.22,
+          ambientOverlay: "#ffffff",
+          ambientOpacity: 0,
+          window: "#bfe3f7",
+          windowOpacity: 0.58,
+        };
+
   return (
     <div className="relative h-[calc(100dvh-64px)] overflow-hidden bg-[#edf1f4]">
       <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/92 px-4 py-3 text-slate-800 shadow-xl backdrop-blur">
@@ -864,6 +904,24 @@ export default function ConceptModel3D({
               Renderizar vista
             </button>
           )}
+          <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+            {([
+              ["day", "Dia"],
+              ["sunset", "Entardecer"],
+              ["night", "Noite"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setLightingMode(value)}
+                className={lightingMode === value
+                  ? "bg-slate-900 px-2.5 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-2.5 py-2 text-[11px] font-semibold text-slate-600 first:border-l-0 hover:bg-slate-50"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="hidden overflow-hidden rounded-xl border bg-slate-50 sm:flex">
             {([
               [35, "Iso"],
@@ -978,7 +1036,7 @@ export default function ConceptModel3D({
           onSelectClosedSpace?.(null);
           onSelectOpening?.(null);
         }}
-        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${paintTool ? "cursor-crosshair" : cameraPan || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none ${paintTool ? "cursor-crosshair" : cameraPan || orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
@@ -987,6 +1045,45 @@ export default function ConceptModel3D({
             <stop offset="0%" stopColor="#f8fafc" />
             <stop offset="100%" stopColor="#d9e0e7" />
           </linearGradient>
+          <linearGradient id="concept3d-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lightingPalette.skyTop} />
+            <stop offset="100%" stopColor={lightingPalette.skyBottom} />
+          </linearGradient>
+          <pattern id="floor-wood-light" width="1.2" height="0.34" patternUnits="userSpaceOnUse">
+            <rect width="1.2" height="0.34" fill="#d6c2a8" />
+            <path d="M0 0.17 H1.2 M0.6 0 V0.34" stroke="#b99a73" strokeWidth="0.035" strokeOpacity="0.7" />
+          </pattern>
+          <pattern id="floor-wood-dark" width="1.15" height="0.32" patternUnits="userSpaceOnUse">
+            <rect width="1.15" height="0.32" fill="#9a775d" />
+            <path d="M0 0.16 H1.15 M0.575 0 V0.32" stroke="#705441" strokeWidth="0.035" strokeOpacity="0.75" />
+          </pattern>
+          <pattern id="floor-tile-light" width="0.82" height="0.82" patternUnits="userSpaceOnUse">
+            <rect width="0.82" height="0.82" fill="#eeeae5" />
+            <path d="M0 0 H0.82 V0.82" fill="none" stroke="#c7c1b8" strokeWidth="0.035" />
+          </pattern>
+          <pattern id="floor-vinyl-light" width="1.0" height="0.28" patternUnits="userSpaceOnUse">
+            <rect width="1.0" height="0.28" fill="#e5d3b3" />
+            <path d="M0 0.14 H1 M0.5 0 V0.28" stroke="#c3a36f" strokeWidth="0.03" strokeOpacity="0.7" />
+          </pattern>
+          <pattern id="floor-stone" width="0.55" height="0.55" patternUnits="userSpaceOnUse">
+            <rect width="0.55" height="0.55" fill="#d6d3d1" />
+            <circle cx="0.13" cy="0.18" r="0.035" fill="#a8a29e" />
+            <circle cx="0.39" cy="0.35" r="0.025" fill="#78716c" opacity="0.55" />
+          </pattern>
+          <pattern id="wall-wood-slat" width="0.24" height="1" patternUnits="userSpaceOnUse">
+            <rect width="0.24" height="1" fill="#b98a5f" />
+            <rect x="0.18" width="0.06" height="1" fill="#76543a" opacity="0.82" />
+          </pattern>
+          <pattern id="wall-stone-speckle" width="0.42" height="0.42" patternUnits="userSpaceOnUse">
+            <rect width="0.42" height="0.42" fill="#78716c" />
+            <circle cx="0.1" cy="0.12" r="0.035" fill="#a8a29e" />
+            <circle cx="0.31" cy="0.28" r="0.025" fill="#57534e" />
+          </pattern>
+          <pattern id="wall-concrete" width="0.5" height="0.5" patternUnits="userSpaceOnUse">
+            <rect width="0.5" height="0.5" fill="#9ca3af" />
+            <circle cx="0.12" cy="0.14" r="0.018" fill="#6b7280" opacity="0.55" />
+            <circle cx="0.38" cy="0.34" r="0.014" fill="#d1d5db" opacity="0.7" />
+          </pattern>
           <linearGradient id="concept3d-wall" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={exteriorMaterial.baseColor} />
             <stop offset="100%" stopColor={exteriorMaterial.shadeColor} />
@@ -1004,11 +1101,26 @@ export default function ConceptModel3D({
             <stop offset="100%" stopColor="#4e382e" />
           </linearGradient>
           <filter id="concept3d-shadow" x="-30%" y="-30%" width="160%" height="180%">
-            <feDropShadow dx="0.8" dy="1.8" stdDeviation="1.7" floodColor="#475569" floodOpacity="0.22" />
+            <feDropShadow dx="0.8" dy="1.8" stdDeviation="1.7" floodColor={lightingPalette.shadow} floodOpacity={lightingPalette.shadowOpacity} />
           </filter>
         </defs>
 
-        <polygon points={points(lotCorners)} fill="url(#concept3d-floor)" fillOpacity="0.34" stroke="#475569" strokeOpacity="0.55" strokeWidth="0.06" />
+        <rect
+          x={-sceneWidth / 2 + panX}
+          y={-sceneHeight / 2 + panY}
+          width={sceneWidth}
+          height={sceneHeight}
+          fill="url(#concept3d-sky)"
+          pointerEvents="none"
+        />
+        <polygon
+          points={points(lotCorners)}
+          fill={lightingPalette.ground}
+          fillOpacity={lightingPalette.groundOpacity}
+          stroke={lightingMode === "night" ? "#64748b" : "#475569"}
+          strokeOpacity={lightingMode === "night" ? "0.38" : "0.55"}
+          strokeWidth="0.06"
+        />
         <ellipse
           cx="0"
           cy={Math.max(2.5, sceneHeight * 0.08)}
@@ -1181,22 +1293,22 @@ export default function ConceptModel3D({
                   >
                     <polygon
                       points={points(shape.sideA)}
-                      fill={isDoor ? "#8b5e3c" : "#bfe3f7"}
-                      fillOpacity={isDoor ? "0.94" : "0.58"}
+                      fill={isDoor ? "#8b5e3c" : lightingPalette.window}
+                      fillOpacity={isDoor ? "0.94" : String(lightingPalette.windowOpacity)}
                       stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     <polygon
                       points={points(shape.sideB)}
-                      fill={isDoor ? "#705441" : "#9dd2ef"}
-                      fillOpacity={isDoor ? "0.94" : "0.48"}
+                      fill={isDoor ? "#705441" : lightingMode === "night" ? "#f59e0b" : "#9dd2ef"}
+                      fillOpacity={isDoor ? "0.94" : lightingMode === "night" ? "0.78" : "0.48"}
                       stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     <polygon
                       points={points(shape.top)}
-                      fill={isDoor ? "#b98a5f" : "#dff3ff"}
-                      fillOpacity={isDoor ? "0.94" : "0.65"}
+                      fill={isDoor ? "#b98a5f" : lightingMode === "night" ? "#fde68a" : "#dff3ff"}
+                      fillOpacity={isDoor ? "0.94" : lightingMode === "night" ? "0.86" : "0.65"}
                       stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
@@ -1496,9 +1608,20 @@ export default function ConceptModel3D({
             </g>
           );
         })()}
+        {lightingPalette.ambientOpacity > 0 && (
+          <rect
+            x={-sceneWidth / 2 + panX}
+            y={-sceneHeight / 2 + panY}
+            width={sceneWidth}
+            height={sceneHeight}
+            fill={lightingPalette.ambientOverlay}
+            fillOpacity={lightingPalette.ambientOpacity}
+            pointerEvents="none"
+          />
+        )}
       </svg>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-white/60">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-slate-900 px-4 py-3 text-xs text-white/60">
         <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços</span>
         <span>Vista {Math.round(rotation)}° · pé-direito {WALL_HEIGHT.toFixed(2).replace(".", ",")} m · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm</span>
       </div>
