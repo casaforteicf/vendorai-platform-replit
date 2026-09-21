@@ -549,7 +549,15 @@ export default function LeadDetail() {
     query: { enabled: !!tenantId && !!id, queryKey: getListDealsQueryKey(tenantId, { leadId: id }) },
   });
   const leadJaNoPipeline = (leadDeals?.length ?? 0) > 0;
-  const activeLeadDeal = leadDeals?.find((deal) => !["ganho", "perdido", "entregue"].includes(deal.etapa)) ?? leadDeals?.[0] ?? null;
+  const requestedDealId = new URLSearchParams(window.location.search).get("dealId");
+  const newestLeadDeals = [...(leadDeals ?? [])].sort(
+    (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
+  );
+  const activeLeadDeal =
+    newestLeadDeals.find((deal) => deal.id === requestedDealId)
+    ?? newestLeadDeals.find((deal) => !["ganho", "perdido", "entregue", "concluido", "cancelado"].includes(deal.etapa))
+    ?? newestLeadDeals[0]
+    ?? null;
 
   async function fetchAiStarter() {
     if (!id) return;
