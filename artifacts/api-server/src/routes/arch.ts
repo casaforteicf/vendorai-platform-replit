@@ -546,6 +546,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     unit: string;
     quantity: number;
     basis: "geometry" | "concept";
+    compositionCode?: string;
   };
   const quantityItems: ConceptQuantityItem[] = [
     { stage: "Projeto", item: "Desenvolvimento e compatibilização do projeto", unit: "un", quantity: 1, basis: "concept" },
@@ -556,18 +557,18 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     { stage: "Cobertura", item: `Cobertura — ${facade.roof ?? "conforme projeto"}`, unit: "m²", quantity: roofArea, basis: "geometry" },
     { stage: "Esquadrias", item: "Portas previstas na planta", unit: "un", quantity: Math.max(0, doorCount), basis: "geometry" },
     { stage: "Esquadrias", item: "Janelas previstas na planta", unit: "un", quantity: Math.max(0, windowCount), basis: "geometry" },
-    ...(technicalCounts.outlet ? [{ stage: "Instalações elétricas e hidráulicas", item: "Tomadas lançadas na planta", unit: "un", quantity: technicalCounts.outlet, basis: "geometry" as const }] : []),
-    ...(technicalCounts.switch ? [{ stage: "Instalações elétricas e hidráulicas", item: "Interruptores lançados na planta", unit: "un", quantity: technicalCounts.switch, basis: "geometry" as const }] : []),
-    ...(technicalCounts.light_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de luz / plafon lançados na planta", unit: "un", quantity: technicalCounts.light_point, basis: "geometry" as const }] : []),
-    ...(technicalCounts.water_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de água lançados na planta", unit: "un", quantity: technicalCounts.water_point, basis: "geometry" as const }] : []),
-    ...(technicalCounts.drain_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de esgoto lançados na planta", unit: "un", quantity: technicalCounts.drain_point, basis: "geometry" as const }] : []),
-    ...(technicalCounts.shower_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de chuveiro lançados na planta", unit: "un", quantity: technicalCounts.shower_point, basis: "geometry" as const }] : []),
-    ...(technicalCounts.faucet_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de torneira lançados na planta", unit: "un", quantity: technicalCounts.faucet_point, basis: "geometry" as const }] : []),
-    { stage: "Revestimentos", item: "Revestimento de piso — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry" },
+    ...(technicalCounts.outlet ? [{ stage: "Instalações elétricas e hidráulicas", item: "Tomadas lançadas na planta", unit: "un", quantity: technicalCounts.outlet, basis: "geometry" as const, compositionCode: "ARQ-ELE-002" }] : []),
+    ...(technicalCounts.switch ? [{ stage: "Instalações elétricas e hidráulicas", item: "Interruptores lançados na planta", unit: "un", quantity: technicalCounts.switch, basis: "geometry" as const, compositionCode: "ARQ-ELE-004" }] : []),
+    ...(technicalCounts.light_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de luz / plafon lançados na planta", unit: "un", quantity: technicalCounts.light_point, basis: "geometry" as const, compositionCode: "ARQ-ELE-001" }] : []),
+    ...(technicalCounts.water_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de água lançados na planta", unit: "un", quantity: technicalCounts.water_point, basis: "geometry" as const, compositionCode: "ARQ-HID-001" }] : []),
+    ...(technicalCounts.drain_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de esgoto lançados na planta", unit: "un", quantity: technicalCounts.drain_point, basis: "geometry" as const, compositionCode: "ARQ-HID-003" }] : []),
+    ...(technicalCounts.shower_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de chuveiro lançados na planta", unit: "un", quantity: technicalCounts.shower_point, basis: "geometry" as const, compositionCode: "ARQ-HID-004" }] : []),
+    ...(technicalCounts.faucet_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de torneira lançados na planta", unit: "un", quantity: technicalCounts.faucet_point, basis: "geometry" as const, compositionCode: "ARQ-HID-005" }] : []),
+    { stage: "Revestimentos", item: "Revestimento de piso — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry", compositionCode: "ARQ-REV-001" },
     ...(wetFloorArea > 0 ? [{ stage: "Revestimentos", item: "Áreas molhadas — piso medido", unit: "m²", quantity: wetFloorArea, basis: "geometry" as const }] : []),
-    { stage: "Forros", item: "Forro — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry" },
-    { stage: "Pintura", item: "Paredes — área líquida preliminar para pintura", unit: "m²", quantity: paintArea, basis: "geometry" },
-    { stage: "Fachada e externos", item: `Fachada ${facade.style ?? "conforme conceito"} — área externa líquida`, unit: "m²", quantity: exteriorWallAreaNet, basis: "geometry" },
+    { stage: "Forros", item: "Forro — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry", compositionCode: "ARQ-FOR-004" },
+    { stage: "Pintura", item: "Paredes — área líquida preliminar para pintura", unit: "m²", quantity: paintArea, basis: "geometry", compositionCode: "ARQ-FOR-002" },
+    { stage: "Fachada e externos", item: `Fachada ${facade.style ?? "conforme conceito"} — área externa líquida`, unit: "m²", quantity: exteriorWallAreaNet, basis: "geometry", compositionCode: "ARQ-FOR-003" },
     ...(hasGarage ? [{ stage: "Garagem, calçadas e acessos", item: "Garagem — área desenhada", unit: "m²", quantity: rooms.filter((room: any) => String(room.kind ?? "").toLowerCase() === "garagem").reduce((sum: number, room: any) => sum + roomArea(room), 0), basis: "geometry" as const }] : []),
     ...(hasPool ? [{ stage: "Piscina e área externa", item: "Piscina — área desenhada", unit: "m²", quantity: rooms.filter((room: any) => String(room.kind ?? "").toLowerCase() === "piscina").reduce((sum: number, room: any) => sum + roomArea(room), 0), basis: "geometry" as const }] : []),
   ];
@@ -686,18 +687,62 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       INSERT INTO arch_budget_items (
         id, tenant_id, budget_id, project_id, item, description, type,
         quantity, unit, material_value, labor_value, unit_total,
-        total_material, total_labor, total, visible_to_client, sort_order,
-        created_at, updated_at
+        total_material, total_labor, total, composition_code,
+        visible_to_client, sort_order, created_at, updated_at
       ) VALUES (
         ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
         ${item.item},
         ${`Etapa: ${item.stage}. Quantitativo ${item.basis === "geometry" ? "medido da geometria salva no Concept" : "originado da configuração do Concept"}.`},
         'service', ${quantity}, ${item.unit},
-        0, 0, 0, 0, 0, 0, true, ${index + 1},
-        now(), now()
+        0, 0, 0, 0, 0, 0, ${item.compositionCode ?? null},
+        true, ${index + 1}, now(), now()
       )
     `);
   }
+
+  await tx.execute(sql`
+    WITH composition_costs AS (
+      SELECT c.id, c.codigo,
+        COALESCE(SUM(CASE WHEN i.tipo = 'mao_de_obra' THEN 0 ELSE ci.quantidade::numeric * COALESCE(i.preco_unitario::numeric, 0) END), 0) AS material_value,
+        COALESCE(SUM(CASE WHEN i.tipo = 'mao_de_obra' THEN ci.quantidade::numeric * COALESCE(i.preco_unitario::numeric, 0) ELSE 0 END), 0) AS labor_value
+      FROM composicoes c
+      LEFT JOIN composicao_insumos ci ON ci.composicao_id = c.id
+      LEFT JOIN insumos i ON i.id = ci.insumo_id
+      WHERE c.tenant_id = ${tid} AND c.ativo = true
+      GROUP BY c.id, c.codigo
+    )
+    UPDATE arch_budget_items abi
+       SET composition_id = cc.id,
+           material_value = cc.material_value,
+           labor_value = cc.labor_value,
+           unit_total = cc.material_value + cc.labor_value,
+           total_material = abi.quantity::numeric * cc.material_value,
+           total_labor = abi.quantity::numeric * cc.labor_value,
+           total = abi.quantity::numeric * (cc.material_value + cc.labor_value),
+           updated_at = now()
+      FROM composition_costs cc
+     WHERE abi.budget_id = ${preBudgetId}
+       AND abi.tenant_id = ${tid}
+       AND abi.composition_code IS NOT NULL
+       AND lower(abi.composition_code) = lower(cc.codigo)
+  `);
+
+  await tx.execute(sql`
+    UPDATE arch_budgets b
+       SET subtotal_material = totals.material_total,
+           subtotal_labor = totals.labor_total,
+           subtotal = totals.material_total + totals.labor_total,
+           grand_total = GREATEST(0, totals.material_total + totals.labor_total),
+           updated_at = now()
+      FROM (
+        SELECT
+          COALESCE(SUM(total_material::numeric), 0) AS material_total,
+          COALESCE(SUM(total_labor::numeric), 0) AS labor_total
+        FROM arch_budget_items
+        WHERE budget_id = ${preBudgetId} AND deleted_at IS NULL
+      ) totals
+     WHERE b.id = ${preBudgetId}
+  `);
 
   await tx
     .update(archProjetosTable)
