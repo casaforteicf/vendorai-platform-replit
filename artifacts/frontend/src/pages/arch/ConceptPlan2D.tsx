@@ -632,7 +632,7 @@ export default function ConceptPlan2D({
       let nextY = snap(Math.max(0, Math.min(lotDepth - room.depth, gesture.roomY + dy)));
 
       const snapDistance = 0.3;
-      const others = rooms.filter((item) => item.id !== room.id);
+      const others = (Array.isArray(rooms) ? rooms : []).filter((item) => item.id !== room.id);
       for (const other of others) {
         const xCandidates = [
           other.x,
