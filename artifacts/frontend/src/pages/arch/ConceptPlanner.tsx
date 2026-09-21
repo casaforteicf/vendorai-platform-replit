@@ -164,6 +164,15 @@ type ConceptDraftResponse = {
     status?: "idle" | "processing" | "completed" | "error";
     resultImageUrl?: string;
     generatedAt?: string;
+    source?: "facade" | "model3d";
+    renderView?: "exterior" | "interior";
+    history?: Array<{
+      renderId: string;
+      resultImageUrl: string;
+      generatedAt: string;
+      source: "facade" | "model3d";
+      renderView: "exterior" | "interior";
+    }>;
     error?: string;
   };
   selectedVariant: number;
@@ -2027,11 +2036,13 @@ export default function ConceptPlanner() {
     const renderProjectId = await saveConcept(5);
     if (!renderProjectId) return;
 
+    const source = options?.source ?? "facade";
+    const renderView = options?.renderView ?? (source === "model3d" ? "interior" : "exterior");
+
     setRenderError(null);
     setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
 
     try {
-      const source = options?.source ?? "facade";
       const selector = source === "model3d"
         ? "svg[data-concept-model3d-source='true']"
         : "[data-concept-render-source='true'] svg";
@@ -2049,7 +2060,7 @@ export default function ConceptPlanner() {
         rooms,
         facade: facadePreferences,
         facadeDesign,
-        renderView: options?.renderView ?? (source === "model3d" ? "interior" : "exterior"),
+        renderView,
         objects: safeObjects,
         wallMaterialIds: Object.values(wallMaterials),
         floorMaterialIds: [
@@ -2067,7 +2078,7 @@ export default function ConceptPlanner() {
           project_id: renderProjectId,
           original_image_url: originalImage,
           mode: "preservar",
-          ambiente: options?.renderView === "interior" || source === "model3d" ? "interior" : "fachada",
+          ambiente: renderView === "interior" ? "interior" : "fachada",
           user_notes: brief,
         }),
       });
@@ -2094,11 +2105,23 @@ export default function ConceptPlanner() {
         };
 
         if (data.status === "concluido" && data.result_image_url) {
+          const generatedAt = new Date().toISOString();
+          const historyItem = {
+            renderId: render_id,
+            resultImageUrl: data.result_image_url,
+            generatedAt,
+            source,
+            renderView,
+          };
+          const existingHistory = Array.isArray(conceptRender?.history) ? conceptRender.history : [];
           const completed = {
             renderId: render_id,
             status: "completed" as const,
             resultImageUrl: data.result_image_url,
-            generatedAt: new Date().toISOString(),
+            generatedAt,
+            source,
+            renderView,
+            history: [...existingHistory, historyItem].slice(-12),
           };
           setConceptRender(completed);
 
@@ -4106,32 +4129,124 @@ export default function ConceptPlanner() {
                   )}
 
                   {editorView === "render" && (
-                    <div className="grid min-h-[calc(100vh-64px)] place-items-center bg-slate-100 p-5">
-                      {conceptRender?.resultImageUrl ? (
-                        <div className="w-full max-w-6xl overflow-hidden rounded-2xl border bg-white shadow-xl">
-                          <img
-                            src={conceptRender.resultImageUrl}
-                            alt="Render conceitual"
-                            className="max-h-[calc(100vh-110px)] w-full object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="grid min-h-[420px] place-items-center text-center">
+                    <div className="min-h-[calc(100dvh-64px)] bg-slate-100 p-4 md:p-5">
+                      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white px-4 py-3 shadow-sm">
                           <div>
-                            <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
-                            <div className="mt-3 font-semibold">Ainda não há render</div>
-                            <p className="mt-1 text-sm text-muted-foreground">Gere a imagem sem sair do editor.</p>
+                            <div className="flex items-center gap-2 text-sm font-semibold">
+                              <Sparkles className="h-4 w-4 text-orange-500" />
+                              Renders do projeto
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              Fachada e vistas 3D ficam salvas no mesmo projeto.
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
                               disabled={conceptRender?.status === "processing"}
-                              className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                              className="rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50"
                             >
-                              {conceptRender?.status === "processing" ? "Gerando..." : "Gerar render"}
+                              Nova fachada
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditorView("model3d");
+                              }}
+                              className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white"
+                            >
+                              Abrir 3D para nova vista
                             </button>
                           </div>
                         </div>
-                      )}
+
+                        {conceptRender?.resultImageUrl ? (
+                          <div className="overflow-hidden rounded-2xl border bg-white shadow-xl">
+                            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                              <div>
+                                <div className="text-sm font-semibold">
+                                  {conceptRender.renderView === "interior" ? "Render interior / vista 3D" : "Render de fachada"}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {conceptRender.generatedAt
+                                    ? new Date(conceptRender.generatedAt).toLocaleString("pt-BR")
+                                    : "Render atual"}
+                                </div>
+                              </div>
+                              {conceptRender.status === "processing" && (
+                                <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">Gerando...</span>
+                              )}
+                            </div>
+                            <img
+                              src={conceptRender.resultImageUrl}
+                              alt="Render conceitual"
+                              className="max-h-[calc(100dvh-260px)] w-full object-contain"
+                            />
+                          </div>
+                        ) : (
+                          <div className="grid min-h-[420px] place-items-center rounded-2xl border bg-white text-center shadow-sm">
+                            <div>
+                              <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
+                              <div className="mt-3 font-semibold">Ainda não há render</div>
+                              <p className="mt-1 text-sm text-muted-foreground">Gere uma fachada ou abra o 3D para renderizar a vista atual.</p>
+                              <button
+                                type="button"
+                                onClick={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
+                                disabled={conceptRender?.status === "processing"}
+                                className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                              >
+                                {conceptRender?.status === "processing" ? "Gerando..." : "Gerar fachada"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {Array.isArray(conceptRender?.history) && conceptRender.history.length > 0 && (
+                          <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                            <div className="mb-3 flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-semibold">Histórico de renders</div>
+                                <div className="text-[11px] text-muted-foreground">Até 12 versões recentes.</div>
+                              </div>
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                                {conceptRender.history.length}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                              {[...conceptRender.history].reverse().map((item) => (
+                                <button
+                                  key={item.renderId}
+                                  type="button"
+                                  onClick={() => setConceptRender((prev) => ({
+                                    ...prev,
+                                    renderId: item.renderId,
+                                    resultImageUrl: item.resultImageUrl,
+                                    generatedAt: item.generatedAt,
+                                    source: item.source,
+                                    renderView: item.renderView,
+                                    status: "completed",
+                                  }))}
+                                  className={conceptRender.renderId === item.renderId
+                                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300"}
+                                >
+                                  <img src={item.resultImageUrl} alt="" className="aspect-video w-full object-cover" />
+                                  <div className="p-2.5">
+                                    <div className="text-xs font-semibold">
+                                      {item.renderView === "interior" ? "Vista 3D" : "Fachada"}
+                                    </div>
+                                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                      {new Date(item.generatedAt).toLocaleString("pt-BR")}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
