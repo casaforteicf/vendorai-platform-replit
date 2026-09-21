@@ -2545,12 +2545,9 @@ router.post("/arch/render", async (req, res) => {
 
     if (!b64) throw new Error("Motor de render não retornou imagem");
 
-    const outputResolution = "4k" as const;
-    const aspectRatio = "16:9" as const;
+    const outputResolution = "4k";
     const baseBuffer = Buffer.from(b64, "base64");
-    const targetSize = outputResolution === "2k"
-      ? (aspectRatio === "16:9" ? { width: 2560, height: 1440 } : { width: 2304, height: 1536 })
-      : (aspectRatio === "16:9" ? { width: 3840, height: 2160 } : { width: 3072, height: 2048 });
+    const targetSize = { width: 3840, height: 2160 };
 
     const buf = await sharp(baseBuffer)
       .resize(targetSize.width, targetSize.height, {
