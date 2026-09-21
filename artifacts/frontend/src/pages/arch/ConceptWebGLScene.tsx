@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
+import { getConceptModelDefinition } from "./catalogs/conceptModelCatalog";
+import { getConceptPBRMaterial } from "./catalogs/conceptMaterialCatalog";
+import { loadCachedConceptModel } from "./utils/conceptModelLoader";
+import { createConceptPBRMaterial } from "./utils/conceptMaterialFactory";
 
 type LightingMode = "day" | "sunset" | "night";
 
@@ -203,6 +207,7 @@ export default function ConceptWebGLScene({
         renderer.outputEncoding = THREE.sRGBEncoding;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.05;
+        if ("physicallyCorrectLights" in renderer) renderer.physicallyCorrectLights = true;
         renderer.domElement.className = "h-full w-full touch-none";
         host.replaceChildren(renderer.domElement);
 
@@ -522,12 +527,35 @@ export default function ConceptWebGLScene({
       y: number,
       z: number,
       color: number,
-      options?: { transparent?: boolean; opacity?: number },
+      options?: {
+        transparent?: boolean;
+        opacity?: number;
+        materialId?: string;
+        repeatScale?: number;
+        textureRotation?: number;
+      },
     ) => {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(Math.max(0.02, width), Math.max(0.02, height), Math.max(0.02, depth)),
-        makeMat(color, options?.transparent, options?.opacity),
+      const pbrDefinition = getConceptPBRMaterial(options?.materialId);
+      const material = pbrDefinition
+        ? createConceptPBRMaterial(THREE, pbrDefinition, {
+            repeatScale: options?.repeatScale,
+            rotation: options?.textureRotation,
+          })
+        : makeMat(color, options?.transparent, options?.opacity);
+      if (options?.transparent) {
+        material.transparent = true;
+        material.opacity = options.opacity ?? 1;
+        material.depthWrite = (options.opacity ?? 1) >= 0.98;
+      }
+      const geometry = new THREE.BoxGeometry(
+        Math.max(0.02, width),
+        Math.max(0.02, height),
+        Math.max(0.02, depth),
       );
+      if (geometry.attributes?.uv && !geometry.attributes?.uv2) {
+        geometry.setAttribute("uv2", geometry.attributes.uv);
+      }
+      const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, y, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -536,15 +564,12 @@ export default function ConceptWebGLScene({
     };
 
     const loadCatalogModel = (object: ConceptPlanObject, root: any) => {
-      if (!object.model3dUrl || !THREE.GLTFLoader) return;
-      const loader = new THREE.GLTFLoader();
-      loader.setCrossOrigin?.("anonymous");
-      loader.load(
-        object.model3dUrl,
-        (gltf: any) => {
-          if (runtime.objectGroups.get(object.id) !== root) return;
-          const model = gltf?.scene;
-          if (!model) return;
+      const definition = getConceptModelDefinition(object);
+      if (!definition?.url || !THREE.GLTFLoader) return;
+
+      void loadCachedConceptModel(THREE, definition.url)
+        .then((model: any) => {
+          if (runtime.objectGroups.get(object.id) !== root || !model) return;
 
           const box = new THREE.Box3().setFromObject(model);
           const size = new THREE.Vector3();
@@ -555,7 +580,7 @@ export default function ConceptWebGLScene({
           const safeX = Math.max(0.01, size.x);
           const safeY = Math.max(0.01, size.y);
           const safeZ = Math.max(0.01, size.z);
-          const targetHeight: Record<ConceptPlanObject["kind"], number> = {
+          const targetHeight = definition.targetHeight ?? {
             sofa: 0.90,
             bed: 0.65,
             table: 0.80,
@@ -572,11 +597,12 @@ export default function ConceptWebGLScene({
             drain_point: 0.08,
             shower_point: 2.10,
             faucet_point: 1.05,
-          };
+          }[object.kind] ?? 1;
+
           const scale = Math.min(
             object.width / safeX,
             object.depth / safeZ,
-            (targetHeight[object.kind] ?? 1) / safeY,
+            targetHeight / safeY,
           );
 
           model.scale.setScalar(Math.max(0.001, scale));
@@ -587,12 +613,11 @@ export default function ConceptWebGLScene({
             node.receiveShadow = true;
             node.userData.objectId = object.id;
             runtime.pickables.push(node);
-            if (node.material) {
-              const materials = Array.isArray(node.material) ? node.material : [node.material];
-              for (const material of materials) {
-                if ("envMapIntensity" in material) material.envMapIntensity = 0.8;
-                material.needsUpdate = true;
-              }
+            const materials = Array.isArray(node.material) ? node.material : [node.material];
+            for (const material of materials) {
+              if (!material) continue;
+              if ("envMapIntensity" in material) material.envMapIntensity = 0.95;
+              material.needsUpdate = true;
             }
           });
 
@@ -604,12 +629,13 @@ export default function ConceptWebGLScene({
           }
           runtime.pickables = runtime.pickables.filter((node) => !fallbackNodes.has(node));
           root.add(model);
-        },
-        undefined,
-        () => {
-          // Keep parametric fallback when a remote model cannot be loaded.
-        },
-      );
+          root.userData.realModel = true;
+          root.userData.modelSource = definition.source;
+        })
+        .catch(() => {
+          root.userData.realModel = false;
+          // Mantém a geometria paramétrica quando o asset remoto estiver indisponível.
+        });
     };
 
     const addWall = (
@@ -651,7 +677,7 @@ export default function ConceptWebGLScene({
             baseY + yStart + pieceHeight / 2,
             y - lotDepth / 2,
             color,
-            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1 },
+            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
           );
         } else if (vertical) {
           const x = (wall.x1 + wall.x2) / 2;
@@ -664,7 +690,7 @@ export default function ConceptWebGLScene({
             baseY + yStart + pieceHeight / 2,
             alongStart + pieceLength / 2 - lotDepth / 2,
             color,
-            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1 },
+            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
           );
         } else {
           return;
@@ -685,7 +711,7 @@ export default function ConceptWebGLScene({
           baseY + 1.4,
           (wall.y1 + wall.y2) / 2 - lotDepth / 2,
           color,
-          { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1 },
+          { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
         );
         mesh.rotation.y = -Math.atan2(dy, dx);
         mesh.userData.wallId = wall.id;
@@ -751,7 +777,8 @@ export default function ConceptWebGLScene({
       const floorBase = level.floor * 2.96;
 
       for (const space of level.closedSpaces ?? []) {
-        const floorMaterial = materialColor(level.floorMaterials?.[space.id]);
+        const floorMaterialId = level.floorMaterials?.[space.id];
+        const floorMaterial = materialColor(floorMaterialId);
         for (const cell of space.cells ?? []) {
           const floorMesh = makeBox(
             modelRoot,
@@ -762,6 +789,7 @@ export default function ConceptWebGLScene({
             floorBase + 0.06,
             cell.y + cell.height / 2 - lotDepth / 2,
             floorMaterial,
+            { materialId: floorMaterialId, repeatScale: Math.max(0.55, Math.min(2.8, Math.sqrt((cell.width * cell.height) / 12))) },
           );
           floorMesh.userData.spaceId = space.id;
           runtime.pickables.push(floorMesh);
@@ -891,7 +919,7 @@ export default function ConceptWebGLScene({
 
       const baseColor = materialColor(object.materialId);
       const addLocalBox = (w: number, h: number, d: number, x: number, y: number, z: number, color = baseColor) =>
-        makeBox(root, w, h, d, x, y, z, color);
+        makeBox(root, w, h, d, x, y, z, color, { materialId: object.materialId });
 
       if (object.kind === "sofa") {
         addLocalBox(object.width * 0.9, 0.34, object.depth * 0.7, 0, 0.30, object.depth * 0.06);
