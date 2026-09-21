@@ -2056,27 +2056,122 @@ export default function ConceptPlanner() {
 
   const furnishSelectedSpace = () => {
     if (!selectedClosedSpace) return;
+    const before = snapshotEditor();
     const kind = selectedSpaceProfile?.kind ?? "outro";
-    const preset =
-      kind === "sala" || kind === "gourmet"
-        ? { kind: "sofa" as const, label: "Sofá 2 lugares", width: 1.70, depth: 0.90 }
-        : kind === "quarto" || kind === "suite"
-          ? { kind: "bed" as const, label: "Cama casal", width: 1.60, depth: 2.00 }
-          : kind === "cozinha" || kind === "lavanderia"
-            ? { kind: "cabinet" as const, label: "Armário", width: 1.40, depth: 0.60 }
-            : kind === "banheiro"
-              ? { kind: "cabinet" as const, label: "Gabinete", width: 0.80, depth: 0.50 }
-              : kind === "garagem"
-                ? { kind: "cabinet" as const, label: "Armário garagem", width: 1.20, depth: 0.50 }
-                : { kind: "table" as const, label: "Mesa", width: 1.20, depth: 0.70 };
+    const bounds = selectedClosedSpace.bounds;
+    const pad = 0.35;
+    const innerX = bounds.x + pad;
+    const innerY = bounds.y + pad;
+    const innerWidth = Math.max(0.8, bounds.width - pad * 2);
+    const innerHeight = Math.max(0.8, bounds.height - pad * 2);
+    const cx = bounds.x + bounds.width / 2;
+    const cy = bounds.y + bounds.height / 2;
 
-    addObjectAt(
-      preset.kind,
-      preset.label,
-      Math.min(preset.width, Math.max(0.6, selectedClosedSpace.bounds.width - 0.4)),
-      Math.min(preset.depth, Math.max(0.6, selectedClosedSpace.bounds.height - 0.4)),
-      selectedClosedSpace.centroid,
-    );
+    type FurnishPreset = {
+      kind: ConceptPlanObject["kind"];
+      label: string;
+      width: number;
+      depth: number;
+      x: number;
+      y: number;
+      rotation?: number;
+    };
+
+    const place = (
+      itemKind: ConceptPlanObject["kind"],
+      label: string,
+      width: number,
+      depth: number,
+      x: number,
+      y: number,
+      rotation = 0,
+    ): FurnishPreset => ({
+      kind: itemKind,
+      label,
+      width: Math.min(width, innerWidth),
+      depth: Math.min(depth, innerHeight),
+      x,
+      y,
+      rotation,
+    });
+
+    let presets: FurnishPreset[] = [];
+    if (kind === "sala" || kind === "gourmet") {
+      presets = [
+        place("sofa", "Sofá 3 lugares", 2.2, 0.9, cx - 1.1, innerY + 0.15),
+        place("table", "Mesa centro", 1.1, 0.6, cx - 0.55, cy - 0.3),
+        place("tv", "TV / painel", 1.6, 0.3, cx - 0.8, bounds.y + bounds.height - 0.62),
+        place("chair", "Poltrona", 0.8, 0.8, innerX + 0.15, cy - 0.4, 90),
+      ];
+    } else if (kind === "quarto" || kind === "suite") {
+      presets = [
+        place("bed", "Cama casal", 1.6, 2.0, cx - 0.8, innerY + 0.15),
+        place("cabinet", "Guarda-roupa", Math.min(1.8, innerWidth * 0.55), 0.6, innerX + 0.10, bounds.y + bounds.height - 0.95),
+        place("lamp", "Abajur", 0.35, 0.35, Math.max(innerX, cx - 1.18), innerY + 0.22),
+        place("lamp", "Abajur", 0.35, 0.35, Math.min(bounds.x + bounds.width - 0.70, cx + 0.82), innerY + 0.22),
+      ];
+    } else if (kind === "cozinha") {
+      presets = [
+        place("cabinet", "Balcão cozinha", Math.min(2.2, innerWidth - 0.2), 0.6, innerX + 0.1, innerY + 0.1),
+        place("cabinet", "Armário cozinha", Math.min(1.8, innerWidth * 0.5), 0.6, innerX + 0.1, bounds.y + bounds.height - 0.95),
+        place("table", "Mesa apoio", Math.min(1.2, innerWidth * 0.45), 0.7, cx - Math.min(1.2, innerWidth * 0.45) / 2, cy - 0.35),
+      ];
+    } else if (kind === "banheiro") {
+      presets = [
+        place("cabinet", "Gabinete banheiro", 0.8, 0.5, innerX + 0.08, innerY + 0.08),
+        place("shower_point", "Chuveiro", 0.45, 0.45, bounds.x + bounds.width - 0.82, innerY + 0.08),
+        place("water_point", "Ponto de água", 0.4, 0.4, innerX + 0.12, bounds.y + bounds.height - 0.78),
+      ];
+    } else if (kind === "lavanderia") {
+      presets = [
+        place("cabinet", "Armário lavanderia", Math.min(1.4, innerWidth * 0.55), 0.6, innerX + 0.08, innerY + 0.08),
+        place("water_point", "Ponto máquina", 0.4, 0.4, bounds.x + bounds.width - 0.78, innerY + 0.10),
+        place("drain_point", "Esgoto máquina", 0.4, 0.4, bounds.x + bounds.width - 0.78, innerY + 0.62),
+      ];
+    } else if (kind === "garagem") {
+      presets = [
+        place("cabinet", "Armário garagem", 1.4, 0.55, innerX + 0.08, innerY + 0.08),
+        place("light_point", "Ponto de luz", 0.45, 0.45, cx - 0.225, cy - 0.225),
+      ];
+    } else if (kind === "circulacao") {
+      presets = [
+        place("light_point", "Ponto de luz", 0.45, 0.45, cx - 0.225, cy - 0.225),
+      ];
+    } else {
+      presets = [
+        place("table", "Mesa", Math.min(1.2, innerWidth * 0.55), 0.7, cx - Math.min(1.2, innerWidth * 0.55) / 2, cy - 0.35),
+        place("chair", "Cadeira", 0.55, 0.55, cx - 0.275, Math.min(bounds.y + bounds.height - 0.9, cy + 0.55)),
+      ];
+    }
+
+    const created = presets
+      .filter((item) => item.width >= 0.3 && item.depth >= 0.3)
+      .map((item) => {
+        const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x));
+        const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y));
+        return {
+          id: `concept-object-${uid()}`,
+          kind: item.kind,
+          label: item.label,
+          floor: activeFloor,
+          width: item.width,
+          depth: item.depth,
+          x: Math.max(0, Math.min(lotWidth - item.width, x)),
+          y: Math.max(0, Math.min(lotDepth - item.depth, y)),
+          rotation: item.rotation ?? 0,
+        } satisfies ConceptPlanObject;
+      });
+
+    if (!created.length) return;
+    setObjects((prev) => [...(Array.isArray(prev) ? prev : []), ...created]);
+    setSelectedObjectId(created[0].id);
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setEditorView("plan");
+    pushRoomHistory(before);
   };
 
   const addOpeningPreset = (
