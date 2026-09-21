@@ -763,8 +763,14 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     const phone = (data as { wuid?: string; number?: string }).wuid ?? (data as { number?: string }).number ?? null;
     const connected = state === "open";
     if (evolutionConnection) {
+      if (connected) {
+        await db.update(whatsappConnectionsTable)
+          .set({ isDefault: false, updatedAt: new Date() })
+          .where(eq(whatsappConnectionsTable.tenantId, tenantId));
+      }
       await db.update(whatsappConnectionsTable).set({
         status: connected ? "active" : "disconnected",
+        isDefault: connected,
         displayPhoneNumber: connected && phone ? phone.replace(/@.*$/, "").replace(/\D/g, "") : evolutionConnection.displayPhoneNumber,
         disconnectedAt: connected ? null : new Date(), updatedAt: new Date(),
       }).where(eq(whatsappConnectionsTable.id, evolutionConnection.id));
