@@ -27,6 +27,7 @@ const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
 
 function integrationFallback(key: string) {
   if (key === "domain") return "/content-autopilot?view=settings";
+  if (key === "whatsapp") return "/configuracoes?integration=whatsapp";
   return `/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`;
 }
 
