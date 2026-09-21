@@ -1724,13 +1724,9 @@ export default function Configuracoes() {
       void onConnectMetaAds();
       return;
     }
-    if (!waConnection.data?.connected) {
-      void onConnectWhatsapp();
-      return;
-    }
     toast({
-      title: "Meta Business conectado",
-      description: "Instagram, Página do Facebook, Meta Ads e WhatsApp oficial estão disponíveis.",
+      title: "Meta conectado",
+      description: "Instagram e Meta Ads estão disponíveis. O WhatsApp usa QR Code como padrão.",
     });
   }
 
@@ -3176,7 +3172,7 @@ export default function Configuracoes() {
 
           {/* Threshold Settings Card — admin only */}
           {(isAdmin) && (
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div data-whatsapp-qr-card="true" className="rounded-xl border border-emerald-200 bg-card p-6 space-y-5">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">
                   <Brain className="h-4 w-4 text-primary" />
@@ -3876,7 +3872,7 @@ export default function Configuracoes() {
               <div>
                 <p className="text-sm font-semibold">Meta</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Instagram profissional, anúncios Meta e WhatsApp oficial ficam organizados em um único lugar.
+                  Instagram profissional e anúncios Meta ficam organizados aqui. O WhatsApp é conectado separadamente por QR Code.
                 </p>
               </div>
               <div className="space-y-4">
@@ -3889,13 +3885,12 @@ export default function Configuracoes() {
                     Central Meta
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Conecte os serviços que o VendorAI usa no dia a dia. Instagram cuida de conteúdo e mensagens; Meta Ads cuida do patrocínio; WhatsApp cuida do atendimento.
+                    Conecte Instagram e Meta Ads para conteúdo, mensagens sociais e campanhas. O atendimento por WhatsApp usa a conexão padrão via QR Code.
                   </p>
                 </div>
                 {igConnection.data?.connected &&
                  metaAdsConnection?.connected &&
-                 !metaAdsConnection.pendingAccountSelection &&
-                 waConnection.data?.connected ? (
+                 !metaAdsConnection.pendingAccountSelection ? (
                   <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
                     <CheckCircle2 className="h-3 w-3 mr-1" /> Completo
                   </Badge>
@@ -3904,11 +3899,10 @@ export default function Configuracoes() {
                 )}
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   { label: "Instagram profissional", connected: Boolean(igConnection.data?.connected) },
                   { label: "Meta Ads", connected: Boolean(metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection) },
-                  { label: "WhatsApp oficial", connected: Boolean(waConnection.data?.connected) },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center justify-between rounded-lg border bg-background/80 px-3 py-2.5">
                     <span className="text-sm font-medium">{item.label}</span>
@@ -3925,19 +3919,17 @@ export default function Configuracoes() {
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   onClick={onConnectMetaBusiness}
-                  disabled={metaAdsConnecting || whatsappConnecting}
+                  disabled={metaAdsConnecting}
                   className="gap-2"
                 >
-                  {(metaAdsConnecting || whatsappConnecting) && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {metaAdsConnecting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {!igConnection.data?.connected
                     ? "Conectar Instagram — etapa 1"
                     : metaAdsConnection?.pendingAccountSelection
                       ? "Escolher conta Meta Ads — etapa 2"
                       : !metaAdsConnection?.connected
                         ? "Conectar Meta Ads — etapa 2"
-                        : !waConnection.data?.connected
-                          ? "Conectar WhatsApp — etapa 3"
-                          : "Gerenciar conexão Meta"}
+                        : "Gerenciar conexão Meta"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.
@@ -4230,8 +4222,8 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* WhatsApp — OAuth via Meta */}
-            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
+            {/* WhatsApp Meta legado — mantido apenas para compatibilidade com conexões antigas; não faz parte do fluxo padrão */}
+            <div className="hidden">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4329,7 +4321,6 @@ export default function Configuracoes() {
             <WhatsappNumbersManager
               tenantId={tenantId ?? ""}
               users={teamQuery.data ?? []}
-              onAddMeta={onConnectWhatsapp}
               toast={toast}
             />
             {/* Messenger — Facebook Page Access Token */}
@@ -4779,10 +4770,10 @@ Body:
             </div>
 
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-1">
-              <p className="text-sm font-semibold">Conexões recomendadas</p>
+              <p className="text-sm font-semibold">WhatsApp padrão: QR Code</p>
               <p className="text-sm text-muted-foreground">
-                Para WhatsApp, priorize a integração oficial via Meta ou a conexão rápida por QR Code.
-                Configurações manuais e provedores alternativos continuam disponíveis em Opções avançadas.
+                A conexão normal do WhatsApp agora é feita lendo o QR Code com o celular.
+                Meta WhatsApp e Z-API ficam apenas como compatibilidade técnica para conexões antigas.
               </p>
             </div>
 
@@ -6643,12 +6634,10 @@ type WhatsappConnectionItem = {
 function WhatsappNumbersManager({
   tenantId,
   users,
-  onAddMeta,
   toast,
 }: {
   tenantId: string;
   users: Array<{ id: string; name?: string | null; email?: string | null; active?: boolean }>;
-  onAddMeta: () => void;
   toast: (opts: { title: string; description?: string; variant?: "destructive" }) => void;
 }) {
   const [connections, setConnections] = useState<WhatsappConnectionItem[]>([]);
@@ -6699,14 +6688,18 @@ function WhatsappNumbersManager({
             Cada número recebe suas próprias conversas e direciona os leads ao usuário escolhido.
           </p>
         </div>
-        <Button variant="outline" onClick={onAddMeta} className="gap-2">
-          <MessageCircle className="h-4 w-4" /> Adicionar número oficial
+        <Button
+          variant="outline"
+          onClick={() => document.querySelector<HTMLElement>("[data-whatsapp-qr-card='true']")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+          className="gap-2"
+        >
+          <MessageCircle className="h-4 w-4" /> Conectar novo número por QR Code
         </Button>
       </div>
       {loading ? (
         <div className="h-20 rounded-md bg-muted animate-pulse" />
       ) : connections.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum número conectado. Use a Meta ou o QR Code para adicionar o primeiro.</p>
+        <p className="text-sm text-muted-foreground">Nenhum número conectado. Use o QR Code acima para adicionar o primeiro.</p>
       ) : (
         <div className="space-y-3">
           {connections.map((connection) => (
@@ -6714,7 +6707,7 @@ function WhatsappNumbersManager({
               <div>
                 <div className="font-medium">{connection.displayPhoneNumber || connection.businessName || "Aguardando leitura do QR Code"}</div>
                 <div className="text-xs text-muted-foreground">
-                  {connection.provider === "meta" ? "Meta oficial" : "QR Code / Evolution"} · {connection.status}
+                  {connection.provider === "meta" ? "Meta legado" : "QR Code / Evolution"} · {connection.status}
                 </div>
               </div>
               <Select
@@ -6841,8 +6834,8 @@ function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (
             WhatsApp via QR Code
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Conecte escaneando um QR Code com o WhatsApp do celular — sem custo por cliente, sem depender de aprovação da Meta.
-            Roda em infraestrutura própria (Evolution API), não é a API oficial.
+            Método padrão do VendorAI: abra o WhatsApp no celular e escaneie o QR Code para conectar o número.
+            A sessão roda na infraestrutura Evolution API do VendorAI, sem usar o fluxo WhatsApp Business da Meta.
           </p>
         </div>
         {status?.connected && (
