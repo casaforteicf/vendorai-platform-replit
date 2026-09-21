@@ -1,4 +1,6 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "crypto";
 import { and, eq, desc, asc, inArray } from "drizzle-orm";
 import {
   db,
@@ -23,6 +25,40 @@ const router = Router();
 function portalConfig(raw: unknown): ObraPortalConfig {
   const value = raw && typeof raw === "object" ? raw as Partial<ObraPortalConfig> : {};
   return { ...DEFAULT_OBRA_PORTAL_CONFIG, ...value };
+}
+
+function portalBearer(req: any) {
+  const header = String(req.headers?.authorization ?? "");
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
+
+function hashPortalToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function resolvePortalUser(req: any, obraId: string) {
+  const token = portalBearer(req);
+  if (!token) return null;
+  const result = await pool.query(
+    `SELECT u.id, u.nome, u.email, u.telefone, u.obra_id, u.tenant_id
+       FROM obra_portal_sessions s
+       INNER JOIN obra_portal_users u ON u.id = s.user_id
+      WHERE s.token_hash = $1 AND s.expires_at > now()
+        AND u.obra_id = $2 AND u.status = 'ativo'
+      LIMIT 1`,
+    [hashPortalToken(token), obraId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function createPortalSession(userId: string) {
+  const raw = randomBytes(32).toString("hex");
+  await pool.query(
+    `INSERT INTO obra_portal_sessions (id, user_id, token_hash, expires_at)
+     VALUES ($1,$2,$3,now() + interval '30 days')`,
+    [crypto.randomUUID(), userId, hashPortalToken(raw)],
+  );
+  return raw;
 }
 
 async function getArqdorPortalProject(token: string) {
@@ -114,12 +150,119 @@ router.post("/portal/arqdor/:token/revisions", async (req, res) => {
   return res.status(201).json({ revision, projectId: project.id, sourceAiRenderId, nextAction: "revisao_pendente" });
 });
 
+router.post("/portal/obra/:token/register", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.allowSelfRegistration) return res.status(403).json({ error: "Cadastro pelo cliente está desativado." });
+
+  const nome = String(req.body?.nome ?? "").trim();
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const telefone = String(req.body?.telefone ?? "").trim() || null;
+  const password = String(req.body?.password ?? "");
+  if (!nome || !email || !email.includes("@") || password.length < 8) {
+    return res.status(422).json({ error: "Informe nome, e-mail válido e senha com ao menos 8 caracteres." });
+  }
+
+  const existing = await pool.query(
+    `SELECT id FROM obra_portal_users WHERE obra_id=$1 AND lower(email)=lower($2) LIMIT 1`,
+    [obra.id, email],
+  );
+  if (existing.rows[0]) return res.status(409).json({ error: "Já existe uma conta para este e-mail nesta obra." });
+
+  const userId = crypto.randomUUID();
+  const passwordHash = await bcrypt.hash(password, 12);
+  await pool.query(
+    `INSERT INTO obra_portal_users (id, tenant_id, obra_id, nome, email, telefone, password_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [userId, obra.tenantId, obra.id, nome, email, telefone, passwordHash],
+  );
+  const sessionToken = await createPortalSession(userId);
+  return res.status(201).json({ token: sessionToken, user: { id: userId, nome, email, telefone } });
+});
+
+router.post("/portal/obra/:token/login", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const password = String(req.body?.password ?? "");
+  const result = await pool.query(
+    `SELECT * FROM obra_portal_users WHERE obra_id=$1 AND lower(email)=lower($2) AND status='ativo' LIMIT 1`,
+    [obra.id, email],
+  );
+  const user = result.rows[0];
+  if (!user || !await bcrypt.compare(password, user.password_hash)) {
+    return res.status(401).json({ error: "E-mail ou senha inválidos." });
+  }
+  await pool.query(`UPDATE obra_portal_users SET ultimo_login_em=now(), updated_at=now() WHERE id=$1`, [user.id]);
+  const sessionToken = await createPortalSession(user.id);
+  return res.json({ token: sessionToken, user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone } });
+});
+
+router.get("/portal/obra/:token/me", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const user = await resolvePortalUser(req, obra.id);
+  if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+  return res.json({ user });
+});
+
+router.post("/portal/obra/:token/support", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const user = await resolvePortalUser(req, obra.id);
+  if (!user) return res.status(401).json({ error: "Faça login para abrir uma solicitação." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showSupport) return res.status(403).json({ error: "Suporte não está habilitado neste portal." });
+
+  const assunto = String(req.body?.assunto ?? "").trim();
+  const descricao = String(req.body?.descricao ?? "").trim();
+  const prioridade = ["baixa","normal","alta","urgente"].includes(String(req.body?.prioridade))
+    ? String(req.body.prioridade) : "normal";
+  if (!assunto || !descricao) return res.status(422).json({ error: "Assunto e descrição são obrigatórios." });
+
+  const result = await pool.query(
+    `INSERT INTO obra_portal_support_tickets
+       (id,tenant_id,obra_id,portal_user_id,assunto,descricao,prioridade,status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'aberto') RETURNING *`,
+    [crypto.randomUUID(), obra.tenantId, obra.id, user.id, assunto, descricao, prioridade],
+  );
+  return res.status(201).json({ ticket: result.rows[0] });
+});
+
+router.post("/portal/obra/:token/messages", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const user = await resolvePortalUser(req, obra.id);
+  if (!user) return res.status(401).json({ error: "Faça login para enviar mensagens." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showChat) return res.status(403).json({ error: "Chat não está habilitado neste portal." });
+
+  const mensagem = String(req.body?.mensagem ?? "").trim();
+  if (!mensagem) return res.status(422).json({ error: "Mensagem vazia." });
+  const result = await pool.query(
+    `INSERT INTO obra_portal_messages
+       (id,tenant_id,obra_id,portal_user_id,autor_tipo,autor_nome,mensagem)
+     VALUES ($1,$2,$3,$4,'cliente',$5,$6) RETURNING *`,
+    [crypto.randomUUID(), obra.tenantId, obra.id, user.id, user.nome, mensagem],
+  );
+  return res.status(201).json({ message: result.rows[0] });
+});
+
 router.get("/portal/obra/:token", async (req, res) => {
   const { token } = req.params;
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
 
   const config = portalConfig(obra.portalConfig);
+  const portalUser = await resolvePortalUser(req, obra.id);
+  const authenticated = Boolean(portalUser);
   const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable).where(eq(tenantsTable.id, obra.tenantId));
 
