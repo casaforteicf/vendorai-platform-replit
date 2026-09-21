@@ -1079,6 +1079,17 @@ export default function ConceptPlanner() {
     }));
   };
 
+  const updateOpeningWidth = (openingId: string, width: number) => {
+    const safeWidth = Math.max(0.5, Math.min(4, Number(width) || 0.5));
+    const custom = safeCustomOpenings.find((opening) => opening.id === openingId);
+    if (!custom) return;
+    const before = snapshotEditor();
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
+      opening.id === openingId ? { ...opening, width: safeWidth } : opening
+    ));
+    pushRoomHistory(before);
+  };
+
   const addObjectAt = (
     kind: ConceptPlanObject["kind"],
     label: string,
@@ -4280,6 +4291,7 @@ export default function ConceptPlanner() {
                           closeLibraryOnMobile();
                         }}
                         onOpeningChange={updateOpeningById}
+                        onOpeningWidthChange={updateOpeningWidth}
                         selectedWallId={selectedWallId}
                         onSelectWall={(wallId) => {
                           if (wallId && paintTool?.target === "wall") {

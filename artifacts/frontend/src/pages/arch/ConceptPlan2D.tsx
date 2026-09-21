@@ -38,6 +38,7 @@ type Props = {
   selectedOpeningId?: string | null;
   onSelectOpening?: (openingId: string | null) => void;
   onOpeningChange?: (openingId: string, patch: { x: number; y: number; type: "door" | "window" }) => void;
+  onOpeningWidthChange?: (openingId: string, width: number) => void;
   selectedWallId?: string | null;
   onSelectWall?: (wallId: string | null) => void;
   onWallMove?: (wallId: string, delta: number) => void;
@@ -321,6 +322,7 @@ export default function ConceptPlan2D({
   selectedOpeningId = null,
   onSelectOpening,
   onOpeningChange,
+  onOpeningWidthChange,
   selectedWallId = null,
   onSelectWall,
   onWallMove,
@@ -363,7 +365,7 @@ export default function ConceptPlan2D({
     customWallId?: string;
     objectId?: string;
     junctionRefs?: WallTopologyEndpointRef[];
-    mode: "move" | "object" | "object-resize-n" | "object-resize-s" | "object-resize-e" | "object-resize-w" | "object-resize-ne" | "object-resize-nw" | "object-resize-se" | "object-resize-sw" | "object-rotate" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    mode: "move" | "object" | "object-resize-n" | "object-resize-s" | "object-resize-e" | "object-resize-w" | "object-resize-ne" | "object-resize-nw" | "object-resize-se" | "object-resize-sw" | "object-rotate" | "wall" | "opening" | "opening-resize-start" | "opening-resize-end" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -833,6 +835,21 @@ export default function ConceptPlan2D({
       const rawDelta = vertical ? dx : dy;
       onWallMove(wall.id, snap(rawDelta));
       setGesture((current) => current ? { ...current, startX: point.x, startY: point.y } : current);
+      return;
+    }
+
+    if (
+      (gesture.mode === "opening-resize-start" || gesture.mode === "opening-resize-end") &&
+      gesture.openingId &&
+      onOpeningWidthChange
+    ) {
+      const opening = geometry.openings.find((item) => item.id === gesture.openingId);
+      if (!opening) return;
+      const horizontal = opening.orientation === "horizontal";
+      const centerAxis = horizontal ? opening.x : opening.y;
+      const pointerAxis = horizontal ? point.x : point.y;
+      const halfWidth = Math.max(0.25, Math.abs(pointerAxis - centerAxis));
+      onOpeningWidthChange(opening.id, Math.max(0.5, Math.min(4, snap(halfWidth * 2))));
       return;
     }
 
@@ -2265,7 +2282,73 @@ export default function ConceptPlan2D({
                 </g>
               )}
               {selectedOpening && (
-                <circle cx={opening.x} cy={opening.y} r="0.26" fill="#f97316" stroke="#fff" strokeWidth="0.06" pointerEvents="none" />
+                <>
+                  <circle cx={opening.x} cy={opening.y} r="0.26" fill="#f97316" stroke="#fff" strokeWidth="0.06" pointerEvents="none" />
+                  <g pointerEvents="none">
+                    <rect
+                      x={horizontal ? opening.x - 0.72 : opening.x + 0.22}
+                      y={horizontal ? opening.y + 0.24 : opening.y - 0.20}
+                      width="1.44"
+                      height="0.40"
+                      rx="0.10"
+                      fill="#ffffff"
+                      fillOpacity="0.96"
+                      stroke="#fdba74"
+                      strokeWidth="0.025"
+                    />
+                    <text
+                      x={horizontal ? opening.x : opening.x + 0.94}
+                      y={horizontal ? opening.y + 0.50 : opening.y + 0.06}
+                      textAnchor="middle"
+                      fontSize="0.20"
+                      fontWeight="800"
+                      fill="#9a3412"
+                    >
+                      {`${openingWidth.toFixed(2)} m`}
+                    </text>
+                  </g>
+                  {opening.roomId.startsWith("custom-wall:") && onOpeningWidthChange && ([
+                    ["opening-resize-start", horizontal ? opening.x - half : opening.x, horizontal ? opening.y : opening.y - half],
+                    ["opening-resize-end", horizontal ? opening.x + half : opening.x, horizontal ? opening.y : opening.y + half],
+                  ] as const).map(([mode, hx, hy]) => (
+                    <g
+                      key={mode}
+                      role="button"
+                      className={horizontal ? "cursor-ew-resize" : "cursor-ns-resize"}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        onEditStart?.();
+                        onSelectOpening?.(opening.id);
+                        const point = toSvgPoint(event.clientX, event.clientY);
+                        event.currentTarget.setPointerCapture?.(event.pointerId);
+                        setGesture({
+                          roomId: opening.roomId,
+                          openingId: opening.id,
+                          mode,
+                          startX: point.x,
+                          startY: point.y,
+                          roomX: 0,
+                          roomY: 0,
+                          roomWidth: 0,
+                          roomDepth: 0,
+                        });
+                      }}
+                    >
+                      <circle cx={hx} cy={hy} r="0.30" fill="transparent" />
+                      <rect
+                        x={hx - 0.11}
+                        y={hy - 0.11}
+                        width="0.22"
+                        height="0.22"
+                        rx="0.04"
+                        fill="#ffffff"
+                        stroke="#f97316"
+                        strokeWidth="0.055"
+                        pointerEvents="none"
+                      />
+                    </g>
+                  )))}
+                </>
               )}
             </g>
           );
