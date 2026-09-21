@@ -4318,11 +4318,6 @@ export default function Configuracoes() {
               )}
             </div>
 
-            <WhatsappNumbersManager
-              tenantId={tenantId ?? ""}
-              users={teamQuery.data ?? []}
-              toast={toast}
-            />
             {/* Messenger — Facebook Page Access Token */}
             <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
@@ -4781,6 +4776,12 @@ Body:
 
             {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
             <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
+
+            <WhatsappNumbersManager
+              tenantId={tenantId ?? ""}
+              users={teamQuery.data ?? []}
+              toast={toast}
+            />
 
             <div className="rounded-xl border border-dashed bg-muted/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
