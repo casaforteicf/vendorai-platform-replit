@@ -2571,7 +2571,7 @@ export default function ConceptPlanner() {
                   </div>
                 )}
               </>
-            ))}
+            )}
 
             <div
               data-concept-render-source="true"
