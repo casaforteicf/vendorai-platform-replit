@@ -60,7 +60,7 @@ type Props = {
   onPaintWall?: (wallId: string, materialId: string) => void;
   onPaintFloor?: (spaceId: string, materialId: string) => void;
   onCancelPaint?: () => void;
-  onRenderView?: (lightingMode: "day" | "sunset" | "night") => void;
+  onRenderView?: (lightingMode: "day" | "sunset" | "night", renderView: "interior" | "exterior") => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -897,7 +897,7 @@ export default function ConceptModel3D({
           {onRenderView && (
             <button
               type="button"
-              onClick={() => onRenderView(lightingMode)}
+              onClick={() => onRenderView(lightingMode, interiorMode ? "interior" : "exterior")}
               className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
             >
               <Sparkles className="h-4 w-4" />

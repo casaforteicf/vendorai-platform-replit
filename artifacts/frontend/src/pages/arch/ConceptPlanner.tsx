@@ -3026,14 +3026,14 @@ export default function ConceptPlanner() {
                 </button>
 
                 {mobileValidationOpen && (
-                  <div className="fixed inset-0 z-[80] md:hidden">
+                  <div className="fixed inset-0 z-[80]">
                     <button
                       type="button"
                       aria-label="Fechar validação"
                       onClick={() => setMobileValidationOpen(false)}
                       className="absolute inset-0 bg-slate-950/35"
                     />
-                    <div className="absolute inset-x-0 bottom-0 max-h-[68vh] overflow-hidden rounded-t-3xl border-t bg-white shadow-2xl">
+                    <div className="absolute inset-x-0 bottom-0 max-h-[68vh] overflow-hidden rounded-t-3xl border-t bg-white shadow-2xl md:bottom-auto md:left-1/2 md:top-24 md:max-h-[70vh] md:w-[520px] md:-translate-x-1/2 md:rounded-3xl md:border">
                       <div className="flex items-center justify-between border-b px-4 py-4">
                         <div>
                           <div className="text-sm font-bold text-slate-950">Validação da planta</div>
@@ -4135,7 +4135,7 @@ export default function ConceptPlanner() {
                       onPaintWall={applyWallMaterialToId}
                       onPaintFloor={applyFloorMaterialToSpace}
                       onCancelPaint={() => setPaintTool(null)}
-                      onRenderView={(lightingMode) => void generateConceptRender({ source: "model3d", renderView: "interior", lightingMode })}
+                      onRenderView={(lightingMode, renderView) => void generateConceptRender({ source: "model3d", renderView, lightingMode })}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
                         if (wallId) {
