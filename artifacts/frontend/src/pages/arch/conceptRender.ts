@@ -26,6 +26,7 @@ export type ConceptRenderBriefInput = {
   }>;
   wallMaterialIds?: string[];
   floorMaterialIds?: string[];
+  lightingMode?: "day" | "sunset" | "night";
 };
 
 const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
@@ -90,6 +91,11 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     : null;
   const uniqueWallMaterials = [...new Set((input.wallMaterialIds ?? []).filter(Boolean))];
   const uniqueFloorMaterials = [...new Set((input.floorMaterialIds ?? []).filter(Boolean))];
+  const lightingInstruction = input.lightingMode === "night"
+    ? "Lighting: nighttime architectural visualization with warm interior lights visible through openings, realistic exterior fill light and preserved material colors."
+    : input.lightingMode === "sunset"
+      ? "Lighting: warm late-afternoon/sunset architectural light with long soft shadows and realistic material response."
+      : "Lighting: clear natural daytime illumination with balanced architectural shadows and neutral material color rendering.";
 
   const volumeSummary = design?.volumes.length
     ? design.volumes.map((volume) =>
@@ -111,8 +117,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       ? `Exact facade material schedule selected by the user: ${surfaceSummary}. Preserve these assignments.`
       : `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
     `Facade tone: ${facade.facadeTone}. Frames: ${frameLabel[facade.frameTone]}.`,
+    lightingInstruction,
     renderView === "interior"
-      ? "Interior lighting: physically plausible daylight plus warm architectural lighting. Keep a realistic Brazilian residential scale and material response."
+      ? "Keep a realistic Brazilian residential scale and physically plausible interior light behavior."
       : `Landscaping intensity: ${facade.landscaping}. Use realistic Brazilian residential landscaping without blocking the architecture.`,
     design ? `Lighting scenario selected in editor: ${design.lighting}. Landscaping visibility: ${design.showLandscaping ? "on" : "off"}.` : "",
     volumeSummary

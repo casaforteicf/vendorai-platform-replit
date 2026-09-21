@@ -2042,7 +2042,7 @@ export default function ConceptPlanner() {
     }
   };
 
-  const generateConceptRender = async (options?: { source?: "facade" | "model3d"; renderView?: "exterior" | "interior" }) => {
+  const generateConceptRender = async (options?: { source?: "facade" | "model3d"; renderView?: "exterior" | "interior"; lightingMode?: "day" | "sunset" | "night" }) => {
     const renderProjectId = await saveConcept(5);
     if (!renderProjectId) return;
 
@@ -2071,6 +2071,7 @@ export default function ConceptPlanner() {
         facade: facadePreferences,
         facadeDesign,
         renderView,
+        lightingMode: options?.lightingMode,
         objects: safeObjects,
         wallMaterialIds: Object.values(wallMaterials),
         floorMaterialIds: [
@@ -4105,7 +4106,7 @@ export default function ConceptPlanner() {
                       onPaintWall={applyWallMaterialToId}
                       onPaintFloor={applyFloorMaterialToSpace}
                       onCancelPaint={() => setPaintTool(null)}
-                      onRenderView={() => void generateConceptRender({ source: "model3d", renderView: "interior" })}
+                      onRenderView={(lightingMode) => void generateConceptRender({ source: "model3d", renderView: "interior", lightingMode })}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
                         if (wallId) {
