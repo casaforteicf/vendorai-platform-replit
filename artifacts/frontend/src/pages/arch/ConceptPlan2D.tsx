@@ -18,6 +18,7 @@ export type ConceptPlanObject = {
   imageUrl?: string;
   supplier?: string;
   price?: number;
+  model3dUrl?: string;
 };
 
 type Props = {
@@ -57,7 +58,7 @@ type Props = {
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
   onObjectDrop?: (
     preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
-      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>,
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
     point: { x: number; y: number },
   ) => void;
   onObjectRotate?: (objectId: string) => void;
@@ -904,7 +905,7 @@ export default function ConceptPlan2D({
           event.preventDefault();
           try {
             const preset = JSON.parse(raw) as Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
-              Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price">>;
+              Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>;
             if (!preset?.kind || !preset?.label) return;
             const point = clampPoint(toSvgPoint(event.clientX, event.clientY));
             onObjectDrop(preset, point);

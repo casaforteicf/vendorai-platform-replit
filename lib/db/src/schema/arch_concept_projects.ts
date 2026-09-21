@@ -62,6 +62,7 @@ export type ArchConceptConfiguration = {
     imageUrl?: string;
     supplier?: string;
     price?: number;
+    model3dUrl?: string;
   }>;
   wallMaterials?: Record<string, string>;
 };
