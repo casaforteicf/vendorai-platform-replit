@@ -4035,6 +4035,9 @@ export default function ConceptPlanner() {
                           setSelectedClosedSpaceId(null);
                         }
                       }}
+                      onObjectChange={updateObjectById}
+                      onObjectEditStart={beginRoomEdit}
+                      onObjectEditEnd={endRoomEdit}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
                         if (wallId) {
@@ -4189,6 +4192,17 @@ export default function ConceptPlanner() {
                         <option value={270}>270°</option>
                       </select>
                     </label>
+                    {editorView === "model3d" && (
+                      <div className="flex items-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => rotateObject(selectedObject.id)}
+                          className="h-9 rounded-lg border px-3 text-xs font-semibold"
+                        >
+                          Girar 90°
+                        </button>
+                      </div>
+                    )}
                     <label className="min-w-[150px] text-[10px] font-semibold text-slate-500">
                       Material
                       <select
