@@ -57,6 +57,12 @@ type Props = {
   interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall" | "navigate";
   objects?: ConceptPlanObject[];
   previewObjects?: ConceptPlanObject[];
+  previewDiagnostics?: {
+    score: number;
+    quality: number;
+    doorZones: Array<{ x: number; y: number; width: number; height: number }>;
+    windowZones: Array<{ x: number; y: number; width: number; height: number }>;
+  };
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
@@ -343,6 +349,7 @@ export default function ConceptPlan2D({
   interactionMode = "room",
   objects = [],
   previewObjects = [],
+  previewDiagnostics,
   selectedObjectId = null,
   onSelectObject,
   onObjectChange,
@@ -1555,6 +1562,63 @@ export default function ConceptPlan2D({
             </g>
           );
         })}
+
+        {previewDiagnostics && previewObjects.length > 0 && (
+          <g pointerEvents="none">
+            {previewDiagnostics.doorZones.map((zone, index) => (
+              <g key={`door-zone-${index}`}>
+                <rect
+                  x={zone.x}
+                  y={zone.y}
+                  width={zone.width}
+                  height={zone.height}
+                  rx="0.08"
+                  fill="#22c55e"
+                  fillOpacity="0.08"
+                  stroke="#16a34a"
+                  strokeWidth="0.035"
+                  strokeDasharray="0.12 0.08"
+                />
+                <text
+                  x={zone.x + zone.width / 2}
+                  y={zone.y + zone.height / 2}
+                  textAnchor="middle"
+                  fontSize="0.16"
+                  fontWeight="700"
+                  fill="#15803d"
+                >
+                  circulação
+                </text>
+              </g>
+            ))}
+            {previewDiagnostics.windowZones.map((zone, index) => (
+              <rect
+                key={`window-zone-${index}`}
+                x={zone.x}
+                y={zone.y}
+                width={zone.width}
+                height={zone.height}
+                rx="0.06"
+                fill="#38bdf8"
+                fillOpacity="0.08"
+                stroke="#0284c7"
+                strokeWidth="0.03"
+                strokeDasharray="0.10 0.08"
+              />
+            ))}
+            <g transform={`translate(${Math.max(0.35, lotWidth - 3.0)} 0.35)`}>
+              <rect width="2.55" height="0.82" rx="0.14" fill="#ffffff" fillOpacity="0.94" stroke="#cbd5e1" strokeWidth="0.035" />
+              <text x="0.18" y="0.31" fontSize="0.18" fontWeight="800" fill="#0f172a">
+                Qualidade do layout
+              </text>
+              <text x="2.34" y="0.31" textAnchor="end" fontSize="0.20" fontWeight="900" fill={previewDiagnostics.quality >= 85 ? "#15803d" : previewDiagnostics.quality >= 70 ? "#c2410c" : "#b91c1c"}>
+                {previewDiagnostics.quality}%
+              </text>
+              <rect x="0.18" y="0.48" width="2.16" height="0.13" rx="0.065" fill="#e2e8f0" />
+              <rect x="0.18" y="0.48" width={2.16 * (previewDiagnostics.quality / 100)} height="0.13" rx="0.065" fill={previewDiagnostics.quality >= 85 ? "#22c55e" : previewDiagnostics.quality >= 70 ? "#f97316" : "#ef4444"} />
+            </g>
+          </g>
+        )}
 
         {previewObjects.filter((object) => object.floor === activeFloor).map((object) => {
           const cx = object.x + object.width / 2;
