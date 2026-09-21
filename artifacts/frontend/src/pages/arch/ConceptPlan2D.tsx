@@ -50,6 +50,10 @@ type Props = {
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => void;
+  onObjectDrop?: (preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">, point: { x: number; y: number }) => void;
+  onObjectRotate?: (objectId: string) => void;
+  onObjectDuplicate?: (objectId: string) => void;
+  onObjectDelete?: (objectId: string) => void;
 };
 
 function formatMeters(value: number) {
@@ -269,6 +273,10 @@ export default function ConceptPlan2D({
   selectedObjectId = null,
   onSelectObject,
   onObjectChange,
+  onObjectDrop,
+  onObjectRotate,
+  onObjectDuplicate,
+  onObjectDelete,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -763,6 +771,27 @@ export default function ConceptPlan2D({
         ref={svgRef}
         className={`block h-full min-h-[420px] w-full touch-none select-none sm:min-h-[620px] ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
         onWheel={handleWheel}
+        onDragOver={(event) => {
+          if (!onObjectDrop) return;
+          if (event.dataTransfer.types.includes("application/x-arqdor-object")) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDrop={(event) => {
+          if (!onObjectDrop) return;
+          const raw = event.dataTransfer.getData("application/x-arqdor-object");
+          if (!raw) return;
+          event.preventDefault();
+          try {
+            const preset = JSON.parse(raw) as Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">;
+            if (!preset?.kind || !preset?.label) return;
+            const point = clampPoint(toSvgPoint(event.clientX, event.clientY));
+            onObjectDrop(preset, point);
+          } catch {
+            // Ignore invalid external drag payloads.
+          }
+        }}
         onPointerDownCapture={(event) => {
           if (["room", "wall", "opening", "draw-wall", "navigate"].includes(interactionMode)) {
             try {
@@ -1234,9 +1263,41 @@ export default function ConceptPlan2D({
                 <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.16, object.width - 0.20)} height={Math.max(0.12, object.depth - 0.20)} rx="0.04" fill="#334155" />
               )}
               {selectedObject && (
-                <text x={cx} y={object.y - 0.16} textAnchor="middle" fontSize="0.22" fontWeight="800" fill="#c2410c" pointerEvents="none">
-                  {object.label}
-                </text>
+                <>
+                  <text x={cx} y={object.y - 0.16} textAnchor="middle" fontSize="0.22" fontWeight="800" fill="#c2410c" pointerEvents="none">
+                    {object.label}
+                  </text>
+                  <g transform={`translate(${cx - 1.05} ${object.y - 0.92})`}>
+                    <rect width="2.1" height="0.58" rx="0.18" fill="#0f172a" opacity="0.96" />
+                    <g
+                      role="button"
+                      className="cursor-pointer"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); onObjectRotate?.(object.id); }}
+                    >
+                      <rect x="0.08" y="0.06" width="0.58" height="0.46" rx="0.12" fill="transparent" />
+                      <text x="0.37" y="0.37" textAnchor="middle" fontSize="0.25" fontWeight="900" fill="#fff">↻</text>
+                    </g>
+                    <g
+                      role="button"
+                      className="cursor-pointer"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); onObjectDuplicate?.(object.id); }}
+                    >
+                      <rect x="0.76" y="0.06" width="0.58" height="0.46" rx="0.12" fill="transparent" />
+                      <text x="1.05" y="0.37" textAnchor="middle" fontSize="0.22" fontWeight="900" fill="#fff">⧉</text>
+                    </g>
+                    <g
+                      role="button"
+                      className="cursor-pointer"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); onObjectDelete?.(object.id); }}
+                    >
+                      <rect x="1.44" y="0.06" width="0.58" height="0.46" rx="0.12" fill="transparent" />
+                      <text x="1.73" y="0.37" textAnchor="middle" fontSize="0.22" fontWeight="900" fill="#fb7185">×</text>
+                    </g>
+                  </g>
+                </>
               )}
             </g>
           );
