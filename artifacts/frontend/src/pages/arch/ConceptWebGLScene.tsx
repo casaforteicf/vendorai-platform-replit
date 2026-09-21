@@ -11,12 +11,26 @@ type Props = {
   levels: ConceptModelLevel[];
   objects: ConceptPlanObject[];
   selectedObjectId?: string | null;
+  selectedWallId?: string | null;
+  selectedCustomWallId?: string | null;
+  selectedClosedSpaceId?: string | null;
+  selectedOpeningId?: string | null;
   showAllFloors: boolean;
   interiorMode: boolean;
   showRoof: boolean;
   lightingMode: LightingMode;
+  cameraPresetDegrees: number;
+  cameraZoom: number;
+  paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
+  onSelectWall?: (wallId: string | null) => void;
+  onSelectCustomWall?: (wallId: string | null) => void;
+  onSelectClosedSpace?: (spaceId: string | null) => void;
+  onSelectOpening?: (openingId: string | null) => void;
+  onPaintObject?: (objectId: string, materialId: string) => void;
+  onPaintWall?: (wallId: string, materialId: string) => void;
+  onPaintFloor?: (spaceId: string, materialId: string) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation">>) => void;
   onObjectEditStart?: () => void;
   onObjectEditEnd?: () => void;
@@ -115,12 +129,26 @@ export default function ConceptWebGLScene({
   levels,
   objects,
   selectedObjectId = null,
+  selectedWallId = null,
+  selectedCustomWallId = null,
+  selectedClosedSpaceId = null,
+  selectedOpeningId = null,
   showAllFloors,
   interiorMode,
   showRoof,
   lightingMode,
+  cameraPresetDegrees,
+  cameraZoom,
+  paintTool = null,
   onReady,
   onSelectObject,
+  onSelectWall,
+  onSelectCustomWall,
+  onSelectClosedSpace,
+  onSelectOpening,
+  onPaintObject,
+  onPaintWall,
+  onPaintFloor,
   onObjectChange,
   onObjectEditStart,
   onObjectEditEnd,
@@ -250,8 +278,62 @@ export default function ConceptWebGLScene({
           raycaster.setFromCamera(pointer, camera);
           const hit = raycaster.intersectObjects(runtime.pickables, true)[0];
           let current = hit?.object;
-          while (current && !current.userData?.objectId) current = current.parent;
-          onSelectObject?.(current?.userData?.objectId ?? null);
+          while (
+            current &&
+            !current.userData?.objectId &&
+            !current.userData?.wallId &&
+            !current.userData?.spaceId &&
+            !current.userData?.openingId
+          ) current = current.parent;
+
+          const objectId = current?.userData?.objectId as string | undefined;
+          const wallId = current?.userData?.wallId as string | undefined;
+          const spaceId = current?.userData?.spaceId as string | undefined;
+          const openingId = current?.userData?.openingId as string | undefined;
+
+          if (paintTool) {
+            if (paintTool.target === "object" && objectId) onPaintObject?.(objectId, paintTool.materialId);
+            if (paintTool.target === "wall" && wallId) onPaintWall?.(wallId, paintTool.materialId);
+            if (paintTool.target === "floor" && spaceId) onPaintFloor?.(spaceId, paintTool.materialId);
+            return;
+          }
+
+          if (objectId) {
+            onSelectObject?.(objectId);
+            onSelectWall?.(null);
+            onSelectCustomWall?.(null);
+            onSelectClosedSpace?.(null);
+            onSelectOpening?.(null);
+          } else if (wallId) {
+            onSelectObject?.(null);
+            if (current?.userData?.customWall) {
+              onSelectCustomWall?.(wallId);
+              onSelectWall?.(null);
+            } else {
+              onSelectWall?.(wallId);
+              onSelectCustomWall?.(null);
+            }
+            onSelectClosedSpace?.(null);
+            onSelectOpening?.(null);
+          } else if (spaceId) {
+            onSelectObject?.(null);
+            onSelectWall?.(null);
+            onSelectCustomWall?.(null);
+            onSelectClosedSpace?.(spaceId);
+            onSelectOpening?.(null);
+          } else if (openingId) {
+            onSelectObject?.(null);
+            onSelectWall?.(null);
+            onSelectCustomWall?.(null);
+            onSelectClosedSpace?.(null);
+            onSelectOpening?.(openingId);
+          } else {
+            onSelectObject?.(null);
+            onSelectWall?.(null);
+            onSelectCustomWall?.(null);
+            onSelectClosedSpace?.(null);
+            onSelectOpening?.(null);
+          }
         };
         renderer.domElement.addEventListener("click", handlePointer);
 
@@ -292,6 +374,21 @@ export default function ConceptWebGLScene({
       runtimeRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+    const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
+    const radians = (cameraPresetDegrees * Math.PI) / 180;
+    const elevation = Math.max(5.5, radius * 0.54);
+    runtime.camera.position.set(
+      Math.sin(radians) * radius,
+      elevation,
+      Math.cos(radians) * radius,
+    );
+    runtime.controls.target.set(0, Math.max(1.5, levels.length * 1.15), 0);
+    runtime.controls.update();
+  }, [cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -406,12 +503,15 @@ export default function ConceptWebGLScene({
         (wall.x1 + wall.x2) / 2 - lotWidth / 2,
         baseY + 1.4,
         (wall.y1 + wall.y2) / 2 - lotDepth / 2,
-        materialColor(materialId ?? "pintura-branca"),
+        (custom ? selectedCustomWallId === wall.id : selectedWallId === wall.id)
+          ? 0xf97316
+          : materialColor(materialId ?? "pintura-branca"),
         { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1 },
       );
       mesh.rotation.y = -Math.atan2(dy, dx);
       mesh.userData.wallId = wall.id;
       mesh.userData.customWall = custom;
+      runtime.pickables.push(mesh);
       return mesh;
     };
 
@@ -422,7 +522,7 @@ export default function ConceptWebGLScene({
       for (const space of level.closedSpaces ?? []) {
         const floorMaterial = materialColor(level.floorMaterials?.[space.id]);
         for (const cell of space.cells ?? []) {
-          makeBox(
+          const floorMesh = makeBox(
             modelRoot,
             cell.width,
             0.12,
@@ -430,8 +530,10 @@ export default function ConceptWebGLScene({
             cell.x + cell.width / 2 - lotWidth / 2,
             floorBase + 0.06,
             cell.y + cell.height / 2 - lotDepth / 2,
-            floorMaterial,
+            selectedClosedSpaceId === space.id ? 0xf97316 : floorMaterial,
           );
+          floorMesh.userData.spaceId = space.id;
+          runtime.pickables.push(floorMesh);
         }
       }
 
@@ -451,10 +553,15 @@ export default function ConceptWebGLScene({
           opening.x - lotWidth / 2,
           floorBase + sill + height / 2,
           opening.y - lotDepth / 2,
-          glass ? (lightingMode === "night" ? 0xffd77a : 0x9dd2ef) : 0x8b5e3c,
+          selectedOpeningId === opening.id
+            ? 0xf97316
+            : glass
+              ? (lightingMode === "night" ? 0xffd77a : 0x9dd2ef)
+              : 0x8b5e3c,
           { transparent: glass, opacity: glass ? 0.56 : 1 },
         );
         mesh.userData.openingId = opening.id;
+        runtime.pickables.push(mesh);
       }
     }
 
@@ -570,7 +677,11 @@ export default function ConceptWebGLScene({
     lotDepth,
     lotWidth,
     objects,
+    selectedClosedSpaceId,
+    selectedCustomWallId,
     selectedObjectId,
+    selectedOpeningId,
+    selectedWallId,
     showAllFloors,
     showRoof,
     visibleFloors,
