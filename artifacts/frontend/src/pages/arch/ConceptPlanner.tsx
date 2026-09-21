@@ -2158,6 +2158,19 @@ export default function ConceptPlanner() {
     }
   };
 
+  const hasEditorSelection = Boolean(
+    selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall,
+  );
+
+  const clearEditorSelection = () => {
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setSelectedObjectId(null);
+  };
+
   return (
     <div className="arqdor-reference-ui min-h-screen bg-muted/30">
       {false && (
@@ -3002,26 +3015,15 @@ export default function ConceptPlanner() {
                   {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
                 </button>
 
-                <div className="absolute right-4 top-20 z-40 hidden w-[min(380px,calc(100vw-32px))] rounded-2xl border bg-white/95 p-3 shadow-lg backdrop-blur md:block">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-bold text-slate-900">Validação da planta</div>
-                    <div className={blockingLayoutIssues.length > 0 ? "text-xs font-bold text-red-600" : "text-xs font-bold text-amber-600"}>
-                      {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
-                    </div>
-                  </div>
-                  <div className="mt-2 max-h-36 space-y-1.5 overflow-auto">
-                    {layoutIssues.slice(0, 6).map((issue) => (
-                      <div
-                        key={issue.id}
-                        className={issue.severity === "error"
-                          ? "rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700"
-                          : "rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-800"}
-                      >
-                        {issue.message}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileValidationOpen(true)}
+                  className={blockingLayoutIssues.length > 0
+                    ? "absolute right-4 top-20 z-40 hidden rounded-xl border border-red-200 bg-white/95 px-3 py-2 text-xs font-bold text-red-700 shadow-lg backdrop-blur md:block"
+                    : "absolute right-4 top-20 z-40 hidden rounded-xl border border-amber-200 bg-white/95 px-3 py-2 text-xs font-bold text-amber-700 shadow-lg backdrop-blur md:block"}
+                >
+                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
+                </button>
 
                 {mobileValidationOpen && (
                   <div className="fixed inset-0 z-[80] md:hidden">
@@ -3819,8 +3821,40 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className="relative min-h-[calc(100dvh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16">
+              <div className={`relative min-h-[calc(100dvh-64px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16 ${hasEditorSelection && (editorView === "plan" || editorView === "model3d") ? "md:pr-[360px]" : ""}`}>
                 <div className="h-full w-full">
+                  <div className="absolute left-1/2 top-3 z-[55] hidden -translate-x-1/2 items-center gap-1 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur md:flex">
+                    {([
+                      ["plan", "2D"],
+                      ["model3d", "3D"],
+                      ["facade", "Fachada"],
+                      ["render", "Render"],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => {
+                          setEditorView(value);
+                          setLibraryOpen(value === "plan" ? libraryOpen : false);
+                        }}
+                        className={editorView === value
+                          ? "rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-sm"
+                          : "rounded-xl px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <div className="mx-1 h-6 w-px bg-slate-200" />
+                    <button
+                      type="button"
+                      onClick={() => void saveConcept()}
+                      disabled={saveState === "saving" || saveState === "loading"}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : "Salvar"}
+                    </button>
+                  </div>
+
                   {editorView === "plan" && (
                       <div className="absolute left-16 right-3 top-3 z-20 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:left-20 md:right-auto">
                         <button
@@ -4132,6 +4166,16 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(null);
                         }
                       }}
+                      onSelectOpening={(openingId) => {
+                        setSelectedOpeningId(openingId);
+                        if (openingId) {
+                          setSelectedObjectId(null);
+                          setSelectedWallId(null);
+                          setSelectedCustomWallId(null);
+                          setSelectedClosedSpaceId(null);
+                          setSelectedId(null);
+                        }
+                      }}
                     />
                   )}
 
@@ -4296,19 +4340,12 @@ export default function ConceptPlanner() {
                 ))}
               </div>
 
-              {((editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)) || (editorView === "model3d" && (selectedObject || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall))) && (
-              <aside className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
+              {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
+              <aside className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-y-3 md:left-auto md:right-3 md:bottom-auto md:w-[340px] md:max-h-[calc(100dvh-24px)] md:rounded-2xl md:border-slate-200 md:px-4 md:py-4 md:shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedId(null);
-                    setSelectedOpeningId(null);
-                    setSelectedWallId(null);
-                    setSelectedCustomWallId(null);
-                    setSelectedClosedSpaceId(null);
-                    setSelectedObjectId(null);
-                  }}
-                  className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border bg-white text-slate-500 shadow-sm md:hidden"
+                  onClick={clearEditorSelection}
+                  className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border bg-white text-slate-500 shadow-sm hover:bg-slate-50"
                   aria-label="Fechar propriedades"
                 >
                   <X className="h-4 w-4" />
