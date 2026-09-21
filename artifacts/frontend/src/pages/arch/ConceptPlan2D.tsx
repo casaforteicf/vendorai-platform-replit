@@ -534,6 +534,43 @@ export default function ConceptPlan2D({
     startView: { x: number; y: number; width: number; height: number };
     anchor: { x: number; y: number };
   }>(null);
+  const spacePanRef = useRef(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const editingText = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable;
+      if (editingText) return;
+
+      if (event.code === "Space") {
+        spacePanRef.current = true;
+        return;
+      }
+
+      if (interactionMode === "draw-wall" && (event.key === "Escape" || event.key === "Enter")) {
+        event.preventDefault();
+        setWallDrawStart(null);
+        setWallChainOrigin(null);
+        setWallDrawPreview(null);
+        setSnapGuides({});
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") spacePanRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [interactionMode]);
+
+
+
+
 
   const autoFitKey = `${activeFloor}:${rooms.length}:${customWalls.length}:${closedSpaces.length}:${objects.length}:${geometry.walls.length}:${lotWidth}:${lotDepth}`;
   useEffect(() => {
@@ -672,7 +709,7 @@ export default function ConceptPlan2D({
         return;
       }
     }
-    if (panGesture && interactionMode === "navigate") {
+    if (panGesture && (interactionMode === "navigate" || spacePanRef.current)) {
       const svg = svgRef.current;
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
@@ -720,19 +757,23 @@ export default function ConceptPlan2D({
       const rawCenterY = rawY + object.depth / 2;
       const snapThreshold = 0.22;
 
+      const activeRooms = rooms.filter((room) => room.floor === activeFloor);
+      const activeObjects = objects.filter((item) => item.id !== object.id && item.floor === activeFloor);
       const xTargets = [
+        0,
         lotWidth / 2,
-        ...rooms.filter((room) => room.floor === activeFloor).map((room) => room.x + room.width / 2),
-        ...objects
-          .filter((item) => item.id !== object.id && item.floor === activeFloor)
-          .map((item) => item.x + item.width / 2),
+        lotWidth,
+        ...activeRooms.flatMap((room) => [room.x, room.x + room.width / 2, room.x + room.width]),
+        ...activeObjects.flatMap((item) => [item.x, item.x + item.width / 2, item.x + item.width]),
+        ...wallNetwork.flatMap((wall) => Math.abs(wall.x1 - wall.x2) < 0.01 ? [wall.x1] : [wall.x1, wall.x2]),
       ];
       const yTargets = [
+        0,
         lotDepth / 2,
-        ...rooms.filter((room) => room.floor === activeFloor).map((room) => room.y + room.depth / 2),
-        ...objects
-          .filter((item) => item.id !== object.id && item.floor === activeFloor)
-          .map((item) => item.y + item.depth / 2),
+        lotDepth,
+        ...activeRooms.flatMap((room) => [room.y, room.y + room.depth / 2, room.y + room.depth]),
+        ...activeObjects.flatMap((item) => [item.y, item.y + item.depth / 2, item.y + item.depth]),
+        ...wallNetwork.flatMap((wall) => Math.abs(wall.y1 - wall.y2) < 0.01 ? [wall.y1] : [wall.y1, wall.y2]),
       ];
 
       const nearestTarget = (value: number, targets: number[]) => {
@@ -748,10 +789,29 @@ export default function ConceptPlan2D({
         return best;
       };
 
-      const guideX = nearestTarget(rawCenterX, xTargets);
-      const guideY = nearestTarget(rawCenterY, yTargets);
-      const nextX = guideX == null ? snap(rawX) : guideX - object.width / 2;
-      const nextY = guideY == null ? snap(rawY) : guideY - object.depth / 2;
+      const xCandidates = [
+        { raw: rawX, offset: 0 },
+        { raw: rawCenterX, offset: object.width / 2 },
+        { raw: rawX + object.width, offset: object.width },
+      ]
+        .map((candidate) => ({ ...candidate, target: nearestTarget(candidate.raw, xTargets) }))
+        .filter((candidate): candidate is typeof candidate & { target: number } => candidate.target != null)
+        .sort((a, b) => Math.abs(a.raw - a.target) - Math.abs(b.raw - b.target));
+      const yCandidates = [
+        { raw: rawY, offset: 0 },
+        { raw: rawCenterY, offset: object.depth / 2 },
+        { raw: rawY + object.depth, offset: object.depth },
+      ]
+        .map((candidate) => ({ ...candidate, target: nearestTarget(candidate.raw, yTargets) }))
+        .filter((candidate): candidate is typeof candidate & { target: number } => candidate.target != null)
+        .sort((a, b) => Math.abs(a.raw - a.target) - Math.abs(b.raw - b.target));
+
+      const bestX = xCandidates[0];
+      const bestY = yCandidates[0];
+      const guideX = bestX?.target;
+      const guideY = bestY?.target;
+      const nextX = bestX ? bestX.target - bestX.offset : snap(rawX);
+      const nextY = bestY ? bestY.target - bestY.offset : snap(rawY);
 
       setSnapGuides({ x: guideX, y: guideY });
       onObjectChange(object.id, {
@@ -1050,11 +1110,24 @@ export default function ConceptPlan2D({
             <Move className="h-3.5 w-3.5" /> Arraste para navegar
           </div>
         )}
+        {interactionMode === "draw-wall" && wallDrawStart && (
+          <div className="ml-1 hidden items-center rounded-lg bg-orange-50 px-2 py-1.5 text-[11px] font-semibold text-orange-700 md:flex">
+            Clique para continuar · volte ao início para fechar · Esc/Enter finaliza
+          </div>
+        )}
       </div>
       <svg
         ref={svgRef}
         className={`block h-full min-h-[420px] w-full touch-none select-none sm:min-h-[620px] ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
         onWheel={handleWheel}
+        onContextMenu={(event) => {
+          if (interactionMode !== "draw-wall") return;
+          event.preventDefault();
+          setWallDrawStart(null);
+          setWallChainOrigin(null);
+          setWallDrawPreview(null);
+          setSnapGuides({});
+        }}
         onDragOver={(event) => {
           if (!onObjectDrop) return;
           if (event.dataTransfer.types.includes("application/x-arqdor-object")) {
@@ -1103,7 +1176,8 @@ export default function ConceptPlan2D({
           }
         }}
         onPointerDown={(event) => {
-          if (interactionMode === "navigate") {
+          const panRequested = interactionMode === "navigate" || spacePanRef.current || event.button === 1;
+          if (panRequested) {
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
             setPanGesture({
@@ -1162,7 +1236,9 @@ export default function ConceptPlan2D({
         onDoubleClick={() => {
           if (interactionMode === "draw-wall") {
             setWallDrawStart(null);
+            setWallChainOrigin(null);
             setWallDrawPreview(null);
+            setSnapGuides({});
           }
         }}
         viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
