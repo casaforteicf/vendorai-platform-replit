@@ -3216,7 +3216,7 @@ export default function ConceptPlanner() {
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
                       onDesignChange={setFacadeDesign}
-                      onOpenRender={() => setEditorView("render")}
+                      onOpenRender={() => { setEditorView("render"); void generateConceptRender(); }}
                     />
                   )}
 
