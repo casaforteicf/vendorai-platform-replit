@@ -575,6 +575,8 @@ export default function ConceptPlanner() {
     id: string;
     score: number;
     objects: ConceptPlanObject[];
+    doorZones: Array<{ x: number; y: number; width: number; height: number }>;
+    windowZones: Array<{ x: number; y: number; width: number; height: number }>;
   }>>([]);
   const [furnishLayoutSpaceId, setFurnishLayoutSpaceId] = useState<string | null>(null);
   const [previewFurnishLayoutId, setPreviewFurnishLayoutId] = useState<string | null>(null);
@@ -2441,6 +2443,8 @@ export default function ConceptPlanner() {
         id: `layout-${index + 1}-${uid()}`,
         score: variant.score,
         objects: variant.objects,
+        doorZones: doorClearances.map((zone) => ({ ...zone })),
+        windowZones: windowClearances.map((zone) => ({ ...zone })),
       }));
 
     if (!options.length) return;
@@ -4833,6 +4837,22 @@ export default function ConceptPlanner() {
                           furnishLayoutSpaceId === selectedClosedSpaceId
                             ? (furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId)?.objects ?? [])
                             : []
+                        }
+                        previewDiagnostics={
+                          furnishLayoutSpaceId === selectedClosedSpaceId
+                            ? (() => {
+                                const current = furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId);
+                                const bestScore = Math.max(...furnishLayoutOptions.map((item) => item.score), 1);
+                                if (!current) return undefined;
+                                const quality = Math.max(0, Math.min(100, Math.round((current.score / bestScore) * 100)));
+                                return {
+                                  score: current.score,
+                                  quality,
+                                  doorZones: current.doorZones,
+                                  windowZones: current.windowZones,
+                                };
+                              })()
+                            : undefined
                         }
                         selectedObjectId={selectedObjectId}
                         onSelectObject={(objectId) => {
