@@ -811,6 +811,7 @@ export default function ConceptPlan2D({
       const horizontal = Math.abs(originalY1 - originalY2) < 0.01;
       const clamped = clampPoint(point);
       const snapped = snapPointToWallNetwork(clamped, wallNetwork, 0.35, wall.id);
+      setSnapGuides(horizontal ? { x: snapped.x } : { y: snapped.y });
 
       if (gesture.mode === "custom-wall-start") {
         const next = horizontal
@@ -1980,6 +1981,81 @@ export default function ConceptPlan2D({
                           pointerEvents="none"
                         />
                         </g>
+                        <g pointerEvents="none">
+                          <rect
+                            x={mid.x - 0.42}
+                            y={mid.y + (horizontal ? 0.34 : -0.20)}
+                            width="0.84"
+                            height="0.34"
+                            rx="0.08"
+                            fill="#0f172a"
+                            fillOpacity="0.9"
+                          />
+                          <text
+                            x={mid.x}
+                            y={mid.y + (horizontal ? 0.57 : 0.03)}
+                            textAnchor="middle"
+                            fontSize="0.18"
+                            fontWeight="800"
+                            fill="#ffffff"
+                          >
+                            90°
+                          </text>
+                        </g>
+                        {onUpdateCustomWall && (
+                          <foreignObject
+                            x={mid.x - (horizontal ? 0.72 : -0.28)}
+                            y={mid.y + (horizontal ? 0.82 : 0.04)}
+                            width="1.44"
+                            height="0.72"
+                            requiredExtensions="http://www.w3.org/1999/xhtml"
+                          >
+                            <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+                              <input
+                                aria-label="Espessura da parede"
+                                type="number"
+                                min="0.08"
+                                max="0.50"
+                                step="0.01"
+                                defaultValue={(wall.thickness ?? 0.15).toFixed(2)}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    const value = Number((event.currentTarget as HTMLInputElement).value);
+                                    if (Number.isFinite(value)) {
+                                      onUpdateCustomWall(wall.id, { thickness: Math.max(0.08, Math.min(0.5, value)) });
+                                    }
+                                    (event.currentTarget as HTMLInputElement).blur();
+                                  }
+                                  if (event.key === "Escape") {
+                                    (event.currentTarget as HTMLInputElement).value = (wall.thickness ?? 0.15).toFixed(2);
+                                    (event.currentTarget as HTMLInputElement).blur();
+                                  }
+                                }}
+                                onBlur={(event) => {
+                                  const value = Number(event.currentTarget.value);
+                                  if (Number.isFinite(value)) {
+                                    onUpdateCustomWall(wall.id, { thickness: Math.max(0.08, Math.min(0.5, value)) });
+                                  }
+                                }}
+                                style={{
+                                  width: "100%",
+                                  height: "28px",
+                                  border: "1px solid #cbd5e1",
+                                  borderRadius: "8px",
+                                  background: "rgba(255,255,255,.98)",
+                                  color: "#334155",
+                                  fontSize: "12px",
+                                  fontWeight: 800,
+                                  textAlign: "center",
+                                  outline: "none",
+                                  boxShadow: "0 4px 14px rgba(15,23,42,.10)",
+                                }}
+                              />
+                            </div>
+                          </foreignObject>
+                        )}
                         {onCustomWallLengthChange && (
                           <foreignObject
                             x={mid.x - (horizontal ? 0.72 : -0.28)}
