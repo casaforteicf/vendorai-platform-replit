@@ -2157,7 +2157,14 @@ function newFreeItem(): FreeItem {
       const allStructured = currentItems.length > 0
         && currentItems.every((item) => Boolean(item.produtoId || item.composicaoId));
 
-      if (allStructured) {
+      if (currentItems.length === 0) {
+        // Orçamento legado vazio: abrir diretamente no construtor completo,
+        // sem criar uma cópia nem esconder as funções de etapas/composições.
+        setMode("catalogo");
+        setOrcamentoEtapas(buildStandardStages("icf"));
+        setCartLines([]);
+        setFreeItems([newFreeItem()]);
+      } else if (allStructured) {
         setMode("catalogo");
 
         const groups = new Map<string, OrcamentoEtapaDraft & { ordem: number }>();
