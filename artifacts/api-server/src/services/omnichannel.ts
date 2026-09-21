@@ -792,7 +792,9 @@ export async function sendOutgoingMessage(
 
     const hasZapi = !selectedWhatsappConnection && !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
     const evolutionInstance = selectedWhatsappConnection?.provider === "evolution" ? selectedWhatsappConnection.evolutionInstanceName : config?.evolutionInstanceName;
-    const hasEvolution = !!evolutionInstance;
+    const hasEvolution = !!evolutionInstance && (
+      selectedWhatsappConnection?.provider === "evolution" || config?.evolutionConnected === true
+    );
     const metaPhoneNumberId = selectedWhatsappConnection?.provider === "meta" ? selectedWhatsappConnection.phoneNumberId : config?.metaPhoneNumberId;
     const metaAccessToken = selectedWhatsappConnection?.provider === "meta" ? selectedWhatsappConnection.accessToken : config?.metaAccessToken;
     const hasMeta = !!(metaPhoneNumberId && metaAccessToken);
