@@ -606,13 +606,21 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas", async 
     const result = await pool.query(
       `INSERT INTO obra_etapas (
         id, obra_id, nome, descricao, ordem, data_inicio_prevista, data_fim_prevista,
-        status, percentual_executado, responsavel, custo_previsto, peso_fisico, marco,
+        status, percentual_executado, responsavel,
+        equipe_nome, equipe_quantidade, horas_dia, custo_hora_pessoa, produtividade_dia,
+        custo_previsto, peso_fisico, marco,
         created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,$10,$11,now(),now()) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,$10,$11,$12,$13,$14,$15,$16,now(),now()) RETURNING *`,
       [
         crypto.randomUUID(), obraId, nome, req.body?.descricao ?? null, Number(req.body?.ordem ?? 0),
         req.body?.dataInicioPrevista || null, req.body?.dataFimPrevista || null,
-        req.body?.responsavel || null, String(custoPrevisto), String(pesoFisico), Boolean(req.body?.marco),
+        req.body?.responsavel || null,
+        req.body?.equipeNome || null,
+        Math.max(1, Math.min(500, Number(req.body?.equipeQuantidade ?? 1))),
+        String(Math.max(0.5, Math.min(24, Number(req.body?.horasDia ?? 8)))),
+        String(Math.max(0, Number(req.body?.custoHoraPessoa ?? 0))),
+        String(Math.max(0, Number(req.body?.produtividadeDia ?? 0))),
+        String(custoPrevisto), String(pesoFisico), Boolean(req.body?.marco),
       ],
     );
     res.status(201).json({ etapa: result.rows[0] });
@@ -641,6 +649,11 @@ archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaI
       dataFimReal: { col: "data_fim_real", transform: (value) => value || null },
       status: { col: "status", transform: (value) => String(value) },
       responsavel: { col: "responsavel", transform: (value) => value ? String(value) : null },
+      equipeNome: { col: "equipe_nome", transform: (value) => value ? String(value) : null },
+      equipeQuantidade: { col: "equipe_quantidade", transform: (value) => Math.max(1, Math.min(500, Number(value ?? 1))) },
+      horasDia: { col: "horas_dia", transform: (value) => String(Math.max(0.5, Math.min(24, Number(value ?? 8)))) },
+      custoHoraPessoa: { col: "custo_hora_pessoa", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
+      produtividadeDia: { col: "produtividade_dia", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
       custoPrevisto: { col: "custo_previsto", transform: (value) => String(Math.max(0, Number(value ?? 0))) },
       pesoFisico: { col: "peso_fisico", transform: (value) => String(Math.max(0, Math.min(100, Number(value ?? 0)))) },
       marco: { col: "marco", transform: (value) => Boolean(value) },
