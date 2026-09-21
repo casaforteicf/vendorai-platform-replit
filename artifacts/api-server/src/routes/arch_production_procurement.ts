@@ -476,6 +476,100 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
   }
 });
 
+archProductionProcurementRouter.get("/arch/construction/:obraId/baseline", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const baselineResult = await pool.query(
+      `SELECT * FROM obra_baselines
+        WHERE obra_id = $1 AND tenant_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [obraId, tid],
+    );
+    const baseline = baselineResult.rows[0] ?? null;
+    if (!baseline) { res.json({ baseline: null, etapas: [] }); return; }
+
+    const etapasResult = await pool.query(
+      `SELECT * FROM obra_baseline_etapas
+        WHERE baseline_id = $1
+        ORDER BY created_at ASC`,
+      [baseline.id],
+    );
+    res.json({ baseline, etapas: etapasResult.rows });
+  } catch (err) {
+    logger.error({ err }, "arch/construction baseline GET error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.post("/arch/construction/:obraId/baseline", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const etapasResult = await pool.query(
+      `SELECT id, nome, data_inicio_prevista, data_fim_prevista, custo_previsto, peso_fisico,
+              equipe_nome, equipe_quantidade, horas_dia
+         FROM obra_etapas
+        WHERE obra_id = $1
+        ORDER BY ordem ASC, created_at ASC`,
+      [obraId],
+    );
+    if (!etapasResult.rows.length) {
+      res.status(400).json({ error: "Adicione etapas antes de criar a linha de base" }); return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const baselineId = crypto.randomUUID();
+      const baselineResult = await client.query(
+        `INSERT INTO obra_baselines (id, tenant_id, obra_id, nome, observacao, created_at)
+         VALUES ($1,$2,$3,$4,$5,now())
+         RETURNING *`,
+        [
+          baselineId,
+          tid,
+          obraId,
+          String(req.body?.nome ?? "Linha de base"),
+          req.body?.observacao ? String(req.body.observacao) : null,
+        ],
+      );
+
+      for (const etapa of etapasResult.rows) {
+        await client.query(
+          `INSERT INTO obra_baseline_etapas (
+             id, baseline_id, etapa_id, nome, data_inicio_prevista, data_fim_prevista,
+             custo_previsto, peso_fisico, equipe_nome, equipe_quantidade, horas_dia, created_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())`,
+          [
+            crypto.randomUUID(), baselineId, etapa.id, etapa.nome,
+            etapa.data_inicio_prevista, etapa.data_fim_prevista,
+            String(etapa.custo_previsto ?? 0), String(etapa.peso_fisico ?? 0),
+            etapa.equipe_nome ?? null, Number(etapa.equipe_quantidade ?? 1), String(etapa.horas_dia ?? 8),
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      res.status(201).json({ baseline: baselineResult.rows[0], etapas: etapasResult.rows });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err }, "arch/construction baseline POST error");
+    next(err);
+  }
+});
+
 archProductionProcurementRouter.get("/arch/construction/:obraId/calendar", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
