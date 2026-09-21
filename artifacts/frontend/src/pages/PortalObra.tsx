@@ -293,6 +293,7 @@ export default function PortalObra() {
   const [portalSession, setPortalSession] = useState<string>(() => {
     try { return localStorage.getItem(portalSessionKey(token)) ?? ""; } catch { return ""; }
   });
+  const [forceAuth, setForceAuth] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -399,13 +400,14 @@ export default function PortalObra() {
   }, [data, visibleTabs, activeTab]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="text-center"><Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-indigo-600" /><p className="text-sm text-gray-500">Carregando portal…</p></div></div>;
-  if (data?.locked) return <PortalAuthGate
+  if (data?.locked || forceAuth) return <PortalAuthGate
     token={token}
     tenantName={data.tenant?.name ?? "Empresa"}
     obraName={data.obra?.nome ?? "Portal do Cliente"}
     allowRegistration={data.auth?.allowSelfRegistration !== false}
     onAuthenticated={(sessionToken) => {
       setPortalSession(sessionToken);
+      setForceAuth(false);
       void loadPortal(sessionToken);
     }}
   />;
@@ -444,7 +446,10 @@ export default function PortalObra() {
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3"><div className="rounded-lg bg-indigo-600 p-2 text-white"><Building2 className="h-5 w-5" /></div><div><p className="text-xs leading-none text-gray-500">Portal do Cliente</p><p className="text-sm font-semibold leading-snug text-gray-900">{tenant.name}</p></div></div>
-          <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${obraStatus.color}`}>{obraStatus.icon}{obraStatus.label}</span>
+          <div className="flex items-center gap-2">
+            {!data.auth?.authenticated ? <button type="button" onClick={() => setForceAuth(true)} className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Entrar na área privada</button> : <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">{data.auth.user?.nome ?? "Cliente conectado"}</span>}
+            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${obraStatus.color}`}>{obraStatus.icon}{obraStatus.label}</span>
+          </div>
         </div>
       </header>
 
