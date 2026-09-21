@@ -4084,6 +4084,9 @@ export default function ConceptPlanner() {
                         }
                       }}
                       onObjectChange={updateObjectById}
+                      onObjectRotate={rotateObject}
+                      onObjectDuplicate={duplicateObject}
+                      onObjectDelete={deleteObject}
                       onObjectEditStart={beginRoomEdit}
                       onObjectEditEnd={endRoomEdit}
                       paintTool={paintTool}
