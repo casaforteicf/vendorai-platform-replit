@@ -546,6 +546,15 @@ export default function ConceptModel3D({
     startObjectX: number;
     startObjectY: number;
   }>(null);
+  const [objectResize, setObjectResize] = useState<null | {
+    pointerId: number;
+    objectId: string;
+    startSvgX: number;
+    startSvgY: number;
+    startWidth: number;
+    startDepth: number;
+    rotation: number;
+  }>(null);
   const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<null | { distance: number; zoom: number }>(null);
 
@@ -628,6 +637,21 @@ export default function ConceptModel3D({
   };
 
   const handleOrbitMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (objectResize && objectResize.pointerId === event.pointerId && onObjectChange) {
+      const point = clientToSvgPoint(event.clientX, event.clientY);
+      const worldDelta = projectedDeltaToWorld(point.x - objectResize.startSvgX, point.y - objectResize.startSvgY);
+      const radians = (objectResize.rotation * Math.PI) / 180;
+      const localX = worldDelta.x * Math.cos(radians) + worldDelta.y * Math.sin(radians);
+      const localY = -worldDelta.x * Math.sin(radians) + worldDelta.y * Math.cos(radians);
+      const object = objects.find((item) => item.id === objectResize.objectId);
+      if (!object) return;
+      const snap = (value: number) => Math.round(value * 20) / 20;
+      onObjectChange(object.id, {
+        width: snap(Math.max(0.3, Math.min(lotWidth - object.x, objectResize.startWidth + localX))),
+        depth: snap(Math.max(0.3, Math.min(lotDepth - object.y, objectResize.startDepth + localY))),
+      });
+      return;
+    }
     if (objectDrag && objectDrag.pointerId === event.pointerId && onObjectChange) {
       const point = clientToSvgPoint(event.clientX, event.clientY);
       const delta = projectedDeltaToWorld(point.x - objectDrag.startSvgX, point.y - objectDrag.startSvgY);
@@ -656,6 +680,10 @@ export default function ConceptModel3D({
   };
 
   const handleOrbitEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (objectResize?.pointerId === event.pointerId) {
+      setObjectResize(null);
+      onObjectEditEnd?.();
+    }
     if (objectDrag?.pointerId === event.pointerId) {
       setObjectDrag(null);
       onObjectEditEnd?.();
@@ -1195,27 +1223,69 @@ export default function ConceptModel3D({
                   ];
                   const buttonWidth = 0.92;
                   const toolbarWidth = actions.length * buttonWidth + 0.28;
+                  const resizeRadians = (object.rotation * Math.PI) / 180;
+                  const localX = object.width / 2;
+                  const localY = object.depth / 2;
+                  const resizeWorld = {
+                    x: object.x + object.width / 2 + localX * Math.cos(resizeRadians) - localY * Math.sin(resizeRadians),
+                    y: object.y + object.depth / 2 + localX * Math.sin(resizeRadians) + localY * Math.cos(resizeRadians),
+                  };
+                  const resizeHandle = project(
+                    { x: resizeWorld.x, y: resizeWorld.y, z: zBase + 0.12 },
+                    rotation,
+                    projectionWidth,
+                    projectionDepth,
+                    zoom,
+                  );
                   return (
-                    <g transform={`translate(${gizmo.x - toolbarWidth / 2} ${gizmo.y - 0.5})`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-                      <rect x="0" y="0" width={toolbarWidth} height="0.92" rx="0.24" fill="#0f172a" fillOpacity="0.94" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="0.04" />
-                      {actions.map((action, index) => (
+                    <>
+                      <g transform={`translate(${gizmo.x - toolbarWidth / 2} ${gizmo.y - 0.5})`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                        <rect x="0" y="0" width={toolbarWidth} height="0.92" rx="0.24" fill="#0f172a" fillOpacity="0.94" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="0.04" />
+                        {actions.map((action, index) => (
+                          <g
+                            key={action.key}
+                            transform={`translate(${0.14 + index * buttonWidth} 0.10)`}
+                            className="cursor-pointer"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              action.run();
+                            }}
+                          >
+                            <rect width="0.78" height="0.72" rx="0.18" fill={action.key === "delete" ? "#7f1d1d" : "#1e293b"} />
+                            <text x="0.39" y="0.49" textAnchor="middle" fontSize="0.42" fontWeight="800" fill="#f8fafc">
+                              {action.label}
+                            </text>
+                            <title>{action.title}</title>
+                          </g>
+                        ))}
+                      </g>
+                      {!paintTool && (
                         <g
-                          key={action.key}
-                          transform={`translate(${0.14 + index * buttonWidth} 0.10)`}
-                          className="cursor-pointer"
-                          onClick={(event) => {
+                          transform={`translate(${resizeHandle.x} ${resizeHandle.y})`}
+                          className="cursor-se-resize"
+                          onPointerDown={(event) => {
+                            if (event.button !== 0 || !onObjectChange) return;
                             event.stopPropagation();
-                            action.run();
+                            onObjectEditStart?.();
+                            const point = clientToSvgPoint(event.clientX, event.clientY);
+                            event.currentTarget.setPointerCapture?.(event.pointerId);
+                            setObjectResize({
+                              pointerId: event.pointerId,
+                              objectId: object.id,
+                              startSvgX: point.x,
+                              startSvgY: point.y,
+                              startWidth: object.width,
+                              startDepth: object.depth,
+                              rotation: object.rotation,
+                            });
                           }}
                         >
-                          <rect width="0.78" height="0.72" rx="0.18" fill={action.key === "delete" ? "#7f1d1d" : "#1e293b"} />
-                          <text x="0.39" y="0.49" textAnchor="middle" fontSize="0.42" fontWeight="800" fill="#f8fafc">
-                            {action.label}
-                          </text>
-                          <title>{action.title}</title>
+                          <circle r="0.34" fill="#f97316" stroke="#ffffff" strokeWidth="0.10" />
+                          <path d="M -0.13 -0.13 L 0.13 0.13 M 0.00 -0.18 L 0.18 0.00 M -0.18 0.00 L 0.00 0.18" stroke="#ffffff" strokeWidth="0.06" strokeLinecap="round" />
+                          <title>Arraste para redimensionar</title>
                         </g>
-                      ))}
-                    </g>
+                      )}
+                    </>
                   );
                 })()}
               </g>
