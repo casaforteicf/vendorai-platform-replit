@@ -610,6 +610,55 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     };
   }, [baseline, bundle]);
 
+  const evm = useMemo(() => {
+    if (!bundle) {
+      return { bac: 0, pv: 0, ev: 0, ac: 0, cv: 0, sv: 0, cpi: 0, spi: 0, eac: 0, etc: 0, vac: 0 };
+    }
+
+    const now = new Date();
+    const baselineById = new Map(
+      baseline.etapas.map((item) => [String(item.etapa_id ?? item.etapaId ?? ""), item]),
+    );
+
+    const bac = baselineSummary.exists
+      ? baselineSummary.originalCost
+      : bundle.etapas.reduce((sum, item) => sum + item.custoPrevisto, 0);
+
+    let pv = 0;
+    let ev = 0;
+
+    for (const etapa of bundle.etapas) {
+      const base = baselineById.get(etapa.id);
+      const budgetCost = base ? Number(base.custo_previsto ?? 0) : etapa.custoPrevisto;
+      let plannedPct = 0;
+
+      if (base) {
+        plannedPct = plannedPercent({
+          ...etapa,
+          dataInicioPrevista: base.data_inicio_prevista ?? null,
+          dataFimPrevista: base.data_fim_prevista ?? null,
+          custoPrevisto: budgetCost,
+        }, now);
+      } else {
+        plannedPct = plannedPercent(etapa, now);
+      }
+
+      pv += budgetCost * plannedPct / 100;
+      ev += budgetCost * etapa.percentualExecutado / 100;
+    }
+
+    const ac = Math.max(0, Number(bundle.obra.custoRealizado ?? 0));
+    const cv = ev - ac;
+    const sv = ev - pv;
+    const cpi = ac > 0 ? ev / ac : ev > 0 ? 1 : 0;
+    const spi = pv > 0 ? ev / pv : ev > 0 ? 1 : 0;
+    const eac = cpi > 0 ? bac / cpi : bac;
+    const etc = Math.max(0, eac - ac);
+    const vac = bac - eac;
+
+    return { bac, pv, ev, ac, cv, sv, cpi, spi, eac, etc, vac };
+  }, [baseline, baselineSummary.exists, baselineSummary.originalCost, bundle]);
+
   const resourceSummary = useMemo(() => {
     const etapas = bundle?.etapas ?? [];
     const laborCost = etapas.reduce((sum, item) => {
@@ -968,6 +1017,30 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
             Nenhuma linha de base salva. Salve quando o planejamento estiver aprovado para preservar o cronograma original.
           </div>
         )}
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Valor agregado</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">Controle executivo de custo e prazo</h3>
+          <p className="mt-1 text-xs text-slate-500">PV = valor planejado, EV = valor agregado, AC = custo real. CPI e SPI abaixo de 1 indicam desempenho desfavorável.</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric label="BAC" value={money(evm.bac)} hint="orçamento da baseline" />
+          <Metric label="PV" value={money(evm.pv)} hint="valor planejado até hoje" />
+          <Metric label="EV" value={money(evm.ev)} hint="valor agregado" />
+          <Metric label="AC" value={money(evm.ac)} hint="custo real" />
+          <Metric label="EAC" value={money(evm.eac)} hint="estimativa no término" danger={evm.eac > evm.bac && evm.bac > 0} />
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric label="CPI" value={evm.cpi ? evm.cpi.toFixed(2) : "—"} hint="EV ÷ AC" danger={evm.cpi > 0 && evm.cpi < 1} />
+          <Metric label="SPI" value={evm.spi ? evm.spi.toFixed(2) : "—"} hint="EV ÷ PV" danger={evm.spi > 0 && evm.spi < 1} />
+          <Metric label="Variação custo" value={money(evm.cv)} hint="EV − AC" danger={evm.cv < 0} />
+          <Metric label="Variação prazo" value={money(evm.sv)} hint="EV − PV" danger={evm.sv < 0} />
+          <Metric label="ETC / VAC" value={`${money(evm.etc)} / ${money(evm.vac)}`} hint="a concluir / margem vs BAC" danger={evm.vac < 0} />
+        </div>
       </section>
 
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
