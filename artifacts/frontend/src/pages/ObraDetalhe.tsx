@@ -83,6 +83,40 @@ const ETAPA_STATUS_MAP: Record<string, { label: string; color: string }> = {
   concluida:    { label: "Concluída",    color: "bg-emerald-100 text-emerald-700" },
 };
 
+
+type EtapaTemplate = {
+  nome: string;
+  descricao: string;
+  duracaoDias: number;
+  responsavelSugerido: string;
+};
+
+const ETAPAS_ENGENHARIA: EtapaTemplate[] = [
+  { nome: "Projeto e Engenharia", descricao: "Projetos, compatibilização, aprovações e planejamento executivo.", duracaoDias: 15, responsavelSugerido: "Engenharia" },
+  { nome: "Serviços preliminares", descricao: "Canteiro, locação, limpeza, terraplenagem e preparação da obra.", duracaoDias: 7, responsavelSugerido: "Engenharia / Obra" },
+  { nome: "Fundações", descricao: "Escavações, fundações, baldrame ou radier, impermeabilização e infraestrutura.", duracaoDias: 14, responsavelSugerido: "Engenharia / Obra" },
+  { nome: "Estrutura e vedações", descricao: "Estrutura principal e sistema de vedação definido para o projeto.", duracaoDias: 25, responsavelSugerido: "Obra" },
+  { nome: "Cobertura e impermeabilização", descricao: "Cobertura, lajes, telhado, rufos, calhas e impermeabilizações.", duracaoDias: 12, responsavelSugerido: "Obra" },
+  { nome: "Instalações", descricao: "Instalações elétricas, hidráulicas, sanitárias, dados e climatização.", duracaoDias: 18, responsavelSugerido: "Instalações" },
+  { nome: "Esquadrias", descricao: "Portas, janelas, vidros, portões e vedações complementares.", duracaoDias: 10, responsavelSugerido: "Obra" },
+  { nome: "Revestimentos", descricao: "Regularizações, drywall, gesso, porcelanatos, pisos e revestimentos.", duracaoDias: 20, responsavelSugerido: "Acabamentos" },
+  { nome: "Forros e pintura", descricao: "Forros, preparação de superfícies, massa, selador e pintura.", duracaoDias: 14, responsavelSugerido: "Acabamentos" },
+  { nome: "Louças, metais e acabamentos", descricao: "Louças, metais, luminárias, tomadas, acessórios e acabamentos finais.", duracaoDias: 10, responsavelSugerido: "Acabamentos" },
+  { nome: "Áreas externas", descricao: "Muros, calçadas, pavimentação, piscina, paisagismo e complementos.", duracaoDias: 15, responsavelSugerido: "Obra" },
+  { nome: "Finalização e entrega", descricao: "Testes, checklist, limpeza final, correções, documentação e entrega.", duracaoDias: 7, responsavelSugerido: "Engenharia / Obra" },
+];
+
+const ETAPAS_MODELO_EMPRESA: EtapaTemplate[] = [
+  { nome: "Projeto", descricao: "Definições, projetos, planejamento e liberações para execução.", duracaoDias: 12, responsavelSugerido: "Projetos" },
+  { nome: "Preparação da obra", descricao: "Mobilização, locação, preparação do terreno e canteiro.", duracaoDias: 6, responsavelSugerido: "Obra" },
+  { nome: "Infraestrutura e fundações", descricao: "Fundações e infraestrutura necessária antes da estrutura.", duracaoDias: 14, responsavelSugerido: "Obra" },
+  { nome: "Estrutura", descricao: "Execução da estrutura e do sistema construtivo principal.", duracaoDias: 24, responsavelSugerido: "Obra" },
+  { nome: "Instalações e fechamentos", descricao: "Instalações prediais, fechamentos, cobertura e esquadrias.", duracaoDias: 22, responsavelSugerido: "Obra" },
+  { nome: "Acabamentos", descricao: "Revestimentos, forros, pintura, louças, metais e acabamentos.", duracaoDias: 24, responsavelSugerido: "Acabamentos" },
+  { nome: "Área externa", descricao: "Calçadas, muros, paisagismo e demais serviços externos.", duracaoDias: 12, responsavelSugerido: "Obra" },
+  { nome: "Entrega", descricao: "Vistoria, correções, limpeza, documentação e entrega ao cliente.", duracaoDias: 7, responsavelSugerido: "Engenharia / Obra" },
+];
+
 const COMPRA_STATUS: Record<string, { label: string; color: string }> = {
   pendente:  { label: "Pendente",  color: "bg-amber-100 text-amber-700" },
   aprovada:  { label: "Aprovada",  color: "bg-blue-100 text-blue-700" },
@@ -526,17 +560,97 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
   const [editEtapa, setEditEtapa] = useState<ObraEtapa | null>(null);
   const [form, setForm] = useState({ nome: "", dataInicioPrevista: "", dataFimPrevista: "", responsavel: "", status: "pendente" });
   const [view, setView] = useState<"gantt" | "lista">("gantt");
+  const [etapaMode, setEtapaMode] = useState<"engenharia" | "empresa" | "manual">("engenharia");
+  const [sequenceStart, setSequenceStart] = useState("");
+  const [isCreatingSequence, setIsCreatingSequence] = useState(false);
 
   const { mutateAsync: createEtapa, isPending: isCreating } = useCreateObraEtapa();
   const { mutateAsync: updateEtapa, isPending: isSaving } = useUpdateObraEtapa();
   const { mutateAsync: deleteEtapa } = useDeleteObraEtapa();
 
+  const etapaTemplates = etapaMode === "engenharia"
+    ? ETAPAS_ENGENHARIA
+    : etapaMode === "empresa"
+      ? ETAPAS_MODELO_EMPRESA
+      : [];
+
+  function resetCreateDialog() {
+    setForm({ nome: "", dataInicioPrevista: "", dataFimPrevista: "", responsavel: "", status: "pendente" });
+    setSequenceStart("");
+    setEtapaMode("engenharia");
+  }
+
+  function selectTemplate(template: EtapaTemplate) {
+    setForm((current) => ({
+      ...current,
+      nome: template.nome,
+      responsavel: current.responsavel || template.responsavelSugerido,
+    }));
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    await createEtapa({ tenantId, obraId, data: { ...form, ordem: etapas.length } as any });
+    if (!form.nome.trim()) return;
+    await createEtapa({ tenantId, obraId, data: { ...form, nome: form.nome.trim(), ordem: etapas.length } as any });
     await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
     setAddOpen(false);
-    setForm({ nome: "", dataInicioPrevista: "", dataFimPrevista: "", responsavel: "", status: "pendente" });
+    resetCreateDialog();
+    toast({ title: "Etapa adicionada", description: "A etapa foi incluída no cronograma da obra." });
+  }
+
+  async function handleCreateSequence() {
+    if (etapaMode === "manual" || etapaTemplates.length === 0) return;
+
+    const normalizeName = (value: string) =>
+      value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+    const existing = new Set(etapas.map((etapa) => normalizeName(etapa.nome)));
+    const missing = etapaTemplates.filter((template) => !existing.has(normalizeName(template.nome)));
+
+    if (missing.length === 0) {
+      toast({ title: "Sequência já cadastrada", description: "Todas as etapas deste modelo já estão na obra." });
+      return;
+    }
+
+    setIsCreatingSequence(true);
+    try {
+      let currentDate = sequenceStart ? parseISO(sequenceStart + "T12:00:00") : null;
+      let created = 0;
+
+      for (const template of missing) {
+        const start = currentDate ? format(currentDate, "yyyy-MM-dd") : "";
+        const endDate = currentDate ? addDays(currentDate, Math.max(1, template.duracaoDias - 1)) : null;
+        const end = endDate ? format(endDate, "yyyy-MM-dd") : "";
+
+        await createEtapa({
+          tenantId,
+          obraId,
+          data: {
+            nome: template.nome,
+            responsavel: template.responsavelSugerido,
+            status: "pendente",
+            ordem: etapas.length + created,
+            dataInicioPrevista: start,
+            dataFimPrevista: end,
+          } as any,
+        });
+
+        created += 1;
+        if (endDate) currentDate = addDays(endDate, 1);
+      }
+
+      await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
+      setAddOpen(false);
+      resetCreateDialog();
+      toast({
+        title: "Cronograma-base criado",
+        description: `${created} etapa${created === 1 ? "" : "s"} adicionada${created === 1 ? "" : "s"} com a sequência selecionada.`,
+      });
+    } catch {
+      toast({ title: "Erro ao criar sequência", description: "Algumas etapas podem ter sido criadas. Atualize e tente novamente.", variant: "destructive" });
+    } finally {
+      setIsCreatingSequence(false);
+    }
   }
 
   async function handleUpdate() {
@@ -643,36 +757,148 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
               Lista
             </button>
           </div>
-          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <Dialog
+            open={addOpen}
+            onOpenChange={(open) => {
+              setAddOpen(open);
+              if (!open) resetCreateDialog();
+            }}
+          >
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" />Adicionar etapa</Button>
             </DialogTrigger>
-            <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Nova etapa</DialogTitle></DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nome *</Label>
-                  <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
+            <DialogContent className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Adicionar etapa</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Comece por uma sequência técnica ou crie uma etapa livre</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        A prévia ajuda a manter a ordem de execução da obra. Você pode ajustar nomes, datas e responsáveis antes ou depois.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Início previsto</Label>
-                    <Input type="date" value={form.dataInicioPrevista} onChange={(e) => setForm((f) => ({ ...f, dataInicioPrevista: e.target.value }))} />
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Button type="button" variant={etapaMode === "engenharia" ? "default" : "outline"} onClick={() => setEtapaMode("engenharia")} className="justify-start">
+                    <HardHat className="h-4 w-4 mr-2" /> Engenharia
+                  </Button>
+                  <Button type="button" variant={etapaMode === "empresa" ? "default" : "outline"} onClick={() => setEtapaMode("empresa")} className="justify-start">
+                    <ClipboardList className="h-4 w-4 mr-2" /> Modelo da empresa
+                  </Button>
+                  <Button type="button" variant={etapaMode === "manual" ? "default" : "outline"} onClick={() => setEtapaMode("manual")} className="justify-start">
+                    <Plus className="h-4 w-4 mr-2" /> Em branco
+                  </Button>
+                </div>
+
+                {etapaMode !== "manual" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {etapaMode === "engenharia" ? "Sequência recomendada pela engenharia" : "Sequência padrão da empresa"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Clique em uma etapa para usar individualmente ou crie a sequência completa.
+                        </p>
+                      </div>
+                      <Badge variant="outline">{etapaTemplates.length} etapas</Badge>
+                    </div>
+
+                    <div className="grid gap-2 max-h-[300px] overflow-y-auto pr-1">
+                      {etapaTemplates.map((template, index) => {
+                        const alreadyExists = etapas.some((etapa) =>
+                          etapa.nome.localeCompare(template.nome, "pt-BR", { sensitivity: "base" }) === 0
+                        );
+                        const selected = form.nome === template.nome;
+                        return (
+                          <button
+                            key={template.nome}
+                            type="button"
+                            disabled={alreadyExists}
+                            onClick={() => selectTemplate(template)}
+                            className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${
+                              alreadyExists
+                                ? "opacity-50 bg-muted/30 cursor-not-allowed"
+                                : selected
+                                  ? "border-primary bg-primary/5"
+                                  : "hover:bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`h-6 w-6 rounded-full border flex items-center justify-center text-[11px] font-semibold shrink-0 ${
+                                selected ? "border-primary text-primary" : "text-muted-foreground"
+                              }`}>
+                                {index + 1}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium">{template.nome}</span>
+                                  {alreadyExists && <Badge variant="secondary" className="text-[10px]">Já cadastrada</Badge>}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">{template.descricao}</p>
+                                <p className="text-[11px] text-muted-foreground mt-1">
+                                  Referência: {template.duracaoDias} dias · {template.responsavelSugerido}
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end rounded-lg border p-3 bg-muted/20">
+                      <div className="space-y-1.5">
+                        <Label>Início da sequência completa <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                        <Input type="date" value={sequenceStart} onChange={(e) => setSequenceStart(e.target.value)} />
+                        <p className="text-[11px] text-muted-foreground">
+                          Se informar a data, o sistema distribui as etapas em sequência usando as durações de referência.
+                        </p>
+                      </div>
+                      <Button type="button" onClick={handleCreateSequence} disabled={isCreatingSequence || isCreating}>
+                        {isCreatingSequence ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Criando…</> : "Criar sequência completa"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <form onSubmit={handleCreate} className="space-y-4 border-t pt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{etapaMode === "manual" ? "Nova etapa personalizada" : "Etapa selecionada"}</p>
+                    {etapaMode !== "manual" && form.nome && <Badge variant="outline">Pode editar antes de salvar</Badge>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Fim previsto</Label>
-                    <Input type="date" value={form.dataFimPrevista} onChange={(e) => setForm((f) => ({ ...f, dataFimPrevista: e.target.value }))} />
+                    <Label>Nome *</Label>
+                    <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} placeholder="Ex.: Fundações, Estrutura, Instalações..." />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Responsável</Label>
-                  <Input value={form.responsavel} onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))} />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
-                  <Button type="submit" disabled={isCreating}>{isCreating ? "Salvando…" : "Salvar"}</Button>
-                </div>
-              </form>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Início previsto</Label>
+                      <Input type="date" value={form.dataInicioPrevista} onChange={(e) => setForm((f) => ({ ...f, dataInicioPrevista: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fim previsto</Label>
+                      <Input type="date" value={form.dataFimPrevista} onChange={(e) => setForm((f) => ({ ...f, dataFimPrevista: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Responsável</Label>
+                    <Input value={form.responsavel} onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))} placeholder="Responsável pela etapa" />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
+                    <Button type="submit" disabled={isCreating || isCreatingSequence || !form.nome.trim()}>
+                      {isCreating ? "Salvando…" : "Adicionar somente esta etapa"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </DialogContent>
           </Dialog>
         </div>
