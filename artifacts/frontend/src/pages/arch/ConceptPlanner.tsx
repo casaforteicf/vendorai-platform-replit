@@ -201,6 +201,30 @@ const CONCEPT_WALL_MATERIALS = [
   { id: "preto-fosco-parede", name: "Preto fosco", category: "Pinturas", swatch: "#1f2937" },
 ] as const;
 
+const CONCEPT_FURNITURE_LIBRARY: Array<{
+  kind: ConceptPlanObject["kind"];
+  label: string;
+  width: number;
+  depth: number;
+  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório";
+}> = [
+  { kind: "sofa", label: "Sofá 3 lugares", width: 2.20, depth: 0.90, category: "Sala" },
+  { kind: "sofa", label: "Sofá 2 lugares", width: 1.70, depth: 0.90, category: "Sala" },
+  { kind: "chair", label: "Poltrona", width: 0.85, depth: 0.85, category: "Sala" },
+  { kind: "table", label: "Mesa centro", width: 1.10, depth: 0.60, category: "Sala" },
+  { kind: "tv", label: "TV / painel", width: 1.40, depth: 0.35, category: "Sala" },
+  { kind: "tv", label: "Painel grande", width: 2.00, depth: 0.35, category: "Sala" },
+  { kind: "bed", label: "Cama casal", width: 1.60, depth: 2.00, category: "Quarto" },
+  { kind: "bed", label: "Cama solteiro", width: 0.90, depth: 1.90, category: "Quarto" },
+  { kind: "cabinet", label: "Guarda-roupa", width: 1.80, depth: 0.60, category: "Quarto" },
+  { kind: "table", label: "Mesa jantar", width: 1.60, depth: 0.90, category: "Jantar" },
+  { kind: "chair", label: "Cadeira", width: 0.55, depth: 0.55, category: "Jantar" },
+  { kind: "cabinet", label: "Balcão", width: 1.20, depth: 0.60, category: "Cozinha" },
+  { kind: "cabinet", label: "Armário", width: 1.80, depth: 0.60, category: "Cozinha" },
+  { kind: "table", label: "Mesa escritório", width: 1.20, depth: 0.60, category: "Escritório" },
+  { kind: "chair", label: "Cadeira escritório", width: 0.60, depth: 0.60, category: "Escritório" },
+];
+
 const DEFAULT_FACADE: ConceptFacadePreferences = {
   style: "contemporaneo",
   roof: "platibanda",
@@ -457,6 +481,8 @@ export default function ConceptPlanner() {
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
+  const [furnitureSearch, setFurnitureSearch] = useState("");
+  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório">("Todos");
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
@@ -481,6 +507,15 @@ export default function ConceptPlanner() {
         .includes(query);
     });
   }, [modelCategory, modelSearch]);
+
+  const filteredFurniture = useMemo(() => {
+    const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    return CONCEPT_FURNITURE_LIBRARY.filter((item) => {
+      const categoryMatch = furnitureCategory === "Todos" || item.category === furnitureCategory;
+      const queryMatch = !query || `${item.label} ${item.category}`.toLocaleLowerCase("pt-BR").includes(query);
+      return categoryMatch && queryMatch;
+    });
+  }, [furnitureSearch, furnitureCategory]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -3279,23 +3314,36 @@ export default function ConceptPlanner() {
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Móveis e objetos</div>
                         <span className="text-[10px] text-slate-400">Arraste para a planta</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        {([
-                          ["sofa", "Sofá 3 lugares", 2.20, 0.90],
-                          ["sofa", "Sofá 2 lugares", 1.70, 0.90],
-                          ["bed", "Cama casal", 1.60, 2.00],
-                          ["bed", "Cama solteiro", 0.90, 1.90],
-                          ["table", "Mesa jantar", 1.60, 0.90],
-                          ["table", "Mesa centro", 1.10, 0.60],
-                          ["chair", "Cadeira", 0.55, 0.55],
-                          ["chair", "Poltrona", 0.85, 0.85],
-                          ["cabinet", "Armário", 1.80, 0.60],
-                          ["cabinet", "Balcão", 1.20, 0.60],
-                          ["tv", "TV / painel", 1.40, 0.35],
-                          ["tv", "Painel grande", 2.00, 0.35],
-                        ] as Array<[ConceptPlanObject["kind"], string, number, number]>).map(([kind, label, width, depth]) => (
+
+                      <label className="mb-3 flex h-10 items-center gap-2 rounded-xl border bg-white px-3">
+                        <Search className="h-4 w-4 text-slate-400" />
+                        <input
+                          value={furnitureSearch}
+                          onChange={(event) => setFurnitureSearch(event.target.value)}
+                          placeholder="Buscar sofá, cama, mesa..."
+                          className="w-full bg-transparent text-sm outline-none"
+                        />
+                      </label>
+
+                      <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório"] as const).map((category) => (
                           <button
-                            key={kind}
+                            key={category}
+                            type="button"
+                            onClick={() => setFurnitureCategory(category)}
+                            className={furnitureCategory === category
+                              ? "shrink-0 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white"
+                              : "shrink-0 rounded-full border bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600"}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {filteredFurniture.map(({ kind, label, width, depth, category }) => (
+                          <button
+                            key={`${category}-${label}`}
                             type="button"
                             draggable
                             onDragStart={(event) => {
@@ -3303,15 +3351,46 @@ export default function ConceptPlanner() {
                               event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({ kind, label, width, depth }));
                             }}
                             onClick={() => addObject(kind, label, width, depth)}
-                            className="cursor-grab overflow-hidden rounded-xl border bg-white text-left transition active:cursor-grabbing hover:border-orange-300 hover:shadow-sm"
+                            className="cursor-grab overflow-hidden rounded-xl border bg-white text-left transition active:cursor-grabbing hover:border-orange-300 hover:shadow-md"
                           >
-                            <div className="relative grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-stone-100">
-                              <div
-                                className={kind === "table"
-                                  ? "rounded-full border-2 border-slate-500 bg-white"
-                                  : "rounded-md border-2 border-slate-500 bg-white"}
-                                style={{ width: `${Math.max(28, Math.min(54, width * 24))}px`, height: `${Math.max(18, Math.min(48, depth * 24))}px` }}
-                              />
+                            <div className="relative grid h-24 place-items-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-stone-100">
+                              <div className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[9px] font-semibold text-slate-500 shadow-sm">
+                                {category}
+                              </div>
+                              {kind === "sofa" && (
+                                <div className="relative h-10 w-16 rounded-lg border-2 border-slate-500 bg-slate-200">
+                                  <div className="absolute left-1 right-1 top-1 h-3 rounded bg-slate-300" />
+                                  <div className="absolute bottom-1 left-1 h-4 w-[46%] rounded bg-white/80" />
+                                  <div className="absolute bottom-1 right-1 h-4 w-[46%] rounded bg-white/80" />
+                                </div>
+                              )}
+                              {kind === "bed" && (
+                                <div className="relative h-14 w-10 rounded-md border-2 border-slate-400 bg-white">
+                                  <div className="absolute left-1 right-1 top-1 h-3 rounded bg-slate-200" />
+                                  <div className="absolute bottom-1 left-1 right-1 top-5 rounded bg-stone-100" />
+                                </div>
+                              )}
+                              {kind === "table" && (
+                                <div className="h-10 w-14 rounded-xl border-2 border-amber-700/70 bg-amber-100 shadow-sm" />
+                              )}
+                              {kind === "chair" && (
+                                <div className="relative h-11 w-10">
+                                  <div className="absolute inset-x-1 top-1 h-7 rounded-lg border-2 border-slate-500 bg-slate-100" />
+                                  <div className="absolute bottom-0 left-1 h-3 w-1 bg-slate-500" />
+                                  <div className="absolute bottom-0 right-1 h-3 w-1 bg-slate-500" />
+                                </div>
+                              )}
+                              {kind === "cabinet" && (
+                                <div className="relative h-14 w-12 rounded border-2 border-amber-800/70 bg-amber-100">
+                                  <div className="absolute bottom-1 left-1 top-1 w-[44%] border-r border-amber-800/50" />
+                                  <div className="absolute bottom-1 right-1 top-1 w-[44%]" />
+                                </div>
+                              )}
+                              {kind === "tv" && (
+                                <div className="relative h-10 w-16 rounded border-2 border-slate-700 bg-slate-900 shadow-md">
+                                  <div className="absolute inset-1 rounded bg-gradient-to-br from-slate-700 to-slate-950" />
+                                </div>
+                              )}
                             </div>
                             <div className="p-3">
                               <div className="text-sm font-semibold">{label}</div>
@@ -3322,6 +3401,12 @@ export default function ConceptPlanner() {
                           </button>
                         ))}
                       </div>
+
+                      {!filteredFurniture.length && (
+                        <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
+                          Nenhum item encontrado nessa categoria.
+                        </div>
+                      )}
                     </>
                   )}
 
