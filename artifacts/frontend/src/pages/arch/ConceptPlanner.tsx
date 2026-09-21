@@ -1766,6 +1766,21 @@ export default function ConceptPlanner() {
     };
     setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), created]);
   };
+  useEffect(() => {
+    if (!selectedClosedSpace || selectedSpaceProfile) return;
+    const floorIndex = activeFloor;
+    const sequence = safeSpaceProfiles.filter((item) => item.floor === floorIndex).length + 1;
+    const created: SpaceProfile = {
+      id: `space-profile-${uid()}`,
+      floor: floorIndex,
+      label: `Ambiente ${sequence}`,
+      kind: "outro",
+      centroid: selectedClosedSpace.centroid,
+      area: selectedClosedSpace.area,
+    };
+    setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), created]);
+  }, [selectedClosedSpace, selectedSpaceProfile, activeFloor, safeSpaceProfiles]);
+
   const layoutIssues = useMemo(
     () => wallFirstActive ? [] : validateConceptLayout(rooms, lotWidth, lotDepth, activeFloor),
     [rooms, lotWidth, lotDepth, activeFloor, wallFirstActive],
@@ -1997,6 +2012,71 @@ export default function ConceptPlanner() {
     setInteractionMode("opening");
     setSelectedOpeningId(opening.id);
     setSelectedCustomWallId(null);
+  };
+
+  const boundaryWallForSelectedSpace = () => {
+    if (!selectedClosedSpace) return null;
+    const { x, y, width, height } = selectedClosedSpace.bounds;
+    const right = x + width;
+    const bottom = y + height;
+    const epsilon = 0.08;
+
+    const candidates = safeCustomWalls
+      .filter((wall) => wall.floor === activeFloor)
+      .filter((wall) => {
+        const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+        if (horizontal) {
+          const onBoundary = Math.abs(wall.y1 - y) <= epsilon || Math.abs(wall.y1 - bottom) <= epsilon;
+          const minX = Math.min(wall.x1, wall.x2);
+          const maxX = Math.max(wall.x1, wall.x2);
+          return onBoundary && maxX >= x - epsilon && minX <= right + epsilon;
+        }
+        const onBoundary = Math.abs(wall.x1 - x) <= epsilon || Math.abs(wall.x1 - right) <= epsilon;
+        const minY = Math.min(wall.y1, wall.y2);
+        const maxY = Math.max(wall.y1, wall.y2);
+        return onBoundary && maxY >= y - epsilon && minY <= bottom + epsilon;
+      })
+      .sort((a, b) =>
+        Math.hypot(b.x2 - b.x1, b.y2 - b.y1) - Math.hypot(a.x2 - a.x1, a.y2 - a.y1)
+      );
+
+    return candidates[0] ?? null;
+  };
+
+  const addOpeningToSelectedSpace = (type: "door" | "window") => {
+    const wall = boundaryWallForSelectedSpace();
+    if (!wall) {
+      setInteractionMode("wall");
+      setEditorLibraryTab("build");
+      setLibraryOpen(true);
+      return;
+    }
+    addOpeningToCustomWall(wall.id, type);
+  };
+
+  const furnishSelectedSpace = () => {
+    if (!selectedClosedSpace) return;
+    const kind = selectedSpaceProfile?.kind ?? "outro";
+    const preset =
+      kind === "sala" || kind === "gourmet"
+        ? { kind: "sofa" as const, label: "Sofá 2 lugares", width: 1.70, depth: 0.90 }
+        : kind === "quarto" || kind === "suite"
+          ? { kind: "bed" as const, label: "Cama casal", width: 1.60, depth: 2.00 }
+          : kind === "cozinha" || kind === "lavanderia"
+            ? { kind: "cabinet" as const, label: "Armário", width: 1.40, depth: 0.60 }
+            : kind === "banheiro"
+              ? { kind: "cabinet" as const, label: "Gabinete", width: 0.80, depth: 0.50 }
+              : kind === "garagem"
+                ? { kind: "cabinet" as const, label: "Armário garagem", width: 1.20, depth: 0.50 }
+                : { kind: "table" as const, label: "Mesa", width: 1.20, depth: 0.70 };
+
+    addObjectAt(
+      preset.kind,
+      preset.label,
+      Math.min(preset.width, Math.max(0.6, selectedClosedSpace.bounds.width - 0.4)),
+      Math.min(preset.depth, Math.max(0.6, selectedClosedSpace.bounds.height - 0.4)),
+      selectedClosedSpace.centroid,
+    );
   };
 
   const addOpeningPreset = (
@@ -4918,6 +4998,27 @@ export default function ConceptPlanner() {
                       </select>
                     </label>
                     <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Piso / materiais</button>
+                    <button
+                      type="button"
+                      onClick={() => addOpeningToSelectedSpace("door")}
+                      className="h-9 rounded-lg border px-3 text-xs font-semibold"
+                    >
+                      + Porta
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addOpeningToSelectedSpace("window")}
+                      className="h-9 rounded-lg border px-3 text-xs font-semibold"
+                    >
+                      + Janela
+                    </button>
+                    <button
+                      type="button"
+                      onClick={furnishSelectedSpace}
+                      className="h-9 rounded-lg border border-slate-800 bg-slate-900 px-3 text-xs font-semibold text-white"
+                    >
+                      Mobiliar
+                    </button>
                     {editorView === "model3d" && (
                       <button type="button" onClick={() => setEditorView("plan")} className="h-9 rounded-lg border px-3 text-xs font-semibold">Editar no 2D</button>
                     )}
