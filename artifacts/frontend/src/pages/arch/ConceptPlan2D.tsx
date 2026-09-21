@@ -354,6 +354,7 @@ export default function ConceptPlan2D({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
+  const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({});
   const [gesture, setGesture] = useState<null | {
     roomId: string;
     openingId?: string;
@@ -656,9 +657,49 @@ export default function ConceptPlan2D({
       if (!object) return;
       const baseX = gesture.objectX ?? object.x;
       const baseY = gesture.objectY ?? object.y;
+      const rawX = Math.max(0, Math.min(lotWidth - object.width, baseX + dx));
+      const rawY = Math.max(0, Math.min(lotDepth - object.depth, baseY + dy));
+      const rawCenterX = rawX + object.width / 2;
+      const rawCenterY = rawY + object.depth / 2;
+      const snapThreshold = 0.22;
+
+      const xTargets = [
+        lotWidth / 2,
+        ...rooms.filter((room) => room.floor === activeFloor).map((room) => room.x + room.width / 2),
+        ...objects
+          .filter((item) => item.id !== object.id && item.floor === activeFloor)
+          .map((item) => item.x + item.width / 2),
+      ];
+      const yTargets = [
+        lotDepth / 2,
+        ...rooms.filter((room) => room.floor === activeFloor).map((room) => room.y + room.depth / 2),
+        ...objects
+          .filter((item) => item.id !== object.id && item.floor === activeFloor)
+          .map((item) => item.y + item.depth / 2),
+      ];
+
+      const nearestTarget = (value: number, targets: number[]) => {
+        let best: number | undefined;
+        let bestDistance = snapThreshold;
+        for (const target of targets) {
+          const distance = Math.abs(target - value);
+          if (distance <= bestDistance) {
+            best = target;
+            bestDistance = distance;
+          }
+        }
+        return best;
+      };
+
+      const guideX = nearestTarget(rawCenterX, xTargets);
+      const guideY = nearestTarget(rawCenterY, yTargets);
+      const nextX = guideX == null ? snap(rawX) : guideX - object.width / 2;
+      const nextY = guideY == null ? snap(rawY) : guideY - object.depth / 2;
+
+      setSnapGuides({ x: guideX, y: guideY });
       onObjectChange(object.id, {
-        x: snap(Math.max(0, Math.min(lotWidth - object.width, baseX + dx))),
-        y: snap(Math.max(0, Math.min(lotDepth - object.depth, baseY + dy))),
+        x: snap(Math.max(0, Math.min(lotWidth - object.width, nextX))),
+        y: snap(Math.max(0, Math.min(lotDepth - object.depth, nextY))),
       });
       return;
     }
@@ -974,6 +1015,7 @@ export default function ConceptPlan2D({
           }
           if (gesture) onEditEnd?.();
           setGesture(null);
+          setSnapGuides({});
         }}
         onPointerCancel={(event) => {
           if (event.pointerType === "touch") {
@@ -992,6 +1034,7 @@ export default function ConceptPlan2D({
           }
           if (gesture) onEditEnd?.();
           setGesture(null);
+          setSnapGuides({});
         }}
         onDoubleClick={() => {
           if (interactionMode === "draw-wall") {
@@ -1015,6 +1058,37 @@ export default function ConceptPlan2D({
 
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="#fcfcfd" />
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity="0.72" />
+
+        {snapGuides.x != null && (
+          <g pointerEvents="none">
+            <line
+              x1={snapGuides.x}
+              y1="0"
+              x2={snapGuides.x}
+              y2={lotDepth}
+              stroke="#f97316"
+              strokeWidth="0.045"
+              strokeDasharray="0.16 0.12"
+              opacity="0.9"
+            />
+            <circle cx={snapGuides.x} cy={lotDepth / 2} r="0.09" fill="#f97316" />
+          </g>
+        )}
+        {snapGuides.y != null && (
+          <g pointerEvents="none">
+            <line
+              x1="0"
+              y1={snapGuides.y}
+              x2={lotWidth}
+              y2={snapGuides.y}
+              stroke="#f97316"
+              strokeWidth="0.045"
+              strokeDasharray="0.16 0.12"
+              opacity="0.9"
+            />
+            <circle cx={lotWidth / 2} cy={snapGuides.y} r="0.09" fill="#f97316" />
+          </g>
+        )}
 
         <line x1="0" y1="-0.55" x2={lotWidth} y2="-0.55" stroke="#94a3b8" strokeWidth="0.035" />
         <line x1="0" y1="-0.82" x2="0" y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
