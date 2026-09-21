@@ -308,7 +308,7 @@ export default function ConceptPlan2D({
     customWallId?: string;
     objectId?: string;
     junctionRefs?: WallTopologyEndpointRef[];
-    mode: "move" | "object" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    mode: "move" | "object" | "object-resize-se" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -321,6 +321,9 @@ export default function ConceptPlan2D({
     roomDepth: number;
     objectX?: number;
     objectY?: number;
+    objectWidth?: number;
+    objectDepth?: number;
+    objectRotation?: number;
   }>(null);
 
   useEffect(() => {
@@ -574,6 +577,20 @@ export default function ConceptPlan2D({
         x: snap(Math.max(0, Math.min(lotWidth - object.width, baseX + dx))),
         y: snap(Math.max(0, Math.min(lotDepth - object.depth, baseY + dy))),
       });
+      return;
+    }
+
+    if (gesture.mode === "object-resize-se" && gesture.objectId && onObjectChange) {
+      const object = objects.find((item) => item.id === gesture.objectId);
+      if (!object) return;
+      const radians = ((gesture.objectRotation ?? object.rotation) * Math.PI) / 180;
+      const localDx = dx * Math.cos(radians) + dy * Math.sin(radians);
+      const localDy = -dx * Math.sin(radians) + dy * Math.cos(radians);
+      const baseWidth = gesture.objectWidth ?? object.width;
+      const baseDepth = gesture.objectDepth ?? object.depth;
+      const width = snap(Math.max(0.3, Math.min(lotWidth - object.x, baseWidth + localDx)));
+      const depth = snap(Math.max(0.3, Math.min(lotDepth - object.y, baseDepth + localDy)));
+      onObjectChange(object.id, { width, depth });
       return;
     }
 
@@ -1287,6 +1304,37 @@ export default function ConceptPlan2D({
                   <text x={cx} y={object.y - 0.16} textAnchor="middle" fontSize="0.22" fontWeight="800" fill="#c2410c" pointerEvents="none">
                     {object.label}
                   </text>
+                  <g
+                    role="button"
+                    className="cursor-nwse-resize"
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      onEditStart?.();
+                      onSelectObject?.(object.id);
+                      if (!onObjectChange) return;
+                      const point = toSvgPoint(event.clientX, event.clientY);
+                      event.currentTarget.setPointerCapture?.(event.pointerId);
+                      setGesture({
+                        roomId: "",
+                        objectId: object.id,
+                        mode: "object-resize-se",
+                        startX: point.x,
+                        startY: point.y,
+                        roomX: 0,
+                        roomY: 0,
+                        roomWidth: 0,
+                        roomDepth: 0,
+                        objectX: object.x,
+                        objectY: object.y,
+                        objectWidth: object.width,
+                        objectDepth: object.depth,
+                        objectRotation: object.rotation,
+                      });
+                    }}
+                  >
+                    <circle cx={object.x + object.width} cy={object.y + object.depth} r="0.34" fill="#ffffff" stroke="#f97316" strokeWidth="0.07" />
+                    <circle cx={object.x + object.width} cy={object.y + object.depth} r="0.12" fill="#f97316" pointerEvents="none" />
+                  </g>
                   <g transform={`translate(${cx - 1.05} ${object.y - 0.92})`}>
                     <rect width="2.1" height="0.58" rx="0.18" fill="#0f172a" opacity="0.96" />
                     <g
