@@ -52,6 +52,9 @@ export const composicoesTable = pgTable("composicoes", {
   descricao: text("descricao"),
   unidade: text("unidade").notNull(),
   custoTotal: numeric("custo_total", { precision: 15, scale: 4 }),
+  produtividadeDia: numeric("produtividade_dia", { precision: 15, scale: 4 }),
+  equipePadrao: integer("equipe_padrao").notNull().default(1),
+  horasDiaPadrao: numeric("horas_dia_padrao", { precision: 5, scale: 2 }).notNull().default("8"),
   codigo: text("codigo"),
   etapaKey: text("etapa_key"),
   sistemasConstrutivos: text("sistemas_construtivos").array().notNull().default([]),
@@ -67,12 +70,16 @@ export const composicoesTable = pgTable("composicoes", {
 
 export const insertComposicaoSchema = createInsertSchema(composicoesTable, {
   custoTotal: decimalOptional,
+  produtividadeDia: decimalOptional,
+  horasDiaPadrao: decimalOptional,
   etapaKey: z.enum(COMPOSICAO_ETAPA_KEYS).nullable().optional(),
   sistemasConstrutivos: z.array(z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS)).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateComposicaoSchema = createSelectSchema(composicoesTable, {
   custoTotal: decimalOptional,
+  produtividadeDia: decimalOptional,
+  horasDiaPadrao: decimalOptional,
   etapaKey: z.enum(COMPOSICAO_ETAPA_KEYS).nullable().optional(),
   sistemasConstrutivos: z.array(z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS)).optional(),
 })
