@@ -2275,6 +2275,121 @@ export default function ConceptPlan2D({
               label={`${lotDepth.toFixed(2).replace(".", ",")} m`}
               tone="#0f766e"
             />
+            {rooms
+              .filter((room) => room.id === selectedId && room.floor === activeFloor)
+              .map((room) => {
+                const topGap = Math.max(0, room.y);
+                const bottomGap = Math.max(0, lotDepth - (room.y + room.depth));
+                const leftGap = Math.max(0, room.x);
+                const rightGap = Math.max(0, lotWidth - (room.x + room.width));
+                return (
+                  <g key={`selected-room-dimensions-${room.id}`}>
+                    <DimensionLine
+                      x1={room.x}
+                      y1={room.y}
+                      x2={room.x + room.width}
+                      y2={room.y}
+                      offsetY={-0.62}
+                      label={`${room.width.toFixed(2).replace(".", ",")} m`}
+                      tone="#ea580c"
+                    />
+                    <DimensionLine
+                      x1={room.x}
+                      y1={room.y}
+                      x2={room.x}
+                      y2={room.y + room.depth}
+                      offsetX={-0.62}
+                      label={`${room.depth.toFixed(2).replace(".", ",")} m`}
+                      tone="#ea580c"
+                    />
+                    {leftGap >= 0.25 && (
+                      <DimensionLine
+                        x1={0}
+                        y1={room.y + room.depth / 2}
+                        x2={room.x}
+                        y2={room.y + room.depth / 2}
+                        offsetY={0.56}
+                        label={`${leftGap.toFixed(2).replace(".", ",")} m`}
+                        tone="#0f766e"
+                      />
+                    )}
+                    {rightGap >= 0.25 && (
+                      <DimensionLine
+                        x1={room.x + room.width}
+                        y1={room.y + room.depth / 2}
+                        x2={lotWidth}
+                        y2={room.y + room.depth / 2}
+                        offsetY={0.56}
+                        label={`${rightGap.toFixed(2).replace(".", ",")} m`}
+                        tone="#0f766e"
+                      />
+                    )}
+                    {topGap >= 0.25 && (
+                      <DimensionLine
+                        x1={room.x + room.width / 2}
+                        y1={0}
+                        x2={room.x + room.width / 2}
+                        y2={room.y}
+                        offsetX={0.56}
+                        label={`${topGap.toFixed(2).replace(".", ",")} m`}
+                        tone="#0f766e"
+                      />
+                    )}
+                    {bottomGap >= 0.25 && (
+                      <DimensionLine
+                        x1={room.x + room.width / 2}
+                        y1={room.y + room.depth}
+                        x2={room.x + room.width / 2}
+                        y2={lotDepth}
+                        offsetX={0.56}
+                        label={`${bottomGap.toFixed(2).replace(".", ",")} m`}
+                        tone="#0f766e"
+                      />
+                    )}
+                  </g>
+                );
+              })}
+
+            {selectedCustomWallId && (() => {
+              const wall = customWalls.find((item) => item.id === selectedCustomWallId);
+              if (!wall) return null;
+              const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+              const parallel = customWalls
+                .filter((item) => item.id !== wall.id)
+                .filter((item) => (Math.abs(item.y1 - item.y2) < 0.01) === horizontal)
+                .map((item) => ({
+                  item,
+                  distance: horizontal ? Math.abs(item.y1 - wall.y1) : Math.abs(item.x1 - wall.x1),
+                }))
+                .filter((candidate) => candidate.distance >= 0.25)
+                .sort((a, b) => a.distance - b.distance)[0];
+
+              if (!parallel) return null;
+              const mid = wallMidpoint(wall);
+              const otherMid = wallMidpoint(parallel.item);
+              return horizontal ? (
+                <DimensionLine
+                  x1={mid.x}
+                  y1={wall.y1}
+                  x2={mid.x}
+                  y2={parallel.item.y1}
+                  offsetX={0.68}
+                  label={`${parallel.distance.toFixed(2).replace(".", ",")} m`}
+                  tone="#7c3aed"
+                />
+              ) : (
+                <DimensionLine
+                  x1={wall.x1}
+                  y1={mid.y}
+                  x2={parallel.item.x1}
+                  y2={mid.y}
+                  offsetY={0.68}
+                  label={`${parallel.distance.toFixed(2).replace(".", ",")} m`}
+                  tone="#7c3aed"
+                />
+              );
+            })()}
+
             {customWalls
               .filter((wall) => wallLength(wall) >= 0.5)
               .map((wall) => {
