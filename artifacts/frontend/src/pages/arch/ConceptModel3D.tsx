@@ -134,6 +134,13 @@ function boxPolygons(
     plant: 1.15,
     lamp: 1.45,
     rug: 0.06,
+    outlet: 0.22,
+    switch: 1.10,
+    light_point: 2.60,
+    water_point: 0.55,
+    drain_point: 0.08,
+    shower_point: 2.10,
+    faucet_point: 1.05,
   };
   const zTop = zBase + (kindHeight[object.kind] ?? 0.8);
   const cx = object.x + object.width / 2;

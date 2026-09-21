@@ -5,7 +5,8 @@ import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type C
 
 export type ConceptPlanObject = {
   id: string;
-  kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug";
+  kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug"
+    | "outlet" | "switch" | "light_point" | "water_point" | "drain_point" | "shower_point" | "faucet_point";
   label: string;
   floor: number;
   x: number;
@@ -1639,6 +1640,41 @@ export default function ConceptPlan2D({
                   strokeDasharray="0.08 0.06"
                   strokeWidth="0.035"
                 />
+              )}
+              {!object.imageUrl && object.kind === "outlet" && (
+                <g pointerEvents="none">
+                  <circle cx={cx} cy={cy} r={Math.max(0.13, Math.min(object.width, object.depth) * 0.34)} fill="#ffffff" stroke="#2563eb" strokeWidth="0.055" />
+                  <circle cx={cx - 0.07} cy={cy} r="0.022" fill="#2563eb" />
+                  <circle cx={cx + 0.07} cy={cy} r="0.022" fill="#2563eb" />
+                </g>
+              )}
+              {!object.imageUrl && object.kind === "switch" && (
+                <g pointerEvents="none">
+                  <rect x={cx - 0.16} y={cy - 0.12} width="0.32" height="0.24" rx="0.05" fill="#ffffff" stroke="#7c3aed" strokeWidth="0.055" />
+                  <line x1={cx - 0.07} y1={cy + 0.05} x2={cx + 0.07} y2={cy - 0.05} stroke="#7c3aed" strokeWidth="0.045" />
+                </g>
+              )}
+              {!object.imageUrl && object.kind === "light_point" && (
+                <g pointerEvents="none">
+                  <circle cx={cx} cy={cy} r={Math.max(0.14, Math.min(object.width, object.depth) * 0.36)} fill="#fef3c7" stroke="#d97706" strokeWidth="0.055" />
+                  <line x1={cx - 0.11} y1={cy} x2={cx + 0.11} y2={cy} stroke="#d97706" strokeWidth="0.04" />
+                  <line x1={cx} y1={cy - 0.11} x2={cx} y2={cy + 0.11} stroke="#d97706" strokeWidth="0.04" />
+                </g>
+              )}
+              {!object.imageUrl && ["water_point", "drain_point", "shower_point", "faucet_point"].includes(object.kind) && (
+                <g pointerEvents="none">
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={Math.max(0.14, Math.min(object.width, object.depth) * 0.36)}
+                    fill={object.kind === "drain_point" ? "#e0f2fe" : "#eff6ff"}
+                    stroke={object.kind === "drain_point" ? "#0284c7" : "#0ea5e9"}
+                    strokeWidth="0.055"
+                  />
+                  <text x={cx} y={cy + 0.075} textAnchor="middle" fontSize="0.19" fontWeight="900" fill="#0369a1">
+                    {object.kind === "water_point" ? "A" : object.kind === "drain_point" ? "E" : object.kind === "shower_point" ? "CH" : "T"}
+                  </text>
+                </g>
               )}
               {selectedObject && (
                 <>

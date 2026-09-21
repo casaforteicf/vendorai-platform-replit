@@ -418,6 +418,16 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const conceptConfiguration = (concept.configuration ?? {}) as any;
   const customWalls = Array.isArray(conceptConfiguration.customWalls) ? conceptConfiguration.customWalls : [];
   const customOpenings = Array.isArray(conceptConfiguration.customOpenings) ? conceptConfiguration.customOpenings : [];
+  const conceptObjects = Array.isArray(conceptConfiguration.objects) ? conceptConfiguration.objects : [];
+  const technicalKinds = new Set([
+    "outlet", "switch", "light_point", "water_point", "drain_point", "shower_point", "faucet_point",
+  ]);
+  const technicalObjects = conceptObjects.filter((object: any) => technicalKinds.has(String(object?.kind ?? "")));
+  const technicalCounts = technicalObjects.reduce((acc: Record<string, number>, object: any) => {
+    const kind = String(object?.kind ?? "");
+    acc[kind] = (acc[kind] ?? 0) + 1;
+    return acc;
+  }, {});
   const indoorRooms = rooms.filter((room: any) => String(room.kind ?? "").toLowerCase() !== "piscina");
   const hasPool = rooms.some((room: any) => String(room.kind ?? "").toLowerCase() === "piscina");
   const hasGarage = rooms.some((room: any) => String(room.kind ?? "").toLowerCase() === "garagem");
@@ -546,6 +556,13 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     { stage: "Cobertura", item: `Cobertura — ${facade.roof ?? "conforme projeto"}`, unit: "m²", quantity: roofArea, basis: "geometry" },
     { stage: "Esquadrias", item: "Portas previstas na planta", unit: "un", quantity: Math.max(0, doorCount), basis: "geometry" },
     { stage: "Esquadrias", item: "Janelas previstas na planta", unit: "un", quantity: Math.max(0, windowCount), basis: "geometry" },
+    ...(technicalCounts.outlet ? [{ stage: "Instalações elétricas e hidráulicas", item: "Tomadas lançadas na planta", unit: "un", quantity: technicalCounts.outlet, basis: "geometry" as const }] : []),
+    ...(technicalCounts.switch ? [{ stage: "Instalações elétricas e hidráulicas", item: "Interruptores lançados na planta", unit: "un", quantity: technicalCounts.switch, basis: "geometry" as const }] : []),
+    ...(technicalCounts.light_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de luz / plafon lançados na planta", unit: "un", quantity: technicalCounts.light_point, basis: "geometry" as const }] : []),
+    ...(technicalCounts.water_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de água lançados na planta", unit: "un", quantity: technicalCounts.water_point, basis: "geometry" as const }] : []),
+    ...(technicalCounts.drain_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de esgoto lançados na planta", unit: "un", quantity: technicalCounts.drain_point, basis: "geometry" as const }] : []),
+    ...(technicalCounts.shower_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de chuveiro lançados na planta", unit: "un", quantity: technicalCounts.shower_point, basis: "geometry" as const }] : []),
+    ...(technicalCounts.faucet_point ? [{ stage: "Instalações elétricas e hidráulicas", item: "Pontos de torneira lançados na planta", unit: "un", quantity: technicalCounts.faucet_point, basis: "geometry" as const }] : []),
     { stage: "Revestimentos", item: "Revestimento de piso — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry" },
     ...(wetFloorArea > 0 ? [{ stage: "Revestimentos", item: "Áreas molhadas — piso medido", unit: "m²", quantity: wetFloorArea, basis: "geometry" as const }] : []),
     { stage: "Forros", item: "Forro — área interna medida", unit: "m²", quantity: effectiveArea, basis: "geometry" },
