@@ -74,7 +74,12 @@ export function BudgetQuantityInput({ value, isComposition, onChange, className 
         value={draft}
         onFocus={(event) => {
           focusedRef.current = true;
-          requestAnimationFrame(() => event.currentTarget.select());
+          // React limpa currentTarget depois do handler. Guardamos o elemento
+          // antes do requestAnimationFrame para evitar null.select() em produção.
+          const input = event.currentTarget;
+          requestAnimationFrame(() => {
+            if (document.activeElement === input) input.select();
+          });
         }}
         onBlur={() => {
           focusedRef.current = false;
