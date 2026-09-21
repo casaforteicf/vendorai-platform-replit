@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS public.obra_baselines (
 CREATE TABLE IF NOT EXISTS public.obra_baseline_etapas (
   id text PRIMARY KEY,
   baseline_id text NOT NULL REFERENCES public.obra_baselines(id) ON DELETE CASCADE,
-  etapa_id text NOT NULL REFERENCES public.obra_etapas(id) ON DELETE CASCADE,
+  -- Keep the original stage id as immutable snapshot metadata.
+  -- Do not FK/cascade to obra_etapas: deleting/restructuring a live stage must not erase baseline history.
+  etapa_id text NOT NULL,
   nome text NOT NULL,
   data_inicio_prevista date NULL,
   data_fim_prevista date NULL,
