@@ -18,6 +18,15 @@ export type ObraPortalConfig = {
   showDocuments: boolean;
   showProcurementSummary: boolean;
   showProjectGallery: boolean;
+  requireLogin: boolean;
+  allowSelfRegistration: boolean;
+  showExecutiveBalance: boolean;
+  showProposals: boolean;
+  showContracts: boolean;
+  showInvoices: boolean;
+  showManuals: boolean;
+  showSupport: boolean;
+  showChat: boolean;
 };
 
 export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
@@ -34,6 +43,15 @@ export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
   showDocuments: true,
   showProcurementSummary: true,
   showProjectGallery: true,
+  requireLogin: false,
+  allowSelfRegistration: true,
+  showExecutiveBalance: true,
+  showProposals: true,
+  showContracts: true,
+  showInvoices: true,
+  showManuals: true,
+  showSupport: true,
+  showChat: true,
 };
 
 export const obrasTable = pgTable("obras", {
