@@ -6,6 +6,7 @@ import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign
 import type { ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptWebGLScene from "./ConceptWebGLScene";
 import { CONCEPT_PBR_MATERIALS } from "./catalogs/conceptMaterialCatalog";
+import { listConceptModelVariants } from "./catalogs/conceptModelCatalog";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -43,7 +44,7 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl">>) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
@@ -550,6 +551,7 @@ export default function ConceptModel3D({
   const [lightingMode, setLightingMode] = useState<"day" | "sunset" | "night">("day");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk">("orbit");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -848,6 +850,7 @@ export default function ConceptModel3D({
     ? objects.find((item) => item.id === selectedObjectId) ?? null
     : null;
   const pbrFurnitureMaterials = Object.values(CONCEPT_PBR_MATERIALS).filter((item) => item.family === "furniture");
+  const selectedObjectModelVariants = selectedObject3D ? listConceptModelVariants(selectedObject3D.kind) : [];
 
   const exteriorMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.main);
   const accentMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.accent);
@@ -934,6 +937,18 @@ export default function ConceptModel3D({
           )}
           {webglReady && selectedObject3D && (
             <div className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 lg:flex">
+              {selectedObjectModelVariants.length > 0 && (
+                <select
+                  value={selectedObject3D.model3dUrl ?? selectedObjectModelVariants[0]?.url ?? ""}
+                  onChange={(event) => onObjectChange?.(selectedObject3D.id, { model3dUrl: event.target.value || undefined })}
+                  className="h-7 max-w-40 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+                  title="Modelo 3D real"
+                >
+                  {selectedObjectModelVariants.map((variant) => (
+                    <option key={variant.id} value={variant.url}>{variant.label}</option>
+                  ))}
+                </select>
+              )}
               <select
                 value={selectedObject3D.materialId ?? ""}
                 onChange={(event) => onObjectChange?.(selectedObject3D.id, { materialId: event.target.value || undefined })}
@@ -974,6 +989,33 @@ export default function ConceptModel3D({
                 />
                 °
               </label>
+            </div>
+          )}
+          {webglReady && (
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setNavigationMode("orbit")}
+                className={navigationMode === "orbit"
+                  ? "bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+              >
+                Orbitar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNavigationMode("walk");
+                  setInteriorMode(true);
+                  setShowAllFloors(false);
+                  setShowRoof(false);
+                }}
+                className={navigationMode === "walk"
+                  ? "border-l border-slate-700 bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+              >
+                Caminhar
+              </button>
             </div>
           )}
           {onRenderView && (
@@ -1122,6 +1164,7 @@ export default function ConceptModel3D({
         cameraPresetDegrees={rotation}
         cameraZoom={zoom}
         transformMode={transformMode}
+        navigationMode={navigationMode}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {

@@ -57,3 +57,50 @@ export function getConceptModelDefinition(object: ConceptPlanObject) {
   }
   return CONCEPT_MODEL_CATALOG[object.kind] ?? null;
 }
+
+
+export const CONCEPT_MODEL_VARIANTS: ConceptModelDefinition[] = [
+  {
+    id: "khronos-glam-velvet-sofa",
+    kind: "sofa",
+    label: "Sofá Glam Velvet",
+    url: `${KH}/GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`,
+    license: "CC BY 4.0",
+    source: "Khronos glTF Sample Assets / Wayfair",
+    targetHeight: 0.92,
+  },
+  {
+    id: "khronos-chair-damask",
+    kind: "chair",
+    label: "Poltrona Damask",
+    url: `${KH}/ChairDamaskPurplegold/glTF-Binary/ChairDamaskPurplegold.glb`,
+    license: "CC BY 4.0",
+    source: "Khronos glTF Sample Assets / Wayfair",
+    targetHeight: 0.98,
+  },
+  {
+    id: "khronos-iridescence-lamp",
+    kind: "lamp",
+    label: "Luminária Iridescence",
+    url: `${KH}/IridescenceLamp/glTF-Binary/IridescenceLamp.glb`,
+    license: "CC BY 4.0",
+    source: "Khronos glTF Sample Assets / Wayfair",
+    targetHeight: 1.50,
+  },
+  {
+    id: "khronos-barn-lamp",
+    kind: "lamp",
+    label: "Luminária Barn",
+    url: `${KH}/AnisotropyBarnLamp/glTF-Binary/AnisotropyBarnLamp.glb`,
+    license: "CC BY 4.0",
+    source: "Khronos glTF Sample Assets / Wayfair",
+    targetHeight: 1.45,
+  },
+];
+
+export function listConceptModelVariants(kind: ConceptPlanObject["kind"]) {
+  return [
+    ...(CONCEPT_MODEL_CATALOG[kind] ? [CONCEPT_MODEL_CATALOG[kind] as ConceptModelDefinition] : []),
+    ...CONCEPT_MODEL_VARIANTS.filter((item) => item.kind === kind),
+  ];
+}
