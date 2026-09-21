@@ -1037,6 +1037,7 @@ export default function ConceptModel3D({
         showAllFloors={showAllFloors}
         interiorMode={interiorMode}
         showRoof={showRoof}
+        roof={roof}
         lightingMode={lightingMode}
         cameraPresetDegrees={rotation}
         cameraZoom={zoom}
