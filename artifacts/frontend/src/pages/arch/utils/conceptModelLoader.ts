@@ -4,6 +4,7 @@ function cloneModel(root: any) {
   const clone = root.clone(true);
   clone.traverse?.((node: any) => {
     if (!node?.isMesh) return;
+    if (node.geometry?.clone) node.geometry = node.geometry.clone();
     if (Array.isArray(node.material)) {
       node.material = node.material.map((material: any) => material?.clone?.() ?? material);
     } else if (node.material?.clone) {
