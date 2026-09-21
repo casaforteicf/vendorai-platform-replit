@@ -38,7 +38,6 @@ type IntegrationRow = {
 };
 
 const OAUTH_ENDPOINTS: Partial<Record<IntegrationKey, string>> = {
-  whatsapp: "/api/auth/whatsapp",
   instagram: "/api/auth/instagram",
   "google-calendar": "/api/onboarding/integracoes/google-url",
   "google-ads": "/api/auth/google-ads",
@@ -173,6 +172,10 @@ export default function IntegrationSettingsHub() {
   const startConnection = async (key: IntegrationKey) => {
     if (key === "domain") {
       window.location.assign("/content-autopilot?view=settings");
+      return;
+    }
+    if (key === "whatsapp") {
+      window.location.assign("/configuracoes?tab=integracoes&integration=whatsapp&installation=1");
       return;
     }
     if (key === "asaas" || key === "zapsign") return;
