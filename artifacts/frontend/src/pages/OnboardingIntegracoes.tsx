@@ -654,7 +654,7 @@ export default function OnboardingIntegracoes() {
                   </Button>
                   <Button
                     variant="ghost"
-                    onClick={() => go("/configuracoes?tab=integracoes&integration=whatsapp&installation=1")}
+                    onClick={() => go("/configuracoes?integration=whatsapp")}
                   >
                     {t("onboarding.integrations.whatsapp.manageNumbers")}
                   </Button>
