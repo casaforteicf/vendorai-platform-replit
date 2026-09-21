@@ -680,6 +680,214 @@ archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaI
   }
 });
 
+archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const [etapasResult, depsResult] = await Promise.all([
+      pool.query(
+        `SELECT id, nome, ordem, status, marco, equipe_nome, equipe_quantidade,
+                data_inicio_prevista, data_fim_prevista
+           FROM obra_etapas
+          WHERE obra_id = $1
+          ORDER BY data_inicio_prevista ASC NULLS LAST, ordem ASC, created_at ASC`,
+        [obraId],
+      ),
+      pool.query(
+        `SELECT etapa_id, depende_de_etapa_id, tipo, defasagem_dias
+           FROM obra_etapa_dependencias
+          WHERE obra_id = $1 AND tenant_id = $2
+          ORDER BY created_at ASC`,
+        [obraId, tid],
+      ),
+    ]);
+
+    const rows = etapasResult.rows;
+    const original = new Map<string, { start: Date; end: Date }>();
+    const planned = new Map<string, { start: Date; end: Date }>();
+    const byId = new Map<string, any>();
+
+    for (const row of rows) {
+      const id = String(row.id);
+      byId.set(id, row);
+      const start = scheduleDate(row.data_inicio_prevista);
+      const end = scheduleDate(row.data_fim_prevista);
+      if (start && end) {
+        original.set(id, { start, end });
+        planned.set(id, { start: new Date(start), end: new Date(end) });
+      }
+    }
+
+    const originalFinish = Array.from(original.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+
+    const incoming = new Map<string, any[]>();
+    const successors = new Map<string, any[]>();
+    for (const dep of depsResult.rows) {
+      const target = String(dep.etapa_id);
+      const predecessor = String(dep.depende_de_etapa_id);
+      incoming.set(target, [...(incoming.get(target) ?? []), dep]);
+      successors.set(predecessor, [...(successors.get(predecessor) ?? []), dep]);
+    }
+
+    function constrainedStart(etapaId: string, duration: number, currentStart: Date) {
+      let required = new Date(currentStart);
+      for (const dep of incoming.get(etapaId) ?? []) {
+        const pred = planned.get(String(dep.depende_de_etapa_id));
+        if (!pred) continue;
+        const lag = Number(dep.defasagem_dias ?? 0);
+        const type = String(dep.tipo ?? "FS");
+        let candidate: Date;
+        if (type === "SS") {
+          candidate = scheduleAddDays(pred.start, lag);
+        } else if (type === "FF") {
+          candidate = scheduleAddDays(scheduleAddDays(pred.end, lag), -(duration - 1));
+        } else if (type === "SF") {
+          candidate = scheduleAddDays(scheduleAddDays(pred.start, lag), -(duration - 1));
+        } else {
+          candidate = scheduleAddDays(pred.end, lag + 1);
+        }
+        if (candidate > required) required = candidate;
+      }
+      return required;
+    }
+
+    const resourceGroups = new Map<string, any[]>();
+    for (const row of rows) {
+      const name = String(row.equipe_nome ?? "").trim();
+      const dates = planned.get(String(row.id));
+      if (!name || !dates || row.marco) continue;
+      const key = name.toLowerCase();
+      resourceGroups.set(key, [...(resourceGroups.get(key) ?? []), row]);
+    }
+
+    const shifted = new Set<string>();
+    const conflictsResolved: Array<{ equipe: string; etapaId: string; nome: string; days: number }> = [];
+
+    for (const group of resourceGroups.values()) {
+      group.sort((a, b) => {
+        const aDates = planned.get(String(a.id))!;
+        const bDates = planned.get(String(b.id))!;
+        return aDates.start.getTime() - bDates.start.getTime() || Number(a.ordem ?? 0) - Number(b.ordem ?? 0);
+      });
+
+      let occupiedUntil: Date | null = null;
+      for (const row of group) {
+        const id = String(row.id);
+        const dates = planned.get(id);
+        if (!dates) continue;
+        const duration = scheduleDurationDays(dates.start, dates.end);
+        const movable = String(row.status ?? "pendente") === "pendente";
+        let required = constrainedStart(id, duration, dates.start);
+
+        if (occupiedUntil && required <= occupiedUntil) {
+          required = scheduleAddDays(occupiedUntil, 1);
+        }
+
+        if (required > dates.start && movable) {
+          const delta = Math.max(0, Math.round((required.getTime() - dates.start.getTime()) / 86_400_000));
+          planned.set(id, { start: required, end: scheduleAddDays(required, duration - 1) });
+          shifted.add(id);
+          conflictsResolved.push({
+            equipe: String(row.equipe_nome),
+            etapaId: id,
+            nome: String(row.nome),
+            days: delta,
+          });
+        }
+
+        const effective = planned.get(id)!;
+        if (!occupiedUntil || effective.end > occupiedUntil) occupiedUntil = effective.end;
+      }
+    }
+
+    // Propagate all dependency constraints after resource leveling.
+    const queue = Array.from(shifted);
+    const guard = new Map<string, number>();
+    while (queue.length) {
+      const predecessorId = queue.shift()!;
+      for (const dep of successors.get(predecessorId) ?? []) {
+        const id = String(dep.etapa_id);
+        const row = byId.get(id);
+        const dates = planned.get(id);
+        if (!row || !dates || String(row.status ?? "pendente") !== "pendente") continue;
+        const duration = scheduleDurationDays(dates.start, dates.end);
+        const required = constrainedStart(id, duration, dates.start);
+        if (required <= dates.start) continue;
+        planned.set(id, { start: required, end: scheduleAddDays(required, duration - 1) });
+        shifted.add(id);
+        const seen = (guard.get(id) ?? 0) + 1;
+        guard.set(id, seen);
+        if (seen > rows.length) {
+          res.status(409).json({ error: "Dependências inconsistentes impediram o nivelamento de recursos" });
+          return;
+        }
+        queue.push(id);
+      }
+    }
+
+    const newFinish = Array.from(planned.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+    const finishImpactDays = originalFinish && newFinish
+      ? Math.round((newFinish.getTime() - originalFinish.getTime()) / 86_400_000)
+      : 0;
+
+    if (req.body?.dryRun === true) {
+      res.json({
+        applied: false,
+        shiftedCount: shifted.size,
+        conflictsResolved,
+        finishImpactDays,
+        originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
+        newFinish: newFinish ? scheduleIso(newFinish) : null,
+      });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const id of shifted) {
+        const dates = planned.get(id);
+        if (!dates) continue;
+        await client.query(
+          `UPDATE obra_etapas
+              SET data_inicio_prevista = $1,
+                  data_fim_prevista = $2,
+                  updated_at = now()
+            WHERE id = $3 AND obra_id = $4`,
+          [scheduleIso(dates.start), scheduleIso(dates.end), id, obraId],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      applied: true,
+      shiftedCount: shifted.size,
+      conflictsResolved,
+      finishImpactDays,
+      originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
+      newFinish: newFinish ? scheduleIso(newFinish) : null,
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction level-resources error");
+    next(err);
+  }
+});
+
 archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId/reschedule", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
