@@ -1142,11 +1142,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           </SelectContent>
                         </Select>
                       )}
-                      <a href={`${import.meta.env.BASE_URL}propostas/${orc.id}/print`} target="_blank" rel="noopener noreferrer">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver orçamento">
+                      <Link
+                        href={`/propostas?edit=${encodeURIComponent(orc.id)}&returnTo=${encodeURIComponent(`/leads/${leadId}`)}`}
+                      >
+                        <Button size="icon" variant="ghost" className="h-7 w-7" title="Abrir/editar orçamento">
                           <ExternalLink className="h-3.5 w-3.5" />
                         </Button>
-                      </a>
+                      </Link>
                       <Button
                         size="icon"
                         variant="ghost"
