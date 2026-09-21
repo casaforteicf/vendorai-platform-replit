@@ -42,6 +42,18 @@ type Bundle = {
 
 type Props = { arqState?: any };
 
+type WorkCalendar = {
+  segunda: boolean;
+  terca: boolean;
+  quarta: boolean;
+  quinta: boolean;
+  sexta: boolean;
+  sabado: boolean;
+  domingo: boolean;
+  horasDia: number;
+  feriados: string[];
+};
+
 type EtapaDraft = {
   nome: string;
   dataInicioPrevista: string;
@@ -405,6 +417,12 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [levelingResources, setLevelingResources] = useState(false);
+  const [calendar, setCalendar] = useState<WorkCalendar>({
+    segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
+    sabado: false, domingo: false, horasDia: 8, feriados: [],
+  });
+  const [savingCalendar, setSavingCalendar] = useState(false);
+  const [holidayDraft, setHolidayDraft] = useState("");
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -418,13 +436,20 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       const obraId = String(ensured.obra?.id ?? "");
       if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
       if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
-      const raw = await api<any>(`/api/arch/construction/${obraId}`);
+      const [raw, calendarResult] = await Promise.all([
+        api<any>(`/api/arch/construction/${obraId}`),
+        api<{ calendar?: WorkCalendar }>(`/api/arch/construction/${obraId}/calendar`),
+      ]);
       const etapas = (raw.etapas ?? []).map(normalizeEtapa);
       const dependencias = (raw.dependencias ?? []).map(normalizeDependencia);
       const compras = (raw.compras ?? []).map((item: any) => ({
         valorTotal: Number(item?.valorTotal ?? item?.valor_total ?? 0),
         status: item?.status ?? null,
       }));
+      setCalendar(calendarResult.calendar ?? {
+        segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
+        sabado: false, domingo: false, horasDia: 8, feriados: [],
+      });
       setBundle({
         obra: {
           id: obraId,
@@ -579,6 +604,34 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     } finally {
       setGeneratingPlan(false);
     }
+  }
+
+  async function saveCalendar() {
+    if (!bundle) return;
+    setSavingCalendar(true);
+    setError(null);
+    try {
+      const result = await api<{ calendar: WorkCalendar }>(`/api/arch/construction/${bundle.obra.id}/calendar`, {
+        method: "PUT",
+        body: JSON.stringify(calendar),
+      });
+      setCalendar(result.calendar);
+      setScheduleNotice("Calendário de trabalho salvo. O nivelamento de equipes passa a respeitar os dias úteis e feriados definidos.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar calendário de trabalho.");
+    } finally {
+      setSavingCalendar(false);
+    }
+  }
+
+  function addHoliday() {
+    const value = holidayDraft.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    setCalendar((current) => ({
+      ...current,
+      feriados: Array.from(new Set([...current.feriados, value])).sort(),
+    }));
+    setHolidayDraft("");
   }
 
   async function levelResources() {
@@ -782,6 +835,85 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
 
       {error ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div> : null}
       {scheduleNotice ? <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{scheduleNotice}</div> : null}
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Calendário de trabalho</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">Dias úteis, jornada e feriados</h3>
+            <p className="mt-1 text-xs text-slate-500">Usado pelo nivelamento para calcular duração e deslocamentos em dias de trabalho.</p>
+          </div>
+          <button
+            type="button"
+            disabled={savingCalendar}
+            onClick={() => void saveCalendar()}
+            className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {savingCalendar ? "Salvando…" : "Salvar calendário"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_160px_1fr]">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-500">Dias de trabalho</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([
+                ["segunda","Seg"],["terca","Ter"],["quarta","Qua"],["quinta","Qui"],["sexta","Sex"],["sabado","Sáb"],["domingo","Dom"],
+              ] as const).map(([key,label]) => (
+                <label key={key} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${calendar[key] ? "border-violet-200 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-500"}`}>
+                  <input
+                    type="checkbox"
+                    checked={calendar[key]}
+                    onChange={(e) => setCalendar((current) => ({ ...current, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="text-[11px] font-semibold text-slate-500">
+            Jornada padrão
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min="0.5"
+                max="24"
+                step="0.5"
+                value={calendar.horasDia}
+                onChange={(e) => setCalendar((current) => ({ ...current, horasDia: Number(e.target.value || 8) }))}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+              <span className="text-xs text-slate-400">h/dia</span>
+            </div>
+          </label>
+          <div>
+            <p className="text-[11px] font-semibold text-slate-500">Feriados / dias sem trabalho</p>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="date"
+                value={holidayDraft}
+                onChange={(e) => setHolidayDraft(e.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+              <button type="button" onClick={addHoliday} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Adicionar</button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {calendar.feriados.map((date) => (
+                <button
+                  key={date}
+                  type="button"
+                  title="Remover feriado"
+                  onClick={() => setCalendar((current) => ({ ...current, feriados: current.feriados.filter((item) => item !== date) }))}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] text-slate-600 hover:bg-rose-50 hover:text-rose-700"
+                >
+                  {new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR")} ×
+                </button>
+              ))}
+              {!calendar.feriados.length ? <span className="text-[10px] text-slate-400">Nenhum feriado cadastrado.</span> : null}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Previsto hoje" value={`${metrics.planned.toFixed(0)}%`} hint="avanço planejado" />
