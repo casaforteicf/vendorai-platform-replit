@@ -85,6 +85,7 @@ export default function ConstructionPortalSettings({ arqState }: Props) {
   const meta = useMemo(() => projectMeta(arqState, projectCtx), [arqState, projectCtx]);
   const tenantId = user?.tenantId ?? "";
   const [obraId, setObraId] = useState("");
+  const [portalToken, setPortalToken] = useState("");
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,6 +104,7 @@ export default function ConstructionPortalSettings({ arqState }: Props) {
       if (!id) throw new Error("Não foi possível identificar a obra vinculada.");
       setObraId(id);
       const obra = await api<any>(`/api/tenants/${tenantId}/obras/${id}`);
+      setPortalToken(String(obra?.portalToken ?? obra?.portal_token ?? ""));
       setConfig({ ...DEFAULT_CONFIG, ...(obra?.portalConfig ?? obra?.portal_config ?? {}) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar configurações do portal.");
@@ -142,6 +144,35 @@ export default function ConstructionPortalSettings({ arqState }: Props) {
       </header>
 
       {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Link público</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">Acesso do cliente à obra</h3>
+            <p className="mt-1 text-xs text-slate-500">O link é exclusivo desta obra e respeita exatamente as regras de publicação abaixo.</p>
+            {portalToken ? <p className="mt-2 break-all rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{`${window.location.origin}/portal/obra/${portalToken}`}</p> : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!portalToken}
+              onClick={() => portalToken && navigator.clipboard.writeText(`${window.location.origin}/portal/obra/${portalToken}`)}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
+            >
+              Copiar link
+            </button>
+            <button
+              type="button"
+              disabled={!portalToken}
+              onClick={() => portalToken && window.open(`/portal/obra/${portalToken}`, "_blank", "noopener,noreferrer")}
+              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              Abrir portal
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="divide-y divide-slate-100">
