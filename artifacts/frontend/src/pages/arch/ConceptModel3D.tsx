@@ -242,6 +242,25 @@ function splitWallForOpenings(
   return pieces;
 }
 
+const OBJECT_3D_MATERIALS: Record<string, { top: string; sideA: string; sideB: string }> = {
+  "tecido-cinza": { top: "#cbd5e1", sideA: "#94a3b8", sideB: "#64748b" },
+  "tecido-bege": { top: "#e7e5e4", sideA: "#d6d3d1", sideB: "#a8a29e" },
+  "linho-claro": { top: "#fafaf9", sideA: "#e7e5e4", sideB: "#d6d3d1" },
+  "madeira-clara": { top: "#d6c2a8", sideA: "#b99a73", sideB: "#8b7355" },
+  "madeira-escura": { top: "#8b6b52", sideA: "#705441", sideB: "#574437" },
+  "preto-fosco": { top: "#334155", sideA: "#1e293b", sideB: "#0f172a" },
+  "branco-fosco": { top: "#ffffff", sideA: "#f1f5f9", sideB: "#cbd5e1" },
+};
+
+function object3dMaterial(object: ConceptPlanObject) {
+  return OBJECT_3D_MATERIALS[object.materialId ?? ""] ?? OBJECT_3D_MATERIALS[
+    object.kind === "bed" ? "linho-claro"
+      : object.kind === "table" || object.kind === "cabinet" ? "madeira-clara"
+      : object.kind === "tv" ? "preto-fosco"
+      : "tecido-cinza"
+  ];
+}
+
 type Rect2 = { x: number; y: number; width: number; height: number };
 
 function subtractRect(rect: Rect2, hole: Rect2): Rect2[] {
@@ -663,15 +682,7 @@ export default function ConceptModel3D({
               zoom,
               object.floor * LEVEL_HEIGHT + FLOOR_THICKNESS,
             );
-            const palette: Record<ConceptPlanObject["kind"], { top: string; sideA: string; sideB: string }> = {
-              sofa: { top: "#cbd5e1", sideA: "#94a3b8", sideB: "#64748b" },
-              bed: { top: "#f8fafc", sideA: "#e2e8f0", sideB: "#cbd5e1" },
-              table: { top: "#d6d3d1", sideA: "#a8a29e", sideB: "#78716c" },
-              chair: { top: "#e2e8f0", sideA: "#94a3b8", sideB: "#64748b" },
-              cabinet: { top: "#d6d3d1", sideA: "#a8a29e", sideB: "#78716c" },
-              tv: { top: "#334155", sideA: "#1e293b", sideB: "#0f172a" },
-            };
-            const colors = palette[object.kind];
+            const colors = object3dMaterial(object);
             return (
               <g key={`concept-object-3d-${object.id}`} filter="url(#concept3d-shadow)">
                 <polygon points={points(shape.sideA)} fill={colors.sideA} stroke="#475569" strokeWidth="0.045" />
