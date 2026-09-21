@@ -577,6 +577,7 @@ export default function ConceptPlanner() {
     objects: ConceptPlanObject[];
   }>>([]);
   const [furnishLayoutSpaceId, setFurnishLayoutSpaceId] = useState<string | null>(null);
+  const [previewFurnishLayoutId, setPreviewFurnishLayoutId] = useState<string | null>(null);
 
   const [wallMaterials, setWallMaterials] = useState<Record<string, string>>({});
   const [paintTool, setPaintTool] = useState<null | {
@@ -1792,6 +1793,7 @@ export default function ConceptPlanner() {
     if (!selectedClosedSpaceId || furnishLayoutSpaceId === selectedClosedSpaceId) return;
     setFurnishLayoutOptions([]);
     setFurnishLayoutSpaceId(null);
+    setPreviewFurnishLayoutId(null);
   }, [selectedClosedSpaceId, furnishLayoutSpaceId]);
 
   const layoutIssues = useMemo(
@@ -2444,6 +2446,7 @@ export default function ConceptPlanner() {
     if (!options.length) return;
     setFurnishLayoutOptions(options);
     setFurnishLayoutSpaceId(selectedClosedSpace.id);
+    setPreviewFurnishLayoutId(options[0]?.id ?? null);
     setEditorView("plan");
   };
 
@@ -2464,6 +2467,7 @@ export default function ConceptPlanner() {
     setSelectedClosedSpaceId(null);
     setFurnishLayoutOptions([]);
     setFurnishLayoutSpaceId(null);
+    setPreviewFurnishLayoutId(null);
     setEditorView("plan");
     pushRoomHistory(before);
   };
@@ -2471,6 +2475,7 @@ export default function ConceptPlanner() {
   const cancelFurnishLayoutOptions = () => {
     setFurnishLayoutOptions([]);
     setFurnishLayoutSpaceId(null);
+    setPreviewFurnishLayoutId(null);
   };
 
   const addOpeningPreset = (
@@ -4824,6 +4829,11 @@ export default function ConceptPlanner() {
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
                         objects={safeObjects}
+                        previewObjects={
+                          furnishLayoutSpaceId === selectedClosedSpaceId
+                            ? (furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId)?.objects ?? [])
+                            : []
+                        }
                         selectedObjectId={selectedObjectId}
                         onSelectObject={(objectId) => {
                           if (objectId && paintTool?.target === "object") {
@@ -5413,19 +5423,32 @@ export default function ConceptPlanner() {
                     >
                       {furnishLayoutOptions.length && furnishLayoutSpaceId === selectedClosedSpace.id ? "Recalcular layouts" : "Mobiliar"}
                     </button>
-                    {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.map((option, index) => (
+                    {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.map((option, index) => {
+                      const activePreview = previewFurnishLayoutId === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setPreviewFurnishLayoutId(option.id)}
+                          onMouseEnter={() => setPreviewFurnishLayoutId(option.id)}
+                          className={activePreview
+                            ? "h-9 rounded-lg border border-orange-400 bg-orange-50 px-3 text-xs font-semibold text-orange-700"
+                            : "h-9 rounded-lg border px-3 text-xs font-semibold"}
+                          title={`Pré-visualizar · pontuação ${option.score.toFixed(0)}`}
+                        >
+                          Layout {index + 1} · {option.score.toFixed(0)}
+                        </button>
+                      );
+                    })}
+                    {furnishLayoutSpaceId === selectedClosedSpace.id && previewFurnishLayoutId && (
                       <button
-                        key={option.id}
                         type="button"
-                        onClick={() => applyFurnishLayoutOption(option.id)}
-                        className={index === 0
-                          ? "h-9 rounded-lg border border-orange-300 bg-orange-50 px-3 text-xs font-semibold text-orange-700"
-                          : "h-9 rounded-lg border px-3 text-xs font-semibold"}
-                        title={`Pontuação ${option.score.toFixed(0)}`}
+                        onClick={() => applyFurnishLayoutOption(previewFurnishLayoutId)}
+                        className="h-9 rounded-lg bg-orange-500 px-3 text-xs font-semibold text-white"
                       >
-                        Layout {index + 1} · {option.score.toFixed(0)}
+                        Confirmar layout
                       </button>
-                    ))}
+                    )}
                     {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.length > 0 && (
                       <button
                         type="button"
