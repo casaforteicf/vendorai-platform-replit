@@ -21,9 +21,6 @@ import {
   obrasTable,
   obraEtapasTable,
   obraEtapaDependenciasTable,
-  obraOrcamentosTable,
-  obraOrcamentoEtapasTable,
-  obraOrcamentoItensTable,
   insertArchProjetoSchema,
   updateArchProjetoSchema,
   insertArchAmbienteSchema,
@@ -509,34 +506,38 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
     });
   }
 
-  const [preBudget] = await tx
-    .insert(obraOrcamentosTable)
-    .values({
-      tenantId: tid,
-      obraId,
-      versao: 1,
-      titulo: "Orçamento preliminar — Arqdor Concept",
-      descricao: "Estrutura e quantitativos preliminares gerados do pré-projeto. Preços devem ser preenchidos pela tabela de preços/composições.",
-      status: "rascunho",
-      bdiGlobal: "0",
-    })
-    .returning();
+  const preBudgetId = crypto.randomUUID();
+  await tx.execute(sql`
+    INSERT INTO arch_budgets (
+      id, tenant_id, project_id, title, client_name, status, version,
+      subtotal_material, subtotal_labor, subtotal, discount_type,
+      discount_value, discount_total, grand_total, notes, created_at, updated_at
+    ) VALUES (
+      ${preBudgetId}, ${tid}, ${project.id}, 'Orçamento preliminar — Arqdor Concept',
+      ${customer.name?.trim() || null}, 'draft', 1,
+      0, 0, 0, 'fixed', 0, 0, 0,
+      'Quantitativos preliminares gerados automaticamente do pré-projeto. Preços devem ser resolvidos pelas composições/tabela de preços.',
+      now(), now()
+    )
+  `);
 
   for (let index = 0; index < executionStages.length; index++) {
     const stage = executionStages[index]!;
-    const [budgetStage] = await tx
-      .insert(obraOrcamentoEtapasTable)
-      .values({ orcamentoId: preBudget.id, nome: stage.nome, ordem: index + 1 })
-      .returning();
-    await tx.insert(obraOrcamentoItensTable).values({
-      etapaId: budgetStage.id,
-      nome: stage.item,
-      unidade: stage.unidade,
-      quantidade: String(Number(stage.quantidade.toFixed ? stage.quantidade.toFixed(4) : stage.quantidade)),
-      custoUnitario: "0",
-      origemPreco: "concept",
-      ordem: 1,
-    });
+    const itemId = crypto.randomUUID();
+    const quantity = Number(stage.quantidade.toFixed ? stage.quantidade.toFixed(4) : stage.quantidade);
+    await tx.execute(sql`
+      INSERT INTO arch_budget_items (
+        id, tenant_id, budget_id, project_id, item, description, type,
+        quantity, unit, material_value, labor_value, unit_total,
+        total_material, total_labor, total, visible_to_client, sort_order,
+        created_at, updated_at
+      ) VALUES (
+        ${itemId}, ${tid}, ${preBudgetId}, ${project.id},
+        ${stage.item}, ${`Etapa: ${stage.nome}. Quantitativo preliminar originado no Concept.`}, 'service',
+        ${quantity}, ${stage.unidade}, 0, 0, 0, 0, 0, 0, true, ${index + 1},
+        now(), now()
+      )
+    `);
   }
 
   await tx
