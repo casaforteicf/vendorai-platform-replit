@@ -147,7 +147,7 @@ router.get("/portal/obra/:token", async (req, res) => {
   }
 
   let diario: any[] = [];
-  if (config.showDiary) {
+  if (config.showDiary || config.showDocuments || config.showDiaryPhotos) {
     diario = await db.select().from(obraDiarioTable)
       .where(and(eq(obraDiarioTable.obraId, obra.id), eq(obraDiarioTable.status, "aprovado")))
       .orderBy(desc(obraDiarioTable.data)).limit(12);
@@ -266,6 +266,38 @@ router.get("/portal/obra/:token", async (req, res) => {
     compras = result.rows;
   }
 
+  const comprasRecebidas = config.showFinancialSummary
+    ? await pool.query(
+        `SELECT COALESCE(SUM(valor_total),0)::numeric AS total
+           FROM compras_obras
+          WHERE obra_id = $1 AND tenant_id = $2
+            AND lower(status) IN ('recebido','parcial')`,
+        [obra.id, obra.tenantId],
+      )
+    : null;
+
+  const maoObraExecutada = config.showFinancialSummary
+    ? etapaRows.reduce((sum: number, item: any) => {
+        const percentual = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0))) / 100;
+        if (percentual <= 0) return sum;
+        const inicio = item.dataInicioPrevista ?? item.data_inicio_prevista;
+        const fim = item.dataFimPrevista ?? item.data_fim_prevista;
+        if (!inicio || !fim) return sum;
+        const start = new Date(`${inicio}T12:00:00Z`);
+        const end = new Date(`${fim}T12:00:00Z`);
+        const dias = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+        const planejado = dias
+          * Math.max(1, Number(item.equipeQuantidade ?? item.equipe_quantidade ?? 1))
+          * Math.max(0, Number(item.horasDia ?? item.horas_dia ?? 8))
+          * Math.max(0, Number(item.custoHoraPessoa ?? item.custo_hora_pessoa ?? 0));
+        return sum + planejado * percentual;
+      }, 0)
+    : 0;
+
+  const custoRealizadoCalculado = config.showFinancialSummary
+    ? Number(comprasRecebidas?.rows?.[0]?.total ?? 0) + maoObraExecutada
+    : Number(obra.custoRealizado ?? 0);
+
   let financeiro: any = null;
   if (config.showFinancialSummary) {
     const result = config.showFinancialDetails
@@ -291,9 +323,9 @@ router.get("/portal/obra/:token", async (req, res) => {
 
     financeiro = {
       orcamentoTotal: Number(obra.orcamentoTotal ?? 0),
-      custoRealizado: Number(obra.custoRealizado ?? 0),
+      custoRealizado: custoRealizadoCalculado,
       percentualConsumido: Number(obra.orcamentoTotal ?? 0) > 0
-        ? Number(obra.custoRealizado ?? 0) / Number(obra.orcamentoTotal ?? 0) * 100
+        ? custoRealizadoCalculado / Number(obra.orcamentoTotal ?? 0) * 100
         : 0,
       totalLancado: config.showFinancialDetails ? totalLancado : null,
       totalPago: config.showFinancialDetails ? totalPago : null,
@@ -321,6 +353,7 @@ router.get("/portal/obra/:token", async (req, res) => {
           WHERE project_id = $1
             AND tenant_id = $2
             AND status = 'concluido'
+            AND approved_at IS NOT NULL
             AND result_image_url IS NOT NULL
           ORDER BY
             CASE WHEN approved_at IS NOT NULL THEN 0 ELSE 1 END,
@@ -366,12 +399,12 @@ router.get("/portal/obra/:token", async (req, res) => {
       dataFimPrevista: config.showOverview ? obra.dataFimPrevista : null,
       dataFimReal: config.showOverview ? obra.dataFimReal : null,
       orcamentoTotal: config.showFinancialSummary ? obra.orcamentoTotal : null,
-      custoRealizado: config.showFinancialSummary ? obra.custoRealizado : null,
+      custoRealizado: config.showFinancialSummary ? String(custoRealizadoCalculado) : null,
     },
     tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
     orcamento: orcamentoComEtapas,
     etapas,
-    diario,
+    diario: config.showDiary ? diario : [],
     ocorrencias,
     decisions,
     resumo: config.showOverview ? {
