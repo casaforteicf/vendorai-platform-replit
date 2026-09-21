@@ -1093,8 +1093,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/simulate-scenar
       })
       .filter(Boolean);
 
-    res.json({
-      applied: false,
+    const summary = {
       inputs: { etapaId: selectedEtapaId, extraPeople, delayDays, workSaturday },
       originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
       newFinish: newFinish ? scheduleIso(newFinish) : null,
@@ -1105,7 +1104,66 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/simulate-scenar
       scenarioLaborCost,
       laborCostImpact: scenarioLaborCost - originalLaborCost,
       changedStages,
-    });
+    };
+
+    if (req.body?.apply === true) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        for (const item of changedStages as any[]) {
+          await client.query(
+            `UPDATE obra_etapas
+                SET data_inicio_prevista = $1,
+                    data_fim_prevista = $2,
+                    updated_at = now()
+              WHERE id = $3 AND obra_id = $4`,
+            [item.newStart, item.newEnd, item.etapaId, obraId],
+          );
+        }
+
+        if (selectedEtapaId && extraPeople !== 0) {
+          const row = byId.get(selectedEtapaId);
+          if (row && String(row.status ?? "pendente") === "pendente") {
+            const newPeople = Math.max(1, Number(row.equipe_quantidade ?? 1) + extraPeople);
+            await client.query(
+              `UPDATE obra_etapas
+                  SET equipe_quantidade = $1, updated_at = now()
+                WHERE id = $2 AND obra_id = $3`,
+              [newPeople, selectedEtapaId, obraId],
+            );
+          }
+        }
+
+        if (workSaturday && !baseCalendar.sabado) {
+          await client.query(
+            `INSERT INTO obra_calendarios (
+               id, tenant_id, obra_id, segunda, terca, quarta, quinta, sexta, sabado, domingo, horas_dia, feriados, created_at, updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11::jsonb,now(),now())
+             ON CONFLICT (obra_id)
+             DO UPDATE SET sabado = true, updated_at = now()`,
+            [
+              crypto.randomUUID(), tid, obraId,
+              baseCalendar.segunda, baseCalendar.terca, baseCalendar.quarta,
+              baseCalendar.quinta, baseCalendar.sexta, baseCalendar.domingo,
+              String(baseCalendar.horasDia), JSON.stringify(baseCalendar.feriados),
+            ],
+          );
+        }
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      res.json({ applied: true, ...summary });
+      return;
+    }
+
+    res.json({ applied: false, ...summary });
   } catch (err) {
     logger.error({ err }, "arch/construction simulate-scenario error");
     next(err);
