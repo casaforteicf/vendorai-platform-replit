@@ -4,6 +4,7 @@ import {
   db,
   tenantsTable,
   tenantNavModulesTable,
+  tenantSidebarPreferencesTable,
   NAV_MODULE_CATALOG,
   type NavModuleKey,
 } from "@workspace/db";
@@ -331,6 +332,94 @@ router.put("/tenants/:tenantId/nav-modules", requireRole("tenant_admin", "super_
   req.log.info({ tenantId, count: modules.length }, "nav-modules bulk updated");
   res.json({ success: true });
 });
+
+// ── GET /tenants/:tenantId/sidebar-preferences ───────────────────────────────
+// Preferência visual do tenant: esconde itens da barra lateral sem alterar
+// entitlement, permissão, rota ou dados do módulo.
+router.get("/tenants/:tenantId/sidebar-preferences", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const user = (req as any).user;
+
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      itemKey: tenantSidebarPreferencesTable.itemKey,
+      isVisible: tenantSidebarPreferencesTable.isVisible,
+    })
+    .from(tenantSidebarPreferencesTable)
+    .where(eq(tenantSidebarPreferencesTable.tenantId, tenantId));
+
+  res.json({
+    hiddenItemKeys: rows.filter((row) => !row.isVisible).map((row) => row.itemKey),
+  });
+});
+
+// ── PUT /tenants/:tenantId/sidebar-preferences ───────────────────────────────
+// Salva a lista completa de itens ocultos. Apenas admin do próprio tenant (ou
+// Super Admin) pode alterar. A preferência é compartilhada por todo o tenant.
+router.put(
+  "/tenants/:tenantId/sidebar-preferences",
+  requireRole("tenant_admin", "super_admin"),
+  async (req, res) => {
+    const tenantId = req.params.tenantId as string;
+    const user = (req as any).user;
+
+    if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const { hiddenItemKeys } = req.body ?? {};
+    if (!Array.isArray(hiddenItemKeys)) {
+      res.status(400).json({ error: "hiddenItemKeys deve ser um array" });
+      return;
+    }
+
+    const normalized = Array.from(
+      new Set(
+        hiddenItemKeys
+          .filter((value: unknown): value is string => typeof value === "string")
+          .map((value: string) => value.trim())
+          .filter(
+            (value: string) =>
+              value.length > 0 &&
+              value.length <= 200 &&
+              (value.startsWith("/") || value.startsWith("group:"))
+          )
+      )
+    );
+
+    await db
+      .delete(tenantSidebarPreferencesTable)
+      .where(eq(tenantSidebarPreferencesTable.tenantId, tenantId));
+
+    if (normalized.length > 0) {
+      await db.insert(tenantSidebarPreferencesTable).values(
+        normalized.map((itemKey) => ({
+          tenantId,
+          itemKey,
+          isVisible: false,
+          updatedAt: new Date(),
+        }))
+      );
+    }
+
+    req.log.info(
+      { tenantId, hiddenItemCount: normalized.length },
+      "tenant sidebar preferences updated"
+    );
+
+    res.json({ success: true, hiddenItemKeys: normalized });
+  }
+);
 
 // ── GET /nav-modules/catalog ─────────────────────────────────────────────────
 // Catálogo global de módulos (sem autenticação de tenant específico).
