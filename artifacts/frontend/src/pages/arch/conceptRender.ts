@@ -12,6 +12,20 @@ export type ConceptRenderBriefInput = {
   rooms: VolumetryRoom[];
   facade: ConceptFacadePreferences;
   facadeDesign?: FacadeDesignState;
+  renderView?: "exterior" | "interior";
+  objects?: Array<{
+    kind: string;
+    label: string;
+    floor: number;
+    x: number;
+    y: number;
+    width: number;
+    depth: number;
+    rotation: number;
+    materialId?: string;
+  }>;
+  wallMaterialIds?: string[];
+  floorMaterialIds?: string[];
 };
 
 const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
@@ -50,6 +64,7 @@ const frameLabel: Record<ConceptFacadePreferences["frameTone"], string> = {
 };
 
 export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
+  const renderView = input.renderView ?? "exterior";
   const roomSummary = input.rooms
     .filter((room) => room.kind !== "piscina")
     .map((room) => `${room.label}: ${room.width.toFixed(1)} x ${room.depth.toFixed(1)} m, floor ${room.floor + 1}, position (${room.x.toFixed(1)}, ${room.y.toFixed(1)})`)
@@ -68,6 +83,14 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
         `frames: ${getFacadeMaterial(design.surfaceMaterials.frames).name}`,
       ].join("; ")
     : null;
+  const objectSummary = input.objects?.length
+    ? input.objects.map((object) =>
+        `${object.label} (${object.kind}), floor ${object.floor + 1}, position (${object.x.toFixed(2)}, ${object.y.toFixed(2)}), size ${object.width.toFixed(2)} x ${object.depth.toFixed(2)} m, rotation ${Math.round(object.rotation)}°, material ${object.materialId ?? "automatic"}`
+      ).join("; ")
+    : null;
+  const uniqueWallMaterials = [...new Set((input.wallMaterialIds ?? []).filter(Boolean))];
+  const uniqueFloorMaterials = [...new Set((input.floorMaterialIds ?? []).filter(Boolean))];
+
   const volumeSummary = design?.volumes.length
     ? design.volumes.map((volume) =>
         `${volume.label} (${volume.kind}), position ${volume.x.toFixed(0)}%/${volume.y.toFixed(0)}%, size ${volume.width.toFixed(0)}% x ${volume.height.toFixed(0)}%, projection ${volume.depth.toFixed(1)} m, material ${getFacadeMaterial(volume.materialId).name}`
@@ -75,8 +98,12 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     : null;
 
   return [
-    "Convert this conceptual FRONT ELEVATION and the structured plan data into a photorealistic exterior architectural photograph.",
-    "CRITICAL PRESERVATION: preserve the number of floors, garage position, main entrance hierarchy, facade proportions, roof strategy and the major opening rhythm shown in the source elevation. Do not invent a different house.",
+    renderView === "interior"
+      ? "Convert this synchronized 3D architectural model into a photorealistic INTERIOR architectural visualization from the current camera/view direction."
+      : "Convert this conceptual FRONT ELEVATION and the structured plan data into a photorealistic exterior architectural photograph.",
+    renderView === "interior"
+      ? "CRITICAL PRESERVATION: preserve the modeled floor plan geometry, wall positions, openings, furniture placement, object rotation, room proportions and material assignments visible in the source 3D view. Do not redesign the layout."
+      : "CRITICAL PRESERVATION: preserve the number of floors, garage position, main entrance hierarchy, facade proportions, roof strategy and the major opening rhythm shown in the source elevation. Do not invent a different house.",
     `Site: rectangular lot ${input.lotWidth} x ${input.lotDepth} m. Building: ${input.floors} floor(s), target area approximately ${input.desiredArea} m².`,
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
@@ -84,7 +111,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       ? `Exact facade material schedule selected by the user: ${surfaceSummary}. Preserve these assignments.`
       : `Main facade material: ${materialLabel[facade.primaryMaterial]}. Secondary accent: ${accentLabel[facade.accentMaterial]}.`,
     `Facade tone: ${facade.facadeTone}. Frames: ${frameLabel[facade.frameTone]}.`,
-    `Landscaping intensity: ${facade.landscaping}. Use realistic Brazilian residential landscaping without blocking the architecture.`,
+    renderView === "interior"
+      ? "Interior lighting: physically plausible daylight plus warm architectural lighting. Keep a realistic Brazilian residential scale and material response."
+      : `Landscaping intensity: ${facade.landscaping}. Use realistic Brazilian residential landscaping without blocking the architecture.`,
     design ? `Lighting scenario selected in editor: ${design.lighting}. Landscaping visibility: ${design.showLandscaping ? "on" : "off"}.` : "",
     volumeSummary
       ? `CRITICAL VOLUMETRY PRESERVATION: preserve these added facade volumes and their relative positions/projections: ${volumeSummary}.`
@@ -92,10 +121,17 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     pool
       ? `Preserve the pool exactly at its modeled position and approximate size ${pool.width.toFixed(1)} x ${pool.depth.toFixed(1)} m.`
       : "Do not invent a swimming pool.",
-    "Refine facade openings and entrance details only within the composition shown in the source elevation. Keep the garage, social facade and upper-floor composition recognizable.",
+    renderView === "interior"
+      ? "Preserve all modeled openings and furniture. Improve only realism, material quality, lighting, decor coherence and photographic finish without changing positions or dimensions."
+      : "Refine facade openings and entrance details only within the composition shown in the source elevation. Keep the garage, social facade and upper-floor composition recognizable.",
     "Use realistic exterior materials, physically plausible daylight, architectural shadows, reflections and professional real-estate photography quality.",
-    "Use a frontal or slight 3/4 architectural camera that clearly preserves the source elevation composition; avoid aerial or distorted perspectives.",
+    renderView === "interior"
+      ? "Preserve the current 3D camera direction as closely as possible. Use natural eye-level architectural perspective; avoid fisheye distortion."
+      : "Use a frontal or slight 3/4 architectural camera that clearly preserves the source elevation composition; avoid aerial or distorted perspectives.",
     `Structured room reference for preservation: ${roomSummary}`,
+    objectSummary ? `CRITICAL FURNITURE/OBJECT PRESERVATION: ${objectSummary}` : "",
+    uniqueWallMaterials.length ? `Wall material IDs selected in editor: ${uniqueWallMaterials.join(", ")}. Preserve these assignments where visible.` : "",
+    uniqueFloorMaterials.length ? `Floor material IDs selected in editor: ${uniqueFloorMaterials.join(", ")}. Preserve these assignments where visible.` : "",
     "This is a CONCEPTUAL pre-project visualization, not a technical or construction document.",
   ].join("\n");
 }
