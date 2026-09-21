@@ -11,7 +11,13 @@ export type ObraPortalConfig = {
   showDiary: boolean;
   showDiaryPhotos: boolean;
   showFinancialSummary: boolean;
+  showFinancialDetails: boolean;
   showClientDecisions: boolean;
+  showMeasurements: boolean;
+  showMilestones: boolean;
+  showDocuments: boolean;
+  showProcurementSummary: boolean;
+  showProjectGallery: boolean;
 };
 
 export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
@@ -21,7 +27,13 @@ export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
   showDiary: true,
   showDiaryPhotos: true,
   showFinancialSummary: false,
+  showFinancialDetails: false,
   showClientDecisions: true,
+  showMeasurements: true,
+  showMilestones: true,
+  showDocuments: true,
+  showProcurementSummary: true,
+  showProjectGallery: true,
 };
 
 export const obrasTable = pgTable("obras", {
