@@ -174,7 +174,7 @@ export default function ConceptFacadeEditor({
   );
 
   const facadeMetrics = useMemo(() => {
-    const builtRooms = rooms.filter((room) => room.kind !== "piscina");
+    const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
     if (!builtRooms.length) {
       return {
         width: Math.max(6, lotWidth * 0.78),
@@ -213,7 +213,7 @@ export default function ConceptFacadeEditor({
     if (!selectedVolume) return;
     onDesignChange({
       ...design,
-      volumes: design.volumes.filter((volume) => volume.id !== selectedVolume.id),
+      volumes: (Array.isArray(design.volumes) ? design.volumes : []).filter((volume) => volume.id !== selectedVolume.id),
     });
     setSelectedVolumeId(null);
   };
