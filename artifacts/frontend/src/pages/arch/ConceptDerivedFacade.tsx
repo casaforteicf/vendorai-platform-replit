@@ -71,7 +71,7 @@ function facadePalette(facade: ConceptFacadePreferences, design?: FacadeDesignSt
 }
 
 function floorBounds(rooms: ConceptRoomShape[], floor: number): Bounds | null {
-  const current = rooms.filter((room) => room.floor === floor && room.kind !== "piscina");
+  const current = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor === floor && room.kind !== "piscina");
   if (!current.length) return null;
   const minX = Math.min(...current.map((room) => room.x));
   const maxX = Math.max(...current.map((room) => room.x + room.width));
@@ -79,7 +79,7 @@ function floorBounds(rooms: ConceptRoomShape[], floor: number): Bounds | null {
 }
 
 function modelBounds(levels: ConceptModelLevel[]): Bounds | null {
-  const walls = levels.flatMap((level) => level.walls.filter((wall) => wall.exterior));
+  const walls = (Array.isArray(levels) ? levels : []).flatMap((level) => (Array.isArray(level.walls) ? level.walls : []).filter((wall) => wall.exterior));
   if (!walls.length) return null;
   const minX = Math.min(...walls.flatMap((wall) => [wall.x1, wall.x2]));
   const maxX = Math.max(...walls.flatMap((wall) => [wall.x1, wall.x2]));
@@ -206,7 +206,7 @@ export default function ConceptDerivedFacade({
     startY: number;
   } | null>(null);
   const colors = facadePalette(facade, design);
-  const builtRooms = rooms.filter((room) => room.kind !== "piscina");
+  const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
   const fallback = modelBounds(levels) ?? { minX: 0, maxX: Math.max(6, lotWidth), width: Math.max(6, lotWidth) };
 
   const overall = builtRooms.length
