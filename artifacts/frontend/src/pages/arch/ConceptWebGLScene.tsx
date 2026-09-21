@@ -37,7 +37,7 @@ type Props = {
   onPaintObject?: (objectId: string, materialId: string) => void;
   onPaintWall?: (wallId: string, materialId: string) => void;
   onPaintFloor?: (spaceId: string, materialId: string) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
   onObjectEditStart?: () => void;
   onObjectEditEnd?: () => void;
 };
@@ -919,7 +919,11 @@ export default function ConceptWebGLScene({
 
       const baseColor = materialColor(object.materialId);
       const addLocalBox = (w: number, h: number, d: number, x: number, y: number, z: number, color = baseColor) =>
-        makeBox(root, w, h, d, x, y, z, color, { materialId: object.materialId });
+        makeBox(root, w, h, d, x, y, z, color, {
+          materialId: object.materialId,
+          repeatScale: object.materialScale ?? 1,
+          textureRotation: ((object.materialRotation ?? 0) * Math.PI) / 180,
+        });
 
       if (object.kind === "sofa") {
         addLocalBox(object.width * 0.9, 0.34, object.depth * 0.7, 0, 0.30, object.depth * 0.06);
