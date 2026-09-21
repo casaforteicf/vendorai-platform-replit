@@ -378,6 +378,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -493,6 +494,39 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     const span = Math.max(1, end.getTime() - start.getTime());
     return { start, end, span };
   }, [bundle]);
+
+  async function generatePlanFromBudget() {
+    if (!bundle || !meta.id) return;
+    setGeneratingPlan(true);
+    setError(null);
+    setScheduleNotice(null);
+    try {
+      const result = await api<{
+        createdCount?: number;
+        updatedCount?: number;
+        generated?: Array<{ name: string; itemCount: number; cost: number }>;
+        startDate?: string | null;
+        endDate?: string | null;
+      }>(`/api/arch/construction/${bundle.obra.id}/plan-from-budget`, {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: meta.id,
+          startDate: new Date().toISOString().slice(0, 10),
+        }),
+      });
+      const total = Number(result?.createdCount ?? 0) + Number(result?.updatedCount ?? 0);
+      setScheduleNotice(
+        total > 0
+          ? `Planejamento gerado a partir do orçamento: ${result?.createdCount ?? 0} etapa(s) criada(s) e ${result?.updatedCount ?? 0} atualizada(s).`
+          : "O orçamento foi analisado, mas nenhuma etapa precisou ser criada ou atualizada.",
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao gerar planejamento a partir do orçamento.");
+    } finally {
+      setGeneratingPlan(false);
+    }
+  }
 
   async function createEtapa() {
     if (!bundle || !newEtapa.nome.trim()) return;
@@ -628,9 +662,19 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Planejamento físico-financeiro</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-950">{bundle.obra.nome}</h2>
-            <p className="mt-1 max-w-3xl text-sm text-slate-500">Cronograma com dependências, caminho crítico, marcos, avanço previsto × realizado e custo produzido.</p>
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">Cronograma com dependências, caminho crítico, marcos, avanço previsto × realizado e custo produzido. O planejamento inicial pode ser gerado automaticamente a partir do orçamento atual.</p>
           </div>
-          <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Atualizar dados</button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={generatingPlan}
+              onClick={() => void generatePlanFromBudget()}
+              className="rounded-2xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {generatingPlan ? "Gerando planejamento…" : "Gerar planejamento do orçamento"}
+            </button>
+            <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Atualizar dados</button>
+          </div>
         </div>
       </section>
 

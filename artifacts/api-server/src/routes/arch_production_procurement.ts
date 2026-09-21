@@ -394,6 +394,205 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
   }
 });
 
+archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budget", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const projectId = String(req.body?.projectId ?? "");
+    const obra = await ownedObra(tid, obraId);
+    if (!obra) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    if (!projectId) { res.status(400).json({ error: "projectId é obrigatório" }); return; }
+
+    const budgetResult = await pool.query(
+      `SELECT * FROM arch_budgets
+        WHERE project_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [projectId, tid],
+    );
+    const budget = budgetResult.rows[0];
+    if (!budget) { res.status(404).json({ error: "Nenhum orçamento do Arqdor encontrado para este projeto" }); return; }
+
+    const itemsResult = await pool.query(
+      `SELECT * FROM arch_budget_items
+        WHERE budget_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+        ORDER BY sort_order ASC, created_at ASC`,
+      [budget.id, tid],
+    );
+    if (!itemsResult.rows.length) {
+      res.status(400).json({ error: "O orçamento não possui itens para gerar o planejamento" }); return;
+    }
+
+    type PhaseDef = {
+      key: string;
+      name: string;
+      baseDays: number;
+      patterns: RegExp[];
+    };
+
+    const phases: PhaseDef[] = [
+      { key: "projeto", name: "Projeto e planejamento", baseDays: 5, patterns: [/projeto/i, /arquitet/i, /engenhar/i, /aprova/i, /licen/i, /alvar/i, /sondagem/i, /topograf/i] },
+      { key: "preliminares", name: "Serviços preliminares", baseDays: 4, patterns: [/canteiro/i, /loca[cç][aã]o/i, /tapume/i, /demoli/i, /limpeza do terreno/i, /terraplen/i, /escava/i] },
+      { key: "fundacao", name: "Fundação", baseDays: 7, patterns: [/funda[cç][aã]o/i, /sapata/i, /radier/i, /estaca/i, /baldrame/i, /bloco de funda/i] },
+      { key: "estrutura", name: "Estrutura e vedações", baseDays: 12, patterns: [/estrutura/i, /concreto/i, /arma[cç][aã]o/i, /forma/i, /alvenaria/i, /tijolo/i, /bloco/i, /icf/i, /steel frame/i, /parede/i] },
+      { key: "cobertura", name: "Cobertura", baseDays: 7, patterns: [/cobertura/i, /telha/i, /calha/i, /rufo/i, /tesoura/i, /madeiramento/i, /shingle/i] },
+      { key: "instalacoes", name: "Instalações", baseDays: 10, patterns: [/el[eé]tric/i, /hidr[aá]ul/i, /sanit[aá]ri/i, /esgoto/i, /pluvial/i, /climatiza/i, /g[aá]s/i, /dados/i, /cabeamento/i, /ponto/i] },
+      { key: "revestimentos", name: "Revestimentos", baseDays: 12, patterns: [/porcelanato/i, /cer[aâ]mica/i, /revestimento/i, /argamassa/i, /contrapiso/i, /basecoat/i, /drywall/i, /massa corrida/i, /forro/i, /gesso/i] },
+      { key: "esquadrias", name: "Esquadrias e vidros", baseDays: 7, patterns: [/esquadria/i, /janela/i, /porta/i, /vidro/i, /pvc/i, /alum[ií]nio/i, /port[aã]o/i] },
+      { key: "acabamentos", name: "Pintura e acabamentos", baseDays: 10, patterns: [/pintura/i, /tinta/i, /rodap[eé]/i, /acabamento/i, /marcenaria/i, /m[oó]vel/i, /bancada/i, /lou[cç]a/i, /metal/i, /lumin[aá]ria/i, /plafon/i] },
+      { key: "externo", name: "Áreas externas", baseDays: 8, patterns: [/cal[cç]ada/i, /muro/i, /paisag/i, /piscina/i, /deck/i, /fachada/i, /paver/i, /dren/i, /extern/i] },
+      { key: "entrega", name: "Limpeza, testes e entrega", baseDays: 4, patterns: [/limpeza final/i, /teste/i, /comission/i, /entrega/i, /vistoria/i, /as built/i] },
+    ];
+
+    const grouped = new Map<string, { def: PhaseDef; items: any[]; cost: number; quantity: number }>();
+    for (const def of phases) grouped.set(def.key, { def, items: [], cost: 0, quantity: 0 });
+
+    for (const item of itemsResult.rows) {
+      const haystack = [
+        item.item,
+        item.description,
+        item.type,
+        item.product_name,
+        item.material_name,
+        item.manufacturer_name,
+      ].filter(Boolean).join(" ");
+      const def = phases.find((phase) => phase.patterns.some((pattern) => pattern.test(haystack)))
+        ?? phases.find((phase) => phase.key === "acabamentos")!;
+      const group = grouped.get(def.key)!;
+      group.items.push(item);
+      group.cost += Number(item.total ?? 0);
+      group.quantity += Math.max(0, Number(item.quantity ?? 0));
+    }
+
+    const activeGroups = phases
+      .map((def) => grouped.get(def.key)!)
+      .filter((group) => group.items.length > 0);
+
+    const totalCost = activeGroups.reduce((sum, group) => sum + group.cost, 0);
+    const requestedStart = scheduleDate(req.body?.startDate) ?? new Date();
+    let cursor = new Date(Date.UTC(
+      requestedStart.getUTCFullYear(),
+      requestedStart.getUTCMonth(),
+      requestedStart.getUTCDate(),
+      12, 0, 0,
+    ));
+
+    const existingResult = await pool.query(
+      `SELECT * FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`,
+      [obraId],
+    );
+    const existingByName = new Map(
+      existingResult.rows.map((row: any) => [String(row.nome ?? "").trim().toLowerCase(), row]),
+    );
+
+    const created: any[] = [];
+    const updated: any[] = [];
+    const orderedIds: string[] = [];
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      for (let index = 0; index < activeGroups.length; index++) {
+        const group = activeGroups[index]!;
+        const quantityFactor = Math.min(8, Math.ceil(group.quantity / 50));
+        const costFactor = group.cost > 0 ? Math.min(8, Math.ceil(group.cost / 50000)) : 0;
+        const duration = Math.max(1, group.def.baseDays + quantityFactor + costFactor);
+        const start = new Date(cursor);
+        const end = scheduleAddDays(start, duration - 1);
+        cursor = scheduleAddDays(end, 1);
+        const weight = totalCost > 0 ? (group.cost / totalCost) * 100 : 100 / activeGroups.length;
+        const existing = existingByName.get(group.def.name.toLowerCase());
+
+        if (existing) {
+          const result = await client.query(
+            `UPDATE obra_etapas
+                SET custo_previsto = CASE WHEN COALESCE(custo_previsto, 0)::numeric = 0 THEN $1 ELSE custo_previsto END,
+                    peso_fisico = CASE WHEN COALESCE(peso_fisico, 0)::numeric = 0 THEN $2 ELSE peso_fisico END,
+                    data_inicio_prevista = COALESCE(data_inicio_prevista, $3),
+                    data_fim_prevista = COALESCE(data_fim_prevista, $4),
+                    updated_at = now()
+              WHERE id = $5 AND obra_id = $6
+              RETURNING *`,
+            [String(group.cost), String(weight), scheduleIso(start), scheduleIso(end), existing.id, obraId],
+          );
+          const row = result.rows[0];
+          if (row) {
+            updated.push(row);
+            orderedIds.push(String(row.id));
+          }
+        } else {
+          const id = crypto.randomUUID();
+          const result = await client.query(
+            `INSERT INTO obra_etapas (
+              id, obra_id, nome, descricao, ordem,
+              data_inicio_prevista, data_fim_prevista,
+              status, percentual_executado, custo_previsto, peso_fisico, marco,
+              created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,false,now(),now())
+            RETURNING *`,
+            [
+              id, obraId, group.def.name,
+              `Gerada automaticamente a partir de ${group.items.length} item(ns) do orçamento ${budget.title ?? ""}`.trim(),
+              index,
+              scheduleIso(start), scheduleIso(end),
+              String(group.cost), String(weight),
+            ],
+          );
+          created.push(result.rows[0]);
+          orderedIds.push(id);
+        }
+      }
+
+      for (let i = 1; i < orderedIds.length; i++) {
+        const etapaId = orderedIds[i]!;
+        const predecessorId = orderedIds[i - 1]!;
+        await client.query(
+          `INSERT INTO obra_etapa_dependencias (
+            id, tenant_id, obra_id, etapa_id, depende_de_etapa_id, tipo, defasagem_dias, created_at
+          )
+          SELECT $1,$2,$3,$4,$5,'FS',0,now()
+          WHERE NOT EXISTS (
+            SELECT 1
+              FROM obra_etapa_dependencias
+             WHERE obra_id = $3
+               AND tenant_id = $2
+               AND etapa_id = $4
+               AND depende_de_etapa_id = $5
+          )`,
+          [crypto.randomUUID(), tid, obraId, etapaId, predecessorId],
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    res.status(201).json({
+      budget: { id: budget.id, title: budget.title, grandTotal: Number(budget.grand_total ?? totalCost) },
+      generated: activeGroups.map((group, index) => ({
+        key: group.def.key,
+        name: group.def.name,
+        itemCount: group.items.length,
+        cost: group.cost,
+        etapaId: orderedIds[index],
+      })),
+      createdCount: created.length,
+      updatedCount: updated.length,
+      startDate: activeGroups.length ? scheduleIso(scheduleDate(req.body?.startDate) ?? new Date()) : null,
+      endDate: activeGroups.length ? scheduleIso(scheduleAddDays(cursor, -1)) : null,
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction plan-from-budget error");
+    next(err);
+  }
+});
+
 archProductionProcurementRouter.post("/arch/construction/:obraId/etapas", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
