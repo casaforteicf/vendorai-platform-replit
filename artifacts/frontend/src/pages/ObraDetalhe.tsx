@@ -584,7 +584,7 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
     setForm((current) => ({
       ...current,
       nome: template.nome,
-      responsavel: current.responsavel || template.responsavelSugerido,
+      responsavel: template.responsavelSugerido,
     }));
   }
 
@@ -647,7 +647,8 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
         description: `${created} etapa${created === 1 ? "" : "s"} adicionada${created === 1 ? "" : "s"} com a sequência selecionada.`,
       });
     } catch {
-      toast({ title: "Erro ao criar sequência", description: "Algumas etapas podem ter sido criadas. Atualize e tente novamente.", variant: "destructive" });
+      await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
+      toast({ title: "Erro ao criar sequência", description: "As etapas já criadas foram mantidas. Confira o cronograma e tente novamente.", variant: "destructive" });
     } finally {
       setIsCreatingSequence(false);
     }
