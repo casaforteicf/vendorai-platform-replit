@@ -43,11 +43,35 @@ type Compra = {
   riscoCronograma?: "ok" | "atencao" | "atrasado" | "sem_data" | string | null;
 };
 
+type CpmStage = {
+  etapaId: string;
+  nome: string;
+  durationDays: number;
+  earlyStart: string;
+  earlyFinish: string;
+  lateStart: string;
+  lateFinish: string;
+  totalFloatDays: number;
+  freeFloatDays: number;
+  critical: boolean;
+};
+
+type CpmBundle = {
+  valid: boolean;
+  error?: string;
+  projectStart: string | null;
+  projectFinish: string | null;
+  projectDurationDays: number;
+  criticalIds: string[];
+  stages: CpmStage[];
+};
+
 type Bundle = {
   obra: { id: string; nome: string; orcamentoTotal: number; custoRealizado: number };
   etapas: Etapa[];
   dependencias: Dependencia[];
   compras: Compra[];
+  cpm: CpmBundle | null;
 };
 
 type Props = { arqState?: any };
@@ -518,6 +542,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         etapas,
         dependencias,
         compras,
+        cpm: raw.cpm ?? null,
       });
       setDrafts(Object.fromEntries(etapas.map((etapa: Etapa) => [etapa.id, draftFrom(etapa)])));
     } catch (err) {
@@ -554,46 +579,15 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     return { planned, actual, totalCost, earned, plannedCostEarned, delayDays, scheduledFinish, purchases };
   }, [bundle]);
 
-  const criticalIds = useMemo(() => {
-    if (!bundle) return new Set<string>();
-    const byId = new Map(bundle.etapas.map((item) => [item.id, item]));
-    const predecessors = new Map<string, Dependencia[]>();
-    for (const dep of bundle.dependencias) {
-      const list = predecessors.get(dep.etapaId) ?? [];
-      list.push(dep);
-      predecessors.set(dep.etapaId, list);
-    }
-    const memo = new Map<string, { score: number; parent?: string }>();
-    const visiting = new Set<string>();
-    const score = (id: string): { score: number; parent?: string } => {
-      const cached = memo.get(id);
-      if (cached) return cached;
-      if (visiting.has(id)) return { score: 0 };
-      visiting.add(id);
-      let bestScore = 0;
-      let bestParent: string | undefined;
-      for (const dep of predecessors.get(id) ?? []) {
-        const candidate = score(dep.dependeDeEtapaId).score + Math.max(0, dep.defasagemDias);
-        if (candidate >= bestScore) { bestScore = candidate; bestParent = dep.dependeDeEtapaId; }
-      }
-      visiting.delete(id);
-      const result = { score: bestScore + durationDays(byId.get(id) ?? ({ marco: false } as Etapa)), parent: bestParent };
-      memo.set(id, result);
-      return result;
-    };
-    let endpoint: string | null = null;
-    let max = -1;
-    for (const item of bundle.etapas) {
-      const value = score(item.id).score;
-      if (value > max) { max = value; endpoint = item.id; }
-    }
-    const ids = new Set<string>();
-    while (endpoint) {
-      ids.add(endpoint);
-      endpoint = memo.get(endpoint)?.parent ?? null;
-    }
-    return ids;
-  }, [bundle]);
+  const cpmById = useMemo(
+    () => new Map((bundle?.cpm?.stages ?? []).map((stage) => [stage.etapaId, stage])),
+    [bundle?.cpm],
+  );
+
+  const criticalIds = useMemo(
+    () => new Set(bundle?.cpm?.valid ? bundle.cpm.criticalIds : []),
+    [bundle?.cpm],
+  );
 
   const baselineSummary = useMemo(() => {
     if (!baseline.baseline || !baseline.etapas.length || !bundle) {
@@ -1282,6 +1276,54 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       </section>
 
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">CPM · caminho crítico</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">Folga e datas cedo/tarde calculadas pela rede</h3>
+          <p className="mt-1 text-xs text-slate-500">ES/EF = início/fim mais cedo · LS/LF = início/fim mais tarde · folga total zero identifica atividades críticas.</p>
+        </div>
+
+        {bundle.cpm?.valid ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric label="Duração CPM" value={`${bundle.cpm.projectDurationDays} dias úteis`} hint={bundle.cpm.projectFinish ? `término ${new Date(`${bundle.cpm.projectFinish}T12:00:00`).toLocaleDateString("pt-BR")}` : "sem término"} />
+              <Metric label="Etapas críticas" value={String(bundle.cpm.criticalIds.length)} hint="folga total = 0" danger={bundle.cpm.criticalIds.length > 0} />
+              <Metric
+                label="Maior folga total"
+                value={`${Math.max(0, ...bundle.cpm.stages.map((stage) => stage.totalFloatDays))} dias`}
+                hint="capacidade máxima de atraso sem afetar o fim"
+              />
+              <Metric
+                label="Menor folga livre"
+                value={`${bundle.cpm.stages.length ? Math.min(...bundle.cpm.stages.map((stage) => stage.freeFloatDays)) : 0} dias`}
+                hint="atraso sem empurrar sucessoras"
+              />
+            </div>
+
+            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100">
+              <div className="grid grid-cols-[1.4fr_90px_90px_90px_90px_90px_90px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <span>Etapa</span><span>ES</span><span>EF</span><span>LS</span><span>LF</span><span>Folga total</span><span>Folga livre</span>
+              </div>
+              {bundle.cpm.stages.map((stage) => (
+                <div key={stage.etapaId} className={`grid grid-cols-[1.4fr_90px_90px_90px_90px_90px_90px] gap-2 border-t border-slate-100 px-3 py-2 text-xs ${stage.critical ? "bg-rose-50/50" : ""}`}>
+                  <span className={`truncate font-medium ${stage.critical ? "text-rose-700" : "text-slate-700"}`}>{stage.nome}</span>
+                  <span>{new Date(`${stage.earlyStart}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                  <span>{new Date(`${stage.earlyFinish}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                  <span>{new Date(`${stage.lateStart}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                  <span>{new Date(`${stage.lateFinish}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                  <span className={stage.critical ? "font-semibold text-rose-700" : "text-slate-600"}>{stage.totalFloatDays}d</span>
+                  <span>{stage.freeFloatDays}d</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            {bundle.cpm?.error ?? "Defina datas e dependências válidas para calcular o CPM."}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Calendário de trabalho</p>
@@ -1458,11 +1500,12 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
           const deps = bundle.dependencias.filter((dep) => dep.etapaId === etapa.id);
           const depDraft = dependencyDrafts[etapa.id] ?? { predecessorId: "", tipo: "FS" as const, defasagemDias: "0" };
           const critical = criticalIds.has(etapa.id);
+          const cpmStage = cpmById.get(etapa.id);
           return (
             <article key={etapa.id} className={`rounded-[28px] border bg-white p-5 shadow-sm ${critical ? "border-rose-200" : "border-slate-100"}`}>
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${critical ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600"}`}>{critical ? "Caminho crítico" : statusLabel(etapa.status)}</span>{etapa.marco ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase text-violet-700">Marco</span> : null}<span className="text-xs text-slate-400">Executado {etapa.percentualExecutado.toFixed(0)}%</span></div>
+                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${critical ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600"}`}>{critical ? "Caminho crítico" : statusLabel(etapa.status)}</span>{etapa.marco ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase text-violet-700">Marco</span> : null}<span className="text-xs text-slate-400">Executado {etapa.percentualExecutado.toFixed(0)}%</span>{cpmStage ? <span className="text-xs text-slate-400">Folga total {cpmStage.totalFloatDays}d · livre {cpmStage.freeFloatDays}d</span> : null}</div>
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                     <label className="xl:col-span-2 text-[11px] font-medium text-slate-500">Etapa<input value={draft.nome} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, nome: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold" /></label>
                     <label className="text-[11px] font-medium text-slate-500">Início<input type="date" value={draft.dataInicioPrevista} onChange={(e) => setDrafts((all) => ({ ...all, [etapa.id]: { ...draft, dataInicioPrevista: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" /></label>

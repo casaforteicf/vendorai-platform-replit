@@ -211,6 +211,203 @@ async function getWorkCalendar(tid: string, obraId: string): Promise<WorkCalenda
   return result.rows[0] ? normalizeWorkCalendar(result.rows[0]) : DEFAULT_WORK_CALENDAR;
 }
 
+type CpmDependency = {
+  etapa_id: string;
+  depende_de_etapa_id: string;
+  tipo?: string | null;
+  defasagem_dias?: number | string | null;
+};
+
+type CpmStage = {
+  id: string;
+  nome?: string | null;
+  data_inicio_prevista?: string | null;
+  data_fim_prevista?: string | null;
+  marco?: boolean | null;
+};
+
+function cpmConstraintWeight(
+  predecessorDuration: number,
+  successorDuration: number,
+  type: string,
+  lag: number,
+) {
+  if (type === "SS") return lag;
+  if (type === "FF") return predecessorDuration - successorDuration + lag;
+  if (type === "SF") return lag - successorDuration + 1;
+  return predecessorDuration + lag; // FS
+}
+
+function buildCpm(
+  stages: CpmStage[],
+  dependencies: CpmDependency[],
+  calendar: WorkCalendar,
+) {
+  const dated = stages
+    .map((stage) => {
+      const start = scheduleDate(stage.data_inicio_prevista);
+      const end = scheduleDate(stage.data_fim_prevista);
+      if (!start || !end) return null;
+      return {
+        id: String(stage.id),
+        nome: String(stage.nome ?? "Etapa"),
+        marco: Boolean(stage.marco),
+        duration: Boolean(stage.marco) ? 1 : workDurationDays(start, end, calendar),
+        plannedStart: start,
+        plannedEnd: end,
+      };
+    })
+    .filter(Boolean) as Array<{
+      id: string;
+      nome: string;
+      marco: boolean;
+      duration: number;
+      plannedStart: Date;
+      plannedEnd: Date;
+    }>;
+
+  if (!dated.length) {
+    return {
+      valid: true,
+      projectStart: null,
+      projectFinish: null,
+      projectDurationDays: 0,
+      criticalIds: [] as string[],
+      stages: [] as any[],
+    };
+  }
+
+  const byId = new Map(dated.map((stage) => [stage.id, stage]));
+  const outgoing = new Map<string, Array<{ successorId: string; weight: number }>>();
+  const incomingCount = new Map<string, number>(dated.map((stage) => [stage.id, 0]));
+
+  for (const dep of dependencies) {
+    const predecessorId = String(dep.depende_de_etapa_id ?? "");
+    const successorId = String(dep.etapa_id ?? "");
+    const predecessor = byId.get(predecessorId);
+    const successor = byId.get(successorId);
+    if (!predecessor || !successor || predecessorId === successorId) continue;
+
+    const type = ["FS", "SS", "FF", "SF"].includes(String(dep.tipo ?? "FS"))
+      ? String(dep.tipo ?? "FS")
+      : "FS";
+    const lag = Number(dep.defasagem_dias ?? 0);
+    const weight = cpmConstraintWeight(predecessor.duration, successor.duration, type, lag);
+    const list = outgoing.get(predecessorId) ?? [];
+    list.push({ successorId, weight });
+    outgoing.set(predecessorId, list);
+    incomingCount.set(successorId, (incomingCount.get(successorId) ?? 0) + 1);
+  }
+
+  const queue = dated
+    .filter((stage) => (incomingCount.get(stage.id) ?? 0) === 0)
+    .map((stage) => stage.id);
+  const topo: string[] = [];
+  const workingIncoming = new Map(incomingCount);
+
+  while (queue.length) {
+    const id = queue.shift()!;
+    topo.push(id);
+    for (const edge of outgoing.get(id) ?? []) {
+      const nextCount = (workingIncoming.get(edge.successorId) ?? 0) - 1;
+      workingIncoming.set(edge.successorId, nextCount);
+      if (nextCount === 0) queue.push(edge.successorId);
+    }
+  }
+
+  if (topo.length !== dated.length) {
+    return {
+      valid: false,
+      error: "O cronograma possui ciclo de dependências e o CPM não pode ser calculado.",
+      projectStart: null,
+      projectFinish: null,
+      projectDurationDays: 0,
+      criticalIds: [] as string[],
+      stages: [] as any[],
+    };
+  }
+
+  const earliestStart = new Map<string, number>(dated.map((stage) => [stage.id, 0]));
+  for (const id of topo) {
+    const current = earliestStart.get(id) ?? 0;
+    for (const edge of outgoing.get(id) ?? []) {
+      earliestStart.set(
+        edge.successorId,
+        Math.max(earliestStart.get(edge.successorId) ?? 0, current + edge.weight),
+      );
+    }
+  }
+
+  const earliestFinish = new Map<string, number>();
+  let projectFinishOffset = 0;
+  for (const stage of dated) {
+    const ef = (earliestStart.get(stage.id) ?? 0) + stage.duration - 1;
+    earliestFinish.set(stage.id, ef);
+    projectFinishOffset = Math.max(projectFinishOffset, ef);
+  }
+
+  const latestStart = new Map<string, number>();
+  for (const stage of dated) {
+    latestStart.set(stage.id, projectFinishOffset - stage.duration + 1);
+  }
+  for (const id of [...topo].reverse()) {
+    for (const edge of outgoing.get(id) ?? []) {
+      const successorLs = latestStart.get(edge.successorId);
+      if (successorLs === undefined) continue;
+      latestStart.set(id, Math.min(latestStart.get(id) ?? successorLs, successorLs - edge.weight));
+    }
+  }
+
+  const projectOrigin = dated.reduce(
+    (earliest, stage) => stage.plannedStart < earliest ? stage.plannedStart : earliest,
+    dated[0]!.plannedStart,
+  );
+
+  const resultStages = dated.map((stage) => {
+    const es = earliestStart.get(stage.id) ?? 0;
+    const ef = earliestFinish.get(stage.id) ?? es + stage.duration - 1;
+    const ls = latestStart.get(stage.id) ?? es;
+    const lf = ls + stage.duration - 1;
+    const totalFloat = ls - es;
+
+    const successorEdges = outgoing.get(stage.id) ?? [];
+    const freeFloat = successorEdges.length
+      ? Math.min(...successorEdges.map((edge) => {
+          const successorEs = earliestStart.get(edge.successorId) ?? 0;
+          return successorEs - (es + edge.weight);
+        }))
+      : projectFinishOffset - ef;
+
+    return {
+      etapaId: stage.id,
+      nome: stage.nome,
+      durationDays: stage.duration,
+      esOffset: es,
+      efOffset: ef,
+      lsOffset: ls,
+      lfOffset: lf,
+      earlyStart: scheduleIso(shiftWorkDays(projectOrigin, es, calendar)),
+      earlyFinish: scheduleIso(shiftWorkDays(projectOrigin, ef, calendar)),
+      lateStart: scheduleIso(shiftWorkDays(projectOrigin, ls, calendar)),
+      lateFinish: scheduleIso(shiftWorkDays(projectOrigin, lf, calendar)),
+      totalFloatDays: totalFloat,
+      freeFloatDays: Math.max(0, freeFloat),
+      critical: totalFloat <= 0,
+    };
+  });
+
+  const criticalIds = resultStages.filter((stage) => stage.critical).map((stage) => stage.etapaId);
+
+  return {
+    valid: true,
+    projectStart: scheduleIso(projectOrigin),
+    projectFinish: scheduleIso(shiftWorkDays(projectOrigin, projectFinishOffset, calendar)),
+    projectDurationDays: projectFinishOffset + 1,
+    criticalIds,
+    stages: resultStages,
+  };
+}
+
 async function addEvent(
   projectId: string,
   workOrderId: string | null,
@@ -500,6 +697,8 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
       ),
     ]);
     const etapas = etapasResult.rows;
+    const calendar = await getWorkCalendar(tid, obraId);
+    const cpm = buildCpm(etapas, dependenciasResult.rows, calendar);
     const weightedBase = etapas.reduce((sum: number, item: any) => sum + Number(item.peso_fisico ?? 0), 0);
     const percentualGeral = etapas.length
       ? weightedBase > 0
@@ -539,12 +738,38 @@ archProductionProcurementRouter.get("/arch/construction/:obraId", async (req, re
       },
       etapas,
       dependencias: dependenciasResult.rows,
+      cpm,
       diario: diarioResult.rows,
       compras: comprasResult.rows,
       medicoes: medicoesResult.rows,
     });
   } catch (err) {
     logger.error({ err }, "arch/construction bundle error");
+    next(err);
+  }
+});
+
+archProductionProcurementRouter.get("/arch/construction/:obraId/cpm", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const [stagesResult, depsResult, calendar] = await Promise.all([
+      pool.query(`SELECT id, nome, data_inicio_prevista, data_fim_prevista, marco FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`, [obraId]),
+      pool.query(`SELECT etapa_id, depende_de_etapa_id, tipo, defasagem_dias FROM obra_etapa_dependencias WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at ASC`, [obraId, tid]),
+      getWorkCalendar(tid, obraId),
+    ]);
+
+    const cpm = buildCpm(stagesResult.rows, depsResult.rows, calendar);
+    if (!cpm.valid) {
+      res.status(409).json(cpm);
+      return;
+    }
+    res.json(cpm);
+  } catch (err) {
+    logger.error({ err }, "arch/construction CPM error");
     next(err);
   }
 });
@@ -1540,6 +1765,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
       res.status(400).json({ error: "Datas de início e término válidas são obrigatórias" }); return;
     }
 
+    const calendar = await getWorkCalendar(tid, obraId);
     const [etapasResult, depsResult] = await Promise.all([
       pool.query(
         `SELECT id, nome, data_inicio_prevista, data_fim_prevista, marco
@@ -1592,21 +1818,21 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
         const successor = planned.get(successorId);
         if (!successorRow || !successor) continue;
 
-        const duration = scheduleDurationDays(successor.start, successor.end);
+        const duration = workDurationDays(successor.start, successor.end, calendar);
         const lag = Number(dep.defasagem_dias ?? 0);
         const type = String(dep.tipo ?? "FS");
         let requiredStart: Date;
 
         if (type === "SS") {
-          requiredStart = scheduleAddDays(predecessor.start, lag);
+          requiredStart = shiftWorkDays(predecessor.start, lag, calendar);
         } else if (type === "FF") {
-          const requiredEnd = scheduleAddDays(predecessor.end, lag);
-          requiredStart = scheduleAddDays(requiredEnd, -(duration - 1));
+          const requiredEnd = shiftWorkDays(predecessor.end, lag, calendar);
+          requiredStart = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else if (type === "SF") {
-          const requiredEnd = scheduleAddDays(predecessor.start, lag);
-          requiredStart = scheduleAddDays(requiredEnd, -(duration - 1));
+          const requiredEnd = shiftWorkDays(predecessor.start, lag, calendar);
+          requiredStart = subtractWorkDays(requiredEnd, duration - 1, calendar);
         } else {
-          requiredStart = scheduleAddDays(predecessor.end, lag + 1);
+          requiredStart = shiftWorkDays(predecessor.end, lag + 1, calendar);
         }
 
         const depsForSuccessor = depsResult.rows.filter((item: any) => String(item.etapa_id) === successorId);
@@ -1619,13 +1845,13 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
           const incomingType = String(incoming.tipo ?? "FS");
           let candidate: Date;
           if (incomingType === "SS") {
-            candidate = scheduleAddDays(pred.start, incomingLag);
+            candidate = shiftWorkDays(pred.start, incomingLag, calendar);
           } else if (incomingType === "FF") {
-            candidate = scheduleAddDays(scheduleAddDays(pred.end, incomingLag), -(duration - 1));
+            candidate = subtractWorkDays(shiftWorkDays(pred.end, incomingLag, calendar), duration - 1, calendar);
           } else if (incomingType === "SF") {
-            candidate = scheduleAddDays(scheduleAddDays(pred.start, incomingLag), -(duration - 1));
+            candidate = subtractWorkDays(shiftWorkDays(pred.start, incomingLag, calendar), duration - 1, calendar);
           } else {
-            candidate = scheduleAddDays(pred.end, incomingLag + 1);
+            candidate = shiftWorkDays(pred.end, incomingLag + 1, calendar);
           }
           constrainedStart = scheduleLatest(constrainedStart, candidate);
         }
@@ -1640,7 +1866,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/etapas/:etapaId
 
         const next = {
           start: constrainedStart,
-          end: scheduleAddDays(constrainedStart, duration - 1),
+          end: addWorkDays(constrainedStart, duration - 1, calendar),
         };
         planned.set(successorId, next);
         changed.add(successorId);
