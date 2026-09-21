@@ -55,6 +55,8 @@ type Props = {
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
+  roomFloorMaterials?: Record<string, string>;
+  spaceFloorMaterials?: Record<string, string>;
 };
 
 function formatMeters(value: number) {
@@ -111,6 +113,20 @@ function objectMaterial(object: ConceptPlanObject) {
       : object.kind === "tv" ? "preto-fosco"
       : "tecido-cinza"
   ];
+}
+
+const FLOOR_MATERIAL_FILL: Record<string, string> = {
+  "porcelanato-claro": "#e7e5e4",
+  "cimento-queimado": "#d1d5db",
+  "madeira-carvalho": "#dbc5a5",
+  "madeira-nogueira": "#9a775d",
+  "pedra-natural": "#d6d3d1",
+  "ceramica-clara": "#f5f5f4",
+  "vinilico-claro": "#e5d3b3",
+};
+
+function floorMaterialFill(id?: string) {
+  return id ? FLOOR_MATERIAL_FILL[id] : undefined;
 }
 
 const ROOM_FILL: Record<string, string> = {
@@ -297,6 +313,8 @@ export default function ConceptPlan2D({
   onObjectRotate,
   onObjectDuplicate,
   onObjectDelete,
+  roomFloorMaterials = {},
+  spaceFloorMaterials = {},
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -980,7 +998,7 @@ export default function ConceptPlan2D({
                   y={cell.y}
                   width={cell.width}
                   height={cell.height}
-                  fill={selectedSpace ? "#fed7aa" : index % 2 === 0 ? "#dbeafe" : "#dcfce7"}
+                  fill={selectedSpace ? "#fed7aa" : floorMaterialFill(spaceFloorMaterials[space.id]) ?? (index % 2 === 0 ? "#dbeafe" : "#dcfce7")}
                   opacity={selectedSpace ? "0.42" : "0.28"}
                   stroke={selectedSpace ? "#f97316" : "none"}
                   strokeWidth={selectedSpace ? "0.035" : "0"}
@@ -1027,7 +1045,7 @@ export default function ConceptPlan2D({
 
         {rooms.map((room) => {
           const selected = selectedId === room.id;
-          const fill = ROOM_FILL[room.kind] ?? "#ffffff";
+          const fill = floorMaterialFill(roomFloorMaterials[room.id]) ?? ROOM_FILL[room.kind] ?? "#ffffff";
           const isPool = room.kind === "piscina";
           const area = room.width * room.depth;
           const labelLines = splitRoomLabel(room.label);
