@@ -73,6 +73,7 @@ type Room = {
   x: number;
   y: number;
   locked?: boolean;
+  floorMaterialId?: string;
 };
 
 type OpeningOverride = {
@@ -111,6 +112,7 @@ type SpaceProfile = {
   kind: string;
   centroid: { x: number; y: number };
   area: number;
+  floorMaterialId?: string;
 };
 
 type EditorSnapshot = {
@@ -177,6 +179,16 @@ const CONCEPT_OBJECT_MATERIALS = [
   { id: "branco-fosco", name: "Branco fosco", category: "Lacas e metais", swatch: "#ffffff" },
 ] as const;
 
+const CONCEPT_FLOOR_MATERIALS = [
+  { id: "porcelanato-claro", name: "Porcelanato claro", category: "Porcelanatos", swatch: "#e7e5e4" },
+  { id: "cimento-queimado", name: "Cimento queimado", category: "Cimentícios", swatch: "#d1d5db" },
+  { id: "madeira-carvalho", name: "Carvalho natural", category: "Madeiras", swatch: "#dbc5a5" },
+  { id: "madeira-nogueira", name: "Nogueira", category: "Madeiras", swatch: "#9a775d" },
+  { id: "pedra-natural", name: "Pedra natural", category: "Pedras", swatch: "#d6d3d1" },
+  { id: "ceramica-clara", name: "Cerâmica clara", category: "Cerâmicas", swatch: "#f5f5f4" },
+  { id: "vinilico-claro", name: "Vinílico claro", category: "Vinílicos", swatch: "#e5d3b3" },
+] as const;
+
 const DEFAULT_FACADE: ConceptFacadePreferences = {
   style: "contemporaneo",
   roof: "platibanda",
@@ -233,6 +245,7 @@ function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
       x: finiteNumber(raw.x, 0, 0, 200),
       y: finiteNumber(raw.y, 0, 0, 200),
       locked: Boolean(raw.locked),
+      floorMaterialId: typeof raw.floorMaterialId === "string" ? raw.floorMaterialId : undefined,
     }];
   }));
 }
@@ -960,6 +973,40 @@ export default function ConceptPlanner() {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== objectId));
     setSelectedObjectId((current) => current === objectId ? null : current);
     pushRoomHistory(before);
+  };
+
+  const setSelectedSurfaceMaterial = (materialId: string) => {
+    const before = snapshotEditor();
+    if (selected) {
+      setRooms((prev) => (Array.isArray(prev) ? prev : []).map((room) =>
+        room.id === selected.id ? { ...room, floorMaterialId: materialId } : room
+      ));
+      pushRoomHistory(before);
+      closeLibraryOnMobile();
+      return;
+    }
+    if (selectedClosedSpace) {
+      const existing = spaceAssignments.get(selectedClosedSpace.id);
+      if (existing) {
+        setSpaceProfiles((prev) => (Array.isArray(prev) ? prev : []).map((profile) =>
+          profile.id === existing.id
+            ? { ...profile, floorMaterialId: materialId, centroid: selectedClosedSpace.centroid, area: selectedClosedSpace.area, floor: activeFloor }
+            : profile
+        ));
+      } else {
+        const profile: SpaceProfile = {
+          id: `space-profile-${uid()}`,
+          floor: activeFloor,
+          label: `Espaço ${safeSpaceProfiles.filter((item) => item.floor === activeFloor).length + 1}`,
+          kind: "outro",
+          centroid: selectedClosedSpace.centroid,
+          area: selectedClosedSpace.area,
+          floorMaterialId: materialId,
+        };
+        setSpaceProfiles((prev) => [...(Array.isArray(prev) ? prev : []), profile]);
+      }
+      closeLibraryOnMobile();
+    }
   };
 
   const organize = (variant = layoutVariant) => {
