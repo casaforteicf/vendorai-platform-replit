@@ -1302,6 +1302,24 @@ export default function ConceptPlanner() {
     return assignments;
   }, [closedSpaces, safeSpaceProfiles, activeFloor]);
 
+  const roomFloorMaterials = useMemo(
+    () => Object.fromEntries(
+      safeRooms
+        .filter((room) => room.floor === activeFloor && room.floorMaterialId)
+        .map((room) => [room.id, room.floorMaterialId as string]),
+    ),
+    [safeRooms, activeFloor],
+  );
+
+  const spaceFloorMaterials = useMemo(
+    () => Object.fromEntries(
+      [...spaceAssignments.entries()]
+        .filter(([, profile]) => profile.floorMaterialId)
+        .map(([spaceId, profile]) => [spaceId, profile.floorMaterialId as string]),
+    ),
+    [spaceAssignments],
+  );
+
   const modelLevels = useMemo<ConceptModelLevel[]>(() => {
     return Array.from({ length: floors }, (_, floorIndex) => {
       const base = buildConceptGeometry(safeRooms, lotWidth, lotDepth, floorIndex);
@@ -1358,6 +1376,7 @@ export default function ConceptPlanner() {
       );
 
       const labels: Record<string, string> = {};
+      const floorMaterials: Record<string, string> = {};
       const usedProfiles = new Set<string>();
       for (const space of floorClosedSpaces) {
         const best = safeSpaceProfiles
@@ -1375,7 +1394,19 @@ export default function ConceptPlanner() {
 
         if (best) {
           labels[space.id] = best.profile.label;
+          if (best.profile.floorMaterialId) floorMaterials[space.id] = best.profile.floorMaterialId;
           usedProfiles.add(best.profile.id);
+        } else if (!floorWallFirst) {
+          const ownerRoom = safeRooms
+            .filter((room) => room.floor === floorIndex)
+            .find((room) =>
+              space.centroid.x >= room.x - 0.15 &&
+              space.centroid.x <= room.x + room.width + 0.15 &&
+              space.centroid.y >= room.y - 0.15 &&
+              space.centroid.y <= room.y + room.depth + 0.15
+            );
+          if (ownerRoom?.floorMaterialId) floorMaterials[space.id] = ownerRoom.floorMaterialId;
+          if (ownerRoom?.label && !labels[space.id]) labels[space.id] = ownerRoom.label;
         }
       }
 
@@ -1388,6 +1419,7 @@ export default function ConceptPlanner() {
           ? floorCustomOpeningMarkers
           : [...floorGeometry.openings, ...floorCustomOpeningMarkers],
         labels,
+        floorMaterials,
         stairs: safeRooms
           .filter((room) => room.floor === floorIndex && room.kind === "escada")
           .map((room) => ({
@@ -3577,6 +3609,8 @@ export default function ConceptPlanner() {
                         onObjectRotate={rotateObject}
                         onObjectDuplicate={duplicateObject}
                         onObjectDelete={deleteObject}
+                        roomFloorMaterials={roomFloorMaterials}
+                        spaceFloorMaterials={spaceFloorMaterials}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
