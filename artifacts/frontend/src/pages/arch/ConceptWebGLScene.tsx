@@ -551,10 +551,13 @@ export default function ConceptWebGLScene({
             }
           });
 
+          const fallbackNodes = new Set<any>();
           for (const child of [...root.children]) {
+            child.traverse?.((node: any) => fallbackNodes.add(node));
             root.remove(child);
             disposeTree(child);
           }
+          runtime.pickables = runtime.pickables.filter((node) => !fallbackNodes.has(node));
           root.add(model);
         },
         undefined,
