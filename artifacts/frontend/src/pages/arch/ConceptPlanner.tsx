@@ -3964,21 +3964,16 @@ export default function ConceptPlanner() {
                           setSelectedOpeningId(openingId);
                           setSelectedId(null);
                           setSelectedObjectId(null);
+                          if (openingId) {
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                            setSelectedClosedSpaceId(null);
+                          }
                           closeLibraryOnMobile();
                         }}
                         onOpeningChange={updateOpeningById}
                         selectedWallId={selectedWallId}
-                        onSelectOpening={(openingId) => {
-                        setSelectedOpeningId(openingId);
-                        if (openingId) {
-                          setSelectedObjectId(null);
-                          setSelectedWallId(null);
-                          setSelectedCustomWallId(null);
-                          setSelectedClosedSpaceId(null);
-                          setSelectedId(null);
-                        }
-                      }}
-                      onSelectWall={(wallId) => {
+                        onSelectWall={(wallId) => {
                           if (wallId && paintTool?.target === "wall") {
                             applyWallMaterialToId(wallId, paintTool.materialId);
                             return;
