@@ -13,10 +13,12 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronLeft, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram, SlidersHorizontal, RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
 import { NovidadesBell } from "@/components/NovidadesBell";
@@ -44,6 +46,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     });
   }
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCustomizeOpen, setSidebarCustomizeOpen] = useState(false);
+  const [sidebarPreferenceSaving, setSidebarPreferenceSaving] = useState<string | null>(null);
+  const [sidebarPreferenceError, setSidebarPreferenceError] = useState<string | null>(null);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
   const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null; verticalSecundaria?: string | null }>({
@@ -115,6 +120,25 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       return r.json();
     },
   });
+  type SidebarPreferences = { hiddenItemKeys: string[] };
+  const {
+    data: sidebarPreferences,
+    isLoading: sidebarPreferencesLoading,
+    refetch: refetchSidebarPreferences,
+  } = useQuery<SidebarPreferences>({
+    queryKey: ["tenant-sidebar-preferences", user?.tenantId],
+    enabled: !!user?.tenantId && !!token,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const r = await fetch(`/api/tenants/${user!.tenantId}/sidebar-preferences`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return { hiddenItemKeys: [] };
+      return r.json();
+    },
+  });
+  const hiddenSidebarItemKeys = new Set(sidebarPreferences?.hiddenItemKeys ?? []);
+
   const MODULE_TO_HREFS: Record<string, string[]> = {
     dashboard:  ["/", "/trabalho"],
     leads:      ["/leads", "/deals", "/pipeline-operacional", "/pipeline-relacionamento"],
@@ -444,7 +468,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   };
   const scoutVerticalLabel = effectiveBucket ? BUCKET_SCOUT_LABEL[effectiveBucket] : undefined;
 
-  function isVisible(item: typeof allNavItems[0]) {
+  function isBaseVisible(item: typeof allNavItems[0]) {
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;
@@ -461,6 +485,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;
   }
+
+  function isVisible(item: typeof allNavItems[0]) {
+    return isBaseVisible(item) && !hiddenSidebarItemKeys.has(item.href);
+  }
+
+  const sidebarCustomizationItems = allNavItems.filter(isBaseVisible);
 
   const navigation = allNavItems
     .filter(isVisible)
@@ -910,6 +940,42 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  async function saveHiddenSidebarItems(hiddenItemKeys: string[], savingKey: string) {
+    if (!user?.tenantId || !token) return;
+    setSidebarPreferenceSaving(savingKey);
+    setSidebarPreferenceError(null);
+    try {
+      const r = await fetch(`/api/tenants/${user.tenantId}/sidebar-preferences`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ hiddenItemKeys }),
+      });
+      if (!r.ok) {
+        const payload = await r.json().catch(() => ({}));
+        throw new Error(payload?.message || payload?.error || "Não foi possível salvar a personalização.");
+      }
+      await refetchSidebarPreferences();
+    } catch (error) {
+      setSidebarPreferenceError(error instanceof Error ? error.message : "Não foi possível salvar a personalização.");
+    } finally {
+      setSidebarPreferenceSaving(null);
+    }
+  }
+
+  async function setSidebarItemVisible(itemKey: string, visible: boolean) {
+    const nextHidden = new Set(hiddenSidebarItemKeys);
+    if (visible) nextHidden.delete(itemKey);
+    else nextHidden.add(itemKey);
+    await saveHiddenSidebarItems(Array.from(nextHidden), itemKey);
+  }
+
+  async function restoreSidebarDefaults() {
+    await saveHiddenSidebarItems([], "__restore__");
+  }
+
   function UserFooter() {
     return (
       <div className="p-4 border-t">
@@ -923,6 +989,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="mb-1 space-y-1">
+          {isTenantAdmin && user?.tenantId && (
+            <button
+              type="button"
+              onClick={() => setSidebarCustomizeOpen(true)}
+              className="w-full flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground transition-colors"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Personalizar menu
+            </button>
+          )}
           <Link
             href="/faq"
             className={cn(
@@ -1079,6 +1155,77 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     </div>
     {/* Hide global support widget on /arch/* routes (ARQDOR has its own shell) */}
     {!location.startsWith("/arch") && <SupportChatWidget />}
+    {isTenantAdmin && user?.tenantId && (
+      <Dialog open={sidebarCustomizeOpen} onOpenChange={setSidebarCustomizeOpen}>
+        <DialogContent className="sm:max-w-[640px] max-h-[82vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Personalizar barra lateral</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/30 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Escolha o que aparece no menu</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ocultar não desativa a ferramenta. Permissões, dados, integrações e acesso por link continuam intactos.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={restoreSidebarDefaults}
+              disabled={sidebarPreferenceSaving !== null}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Restaurar
+            </Button>
+          </div>
+
+          {sidebarPreferenceError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {sidebarPreferenceError}
+            </div>
+          )}
+
+          <div className="vendor-scrollbar flex-1 overflow-y-auto pr-1">
+            {sidebarPreferencesLoading ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Carregando ferramentas...</p>
+            ) : (
+              <div className="space-y-2">
+                {sidebarCustomizationItems.map((item) => {
+                  const visible = !hiddenSidebarItemKeys.has(item.href);
+                  return (
+                    <div
+                      key={item.href}
+                      className="flex items-center justify-between gap-4 rounded-xl border px-3.5 py-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <item.icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {item.section === "crm" ? "Principal" : item.section}
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={visible}
+                        onCheckedChange={(checked) => setSidebarItemVisible(item.href, checked)}
+                        disabled={sidebarPreferenceSaving !== null}
+                        aria-label={`${visible ? "Ocultar" : "Mostrar"} ${item.name}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
     </>
   );
 }
