@@ -447,6 +447,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [scenarioBusy, setScenarioBusy] = useState(false);
   const [applyingScenario, setApplyingScenario] = useState(false);
   const [scenarioResult, setScenarioResult] = useState<null | {
+    inputs: { etapaId: string | null; extraPeople: number; delayDays: number; workSaturday: boolean };
     finishImpactDays: number;
     originalFinish: string | null;
     newFinish: string | null;
@@ -713,6 +714,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     setError(null);
     try {
       const result = await api<{
+        inputs?: { etapaId?: string | null; extraPeople?: number; delayDays?: number; workSaturday?: boolean };
         finishImpactDays?: number;
         originalFinish?: string | null;
         newFinish?: string | null;
@@ -730,6 +732,12 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         }),
       });
       setScenarioResult({
+        inputs: {
+          etapaId: result.inputs?.etapaId ?? (scenario.etapaId || null),
+          extraPeople: Number(result.inputs?.extraPeople ?? scenario.extraPeople ?? 0),
+          delayDays: Number(result.inputs?.delayDays ?? scenario.delayDays ?? 0),
+          workSaturday: Boolean(result.inputs?.workSaturday ?? scenario.workSaturday),
+        },
         finishImpactDays: Number(result.finishImpactDays ?? 0),
         originalFinish: result.originalFinish ?? null,
         newFinish: result.newFinish ?? null,
@@ -753,10 +761,10 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       await api(`/api/arch/construction/${bundle.obra.id}/simulate-scenario`, {
         method: "POST",
         body: JSON.stringify({
-          etapaId: scenario.etapaId || null,
-          extraPeople: Number(scenario.extraPeople || 0),
-          delayDays: Number(scenario.delayDays || 0),
-          workSaturday: scenario.workSaturday,
+          etapaId: scenarioResult.inputs.etapaId,
+          extraPeople: scenarioResult.inputs.extraPeople,
+          delayDays: scenarioResult.inputs.delayDays,
+          workSaturday: scenarioResult.inputs.workSaturday,
           apply: true,
         }),
       });
