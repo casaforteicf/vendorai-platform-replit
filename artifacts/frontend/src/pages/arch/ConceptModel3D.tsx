@@ -6,6 +6,7 @@ import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign
 import type { ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptWebGLScene from "./ConceptWebGLScene";
 import { CONCEPT_PBR_MATERIALS } from "./catalogs/conceptMaterialCatalog";
+import { listConceptModelVariants } from "./catalogs/conceptModelCatalog";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -43,7 +44,7 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl">>) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
@@ -849,6 +850,7 @@ export default function ConceptModel3D({
     ? objects.find((item) => item.id === selectedObjectId) ?? null
     : null;
   const pbrFurnitureMaterials = Object.values(CONCEPT_PBR_MATERIALS).filter((item) => item.family === "furniture");
+  const selectedObjectModelVariants = selectedObject3D ? listConceptModelVariants(selectedObject3D.kind) : [];
 
   const exteriorMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.main);
   const accentMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.accent);
@@ -935,6 +937,18 @@ export default function ConceptModel3D({
           )}
           {webglReady && selectedObject3D && (
             <div className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 lg:flex">
+              {selectedObjectModelVariants.length > 0 && (
+                <select
+                  value={selectedObject3D.model3dUrl ?? selectedObjectModelVariants[0]?.url ?? ""}
+                  onChange={(event) => onObjectChange?.(selectedObject3D.id, { model3dUrl: event.target.value || undefined })}
+                  className="h-7 max-w-40 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+                  title="Modelo 3D real"
+                >
+                  {selectedObjectModelVariants.map((variant) => (
+                    <option key={variant.id} value={variant.url}>{variant.label}</option>
+                  ))}
+                </select>
+              )}
               <select
                 value={selectedObject3D.materialId ?? ""}
                 onChange={(event) => onObjectChange?.(selectedObject3D.id, { materialId: event.target.value || undefined })}
