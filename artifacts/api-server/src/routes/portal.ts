@@ -151,7 +151,12 @@ router.get("/portal/obra/:token", async (req, res) => {
     diario = await db.select().from(obraDiarioTable)
       .where(and(eq(obraDiarioTable.obraId, obra.id), eq(obraDiarioTable.status, "aprovado")))
       .orderBy(desc(obraDiarioTable.data)).limit(12);
-    if (!config.showDiaryPhotos) diario = diario.map((entry) => ({ ...entry, fotos: [], videos: [], anexos: [] }));
+    if (!config.showDiaryPhotos) diario = diario.map((entry) => ({
+      ...entry,
+      fotos: [],
+      videos: [],
+      anexos: config.showDocuments ? entry.anexos : [],
+    }));
   }
 
   const ocorrencias = config.showDiary
@@ -231,7 +236,7 @@ router.get("/portal/obra/:token", async (req, res) => {
     medicoes = result.rows;
   }
 
-  const documentos = config.showDocuments
+  let documentos = config.showDocuments
     ? diario.flatMap((entry: any) => {
         const anexos = Array.isArray(entry.anexos) ? entry.anexos : [];
         return anexos.map((anexo: any, index: number) => ({
@@ -251,7 +256,8 @@ router.get("/portal/obra/:token", async (req, res) => {
     const result = await pool.query(
       `SELECT c.id, c.descricao, c.fornecedor, c.status, c.prioridade,
               c.data_prevista, c.data_efetuada, c.data_necessidade,
-              c.prazo_fornecedor_dias, c.valor_total,
+              c.prazo_fornecedor_dias,
+              CASE WHEN $3::boolean THEN c.valor_total ELSE NULL END AS valor_total,
               e.nome AS etapa_nome
          FROM compras_obras c
          LEFT JOIN obra_etapas e ON e.id = c.etapa_id AND e.obra_id = c.obra_id
@@ -261,7 +267,7 @@ router.get("/portal/obra/:token", async (req, res) => {
           COALESCE(c.data_necessidade, e.data_inicio_prevista) ASC NULLS LAST,
           c.created_at DESC
         LIMIT 60`,
-      [obra.id, obra.tenantId],
+      [obra.id, obra.tenantId, config.showFinancialSummary],
     );
     compras = result.rows;
   }
@@ -320,6 +326,20 @@ router.get("/portal/obra/:token", async (req, res) => {
     const totalPendente = lancamentos
       .filter((item: any) => !["pago", "recebido", "quitado", "cancelado"].includes(String(item.status ?? "").toLowerCase()))
       .reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
+
+    if (config.showDocuments && config.showFinancialDetails) {
+      const financialDocs = result.rows
+        .filter((item: any) => Boolean(item.documento_url))
+        .map((item: any) => ({
+          id: `financeiro-${item.id}`,
+          nome: item.descricao ?? item.numero ?? item.tipo ?? "Documento financeiro",
+          url: item.documento_url,
+          mimeType: null,
+          data: item.data_emissao ?? item.data_vencimento ?? null,
+          tipo: "financeiro",
+        }));
+      documentos = [...documentos, ...financialDocs];
+    }
 
     financeiro = {
       orcamentoTotal: Number(obra.orcamentoTotal ?? 0),
