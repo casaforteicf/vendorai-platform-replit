@@ -5,7 +5,7 @@ import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type C
 
 export type ConceptPlanObject = {
   id: string;
-  kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv";
+  kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug";
   label: string;
   floor: number;
   x: number;
@@ -109,13 +109,16 @@ const OBJECT_MATERIALS: Record<string, { fill: string; stroke: string; detail: s
   "madeira-escura": { fill: "#8b6b52", stroke: "#574437", detail: "#705441" },
   "preto-fosco": { fill: "#334155", stroke: "#0f172a", detail: "#1e293b" },
   "branco-fosco": { fill: "#ffffff", stroke: "#cbd5e1", detail: "#f1f5f9" },
+  "folhagem-verde": { fill: "#86a97a", stroke: "#3f6212", detail: "#bbd3a9" },
 };
 
 function objectMaterial(object: ConceptPlanObject) {
   return OBJECT_MATERIALS[object.materialId ?? ""] ?? OBJECT_MATERIALS[
     object.kind === "bed" ? "linho-claro"
       : object.kind === "table" || object.kind === "cabinet" ? "madeira-clara"
-      : object.kind === "tv" ? "preto-fosco"
+      : object.kind === "tv" || object.kind === "lamp" ? "preto-fosco"
+      : object.kind === "plant" ? "folhagem-verde"
+      : object.kind === "rug" ? "tecido-bege"
       : "tecido-cinza"
   ];
 }
@@ -1435,6 +1438,32 @@ export default function ConceptPlan2D({
               )}
               {object.kind === "tv" && (
                 <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.16, object.width - 0.20)} height={Math.max(0.12, object.depth - 0.20)} rx="0.04" fill={objectMaterial(object).fill} />
+              )}
+              {object.kind === "plant" && (
+                <>
+                  <circle cx={cx} cy={cy} r={Math.max(0.16, Math.min(object.width, object.depth) * 0.34)} fill="#86a97a" stroke="#3f6212" strokeWidth="0.04" />
+                  <circle cx={cx - object.width * 0.16} cy={cy - object.depth * 0.08} r={Math.max(0.08, Math.min(object.width, object.depth) * 0.18)} fill="#bbd3a9" />
+                  <circle cx={cx + object.width * 0.14} cy={cy + object.depth * 0.10} r={Math.max(0.07, Math.min(object.width, object.depth) * 0.16)} fill="#5f8a4f" />
+                </>
+              )}
+              {object.kind === "lamp" && (
+                <>
+                  <circle cx={cx} cy={cy} r={Math.max(0.14, Math.min(object.width, object.depth) * 0.34)} fill="#fef3c7" stroke="#334155" strokeWidth="0.05" />
+                  <circle cx={cx} cy={cy} r={Math.max(0.05, Math.min(object.width, object.depth) * 0.12)} fill="#f59e0b" />
+                </>
+              )}
+              {object.kind === "rug" && (
+                <rect
+                  x={object.x + 0.08}
+                  y={object.y + 0.08}
+                  width={Math.max(0.16, object.width - 0.16)}
+                  height={Math.max(0.16, object.depth - 0.16)}
+                  rx="0.14"
+                  fill={objectMaterial(object).fill}
+                  stroke={objectMaterial(object).stroke}
+                  strokeDasharray="0.08 0.06"
+                  strokeWidth="0.035"
+                />
               )}
               {selectedObject && (
                 <>
