@@ -61,6 +61,7 @@ type Props = {
   onOpenMaterials?: () => void;
   onRoomDuplicate?: (roomId: string) => void;
   onRoomDelete?: (roomId: string) => void;
+  paintTarget?: "object" | "wall" | "floor" | null;
 };
 
 function formatMeters(value: number) {
@@ -336,6 +337,7 @@ export default function ConceptPlan2D({
   onOpenMaterials,
   onRoomDuplicate,
   onRoomDelete,
+  paintTarget = null,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -1133,6 +1135,11 @@ export default function ConceptPlan2D({
               tabIndex={0}
               onPointerDown={(event) => {
                 if (interactionMode !== "room") return;
+                if (paintTarget === "floor") {
+                  event.stopPropagation();
+                  onSelect(room.id);
+                  return;
+                }
                 onEditStart?.();
                 onSelect(room.id);
                 if (!onRoomChange || room.locked) return;
@@ -1359,6 +1366,10 @@ export default function ConceptPlan2D({
               onPointerDown={(event) => {
                 if (!onSelectObject) return;
                 event.stopPropagation();
+                if (paintTarget === "object") {
+                  onSelectObject(object.id);
+                  return;
+                }
                 onEditStart?.();
                 onSelectObject(object.id);
                 if (!onObjectChange) return;
@@ -1507,6 +1518,7 @@ export default function ConceptPlan2D({
                 if (interactionMode !== "wall" || !onSelectCustomWall) return;
                 event.stopPropagation();
                 onSelectCustomWall(wall.id);
+                if (paintTarget === "wall") return;
               }}
               onClick={(event) => {
                 if (interactionMode !== "wall" || !onSelectCustomWall) return;
@@ -1692,6 +1704,7 @@ export default function ConceptPlan2D({
                 onEditStart?.();
                 const point = toSvgPoint(event.clientX, event.clientY);
                 onSelectWall(wall.id);
+                if (paintTarget === "wall") return;
                 setGesture({
                   roomId: wall.roomIds[0] ?? "",
                   wallId: wall.id,
