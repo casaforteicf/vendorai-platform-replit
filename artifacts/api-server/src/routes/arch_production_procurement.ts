@@ -659,9 +659,18 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
     if (!budget) { res.status(404).json({ error: "Nenhum orçamento do Arqdor encontrado para este projeto" }); return; }
 
     const itemsResult = await pool.query(
-      `SELECT * FROM arch_budget_items
-        WHERE budget_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-        ORDER BY sort_order ASC, created_at ASC`,
+      `SELECT abi.*,
+              c.produtividade_dia AS composition_productivity_day,
+              c.equipe_padrao AS composition_default_team,
+              c.horas_dia_padrao AS composition_default_hours
+         FROM arch_budget_items abi
+         LEFT JOIN composicoes c
+           ON c.id = abi.composition_id
+          AND c.tenant_id = $2
+        WHERE abi.budget_id = $1
+          AND abi.tenant_id = $2
+          AND abi.deleted_at IS NULL
+        ORDER BY abi.sort_order ASC, abi.created_at ASC`,
       [budget.id, tid],
     );
     if (!itemsResult.rows.length) {
@@ -689,8 +698,30 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
       { key: "entrega", name: "Limpeza, testes e entrega", baseDays: 4, patterns: [/limpeza final/i, /teste/i, /comission/i, /entrega/i, /vistoria/i, /as built/i] },
     ];
 
-    const grouped = new Map<string, { def: PhaseDef; items: any[]; cost: number; quantity: number }>();
-    for (const def of phases) grouped.set(def.key, { def, items: [], cost: 0, quantity: 0 });
+    type PlanningGroup = {
+      def: PhaseDef;
+      items: any[];
+      cost: number;
+      quantity: number;
+      productiveItems: number;
+      effortPersonDays: number;
+      suggestedTeam: number;
+      suggestedHours: number;
+      units: Set<string>;
+    };
+
+    const grouped = new Map<string, PlanningGroup>();
+    for (const def of phases) grouped.set(def.key, {
+      def,
+      items: [],
+      cost: 0,
+      quantity: 0,
+      productiveItems: 0,
+      effortPersonDays: 0,
+      suggestedTeam: 1,
+      suggestedHours: 8,
+      units: new Set<string>(),
+    });
 
     for (const item of itemsResult.rows) {
       const haystack = [
@@ -706,7 +737,17 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
       const group = grouped.get(def.key)!;
       group.items.push(item);
       group.cost += Number(item.total ?? 0);
-      group.quantity += Math.max(0, Number(item.quantity ?? 0));
+      const itemQuantity = Math.max(0, Number(item.quantity ?? 0));
+      group.quantity += itemQuantity;
+      if (item.unit) group.units.add(String(item.unit).trim().toLowerCase());
+
+      const productivity = Math.max(0, Number(item.composition_productivity_day ?? 0));
+      if (productivity > 0 && itemQuantity > 0) {
+        group.productiveItems += 1;
+        group.effortPersonDays += itemQuantity / productivity;
+        group.suggestedTeam = Math.max(group.suggestedTeam, Math.max(1, Number(item.composition_default_team ?? 1)));
+        group.suggestedHours = Math.max(group.suggestedHours, Math.max(0.5, Number(item.composition_default_hours ?? 8)));
+      }
     }
 
     const activeGroups = phases
@@ -714,13 +755,14 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
       .filter((group) => group.items.length > 0);
 
     const totalCost = activeGroups.reduce((sum, group) => sum + group.cost, 0);
+    const calendar = await getWorkCalendar(tid, obraId);
     const requestedStart = scheduleDate(req.body?.startDate) ?? new Date();
-    let cursor = new Date(Date.UTC(
+    let cursor = nextWorkDay(new Date(Date.UTC(
       requestedStart.getUTCFullYear(),
       requestedStart.getUTCMonth(),
       requestedStart.getUTCDate(),
       12, 0, 0,
-    ));
+    )), calendar);
 
     const existingResult = await pool.query(
       `SELECT * FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`,
@@ -742,10 +784,19 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
         const group = activeGroups[index]!;
         const quantityFactor = Math.min(8, Math.ceil(group.quantity / 50));
         const costFactor = group.cost > 0 ? Math.min(8, Math.ceil(group.cost / 50000)) : 0;
-        const duration = Math.max(1, group.def.baseDays + quantityFactor + costFactor);
-        const start = new Date(cursor);
-        const end = scheduleAddDays(start, duration - 1);
-        cursor = scheduleAddDays(end, 1);
+        const productivityDriven = group.items.length > 0
+          && group.productiveItems === group.items.length
+          && group.effortPersonDays > 0;
+        const durationSource = productivityDriven ? "composition_productivity" : "heuristic";
+        const duration = productivityDriven
+          ? Math.max(1, Math.ceil(group.effortPersonDays / Math.max(1, group.suggestedTeam)))
+          : Math.max(1, group.def.baseDays + quantityFactor + costFactor);
+        const start = nextWorkDay(new Date(cursor), calendar);
+        const end = addWorkDays(start, duration - 1, calendar);
+        cursor = addWorkDays(end, 1, calendar);
+        const stageProductivity = productivityDriven && group.units.size === 1 && group.effortPersonDays > 0
+          ? group.quantity / group.effortPersonDays
+          : 0;
         const weight = totalCost > 0 ? (group.cost / totalCost) * 100 : 100 / activeGroups.length;
         const existing = existingByName.get(group.def.name.toLowerCase());
 
@@ -756,10 +807,17 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
                     peso_fisico = CASE WHEN COALESCE(peso_fisico, 0)::numeric = 0 THEN $2 ELSE peso_fisico END,
                     data_inicio_prevista = COALESCE(data_inicio_prevista, $3),
                     data_fim_prevista = COALESCE(data_fim_prevista, $4),
+                    equipe_quantidade = CASE WHEN $5::boolean THEN $6 ELSE equipe_quantidade END,
+                    horas_dia = CASE WHEN $5::boolean THEN $7 ELSE horas_dia END,
+                    produtividade_dia = CASE WHEN $5::boolean AND $8::numeric > 0 THEN $8 ELSE produtividade_dia END,
                     updated_at = now()
-              WHERE id = $5 AND obra_id = $6
+              WHERE id = $9 AND obra_id = $10
               RETURNING *`,
-            [String(group.cost), String(weight), scheduleIso(start), scheduleIso(end), existing.id, obraId],
+            [
+              String(group.cost), String(weight), scheduleIso(start), scheduleIso(end),
+              productivityDriven, group.suggestedTeam, String(group.suggestedHours), String(stageProductivity),
+              existing.id, obraId,
+            ],
           );
           const row = result.rows[0];
           if (row) {
@@ -772,15 +830,20 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
             `INSERT INTO obra_etapas (
               id, obra_id, nome, descricao, ordem,
               data_inicio_prevista, data_fim_prevista,
-              status, percentual_executado, custo_previsto, peso_fisico, marco,
+              status, percentual_executado,
+              equipe_quantidade, horas_dia, produtividade_dia,
+              custo_previsto, peso_fisico, marco,
               created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,false,now(),now())
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente','0',$8,$9,$10,$11,$12,false,now(),now())
             RETURNING *`,
             [
               id, obraId, group.def.name,
-              `Gerada automaticamente a partir de ${group.items.length} item(ns) do orçamento ${budget.title ?? ""}`.trim(),
+              `Gerada automaticamente a partir de ${group.items.length} item(ns) do orçamento ${budget.title ?? ""}. Duração: ${duration} dia(s) via ${durationSource === "composition_productivity" ? "produtividade das composições" : "estimativa heurística"}.`.trim(),
               index,
               scheduleIso(start), scheduleIso(end),
+              productivityDriven ? group.suggestedTeam : 1,
+              String(productivityDriven ? group.suggestedHours : 8),
+              String(productivityDriven ? stageProductivity : 0),
               String(group.cost), String(weight),
             ],
           );
@@ -819,17 +882,26 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/plan-from-budge
 
     res.status(201).json({
       budget: { id: budget.id, title: budget.title, grandTotal: Number(budget.grand_total ?? totalCost) },
-      generated: activeGroups.map((group, index) => ({
-        key: group.def.key,
-        name: group.def.name,
-        itemCount: group.items.length,
-        cost: group.cost,
-        etapaId: orderedIds[index],
-      })),
+      generated: activeGroups.map((group, index) => {
+        const productivityDriven = group.items.length > 0
+          && group.productiveItems === group.items.length
+          && group.effortPersonDays > 0;
+        return {
+          key: group.def.key,
+          name: group.def.name,
+          itemCount: group.items.length,
+          productiveItems: group.productiveItems,
+          productivityCoverage: group.items.length ? group.productiveItems / group.items.length : 0,
+          durationSource: productivityDriven ? "composition_productivity" : "heuristic",
+          suggestedTeam: productivityDriven ? group.suggestedTeam : null,
+          cost: group.cost,
+          etapaId: orderedIds[index],
+        };
+      }),
       createdCount: created.length,
       updatedCount: updated.length,
       startDate: activeGroups.length ? scheduleIso(scheduleDate(req.body?.startDate) ?? new Date()) : null,
-      endDate: activeGroups.length ? scheduleIso(scheduleAddDays(cursor, -1)) : null,
+      endDate: activeGroups.length ? scheduleIso(subtractWorkDays(cursor, 1, calendar)) : null,
     });
   } catch (err) {
     logger.error({ err }, "arch/construction plan-from-budget error");
