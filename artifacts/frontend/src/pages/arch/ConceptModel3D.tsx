@@ -50,6 +50,11 @@ type Props = {
   onSelectWall?: (wallId: string | null) => void;
   onSelectCustomWall?: (wallId: string | null) => void;
   onSelectClosedSpace?: (spaceId: string | null) => void;
+  paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
+  onPaintObject?: (objectId: string, materialId: string) => void;
+  onPaintWall?: (wallId: string, materialId: string) => void;
+  onPaintFloor?: (spaceId: string, materialId: string) => void;
+  onCancelPaint?: () => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -366,6 +371,11 @@ export default function ConceptModel3D({
   onSelectWall,
   onSelectCustomWall,
   onSelectClosedSpace,
+  paintTool = null,
+  onPaintObject,
+  onPaintWall,
+  onPaintFloor,
+  onCancelPaint,
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
@@ -428,6 +438,7 @@ export default function ConceptModel3D({
 
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
+    if (paintTool) return;
     if (event.pointerType === "touch") {
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (touchPointersRef.current.size === 2) {
@@ -634,6 +645,19 @@ export default function ConceptModel3D({
           >
             {showLabels ? "Ocultar nomes" : "Mostrar nomes"}
           </button>
+          {paintTool && (
+            <div className="flex items-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-800">
+              <span className="h-3 w-3 rounded-full border border-black/10" style={{ background: paintTool.swatch }} />
+              Pintar {paintTool.target === "wall" ? "parede" : paintTool.target === "floor" ? "piso" : "objeto"} · {paintTool.name}
+              <button
+                type="button"
+                onClick={onCancelPaint}
+                className="ml-1 rounded-md border border-orange-200 bg-white px-2 py-0.5 text-[10px] font-bold"
+              >
+                Sair
+              </button>
+            </div>
+          )}
           {levels.length > 1 && (
             <button
               type="button"
@@ -677,7 +701,7 @@ export default function ConceptModel3D({
           onSelectCustomWall?.(null);
           onSelectClosedSpace?.(null);
         }}
-        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`block h-[calc(100dvh-64px)] min-h-[620px] w-full touch-none select-none bg-[radial-gradient(circle_at_50%_24%,#ffffff_0%,#eef2f6_52%,#dfe5eb_100%)] ${paintTool ? "cursor-crosshair" : orbitGesture ? "cursor-grabbing" : "cursor-grab"}`}
         role="img"
         aria-label="Modelo tridimensional conceitual da planta"
       >
@@ -755,9 +779,13 @@ export default function ConceptModel3D({
                       strokeWidth={selectedClosedSpaceId === space.id ? "0.10" : "0.04"}
                       className={onSelectClosedSpace && level.floor === activeFloor ? "cursor-pointer" : undefined}
                       onClick={(event) => {
-                        if (!onSelectClosedSpace || level.floor !== activeFloor) return;
+                        if (level.floor !== activeFloor) return;
                         event.stopPropagation();
-                        onSelectClosedSpace(space.id);
+                        if (paintTool?.target === "floor" && onPaintFloor) {
+                          onPaintFloor(space.id, paintTool.materialId);
+                          return;
+                        }
+                        onSelectClosedSpace?.(space.id);
                       }}
                     />
                   ))}
@@ -800,6 +828,10 @@ export default function ConceptModel3D({
                         onClick={(event) => {
                           if (level.floor !== activeFloor) return;
                           event.stopPropagation();
+                          if (paintTool?.target === "wall" && onPaintWall) {
+                            onPaintWall(wall.id, paintTool.materialId);
+                            return;
+                          }
                           if (wall.custom) onSelectCustomWall?.(wall.id);
                           else onSelectWall?.(wall.id);
                         }}
@@ -907,6 +939,10 @@ export default function ConceptModel3D({
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
                   event.stopPropagation();
+                  if (paintTool?.target === "object" && onPaintObject) {
+                    onPaintObject(object.id, paintTool.materialId);
+                    return;
+                  }
                   onSelectObject?.(object.id);
                   if (!onObjectChange) return;
                   onObjectEditStart?.();
@@ -922,9 +958,12 @@ export default function ConceptModel3D({
                   });
                 }}
                 onClick={(event) => {
-                  if (!onSelectObject) return;
                   event.stopPropagation();
-                  onSelectObject(object.id);
+                  if (paintTool?.target === "object" && onPaintObject) {
+                    onPaintObject(object.id, paintTool.materialId);
+                    return;
+                  }
+                  onSelectObject?.(object.id);
                 }}
               >
                 <polygon
