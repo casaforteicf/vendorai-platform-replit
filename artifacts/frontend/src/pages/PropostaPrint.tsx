@@ -156,37 +156,8 @@ export default function PropostaPrint() {
   // ── Handlers ─────────────────────────────────────────────────────────────
   function openEdit() {
     if (!proposta) return;
-    setETitulo(proposta.titulo);
-    setEValidade(toDateInputValue(proposta.validadeAte));
-    setEFormaPagamento(proposta.formaPagamento ?? "");
-    setECondPagamento(proposta.condPagamento ?? "");
-    setEPrazoEntrega(proposta.prazoEntrega ?? "");
-    setEObservacoes(proposta.observacoes ?? "");
-    setERecorrente(proposta.recorrente ?? false);
-    setEValorMensal(proposta.valorMensal ? String(proposta.valorMensal) : "");
-    setEPrazoContrato(proposta.prazoContratoMeses ? String(proposta.prazoContratoMeses) : "");
-    setEFormaPagamentoMensalidade((proposta as any).formaPagamentoMensalidade ?? "");
-    setECondPagamentoMensalidade((proposta as any).condPagamentoMensalidade ?? "");
-    setEItens(
-      proposta.itens.map((raw, index) => {
-        const it = raw as typeof raw & Partial<ItemEdit>;
-        return {
-          nome: it.nome,
-          quantidade: it.quantidade,
-          valorUnitario: it.valorUnitario,
-          sku: it.sku,
-          descricao: it.descricao,
-          unidade: it.unidade,
-          produtoId: it.produtoId,
-          composicaoId: it.composicaoId,
-          ordemExecucao: it.ordemExecucao ?? index + 1,
-          statusExecucao: it.statusExecucao ?? "pendente",
-          iniciadoEm: it.iniciadoEm,
-          executadoEm: it.executadoEm,
-        };
-      })
-    );
-    setEditOpen(true);
+    const returnTo = `/propostas/${proposta.id}/print`;
+    navigate(`/propostas?edit=${encodeURIComponent(proposta.id)}&returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   async function handleSave() {
