@@ -2973,26 +2973,26 @@ export default function ConceptPlanner() {
         )}
 
         {step === 4 && (
-          <section className="min-h-screen overflow-hidden bg-white">
-            <div className="relative flex min-h-16 flex-wrap items-center justify-between gap-2 border-b bg-white px-2 py-2 text-slate-800 shadow-sm sm:px-4 lg:h-16 lg:flex-nowrap lg:py-0">
+          <section className="min-h-screen overflow-hidden bg-[#eef1f4]">
+            <div className="relative flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-2 py-2 text-white shadow-[0_8px_30px_rgba(15,23,42,0.18)] sm:px-4 lg:h-16 lg:flex-nowrap lg:py-0">
               <div className="flex min-w-0 items-center gap-2">
                 <a
                   href="/arch"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-white transition hover:bg-slate-50"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
                   title="Voltar ao Arqdor"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </a>
 
                 <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-slate-950">Projeto residencial</div>
-                  <div className="text-[11px] text-slate-500">Arqdor Concept</div>
+                  <div className="truncate text-sm font-semibold text-white">Projeto residencial</div>
+                  <div className="text-[11px] text-slate-400">Arqdor Pro · editor arquitetônico</div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => void saveConcept(4)}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-white text-slate-600 transition hover:bg-slate-50"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
                   title="Salvar projeto"
                 >
                   <Check className="h-4 w-4" />
@@ -3001,7 +3001,7 @@ export default function ConceptPlanner() {
                 <button
                   type="button"
                   onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
-                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold shadow-sm sm:inline-flex"
+                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-200 shadow-sm hover:bg-white/10 sm:inline-flex"
                   title="Alternar pavimento"
                 >
                   <Layers3 className="h-4 w-4 text-slate-500" />
@@ -3011,7 +3011,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div className="order-3 w-full min-w-0 lg:absolute lg:left-1/2 lg:top-1/2 lg:order-none lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
-                <div className="flex w-full snap-x overflow-x-auto rounded-full border bg-slate-50 p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inline-flex lg:w-auto">
+                <div className="flex w-full snap-x overflow-x-auto rounded-xl border border-white/10 bg-white/5 p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inline-flex lg:w-auto">
                   {([
                     ["plan", "2D"],
                     ["model3d", "3D"],
@@ -3027,8 +3027,8 @@ export default function ConceptPlanner() {
                         if (value !== "plan") setLibraryOpen(false);
                       }}
                       className={editorView === value
-                        ? "shrink-0 snap-center rounded-full bg-orange-500 px-3 py-2 text-xs font-bold text-white shadow-sm sm:px-4"
-                        : "shrink-0 snap-center rounded-full px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 sm:px-4"}
+                        ? "shrink-0 snap-center rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 shadow-sm sm:px-4"
+                        : "shrink-0 snap-center rounded-lg px-3 py-2 text-xs font-bold text-slate-400 hover:bg-white/5 hover:text-white sm:px-4"}
                     >
                       {label}
                     </button>
@@ -3043,8 +3043,8 @@ export default function ConceptPlanner() {
                   onClick={() => setShowDimensions((value) => !value)}
                   title="Cotas"
                   className={showDimensions
-                    ? "hidden h-10 w-10 place-items-center rounded-full bg-orange-50 text-orange-700 sm:grid"
-                    : "hidden h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50 sm:grid"}
+                    ? "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500/15 text-orange-300 sm:grid"
+                    : "hidden h-10 w-10 place-items-center rounded-xl text-slate-300 hover:bg-white/10 sm:grid"}
                 >
                   <Ruler className="h-4 w-4" />
                 </button>
@@ -3053,7 +3053,7 @@ export default function ConceptPlanner() {
                   type="button"
                   onClick={() => setFloors((value) => Math.min(3, value + 1))}
                   title="Adicionar pavimento"
-                  className="hidden h-10 w-10 place-items-center rounded-full text-slate-600 hover:bg-slate-50 sm:grid"
+                  className="hidden h-10 w-10 place-items-center rounded-xl text-slate-300 hover:bg-white/10 sm:grid"
                 >
                   <Plus className="h-5 w-5" />
                 </button>
@@ -3061,7 +3061,7 @@ export default function ConceptPlanner() {
                   type="button"
                   onClick={() => { void navigator.clipboard?.writeText(window.location.href); }}
                   title="Copiar link do projeto"
-                  className="hidden h-10 w-10 place-items-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600 sm:grid"
+                  className="hidden h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 sm:grid"
                 >
                   <Share2 className="h-4 w-4" />
                 </button>
@@ -3073,7 +3073,7 @@ export default function ConceptPlanner() {
                     void saveConcept(4);
                   }}
                   title="Abrir edição de fachada"
-                  className="ml-1 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-slate-900 px-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 sm:gap-2 sm:px-3"
+                  className="ml-1 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-orange-500 px-2.5 text-xs font-bold text-white shadow-sm hover:bg-orange-600 sm:gap-2 sm:px-3"
                 >
                   Fachada <ArrowRight className="h-4 w-4" />
                 </button>
