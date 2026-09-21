@@ -443,6 +443,17 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   const [holidayDraft, setHolidayDraft] = useState("");
   const [baseline, setBaseline] = useState<BaselineBundle>({ baseline: null, etapas: [] });
   const [savingBaseline, setSavingBaseline] = useState(false);
+  const [scenario, setScenario] = useState({ etapaId: "", extraPeople: "0", delayDays: "0", workSaturday: false });
+  const [scenarioBusy, setScenarioBusy] = useState(false);
+  const [scenarioResult, setScenarioResult] = useState<null | {
+    finishImpactDays: number;
+    originalFinish: string | null;
+    newFinish: string | null;
+    originalLaborCost: number;
+    scenarioLaborCost: number;
+    laborCostImpact: number;
+    changedStages: Array<{ etapaId: string; nome: string; startDeltaDays: number; endDeltaDays: number; newStart: string; newEnd: string }>;
+  }>(null);
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -694,6 +705,44 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     const span = Math.max(1, end.getTime() - start.getTime());
     return { start, end, span };
   }, [bundle]);
+
+  async function simulateScenario() {
+    if (!bundle) return;
+    setScenarioBusy(true);
+    setError(null);
+    try {
+      const result = await api<{
+        finishImpactDays?: number;
+        originalFinish?: string | null;
+        newFinish?: string | null;
+        originalLaborCost?: number;
+        scenarioLaborCost?: number;
+        laborCostImpact?: number;
+        changedStages?: Array<{ etapaId: string; nome: string; startDeltaDays: number; endDeltaDays: number; newStart: string; newEnd: string }>;
+      }>(`/api/arch/construction/${bundle.obra.id}/simulate-scenario`, {
+        method: "POST",
+        body: JSON.stringify({
+          etapaId: scenario.etapaId || null,
+          extraPeople: Number(scenario.extraPeople || 0),
+          delayDays: Number(scenario.delayDays || 0),
+          workSaturday: scenario.workSaturday,
+        }),
+      });
+      setScenarioResult({
+        finishImpactDays: Number(result.finishImpactDays ?? 0),
+        originalFinish: result.originalFinish ?? null,
+        newFinish: result.newFinish ?? null,
+        originalLaborCost: Number(result.originalLaborCost ?? 0),
+        scenarioLaborCost: Number(result.scenarioLaborCost ?? 0),
+        laborCostImpact: Number(result.laborCostImpact ?? 0),
+        changedStages: result.changedStages ?? [],
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao simular cenário.");
+    } finally {
+      setScenarioBusy(false);
+    }
+  }
 
   async function generatePlanFromBudget() {
     if (!bundle || !meta.id) return;
@@ -1041,6 +1090,81 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
           <Metric label="Variação prazo" value={money(evm.sv)} hint="EV − PV" danger={evm.sv < 0} />
           <Metric label="ETC / VAC" value={`${money(evm.etc)} / ${money(evm.vac)}`} hint="a concluir / margem vs BAC" danger={evm.vac < 0} />
         </div>
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Simulador de cenários</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">E se mudarmos equipe, calendário ou prazo?</h3>
+          <p className="mt-1 text-xs text-slate-500">Simulação sem gravação. Compare impacto em término e custo de mão de obra antes de replanejar.</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1.3fr_160px_160px_auto_auto] lg:items-end">
+          <label className="text-[11px] font-semibold text-slate-500">
+            Etapa
+            <select value={scenario.etapaId} onChange={(e) => setScenario((current) => ({ ...current, etapaId: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
+              <option value="">Todas / apenas calendário</option>
+              {bundle.etapas.filter((item) => !item.marco).map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] font-semibold text-slate-500">
+            Pessoas +/-
+            <input type="number" min="-20" max="50" value={scenario.extraPeople} onChange={(e) => setScenario((current) => ({ ...current, extraPeople: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+          </label>
+          <label className="text-[11px] font-semibold text-slate-500">
+            Atraso na etapa
+            <div className="mt-1 flex items-center gap-2">
+              <input type="number" min="0" max="365" value={scenario.delayDays} onChange={(e) => setScenario((current) => ({ ...current, delayDays: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              <span className="text-xs text-slate-400">dias</span>
+            </div>
+          </label>
+          <label className={`flex h-10 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${scenario.workSaturday ? "border-violet-200 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-600"}`}>
+            <input type="checkbox" checked={scenario.workSaturday} onChange={(e) => setScenario((current) => ({ ...current, workSaturday: e.target.checked }))} />
+            Trabalhar sábado
+          </label>
+          <button type="button" disabled={scenarioBusy} onClick={() => void simulateScenario()} className="h-10 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
+            {scenarioBusy ? "Simulando…" : "Simular"}
+          </button>
+        </div>
+
+        {scenarioResult ? (
+          <div className="mt-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label="Impacto no término"
+                value={`${scenarioResult.finishImpactDays > 0 ? "+" : ""}${scenarioResult.finishImpactDays} dias`}
+                hint={scenarioResult.newFinish ? `novo término ${new Date(`${scenarioResult.newFinish}T12:00:00`).toLocaleDateString("pt-BR")}` : "sem término"}
+                danger={scenarioResult.finishImpactDays > 0}
+              />
+              <Metric label="Mão de obra atual" value={money(scenarioResult.originalLaborCost)} hint="cenário vigente" />
+              <Metric
+                label="Mão de obra cenário"
+                value={money(scenarioResult.scenarioLaborCost)}
+                hint={`variação ${money(scenarioResult.laborCostImpact)}`}
+                danger={scenarioResult.laborCostImpact > 0}
+              />
+              <Metric label="Etapas impactadas" value={String(scenarioResult.changedStages.length)} hint="mudanças de datas simuladas" />
+            </div>
+
+            {scenarioResult.changedStages.length ? (
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100">
+                <div className="grid grid-cols-[1fr_90px_90px_110px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <span>Etapa</span><span>Início Δ</span><span>Fim Δ</span><span>Novo fim</span>
+                </div>
+                {scenarioResult.changedStages.slice(0, 10).map((item) => (
+                  <div key={item.etapaId} className="grid grid-cols-[1fr_90px_90px_110px] gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
+                    <span className="truncate font-medium text-slate-700">{item.nome}</span>
+                    <span>{item.startDeltaDays > 0 ? "+" : ""}{item.startDeltaDays}d</span>
+                    <span>{item.endDeltaDays > 0 ? "+" : ""}{item.endDeltaDays}d</span>
+                    <span>{new Date(`${item.newEnd}T12:00:00`).toLocaleDateString("pt-BR")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">O cenário não altera as datas atuais do cronograma.</div>
+            )}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
