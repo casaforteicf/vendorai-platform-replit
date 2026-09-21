@@ -20,6 +20,10 @@ import {
   tenantsTable,
   obrasTable,
   obraEtapasTable,
+  obraEtapaDependenciasTable,
+  obraOrcamentosTable,
+  obraOrcamentoEtapasTable,
+  obraOrcamentoItensTable,
   insertArchProjetoSchema,
   updateArchProjetoSchema,
   insertArchAmbienteSchema,
@@ -407,6 +411,140 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       portalAtivo: false,
     })
     .returning();
+
+  // O Concept passa a alimentar a mesma Obra/Orçamento/Cronograma usada pelo
+  // restante do Vendor.ai. Os preços ficam zerados nesta fase: o pré-projeto
+  // fornece quantitativos preliminares, enquanto tabela de preços/composições
+  // continua sendo a fonte canônica de custo.
+  const desiredArea = Math.max(1, Number(config.desiredArea ?? 1));
+  const floors = Math.max(1, Number(config.floors ?? 1));
+  const footprintArea = Math.max(1, desiredArea / floors);
+  const conceptConfiguration = (concept.configuration ?? {}) as any;
+  const customOpenings = Array.isArray(conceptConfiguration.customOpenings) ? conceptConfiguration.customOpenings : [];
+  const overrideOpenings = concept.openingOverrides && typeof concept.openingOverrides === "object"
+    ? Object.keys(concept.openingOverrides as Record<string, unknown>).length
+    : 0;
+  const openingCount = Math.max(1, customOpenings.length + overrideOpenings);
+  const hasPool = rooms.some((room: any) => String(room.kind ?? "").toLowerCase() === "piscina");
+  const hasGarage = rooms.some((room: any) => String(room.kind ?? "").toLowerCase() === "garagem");
+
+  const obraId = crypto.randomUUID();
+  const [obra] = await tx
+    .insert(obrasTable)
+    .values({
+      id: obraId,
+      tenantId: tid,
+      nome: project.titulo,
+      descricao: `[ARQDOR:${project.id}] Obra criada automaticamente a partir do pré-projeto ${concept.id}.`,
+      clienteNome: customer.name?.trim() || null,
+      clienteContato: customer.phone?.trim() || customer.email?.trim() || null,
+      status: "planejamento",
+      orcamentoTotal: "0",
+      custoRealizado: "0",
+    })
+    .returning();
+
+  const executionStages = [
+    { nome: "Projeto", days: 10, unidade: "un", quantidade: 1, item: "Desenvolvimento e compatibilização do projeto" },
+    { nome: "Serviços preliminares", days: 5, unidade: "m²", quantidade: footprintArea, item: "Implantação e preparação do canteiro" },
+    { nome: "Fundação", days: Math.max(7, Math.ceil(footprintArea / 18)), unidade: "m²", quantidade: footprintArea, item: "Fundação da edificação" },
+    { nome: "Estrutura e vedações", days: Math.max(12, Math.ceil(desiredArea / 12)), unidade: "m²", quantidade: desiredArea, item: "Estrutura e paredes" },
+    { nome: "Cobertura", days: Math.max(5, Math.ceil(footprintArea / 25)), unidade: "m²", quantidade: footprintArea, item: `Cobertura — ${facade.roof ?? "conforme projeto"}` },
+    { nome: "Esquadrias", days: Math.max(4, Math.ceil(openingCount / 3)), unidade: "un", quantidade: openingCount, item: "Portas e janelas previstas no conceito" },
+    { nome: "Instalações elétricas e hidráulicas", days: Math.max(8, Math.ceil(desiredArea / 20)), unidade: "m²", quantidade: desiredArea, item: "Infraestrutura elétrica e hidráulica" },
+    { nome: "Revestimentos", days: Math.max(8, Math.ceil(desiredArea / 18)), unidade: "m²", quantidade: desiredArea, item: "Revestimentos internos e áreas molhadas" },
+    { nome: "Forros", days: Math.max(4, Math.ceil(desiredArea / 30)), unidade: "m²", quantidade: desiredArea, item: "Forros e fechamentos superiores" },
+    { nome: "Pintura", days: Math.max(6, Math.ceil(desiredArea / 22)), unidade: "m²", quantidade: desiredArea * 3, item: "Preparação e pintura" },
+    { nome: "Pisos", days: Math.max(6, Math.ceil(desiredArea / 25)), unidade: "m²", quantidade: desiredArea, item: "Pisos e rodapés" },
+    { nome: "Louças, metais e acabamentos", days: 5, unidade: "un", quantidade: 1, item: "Acabamentos finais" },
+    ...(hasGarage ? [{ nome: "Garagem, calçadas e acessos", days: 5, unidade: "m²", quantidade: footprintArea * 0.35, item: "Garagem, calçadas e acessos externos" }] : []),
+    ...(hasPool ? [{ nome: "Piscina e área externa", days: 10, unidade: "un", quantidade: 1, item: "Piscina prevista no pré-projeto" }] : []),
+    { nome: "Fachada e externos", days: 7, unidade: "m²", quantidade: footprintArea, item: `Fachada ${facade.style ?? "conforme conceito"}` },
+    { nome: "Limpeza, testes e entrega", days: 4, unidade: "un", quantidade: 1, item: "Limpeza final, testes e entrega" },
+  ];
+
+  const today = new Date();
+  today.setUTCHours(12, 0, 0, 0);
+  const toIso = (date: Date) => date.toISOString().slice(0, 10);
+  const addDays = (date: Date, days: number) => {
+    const next = new Date(date);
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
+  };
+
+  const scheduleRows: any[] = [];
+  let cursor = today;
+  for (let index = 0; index < executionStages.length; index++) {
+    const stage = executionStages[index]!;
+    const start = cursor;
+    const end = addDays(start, Math.max(1, stage.days) - 1);
+    const [row] = await tx
+      .insert(obraEtapasTable)
+      .values({
+        obraId,
+        nome: stage.nome,
+        descricao: "Etapa preliminar gerada automaticamente pelo Arqdor Concept.",
+        ordem: index + 1,
+        dataInicioPrevista: toIso(start),
+        dataFimPrevista: toIso(end),
+        status: "pendente",
+        percentualExecutado: "0",
+        custoPrevisto: "0",
+        pesoFisico: String(100 / executionStages.length),
+        marco: false,
+      })
+      .returning();
+    scheduleRows.push(row);
+    cursor = addDays(end, 1);
+  }
+
+  for (let index = 1; index < scheduleRows.length; index++) {
+    await tx.insert(obraEtapaDependenciasTable).values({
+      tenantId: tid,
+      obraId,
+      etapaId: scheduleRows[index]!.id,
+      dependeDeEtapaId: scheduleRows[index - 1]!.id,
+      tipo: "FS",
+      defasagemDias: 0,
+    });
+  }
+
+  const [preBudget] = await tx
+    .insert(obraOrcamentosTable)
+    .values({
+      tenantId: tid,
+      obraId,
+      versao: 1,
+      titulo: "Orçamento preliminar — Arqdor Concept",
+      descricao: "Estrutura e quantitativos preliminares gerados do pré-projeto. Preços devem ser preenchidos pela tabela de preços/composições.",
+      status: "rascunho",
+      bdiGlobal: "0",
+    })
+    .returning();
+
+  for (let index = 0; index < executionStages.length; index++) {
+    const stage = executionStages[index]!;
+    const [budgetStage] = await tx
+      .insert(obraOrcamentoEtapasTable)
+      .values({ orcamentoId: preBudget.id, nome: stage.nome, ordem: index + 1 })
+      .returning();
+    await tx.insert(obraOrcamentoItensTable).values({
+      etapaId: budgetStage.id,
+      nome: stage.item,
+      unidade: stage.unidade,
+      quantidade: String(Number(stage.quantidade.toFixed ? stage.quantidade.toFixed(4) : stage.quantidade)),
+      custoUnitario: "0",
+      origemPreco: "concept",
+      ordem: 1,
+    });
+  }
+
+  await tx
+    .update(archProjetosTable)
+    .set({ obraId, updatedAt: new Date() })
+    .where(and(eq(archProjetosTable.id, project.id), eq(archProjetosTable.tenantId, tid)));
+
+  (project as any).obraId = obra.id;
 
   await tx
     .update(archConceptProjectsTable)
