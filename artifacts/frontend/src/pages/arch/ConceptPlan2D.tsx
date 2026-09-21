@@ -48,6 +48,7 @@ type Props = {
   onSelectCustomWall?: (wallId: string | null) => void;
   onDeleteCustomWall?: (wallId: string) => void;
   onUpdateCustomWall?: (wallId: string, patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>) => void;
+  onCustomWallLengthChange?: (wallId: string, length: number) => void;
   topologyNodes?: WallTopologyNode[];
   showDimensions?: boolean;
   onMoveTopologyJunction?: (refs: WallTopologyEndpointRef[], point: { x: number; y: number }) => void;
@@ -332,6 +333,7 @@ export default function ConceptPlan2D({
   onSelectCustomWall,
   onDeleteCustomWall,
   onUpdateCustomWall,
+  onCustomWallLengthChange,
   topologyNodes = [],
   showDimensions = true,
   onMoveTopologyJunction,
@@ -1938,9 +1940,11 @@ export default function ConceptPlan2D({
                   {(() => {
                     const mid = wallMidpoint(wall);
                     const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
+                    const length = wallLength(wall);
                     return (
-                      <g
-                        className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
+                      <>
+                        <g
+                          className={horizontal ? "cursor-ns-resize" : "cursor-ew-resize"}
                         onPointerDown={(event) => {
                           if (interactionMode !== "wall" || !onUpdateCustomWall) return;
                           event.stopPropagation();
@@ -1975,7 +1979,58 @@ export default function ConceptPlan2D({
                           strokeWidth="0.05"
                           pointerEvents="none"
                         />
-                      </g>
+                        </g>
+                        {onCustomWallLengthChange && (
+                          <foreignObject
+                            x={mid.x - (horizontal ? 0.72 : -0.28)}
+                            y={mid.y - (horizontal ? 1.18 : 0.72)}
+                            width="1.44"
+                            height="0.72"
+                            requiredExtensions="http://www.w3.org/1999/xhtml"
+                          >
+                            <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+                              <input
+                                aria-label="Comprimento da parede"
+                                type="number"
+                                min="0.5"
+                                max={Math.max(lotWidth, lotDepth)}
+                                step="0.05"
+                                defaultValue={length.toFixed(2)}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    const value = Number((event.currentTarget as HTMLInputElement).value);
+                                    if (Number.isFinite(value)) onCustomWallLengthChange(wall.id, value);
+                                    (event.currentTarget as HTMLInputElement).blur();
+                                  }
+                                  if (event.key === "Escape") {
+                                    (event.currentTarget as HTMLInputElement).value = length.toFixed(2);
+                                    (event.currentTarget as HTMLInputElement).blur();
+                                  }
+                                }}
+                                onBlur={(event) => {
+                                  const value = Number(event.currentTarget.value);
+                                  if (Number.isFinite(value)) onCustomWallLengthChange(wall.id, value);
+                                }}
+                                style={{
+                                  width: "100%",
+                                  height: "28px",
+                                  border: "1px solid #fb923c",
+                                  borderRadius: "8px",
+                                  background: "rgba(255,255,255,.98)",
+                                  color: "#9a3412",
+                                  fontSize: "12px",
+                                  fontWeight: 800,
+                                  textAlign: "center",
+                                  outline: "none",
+                                  boxShadow: "0 4px 14px rgba(15,23,42,.12)",
+                                }}
+                              />
+                            </div>
+                          </foreignObject>
+                        )}
+                      </>
                     );
                   })()}
                 </>
