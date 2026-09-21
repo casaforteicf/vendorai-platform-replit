@@ -3,6 +3,18 @@ import { Maximize2, Move, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type ClosedSpace, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
 
+export type ConceptPlanObject = {
+  id: string;
+  kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv";
+  label: string;
+  floor: number;
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  rotation: number;
+};
+
 type Props = {
   rooms: ConceptRoomShape[];
   lotWidth: number;
@@ -34,6 +46,10 @@ type Props = {
   onEditStart?: () => void;
   onEditEnd?: () => void;
   interactionMode?: "room" | "space" | "wall" | "opening" | "draw-wall" | "navigate";
+  objects?: ConceptPlanObject[];
+  selectedObjectId?: string | null;
+  onSelectObject?: (objectId: string | null) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => void;
 };
 
 function formatMeters(value: number) {
@@ -249,6 +265,10 @@ export default function ConceptPlan2D({
   onEditStart,
   onEditEnd,
   interactionMode = "room",
+  objects = [],
+  selectedObjectId = null,
+  onSelectObject,
+  onObjectChange,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [wallDrawStart, setWallDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -258,8 +278,9 @@ export default function ConceptPlan2D({
     openingId?: string;
     wallId?: string;
     customWallId?: string;
+    objectId?: string;
     junctionRefs?: WallTopologyEndpointRef[];
-    mode: "move" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
+    mode: "move" | "object" | "wall" | "opening" | "custom-wall-start" | "custom-wall-end" | "custom-wall-move" | "topology-junction" | "resize-n" | "resize-s" | "resize-e" | "resize-w" | "resize-ne" | "resize-nw" | "resize-se" | "resize-sw";
     wallX1?: number;
     wallY1?: number;
     wallX2?: number;
@@ -270,6 +291,8 @@ export default function ConceptPlan2D({
     roomY: number;
     roomWidth: number;
     roomDepth: number;
+    objectX?: number;
+    objectY?: number;
   }>(null);
 
   useEffect(() => {
@@ -322,6 +345,10 @@ export default function ConceptPlan2D({
       include(space.bounds.x, space.bounds.y);
       include(space.bounds.x + space.bounds.width, space.bounds.y + space.bounds.height);
     });
+    objects.forEach((object) => {
+      include(object.x, object.y);
+      include(object.x + object.width, object.y + object.depth);
+    });
 
     if (!xs.length || !ys.length) {
       return { minX: 0, minY: 0, maxX: lotWidth, maxY: lotDepth, hasProject: false };
@@ -334,7 +361,7 @@ export default function ConceptPlan2D({
       maxY: Math.min(lotDepth, Math.max(...ys)),
       hasProject: true,
     };
-  }, [rooms, geometry.walls, customWalls, closedSpaces, lotWidth, lotDepth]);
+  }, [rooms, geometry.walls, customWalls, closedSpaces, objects, lotWidth, lotDepth]);
 
   const fitView = useMemo(() => {
     const margin = projectBounds.hasProject ? 1.35 : 2.4;
@@ -379,7 +406,7 @@ export default function ConceptPlan2D({
     startViewY: number;
   }>(null);
 
-  const autoFitKey = `${activeFloor}:${rooms.length}:${customWalls.length}:${closedSpaces.length}:${geometry.walls.length}:${lotWidth}:${lotDepth}`;
+  const autoFitKey = `${activeFloor}:${rooms.length}:${customWalls.length}:${closedSpaces.length}:${objects.length}:${geometry.walls.length}:${lotWidth}:${lotDepth}`;
   useEffect(() => {
     setView(workingView);
   }, [autoFitKey, viewportAspect]);
@@ -506,9 +533,23 @@ export default function ConceptPlan2D({
       const networkEnd = snapPointToWallNetwork(orthogonal, wallNetwork, 0.35);
       setWallDrawPreview(clampPoint(orthogonalEnd(wallDrawStart, networkEnd)));
     }
-    if (!gesture || !onRoomChange) return;
+    if (!gesture) return;
     const dx = point.x - gesture.startX;
     const dy = point.y - gesture.startY;
+
+    if (gesture.mode === "object" && gesture.objectId && onObjectChange) {
+      const object = objects.find((item) => item.id === gesture.objectId);
+      if (!object) return;
+      const baseX = gesture.objectX ?? object.x;
+      const baseY = gesture.objectY ?? object.y;
+      onObjectChange(object.id, {
+        x: snap(Math.max(0, Math.min(lotWidth - object.width, baseX + dx))),
+        y: snap(Math.max(0, Math.min(lotDepth - object.depth, baseY + dy))),
+      });
+      return;
+    }
+
+    if (!onRoomChange) return;
 
     if (gesture.mode === "custom-wall-move" && gesture.customWallId && onUpdateCustomWall) {
       const wall = customWalls.find((item) => item.id === gesture.customWallId);
@@ -1108,6 +1149,94 @@ export default function ConceptPlan2D({
                     {formatMeters(room.width)} × {formatMeters(room.depth)} m
                   </text>
                 </>
+              )}
+            </g>
+          );
+        })}
+
+        {objects.filter((object) => object.floor === activeFloor).map((object) => {
+          const selectedObject = selectedObjectId === object.id;
+          const cx = object.x + object.width / 2;
+          const cy = object.y + object.depth / 2;
+          return (
+            <g
+              key={object.id}
+              role="button"
+              className="cursor-move"
+              transform={`rotate(${object.rotation} ${cx} ${cy})`}
+              onPointerDown={(event) => {
+                if (!onSelectObject) return;
+                event.stopPropagation();
+                onEditStart?.();
+                onSelectObject(object.id);
+                if (!onObjectChange) return;
+                const point = toSvgPoint(event.clientX, event.clientY);
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                setGesture({
+                  roomId: "",
+                  objectId: object.id,
+                  mode: "object",
+                  startX: point.x,
+                  startY: point.y,
+                  roomX: 0,
+                  roomY: 0,
+                  roomWidth: 0,
+                  roomDepth: 0,
+                  objectX: object.x,
+                  objectY: object.y,
+                });
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectObject?.(object.id);
+              }}
+            >
+              <rect
+                x={object.x}
+                y={object.y}
+                width={object.width}
+                height={object.depth}
+                rx="0.12"
+                fill={selectedObject ? "#ffedd5" : "#f8fafc"}
+                stroke={selectedObject ? "#f97316" : "#64748b"}
+                strokeWidth={selectedObject ? "0.10" : "0.055"}
+              />
+              {object.kind === "sofa" && (
+                <>
+                  <rect x={object.x + 0.12} y={object.y + 0.12} width={Math.max(0.2, object.width - 0.24)} height={Math.max(0.2, object.depth * 0.36)} rx="0.10" fill="#cbd5e1" />
+                  <line x1={object.x + object.width / 2} y1={object.y + object.depth * 0.48} x2={object.x + object.width / 2} y2={object.y + object.depth - 0.12} stroke="#94a3b8" strokeWidth="0.04" />
+                </>
+              )}
+              {object.kind === "bed" && (
+                <>
+                  <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.2, object.width - 0.20)} height={Math.max(0.2, object.depth - 0.20)} rx="0.08" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="0.035" />
+                  <rect x={object.x + 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill="#e2e8f0" />
+                  <rect x={object.x + object.width - Math.max(0.15, object.width * 0.32) - 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill="#e2e8f0" />
+                </>
+              )}
+              {object.kind === "table" && (
+                <ellipse cx={cx} cy={cy} rx={Math.max(0.2, object.width / 2 - 0.08)} ry={Math.max(0.2, object.depth / 2 - 0.08)} fill="#e7e5e4" stroke="#a8a29e" strokeWidth="0.04" />
+              )}
+              {object.kind === "chair" && (
+                <>
+                  <rect x={object.x + 0.10} y={object.y + 0.16} width={Math.max(0.18, object.width - 0.20)} height={Math.max(0.18, object.depth - 0.26)} rx="0.08" fill="#e2e8f0" />
+                  <line x1={object.x + 0.10} y1={object.y + 0.12} x2={object.x + object.width - 0.10} y2={object.y + 0.12} stroke="#64748b" strokeWidth="0.07" />
+                </>
+              )}
+              {object.kind === "cabinet" && (
+                <>
+                  <line x1={cx} y1={object.y + 0.08} x2={cx} y2={object.y + object.depth - 0.08} stroke="#94a3b8" strokeWidth="0.035" />
+                  <circle cx={cx - 0.10} cy={cy} r="0.035" fill="#475569" />
+                  <circle cx={cx + 0.10} cy={cy} r="0.035" fill="#475569" />
+                </>
+              )}
+              {object.kind === "tv" && (
+                <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.16, object.width - 0.20)} height={Math.max(0.12, object.depth - 0.20)} rx="0.04" fill="#334155" />
+              )}
+              {selectedObject && (
+                <text x={cx} y={object.y - 0.16} textAnchor="middle" fontSize="0.22" fontWeight="800" fill="#c2410c" pointerEvents="none">
+                  {object.label}
+                </text>
               )}
             </g>
           );
