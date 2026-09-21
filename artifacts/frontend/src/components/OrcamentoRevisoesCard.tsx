@@ -463,6 +463,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
               </Button>
             </div>
           ) : (
+            <>
             <div className="space-y-3 md:hidden">
               {orcamentos.map((orc) => {
                 const labelValue = getOrcLabel(orc.status);
@@ -689,6 +690,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
