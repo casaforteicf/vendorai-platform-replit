@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
 import { type ConceptFacadePreferences } from "./ConceptVolumetry";
-import ConceptPlan2D from "./ConceptPlan2D";
+import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptFacadeEditor from "./ConceptFacadeEditor";
@@ -146,6 +146,7 @@ type ConceptDraftResponse = {
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
+    objects?: ConceptPlanObject[];
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -223,6 +224,29 @@ function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
       locked: Boolean(raw.locked),
     }];
   }));
+}
+
+function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlanObject[] {
+  if (!Array.isArray(input)) return [];
+  const validKinds = new Set<ConceptPlanObject["kind"]>(["sofa", "bed", "table", "chair", "cabinet", "tv"]);
+  return input.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const raw = candidate as Partial<ConceptPlanObject>;
+    const kind = validKinds.has(raw.kind as ConceptPlanObject["kind"]) ? raw.kind as ConceptPlanObject["kind"] : "sofa";
+    const width = finiteNumber(raw.width, kind === "sofa" ? 2.2 : kind === "bed" ? 1.6 : 1.2, 0.3, 6);
+    const depth = finiteNumber(raw.depth, kind === "sofa" ? 0.9 : kind === "bed" ? 2.0 : 0.8, 0.3, 6);
+    return [{
+      id: typeof raw.id === "string" && raw.id ? raw.id : `object-loaded-${index}-${uid()}`,
+      kind,
+      label: typeof raw.label === "string" && raw.label.trim() ? raw.label : kind,
+      floor: Math.round(finiteNumber(raw.floor, 0, 0, Math.max(0, floorCount - 1))),
+      x: finiteNumber(raw.x, 1, 0, 100),
+      y: finiteNumber(raw.y, 1, 0, 200),
+      width,
+      depth,
+      rotation: Math.round(finiteNumber(raw.rotation, 0, -360, 360)),
+    }];
+  });
 }
 
 function normalizeLoadedWalls(input: unknown, floorCount: number): CustomWall[] {
@@ -377,6 +401,8 @@ export default function ConceptPlanner() {
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([0]);
   const [showDimensions, setShowDimensions] = useState(true);
   const [spaceProfiles, setSpaceProfiles] = useState<SpaceProfile[]>([]);
+  const [objects, setObjects] = useState<ConceptPlanObject[]>([]);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
@@ -391,7 +417,7 @@ export default function ConceptPlanner() {
   const wallFirstActive = (Array.isArray(wallFirstFloors) ? wallFirstFloors : []).includes(activeFloor);
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
-  const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "outdoor">("build");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
   const closeLibraryOnMobile = () => {
@@ -483,6 +509,7 @@ export default function ConceptPlanner() {
         setCustomWalls(loadedWalls);
         setCustomOpenings(loadedOpenings);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
+        setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -510,7 +537,7 @@ export default function ConceptPlanner() {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects },
       rooms,
       openingOverrides,
       customerProfile,
@@ -547,8 +574,10 @@ export default function ConceptPlanner() {
   const safeCustomOpenings = Array.isArray(customOpenings) ? customOpenings : [];
   const safeWallFirstFloors = Array.isArray(wallFirstFloors) ? wallFirstFloors : [];
   const safeSpaceProfiles = Array.isArray(spaceProfiles) ? spaceProfiles : [];
+  const safeObjects = Array.isArray(objects) ? objects : [];
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
+  const selectedObject = safeObjects.find((object) => object.id === selectedObjectId) ?? null;
   const visibleRooms = wallFirstActive
     ? safeRooms.filter((r) => r.floor === activeFloor && (r.kind === "escada" || r.kind === "piscina"))
     : safeRooms.filter((r) => r.floor === activeFloor);
@@ -804,6 +833,59 @@ export default function ConceptPlanner() {
       ...prev,
       [openingId]: patch,
     }));
+  };
+
+  const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) => {
+    const next: ConceptPlanObject = {
+      id: `concept-object-${uid()}`,
+      kind,
+      label,
+      floor: activeFloor,
+      width,
+      depth,
+      x: Math.max(0, Math.min(lotWidth - width, lotWidth / 2 - width / 2)),
+      y: Math.max(0, Math.min(lotDepth - depth, lotDepth / 2 - depth / 2)),
+      rotation: 0,
+    };
+    setObjects((prev) => [...(Array.isArray(prev) ? prev : []), next]);
+    setSelectedObjectId(next.id);
+    setSelectedId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setEditorView("plan");
+    closeLibraryOnMobile();
+  };
+
+  const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => {
+    setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
+      if (object.id !== objectId) return object;
+      const width = Math.max(0.3, Math.min(lotWidth, patch.width ?? object.width));
+      const depth = Math.max(0.3, Math.min(lotDepth, patch.depth ?? object.depth));
+      const x = Math.max(0, Math.min(lotWidth - width, patch.x ?? object.x));
+      const y = Math.max(0, Math.min(lotDepth - depth, patch.y ?? object.y));
+      return { ...object, ...patch, width, depth, x, y };
+    }));
+  };
+
+  const deleteSelectedObject = () => {
+    if (!selectedObjectId) return;
+    setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== selectedObjectId));
+    setSelectedObjectId(null);
+  };
+
+  const duplicateSelectedObject = () => {
+    if (!selectedObject) return;
+    const copy: ConceptPlanObject = {
+      ...selectedObject,
+      id: `concept-object-${uid()}`,
+      x: Math.max(0, Math.min(lotWidth - selectedObject.width, selectedObject.x + 0.5)),
+      y: Math.max(0, Math.min(lotDepth - selectedObject.depth, selectedObject.y + 0.5)),
+      label: `${selectedObject.label} cópia`,
+    };
+    setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    setSelectedObjectId(copy.id);
   };
 
   const organize = (variant = layoutVariant) => {
@@ -2636,6 +2718,7 @@ export default function ConceptPlanner() {
                         ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
+                        ["furniture", LayoutGrid, "Móveis"],
                         ["outdoor", Trees, "Externo"],
                       ] as const).map(([value, Icon, label]) => (
                         <button
@@ -2670,7 +2753,9 @@ export default function ConceptPlanner() {
                               ? "Construir"
                               : editorLibraryTab === "rooms"
                                 ? "Ambientes"
-                                : "Área externa"}
+                                : editorLibraryTab === "furniture"
+                                  ? "Móveis e objetos"
+                                  : "Área externa"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
                         {editorLibraryTab === "site"
@@ -2681,7 +2766,9 @@ export default function ConceptPlanner() {
                               ? "Estrutura e aberturas"
                               : editorLibraryTab === "rooms"
                                 ? "Organize os ambientes"
-                                : "Lazer e área externa"}
+                                : editorLibraryTab === "furniture"
+                                  ? "Insira e mova itens na planta"
+                                  : "Lazer e área externa"}
                       </div>
                     </div>
                     <button
@@ -2993,6 +3080,47 @@ export default function ConceptPlanner() {
                     </>
                   )}
 
+                  {editorLibraryTab === "furniture" && (
+                    <>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Móveis e objetos</div>
+                        <span className="text-[10px] text-slate-400">Arraste após inserir</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {([
+                          ["sofa", "Sofá", 2.20, 0.90],
+                          ["bed", "Cama casal", 1.60, 2.00],
+                          ["table", "Mesa", 1.40, 0.90],
+                          ["chair", "Cadeira", 0.55, 0.55],
+                          ["cabinet", "Armário", 1.80, 0.60],
+                          ["tv", "TV / painel", 1.40, 0.35],
+                        ] as Array<[ConceptPlanObject["kind"], string, number, number]>).map(([kind, label, width, depth]) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() => addObject(kind, label, width, depth)}
+                            className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-orange-300 hover:shadow-sm"
+                          >
+                            <div className="relative grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-stone-100">
+                              <div
+                                className={kind === "table"
+                                  ? "rounded-full border-2 border-slate-500 bg-white"
+                                  : "rounded-md border-2 border-slate-500 bg-white"}
+                                style={{ width: `${Math.max(28, Math.min(54, width * 24))}px`, height: `${Math.max(18, Math.min(48, depth * 24))}px` }}
+                              />
+                            </div>
+                            <div className="p-3">
+                              <div className="text-sm font-semibold">{label}</div>
+                              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                {width.toFixed(2).replace(".", ",")} × {depth.toFixed(2).replace(".", ",")} m
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
                   {editorLibraryTab === "outdoor" && (
                     <>
                       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Área externa</div>
@@ -3240,6 +3368,20 @@ export default function ConceptPlanner() {
                         onEditStart={beginRoomEdit}
                         onEditEnd={endRoomEdit}
                         interactionMode={interactionMode}
+                        objects={safeObjects}
+                        selectedObjectId={selectedObjectId}
+                        onSelectObject={(objectId) => {
+                          setSelectedObjectId(objectId);
+                          if (objectId) {
+                            setSelectedId(null);
+                            setSelectedOpeningId(null);
+                            setSelectedWallId(null);
+                            setSelectedCustomWallId(null);
+                            setSelectedClosedSpaceId(null);
+                            closeLibraryOnMobile();
+                          }
+                        }}
+                        onObjectChange={updateObjectById}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -3349,7 +3491,7 @@ export default function ConceptPlanner() {
                 ))}
               </div>
 
-              {editorView === "plan" && (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
+              {editorView === "plan" && (selectedObject || selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall) && (
               <aside className="fixed inset-x-3 bottom-20 z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-4 md:left-1/2 md:w-[min(1080px,calc(100vw-120px))] md:-translate-x-1/2 md:rounded-2xl md:px-3 md:py-2.5">
                 <button
                   type="button"
@@ -3359,13 +3501,54 @@ export default function ConceptPlanner() {
                     setSelectedWallId(null);
                     setSelectedCustomWallId(null);
                     setSelectedClosedSpaceId(null);
+                    setSelectedObjectId(null);
                   }}
                   className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border bg-white text-slate-500 shadow-sm md:hidden"
                   aria-label="Fechar propriedades"
                 >
                   <X className="h-4 w-4" />
                 </button>
-                {selectedCustomWall ? (
+                {selectedObject ? (
+                  <div className="flex flex-wrap items-end gap-2 pr-10 md:pr-0">
+                    <div className="mr-2 min-w-[140px]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Objeto</div>
+                      <div className="mt-1 text-sm font-semibold">{selectedObject.label}</div>
+                    </div>
+                    {([
+                      ["width", "Largura", selectedObject.width],
+                      ["depth", "Prof.", selectedObject.depth],
+                    ] as const).map(([key, label, value]) => (
+                      <label key={key} className="text-[10px] font-semibold text-slate-500">
+                        {label} (m)
+                        <input
+                          type="number"
+                          min="0.3"
+                          step="0.05"
+                          value={value.toFixed(2)}
+                          onChange={(event) => updateObjectById(selectedObject.id, { [key]: Number(event.target.value) || 0.3 })}
+                          className="mt-1 h-9 w-[92px] rounded-lg border px-2 text-xs font-semibold"
+                        />
+                      </label>
+                    ))}
+                    <label className="text-[10px] font-semibold text-slate-500">
+                      Rotação
+                      <select
+                        value={selectedObject.rotation}
+                        onChange={(event) => updateObjectById(selectedObject.id, { rotation: Number(event.target.value) })}
+                        className="mt-1 h-9 w-[100px] rounded-lg border bg-white px-2 text-xs"
+                      >
+                        <option value={0}>0°</option>
+                        <option value={90}>90°</option>
+                        <option value={180}>180°</option>
+                        <option value={270}>270°</option>
+                      </select>
+                    </label>
+                    <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
+                      <button type="button" onClick={duplicateSelectedObject} className="h-9 rounded-lg border px-3 text-xs font-semibold">Duplicar</button>
+                      <button type="button" onClick={deleteSelectedObject} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">Excluir</button>
+                    </div>
+                  </div>
+                ) : selectedCustomWall ? (
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="mr-2 min-w-[130px]">
                       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Parede</div>
