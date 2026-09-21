@@ -49,7 +49,8 @@ export type ArchConceptConfiguration = {
   }>;
   objects?: Array<{
     id: string;
-    kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug";
+    kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug"
+      | "outlet" | "switch" | "light_point" | "water_point" | "drain_point" | "shower_point" | "faucet_point";
     label: string;
     floor: number;
     x: number;
