@@ -900,6 +900,218 @@ archProductionProcurementRouter.patch("/arch/construction/:obraId/etapas/:etapaI
   }
 });
 
+archProductionProcurementRouter.post("/arch/construction/:obraId/simulate-scenario", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+
+    const selectedEtapaId = req.body?.etapaId ? String(req.body.etapaId) : null;
+    const extraPeople = Math.max(-499, Math.min(499, Number(req.body?.extraPeople ?? 0)));
+    const delayDays = Math.max(0, Math.min(365, Number(req.body?.delayDays ?? 0)));
+    const workSaturday = Boolean(req.body?.workSaturday);
+
+    const baseCalendar = await getWorkCalendar(tid, obraId);
+    const calendar: WorkCalendar = { ...baseCalendar, sabado: workSaturday ? true : baseCalendar.sabado };
+
+    const [etapasResult, depsResult] = await Promise.all([
+      pool.query(
+        `SELECT id, nome, ordem, status, marco, equipe_nome, equipe_quantidade, horas_dia,
+                custo_hora_pessoa, custo_previsto, data_inicio_prevista, data_fim_prevista
+           FROM obra_etapas
+          WHERE obra_id = $1
+          ORDER BY ordem ASC, created_at ASC`,
+        [obraId],
+      ),
+      pool.query(
+        `SELECT etapa_id, depende_de_etapa_id, tipo, defasagem_dias
+           FROM obra_etapa_dependencias
+          WHERE obra_id = $1 AND tenant_id = $2
+          ORDER BY created_at ASC`,
+        [obraId, tid],
+      ),
+    ]);
+
+    const rows = etapasResult.rows;
+    const planned = new Map<string, { start: Date; end: Date }>();
+    const original = new Map<string, { start: Date; end: Date }>();
+    const byId = new Map<string, any>();
+
+    for (const row of rows) {
+      const id = String(row.id);
+      byId.set(id, row);
+      const start = scheduleDate(row.data_inicio_prevista);
+      const end = scheduleDate(row.data_fim_prevista);
+      if (start && end) {
+        original.set(id, { start, end });
+        planned.set(id, { start: new Date(start), end: new Date(end) });
+      }
+    }
+
+    const incoming = new Map<string, any[]>();
+    const successors = new Map<string, any[]>();
+    for (const dep of depsResult.rows) {
+      const target = String(dep.etapa_id);
+      const predecessor = String(dep.depende_de_etapa_id);
+      incoming.set(target, [...(incoming.get(target) ?? []), dep]);
+      successors.set(predecessor, [...(successors.get(predecessor) ?? []), dep]);
+    }
+
+    const originalFinish = Array.from(original.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+
+    let originalLaborCost = 0;
+    let scenarioLaborCost = 0;
+
+    for (const row of rows) {
+      const id = String(row.id);
+      const dates = planned.get(id);
+      if (!dates || row.marco) continue;
+
+      const oldPeople = Math.max(1, Number(row.equipe_quantidade ?? 1));
+      const hours = Math.max(0, Number(row.horas_dia ?? calendar.horasDia));
+      const hourly = Math.max(0, Number(row.custo_hora_pessoa ?? 0));
+      const oldDuration = workDurationDays(dates.start, dates.end, baseCalendar);
+      originalLaborCost += oldDuration * oldPeople * hours * hourly;
+
+      if (selectedEtapaId === id && extraPeople !== 0 && String(row.status ?? "pendente") === "pendente") {
+        const newPeople = Math.max(1, oldPeople + extraPeople);
+        const effortPersonDays = oldDuration * oldPeople;
+        const newDuration = Math.max(1, Math.ceil(effortPersonDays / newPeople));
+        planned.set(id, {
+          start: dates.start,
+          end: addWorkDays(dates.start, newDuration - 1, calendar),
+        });
+      } else if (workSaturday) {
+        const duration = workDurationDays(dates.start, dates.end, baseCalendar);
+        planned.set(id, {
+          start: nextWorkDay(dates.start, calendar),
+          end: addWorkDays(nextWorkDay(dates.start, calendar), duration - 1, calendar),
+        });
+      }
+    }
+
+    if (selectedEtapaId && delayDays > 0) {
+      const dates = planned.get(selectedEtapaId);
+      const row = byId.get(selectedEtapaId);
+      if (dates && row && String(row.status ?? "pendente") === "pendente") {
+        const duration = workDurationDays(dates.start, dates.end, calendar);
+        const delayedStart = addWorkDays(dates.start, delayDays, calendar);
+        planned.set(selectedEtapaId, {
+          start: delayedStart,
+          end: addWorkDays(delayedStart, duration - 1, calendar),
+        });
+      }
+    }
+
+    function constrainedStart(etapaId: string, duration: number, currentStart: Date) {
+      let required = nextWorkDay(currentStart, calendar);
+      for (const dep of incoming.get(etapaId) ?? []) {
+        const pred = planned.get(String(dep.depende_de_etapa_id));
+        if (!pred) continue;
+        const lag = Number(dep.defasagem_dias ?? 0);
+        const type = String(dep.tipo ?? "FS");
+        let candidate: Date;
+        if (type === "SS") {
+          candidate = addWorkDays(pred.start, Math.max(0, lag), calendar);
+        } else if (type === "FF") {
+          const requiredEnd = addWorkDays(pred.end, Math.max(0, lag), calendar);
+          candidate = scheduleAddDays(requiredEnd, -(duration - 1));
+        } else if (type === "SF") {
+          const requiredEnd = addWorkDays(pred.start, Math.max(0, lag), calendar);
+          candidate = scheduleAddDays(requiredEnd, -(duration - 1));
+        } else {
+          candidate = addWorkDays(pred.end, Math.max(1, lag + 1), calendar);
+        }
+        if (candidate > required) required = candidate;
+      }
+      return nextWorkDay(required, calendar);
+    }
+
+    const seeds = selectedEtapaId ? [selectedEtapaId] : rows.map((row: any) => String(row.id));
+    const queue = [...seeds];
+    const guard = new Map<string, number>();
+
+    while (queue.length) {
+      const predecessorId = queue.shift()!;
+      for (const dep of successors.get(predecessorId) ?? []) {
+        const id = String(dep.etapa_id);
+        const row = byId.get(id);
+        const dates = planned.get(id);
+        if (!row || !dates || String(row.status ?? "pendente") !== "pendente") continue;
+        const duration = workDurationDays(dates.start, dates.end, calendar);
+        const required = constrainedStart(id, duration, dates.start);
+        if (required <= dates.start) continue;
+        planned.set(id, { start: required, end: addWorkDays(required, duration - 1, calendar) });
+        const seen = (guard.get(id) ?? 0) + 1;
+        guard.set(id, seen);
+        if (seen > rows.length) {
+          res.status(409).json({ error: "Dependências inconsistentes impediram a simulação" });
+          return;
+        }
+        queue.push(id);
+      }
+    }
+
+    for (const row of rows) {
+      const id = String(row.id);
+      const dates = planned.get(id);
+      if (!dates || row.marco) continue;
+      const oldPeople = Math.max(1, Number(row.equipe_quantidade ?? 1));
+      const people = selectedEtapaId === id ? Math.max(1, oldPeople + extraPeople) : oldPeople;
+      const hours = Math.max(0, Number(row.horas_dia ?? calendar.horasDia));
+      const hourly = Math.max(0, Number(row.custo_hora_pessoa ?? 0));
+      const duration = workDurationDays(dates.start, dates.end, calendar);
+      scenarioLaborCost += duration * people * hours * hourly;
+    }
+
+    const newFinish = Array.from(planned.values()).reduce<Date | null>(
+      (latest, item) => !latest || item.end > latest ? item.end : latest,
+      null,
+    );
+
+    const changedStages = rows
+      .map((row: any) => {
+        const id = String(row.id);
+        const before = original.get(id);
+        const after = planned.get(id);
+        if (!before || !after) return null;
+        const startDelta = Math.round((after.start.getTime() - before.start.getTime()) / 86_400_000);
+        const endDelta = Math.round((after.end.getTime() - before.end.getTime()) / 86_400_000);
+        if (!startDelta && !endDelta) return null;
+        return {
+          etapaId: id,
+          nome: String(row.nome),
+          startDeltaDays: startDelta,
+          endDeltaDays: endDelta,
+          newStart: scheduleIso(after.start),
+          newEnd: scheduleIso(after.end),
+        };
+      })
+      .filter(Boolean);
+
+    res.json({
+      applied: false,
+      inputs: { etapaId: selectedEtapaId, extraPeople, delayDays, workSaturday },
+      originalFinish: originalFinish ? scheduleIso(originalFinish) : null,
+      newFinish: newFinish ? scheduleIso(newFinish) : null,
+      finishImpactDays: originalFinish && newFinish
+        ? Math.round((newFinish.getTime() - originalFinish.getTime()) / 86_400_000)
+        : 0,
+      originalLaborCost,
+      scenarioLaborCost,
+      laborCostImpact: scenarioLaborCost - originalLaborCost,
+      changedStages,
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/construction simulate-scenario error");
+    next(err);
+  }
+});
+
 archProductionProcurementRouter.post("/arch/construction/:obraId/level-resources", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
