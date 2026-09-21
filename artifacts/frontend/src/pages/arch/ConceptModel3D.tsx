@@ -891,9 +891,9 @@ export default function ConceptModel3D({
       <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/92 px-4 py-3 text-slate-800 shadow-xl backdrop-blur">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
+            <Layers3 className="h-4 w-4" /> {webglReady ? "Modelo 3D Pro" : "Modelo 3D sincronizado"}
           </div>
-          <div className="text-xs text-slate-500">Arraste o fundo para orbitar · arraste objetos para mover · use o gizmo para girar, redimensionar, duplicar ou excluir · pinça no celular ou roda do mouse para zoom.</div>
+          <div className="text-xs text-slate-500">{webglReady ? "WebGL com perspectiva, luz, sombras e gizmo real · selecione objetos, paredes, pisos e aberturas diretamente." : "Arraste o fundo para orbitar · arraste objetos para mover · pinça no celular ou roda do mouse para zoom."}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {onRenderView && (
@@ -970,6 +970,7 @@ export default function ConceptModel3D({
           >
             {showRoof ? "Ocultar cobertura" : "Mostrar cobertura"}
           </button>
+          {!webglReady && (
           <button
             type="button"
             onClick={() => setShowLabels((value) => !value)}
@@ -979,6 +980,7 @@ export default function ConceptModel3D({
           >
             {showLabels ? "Ocultar nomes" : "Mostrar nomes"}
           </button>
+          )}
           {paintTool && (
             <div className="flex items-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-800">
               <span className="h-3 w-3 rounded-full border border-black/10" style={{ background: paintTool.swatch }} />
@@ -1028,10 +1030,17 @@ export default function ConceptModel3D({
         levels={levels}
         objects={Array.isArray(objects) ? objects : []}
         selectedObjectId={selectedObjectId}
+        selectedWallId={selectedWallId}
+        selectedCustomWallId={selectedCustomWallId}
+        selectedClosedSpaceId={selectedClosedSpaceId}
+        selectedOpeningId={selectedOpeningId}
         showAllFloors={showAllFloors}
         interiorMode={interiorMode}
         showRoof={showRoof}
         lightingMode={lightingMode}
+        cameraPresetDegrees={rotation}
+        cameraZoom={zoom}
+        paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
           onSelectObject?.(objectId);
@@ -1042,6 +1051,13 @@ export default function ConceptModel3D({
             onSelectOpening?.(null);
           }
         }}
+        onSelectWall={onSelectWall}
+        onSelectCustomWall={onSelectCustomWall}
+        onSelectClosedSpace={onSelectClosedSpace}
+        onSelectOpening={onSelectOpening}
+        onPaintObject={onPaintObject}
+        onPaintWall={onPaintWall}
+        onPaintFloor={onPaintFloor}
         onObjectChange={onObjectChange}
         onObjectEditStart={onObjectEditStart}
         onObjectEditEnd={onObjectEditEnd}
