@@ -2023,7 +2023,7 @@ export default function ConceptPlanner() {
     }
   };
 
-  const generateConceptRender = async () => {
+  const generateConceptRender = async (options?: { source?: "facade" | "model3d"; renderView?: "exterior" | "interior" }) => {
     const renderProjectId = await saveConcept(5);
     if (!renderProjectId) return;
 
@@ -2031,10 +2031,16 @@ export default function ConceptPlanner() {
     setConceptRender((prev) => ({ ...prev, status: "processing", error: undefined }));
 
     try {
-      const svg = document.querySelector<SVGSVGElement>("[data-concept-render-source='true'] svg");
-      if (!svg) throw new Error("Não foi possível localizar a volumetria para gerar o render.");
+      const source = options?.source ?? "facade";
+      const selector = source === "model3d"
+        ? "svg[data-concept-model3d-source='true']"
+        : "[data-concept-render-source='true'] svg";
+      const svg = document.querySelector<SVGSVGElement>(selector);
+      if (!svg) throw new Error(source === "model3d"
+        ? "Não foi possível localizar a vista 3D atual para gerar o render."
+        : "Não foi possível localizar a volumetria para gerar o render.");
 
-      const originalImage = await svgElementToPngDataUrl(svg);
+      const originalImage = await svgElementToPngDataUrl(svg, source === "model3d" ? 1.9 : 1.7);
       const brief = buildConceptRenderBrief({
         lotWidth,
         lotDepth,
@@ -2043,7 +2049,16 @@ export default function ConceptPlanner() {
         rooms,
         facade: facadePreferences,
         facadeDesign,
+        renderView: options?.renderView ?? (source === "model3d" ? "interior" : "exterior"),
+        objects: safeObjects,
+        wallMaterialIds: Object.values(wallMaterials),
+        floorMaterialIds: [
+          ...Object.values(roomFloorMaterials),
+          ...Object.values(spaceFloorMaterials),
+        ],
       });
+
+      if (source === "model3d") setEditorView("render");
 
       const response = await fetch("/api/arch/ai-render", {
         method: "POST",
@@ -2052,7 +2067,7 @@ export default function ConceptPlanner() {
           project_id: renderProjectId,
           original_image_url: originalImage,
           mode: "preservar",
-          ambiente: "fachada",
+          ambiente: options?.renderView === "interior" || source === "model3d" ? "interior" : "fachada",
           user_notes: brief,
         }),
       });
@@ -4043,6 +4058,7 @@ export default function ConceptPlanner() {
                       onPaintWall={applyWallMaterialToId}
                       onPaintFloor={applyFloorMaterialToSpace}
                       onCancelPaint={() => setPaintTool(null)}
+                      onRenderView={() => void generateConceptRender({ source: "model3d", renderView: "interior" })}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
                         if (wallId) {
@@ -4085,7 +4101,7 @@ export default function ConceptPlanner() {
                       design={facadeDesign}
                       onFacadeChange={setFacadePreferences}
                       onDesignChange={setFacadeDesign}
-                      onOpenRender={() => { setEditorView("render"); void generateConceptRender(); }}
+                      onOpenRender={() => { setEditorView("render"); void generateConceptRender({ source: "facade", renderView: "exterior" }); }}
                     />
                   )}
 
@@ -4107,7 +4123,7 @@ export default function ConceptPlanner() {
                             <p className="mt-1 text-sm text-muted-foreground">Gere a imagem sem sair do editor.</p>
                             <button
                               type="button"
-                              onClick={() => void generateConceptRender()}
+                              onClick={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
                               disabled={conceptRender?.status === "processing"}
                               className="mt-4 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                             >
@@ -4616,7 +4632,7 @@ export default function ConceptPlanner() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => void generateConceptRender()}
+                    onClick={() => void generateConceptRender({ source: "facade", renderView: "exterior" })}
                     disabled={conceptRender?.status === "processing"}
                     className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                   >
