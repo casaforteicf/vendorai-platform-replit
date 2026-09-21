@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import { Layers3, Maximize2, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+import { Layers3, Maximize2, RotateCcw, RotateCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
@@ -55,6 +55,7 @@ type Props = {
   onPaintWall?: (wallId: string, materialId: string) => void;
   onPaintFloor?: (spaceId: string, materialId: string) => void;
   onCancelPaint?: () => void;
+  onRenderView?: () => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -376,6 +377,7 @@ export default function ConceptModel3D({
   onPaintWall,
   onPaintFloor,
   onCancelPaint,
+  onRenderView,
 }: Props) {
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
@@ -590,6 +592,16 @@ export default function ConceptModel3D({
           <div className="text-xs text-slate-500">Arraste o fundo para orbitar · arraste objetos para mover · pinça no celular ou roda do mouse para zoom.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onRenderView && (
+            <button
+              type="button"
+              onClick={onRenderView}
+              className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
+            >
+              <Sparkles className="h-4 w-4" />
+              Renderizar vista
+            </button>
+          )}
           <div className="hidden overflow-hidden rounded-xl border bg-slate-50 sm:flex">
             {([
               [35, "Iso"],
@@ -689,6 +701,7 @@ export default function ConceptModel3D({
 
       <svg
         ref={svgRef}
+        data-concept-model3d-source="true"
         viewBox={`${-sceneWidth / 2} ${-sceneHeight / 2} ${sceneWidth} ${sceneHeight}`}
         onPointerDown={handleOrbitStart}
         onPointerMove={handleOrbitMove}
