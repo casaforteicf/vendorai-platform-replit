@@ -54,6 +54,24 @@ type WorkCalendar = {
   feriados: string[];
 };
 
+type BaselineEtapa = {
+  etapa_id?: string;
+  etapaId?: string;
+  nome: string;
+  data_inicio_prevista?: string | null;
+  data_fim_prevista?: string | null;
+  custo_previsto?: string | number | null;
+  peso_fisico?: string | number | null;
+  equipe_nome?: string | null;
+  equipe_quantidade?: number | null;
+  horas_dia?: string | number | null;
+};
+
+type BaselineBundle = {
+  baseline: { id: string; nome: string; created_at?: string; createdAt?: string } | null;
+  etapas: BaselineEtapa[];
+};
+
 type EtapaDraft = {
   nome: string;
   dataInicioPrevista: string;
@@ -423,6 +441,8 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
   });
   const [savingCalendar, setSavingCalendar] = useState(false);
   const [holidayDraft, setHolidayDraft] = useState("");
+  const [baseline, setBaseline] = useState<BaselineBundle>({ baseline: null, etapas: [] });
+  const [savingBaseline, setSavingBaseline] = useState(false);
 
   const load = useCallback(async () => {
     if (!meta.id) { setLoading(false); return; }
@@ -436,9 +456,10 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       const obraId = String(ensured.obra?.id ?? "");
       if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
       if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
-      const [raw, calendarResult] = await Promise.all([
+      const [raw, calendarResult, baselineResult] = await Promise.all([
         api<any>(`/api/arch/construction/${obraId}`),
         api<{ calendar?: WorkCalendar }>(`/api/arch/construction/${obraId}/calendar`),
+        api<BaselineBundle>(`/api/arch/construction/${obraId}/baseline`),
       ]);
       const etapas = (raw.etapas ?? []).map(normalizeEtapa);
       const dependencias = (raw.dependencias ?? []).map(normalizeDependencia);
@@ -450,6 +471,7 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
         segunda: true, terca: true, quarta: true, quinta: true, sexta: true,
         sabado: false, domingo: false, horasDia: 8, feriados: [],
       });
+      setBaseline(baselineResult ?? { baseline: null, etapas: [] });
       setBundle({
         obra: {
           id: obraId,
@@ -537,6 +559,57 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
     return ids;
   }, [bundle]);
 
+  const baselineSummary = useMemo(() => {
+    if (!baseline.baseline || !baseline.etapas.length || !bundle) {
+      return {
+        exists: false,
+        originalCost: 0,
+        currentCost: bundle?.etapas.reduce((sum, item) => sum + item.custoPrevisto, 0) ?? 0,
+        costVariance: 0,
+        originalFinish: null as Date | null,
+        currentFinish: null as Date | null,
+        finishVarianceDays: 0,
+        changedStages: 0,
+      };
+    }
+
+    const originalCost = baseline.etapas.reduce((sum, item) => sum + Number(item.custo_previsto ?? 0), 0);
+    const currentCost = bundle.etapas.reduce((sum, item) => sum + item.custoPrevisto, 0);
+    const originalEnds = baseline.etapas
+      .map((item) => dateValue(item.data_fim_prevista ?? null))
+      .filter(Boolean) as Date[];
+    const currentEnds = bundle.etapas
+      .map((item) => dateValue(item.dataFimPrevista))
+      .filter(Boolean) as Date[];
+    const originalFinish = originalEnds.length ? new Date(Math.max(...originalEnds.map((d) => d.getTime()))) : null;
+    const currentFinish = currentEnds.length ? new Date(Math.max(...currentEnds.map((d) => d.getTime()))) : null;
+    const finishVarianceDays = originalFinish && currentFinish ? diffDays(currentFinish, originalFinish) : 0;
+
+    const baselineByEtapa = new Map(
+      baseline.etapas.map((item) => [String(item.etapa_id ?? item.etapaId ?? ""), item]),
+    );
+    const changedStages = bundle.etapas.filter((item) => {
+      const base = baselineByEtapa.get(item.id);
+      if (!base) return false;
+      return (
+        (base.data_inicio_prevista ?? "") !== (item.dataInicioPrevista ?? "") ||
+        (base.data_fim_prevista ?? "") !== (item.dataFimPrevista ?? "") ||
+        Number(base.custo_previsto ?? 0) !== item.custoPrevisto
+      );
+    }).length;
+
+    return {
+      exists: true,
+      originalCost,
+      currentCost,
+      costVariance: currentCost - originalCost,
+      originalFinish,
+      currentFinish,
+      finishVarianceDays,
+      changedStages,
+    };
+  }, [baseline, bundle]);
+
   const resourceSummary = useMemo(() => {
     const etapas = bundle?.etapas ?? [];
     const laborCost = etapas.reduce((sum, item) => {
@@ -603,6 +676,26 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
       setError(err instanceof Error ? err.message : "Erro ao gerar planejamento a partir do orçamento.");
     } finally {
       setGeneratingPlan(false);
+    }
+  }
+
+  async function createBaseline() {
+    if (!bundle) return;
+    setSavingBaseline(true);
+    setError(null);
+    try {
+      const result = await api<BaselineBundle>(`/api/arch/construction/${bundle.obra.id}/baseline`, {
+        method: "POST",
+        body: JSON.stringify({
+          nome: baseline.baseline ? "Nova linha de base" : "Linha de base inicial",
+        }),
+      });
+      setBaseline(result);
+      setScheduleNotice("Linha de base salva. A partir de agora o Arqdor compara o cronograma atual com o planejamento original.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar linha de base.");
+    } finally {
+      setSavingBaseline(false);
     }
   }
 
@@ -835,6 +928,47 @@ export default function AdvancedSchedulePanel({ arqState }: Props) {
 
       {error ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div> : null}
       {scheduleNotice ? <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{scheduleNotice}</div> : null}
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Linha de base</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">Planejado original × atual × realizado</h3>
+            <p className="mt-1 text-xs text-slate-500">Salva um snapshot do cronograma para medir desvios de prazo e custo após os replanejamentos.</p>
+          </div>
+          <button
+            type="button"
+            disabled={savingBaseline}
+            onClick={() => void createBaseline()}
+            className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 disabled:opacity-50"
+          >
+            {savingBaseline ? "Salvando…" : baseline.baseline ? "Atualizar linha de base" : "Salvar linha de base"}
+          </button>
+        </div>
+
+        {baselineSummary.exists ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Metric label="Custo original" value={money(baselineSummary.originalCost)} hint="snapshot da baseline" />
+            <Metric
+              label="Desvio de custo"
+              value={money(baselineSummary.costVariance)}
+              hint={`atual ${money(baselineSummary.currentCost)}`}
+              danger={baselineSummary.costVariance > 0}
+            />
+            <Metric
+              label="Desvio de prazo"
+              value={`${baselineSummary.finishVarianceDays > 0 ? "+" : ""}${baselineSummary.finishVarianceDays} dias`}
+              hint={baselineSummary.originalFinish ? `original ${baselineSummary.originalFinish.toLocaleDateString("pt-BR")}` : "sem término original"}
+              danger={baselineSummary.finishVarianceDays > 0}
+            />
+            <Metric label="Etapas alteradas" value={String(baselineSummary.changedStages)} hint="datas ou custo diferentes da baseline" />
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-sm text-violet-700">
+            Nenhuma linha de base salva. Salve quando o planejamento estiver aprovado para preservar o cronograma original.
+          </div>
+        )}
+      </section>
 
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
