@@ -809,7 +809,7 @@ router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res
 });
 
 function canManagePortal(req: any, tenantId: string) {
-  return req?.user?.role === "super_admin" || req?.user?.tenantId === tenantId;
+  return req?.user?.platformRole === "super_admin" || req?.user?.tenantId === tenantId;
 }
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
@@ -916,7 +916,7 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/messages", authenticate, as
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const mensagem = String(req.body?.mensagem ?? "").trim();
   if (!mensagem) return res.status(422).json({ error: "Mensagem vazia." });
-  const autorNome = String(req.user?.name ?? req.user?.email ?? "Equipe");
+  const autorNome = String(req.user?.nome ?? req.user?.email ?? "Equipe");
   const result = await pool.query(
     `INSERT INTO obra_portal_messages
       (id,tenant_id,obra_id,portal_user_id,autor_tipo,autor_nome,mensagem)
