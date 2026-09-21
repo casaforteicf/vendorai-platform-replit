@@ -385,19 +385,183 @@ export default function PortalObra() {
           {totalEtapas > 0 ? <div className="mt-4 rounded-xl bg-indigo-50 p-4"><div className="mb-2 flex items-center justify-between"><span className="text-sm font-medium text-indigo-800">Progresso geral da obra</span><span className="text-lg font-bold text-indigo-700">{avgProgress}%</span></div><ProgressBar value={avgProgress} color="#6366f1" /></div> : null}
         </div>
 
+        {resumo ? (
+          <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500">Etapa atual</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.etapaAtual?.nome ?? (avgProgress >= 100 ? "Obra concluída" : "Aguardando início")}</p>
+              <p className="mt-1 text-xs text-gray-400">{resumo.etapaAtual ? `${Math.round(Number(resumo.etapaAtual.percentualExecutado ?? resumo.etapaAtual.percentual_executado ?? 0))}% executado` : "—"}</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500">Previsão de entrega</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{fmt(resumo.previsaoEntrega)}</p>
+              <p className="mt-1 text-xs text-gray-400">{resumo.etapasConcluidas}/{resumo.totalEtapas} etapas concluídas</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500">Próximas etapas</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.proximasEtapas[0]?.nome ?? "Nenhuma pendente"}</p>
+              <p className="mt-1 text-xs text-gray-400">{resumo.proximasEtapas.slice(1, 3).map((item: any) => item.nome).join(" · ") || "—"}</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500">Pendências</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.decisoesPendentes} decisão(ões)</p>
+              <p className="mt-1 text-xs text-gray-400">{resumo.ocorrenciasAbertas} ocorrência(s) publicada(s)</p>
+            </div>
+          </div>
+        ) : null}
+
         <PortalClientDecisions token={token} decisions={decisions} onResolved={(decisionId) => setData((current) => current ? { ...current, decisions: (current.decisions ?? []).filter((item) => item.id !== decisionId) } : current)} />
 
         {ocorrencias.length > 0 ? <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="mb-3 flex items-center gap-2 font-semibold text-amber-800"><AlertTriangle className="h-5 w-5" />Ocorrências em aberto ({ocorrencias.length})</h2><div className="space-y-3">{ocorrencias.map((oc) => <div key={oc.id} className="rounded-lg border border-amber-100 bg-white p-3"><div className="mb-1 flex items-center justify-between text-xs text-gray-500"><span>{fmt(oc.data)}</span>{oc.responsavelNome ? <span>{oc.responsavelNome}</span> : null}</div><p className="text-sm text-gray-700">{oc.observacoes}</p></div>)}</div></div> : null}
 
         {visibleTabs.length > 0 ? <div className="mb-6"><div className="sm:hidden"><select value={activeTab} onChange={(e) => handleTabChange(e.target.value as TabId)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700">{visibleTabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</select></div><div className="hidden overflow-x-auto border-b border-gray-200 sm:flex">{visibleTabs.map((tab) => <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"}`}>{tab.icon}{tab.label}</button>)}</div></div> : null}
 
-        {activeTab === "dados" && data.publication?.showOverview !== false ? <Section title="Dados da Obra" icon={<Building2 className="h-5 w-5" />}><InfoGrid items={[{ label: "Início", value: fmt(obra.dataInicio) },{ label: "Conclusão prevista", value: fmt(obra.dataFimPrevista) },{ label: "Conclusão real", value: fmt(obra.dataFimReal) },{ label: "Orçamento total", value: fmtMoney(obra.orcamentoTotal) },{ label: "Custo realizado", value: fmtMoney(obra.custoRealizado) },...(obra.orcamentoTotal && obra.custoRealizado ? [{ label: "% Executado (custo)", value: `${pct(obra.custoRealizado, obra.orcamentoTotal) ?? "—"}%` }] : [])]} /></Section> : null}
+        {activeTab === "dados" && data.publication?.showOverview !== false ? (
+          <Section title="Visão Geral da Obra" icon={<Building2 className="h-5 w-5" />}>
+            <InfoGrid items={[
+              { label: "Início", value: fmt(obra.dataInicio) },
+              { label: "Conclusão prevista", value: fmt(resumo?.previsaoEntrega ?? obra.dataFimPrevista) },
+              { label: "Conclusão real", value: fmt(obra.dataFimReal) },
+              { label: "Progresso físico", value: `${avgProgress}%` },
+              { label: "Etapas concluídas", value: `${resumo?.etapasConcluidas ?? etapas.filter((item) => Number(item.percentualExecutado) >= 100).length}/${resumo?.totalEtapas ?? etapas.length}` },
+              { label: "Etapa atual", value: resumo?.etapaAtual?.nome ?? "—" },
+              ...(data.publication?.showFinancialSummary === true ? [
+                { label: "Orçamento total", value: fmtMoney(obra.orcamentoTotal) },
+                { label: "Custo realizado", value: fmtMoney(obra.custoRealizado) },
+                { label: "% consumido", value: obra.orcamentoTotal && obra.custoRealizado ? `${pct(obra.custoRealizado, obra.orcamentoTotal) ?? "—"}%` : "—" },
+              ] : []),
+            ]} />
+            {resumo?.proximasEtapas?.length ? (
+              <div className="mt-6">
+                <p className="mb-3 text-sm font-semibold text-gray-800">Próximas etapas</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {resumo.proximasEtapas.map((item: any) => (
+                    <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{item.nome}</p>
+                          <p className="mt-1 text-xs text-gray-400">{fmt(item.dataInicioPrevista ?? item.data_inicio_prevista)} → {fmt(item.dataFimPrevista ?? item.data_fim_prevista)}</p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">Próxima</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {data.publication?.showMilestones !== false && marcos.length ? (
+              <div className="mt-6">
+                <p className="mb-3 text-sm font-semibold text-gray-800">Marcos principais</p>
+                <div className="space-y-2">
+                  {marcos.slice(0, 8).map((marco: any) => (
+                    <div key={marco.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{marco.nome}</p>
+                        <p className="text-xs text-gray-400">{fmt(marco.dataFimPrevista ?? marco.dataFimReal)}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${Number(marco.percentualExecutado ?? 0) >= 100 ? "bg-emerald-100 text-emerald-700" : "bg-indigo-50 text-indigo-700"}`}>
+                        {Number(marco.percentualExecutado ?? 0) >= 100 ? "Concluído" : "Previsto"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </Section>
+        ) : null}
 
         {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}{orcamento.bdiGlobal !== "0" ? ` · BDI ${orcamento.bdiGlobal}%` : ""}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade} {item.unidade} × {fmtMoney(item.custoUnitario)}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span></div></>}</Section> : null}
 
         {activeTab === "cronograma" && data.publication?.showSchedule !== false ? <Section title="Cronograma" icon={<Layers className="h-5 w-5" />}>{etapas.length === 0 ? <div className="py-8 text-center text-gray-400"><Calendar className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhuma etapa cadastrada.</p></div> : <div className="space-y-3">{etapas.map((etapa) => { const p = parseFloat(etapa.percentualExecutado ?? "0"); const st = ETAPA_STATUS[etapa.status] ?? { label: etapa.status, color: "bg-gray-100 text-gray-600", bar: "#94a3b8" }; const dias = etapa.dataInicioPrevista && etapa.dataFimPrevista ? Math.max(1, differenceInCalendarDays(parseISO(`${etapa.dataFimPrevista}T12:00:00`), parseISO(`${etapa.dataInicioPrevista}T12:00:00`))) : null; return <div key={etapa.id} className="rounded-xl border border-gray-200 bg-white p-4"><div className="mb-3 flex items-start justify-between gap-2"><div className="flex-1"><p className="text-sm font-medium text-gray-900">{etapa.nome}</p>{etapa.responsavel ? <p className="mt-0.5 text-xs text-gray-400">{etapa.responsavel}</p> : null}</div><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span></div><div className="mb-2 flex items-center gap-3"><ProgressBar value={p} color={st.bar} /><span className="w-10 text-right text-sm font-bold text-gray-700">{Math.round(p)}%</span></div><div className="mt-1 flex items-center gap-4 text-xs text-gray-400">{etapa.dataInicioPrevista ? <span>{fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span> : null}{dias ? <span>{dias} dias</span> : null}</div></div>; })}</div>}</Section> : null}
 
         {activeTab === "diario" && data.publication?.showDiary !== false ? <Section title="Diário da Obra" icon={<FileText className="h-5 w-5" />}>{diario.length === 0 ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhuma entrada aprovada no diário ainda.</p></div> : <div className="space-y-3">{diario.map((entry) => { const isOpen = expandedDiario === entry.id; const hasFotos = (entry.fotos?.length ?? 0) > 0; return <div key={entry.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white"><button className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50" onClick={() => setExpandedDiario(isOpen ? null : entry.id)}><div className="flex items-center gap-3"><span className="text-sm font-semibold text-gray-700">{format(parseISO(`${entry.data}T12:00:00`), "dd 'de' MMMM", { locale: ptBR })}</span>{hasFotos ? <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-600"><Camera className="h-3 w-3" />{entry.fotos!.length} foto{entry.fotos!.length > 1 ? "s" : ""}</span> : null}{entry.responsavelNome ? <span className="text-xs text-gray-400">{entry.responsavelNome}</span> : null}</div>{isOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}</button>{isOpen ? <div className="border-t border-gray-100 px-4 pb-4"><p className="mt-3 text-sm leading-relaxed text-gray-700">{entry.conteudo}</p>{entry.climaTempo || entry.maoDeObra != null ? <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">{entry.climaTempo ? <span>🌤 {entry.climaTempo}</span> : null}{entry.maoDeObra != null ? <span>👷 {entry.maoDeObra} trabalhadores</span> : null}</div> : null}{hasFotos ? <div className="mt-4 grid grid-cols-3 gap-2">{entry.fotos!.map((foto, i) => <button key={i} onClick={() => setLightbox(foto.url)} className="aspect-square overflow-hidden rounded-lg border border-gray-200"><img src={foto.url} alt={foto.caption ?? `Foto ${i + 1}`} className="h-full w-full object-cover" /></button>)}</div> : null}{entry.observacoes ? <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3"><p className="mb-1 text-xs font-medium text-amber-700">Observações</p><p className="text-sm text-amber-800">{entry.observacoes}</p></div> : null}</div> : null}</div>; })}</div>}</Section> : null}
+
+        {activeTab === "medicoes" && data.publication?.showMeasurements !== false ? (
+          <Section title="Medições e Evolução Física" icon={<CheckCircle2 className="h-5 w-5" />}>
+            {medicoes.length === 0 ? <div className="py-8 text-center text-sm text-gray-400">Nenhuma medição publicada ainda.</div> : (
+              <div className="space-y-3">
+                {medicoes.map((medicao) => {
+                  const anterior = Number(medicao.percentual_anterior ?? 0);
+                  const atual = Number(medicao.percentual_novo ?? 0);
+                  return <div key={medicao.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div><p className="text-sm font-semibold text-gray-900">{medicao.etapa_nome}</p><p className="text-xs text-gray-400">{fmt(medicao.data)}</p></div>
+                      <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">{anterior.toFixed(0)}% → {atual.toFixed(0)}%</span>
+                    </div>
+                    <ProgressBar value={atual} color="#6366f1" />
+                    {medicao.observacao ? <p className="mt-3 text-sm text-gray-600">{medicao.observacao}</p> : null}
+                  </div>;
+                })}
+              </div>
+            )}
+          </Section>
+        ) : null}
+
+        {activeTab === "galeria" ? (
+          <Section title="Fotos e Galeria do Projeto" icon={<Camera className="h-5 w-5" />}>
+            {galeriaProjeto.length === 0 && fotosRecentes.length === 0 ? <div className="py-8 text-center text-sm text-gray-400">Nenhuma imagem publicada ainda.</div> : (
+              <div className="space-y-6">
+                {galeriaProjeto.length ? <div><p className="mb-3 text-sm font-semibold text-gray-800">Projeto e renders</p><div className="grid grid-cols-2 gap-3 md:grid-cols-3">{galeriaProjeto.map((img) => <button key={img.id} onClick={() => setLightbox(img.result_image_url)} className="overflow-hidden rounded-xl border border-gray-200 bg-white text-left"><img src={img.result_image_url} alt={img.ambiente ?? "Render"} className="aspect-[4/3] w-full object-cover" /><div className="p-2"><p className="truncate text-xs font-medium text-gray-800">{img.ambiente ?? "Projeto"}</p><p className="text-[10px] text-gray-400">{img.approved_at ? "Aprovado" : img.version_tag ?? "Render"}</p></div></button>)}</div></div> : null}
+                {fotosRecentes.length ? <div><p className="mb-3 text-sm font-semibold text-gray-800">Evolução da obra</p><div className="grid grid-cols-2 gap-3 md:grid-cols-4">{fotosRecentes.map((foto) => <button key={foto.id} onClick={() => setLightbox(foto.url)} className="overflow-hidden rounded-xl border border-gray-200"><img src={foto.url} alt={foto.caption ?? "Foto da obra"} className="aspect-square w-full object-cover" /><div className="bg-white px-2 py-1.5 text-left"><p className="truncate text-[10px] text-gray-500">{foto.caption ?? fmt(foto.data)}</p></div></button>)}</div></div> : null}
+              </div>
+            )}
+          </Section>
+        ) : null}
+
+        {activeTab === "documentos" && data.publication?.showDocuments !== false ? (
+          <Section title="Documentos e Anexos" icon={<FileText className="h-5 w-5" />}>
+            {documentos.length === 0 ? <div className="py-8 text-center text-sm text-gray-400">Nenhum documento publicado ainda.</div> : (
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                {documentos.map((doc) => <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{doc.nome}</p><p className="text-xs text-gray-400">{fmt(doc.data)} · {doc.mimeType ?? "arquivo"}</p></div><span className="text-xs font-semibold text-indigo-600">Abrir</span></a>)}
+              </div>
+            )}
+          </Section>
+        ) : null}
+
+        {activeTab === "compras" && data.publication?.showProcurementSummary !== false ? (
+          <Section title="Compras e Suprimentos" icon={<Layers className="h-5 w-5" />}>
+            {compras.length === 0 ? <div className="py-8 text-center text-sm text-gray-400">Nenhuma compra vinculada à obra.</div> : (
+              <div className="space-y-3">
+                {compras.map((compra) => {
+                  const status = String(compra.status ?? "pendente").toLowerCase();
+                  const entregue = ["recebido","concluido","efetuada"].includes(status);
+                  return <div key={compra.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div><p className="text-sm font-semibold text-gray-900">{compra.descricao}</p><p className="mt-0.5 text-xs text-gray-400">{compra.etapa_nome ?? "Sem etapa"}{compra.fornecedor ? ` · ${compra.fornecedor}` : ""}</p></div>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${entregue ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{entregue ? "Recebido" : status}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500 md:grid-cols-4"><div><span className="block text-[10px] uppercase text-gray-400">Necessidade</span>{fmt(compra.data_necessidade)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prev. entrega</span>{fmt(compra.data_prevista)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prazo fornecedor</span>{Number(compra.prazo_fornecedor_dias ?? 0)} dias</div><div><span className="block text-[10px] uppercase text-gray-400">Valor</span>{fmtMoney(compra.valor_total)}</div></div>
+                  </div>;
+                })}
+              </div>
+            )}
+          </Section>
+        ) : null}
+
+        {activeTab === "financeiro" && data.publication?.showFinancialSummary === true ? (
+          <Section title="Resumo Financeiro" icon={<CircleDollarSign className="h-5 w-5" />}>
+            {!financeiro ? <div className="py-8 text-center text-sm text-gray-400">Resumo financeiro indisponível.</div> : (
+              <>
+                <InfoGrid items={[
+                  { label: "Orçamento", value: fmtMoney(financeiro.orcamentoTotal) },
+                  { label: "Custo realizado", value: fmtMoney(financeiro.custoRealizado) },
+                  { label: "% consumido", value: `${financeiro.percentualConsumido.toFixed(1)}%` },
+                  ...(data.publication?.showFinancialDetails === true ? [
+                    { label: "Total lançado", value: fmtMoney(financeiro.totalLancado) },
+                    { label: "Pago/recebido", value: fmtMoney(financeiro.totalPago) },
+                    { label: "Pendente", value: fmtMoney(financeiro.totalPendente) },
+                  ] : []),
+                ]} />
+                <div className="mt-4"><ProgressBar value={financeiro.percentualConsumido} color={financeiro.percentualConsumido > 100 ? "#e11d48" : "#6366f1"} /></div>
+                {data.publication?.showFinancialDetails === true && financeiro.lancamentos.length ? (
+                  <div className="mt-6 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    {financeiro.lancamentos.map((item: any) => <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{item.descricao ?? item.tipo}</p><p className="text-xs text-gray-400">{item.fornecedor ?? "—"} · vence {fmt(item.data_vencimento)}</p></div><div className="text-right"><p className="text-sm font-semibold text-gray-900">{fmtMoney(item.valor)}</p><p className="text-[10px] text-gray-400">{item.status}</p>{item.documento_url ? <a href={item.documento_url} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600">Documento</a> : null}</div></div>)}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </Section>
+        ) : null}
 
         <footer className="mt-4 border-t border-gray-200 py-6 text-center text-xs text-gray-400">Portal do Cliente — {tenant.name} · Este link é exclusivo para o acompanhamento desta obra.</footer>
       </main>
