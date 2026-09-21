@@ -67,6 +67,14 @@ type Runtime = {
   walkDragging: boolean;
   walkLastPointer: { x: number; y: number } | null;
   environmentTexture?: any;
+  walkWalls: Array<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    thickness: number;
+    doorGaps: Array<{ center: number; halfWidth: number }>;
+  }>;
 };
 
 const THREE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
@@ -141,6 +149,37 @@ function disposeTree(root: any) {
     else node.material?.dispose?.();
     node.texture?.dispose?.();
   });
+}
+
+function canWalkTo(
+  x: number,
+  y: number,
+  walls: Runtime["walkWalls"],
+  radius = 0.24,
+) {
+  for (const wall of walls) {
+    const dx = wall.x2 - wall.x1;
+    const dy = wall.y2 - wall.y1;
+    const length = Math.max(0.001, Math.hypot(dx, dy));
+    const ux = dx / length;
+    const uy = dy / length;
+    const relX = x - wall.x1;
+    const relY = y - wall.y1;
+    const along = relX * ux + relY * uy;
+    if (along < -radius || along > length + radius) continue;
+
+    const clampedAlong = Math.max(0, Math.min(length, along));
+    const closestX = wall.x1 + ux * clampedAlong;
+    const closestY = wall.y1 + uy * clampedAlong;
+    const perpendicular = Math.hypot(x - closestX, y - closestY);
+    if (perpendicular > wall.thickness / 2 + radius) continue;
+
+    const throughDoor = wall.doorGaps.some((gap) =>
+      Math.abs(along - gap.center) <= Math.max(0.18, gap.halfWidth - radius * 0.35),
+    );
+    if (!throughDoor) return false;
+  }
+  return true;
 }
 
 export default function ConceptWebGLScene({
@@ -294,6 +333,7 @@ export default function ConceptWebGLScene({
           walkPitch: 0,
           walkDragging: false,
           walkLastPointer: null,
+          walkWalls: [],
         };
         runtimeRef.current = runtime;
 
@@ -453,12 +493,30 @@ export default function ConceptWebGLScene({
               - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
             const speed = 0.12;
             if (forward || strafe) {
-              camera.position.x += (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
-              camera.position.z += (-Math.cos(runtime.walkYaw) * forward - Math.sin(runtime.walkYaw) * strafe) * speed;
+              const stepX = (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
+              const stepZ = (-Math.cos(runtime.walkYaw) * forward - Math.sin(runtime.walkYaw) * strafe) * speed;
               const maxX = Math.max(1, lotWidth / 2 - 0.25);
               const maxZ = Math.max(1, lotDepth / 2 - 0.25);
-              camera.position.x = Math.max(-maxX, Math.min(maxX, camera.position.x));
-              camera.position.z = Math.max(-maxZ, Math.min(maxZ, camera.position.z));
+              const targetX = Math.max(-maxX, Math.min(maxX, camera.position.x + stepX));
+              const targetZ = Math.max(-maxZ, Math.min(maxZ, camera.position.z + stepZ));
+
+              const planX = targetX + lotWidth / 2;
+              const planY = targetZ + lotDepth / 2;
+              if (canWalkTo(planX, planY, runtime.walkWalls)) {
+                camera.position.x = targetX;
+                camera.position.z = targetZ;
+              } else {
+                const slideX = targetX + lotWidth / 2;
+                const currentPlanY = camera.position.z + lotDepth / 2;
+                if (canWalkTo(slideX, currentPlanY, runtime.walkWalls)) {
+                  camera.position.x = targetX;
+                }
+                const currentPlanX = camera.position.x + lotWidth / 2;
+                const slideY = targetZ + lotDepth / 2;
+                if (canWalkTo(currentPlanX, slideY, runtime.walkWalls)) {
+                  camera.position.z = targetZ;
+                }
+              }
             }
             const lookDistance = 5;
             const cosPitch = Math.cos(runtime.walkPitch);
@@ -875,6 +933,66 @@ export default function ConceptWebGLScene({
       }
       if (cursor < wallEnd - 0.03) addPiece(cursor, wallEnd, 0, 2.8);
     };
+
+    const activeLevel = levels.find((level) => level.floor === activeFloor);
+    const collisionWalls = [
+      ...(activeLevel?.walls ?? []),
+      ...(activeLevel?.customWalls ?? []),
+    ];
+    runtime.walkWalls = collisionWalls.map((wall: any) => {
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const length = Math.max(0.001, Math.hypot(dx, dy));
+      const ux = dx / length;
+      const uy = dy / length;
+      const doorGaps = (activeLevel?.openings ?? [])
+        .filter((opening: any) => opening.type === "door")
+        .map((opening: any) => {
+          const relX = opening.x - wall.x1;
+          const relY = opening.y - wall.y1;
+          const center = relX * ux + relY * uy;
+          const projectedX = wall.x1 + ux * center;
+          const projectedY = wall.y1 + uy * center;
+          const distance = Math.hypot(opening.x - projectedX, opening.y - projectedY);
+          const width = Math.max(0.7, opening.width ?? 0.9);
+          return { center, halfWidth: width / 2, distance };
+        })
+        .filter((gap: any) => gap.distance <= Math.max(0.22, (wall.thickness ?? 0.14) * 1.75)
+          && gap.center >= -0.1
+          && gap.center <= length + 0.1)
+        .map(({ center, halfWidth }: any) => ({ center, halfWidth }));
+      return {
+        x1: wall.x1,
+        y1: wall.y1,
+        x2: wall.x2,
+        y2: wall.y2,
+        thickness: Math.max(0.08, wall.thickness ?? 0.14),
+        doorGaps,
+      };
+    });
+
+    if (interiorMode && activeLevel) {
+      const roomLights = (activeLevel.closedSpaces ?? [])
+        .filter((space) => (space.area ?? 0) >= 2)
+        .slice(0, 10);
+      for (const space of roomLights) {
+        const light = new THREE.PointLight(
+          lightingMode === "night" ? 0xffd7a1 : 0xffecd2,
+          lightingMode === "night" ? 10 : 5.5,
+          Math.max(4.5, Math.min(9, Math.sqrt(space.area ?? 9) * 2.2)),
+          2,
+        );
+        light.position.set(
+          space.centroid.x - lotWidth / 2,
+          activeFloor * 2.96 + 2.35,
+          space.centroid.y - lotDepth / 2,
+        );
+        light.castShadow = roomLights.length <= 5;
+        if (light.castShadow) light.shadow.mapSize.set(512, 512);
+        light.userData.arqdorLight = true;
+        scene.add(light);
+      }
+    }
 
     for (const level of levels) {
       if (!visibleFloors.has(level.floor)) continue;

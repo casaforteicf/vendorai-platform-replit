@@ -1,4 +1,30 @@
 const modelPromiseCache = new Map<string, Promise<any>>();
+const pendingLoadQueue: Array<() => void> = [];
+const MAX_CONCURRENT_MODEL_LOADS = 3;
+let activeModelLoads = 0;
+
+function drainModelLoadQueue() {
+  while (activeModelLoads < MAX_CONCURRENT_MODEL_LOADS && pendingLoadQueue.length) {
+    const next = pendingLoadQueue.shift();
+    if (!next) break;
+    activeModelLoads += 1;
+    next();
+  }
+}
+
+function queuedLoad<T>(task: () => Promise<T>) {
+  return new Promise<T>((resolve, reject) => {
+    pendingLoadQueue.push(() => {
+      task()
+        .then(resolve, reject)
+        .finally(() => {
+          activeModelLoads = Math.max(0, activeModelLoads - 1);
+          drainModelLoadQueue();
+        });
+    });
+    drainModelLoadQueue();
+  });
+}
 
 function cloneModel(root: any) {
   const clone = root.clone(true);
@@ -21,14 +47,14 @@ export async function loadCachedConceptModel(THREE: any, url: string) {
   if (!pending) {
     const loader = new THREE.GLTFLoader();
     loader.setCrossOrigin?.("anonymous");
-    pending = new Promise((resolve, reject) => {
+    pending = queuedLoad<any>(() => new Promise<any>((resolve, reject) => {
       loader.load(
         url,
         (gltf: any) => resolve(gltf?.scene ?? gltf?.scenes?.[0]),
         undefined,
         reject,
       );
-    });
+    }));
     modelPromiseCache.set(url, pending);
   }
 
