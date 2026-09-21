@@ -68,7 +68,13 @@ type Publication = {
   showDiary?: boolean;
   showDiaryPhotos?: boolean;
   showFinancialSummary?: boolean;
+  showFinancialDetails?: boolean;
   showClientDecisions?: boolean;
+  showMeasurements?: boolean;
+  showMilestones?: boolean;
+  showDocuments?: boolean;
+  showProcurementSummary?: boolean;
+  showProjectGallery?: boolean;
 };
 
 interface PortalData {
@@ -137,6 +143,60 @@ interface PortalData {
     responsavelNome?: string | null;
   }>;
   decisions?: Decision[];
+  resumo?: {
+    progressoGeral: number;
+    etapaAtual?: any | null;
+    proximasEtapas: any[];
+    previsaoEntrega?: string | null;
+    etapasConcluidas: number;
+    totalEtapas: number;
+    decisoesPendentes: number;
+    ocorrenciasAbertas: number;
+  } | null;
+  marcos?: Array<any>;
+  medicoes?: Array<{
+    id: string;
+    etapa_id: string;
+    etapa_nome: string;
+    data: string;
+    percentual_anterior: string | number;
+    percentual_novo: string | number;
+    observacao?: string | null;
+  }>;
+  documentos?: Array<{ id: string; nome: string; url: string; mimeType?: string | null; data?: string | null; tipo?: string }>;
+  compras?: Array<{
+    id: string;
+    descricao: string;
+    fornecedor?: string | null;
+    status: string;
+    prioridade?: string | null;
+    data_prevista?: string | null;
+    data_efetuada?: string | null;
+    data_necessidade?: string | null;
+    prazo_fornecedor_dias?: number | null;
+    valor_total?: string | number | null;
+    etapa_nome?: string | null;
+  }>;
+  financeiro?: {
+    orcamentoTotal: number;
+    custoRealizado: number;
+    percentualConsumido: number;
+    totalLancado?: number | null;
+    totalPago?: number | null;
+    totalPendente?: number | null;
+    lancamentos: Array<any>;
+  } | null;
+  galeriaProjeto?: Array<{
+    id: string;
+    ambiente?: string | null;
+    material_name?: string | null;
+    result_image_url: string;
+    version_tag?: string | null;
+    approved_at?: string | null;
+    approval_note?: string | null;
+    created_at?: string | null;
+  }>;
+  fotosRecentes?: Array<{ id: string; diarioId: string; data: string; url: string; caption?: string | null }>;
 }
 
 const OBRA_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -266,10 +326,15 @@ export default function PortalObra() {
   const visibleTabs = useMemo(() => {
     const p = data?.publication ?? {};
     return [
-      p.showOverview !== false ? { id: "dados" as const, label: "Dados da Obra", icon: <Building2 className="h-4 w-4" /> } : null,
-      p.showBudget !== false ? { id: "orcamento" as const, label: "Orçamento", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showOverview !== false ? { id: "dados" as const, label: "Visão Geral", icon: <Building2 className="h-4 w-4" /> } : null,
       p.showSchedule !== false ? { id: "cronograma" as const, label: "Cronograma", icon: <Layers className="h-4 w-4" /> } : null,
-      p.showDiary !== false ? { id: "diario" as const, label: "Diário da Obra", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showMeasurements !== false && p.showSchedule !== false ? { id: "medicoes" as const, label: "Medições", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showDiary !== false ? { id: "diario" as const, label: "Diário", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showProjectGallery !== false || p.showDiaryPhotos !== false ? { id: "galeria" as const, label: "Fotos", icon: <Camera className="h-4 w-4" /> } : null,
+      p.showDocuments !== false ? { id: "documentos" as const, label: "Documentos", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showProcurementSummary !== false ? { id: "compras" as const, label: "Compras", icon: <Layers className="h-4 w-4" /> } : null,
+      p.showFinancialSummary === true ? { id: "financeiro" as const, label: "Financeiro", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showBudget !== false ? { id: "orcamento" as const, label: "Orçamento", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
     ].filter(Boolean) as Array<{ id: TabId; label: string; icon: React.ReactNode }>;
   }, [data?.publication]);
 
@@ -284,9 +349,17 @@ export default function PortalObra() {
 
   const { obra, tenant, orcamento, etapas, diario, ocorrencias } = data;
   const decisions = data.decisions ?? [];
+  const resumo = data.resumo;
+  const marcos = data.marcos ?? [];
+  const medicoes = data.medicoes ?? [];
+  const documentos = data.documentos ?? [];
+  const compras = data.compras ?? [];
+  const financeiro = data.financeiro;
+  const galeriaProjeto = data.galeriaProjeto ?? [];
+  const fotosRecentes = data.fotosRecentes ?? [];
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
-  const avgProgress = totalEtapas > 0 ? Math.round(etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas) : 0;
+  const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
   const bdiGlobal = orcamento ? parseFloat(orcamento.bdiGlobal ?? "0") : 0;
   const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + (item.bdi != null ? parseFloat(item.bdi) : bdiGlobal) / 100);
   const etapaTotal = (etapa: NonNullable<PortalData["orcamento"]>["etapas"][0]) => etapa.itens.reduce((s, i) => s + itemTotal(i), 0);
