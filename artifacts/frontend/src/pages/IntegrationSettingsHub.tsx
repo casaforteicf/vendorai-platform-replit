@@ -175,7 +175,7 @@ export default function IntegrationSettingsHub() {
       return;
     }
     if (key === "whatsapp") {
-      window.location.assign("/configuracoes?tab=integracoes&integration=whatsapp&installation=1");
+      window.location.assign("/configuracoes?integration=whatsapp");
       return;
     }
     if (key === "asaas" || key === "zapsign") return;
