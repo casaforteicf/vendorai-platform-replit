@@ -113,6 +113,13 @@ export function AiBudgetUsageIndicator() {
         setSidebarSlot(null);
         return;
       }
+
+      const dedicatedSlot = document.querySelector<HTMLElement>("[data-vendorai-footer-usage-slot]");
+      if (dedicatedSlot) {
+        setSidebarSlot((current) => current === dedicatedSlot ? current : dedicatedSlot);
+        return;
+      }
+
       const desktopSidebar = document.querySelector(".hidden.md\\:flex.sticky.top-0.h-screen");
       const footer = desktopSidebar?.querySelector(".p-4.border-t") as HTMLElement | null;
       const utilities = footer?.querySelector(".mb-1.space-y-1") as HTMLElement | null;
@@ -232,17 +239,20 @@ export function AiBudgetUsageIndicator() {
   );
 
   if (sidebarSlot) {
+    const inFooterTools = sidebarSlot.hasAttribute("data-vendorai-footer-usage-slot");
     const trigger = createPortal(
       <button
         ref={triggerRef}
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className={`flex h-7 items-center gap-1 rounded-full border px-2 text-left shadow-sm ${tone}`}
+        className={inFooterTools
+          ? `flex min-h-[40px] w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-medium shadow-sm ${tone}`
+          : `flex h-7 items-center gap-1 rounded-full border px-2 text-left shadow-sm ${tone}`}
         aria-expanded={expanded}
         aria-label="Abrir consumo do plano"
       >
         <Sparkles className="h-3 w-3" />
-        <span className="text-[9px] font-semibold leading-none">Uso · {maxPercent.toFixed(0)}%</span>
+        <span className={inFooterTools ? "text-sm font-medium leading-none" : "text-[9px] font-semibold leading-none"}>Uso · {maxPercent.toFixed(0)}%</span>
         {expanded ? <ChevronDown className="h-3 w-3 opacity-70" /> : <ChevronUp className="h-3 w-3 opacity-70" />}
       </button>,
       sidebarSlot,
