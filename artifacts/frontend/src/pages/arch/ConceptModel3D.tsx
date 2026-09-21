@@ -5,6 +5,7 @@ import type { ClosedSpace } from "./conceptWallNetwork";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptWebGLScene from "./ConceptWebGLScene";
+import { CONCEPT_PBR_MATERIALS } from "./catalogs/conceptMaterialCatalog";
 
 export type ConceptModelLevel = {
   floor: number;
@@ -42,7 +43,7 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
@@ -843,6 +844,11 @@ export default function ConceptModel3D({
   const openingCount = visibleLevels.reduce((sum, level) => sum + level.openings.length, 0);
   const spaceCount = visibleLevels.reduce((sum, level) => sum + level.closedSpaces.length, 0);
 
+  const selectedObject3D = selectedObjectId
+    ? objects.find((item) => item.id === selectedObjectId) ?? null
+    : null;
+  const pbrFurnitureMaterials = Object.values(CONCEPT_PBR_MATERIALS).filter((item) => item.family === "furniture");
+
   const exteriorMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.main);
   const accentMaterial = getFacadeMaterial(facadeDesign?.surfaceMaterials.accent);
   const allSpaces = levels.flatMap((level) => level.closedSpaces);
@@ -924,6 +930,50 @@ export default function ConceptModel3D({
               >
                 Girar
               </button>
+            </div>
+          )}
+          {webglReady && selectedObject3D && (
+            <div className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 lg:flex">
+              <select
+                value={selectedObject3D.materialId ?? ""}
+                onChange={(event) => onObjectChange?.(selectedObject3D.id, { materialId: event.target.value || undefined })}
+                className="h-7 max-w-36 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+                title="Material PBR do objeto"
+              >
+                <option value="">Material do modelo</option>
+                {pbrFurnitureMaterials.map((material) => (
+                  <option key={material.id} value={material.id}>{material.label}</option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                Esc.
+                <input
+                  type="number"
+                  min="0.25"
+                  max="6"
+                  step="0.25"
+                  value={selectedObject3D.materialScale ?? 1}
+                  onChange={(event) => onObjectChange?.(selectedObject3D.id, {
+                    materialScale: Math.max(0.25, Math.min(6, Number(event.target.value) || 1)),
+                  })}
+                  className="h-7 w-14 rounded-md border border-slate-200 px-1.5 text-[11px] text-slate-700"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                Tex.
+                <input
+                  type="number"
+                  min="0"
+                  max="355"
+                  step="5"
+                  value={selectedObject3D.materialRotation ?? 0}
+                  onChange={(event) => onObjectChange?.(selectedObject3D.id, {
+                    materialRotation: ((Number(event.target.value) || 0) % 360 + 360) % 360,
+                  })}
+                  className="h-7 w-14 rounded-md border border-slate-200 px-1.5 text-[11px] text-slate-700"
+                />
+                °
+              </label>
             </div>
           )}
           {onRenderView && (
