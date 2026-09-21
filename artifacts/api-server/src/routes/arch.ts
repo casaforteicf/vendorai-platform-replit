@@ -71,7 +71,7 @@ import { callReplicateFlux, callOpenAI } from "../lib/ai-gateway.js";
 import { arqOrchestrator } from "../lib/arqdor/orchestrator/index.js";
 import { automationLogsTable } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
-import { pickNextVendedor } from "../lib/round-robin.js";
+import { pickNextVendedor } from "../lib/round-robin.js";\nimport { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -290,6 +290,11 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
       error: "Informe nome e pelo menos um contato (telefone ou e-mail) antes de enviar ao profissional.",
     });
   }
+
+  // Bootstrap idempotente: o primeiro Pré-Projeto já garante insumos e
+  // composições padrão do tenant. Preços continuam sendo responsabilidade da
+  // Tabela Mestre; aqui criamos apenas estrutura, coeficientes e vínculos.
+  await ensureStandardConstructionCatalog(tid);
 
   if (customer.name?.trim()) {
     if (customer.email?.trim()) {
