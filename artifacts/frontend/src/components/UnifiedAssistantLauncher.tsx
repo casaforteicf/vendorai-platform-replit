@@ -101,6 +101,12 @@ export function UnifiedAssistantLauncher() {
         return;
       }
 
+      const dedicatedSlot = document.querySelector<HTMLElement>("[data-vendorai-footer-assistant-slot]");
+      if (dedicatedSlot) {
+        setSidebarSlot((current) => current === dedicatedSlot ? current : dedicatedSlot);
+        return;
+      }
+
       const sidebarInner = document.querySelector<HTMLElement>(".hidden.md\\:flex.sticky.top-0.h-screen > div");
       const footer = sidebarInner?.querySelector<HTMLElement>(".p-4.border-t");
       if (!sidebarInner || !footer) {
