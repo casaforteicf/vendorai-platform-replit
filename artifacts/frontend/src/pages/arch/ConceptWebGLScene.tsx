@@ -22,6 +22,7 @@ type Props = {
   lightingMode: LightingMode;
   cameraPresetDegrees: number;
   cameraZoom: number;
+  transformMode?: "translate" | "rotate";
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -146,6 +147,7 @@ export default function ConceptWebGLScene({
   lightingMode,
   cameraPresetDegrees,
   cameraZoom,
+  transformMode = "translate",
   paintTool = null,
   onReady,
   onSelectObject,
@@ -236,9 +238,11 @@ export default function ConceptWebGLScene({
               const depth = Number(target?.userData?.modelDepth ?? 0.6);
               const x = Math.max(0, Math.min(lotWidth - width, target.position.x + lotWidth / 2 - width / 2));
               const y = Math.max(0, Math.min(lotDepth - depth, target.position.z + lotDepth / 2 - depth / 2));
+              const rotation = ((-target.rotation.y * 180 / Math.PI) % 360 + 360) % 360;
               onObjectChange(objectId, {
                 x: Math.round(x * 20) / 20,
                 y: Math.round(y * 20) / 20,
+                rotation: (Math.round(rotation / 5) * 5) % 360,
               });
             }
             onObjectEditEnd?.();
@@ -787,11 +791,9 @@ export default function ConceptWebGLScene({
           opening.x - lotWidth / 2,
           floorBase + sill + height / 2,
           opening.y - lotDepth / 2,
-          selectedOpening
-            ? 0xf97316
-            : glass
-              ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
-              : 0x9a6b45,
+          glass
+            ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
+            : 0x9a6b45,
           { transparent: glass, opacity: glass ? 0.48 : 1 },
         );
         panel.userData.openingId = opening.id;
@@ -1029,6 +1031,18 @@ export default function ConceptWebGLScene({
     roof,
     visibleFloors,
   ]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const transform = runtime?.transform;
+    if (!runtime || !transform || engineState !== "ready") return;
+    transform.setMode(transformMode);
+    transform.setSpace(transformMode === "rotate" ? "local" : "world");
+    transform.showX = transformMode === "translate";
+    transform.showY = transformMode === "rotate";
+    transform.showZ = transformMode === "translate";
+    transform.size = transformMode === "rotate" ? 0.95 : 0.8;
+  }, [engineState, transformMode]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
