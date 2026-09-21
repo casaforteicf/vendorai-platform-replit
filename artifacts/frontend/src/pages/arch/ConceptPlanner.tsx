@@ -122,6 +122,7 @@ type EditorSnapshot = {
   wallFirstFloors: number[];
   openingOverrides: Record<string, OpeningOverride>;
   objects: ConceptPlanObject[];
+  spaceProfiles: SpaceProfile[];
 };
 
 type CustomerProfile = {
@@ -697,6 +698,7 @@ export default function ConceptPlanner() {
       Object.entries(openingOverridesRef.current).map(([key, value]) => [key, { ...value }]),
     ),
     objects: objectsRef.current.map((object) => ({ ...object })),
+    spaceProfiles: (Array.isArray(spaceProfiles) ? spaceProfiles : []).map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
@@ -708,6 +710,7 @@ export default function ConceptPlanner() {
       Object.entries(snapshot.openingOverrides).map(([key, value]) => [key, { ...value }]),
     ),
     objects: snapshot.objects.map((object) => ({ ...object })),
+    spaceProfiles: snapshot.spaceProfiles.map((profile) => ({ ...profile, centroid: { ...profile.centroid } })),
   });
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
@@ -718,6 +721,7 @@ export default function ConceptPlanner() {
     setWallFirstFloors(cloned.wallFirstFloors);
     setOpeningOverrides(cloned.openingOverrides);
     setObjects(cloned.objects);
+    setSpaceProfiles(cloned.spaceProfiles);
     setSelectedId(null);
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
