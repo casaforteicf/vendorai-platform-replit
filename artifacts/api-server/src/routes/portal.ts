@@ -1,4 +1,7 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "crypto";
+import { authenticate } from "../middlewares/auth.js";
 import { and, eq, desc, asc, inArray } from "drizzle-orm";
 import {
   db,
@@ -23,6 +26,40 @@ const router = Router();
 function portalConfig(raw: unknown): ObraPortalConfig {
   const value = raw && typeof raw === "object" ? raw as Partial<ObraPortalConfig> : {};
   return { ...DEFAULT_OBRA_PORTAL_CONFIG, ...value };
+}
+
+function portalBearer(req: any) {
+  const header = String(req.headers?.authorization ?? "");
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
+
+function hashPortalToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function resolvePortalUser(req: any, obraId: string) {
+  const token = portalBearer(req);
+  if (!token) return null;
+  const result = await pool.query(
+    `SELECT u.id, u.nome, u.email, u.telefone, u.obra_id, u.tenant_id
+       FROM obra_portal_sessions s
+       INNER JOIN obra_portal_users u ON u.id = s.user_id
+      WHERE s.token_hash = $1 AND s.expires_at > now()
+        AND u.obra_id = $2 AND u.status = 'ativo'
+      LIMIT 1`,
+    [hashPortalToken(token), obraId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function createPortalSession(userId: string) {
+  const raw = randomBytes(32).toString("hex");
+  await pool.query(
+    `INSERT INTO obra_portal_sessions (id, user_id, token_hash, expires_at)
+     VALUES ($1,$2,$3,now() + interval '30 days')`,
+    [crypto.randomUUID(), userId, hashPortalToken(raw)],
+  );
+  return raw;
 }
 
 async function getArqdorPortalProject(token: string) {
@@ -114,14 +151,141 @@ router.post("/portal/arqdor/:token/revisions", async (req, res) => {
   return res.status(201).json({ revision, projectId: project.id, sourceAiRenderId, nextAction: "revisao_pendente" });
 });
 
+router.post("/portal/obra/:token/register", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.allowSelfRegistration) return res.status(403).json({ error: "Cadastro pelo cliente está desativado." });
+
+  const nome = String(req.body?.nome ?? "").trim();
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const telefone = String(req.body?.telefone ?? "").trim() || null;
+  const password = String(req.body?.password ?? "");
+  if (!nome || !email || !email.includes("@") || password.length < 8) {
+    return res.status(422).json({ error: "Informe nome, e-mail válido e senha com ao menos 8 caracteres." });
+  }
+
+  const existing = await pool.query(
+    `SELECT id FROM obra_portal_users WHERE obra_id=$1 AND lower(email)=lower($2) LIMIT 1`,
+    [obra.id, email],
+  );
+  if (existing.rows[0]) return res.status(409).json({ error: "Já existe uma conta para este e-mail nesta obra." });
+
+  const userId = crypto.randomUUID();
+  const passwordHash = await bcrypt.hash(password, 12);
+  await pool.query(
+    `INSERT INTO obra_portal_users (id, tenant_id, obra_id, nome, email, telefone, password_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [userId, obra.tenantId, obra.id, nome, email, telefone, passwordHash],
+  );
+  const sessionToken = await createPortalSession(userId);
+  return res.status(201).json({ token: sessionToken, user: { id: userId, nome, email, telefone } });
+});
+
+router.post("/portal/obra/:token/login", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const password = String(req.body?.password ?? "");
+  const result = await pool.query(
+    `SELECT * FROM obra_portal_users WHERE obra_id=$1 AND lower(email)=lower($2) AND status='ativo' LIMIT 1`,
+    [obra.id, email],
+  );
+  const user = result.rows[0];
+  if (!user || !await bcrypt.compare(password, user.password_hash)) {
+    return res.status(401).json({ error: "E-mail ou senha inválidos." });
+  }
+  await pool.query(`UPDATE obra_portal_users SET ultimo_login_em=now(), updated_at=now() WHERE id=$1`, [user.id]);
+  const sessionToken = await createPortalSession(user.id);
+  return res.json({ token: sessionToken, user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone } });
+});
+
+router.get("/portal/obra/:token/me", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const user = await resolvePortalUser(req, obra.id);
+  if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+  return res.json({ user });
+});
+
+router.post("/portal/obra/:token/support", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const user = await resolvePortalUser(req, obra.id);
+  if (!user) return res.status(401).json({ error: "Faça login para abrir uma solicitação." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showSupport) return res.status(403).json({ error: "Suporte não está habilitado neste portal." });
+
+  const assunto = String(req.body?.assunto ?? "").trim();
+  const descricao = String(req.body?.descricao ?? "").trim();
+  const prioridade = ["baixa","normal","alta","urgente"].includes(String(req.body?.prioridade))
+    ? String(req.body.prioridade) : "normal";
+  if (!assunto || !descricao) return res.status(422).json({ error: "Assunto e descrição são obrigatórios." });
+
+  const result = await pool.query(
+    `INSERT INTO obra_portal_support_tickets
+       (id,tenant_id,obra_id,portal_user_id,assunto,descricao,prioridade,status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'aberto') RETURNING *`,
+    [crypto.randomUUID(), obra.tenantId, obra.id, user.id, assunto, descricao, prioridade],
+  );
+  return res.status(201).json({ ticket: result.rows[0] });
+});
+
+router.post("/portal/obra/:token/messages", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const user = await resolvePortalUser(req, obra.id);
+  if (!user) return res.status(401).json({ error: "Faça login para enviar mensagens." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showChat) return res.status(403).json({ error: "Chat não está habilitado neste portal." });
+
+  const mensagem = String(req.body?.mensagem ?? "").trim();
+  if (!mensagem) return res.status(422).json({ error: "Mensagem vazia." });
+  const result = await pool.query(
+    `INSERT INTO obra_portal_messages
+       (id,tenant_id,obra_id,portal_user_id,autor_tipo,autor_nome,mensagem)
+     VALUES ($1,$2,$3,$4,'cliente',$5,$6) RETURNING *`,
+    [crypto.randomUUID(), obra.tenantId, obra.id, user.id, user.nome, mensagem],
+  );
+  return res.status(201).json({ message: result.rows[0] });
+});
+
 router.get("/portal/obra/:token", async (req, res) => {
   const { token } = req.params;
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
 
   const config = portalConfig(obra.portalConfig);
+  const portalUser = await resolvePortalUser(req, obra.id);
+  const authenticated = Boolean(portalUser);
   const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable).where(eq(tenantsTable.id, obra.tenantId));
+
+  if (config.requireLogin && !authenticated) {
+    return res.json({
+      publication: config,
+      auth: {
+        required: true,
+        authenticated: false,
+        allowSelfRegistration: config.allowSelfRegistration,
+        user: null,
+      },
+      obra: {
+        id: obra.id,
+        nome: obra.nome,
+        clienteNome: obra.clienteNome,
+        status: obra.status,
+      },
+      tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
+      locked: true,
+    });
+  }
 
   const etapas = await db.select().from(obraEtapasTable)
     .where(eq(obraEtapasTable.obraId, obra.id))
@@ -406,8 +570,141 @@ router.get("/portal/obra/:token", async (req, res) => {
       )
     : null;
 
+  const today = new Date();
+  const executiveStages = etapaRows.map((item: any) => {
+    const startRaw = item.dataInicioPrevista ?? item.data_inicio_prevista;
+    const endRaw = item.dataFimPrevista ?? item.data_fim_prevista;
+    const start = startRaw ? new Date(`${String(startRaw).slice(0,10)}T12:00:00Z`) : null;
+    const end = endRaw ? new Date(`${String(endRaw).slice(0,10)}T12:00:00Z`) : null;
+    let plannedPercent = 0;
+    if (start && end) {
+      if (today >= end) plannedPercent = 100;
+      else if (today > start) plannedPercent = Math.max(0, Math.min(100, ((today.getTime() - start.getTime()) / Math.max(1, end.getTime() - start.getTime())) * 100));
+    }
+    const actualPercent = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0)));
+    const plannedCost = Number(item.custoPrevisto ?? item.custo_previsto ?? 0);
+    return {
+      etapaId: item.id,
+      nome: item.nome,
+      plannedPercent,
+      actualPercent,
+      variancePoints: actualPercent - plannedPercent,
+      plannedCost,
+      earnedValue: plannedCost * actualPercent / 100,
+      status: item.status,
+      dataInicioPrevista: startRaw ?? null,
+      dataFimPrevista: endRaw ?? null,
+    };
+  });
+  const plannedProgress = weightedBase > 0
+    ? executiveStages.reduce((sum, stage, index) => sum + stage.plannedPercent * Number(etapaRows[index]?.pesoFisico ?? etapaRows[index]?.peso_fisico ?? 0), 0) / weightedBase
+    : executiveStages.length ? executiveStages.reduce((sum, stage) => sum + stage.plannedPercent, 0) / executiveStages.length : 0;
+
+  const executiveBalance = config.showExecutiveBalance ? {
+    plannedProgress,
+    actualProgress: progressoGeral,
+    progressVariancePoints: progressoGeral - plannedProgress,
+    plannedCost: etapaRows.reduce((sum, item) => sum + Number(item.custoPrevisto ?? item.custo_previsto ?? 0), 0),
+    actualCost: custoRealizadoCalculado,
+    forecastDelivery: previsaoEntrega,
+    stages: executiveStages,
+  } : null;
+
+  let commercial: any = null;
+  if (config.showProposals) {
+    const projectResult = await pool.query(
+      `SELECT id, titulo, proposta_id FROM arch_projetos
+        WHERE obra_id=$1 AND tenant_id=$2
+        ORDER BY updated_at DESC LIMIT 1`,
+      [obra.id, obra.tenantId],
+    );
+    const project = projectResult.rows[0];
+    if (project) {
+      const [budgetResult, proposalResult] = await Promise.all([
+        pool.query(
+          `SELECT id,title,status,version,subtotal,discount_total,grand_total,client_notes,updated_at
+             FROM arch_budgets
+            WHERE project_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1`,
+          [project.id, obra.tenantId],
+        ),
+        pool.query(
+          `SELECT id,title,status,version,grand_total,expires_at,sent_at,viewed_at,approved_at,rejected_at,client_notes
+             FROM arch_proposals
+            WHERE project_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1`,
+          [project.id, obra.tenantId],
+        ),
+      ]);
+      const budget = budgetResult.rows[0] ?? null;
+      const proposal = proposalResult.rows[0] ?? null;
+      const proposalItems = proposal
+        ? (await pool.query(
+            `SELECT id,item,description,quantity,unit,total,approval_status,client_comment
+               FROM arch_proposal_items
+              WHERE proposal_id=$1 AND visible_to_client=true
+              ORDER BY sort_order ASC, created_at ASC`,
+            [proposal.id],
+          )).rows
+        : [];
+      commercial = { project: { id: project.id, titulo: project.titulo }, budget, proposal, proposalItems };
+    }
+  }
+
+  const canReadPrivateLibrary = !config.requireLogin || authenticated;
+  const privateDocuments = (canReadPrivateLibrary && (config.showDocuments || config.showContracts || config.showManuals))
+    ? (await pool.query(
+        `SELECT id,categoria,titulo,descricao,url,mime_type,versao,created_at
+           FROM obra_portal_documents
+          WHERE obra_id=$1 AND tenant_id=$2 AND publicado_cliente=true
+          ORDER BY categoria ASC, created_at DESC`,
+        [obra.id, obra.tenantId],
+      )).rows
+    : [];
+
+  const contracts = config.showContracts ? privateDocuments.filter((item: any) => item.categoria === "contrato") : [];
+  const manuals = config.showManuals ? privateDocuments.filter((item: any) => ["manual","garantia"].includes(item.categoria)) : [];
+  const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","manual","garantia"].includes(item.categoria)) : [];
+
+  const invoices = (canReadPrivateLibrary && config.showInvoices)
+    ? (await pool.query(
+        `SELECT id,numero,fornecedor,valor,data_emissao,data_vencimento,status,descricao,documento_url
+           FROM obra_lancamentos
+          WHERE obra_id=$1 AND tenant_id=$2 AND tipo='nota_fiscal'
+          ORDER BY data_emissao DESC NULLS LAST, created_at DESC LIMIT 100`,
+        [obra.id, obra.tenantId],
+      )).rows
+    : [];
+
+  const supportTickets = (authenticated && config.showSupport)
+    ? (await pool.query(
+        `SELECT id,assunto,descricao,prioridade,status,created_at,updated_at,closed_at
+           FROM obra_portal_support_tickets
+          WHERE obra_id=$1 AND tenant_id=$2 AND portal_user_id=$3
+          ORDER BY created_at DESC LIMIT 100`,
+        [obra.id, obra.tenantId, portalUser.id],
+      )).rows
+    : [];
+
+  const chatMessages = (authenticated && config.showChat)
+    ? (await pool.query(
+        `SELECT id,autor_tipo,autor_nome,mensagem,created_at
+           FROM obra_portal_messages
+          WHERE obra_id=$1 AND tenant_id=$2
+          ORDER BY created_at ASC LIMIT 300`,
+        [obra.id, obra.tenantId],
+      )).rows
+    : [];
+
   return res.json({
     publication: config,
+    auth: {
+      required: config.requireLogin,
+      authenticated,
+      allowSelfRegistration: config.allowSelfRegistration,
+      user: portalUser ? { id: portalUser.id, nome: portalUser.nome, email: portalUser.email, telefone: portalUser.telefone } : null,
+    },
+    locked: false,
     obra: {
       id: obra.id,
       nome: obra.nome,
@@ -444,6 +741,14 @@ router.get("/portal/obra/:token", async (req, res) => {
     financeiro,
     galeriaProjeto,
     fotosRecentes,
+    executiveBalance,
+    commercial,
+    contracts,
+    manuals,
+    projectDocuments,
+    invoices,
+    supportTickets,
+    chatMessages,
   });
 });
 
@@ -502,6 +807,124 @@ router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res
   if (!result.rows[0]) return res.status(409).json({ error: "A decisão foi alterada antes desta resposta. Atualize o portal." });
 
   return res.json({ ok: true, decision: result.rows[0] });
+});
+
+function canManagePortal(req: any, tenantId: string) {
+  return req?.user?.platformRole === "super_admin" || req?.user?.tenantId === tenantId;
+}
+
+router.get("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `SELECT * FROM obra_portal_documents WHERE tenant_id=$1 AND obra_id=$2 ORDER BY categoria, created_at DESC`,
+    [tenantId, obraId],
+  );
+  return res.json({ documents: result.rows });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const categoria = String(req.body?.categoria ?? "documento").trim();
+  const titulo = String(req.body?.titulo ?? "").trim();
+  const url = String(req.body?.url ?? "").trim();
+  if (!titulo || !url) return res.status(422).json({ error: "Título e URL são obrigatórios." });
+  const result = await pool.query(
+    `INSERT INTO obra_portal_documents
+      (id,tenant_id,obra_id,categoria,titulo,descricao,url,mime_type,versao,publicado_cliente)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [
+      crypto.randomUUID(), tenantId, obraId, categoria, titulo,
+      req.body?.descricao ?? null, url, req.body?.mimeType ?? null,
+      req.body?.versao ?? null, req.body?.publicadoCliente === true,
+    ],
+  );
+  return res.status(201).json({ document: result.rows[0] });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/documents/:documentId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const documentId = String(req.params.documentId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `UPDATE obra_portal_documents
+        SET categoria=COALESCE($1,categoria),
+            titulo=COALESCE($2,titulo),
+            descricao=COALESCE($3,descricao),
+            url=COALESCE($4,url),
+            mime_type=COALESCE($5,mime_type),
+            versao=COALESCE($6,versao),
+            publicado_cliente=COALESCE($7,publicado_cliente),
+            updated_at=now()
+      WHERE id=$8 AND tenant_id=$9 AND obra_id=$10
+      RETURNING *`,
+    [
+      req.body?.categoria ?? null, req.body?.titulo ?? null, req.body?.descricao ?? null,
+      req.body?.url ?? null, req.body?.mimeType ?? null, req.body?.versao ?? null,
+      typeof req.body?.publicadoCliente === "boolean" ? req.body.publicadoCliente : null,
+      documentId, tenantId, obraId,
+    ],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Documento não encontrado." });
+  return res.json({ document: result.rows[0] });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/portal/support", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const [tickets, messages] = await Promise.all([
+    pool.query(
+      `SELECT t.*, u.nome AS cliente_nome, u.email AS cliente_email
+         FROM obra_portal_support_tickets t
+         LEFT JOIN obra_portal_users u ON u.id=t.portal_user_id
+        WHERE t.tenant_id=$1 AND t.obra_id=$2 ORDER BY t.created_at DESC`,
+      [tenantId, obraId],
+    ),
+    pool.query(
+      `SELECT * FROM obra_portal_messages WHERE tenant_id=$1 AND obra_id=$2 ORDER BY created_at ASC LIMIT 500`,
+      [tenantId, obraId],
+    ),
+  ]);
+  return res.json({ tickets: tickets.rows, messages: messages.rows });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/support/:ticketId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const ticketId = String(req.params.ticketId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const status = ["aberto","em_atendimento","aguardando_cliente","resolvido","fechado"].includes(String(req.body?.status))
+    ? String(req.body.status) : null;
+  if (!status) return res.status(422).json({ error: "Status inválido." });
+  const result = await pool.query(
+    `UPDATE obra_portal_support_tickets
+        SET status=$1, updated_at=now(),
+            closed_at=CASE WHEN $1 IN ('resolvido','fechado') THEN now() ELSE NULL END
+      WHERE id=$2 AND tenant_id=$3 AND obra_id=$4 RETURNING *`,
+    [status, ticketId, tenantId, obraId],
+  );
+  return res.json({ ticket: result.rows[0] ?? null });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/portal/messages", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const mensagem = String(req.body?.mensagem ?? "").trim();
+  if (!mensagem) return res.status(422).json({ error: "Mensagem vazia." });
+  const autorNome = String(req.user?.nome ?? req.user?.email ?? "Equipe");
+  const result = await pool.query(
+    `INSERT INTO obra_portal_messages
+      (id,tenant_id,obra_id,portal_user_id,autor_tipo,autor_nome,mensagem)
+     VALUES ($1,$2,$3,null,'equipe',$4,$5) RETURNING *`,
+    [crypto.randomUUID(), tenantId, obraId, autorNome, mensagem],
+  );
+  return res.status(201).json({ message: result.rows[0] });
 });
 
 router.post("/portal/obra/:token/aprovar-orcamento", async (req, res) => {

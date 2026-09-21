@@ -28,6 +28,14 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import PortalClientDecisions from "./PortalClientDecisions";
+import {
+  PortalAuthGate,
+  PortalCommercial,
+  PortalDocumentLibrary,
+  PortalExecutiveBalance,
+  PortalSupportChat,
+  portalSessionKey,
+} from "./PortalObraPrivateSuite";
 
 const API = "/api";
 
@@ -79,10 +87,26 @@ type Publication = {
   showDocuments?: boolean;
   showProcurementSummary?: boolean;
   showProjectGallery?: boolean;
+  requireLogin?: boolean;
+  allowSelfRegistration?: boolean;
+  showExecutiveBalance?: boolean;
+  showProposals?: boolean;
+  showContracts?: boolean;
+  showInvoices?: boolean;
+  showManuals?: boolean;
+  showSupport?: boolean;
+  showChat?: boolean;
 };
 
 interface PortalData {
   publication?: Publication;
+  locked?: boolean;
+  auth?: {
+    required: boolean;
+    authenticated: boolean;
+    allowSelfRegistration: boolean;
+    user?: { id: string; nome: string; email: string; telefone?: string | null } | null;
+  };
   obra: {
     id: string;
     nome: string;
@@ -201,6 +225,14 @@ interface PortalData {
     created_at?: string | null;
   }>;
   fotosRecentes?: Array<{ id: string; diarioId: string; data: string; url: string; caption?: string | null }>;
+  executiveBalance?: any;
+  commercial?: any;
+  contracts?: any[];
+  manuals?: any[];
+  projectDocuments?: any[];
+  invoices?: any[];
+  supportTickets?: any[];
+  chatMessages?: any[];
 }
 
 const OBRA_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -258,6 +290,10 @@ export default function PortalObra() {
   const tokenKey = tokenStorageKey(token);
 
   const [data, setData] = useState<PortalData | null>(null);
+  const [portalSession, setPortalSession] = useState<string>(() => {
+    try { return localStorage.getItem(portalSessionKey(token)) ?? ""; } catch { return ""; }
+  });
+  const [forceAuth, setForceAuth] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -290,28 +326,35 @@ export default function PortalObra() {
     navigate(`/portal/obra/${token}?${p.toString()}`);
   }
 
-  useEffect(() => {
+  async function loadPortal(sessionToken = portalSession) {
     if (!token) return;
     setLoading(true);
-    fetch(`${API}/portal/obra/${token}`)
-      .then((r) => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error)))
-      .then((d: PortalData) => {
-        setData(d);
-        const obraKey = obraStorageKey(d.obra.id);
-        setActiveObraKey(obraKey);
-        const migratedTab = resolveTabPreference(token, d.obra.id);
-        if (migratedTab && !new URLSearchParams(search).has("tab")) {
-          setActiveTab(migratedTab);
-          const p = new URLSearchParams(search);
-          p.set("tab", migratedTab);
-          navigate(`/portal/obra/${token}?${p.toString()}`, { replace: true });
-        }
-      })
-      .catch((e: any) => {
-        try { localStorage.removeItem(tokenKey); } catch { /* ignore */ }
-        setError(typeof e === "string" ? e : "Erro ao carregar o portal.");
-      })
-      .finally(() => setLoading(false));
+    setError(null);
+    try {
+      const r = await fetch(`${API}/portal/obra/${token}`, {
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error ?? "Erro ao carregar o portal.");
+      setData(d);
+      const obraKey = obraStorageKey(d.obra.id);
+      setActiveObraKey(obraKey);
+      const migratedTab = resolveTabPreference(token, d.obra.id);
+      if (migratedTab && !new URLSearchParams(search).has("tab")) {
+        setActiveTab(migratedTab);
+        const p = new URLSearchParams(search);
+        p.set("tab", migratedTab);
+        navigate(`/portal/obra/${token}?${p.toString()}`, { replace: true });
+      }
+    } catch (e: any) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar o portal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadPortal(portalSession);
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleAprovar() {
@@ -331,14 +374,22 @@ export default function PortalObra() {
     const p = data?.publication ?? {};
     return [
       p.showOverview !== false ? { id: "dados" as const, label: "Visão Geral", icon: <Building2 className="h-4 w-4" /> } : null,
+      p.showExecutiveBalance !== false ? { id: "executivo" as const, label: "Balanço Executivo", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showSchedule !== false ? { id: "cronograma" as const, label: "Cronograma", icon: <Layers className="h-4 w-4" /> } : null,
       p.showMeasurements !== false && p.showSchedule !== false ? { id: "medicoes" as const, label: "Medições", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showProposals !== false ? { id: "propostas" as const, label: "Propostas", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showDiary !== false ? { id: "diario" as const, label: "Diário", icon: <FileText className="h-4 w-4" /> } : null,
       p.showProjectGallery !== false || p.showDiaryPhotos !== false ? { id: "galeria" as const, label: "Fotos", icon: <Camera className="h-4 w-4" /> } : null,
-      p.showDocuments !== false ? { id: "documentos" as const, label: "Documentos", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showDocuments !== false ? { id: "projetos" as const, label: "Projetos", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showContracts !== false ? { id: "contratos" as const, label: "Contratos", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showDocuments !== false ? { id: "documentos" as const, label: "Anexos", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showManuals !== false ? { id: "manuais" as const, label: "Manuais", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showInvoices !== false ? { id: "notas" as const, label: "Notas Fiscais", icon: <FileText className="h-4 w-4" /> } : null,
       p.showProcurementSummary !== false ? { id: "compras" as const, label: "Compras", icon: <Layers className="h-4 w-4" /> } : null,
       p.showFinancialSummary === true ? { id: "financeiro" as const, label: "Financeiro", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showBudget !== false ? { id: "orcamento" as const, label: "Orçamento", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showSupport !== false ? { id: "suporte" as const, label: "Suporte", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showChat !== false ? { id: "chat" as const, label: "Chat", icon: <FileText className="h-4 w-4" /> } : null,
     ].filter(Boolean) as Array<{ id: TabId; label: string; icon: React.ReactNode }>;
   }, [data?.publication]);
 
@@ -349,6 +400,17 @@ export default function PortalObra() {
   }, [data, visibleTabs, activeTab]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="text-center"><Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-indigo-600" /><p className="text-sm text-gray-500">Carregando portal…</p></div></div>;
+  if (data?.locked || forceAuth) return <PortalAuthGate
+    token={token}
+    tenantName={data.tenant?.name ?? "Empresa"}
+    obraName={data.obra?.nome ?? "Portal do Cliente"}
+    allowRegistration={data.auth?.allowSelfRegistration !== false}
+    onAuthenticated={(sessionToken) => {
+      setPortalSession(sessionToken);
+      setForceAuth(false);
+      void loadPortal(sessionToken);
+    }}
+  />;
   if (error || !data) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="max-w-sm text-center"><Building2 className="mx-auto mb-4 h-12 w-12 text-gray-300" /><h1 className="mb-2 text-xl font-semibold text-gray-700">Portal não encontrado</h1><p className="text-sm text-gray-500">{error ?? "Verifique o link enviado pela construtora."}</p></div></div>;
 
   const { obra, tenant, orcamento, etapas, diario, ocorrencias } = data;
@@ -361,6 +423,14 @@ export default function PortalObra() {
   const financeiro = data.financeiro;
   const galeriaProjeto = data.galeriaProjeto ?? [];
   const fotosRecentes = data.fotosRecentes ?? [];
+  const executiveBalance = data.executiveBalance;
+  const commercial = data.commercial;
+  const contracts = data.contracts ?? [];
+  const manuals = data.manuals ?? [];
+  const projectDocuments = data.projectDocuments ?? [];
+  const invoices = data.invoices ?? [];
+  const supportTickets = data.supportTickets ?? [];
+  const chatMessages = data.chatMessages ?? [];
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
   const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
@@ -376,7 +446,10 @@ export default function PortalObra() {
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3"><div className="rounded-lg bg-indigo-600 p-2 text-white"><Building2 className="h-5 w-5" /></div><div><p className="text-xs leading-none text-gray-500">Portal do Cliente</p><p className="text-sm font-semibold leading-snug text-gray-900">{tenant.name}</p></div></div>
-          <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${obraStatus.color}`}>{obraStatus.icon}{obraStatus.label}</span>
+          <div className="flex items-center gap-2">
+            {!data.auth?.authenticated ? <button type="button" onClick={() => setForceAuth(true)} className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Entrar na área privada</button> : <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">{data.auth.user?.nome ?? "Cliente conectado"}</span>}
+            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${obraStatus.color}`}>{obraStatus.icon}{obraStatus.label}</span>
+          </div>
         </div>
       </header>
 
@@ -564,6 +637,58 @@ export default function PortalObra() {
                 ) : null}
               </>
             )}
+          </Section>
+        ) : null}
+
+        {activeTab === "executivo" && data.publication?.showExecutiveBalance !== false ? (
+          <Section title="Balanço Executivo — Planejado × Executado" icon={<CircleDollarSign className="h-5 w-5" />}>
+            <PortalExecutiveBalance balance={executiveBalance} />
+          </Section>
+        ) : null}
+
+        {activeTab === "propostas" && data.publication?.showProposals !== false ? (
+          <Section title="Propostas e Orçamentos Comerciais" icon={<CircleDollarSign className="h-5 w-5" />}>
+            <PortalCommercial commercial={commercial} />
+          </Section>
+        ) : null}
+
+        {activeTab === "projetos" && data.publication?.showDocuments !== false ? (
+          <Section title="Projetos e Arquivos Técnicos" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Projetos" items={projectDocuments} />
+          </Section>
+        ) : null}
+
+        {activeTab === "contratos" && data.publication?.showContracts !== false ? (
+          <Section title="Contratos e Termos" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Contratos" items={contracts} />
+          </Section>
+        ) : null}
+
+        {activeTab === "manuais" && data.publication?.showManuals !== false ? (
+          <Section title="Manuais, Garantias e Entrega" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Manuais" items={manuals} />
+          </Section>
+        ) : null}
+
+        {activeTab === "notas" && data.publication?.showInvoices !== false ? (
+          <Section title="Notas Fiscais" icon={<FileText className="h-5 w-5" />}>
+            <PortalDocumentLibrary title="Notas fiscais" items={invoices} />
+          </Section>
+        ) : null}
+
+        {activeTab === "suporte" && data.publication?.showSupport !== false ? (
+          <Section title="Solicitações de Suporte" icon={<FileText className="h-5 w-5" />}>
+            {data.auth?.authenticated ? (
+              <PortalSupportChat token={token} sessionToken={portalSession} tickets={supportTickets} messages={[]} mode="support" onRefresh={() => void loadPortal(portalSession)} />
+            ) : <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-500">Entre com sua conta para abrir e acompanhar solicitações.</div>}
+          </Section>
+        ) : null}
+
+        {activeTab === "chat" && data.publication?.showChat !== false ? (
+          <Section title="Chat com a Equipe da Obra" icon={<FileText className="h-5 w-5" />}>
+            {data.auth?.authenticated ? (
+              <PortalSupportChat token={token} sessionToken={portalSession} tickets={[]} messages={chatMessages} mode="chat" onRefresh={() => void loadPortal(portalSession)} />
+            ) : <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-500">Entre com sua conta para conversar com a equipe responsável.</div>}
           </Section>
         ) : null}
 
