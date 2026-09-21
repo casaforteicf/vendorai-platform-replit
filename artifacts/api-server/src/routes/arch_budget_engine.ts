@@ -36,6 +36,8 @@ interface BudgetItemPayload {
   manufacturerName?: string | null;
   productName?: string | null;
   materialName?: string | null;
+  compositionId?: string | null;
+  compositionCode?: string | null;
   visibleToClient?: boolean;
   sortOrder?: number;
 }
@@ -59,6 +61,50 @@ function tenantId(req: any): string | null {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 async function recalculateBudget(budgetId: string) {
+  const budgetOwner = await pool.query(
+    `SELECT tenant_id FROM arch_budgets WHERE id = $1 LIMIT 1`,
+    [budgetId],
+  );
+  const tenant = budgetOwner.rows[0]?.tenant_id ?? null;
+
+  if (tenant) {
+    await pool.query(
+      `WITH composition_costs AS (
+         SELECT
+           c.id,
+           c.codigo,
+           c.tenant_id,
+           COALESCE(SUM(CASE WHEN i.tipo = 'mao_de_obra' THEN 0 ELSE ci.quantidade::numeric * COALESCE(i.preco_unitario::numeric, 0) END), 0) AS material_value,
+           COALESCE(SUM(CASE WHEN i.tipo = 'mao_de_obra' THEN ci.quantidade::numeric * COALESCE(i.preco_unitario::numeric, 0) ELSE 0 END), 0) AS labor_value
+         FROM composicoes c
+         LEFT JOIN composicao_insumos ci ON ci.composicao_id = c.id
+         LEFT JOIN insumos i ON i.id = ci.insumo_id
+        WHERE c.tenant_id = $2
+          AND c.ativo = true
+        GROUP BY c.id, c.codigo, c.tenant_id
+       )
+       UPDATE arch_budget_items abi
+          SET composition_id = COALESCE(abi.composition_id, cc.id),
+              material_value = cc.material_value,
+              labor_value = cc.labor_value,
+              unit_total = cc.material_value + cc.labor_value,
+              total_material = abi.quantity::numeric * cc.material_value,
+              total_labor = abi.quantity::numeric * cc.labor_value,
+              total = abi.quantity::numeric * (cc.material_value + cc.labor_value),
+              updated_at = now()
+         FROM composition_costs cc
+        WHERE abi.budget_id = $1
+          AND abi.tenant_id = $2
+          AND abi.deleted_at IS NULL
+          AND (
+            (abi.composition_id IS NOT NULL AND abi.composition_id = cc.id)
+            OR
+            (abi.composition_id IS NULL AND abi.composition_code IS NOT NULL AND lower(abi.composition_code) = lower(cc.codigo))
+          )`,
+      [budgetId, tenant],
+    );
+  }
+
   const itemsResult = await pool.query(
     `SELECT * FROM arch_budget_items WHERE budget_id = $1 AND deleted_at IS NULL`,
     [budgetId],
@@ -187,13 +233,15 @@ async function createBudgetItem(tId: string | null, payload: BudgetItemPayload) 
       item, description, type, quantity, unit,
       material_value, labor_value, unit_total, total_material, total_labor, total,
       supplier_name, manufacturer_name, product_name, material_name,
+      composition_id, composition_code,
       visible_to_client, sort_order, created_at, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,
       $8,$9,$10,$11,$12,
       $13,$14,$15,$16,$17,$18,
       $19,$20,$21,$22,
-      $23,$24,now(),now()
+      $23,$24,
+      $25,$26,now(),now()
     ) RETURNING *`,
     [
       id, tId, payload.budgetId, payload.specObjectId ?? null, payload.projectId,
@@ -204,6 +252,7 @@ async function createBudgetItem(tId: string | null, payload: BudgetItemPayload) 
       t.unitTotal, t.totalMaterial, t.totalLabor, t.total,
       payload.supplierName ?? null, payload.manufacturerName ?? null,
       payload.productName ?? null, payload.materialName ?? null,
+      payload.compositionId ?? null, payload.compositionCode ?? null,
       payload.visibleToClient ?? true, Number(payload.sortOrder ?? 0),
     ],
   );
@@ -230,6 +279,7 @@ async function updateBudgetItem(id: string, tId: string | null, payload: Partial
     materialValue: "material_value", laborValue: "labor_value",
     supplierName: "supplier_name", manufacturerName: "manufacturer_name",
     productName: "product_name", materialName: "material_name",
+    compositionId: "composition_id", compositionCode: "composition_code",
     visibleToClient: "visible_to_client", sortOrder: "sort_order",
   };
 
