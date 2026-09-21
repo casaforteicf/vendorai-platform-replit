@@ -15,6 +15,8 @@ export type ConceptPlanObject = {
   depth: number;
   rotation: number;
   materialId?: string;
+  materialScale?: number;
+  materialRotation?: number;
   catalogProductId?: string;
   imageUrl?: string;
   supplier?: string;
@@ -65,7 +67,7 @@ type Props = {
   };
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
   onObjectDrop?: (
     preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
       Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
