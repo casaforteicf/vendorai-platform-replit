@@ -67,7 +67,7 @@ export function buildConceptGeometry(
   lotDepth: number,
   floor: number,
 ): ConceptGeometry {
-  const floorRooms = rooms.filter((room) => room.floor === floor && room.kind !== "piscina");
+  const floorRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor === floor && room.kind !== "piscina");
   const wallMap = new Map<string, WallSegment>();
   const sharedKeys = new Set<string>();
 
@@ -246,8 +246,8 @@ export function generateLayoutVariant<T extends ConceptRoomShape>(
   variant: number,
   preferences?: LayoutPreferences,
 ): T[] {
-  const current = rooms.filter((room) => room.floor === floor);
-  const others = rooms.filter((room) => room.floor !== floor);
+  const current = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor === floor);
+  const others = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor !== floor);
   const fixed = current.filter((room) => room.locked);
   const movable = sortForVariant(current.filter((room) => !room.locked && room.kind !== "piscina"), variant);
   const pools = current.filter((room) => !room.locked && room.kind === "piscina");
@@ -415,7 +415,7 @@ export function validateConceptLayout(
   lotDepth: number,
   floor: number,
 ): LayoutIssue[] {
-  const current = rooms.filter((room) => room.floor === floor);
+  const current = (Array.isArray(rooms) ? rooms : []).filter((room) => room.floor === floor);
   const issues: LayoutIssue[] = [];
 
   for (const room of current) {
