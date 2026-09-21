@@ -835,7 +835,19 @@ export default function ConceptPlanner() {
     }));
   };
 
-  const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) => {
+  const addObjectAt = (
+    kind: ConceptPlanObject["kind"],
+    label: string,
+    width: number,
+    depth: number,
+    point?: { x: number; y: number },
+  ) => {
+    const x = point
+      ? Math.max(0, Math.min(lotWidth - width, point.x - width / 2))
+      : Math.max(0, Math.min(lotWidth - width, lotWidth / 2 - width / 2));
+    const y = point
+      ? Math.max(0, Math.min(lotDepth - depth, point.y - depth / 2))
+      : Math.max(0, Math.min(lotDepth - depth, lotDepth / 2 - depth / 2));
     const next: ConceptPlanObject = {
       id: `concept-object-${uid()}`,
       kind,
@@ -843,8 +855,8 @@ export default function ConceptPlanner() {
       floor: activeFloor,
       width,
       depth,
-      x: Math.max(0, Math.min(lotWidth - width, lotWidth / 2 - width / 2)),
-      y: Math.max(0, Math.min(lotDepth - depth, lotDepth / 2 - depth / 2)),
+      x,
+      y,
       rotation: 0,
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), next]);
@@ -857,6 +869,9 @@ export default function ConceptPlanner() {
     setEditorView("plan");
     closeLibraryOnMobile();
   };
+
+  const addObject = (kind: ConceptPlanObject["kind"], label: string, width: number, depth: number) =>
+    addObjectAt(kind, label, width, depth);
 
   const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
@@ -886,6 +901,32 @@ export default function ConceptPlanner() {
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedObjectId(copy.id);
+  };
+
+  const rotateObject = (objectId: string) => {
+    const object = safeObjects.find((item) => item.id === objectId);
+    if (!object) return;
+    updateObjectById(objectId, { rotation: (object.rotation + 90) % 360 });
+    setSelectedObjectId(objectId);
+  };
+
+  const duplicateObject = (objectId: string) => {
+    const object = safeObjects.find((item) => item.id === objectId);
+    if (!object) return;
+    const copy: ConceptPlanObject = {
+      ...object,
+      id: `concept-object-${uid()}`,
+      x: Math.max(0, Math.min(lotWidth - object.width, object.x + 0.5)),
+      y: Math.max(0, Math.min(lotDepth - object.depth, object.y + 0.5)),
+      label: `${object.label} cópia`,
+    };
+    setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    setSelectedObjectId(copy.id);
+  };
+
+  const deleteObject = (objectId: string) => {
+    setObjects((prev) => (Array.isArray(prev) ? prev : []).filter((object) => object.id !== objectId));
+    setSelectedObjectId((current) => current === objectId ? null : current);
   };
 
   const organize = (variant = layoutVariant) => {
@@ -3084,7 +3125,7 @@ export default function ConceptPlanner() {
                     <>
                       <div className="mb-3 flex items-center justify-between">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Móveis e objetos</div>
-                        <span className="text-[10px] text-slate-400">Arraste após inserir</span>
+                        <span className="text-[10px] text-slate-400">Arraste para a planta</span>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         {([
@@ -3098,8 +3139,13 @@ export default function ConceptPlanner() {
                           <button
                             key={kind}
                             type="button"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "copy";
+                              event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({ kind, label, width, depth }));
+                            }}
                             onClick={() => addObject(kind, label, width, depth)}
-                            className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-orange-300 hover:shadow-sm"
+                            className="cursor-grab overflow-hidden rounded-xl border bg-white text-left transition active:cursor-grabbing hover:border-orange-300 hover:shadow-sm"
                           >
                             <div className="relative grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-stone-100">
                               <div
@@ -3185,7 +3231,7 @@ export default function ConceptPlanner() {
                   {safeObjects.filter((object) => object.floor === activeFloor).length > 0 && (
                     <div className="mt-5 rounded-xl border bg-slate-50 p-3">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-700">Objetos no pavimento</span>
+                        <span className="font-semibold text-slate-700">Objetos no pavimento · arraste para editar</span>
                         <span className="rounded-full bg-white px-2 py-1 font-bold text-slate-600">
                           {safeObjects.filter((object) => object.floor === activeFloor).length}
                         </span>
@@ -3398,6 +3444,10 @@ export default function ConceptPlanner() {
                           }
                         }}
                         onObjectChange={updateObjectById}
+                        onObjectDrop={(preset, point) => addObjectAt(preset.kind, preset.label, preset.width, preset.depth, point)}
+                        onObjectRotate={rotateObject}
+                        onObjectDuplicate={duplicateObject}
+                        onObjectDelete={deleteObject}
                       />
                       <div className="absolute bottom-20 left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
