@@ -41,6 +41,9 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation">>) => void;
+  onObjectEditStart?: () => void;
+  onObjectEditEnd?: () => void;
   selectedWallId?: string | null;
   selectedCustomWallId?: string | null;
   selectedClosedSpaceId?: string | null;
@@ -354,6 +357,9 @@ export default function ConceptModel3D({
   objects = [],
   selectedObjectId = null,
   onSelectObject,
+  onObjectChange,
+  onObjectEditStart,
+  onObjectEditEnd,
   selectedWallId = null,
   selectedCustomWallId = null,
   selectedClosedSpaceId = null,
@@ -367,10 +373,19 @@ export default function ConceptModel3D({
   const [showRoof, setShowRoof] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [interiorMode, setInteriorMode] = useState(false);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
     startX: number;
     startRotation: number;
+  }>(null);
+  const [objectDrag, setObjectDrag] = useState<null | {
+    pointerId: number;
+    objectId: string;
+    startSvgX: number;
+    startSvgY: number;
+    startObjectX: number;
+    startObjectY: number;
   }>(null);
   const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<null | { distance: number; zoom: number }>(null);
@@ -384,6 +399,31 @@ export default function ConceptModel3D({
   const setCameraPreset = (nextRotation: number) => {
     setRotation(normalizeRotation(nextRotation));
     setZoom(1.32);
+  };
+
+  const clientToSvgPoint = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return { x: 0, y: 0 };
+    const result = point.matrixTransform(matrix.inverse());
+    return { x: result.x, y: result.y };
+  };
+
+  const projectedDeltaToWorld = (dx: number, dy: number) => {
+    const safeZoom = Math.max(0.01, zoom);
+    const a = dx / (1.08 * safeZoom);
+    const b = dy / (0.54 * safeZoom);
+    const rotatedX = (a + b) / 2;
+    const rotatedY = (b - a) / 2;
+    const radians = (rotation * Math.PI) / 180;
+    return {
+      x: rotatedX * Math.cos(radians) + rotatedY * Math.sin(radians),
+      y: -rotatedX * Math.sin(radians) + rotatedY * Math.cos(radians),
+    };
   };
 
   const handleOrbitStart = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -409,6 +449,18 @@ export default function ConceptModel3D({
   };
 
   const handleOrbitMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (objectDrag && objectDrag.pointerId === event.pointerId && onObjectChange) {
+      const point = clientToSvgPoint(event.clientX, event.clientY);
+      const delta = projectedDeltaToWorld(point.x - objectDrag.startSvgX, point.y - objectDrag.startSvgY);
+      const object = objects.find((item) => item.id === objectDrag.objectId);
+      if (!object) return;
+      const snap = (value: number) => Math.round(value * 20) / 20;
+      onObjectChange(object.id, {
+        x: snap(Math.max(0, Math.min(lotWidth - object.width, objectDrag.startObjectX + delta.x))),
+        y: snap(Math.max(0, Math.min(lotDepth - object.depth, objectDrag.startObjectY + delta.y))),
+      });
+      return;
+    }
     if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pinchRef.current && touchPointersRef.current.size >= 2) {
@@ -425,6 +477,10 @@ export default function ConceptModel3D({
   };
 
   const handleOrbitEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (objectDrag?.pointerId === event.pointerId) {
+      setObjectDrag(null);
+      onObjectEditEnd?.();
+    }
     if (event.pointerType === "touch") {
       touchPointersRef.current.delete(event.pointerId);
       if (touchPointersRef.current.size < 2) pinchRef.current = null;
@@ -520,7 +576,7 @@ export default function ConceptModel3D({
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> Modelo 3D sincronizado
           </div>
-          <div className="text-xs text-slate-500">Arraste para orbitar · pinça no celular ou roda do mouse para zoom · mesma geometria do 2D.</div>
+          <div className="text-xs text-slate-500">Arraste o fundo para orbitar · arraste objetos para mover · pinça no celular ou roda do mouse para zoom.</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="hidden overflow-hidden rounded-xl border bg-slate-50 sm:flex">
@@ -608,6 +664,7 @@ export default function ConceptModel3D({
       </div>
 
       <svg
+        ref={svgRef}
         viewBox={`${-sceneWidth / 2} ${-sceneHeight / 2} ${sceneWidth} ${sceneHeight}`}
         onPointerDown={handleOrbitStart}
         onPointerMove={handleOrbitMove}
@@ -847,6 +904,23 @@ export default function ConceptModel3D({
                 key={`concept-object-3d-${object.id}`}
                 filter="url(#concept3d-shadow)"
                 className={onSelectObject ? "cursor-pointer" : undefined}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.stopPropagation();
+                  onSelectObject?.(object.id);
+                  if (!onObjectChange) return;
+                  onObjectEditStart?.();
+                  const point = clientToSvgPoint(event.clientX, event.clientY);
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  setObjectDrag({
+                    pointerId: event.pointerId,
+                    objectId: object.id,
+                    startSvgX: point.x,
+                    startSvgY: point.y,
+                    startObjectX: object.x,
+                    startObjectY: object.y,
+                  });
+                }}
                 onClick={(event) => {
                   if (!onSelectObject) return;
                   event.stopPropagation();
