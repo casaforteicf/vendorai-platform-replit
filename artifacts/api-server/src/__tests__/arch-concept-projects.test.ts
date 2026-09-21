@@ -259,6 +259,98 @@ describe("Arqdor Concept — persistência e isolamento", () => {
     expect(res.body.currentStep).toBe(6);
   });
 
+  it("persiste o contrato avançado do editor sem perder materiais, objetos e histórico de render", async () => {
+    const { set } = updateReturning([conceptA]);
+
+    const configuration = {
+      floors: 2,
+      desiredArea: 210,
+      objects: [
+        {
+          id: "obj-1",
+          kind: "sofa",
+          label: "Sofá 3 lugares",
+          floor: 0,
+          x: 2.5,
+          y: 3.25,
+          width: 2.2,
+          depth: 0.9,
+          rotation: 90,
+          materialId: "tecido-bege",
+        },
+      ],
+      spaceProfiles: [
+        {
+          id: "space-profile-1",
+          floor: 0,
+          label: "Sala",
+          kind: "sala",
+          centroid: { x: 4.2, y: 5.1 },
+          area: 24.6,
+          floorMaterialId: "madeira-carvalho",
+        },
+      ],
+      wallMaterials: {
+        "wall-1": "madeira-ripada",
+      },
+    };
+
+    const conceptRender = {
+      renderId: "render-2",
+      status: "completed",
+      resultImageUrl: "https://cdn.example/render-2.png",
+      generatedAt: "2026-09-21T13:20:00.000Z",
+      source: "model3d",
+      renderView: "interior",
+      history: [
+        {
+          renderId: "render-1",
+          resultImageUrl: "https://cdn.example/render-1.png",
+          generatedAt: "2026-09-21T13:10:00.000Z",
+          source: "facade",
+          renderView: "exterior",
+        },
+        {
+          renderId: "render-2",
+          resultImageUrl: "https://cdn.example/render-2.png",
+          generatedAt: "2026-09-21T13:20:00.000Z",
+          source: "model3d",
+          renderView: "interior",
+        },
+      ],
+    };
+
+    const res = await request(app)
+      .patch("/api/arch/concept-projects/concept-a")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        configuration,
+        rooms: [
+          {
+            id: "room-1",
+            kind: "sala",
+            label: "Sala",
+            width: 5,
+            depth: 4,
+            floor: 0,
+            x: 1,
+            y: 2,
+            floorMaterialId: "madeira-carvalho",
+          },
+        ],
+        conceptRender,
+      });
+
+    expect(res.status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      configuration,
+      conceptRender,
+      rooms: expect.arrayContaining([
+        expect.objectContaining({ id: "room-1", floorMaterialId: "madeira-carvalho" }),
+      ]),
+    }));
+  });
+
   it("ignora status e archProjetoId forjados no PATCH comum", async () => {
     const { set } = updateReturning([{ ...conceptA, currentStep: 5 }]);
 
