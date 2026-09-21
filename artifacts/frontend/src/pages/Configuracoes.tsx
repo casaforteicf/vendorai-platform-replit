@@ -17,7 +17,6 @@ import {
 } from "@/lib/jarvisPermissions";
 
 const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
-  whatsapp: "/api/auth/whatsapp",
   instagram: "/api/auth/instagram",
   "google-calendar": "/api/onboarding/integracoes/google-url",
   "google-ads": "/api/auth/google-ads?returnTo=/onboarding/integracoes",
@@ -28,6 +27,7 @@ const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
 
 function integrationFallback(key: string) {
   if (key === "domain") return "/content-autopilot?view=settings";
+  if (key === "whatsapp") return "/configuracoes?integration=whatsapp";
   return `/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`;
 }
 

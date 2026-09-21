@@ -1180,9 +1180,7 @@ router.post("/onboarding/assistant", authenticate, async (req, res) => {
   if (!tenant) return res.status(404).json({ error: "Tenant não encontrado" });
 
   const productsConfigured = catalogCount > 0;
-  const whatsappConnected = !!(
-    (config?.metaPhoneNumberId && config?.metaAccessToken) || config?.evolutionConnected
-  );
+  const whatsappConnected = config?.evolutionConnected === true;
   const steps = [
     { key: "onboarding", label: "Concluir o onboarding inicial", done: !!(tenant.setupCompletedAt || tenant.onboardingConcluido), href: "/onboarding" },
     { key: "perfil", label: "Configurar o perfil da empresa", done: !!profile, href: "/configuracoes" },
@@ -1243,7 +1241,11 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
   const [waConn] = await db
     .select({ displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber, status: whatsappConnectionsTable.status })
     .from(whatsappConnectionsTable)
-    .where(and(eq(whatsappConnectionsTable.tenantId, tenantId)));
+    .where(and(
+      eq(whatsappConnectionsTable.tenantId, tenantId),
+      eq(whatsappConnectionsTable.provider, "evolution"),
+      eq(whatsappConnectionsTable.status, "active"),
+    ));
 
   const [evolutionConn] = await db
     .select({ connected: agentConfigsTable.evolutionConnected, phone: agentConfigsTable.evolutionPhone })
