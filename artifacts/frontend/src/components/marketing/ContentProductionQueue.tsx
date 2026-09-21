@@ -15,10 +15,14 @@ import {
   Layers3,
   Library,
   Loader2,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
+  Save,
   Sparkles,
+  Trash2,
+  X,
 } from "lucide-react";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
@@ -27,6 +31,27 @@ const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
 const DIRECT_GENERATOR_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post"]);
 const VIDEO_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
 const FINAL_STATUSES = new Set(["recusado", "pulado", "publicado"]);
+
+const EDITABLE_CONTENT_TYPES = [
+  ["feed", "Feed"],
+  ["stories", "Stories"],
+  ["reels", "Reels"],
+  ["carrossel", "Carrossel"],
+  ["meta_ad", "Meta Ads"],
+  ["search_ad", "Google Search"],
+  ["display_ad", "Google Display"],
+  ["performance_max", "Performance Max"],
+  ["youtube_short", "YouTube Short"],
+  ["youtube_video", "YouTube Vídeo"],
+  ["tiktok", "TikTok"],
+  ["linkedin_post", "LinkedIn"],
+  ["whatsapp", "WhatsApp"],
+  ["email", "E-mail"],
+  ["blog", "Blog / SEO"],
+  ["landing_page", "Landing Page"],
+  ["site", "Site"],
+  ["sms", "SMS"],
+] as const;
 
 type AssetType = "image" | "video" | string;
 
@@ -76,6 +101,14 @@ interface CalendarItem {
   contentGenerationId?: string | null;
   variationIdx?: number | null;
   contentIdPublicado?: string | null;
+}
+
+interface CalendarItemDraft {
+  temaSugerido: string;
+  dataAgendada: string;
+  canal: string;
+  tipo: string;
+  contentPillar: string;
 }
 
 interface ContentGeneration {
@@ -323,6 +356,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, failed: 0 });
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editorDraft, setEditorDraft] = useState<CalendarItemDraft | null>(null);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -399,7 +434,10 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    if (!response.ok) throw new Error("Falha ao sincronizar a produção com o Plano de Mídia.");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(payload?.error || "Falha ao sincronizar a produção com o Plano de Mídia.");
+    }
     const updated = await response.json() as CalendarItem;
     const next = calendarRef.current.map((item) => item.id === itemId ? updated : item);
     calendarRef.current = next;
@@ -814,6 +852,105 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     toast({ title: "Executor não identificado", description: "A peça permanece no Plano de Mídia sem perder o briefing." });
   }
 
+  function openItemEditor(item: CalendarItem) {
+    setExpandedItemId(null);
+    setEditingItemId(item.id);
+    setEditorDraft({
+      temaSugerido: item.temaSugerido,
+      dataAgendada: item.dataAgendada,
+      canal: item.canal,
+      tipo: item.tipo,
+      contentPillar: contentPillarFromPilar(item.pilar),
+    });
+  }
+
+  function closeItemEditor() {
+    setEditingItemId(null);
+    setEditorDraft(null);
+  }
+
+  async function persistItemEditor(item: CalendarItem, approveAfterSave = false) {
+    if (!editorDraft || editingItemId !== item.id) return;
+    const temaSugerido = editorDraft.temaSugerido.trim();
+    const canal = editorDraft.canal.trim();
+    const contentPillar = editorDraft.contentPillar.trim();
+
+    if (!temaSugerido || !editorDraft.dataAgendada || !canal || !contentPillar) {
+      toast({
+        title: "Preencha os campos obrigatórios",
+        description: "Tema, data, canal e direcionamento precisam estar preenchidos.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (approveAfterSave && planRef.current?.conteudo.statusPlanejamento !== "aprovado") {
+      toast({
+        title: "Planejamento ainda não aprovado",
+        description: "Aprove primeiro a direção do Plano de Mídia. Você pode salvar esta edição agora sem liberar a produção.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setActionBusy(item.id);
+    try {
+      const campaignName = campaignNameFromPilar(item.pilar);
+      await patchCalendar(item.id, {
+        temaSugerido,
+        dataAgendada: editorDraft.dataAgendada,
+        canal,
+        tipo: editorDraft.tipo,
+        pilar: `${campaignName} · ${contentPillar}`,
+        ...(approveAfterSave ? { status: "aprovado" } : {}),
+      });
+      toast({
+        title: approveAfterSave ? "Item salvo e aprovado" : "Alterações salvas",
+        description: approveAfterSave
+          ? "O conteúdo foi atualizado e está liberado para produção."
+          : "O mesmo item do planejamento foi atualizado, sem criar uma cópia.",
+      });
+      closeItemEditor();
+    } catch (error) {
+      toast({
+        title: approveAfterSave ? "Não foi possível aprovar" : "Não foi possível salvar",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function removePlannedItem(item: CalendarItem) {
+    const confirmed = window.confirm(`Remover "${item.temaSugerido}" deste planejamento?`);
+    if (!confirmed) return;
+
+    setActionBusy(item.id);
+    try {
+      const response = await fetch(`/api/content-calendar/${item.id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "Falha ao remover o item do planejamento.");
+      }
+      const next = calendarRef.current.filter((calendarItem) => calendarItem.id !== item.id);
+      calendarRef.current = next;
+      setCalendar(next);
+      closeItemEditor();
+      toast({ title: "Item removido", description: "A ação foi retirada deste planejamento." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível remover",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
   async function approveContent(item: CalendarItem) {
     if (!item.contentGenerationId) return;
     const campaign = campaignForItem(planRef.current, item);
@@ -1051,9 +1188,153 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                       {isDirect ? (item.contentGenerationId ? "Nova versão" : "Gerar automático") : (item.contentGenerationId ? "Ver / revisar" : "Abrir executor")}
                     </Button>
                   )}
-                  {item.status === "planejado" && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><CircleDashed className="h-3 w-3" />aprovar no plano</span>}
+                  {["planejado", "aprovado"].includes(item.status) && !item.contentGenerationId && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={item.status === "planejado" ? "default" : "outline"}
+                      className="h-7 text-xs"
+                      disabled={actionBusy === item.id}
+                      onClick={() => openItemEditor(item)}
+                    >
+                      <Pencil className="h-3 w-3 mr-1" />
+                      {item.status === "planejado" ? "Abrir / Editar" : "Editar planejamento"}
+                    </Button>
+                  )}
                 </div>
               </div>
+
+              {editingItemId === item.id && editorDraft && (
+                <div className="mt-3 rounded-lg border bg-muted/20 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold flex items-center gap-2">
+                        <Pencil className="h-4 w-4 text-primary" />Editar conteúdo planejado
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Altere este item antes da produção. Salvar atualiza o mesmo planejamento e não cria uma nova peça.
+                      </p>
+                    </div>
+                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={closeItemEditor} aria-label="Fechar editor">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <label className="md:col-span-2">
+                      <span className="text-xs font-medium">Tema / título *</span>
+                      <textarea
+                        className="mt-1 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        value={editorDraft.temaSugerido}
+                        onChange={(event) => setEditorDraft((current) => current ? { ...current, temaSugerido: event.target.value } : current)}
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-xs font-medium">Data planejada *</span>
+                      <input
+                        type="date"
+                        className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        value={editorDraft.dataAgendada}
+                        onChange={(event) => setEditorDraft((current) => current ? { ...current, dataAgendada: event.target.value } : current)}
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-xs font-medium">Canal *</span>
+                      <input
+                        className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        value={editorDraft.canal}
+                        onChange={(event) => setEditorDraft((current) => current ? { ...current, canal: event.target.value } : current)}
+                        placeholder="Ex.: Instagram, Google Search, Blog/SEO"
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-xs font-medium">Formato *</span>
+                      <select
+                        className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        value={editorDraft.tipo}
+                        onChange={(event) => setEditorDraft((current) => current ? { ...current, tipo: event.target.value } : current)}
+                      >
+                        {EDITABLE_CONTENT_TYPES.map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      <span className="text-xs font-medium">Campanha</span>
+                      <input
+                        className="mt-1 h-9 w-full rounded-md border bg-muted px-3 text-sm text-muted-foreground"
+                        value={campaignNameFromPilar(item.pilar)}
+                        readOnly
+                      />
+                    </label>
+
+                    <label className="md:col-span-2">
+                      <span className="text-xs font-medium">Direcionamento / pilar *</span>
+                      <textarea
+                        className="mt-1 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        value={editorDraft.contentPillar}
+                        onChange={(event) => setEditorDraft((current) => current ? { ...current, contentPillar: event.target.value } : current)}
+                        placeholder="Ex.: Educação, prova social, conversão, demonstração do produto"
+                      />
+                    </label>
+                  </div>
+
+                  {itemCampaign && (
+                    <div className="mt-4 grid gap-2 rounded-md border bg-background p-3 text-xs md:grid-cols-2 xl:grid-cols-4">
+                      <div><span className="text-muted-foreground">Produto/serviço: </span><span className="font-medium">{itemCampaign.produtoServico}</span></div>
+                      <div><span className="text-muted-foreground">Objetivo: </span><span className="font-medium">{itemCampaign.objetivo}</span></div>
+                      <div><span className="text-muted-foreground">Público: </span><span className="font-medium">{itemCampaign.publico}</span></div>
+                      <div><span className="text-muted-foreground">Oferta/CTA: </span><span className="font-medium">{itemCampaign.oferta}</span></div>
+                      <div className="md:col-span-2 xl:col-span-4"><span className="text-muted-foreground">Mensagem central: </span><span className="font-medium">{itemCampaign.mensagemCentral}</span></div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <CircleDashed className="h-3.5 w-3.5" />
+                      {item.status === "planejado" ? "Ainda aguardando sua aprovação." : "Já aprovado; você ainda pode ajustar antes da geração."}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        disabled={actionBusy === item.id}
+                        onClick={() => void removePlannedItem(item)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />Remover
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={actionBusy === item.id}
+                        onClick={() => void persistItemEditor(item, false)}
+                      >
+                        {actionBusy === item.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                        Salvar
+                      </Button>
+                      {item.status === "planejado" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={actionBusy === item.id || !planApproved}
+                          onClick={() => void persistItemEditor(item, true)}
+                          title={!planApproved ? "Aprove primeiro a direção do Plano de Mídia" : undefined}
+                        >
+                          {actionBusy === item.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
+                          Aprovar e liberar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {expanded && item.contentGenerationId && (
                 <div className="mt-3 border-t pt-3">
