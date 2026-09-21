@@ -71,7 +71,8 @@ import { callReplicateFlux, callOpenAI } from "../lib/ai-gateway.js";
 import { arqOrchestrator } from "../lib/arqdor/orchestrator/index.js";
 import { automationLogsTable } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
-import { pickNextVendedor } from "../lib/round-robin.js";\nimport { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
+import { pickNextVendedor } from "../lib/round-robin.js";
+import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
