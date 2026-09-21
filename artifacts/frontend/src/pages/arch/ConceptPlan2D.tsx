@@ -13,6 +13,7 @@ export type ConceptPlanObject = {
   width: number;
   depth: number;
   rotation: number;
+  materialId?: string;
 };
 
 type Props = {
@@ -49,7 +50,7 @@ type Props = {
   objects?: ConceptPlanObject[];
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
-  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation">>) => void;
+  onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId">>) => void;
   onObjectDrop?: (preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth">, point: { x: number; y: number }) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
@@ -91,6 +92,25 @@ function fitLabelSize(label: string, width: number, depth: number) {
   const widthSize = (Math.max(1.1, width - 0.5) * 1.45) / longest;
   const depthSize = depth < 1.8 ? 0.22 : depth < 2.4 ? 0.27 : 0.32;
   return Math.max(0.2, Math.min(0.34, widthSize, depthSize));
+}
+
+const OBJECT_MATERIALS: Record<string, { fill: string; stroke: string; detail: string }> = {
+  "tecido-cinza": { fill: "#cbd5e1", stroke: "#64748b", detail: "#94a3b8" },
+  "tecido-bege": { fill: "#e7e5e4", stroke: "#a8a29e", detail: "#d6d3d1" },
+  "linho-claro": { fill: "#f5f5f4", stroke: "#a8a29e", detail: "#e7e5e4" },
+  "madeira-clara": { fill: "#d6c2a8", stroke: "#8b7355", detail: "#b99a73" },
+  "madeira-escura": { fill: "#8b6b52", stroke: "#574437", detail: "#705441" },
+  "preto-fosco": { fill: "#334155", stroke: "#0f172a", detail: "#1e293b" },
+  "branco-fosco": { fill: "#ffffff", stroke: "#cbd5e1", detail: "#f1f5f9" },
+};
+
+function objectMaterial(object: ConceptPlanObject) {
+  return OBJECT_MATERIALS[object.materialId ?? ""] ?? OBJECT_MATERIALS[
+    object.kind === "bed" ? "linho-claro"
+      : object.kind === "table" || object.kind === "cabinet" ? "madeira-clara"
+      : object.kind === "tv" ? "preto-fosco"
+      : "tecido-cinza"
+  ];
 }
 
 const ROOM_FILL: Record<string, string> = {
@@ -160,7 +180,7 @@ function doorGlyph(opening: OpeningMarker) {
       <path
         d={`M ${opening.x + r} ${opening.y - r / 2} A ${r} ${r} 0 0 1 ${opening.x} ${opening.y + r / 2}`}
         fill="none"
-        stroke="#94a3b8"
+        stroke={objectMaterial(object).stroke}
         strokeWidth="0.04"
         strokeDasharray="0.08 0.06"
       />
@@ -1226,29 +1246,29 @@ export default function ConceptPlan2D({
                 width={object.width}
                 height={object.depth}
                 rx="0.12"
-                fill={selectedObject ? "#ffedd5" : "#f8fafc"}
-                stroke={selectedObject ? "#f97316" : "#64748b"}
+                fill={selectedObject ? "#ffedd5" : objectMaterial(object).fill}
+                stroke={selectedObject ? "#f97316" : objectMaterial(object).stroke}
                 strokeWidth={selectedObject ? "0.10" : "0.055"}
               />
               {object.kind === "sofa" && (
                 <>
-                  <rect x={object.x + 0.12} y={object.y + 0.12} width={Math.max(0.2, object.width - 0.24)} height={Math.max(0.2, object.depth * 0.36)} rx="0.10" fill="#cbd5e1" />
-                  <line x1={object.x + object.width / 2} y1={object.y + object.depth * 0.48} x2={object.x + object.width / 2} y2={object.y + object.depth - 0.12} stroke="#94a3b8" strokeWidth="0.04" />
+                  <rect x={object.x + 0.12} y={object.y + 0.12} width={Math.max(0.2, object.width - 0.24)} height={Math.max(0.2, object.depth * 0.36)} rx="0.10" fill={objectMaterial(object).detail} />
+                  <line x1={object.x + object.width / 2} y1={object.y + object.depth * 0.48} x2={object.x + object.width / 2} y2={object.y + object.depth - 0.12} stroke={objectMaterial(object).stroke} strokeWidth="0.04" />
                 </>
               )}
               {object.kind === "bed" && (
                 <>
-                  <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.2, object.width - 0.20)} height={Math.max(0.2, object.depth - 0.20)} rx="0.08" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="0.035" />
-                  <rect x={object.x + 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill="#e2e8f0" />
-                  <rect x={object.x + object.width - Math.max(0.15, object.width * 0.32) - 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill="#e2e8f0" />
+                  <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.2, object.width - 0.20)} height={Math.max(0.2, object.depth - 0.20)} rx="0.08" fill={objectMaterial(object).fill} stroke="#cbd5e1" strokeWidth="0.035" />
+                  <rect x={object.x + 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill={objectMaterial(object).detail} />
+                  <rect x={object.x + object.width - Math.max(0.15, object.width * 0.32) - 0.18} y={object.y + 0.16} width={Math.max(0.15, object.width * 0.32)} height={Math.max(0.14, object.depth * 0.22)} rx="0.08" fill={objectMaterial(object).detail} />
                 </>
               )}
               {object.kind === "table" && (
-                <ellipse cx={cx} cy={cy} rx={Math.max(0.2, object.width / 2 - 0.08)} ry={Math.max(0.2, object.depth / 2 - 0.08)} fill="#e7e5e4" stroke="#a8a29e" strokeWidth="0.04" />
+                <ellipse cx={cx} cy={cy} rx={Math.max(0.2, object.width / 2 - 0.08)} ry={Math.max(0.2, object.depth / 2 - 0.08)} fill={objectMaterial(object).fill} stroke={objectMaterial(object).stroke} strokeWidth="0.04" />
               )}
               {object.kind === "chair" && (
                 <>
-                  <rect x={object.x + 0.10} y={object.y + 0.16} width={Math.max(0.18, object.width - 0.20)} height={Math.max(0.18, object.depth - 0.26)} rx="0.08" fill="#e2e8f0" />
+                  <rect x={object.x + 0.10} y={object.y + 0.16} width={Math.max(0.18, object.width - 0.20)} height={Math.max(0.18, object.depth - 0.26)} rx="0.08" fill={objectMaterial(object).detail} />
                   <line x1={object.x + 0.10} y1={object.y + 0.12} x2={object.x + object.width - 0.10} y2={object.y + 0.12} stroke="#64748b" strokeWidth="0.07" />
                 </>
               )}
@@ -1260,7 +1280,7 @@ export default function ConceptPlan2D({
                 </>
               )}
               {object.kind === "tv" && (
-                <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.16, object.width - 0.20)} height={Math.max(0.12, object.depth - 0.20)} rx="0.04" fill="#334155" />
+                <rect x={object.x + 0.10} y={object.y + 0.10} width={Math.max(0.16, object.width - 0.20)} height={Math.max(0.12, object.depth - 0.20)} rx="0.04" fill={objectMaterial(object).fill} />
               )}
               {selectedObject && (
                 <>
