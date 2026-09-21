@@ -2298,14 +2298,13 @@ export default function ConceptPlanner() {
       object.y + object.depth / 2 <= bounds.y + bounds.height
     );
 
-    const occupied: Array<{ x: number; y: number; width: number; depth: number }> = existingInSpace.map((object) => ({
+    const occupiedBase: Array<{ x: number; y: number; width: number; depth: number }> = existingInSpace.map((object) => ({
       x: object.x,
       y: object.y,
       width: object.width,
       depth: object.depth,
     }));
 
-    const created: ConceptPlanObject[] = [];
     const offsets = [
       [0, 0],
       [0.35, 0],
@@ -2318,41 +2317,110 @@ export default function ConceptPlanner() {
       [-0.55, -0.35],
     ];
 
-    for (const item of presets.filter((preset) => preset.width >= 0.3 && preset.depth >= 0.3)) {
-      let accepted: { x: number; y: number } | null = null;
-      for (const [ox, oy] of offsets) {
-        const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
-        const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
-        const candidate = { x, y, width: item.width, depth: item.depth };
-        const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
-        const wallMounted = item.kind === "tv" || item.kind === "cabinet" || item.kind === "bed" || item.kind === "sofa";
-        const hitsWindow = wallMounted && windowClearances.some((clearance) => overlaps(candidate, clearance, 0.03));
-        const minFurnitureGap =
-          item.kind === "chair" || item.kind === "table" ? 0.45 :
-          item.kind === "bed" || item.kind === "sofa" ? 0.35 : 0.25;
-        const hitsCirculation = occupied.some((other) => overlaps(candidate, other, minFurnitureGap));
-        if (!hitsCirculation && !hitsDoor && !hitsWindow) {
-          accepted = { x, y };
-          break;
-        }
-      }
-      if (!accepted) continue;
-
-      const object: ConceptPlanObject = {
-        id: `concept-object-${uid()}`,
-        kind: item.kind,
-        label: item.label,
-        floor: activeFloor,
-        width: item.width,
-        depth: item.depth,
-        x: Math.max(0, Math.min(lotWidth - item.width, accepted.x)),
-        y: Math.max(0, Math.min(lotDepth - item.depth, accepted.y)),
-        rotation: item.rotation ?? 0,
+    const transformPreset = (
+      item: FurnishPreset,
+      mode: "base" | "mirror-x" | "mirror-y" | "mirror-xy",
+    ): FurnishPreset => {
+      const mirrorX = mode === "mirror-x" || mode === "mirror-xy";
+      const mirrorY = mode === "mirror-y" || mode === "mirror-xy";
+      const x = mirrorX ? bounds.x + bounds.width - (item.x - bounds.x) - item.width : item.x;
+      const y = mirrorY ? bounds.y + bounds.height - (item.y - bounds.y) - item.depth : item.y;
+      const affinity = item.wallAffinity === "left" && mirrorX ? "right"
+        : item.wallAffinity === "right" && mirrorX ? "left"
+          : item.wallAffinity === "top" && mirrorY ? "bottom"
+            : item.wallAffinity === "bottom" && mirrorY ? "top"
+              : item.wallAffinity;
+      return {
+        ...item,
+        x,
+        y,
+        wallAffinity: affinity,
+        rotation: ((item.rotation ?? 0) + (mirrorX !== mirrorY ? 180 : 0)) % 360,
       };
-      created.push(object);
-      occupied.push({ x: object.x, y: object.y, width: object.width, depth: object.depth });
-    }
+    };
 
+    const wallAffinityDistance = (item: FurnishPreset, x: number, y: number) => {
+      if (!item.wallAffinity || item.wallAffinity === "center") return 0;
+      if (item.wallAffinity === "top") return Math.abs(y - bounds.y);
+      if (item.wallAffinity === "bottom") return Math.abs(bounds.y + bounds.height - (y + item.depth));
+      if (item.wallAffinity === "left") return Math.abs(x - bounds.x);
+      return Math.abs(bounds.x + bounds.width - (x + item.width));
+    };
+
+    const buildCandidate = (variantPresets: FurnishPreset[]) => {
+      const occupied = occupiedBase.map((item) => ({ ...item }));
+      const objects: ConceptPlanObject[] = [];
+      let score = 0;
+
+      for (const item of variantPresets.filter((preset) => preset.width >= 0.3 && preset.depth >= 0.3)) {
+        let best:
+          | { x: number; y: number; localScore: number }
+          | null = null;
+
+        for (const [ox, oy] of offsets) {
+          const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
+          const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
+          const candidate = { x, y, width: item.width, depth: item.depth };
+          const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
+          const wallMounted = item.kind === "tv" || item.kind === "cabinet" || item.kind === "bed" || item.kind === "sofa";
+          const hitsWindow = wallMounted && windowClearances.some((clearance) => overlaps(candidate, clearance, 0.03));
+          const minFurnitureGap =
+            item.kind === "chair" || item.kind === "table" ? 0.45 :
+            item.kind === "bed" || item.kind === "sofa" ? 0.35 : 0.25;
+          const hitsCirculation = occupied.some((other) => overlaps(candidate, other, minFurnitureGap));
+          if (hitsCirculation || hitsDoor || hitsWindow) continue;
+
+          const affinityPenalty = wallAffinityDistance(item, x, y) * 8;
+          const centerDistance = Math.hypot(x + item.width / 2 - cx, y + item.depth / 2 - cy);
+          const circulationBonus = item.wallAffinity === "center" ? Math.max(0, 2.2 - centerDistance) * 2 : 0;
+          const wallBonus = item.wallAffinity && item.wallAffinity !== "center" ? Math.max(0, 0.45 - affinityPenalty / 8) * 8 : 0;
+          const localScore = 20 + circulationBonus + wallBonus - affinityPenalty;
+
+          if (!best || localScore > best.localScore) best = { x, y, localScore };
+        }
+
+        if (!best) {
+          score -= 18;
+          continue;
+        }
+
+        const object: ConceptPlanObject = {
+          id: `concept-object-${uid()}`,
+          kind: item.kind,
+          label: item.label,
+          floor: activeFloor,
+          width: item.width,
+          depth: item.depth,
+          x: Math.max(0, Math.min(lotWidth - item.width, best.x)),
+          y: Math.max(0, Math.min(lotDepth - item.depth, best.y)),
+          rotation: item.rotation ?? 0,
+        };
+        objects.push(object);
+        occupied.push({ x: object.x, y: object.y, width: object.width, depth: object.depth });
+        score += best.localScore;
+      }
+
+      const coverage = presets.length ? objects.length / presets.length : 0;
+      score += coverage * 40;
+      const wallUtilization = objects.reduce((sum, object) => {
+        const nearWall = Math.min(
+          Math.abs(object.x - bounds.x),
+          Math.abs(bounds.x + bounds.width - (object.x + object.width)),
+          Math.abs(object.y - bounds.y),
+          Math.abs(bounds.y + bounds.height - (object.y + object.depth)),
+        );
+        return sum + (nearWall <= 0.45 ? 4 : 0);
+      }, 0);
+      score += wallUtilization;
+
+      return { objects, score };
+    };
+
+    const variants = (["base", "mirror-x", "mirror-y", "mirror-xy"] as const)
+      .map((mode) => buildCandidate(presets.map((item) => transformPreset(item, mode))))
+      .sort((a, b) => b.score - a.score);
+
+    const created = variants[0]?.objects ?? [];
     if (!created.length) return;
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), ...created]);
     setSelectedObjectId(created[0].id);
