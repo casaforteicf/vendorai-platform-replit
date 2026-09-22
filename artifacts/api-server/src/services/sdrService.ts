@@ -29,14 +29,6 @@ import {
 
 export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
 
-const COLD_PROSPECT_SOURCES = new Set([
-  "prospector",
-  "prospector_auto",
-  "cnpj",
-  "recem_aberta",
-  "ad_library",
-]);
-
 type ColdProspectDossier = {
   status?: string;
   fitScore?: number;
@@ -596,8 +588,8 @@ export async function sendSdrFollowup(
     leadId,
     mensagem: `[FOLLOW-UP AUTOMÁTICO 48h] ${leadNome.split(" ")[0]} não respondeu à abordagem inicial. ` +
       "Envie uma mensagem de follow-up natural, curta e sem pressão. " +
-      "Mantenha o modelo de pesquisa — se ainda não sabemos o grau de maturidade em IA deste negócio, " +
-      "aproveite para avançar uma pergunta diagnóstica de forma orgânica.",
+      "Mantenha o modelo de pesquisa consultiva e avance somente a próxima pergunta diagnóstica ainda não respondida " +
+      "do playbook configurado para este tenant, sem presumir segmento, dor, produto ou solução.",
     log,
     forcedAgent: "sdr",
     scenario: {
