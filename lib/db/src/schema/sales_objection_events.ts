@@ -65,6 +65,7 @@ export const salesObjectionEventsTable = pgTable(
       table.tenantId,
       table.conversationId,
       table.objectionMessageId,
+      table.normalizedObjection,
     ),
     index("sales_objection_events_tenant_created_idx").on(table.tenantId, table.createdAt),
     index("sales_objection_events_tenant_category_idx").on(table.tenantId, table.category),
