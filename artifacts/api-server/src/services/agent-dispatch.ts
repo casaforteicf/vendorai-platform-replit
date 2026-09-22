@@ -68,6 +68,7 @@ import { ErroCalculoOrcamento } from "../lib/calculoOrcamentoM2.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
+import { formatCloserWinningResponsesPrompt, loadCloserWinningResponses } from "../lib/closer-winning-response-memory.js";
 import {
   detectProspectorStateFromReply,
   evaluateProspectorQualification,
@@ -1363,6 +1364,33 @@ export async function processAgentInternal(params: {
         }
       } catch (err) {
         log.warn({ err }, "dispatch: maturity detection failed, continuing");
+      }
+    }
+
+    // ── Closer: tenant-safe winning response memory ───────────────────────────
+    if (resolvedAgentName === "closer") {
+      try {
+        const learnedResponses = await loadCloserWinningResponses({
+          tenantId,
+          segmento: ctx.lead.mercadoSegmento,
+          incomingMessage: mensagem,
+        });
+        const learnedPrompt = formatCloserWinningResponsesPrompt(learnedResponses);
+        if (learnedPrompt) {
+          enrichedScenario = {
+            ...(enrichedScenario ?? {}),
+            closerWinningResponsesPrompt: learnedPrompt,
+          };
+          log.debug(
+            { tenantId, leadId, learnedResponses: learnedResponses.length },
+            "dispatch: closer winning-response memory injected",
+          );
+        }
+      } catch (err) {
+        log.warn(
+          { err, tenantId, leadId },
+          "dispatch: closer winning-response memory unavailable (non-fatal)",
+        );
       }
     }
 
