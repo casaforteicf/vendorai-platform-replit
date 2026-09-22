@@ -4643,41 +4643,8 @@ export default function ConceptPlanner() {
               </aside>
 
               <div className={`arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16 ${hasEditorSelection && (editorView === "plan" || editorView === "model3d") ? "md:pr-[360px]" : ""}`}>
-                <div className="h-full w-full">
-                  <div className="arq-segmented absolute left-1/2 top-3 z-[55] hidden -translate-x-1/2 items-center gap-1 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur md:flex">
-                    {([
-                      ["plan", "2D"],
-                      ["model3d", "3D"],
-                      ["facade", "Fachada"],
-                      ["render", "Render"],
-                    ] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => {
-                          setEditorView(value);
-                          setLibraryOpen(value === "plan" ? libraryOpen : false);
-                        }}
-                        className={editorView === value
-                          ? "rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-sm"
-                          : "rounded-xl px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                    <div className="mx-1 h-6 w-px bg-slate-200" />
-                    <button
-                      type="button"
-                      onClick={() => void saveConcept()}
-                      disabled={saveState === "saving" || saveState === "loading"}
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : "Salvar"}
-                    </button>
-                  </div>
-
                   {editorView === "plan" && (
-                      <div className="absolute left-16 right-3 top-3 z-20 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:left-20 md:right-auto">
+                      <div className="absolute left-16 right-3 top-3 z-30 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:left-20 md:right-auto">
                         <button
                           type="button"
                           onClick={() => {
@@ -4749,7 +4716,6 @@ export default function ConceptPlanner() {
                         </button>
                       </div>
                     )}
-                  </div>
 
                   {editorView === "plan" && (
                     <>
@@ -4775,6 +4741,7 @@ export default function ConceptPlanner() {
                           </button>
                         </div>
                       )}
+                      <div className="absolute inset-0 z-10">
                       <ConceptPlan2D
                         rooms={visibleRooms}
                         lotWidth={lotWidth}
@@ -4929,6 +4896,7 @@ export default function ConceptPlanner() {
                         onRoomDelete={deleteRoomById}
                         paintTarget={paintTool?.target ?? null}
                       />
+                      </div>
                       <div className="absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] left-3 z-20 flex items-center gap-2 md:bottom-4 md:left-20">
                         <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
                           <button
