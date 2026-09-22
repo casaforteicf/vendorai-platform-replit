@@ -28,7 +28,7 @@ function extractCode(text: string) {
   return text.match(/\bAST-[A-Z0-9]+-[A-Z0-9]+\b/i)?.[0]?.toUpperCase() ?? null;
 }
 
-function classifyResolution(text: string): "sim" | "parcial" | "nao" | null {
+export function classifySupportResolution(text: string): "sim" | "parcial" | "nao" | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/\b(nao|negativo|continua|nao resolveu)\b/.test(normalized)) return "nao";
   if (/\b(parcial|parcialmente|mais ou menos|melhorou)\b/.test(normalized)) return "parcial";
@@ -36,7 +36,7 @@ function classifyResolution(text: string): "sim" | "parcial" | "nao" | null {
   return null;
 }
 
-function extractRating(text: string): number | null {
+export function extractSupportRating(text: string): number | null {
   const withoutCode = text.replace(/\bAST-[A-Z0-9]+-[A-Z0-9]+\b/gi, " ").trim();
   const explicit = withoutCode.match(/\bnota\s*[:=-]?\s*([1-5])\b/i);
   if (explicit?.[1]) return Number(explicit[1]);
@@ -109,7 +109,7 @@ export async function tryHandleSupportFeedbackMessage(input: {
   if (!cards.length) return { handled: false };
 
   const code = extractCode(input.text);
-  const rating = extractRating(input.text);
+  const rating = extractSupportRating(input.text);
   const waitingRatingCards = cards.filter(
     (candidate) =>
       String((candidate.metadata as Record<string, unknown> | null)?.["supportFeedbackStatus"] ?? "") ===
@@ -187,7 +187,7 @@ export async function tryHandleSupportFeedbackMessage(input: {
     }
   }
 
-  const result = classifyResolution(input.text);
+  const result = classifySupportResolution(input.text);
   if (!result) return { handled: false };
 
   let card = code ? cards.find((candidate) => candidate.codigo.toUpperCase() === code) : undefined;
