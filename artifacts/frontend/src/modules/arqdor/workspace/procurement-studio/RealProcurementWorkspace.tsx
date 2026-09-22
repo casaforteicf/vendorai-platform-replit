@@ -345,6 +345,12 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
   const [quoteDraft, setQuoteDraft] = useState({ supplier: "", value: "0", freight: "0", discount: "0", taxes: "0", leadTime: "", expectedDelivery: "", paymentTerms: "", quoteNumber: "" });
   const [receiptDraft, setReceiptDraft] = useState({ received: "", approved: "", rejected: "0", notes: "" });
   const [financeDueDate, setFinanceDueDate] = useState("");
+  const [requestDocuments, setRequestDocuments] = useState<StoredDocument[]>([]);
+  const [quoteDocuments, setQuoteDocuments] = useState<StoredDocument[]>([]);
+  const [requestExtraction, setRequestExtraction] = useState<ProcurementDocumentExtraction | null>(null);
+  const [requestItemIndex, setRequestItemIndex] = useState(0);
+  const [requestImporting, setRequestImporting] = useState(false);
+  const [quoteImporting, setQuoteImporting] = useState(false);
 
   const load = useCallback(async () => {
     if (!directObraId && !meta.id) { setLoading(false); return; }
@@ -392,6 +398,134 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
     const committed = requests.filter((item) => item.selectedQuoteId).reduce((sum, item) => sum + item.estimatedValue, 0);
     return { requests: requests.length, quotes: quotes.length, ordered, received, committed };
   }, [bundle]);
+
+  function applyRequestExtraction(extracted: ProcurementDocumentExtraction, index = 0) {
+    const items = Array.isArray(extracted.itens) ? extracted.itens : [];
+    const item = items[index] ?? items[0] ?? {};
+    const quantity = Math.max(0, finiteNumber(item.quantidade) || 1);
+    const unitValue = Math.max(0, finiteNumber(item.valorUnitario));
+    const totalValue = Math.max(0, finiteNumber(item.valorTotal) || (quantity * unitValue));
+    const extraNotes = [
+      extracted.fornecedor ? `Fornecedor no documento: ${extracted.fornecedor}` : "",
+      extracted.numero ? `Documento: ${extracted.numero}` : "",
+      extracted.observacoes ?? "",
+    ].filter(Boolean).join(" · ");
+
+    setRequestItemIndex(index);
+    setRequestDraft((value) => ({
+      ...value,
+      item: item.descricao ? String(item.descricao) : value.item,
+      quantity: quantity ? String(quantity) : value.quantity,
+      unit: item.unidade ? String(item.unidade) : value.unit,
+      value: totalValue ? String(totalValue) : value.value,
+      needDate: extracted.dataPrevista || value.needDate,
+      notes: extraNotes || value.notes,
+    }));
+  }
+
+  async function analyzeDocument(file: File, context: "request" | "quote") {
+    if (!bundle) throw new Error("Obra não carregada.");
+    const data = new FormData();
+    data.append("documento", file);
+    data.append("context", context);
+    const response = await fetch(`/api/arch/procurement/${bundle.obra.id}/analyze-document`, {
+      method: "POST",
+      headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
+      body: data,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error ?? "Falha ao importar documento.");
+    const extracted = /\.(xlsx|xls)$/i.test(file.name)
+      ? { ...(payload?.extracted ?? {}), ...(await parseSpreadsheetFile(file)) }
+      : (payload?.extracted ?? {});
+    return { extracted: extracted as ProcurementDocumentExtraction, document: payload?.document as StoredDocument | undefined };
+  }
+
+  async function importRequestDocument(file?: File) {
+    if (!file) return;
+    setRequestImporting(true);
+    setError(null);
+    try {
+      const result = await analyzeDocument(file, "request");
+      const extracted = result.extracted;
+      setRequestExtraction(extracted);
+      if (result.document) setRequestDocuments((docs) => [...docs, result.document!]);
+      applyRequestExtraction(extracted, 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao importar orçamento/pedido.");
+    } finally {
+      setRequestImporting(false);
+    }
+  }
+
+  async function importQuoteDocument(file?: File) {
+    if (!file) return;
+    setQuoteImporting(true);
+    setError(null);
+    try {
+      const result = await analyzeDocument(file, "quote");
+      const extracted = result.extracted;
+      if (result.document) setQuoteDocuments((docs) => [...docs, result.document!]);
+      const items = Array.isArray(extracted.itens) ? extracted.itens : [];
+      const totalFromItems = items.reduce((sum, item) => {
+        const quantity = Math.max(0, finiteNumber(item.quantidade) || 1);
+        return sum + Math.max(0, finiteNumber(item.valorTotal) || (quantity * finiteNumber(item.valorUnitario)));
+      }, 0);
+      setQuoteDraft((value) => ({
+        ...value,
+        supplier: extracted.fornecedor || value.supplier,
+        value: totalFromItems ? String(totalFromItems) : value.value,
+        freight: extracted.frete != null ? String(Math.max(0, finiteNumber(extracted.frete))) : value.freight,
+        discount: extracted.desconto != null ? String(Math.max(0, finiteNumber(extracted.desconto))) : value.discount,
+        taxes: extracted.taxas != null ? String(Math.max(0, finiteNumber(extracted.taxas))) : value.taxes,
+        leadTime: extracted.prazoEntregaDias != null ? String(Math.max(0, finiteNumber(extracted.prazoEntregaDias))) : value.leadTime,
+        expectedDelivery: extracted.dataPrevista || value.expectedDelivery,
+        paymentTerms: extracted.condicaoPagamento || value.paymentTerms,
+        quoteNumber: extracted.numero || value.quoteNumber,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao importar cotação.");
+    } finally {
+      setQuoteImporting(false);
+    }
+  }
+
+  async function copyRfq(request: PurchaseRequest) {
+    try {
+      await navigator.clipboard.writeText(rfqText(bundle?.obra.nome ?? "Obra", request));
+    } catch {
+      setError("Não foi possível copiar automaticamente. Gere o modelo para visualizar o texto.");
+    }
+  }
+
+  function openRfq(request: PurchaseRequest) {
+    const text = rfqText(bundle?.obra.nome ?? "Obra", request);
+    const popup = window.open("", "_blank", "width=900,height=760");
+    if (!popup) {
+      setError("O navegador bloqueou a janela do modelo. Libere pop-ups para gerar a solicitação.");
+      return;
+    }
+    popup.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<title>Solicitação de Cotação - ${escapeHtml(request.code)}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;padding:32px;background:#fff}
+.wrap{max-width:800px;margin:0 auto}
+.head{border-bottom:2px solid #172033;padding-bottom:18px;margin-bottom:22px}
+.kicker{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;font-weight:700}
+h1{font-size:25px;margin:6px 0}
+pre{font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap;line-height:1.55;font-size:14px}
+.actions{margin-top:24px;display:flex;gap:10px}
+button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+.primary{background:#172033;color:white}.secondary{background:#eef2f7;color:#172033}
+@media print{.actions{display:none}body{padding:0}}
+</style>
+</head>
+<body><div class="wrap"><div class="head"><div class="kicker">Compras da Obra</div><h1>Solicitação de cotação / tomada de preços</h1></div><pre>${escapeHtml(text)}</pre><div class="actions"><button class="primary" onclick="window.print()">Imprimir / Salvar PDF</button><button class="secondary" onclick="window.close()">Fechar</button></div></div></body></html>`);
+    popup.document.close();
+  }
 
   async function createRequest() {
     if (!bundle || !requestDraft.item.trim()) return;
