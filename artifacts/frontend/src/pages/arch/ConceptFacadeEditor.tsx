@@ -169,7 +169,7 @@ export default function ConceptFacadeEditor({
   realisticPreviewUrl,
   realisticPreviewLoading = false,
 }: Props) {
-  const [panel, setPanel] = useState<"volumes" | "materials" | "style">("volumes");
+  const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting">("style");
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedSurface, setSelectedSurface] = useState<FacadeSurfaceKey>("main");
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
@@ -252,9 +252,12 @@ export default function ConceptFacadeEditor({
     <div className="relative h-[calc(100dvh-64px)] min-h-[520px] overflow-hidden bg-[#eef1f3] md:min-h-[680px]">
       <div className="absolute inset-x-3 top-3 z-30 flex snap-x overflow-x-auto rounded-2xl border bg-white/95 p-1 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:inset-x-auto md:left-4 md:top-4 md:rounded-xl md:p-0">
         {([
+          ["style", Sparkles, "Estilo"],
           ["volumes", Box, "Volumes"],
           ["materials", PaintBucket, "Materiais"],
-          ["style", Sparkles, "Estilo"],
+          ["frames", Box, "Esquadrias"],
+          ["outdoor", Sparkles, "Externo"],
+          ["lighting", Sun, "Luz"],
         ] as const).map(([value, Icon, label]) => (
           <button
             key={value}
@@ -284,6 +287,12 @@ export default function ConceptFacadeEditor({
         >
           <X className="h-4 w-4" />
         </button>
+
+        <div className="absolute left-4 top-3 z-10 flex items-center gap-2">
+          <span className="rounded-full bg-orange-50 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-orange-600">
+            Configurador de fachada
+          </span>
+        </div>
 
         {panel === "volumes" && (
           <div className="p-4 pt-11">
@@ -391,20 +400,190 @@ export default function ConceptFacadeEditor({
           </div>
         )}
 
+        {panel === "frames" && (
+          <div className="p-4 pt-11">
+            <div className="text-sm font-semibold">Esquadrias e perfis</div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              Escolha a linguagem das janelas, portas e perfis sem entrar em parâmetros técnicos.
+            </p>
+
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {([
+                ["preto", "Preto", "#111827"],
+                ["branco", "Branco", "#f8fafc"],
+                ["bronze", "Bronze", "#8b6f47"],
+              ] as const).map(([value, label, swatch]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    onFacadeChange({ ...facade, frameTone: value });
+                    setSelectedSurface("frames");
+                  }}
+                  className={facade.frameTone === value
+                    ? "rounded-xl border-2 border-orange-500 bg-orange-50 p-2 text-center"
+                    : "rounded-xl border bg-white p-2 text-center hover:border-slate-300"}
+                >
+                  <span className="mx-auto block h-10 w-full rounded-lg border" style={{ backgroundColor: swatch }} />
+                  <span className="mt-2 block text-[10px] font-bold text-slate-700">{label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-5 rounded-xl border bg-slate-50 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Aplicação</div>
+              <div className="mt-1 text-xs font-semibold text-slate-800">Janelas, portas e perfis da fachada</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSurface("frames");
+                  setPanel("materials");
+                }}
+                className="mt-3 w-full rounded-lg border bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:border-orange-300"
+              >
+                Escolher material dos perfis
+              </button>
+            </div>
+          </div>
+        )}
+
+        {panel === "outdoor" && (
+          <div className="p-4 pt-11">
+            <div className="text-sm font-semibold">Área externa</div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              Complete a fachada com jardim, muro, portão, pergolado e elementos externos.
+            </p>
+
+            <label className="mt-4 flex items-center justify-between rounded-xl border p-3">
+              <span>
+                <span className="block text-xs font-semibold">Paisagismo frontal</span>
+                <span className="block text-[10px] text-slate-400">Vegetação integrada à composição</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={design.showLandscaping}
+                onChange={(event) => updateDesign({ showLandscaping: event.target.checked })}
+                className="h-4 w-4"
+              />
+            </label>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {FACADE_VOLUME_PRESETS
+                .filter((preset) => ["planter", "wall", "gate", "pergola"].includes(preset.kind))
+                .map((preset) => (
+                  <button
+                    key={preset.kind}
+                    type="button"
+                    onClick={() => addVolume(preset.kind)}
+                    className="overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
+                  >
+                    <FacadePresetThumbnail kind={preset.kind} />
+                    <div className="p-2.5">
+                      <div className="text-[11px] font-bold text-slate-800">{preset.label}</div>
+                      <div className="mt-0.5 text-[9px] text-slate-400">Adicionar à fachada</div>
+                    </div>
+                  </button>
+                ))}
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Intensidade do jardim</div>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  ["leve", "Leve"],
+                  ["medio", "Médio"],
+                  ["intenso", "Intenso"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => onFacadeChange({ ...facade, landscaping: value })}
+                    className={facade.landscaping === value
+                      ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-2 text-[10px] font-semibold text-orange-800"
+                      : "rounded-lg border px-2 py-2 text-[10px] font-semibold text-slate-600"}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {panel === "lighting" && (
+          <div className="p-4 pt-11">
+            <div className="text-sm font-semibold">Iluminação e atmosfera</div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              Veja a mesma composição em diferentes horários antes do render final.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {([
+                ["day", "Dia", "Luz neutra para avaliar materiais e proporções."],
+                ["sunset", "Fim de tarde", "Luz quente para valorizar volumes e texturas."],
+                ["night", "Noite", "Contraste para avaliar iluminação arquitetônica."],
+              ] as const).map(([value, label, helper]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => updateDesign({ lighting: value })}
+                  className={design.lighting === value
+                    ? "w-full rounded-xl border-2 border-orange-500 bg-orange-50 p-3 text-left"
+                    : "w-full rounded-xl border bg-white p-3 text-left hover:border-slate-300"}
+                >
+                  <div className="flex items-center gap-2">
+                    <Sun className="h-4 w-4 text-orange-500" />
+                    <span className="text-xs font-bold text-slate-800">{label}</span>
+                  </div>
+                  <div className="mt-1 text-[10px] leading-4 text-slate-500">{helper}</div>
+                </button>
+              ))}
+            </div>
+
+            {onOpenRender && (
+              <button
+                type="button"
+                onClick={onOpenRender}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
+              >
+                <Sparkles className="h-4 w-4" />
+                Gerar render desta opção
+              </button>
+            )}
+          </div>
+        )}
+
         {panel === "style" && (
           <div className="p-4 pt-11">
-            <div className="text-sm font-semibold">Linguagem da fachada</div>
+            <div className="text-sm font-semibold">Escolha o estilo</div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              Comece pela linguagem visual; depois refine volumes, materiais, esquadrias e área externa.
+            </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              {STYLE_LABELS.map(([value, label]) => (
+              {STYLE_LABELS.map(([value, label], index) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => onFacadeChange({ ...facade, style: value })}
                   className={facade.style === value
-                    ? "rounded-xl border border-orange-400 bg-orange-50 px-3 py-2.5 text-xs font-semibold text-orange-800"
-                    : "rounded-xl border px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"}
+                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
                 >
-                  {label}
+                  <div className={[
+                    "relative h-16 overflow-hidden",
+                    index % 3 === 0 ? "bg-gradient-to-br from-stone-100 to-slate-200"
+                      : index % 3 === 1 ? "bg-gradient-to-br from-white to-zinc-100"
+                      : "bg-gradient-to-br from-orange-50 to-stone-100",
+                  ].join(" ")}>
+                    <div className="absolute bottom-2 left-3 right-3 h-9 rounded-t-md bg-white/90 shadow-sm" />
+                    <div className="absolute bottom-2 left-5 h-6 w-7 rounded-sm bg-slate-700" />
+                    <div className="absolute bottom-5 right-5 h-4 w-9 rounded-sm bg-slate-500/70" />
+                    <div className="absolute left-3 right-3 top-3 h-1.5 rounded-full bg-orange-400/70" />
+                  </div>
+                  <div className="p-2.5">
+                    <div className="text-[11px] font-bold text-slate-800">{label}</div>
+                    <div className="mt-0.5 text-[9px] text-slate-400">Aplicar como direção principal</div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -431,51 +610,13 @@ export default function ConceptFacadeEditor({
               </div>
             </div>
 
-            <div className="mt-5">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Iluminação</div>
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  ["day", "Dia"],
-                  ["sunset", "Pôr do sol"],
-                  ["night", "Noite"],
-                ] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => updateDesign({ lighting: value })}
-                    className={design.lighting === value
-                      ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-2 text-[10px] font-semibold text-orange-800"
-                      : "rounded-lg border px-2 py-2 text-[10px] font-semibold text-slate-600"}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="mt-5 flex items-center justify-between rounded-xl border p-3">
-              <span>
-                <span className="block text-xs font-semibold">Paisagismo</span>
-                <span className="block text-[10px] text-slate-400">Exibir vegetação frontal</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={design.showLandscaping}
-                onChange={(event) => updateDesign({ showLandscaping: event.target.checked })}
-                className="h-4 w-4"
-              />
-            </label>
-
-            {onOpenRender && (
-              <button
-                type="button"
-                onClick={onOpenRender}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
-              >
-                <Sparkles className="h-4 w-4" />
-                Gerar fachada renderizada
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setPanel("volumes")}
+              className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-xs font-bold text-white"
+            >
+              Continuar para volumes
+            </button>
           </div>
         )}
       </div>
@@ -531,22 +672,40 @@ export default function ConceptFacadeEditor({
                 />
               </div>
             ) : (
-              <div className="grid min-h-[360px] w-full place-items-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03] text-center">
-                <div className="max-w-[280px] px-6">
-                  <Sparkles className="mx-auto h-8 w-8 text-orange-400" />
-                  <div className="mt-4 text-sm font-semibold text-white">Gere a primeira fachada realista</div>
-                  <div className="mt-2 text-xs leading-5 text-slate-400">
-                    O render preserva volumes, materiais, esquadrias, cobertura e iluminação desta composição.
+              <div className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-orange-400" />
+                  <div>
+                    <div className="text-sm font-bold text-white">Sua opção de fachada</div>
+                    <div className="text-[11px] text-slate-400">Revise a composição antes do render realista.</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onOpenRender}
-                    disabled={realisticPreviewLoading}
-                    className="mt-5 rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
-                  >
-                    {realisticPreviewLoading ? "Gerando..." : "Gerar fachada realista"}
-                  </button>
                 </div>
+
+                <div className="mt-5 grid gap-2">
+                  {[
+                    ["Estilo", STYLE_LABELS.find(([value]) => value === facade.style)?.[1] ?? facade.style],
+                    ["Cobertura", facade.roof === "platibanda" ? "Platibanda" : facade.roof === "aparente" ? "Telhado aparente" : "Mista"],
+                    ["Parede principal", getFacadeMaterial(design.surfaceMaterials.main).name],
+                    ["Destaque", getFacadeMaterial(design.surfaceMaterials.accent).name],
+                    ["Esquadrias", facade.frameTone === "preto" ? "Preto" : facade.frameTone === "branco" ? "Branco" : "Bronze"],
+                    ["Paisagismo", design.showLandscaping ? facade.landscaping : "Oculto"],
+                    ["Iluminação", design.lighting === "day" ? "Dia" : design.lighting === "sunset" ? "Fim de tarde" : "Noite"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                      <span className="text-[10px] font-semibold text-slate-400">{label}</span>
+                      <span className="text-right text-[11px] font-bold text-white">{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onOpenRender}
+                  disabled={realisticPreviewLoading}
+                  className="mt-5 w-full rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {realisticPreviewLoading ? "Gerando..." : "Gerar fachada realista"}
+                </button>
               </div>
             )}
           </div>
