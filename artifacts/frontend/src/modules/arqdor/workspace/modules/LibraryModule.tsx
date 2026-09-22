@@ -320,7 +320,7 @@ function EmptyShowroom({ onAdd }: { onAdd: () => void }) {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export function LibraryModule() {
-  const [tab,     setTab]     = useState<'materiais'|'estilos'|'componentes'>('materiais')
+  const [tab,     setTab]     = useState<'familias'|'materiais'|'estilos'|'componentes'>('familias')
   const [items,   setItems]   = useState<CatalogoItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string|null>(null)
@@ -331,15 +331,17 @@ export function LibraryModule() {
   const [form,    setForm]    = useState({ nome:'', categoria:'', fornecedor:'', descricao:'' })
 
   const load = useCallback(async () => {
-    if (tab !== 'materiais') return
+    if (tab !== 'materiais' && tab !== 'familias') return
     setLoading(true); setError(null)
     try {
-      const params = new URLSearchParams({ limit: '60' })
+      const params = new URLSearchParams({ limit: '240' })
       if (catFilt) params.set('categoria', catFilt)
       if (q)       params.set('busca', q)
       const res = await fetch(`${BASE}/arch/catalogo?${params}`, { headers: authHeaders() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setItems(await res.json())
+      const data = await res.json() as CatalogoItem[]
+      const assetType = tab === 'familias' ? 'family' : 'material'
+      setItems(data.filter(item => item.especificacoes?.assetType === assetType))
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar catálogo')
     } finally {
@@ -389,11 +391,11 @@ export function LibraryModule() {
             <h2 style={{ margin:0, fontSize:16, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
               ✦ SHOWROOM
             </h2>
-            <p style={{ margin:0, fontSize:10, color:T.dim }}>Materiais, estilos e componentes</p>
+            <p style={{ margin:0, fontSize:10, color:T.dim }}>Famílias, materiais, estilos e componentes</p>
           </div>
           <div style={{ flex:1 }}/>
           {/* Search */}
-          {(tab === 'materiais' || tab === 'estilos') && (
+          {(tab === 'familias' || tab === 'materiais' || tab === 'estilos') && (
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <span style={{ position:'absolute', left:9, fontSize:11, color:T.dim, pointerEvents:'none' }}>🔍</span>
               <input
@@ -410,7 +412,7 @@ export function LibraryModule() {
               />
             </div>
           )}
-          {tab === 'materiais' && (
+          {(tab === 'familias' || tab === 'materiais') && (
             <button
               onClick={() => setShowAdd(v => !v)}
               style={{
@@ -427,10 +429,10 @@ export function LibraryModule() {
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:2 }}>
-          {(['materiais','estilos','componentes'] as const).map(t => {
-            const icons: Record<string, string> = { materiais:'📦', estilos:'🎨', componentes:'🧩' }
-            const labels: Record<string, string> = { materiais:'Materiais', estilos:'Estilos', componentes:'Componentes' }
-            const badge = t === 'materiais' ? items.length : t === 'estilos' ? STYLES.length : 0
+          {(['familias','materiais','estilos','componentes'] as const).map(t => {
+            const icons: Record<string, string> = { familias:'🛋️', materiais:'◫', estilos:'🎨', componentes:'🧩' }
+            const labels: Record<string, string> = { familias:'Famílias', materiais:'Materiais', estilos:'Estilos', componentes:'Componentes' }
+            const badge = (t === 'familias' || t === 'materiais') ? (tab === t ? items.length : 0) : t === 'estilos' ? STYLES.length : 0
             const active = tab === t
             return (
               <button
@@ -461,7 +463,7 @@ export function LibraryModule() {
       </div>
 
       {/* Category filter pills */}
-      {tab === 'materiais' && categories.length > 0 && (
+      {(tab === 'familias' || tab === 'materiais') && categories.length > 0 && (
         <div style={{
           display:'flex', gap:6, padding:'10px 20px', overflowX:'auto' as const,
           borderBottom:`1px solid ${T.border}`, flexShrink:0,

@@ -60,7 +60,7 @@ export default function PromptHubConceptSection() {
   const copy = isSpanish ? ES : PT;
 
   return (
-    <section className="relative overflow-hidden border-y border-slate-200 bg-white py-20 sm:py-24">
+    <section className="relative overflow-hidden border-y border-slate-200 bg-white py-14 sm:py-24">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(249,115,22,0.10),transparent_32%),radial-gradient(circle_at_10%_70%,rgba(99,102,241,0.08),transparent_28%)]" />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
@@ -95,58 +95,40 @@ export default function PromptHubConceptSection() {
           })}
         </div>
 
-        <div className="mt-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="mt-8 grid gap-6 sm:mt-10 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 p-4 shadow-2xl sm:rounded-[32px] sm:p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-5">
+            <div className="border-b border-white/10 pb-4 sm:flex sm:items-start sm:justify-between sm:gap-3 sm:pb-5">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-400">Prompt Hub</p>
-                <h3 className="mt-1 text-[26px] font-black leading-tight text-white sm:text-xl">{copy.demoTitle}</h3>
-                <p className="mt-1 text-sm text-slate-400">{copy.demoSubtitle}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-400">Prompt Hub</p>
+                <h3 className="mt-1 text-xl font-black leading-tight text-white sm:text-2xl">{copy.demoTitle}</h3>
+                <p className="mt-2 max-w-xl text-sm leading-5 text-slate-400">{copy.demoSubtitle}</p>
               </div>
-              <div className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">
+              <div className="mt-3 inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[11px] font-bold text-emerald-300 sm:mt-0">
                 Visual editor
               </div>
             </div>
 
             <div className="mt-6 grid gap-5 md:grid-cols-[0.9fr_1.1fr]">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
-                <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-white/10 bg-black">
-                  <div className="relative aspect-[4/5] overflow-hidden">
-                    <img
-                      src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=900&q=85"
-                      alt={isSpanish ? "Retrato original antes de la edición" : "Retrato original antes da edição"}
-                      className="h-full w-full object-cover grayscale contrast-90 brightness-90"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-x-2 bottom-2 rounded-full bg-black/65 px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white backdrop-blur">
-                      {isSpanish ? "Original" : "Antes"}
-                    </div>
-                  </div>
-                  <div className="relative aspect-[4/5] overflow-hidden">
-                    <img
-                      src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=900&q=90"
-                      alt={isSpanish ? "Resultado de retrato cinematográfico" : "Resultado de retrato cinematográfico"}
-                      className="h-full w-full object-cover contrast-125 saturate-110 brightness-90"
-                      loading="lazy"
-                    />
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_68%_32%,rgba(251,146,60,.22),transparent_30%),linear-gradient(120deg,rgba(15,23,42,.62),transparent_48%,rgba(99,102,241,.25))]" />
-                    <div className="absolute inset-x-2 bottom-2 rounded-full bg-orange-500/90 px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-lg">
-                      {isSpanish ? "Cinematográfico" : "Resultado"}
-                    </div>
-                  </div>
-                </div>
-                <p className="mt-3 text-xs leading-5 text-slate-400">
-                  {isSpanish
-                    ? "Misma persona, con identidad preservada. La IA cambia luz, profundidad, contraste y atmósfera."
-                    : "A mesma pessoa, com a identidade preservada. A IA muda luz, profundidade, contraste e atmosfera."}
-                </p>
-                <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-300">
-                  <Library className="h-4 w-4 text-orange-400" />
-                  {isSpanish ? "Biblioteca de Medios" : "Biblioteca de Mídias"}
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#090d16] sm:rounded-3xl">
+                <img
+                  src="/product-screens/prompt-hub-system.svg"
+                  alt={isSpanish ? "Interfaz real del Prompt Hub de VendorAI" : "Interface real do Prompt Hub do VendorAI"}
+                  className="block w-full"
+                  loading="lazy"
+                />
+                <div className="border-t border-white/10 px-4 py-3">
+                  <p className="text-xs font-semibold text-white">
+                    {isSpanish ? "Pantalla real del sistema" : "Tela real do sistema"}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                    {isSpanish
+                      ? "Biblioteca de Medios, controles de iluminación, prompt técnico y generación en el mismo flujo."
+                      : "Biblioteca de Mídias, controles de iluminação, prompt técnico e geração no mesmo fluxo."}
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="hidden space-y-3 md:block">
                 {[
                   [copy.preserve, "ON", "100%"],
                   [copy.keyLight, isSpanish ? "Derecha" : "Direita", "88%"],
@@ -183,6 +165,15 @@ export default function PromptHubConceptSection() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 md:hidden">
+              <button className="rounded-xl bg-orange-500 px-3 py-3 text-xs font-black text-white transition hover:bg-orange-400">
+                {isSpanish ? "Usar prompt" : "Usar prompt"}
+              </button>
+              <button className="rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-xs font-bold text-white transition hover:bg-white/[0.08]">
+                {isSpanish ? "Editar" : "Editar"}
+              </button>
             </div>
           </div>
 

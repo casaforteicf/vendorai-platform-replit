@@ -149,6 +149,18 @@ type RealCatalogProduct = {
   especificacoes?: Record<string, unknown> | null;
 };
 
+type PolyHavenModel = {
+  slug: string;
+  name: string;
+  description?: string;
+  thumbnailUrl?: string | null;
+  category?: string;
+  tags?: string[];
+  source: "Poly Haven";
+  license: "CC0";
+};
+
+
 function getCatalogModel3dUrl(item: RealCatalogProduct) {
   const specs = item.especificacoes;
   if (!specs || typeof specs !== "object") return undefined;
@@ -162,21 +174,39 @@ function getCatalogModel3dUrl(item: RealCatalogProduct) {
   return undefined;
 }
 
+function catalogDimensions(item: RealCatalogProduct) {
+  const specs = item.especificacoes;
+  const dims = specs && typeof specs === "object" ? specs.dimensionsM : null;
+  if (!dims || typeof dims !== "object") return null;
+  const record = dims as Record<string, unknown>;
+  const width = Number(record.width);
+  const depth = Number(record.depth);
+  if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) return null;
+  return { width, depth };
+}
+
 function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   kind: ConceptPlanObject["kind"];
   width: number;
   depth: number;
 } | null {
   const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""}`.toLocaleLowerCase("pt-BR");
-  if (/sofá|sofa|poltrona|chaise/.test(text)) return { kind: "sofa", width: 2.1, depth: 0.9 };
-  if (/cama|colchão|colchao/.test(text)) return { kind: "bed", width: 1.6, depth: 2.0 };
-  if (/mesa/.test(text)) return { kind: "table", width: 1.4, depth: 0.8 };
-  if (/cadeira|banco|banqueta/.test(text)) return { kind: "chair", width: 0.55, depth: 0.55 };
-  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack/.test(text)) return { kind: "cabinet", width: 1.2, depth: 0.55 };
-  if (/televis|\btv\b|painel/.test(text)) return { kind: "tv", width: 1.6, depth: 0.25 };
-  if (/planta|vaso|folhagem/.test(text)) return { kind: "plant", width: 0.65, depth: 0.65 };
-  if (/luminária|luminaria|abajur|pendente|plafon/.test(text)) return { kind: "lamp", width: 0.45, depth: 0.45 };
-  if (/tapete/.test(text)) return { kind: "rug", width: 2.0, depth: 1.5 };
+  const dims = catalogDimensions(item);
+  const sized = (kind: ConceptPlanObject["kind"], width: number, depth: number) => ({
+    kind,
+    width: dims?.width ?? width,
+    depth: dims?.depth ?? depth,
+  });
+
+  if (/sofá|sofa|poltrona|chaise/.test(text)) return sized("sofa", 2.1, 0.9);
+  if (/cama|colchão|colchao/.test(text)) return sized("bed", 1.6, 2.0);
+  if (/mesa|ilha cozinha/.test(text)) return sized("table", 1.4, 0.8);
+  if (/cadeira|banco|banqueta|espreguiçadeira/.test(text)) return sized("chair", 0.55, 0.55);
+  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack|torre quente|estante|geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa/.test(text)) return sized("cabinet", 1.2, 0.55);
+  if (/televis|\btv\b|painel/.test(text)) return sized("tv", 1.6, 0.25);
+  if (/planta|vaso|folhagem|flores|árvore|arvore|palmeira|arbusto/.test(text)) return sized("plant", 0.65, 0.65);
+  if (/luminária|luminaria|abajur|pendente|plafon|arandela|balizador/.test(text)) return sized("lamp", 0.45, 0.45);
+  if (/tapete/.test(text)) return sized("rug", 2.0, 1.5);
   return null;
 }
 
@@ -637,6 +667,9 @@ export default function ConceptPlanner() {
   });
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
+  const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
+  const [polyHavenLoading, setPolyHavenLoading] = useState(false);
+  const [polyHavenInsertSlug, setPolyHavenInsertSlug] = useState<string | null>(null);
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
@@ -706,16 +739,40 @@ export default function ConceptPlanner() {
   }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, recentItemIds]);
 
   useEffect(() => {
+    if (editorLibraryTab !== "furniture") return;
+    const query = furnitureSearch.trim() || "modern furniture";
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setPolyHavenLoading(true);
+      fetch(`/api/arch/polyhaven/search?q=${encodeURIComponent(query)}&limit=12`)
+        .then(async (response) => response.ok ? response.json() : { items: [] })
+        .then((payload) => {
+          if (!cancelled) setPolyHavenModels(Array.isArray(payload?.items) ? payload.items : []);
+        })
+        .catch(() => {
+          if (!cancelled) setPolyHavenModels([]);
+        })
+        .finally(() => {
+          if (!cancelled) setPolyHavenLoading(false);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [editorLibraryTab, furnitureSearch]);
+
+  useEffect(() => {
     if (editorLibraryTab !== "furniture" || realCatalogProducts.length || realCatalogLoading) return;
     let cancelled = false;
     setRealCatalogLoading(true);
-    fetch("/api/arch/catalogo?limit=60")
+    fetch("/api/arch/catalogo?limit=240")
       .then(async (response) => response.ok ? response.json() : [])
       .then((rows) => {
         if (cancelled) return;
         const products = Array.isArray(rows)
           ? rows.filter((item): item is RealCatalogProduct =>
-              Boolean(item && typeof item === "object" && typeof item.nome === "string" && Array.isArray(item.imagens) && item.imagens.length > 0 && inferCatalogFurniturePreset(item))
+              Boolean(item && typeof item === "object" && typeof item.nome === "string" && inferCatalogFurniturePreset(item))
             )
           : [];
         setRealCatalogProducts(products);
@@ -738,9 +795,9 @@ export default function ConceptPlanner() {
       Sala: /sofá|sofa|poltrona|chaise|rack|painel|televis|tv|mesa de centro/,
       Quarto: /cama|colchão|colchao|roupeiro|guarda-roupa|criado|cabeceira/,
       Jantar: /mesa|cadeira|banco|banqueta/,
-      Cozinha: /cozinha|balcão|balcao|gabinete|armário|armario|ilha/,
+      Cozinha: /cozinha|balcão|balcao|gabinete|armário|armario|ilha|geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa/,
       Escritório: /escritório|escritorio|office|home office|cadeira/,
-      Decoração: /decora|tapete|vaso|planta|folhagem|quadro|espelho/,
+      Decoração: /decora|tapete|vaso|planta|folhagem|flores|quadro|espelho/,
       Iluminação: /luminária|luminaria|abajur|pendente|plafon|arandela/,
       Exterior: /extern|outdoor|jardim|garden|espreguiçadeira|paisag|varanda|deck/,
     };
@@ -4494,12 +4551,88 @@ export default function ConceptPlanner() {
                         ))}
                       </div>
 
+                      {(polyHavenLoading || polyHavenModels.length > 0) && (
+                        <div className="mb-5">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">Modelos 3D reais · Poly Haven</div>
+                              <div className="text-[10px] text-slate-500">CC0 · Powered by Poly Haven · clique para inserir</div>
+                            </div>
+                            {polyHavenLoading && <span className="text-[10px] font-semibold text-orange-600">Buscando...</span>}
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {polyHavenModels.map((item) => {
+                              const pseudo: RealCatalogProduct = {
+                                id: item.slug,
+                                nome: item.name,
+                                categoria: item.category ?? "Mobiliário",
+                                subcategoria: item.tags?.join(" ") ?? "",
+                              };
+                              const preset = inferCatalogFurniturePreset(pseudo);
+                              if (!preset) return null;
+                              return (
+                                <button
+                                  key={item.slug}
+                                  type="button"
+                                  disabled={polyHavenInsertSlug === item.slug}
+                                  onClick={async () => {
+                                    setPolyHavenInsertSlug(item.slug);
+                                    try {
+                                      const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(item.slug)}`);
+                                      if (!response.ok) throw new Error("asset");
+                                      const asset = await response.json();
+                                      addObjectAt(
+                                        preset.kind,
+                                        item.name,
+                                        preset.width,
+                                        preset.depth,
+                                        libraryInsertPoint,
+                                        {
+                                          imageUrl: item.thumbnailUrl ?? undefined,
+                                          supplier: "Poly Haven",
+                                          model3dUrl: typeof asset?.model3dUrl === "string" ? asset.model3dUrl : undefined,
+                                        },
+                                      );
+                                      rememberRecentItem(`polyhaven:${item.slug}`);
+                                    } catch {
+                                      // Mantém o editor estável: se o GLB não resolver, não insere um asset quebrado.
+                                    } finally {
+                                      setPolyHavenInsertSlug(null);
+                                    }
+                                  }}
+                                  className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg disabled:opacity-60"
+                                >
+                                  <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                                    {item.thumbnailUrl ? (
+                                      <img src={item.thumbnailUrl} alt={item.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" loading="lazy" />
+                                    ) : (
+                                      <div className="grid h-full w-full place-items-center bg-gradient-to-br from-slate-50 to-orange-50">
+                                        <Box className="h-10 w-10 text-slate-400" />
+                                      </div>
+                                    )}
+                                    <span className="absolute left-2 top-2 rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-bold text-white">CC0</span>
+                                    <span className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-[9px] font-bold text-white">3D</span>
+                                  </div>
+                                  <div className="p-3">
+                                    <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.name}</div>
+                                    <div className="mt-1 line-clamp-1 text-[10px] text-slate-500">{item.category ?? "Modelo 3D real"}</div>
+                                    <div className="mt-2 text-[10px] font-semibold text-emerald-700">
+                                      {polyHavenInsertSlug === item.slug ? "Preparando GLB..." : "Inserir modelo real"}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {(realCatalogLoading || visibleRealCatalogProducts.length > 0) && (
                         <div className="mb-5">
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
-                              <div className="text-xs font-bold text-slate-900">Produtos reais do catálogo</div>
-                              <div className="text-[10px] text-slate-500">Produtos do tenant · clique para inserir no ambiente ativo</div>
+                              <div className="text-xs font-bold text-slate-900">Famílias e produtos do catálogo</div>
+                              <div className="text-[10px] text-slate-500">Base Arqdor + produtos do tenant · clique para inserir no ambiente ativo</div>
                             </div>
                             {realCatalogLoading && <span className="text-[10px] font-semibold text-orange-600">Carregando...</span>}
                           </div>
@@ -4508,8 +4641,9 @@ export default function ConceptPlanner() {
                             {visibleRealCatalogProducts.map((item) => {
                               const preset = inferCatalogFurniturePreset(item);
                               const imageUrl = item.imagens?.[0];
-                              if (!preset || !imageUrl) return null;
+                              if (!preset) return null;
                               const price = Number(item.precoBase ?? 0);
+                              const starter = typeof item.especificacoes?.source === "string" && item.especificacoes.source.startsWith("arqdor-");
                               return (
                                 <div
                                   key={item.id}
@@ -4566,14 +4700,20 @@ export default function ConceptPlanner() {
                                     >
                                       <Heart className="h-4 w-4" fill={favoriteItemIds.includes(realLibraryItemKey(item.id)) ? "currentColor" : "none"} />
                                     </button>
-                                    <img
-                                      src={imageUrl}
-                                      alt={item.nome}
-                                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                                      loading="lazy"
-                                    />
+                                    {imageUrl ? (
+                                      <img
+                                        src={imageUrl}
+                                        alt={item.nome}
+                                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div className="grid h-full w-full place-items-center bg-gradient-to-br from-slate-50 via-white to-orange-50">
+                                        <Box className="h-10 w-10 text-slate-400" />
+                                      </div>
+                                    )}
                                     <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
-                                      REAL
+                                      {starter ? "ARQDOR BASE" : "CATÁLOGO"}
                                     </span>
                                     {getCatalogModel3dUrl(item) && (
                                       <span className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-[9px] font-bold text-white shadow">

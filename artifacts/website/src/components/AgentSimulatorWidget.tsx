@@ -137,8 +137,8 @@ export function AgentSimulatorWidget() {
   }
 
   if (step === "closed") return (
-    <button onClick={() => setStep("form")} aria-label={copy.openAria} data-testid="btn-agent-simulator-open" className="fixed bottom-5 left-5 z-50 flex h-14 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_12px_35px_rgba(37,99,235,0.45)] transition hover:scale-105 hover:bg-blue-500">
-      <Sparkles className="h-5 w-5" /> {copy.open}
+    <button onClick={() => setStep("form")} aria-label={copy.openAria} data-testid="btn-agent-simulator-open" className="fixed bottom-24 left-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-[0_10px_28px_rgba(37,99,235,0.38)] transition hover:scale-105 hover:bg-blue-500 sm:bottom-5 sm:left-5 sm:h-14 sm:w-auto sm:gap-2 sm:px-5 sm:text-sm sm:font-semibold">
+      <Sparkles className="h-5 w-5" /> <span className="hidden sm:inline">{copy.open}</span>
     </button>
   );
 
