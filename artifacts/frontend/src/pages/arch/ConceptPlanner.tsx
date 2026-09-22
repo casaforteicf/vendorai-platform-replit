@@ -39,6 +39,8 @@ import ConceptPlan2D, { type ConceptPlanObject } from "./ConceptPlan2D";
 import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptFacadeEditor from "./ConceptFacadeEditor";
+import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
+import { buildClientBriefPlan, type ClientBrief } from "./conceptClientBrief";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import {
   DEFAULT_FACADE_DESIGN,
@@ -67,12 +69,13 @@ type RoomKind =
   | "escada"
   | "outro";
 
-type EditorLibraryTab = "site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
+type EditorLibraryTab = "site" | "brief" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
 type EditorExperienceMode = "guided" | "professional";
 
 const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
   { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
-  { id: "rooms", label: "Ambientes", helper: "Adicione ou nomeie os cômodos da casa." },
+  { id: "brief", label: "Necessidades", helper: "Conte como a casa precisa funcionar." },
+  { id: "rooms", label: "Ambientes", helper: "Revise e ajuste os cômodos sugeridos." },
   { id: "build", label: "Construir", helper: "Ajuste paredes, portas, janelas e escada." },
   { id: "furniture", label: "Mobiliar", helper: "Posicione móveis e equipamentos reais." },
   { id: "materials", label: "Acabamentos", helper: "Aplique pisos, paredes e materiais." },
@@ -1257,6 +1260,49 @@ export default function ConceptPlanner() {
     setInteractionMode("room");
     setEditorView("plan");
     setEditorLibraryTab("build");
+    setStep(4);
+  };
+
+  const applyClientBrief = (brief: ClientBrief) => {
+    const generated = buildClientBriefPlan(brief);
+    let nextRooms = generated.rooms as Room[];
+
+    for (let floor = 0; floor < generated.floors; floor += 1) {
+      nextRooms = generateTypologyLayout(
+        nextRooms,
+        lotWidth,
+        lotDepth,
+        floor,
+        generated.typology,
+        layoutVariant,
+        generated.layoutPreferences,
+      ) as Room[];
+    }
+
+    setTypology(generated.typology);
+    setLayoutPreferences(generated.layoutPreferences);
+    setFloors(generated.floors);
+    setDesiredArea(generated.suggestedArea);
+    setActiveFloor(0);
+    setRooms(nextRooms);
+    setCustomWalls([]);
+    setCustomOpenings([]);
+    setOpeningOverrides({});
+    setWallFirstFloors([]);
+    setSpaceProfiles([]);
+    setObjects([]);
+    setWallMaterials({});
+    setPaintTool(null);
+    setSelectedId(null);
+    setSelectedObjectId(null);
+    setSelectedOpeningId(null);
+    setSelectedWallId(null);
+    setSelectedCustomWallId(null);
+    setSelectedClosedSpaceId(null);
+    setInteractionMode("room");
+    setEditorView("plan");
+    setEditorLibraryTab("rooms");
+    setLibraryOpen(true);
     setStep(4);
   };
 
@@ -4079,7 +4125,7 @@ export default function ConceptPlanner() {
                 <div className="ml-1 hidden items-center rounded-xl border border-white/10 bg-white/5 p-1 xl:flex">
                   <button
                     type="button"
-                    onClick={() => setEditorExperienceMode("guided")}
+                    onClick={() => { setEditorExperienceMode("guided"); if (editorLibraryTab === "models") setEditorLibraryTab("site"); }}
                     className={editorExperienceMode === "guided"
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
@@ -4088,7 +4134,7 @@ export default function ConceptPlanner() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditorExperienceMode("professional")}
+                    onClick={() => { setEditorExperienceMode("professional"); if (editorLibraryTab === "brief") setEditorLibraryTab("build"); }}
                     className={editorExperienceMode === "professional"
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
@@ -4406,6 +4452,7 @@ export default function ConceptPlanner() {
                     <div className="flex flex-col items-center gap-2">
                       {([
                         ["site", Ruler, "Terreno"],
+                        ["brief", FileText, "Necessidades"],
                         ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
@@ -4413,7 +4460,7 @@ export default function ConceptPlanner() {
                         ["materials", Sparkles, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
-                        .filter(([value]) => editorExperienceMode === "professional" || value !== "models")
+                        .filter(([value]) => editorExperienceMode === "professional" ? value !== "brief" : value !== "models")
                         .map(([value, Icon, label]) => (
                         <button
                           key={value}
@@ -4441,6 +4488,8 @@ export default function ConceptPlanner() {
                       <div className="text-base font-semibold">
                         {editorLibraryTab === "site"
                           ? "Terreno"
+                          : editorLibraryTab === "brief"
+                            ? "Necessidades"
                           : editorLibraryTab === "models"
                             ? "Modelos"
                             : editorLibraryTab === "build"
@@ -4463,6 +4512,8 @@ export default function ConceptPlanner() {
                           ? (GUIDED_LIBRARY_FLOW.find((item) => item.id === editorLibraryTab)?.helper ?? "Escolha uma etapa para continuar.")
                           : editorLibraryTab === "site"
                           ? "Dimensões e implantação do lote"
+                          : editorLibraryTab === "brief"
+                            ? "Preferências para gerar uma planta inicial"
                           : editorLibraryTab === "models"
                             ? "Escolha uma base sem sair do editor"
                             : editorLibraryTab === "build"
@@ -4792,6 +4843,10 @@ export default function ConceptPlanner() {
                         </div>
                       </div>
                     </>
+                  )}
+
+                  {editorLibraryTab === "brief" && (
+                    <ConceptClientBriefPanel onGenerate={applyClientBrief} />
                   )}
 
                   {editorLibraryTab === "rooms" && (
