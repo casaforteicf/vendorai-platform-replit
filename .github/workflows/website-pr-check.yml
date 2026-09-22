@@ -1,0 +1,77 @@
+name: Website PR Build and SEO Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/website/**"
+      - "lib/vendor-brain/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".node-version"
+      - ".github/workflows/website-pr-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-seo:
+    name: Build website and verify SEO artifacts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build public website
+        run: pnpm --filter @workspace/website build
+
+      - name: Verify SEO-safe output
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="artifacts/website/dist/public"
+
+          test -s "$OUT/index.html"
+          test -s "$OUT/robots.txt"
+          test -s "$OUT/llms.txt"
+          test -s "$OUT/sitemap.xml"
+          test -s "$OUT/sitemap-core.xml"
+          test -s "$OUT/sitemap-products.xml"
+          test -s "$OUT/sitemap-solutions.xml"
+          test -s "$OUT/sitemap-segments.xml"
+          test -s "$OUT/sitemap-content.xml"
+          test -s "$OUT/_worker.js"
+
+          grep -q 'rel="canonical" href="https://appvendorai.com/"' "$OUT/index.html"
+          grep -q 'name="description"' "$OUT/index.html"
+          grep -q 'application/ld+json' "$OUT/index.html"
+          grep -q '<h1' "$OUT/index.html"
+          grep -q 'User-agent: Googlebot' "$OUT/robots.txt"
+          grep -q 'User-agent: OAI-SearchBot' "$OUT/robots.txt"
+          grep -q '<sitemapindex' "$OUT/sitemap.xml"
+          grep -q 'https://appvendorai.com/produtos/crm' "$OUT/sitemap-products.xml"
+          grep -q 'https://appvendorai.com/solucoes/crm-whatsapp' "$OUT/sitemap-solutions.xml"
+
+          echo "Website build and SEO guardrails passed."
