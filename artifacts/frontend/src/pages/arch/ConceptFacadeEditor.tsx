@@ -88,7 +88,7 @@ function FacadeStylePreview({ style }: { style: ConceptFacadePreferences["style"
         <div className={`absolute bottom-3 h-6 w-[25%] border-2 border-slate-700 bg-slate-400/60 ${style === "contemporaneo" || industrial ? "right-[8%]" : "left-[8%]"}`} />
         {tropical && <div className="absolute left-[42%] top-2 h-8 w-2 bg-amber-800/70" />}
         {classic && <div className="absolute inset-x-[18%] top-0 h-2 rounded-full bg-stone-400" />}
-        {rustic && <div className="absolute inset-y-0 left-[34%] w-[18%] bg-[repeating-linear-gradient(135deg,#8b735f_0_3px,#b5a18e_3px_6px)]" />}
+        {rustic && <div className="absolute inset-y-0 left-[34%] w-[18%]" style={{ backgroundImage: "repeating-linear-gradient(135deg,#8b735f 0 3px,#b5a18e 3px 6px)" }} />}
       </div>
       <div className={`absolute left-[7%] right-[7%] top-5 h-1.5 ${industrial ? "bg-zinc-700" : minimal ? "bg-slate-300" : classic ? "bg-stone-400" : "bg-orange-400/80"}`} />
       {(tropical || rustic) && (
@@ -678,7 +678,7 @@ export default function ConceptFacadeEditor({
                   <FacadeStylePreview style={value} />
                   <div className="p-2.5">
                     <div className="text-[11px] font-bold text-slate-800">{label}</div>
-                    <div className="mt-1 line-clamp-2 text-[9px] leading-4 text-slate-500">{STYLE_DESCRIPTIONS[value]}</div>
+                    <div className="mt-1 min-h-[32px] text-[9px] leading-4 text-slate-500">{STYLE_DESCRIPTIONS[value]}</div>
                     <div className={facade.style === value ? "mt-2 text-[9px] font-bold text-orange-600" : "mt-2 text-[9px] font-bold text-slate-400"}>
                       {facade.style === value ? "Estilo aplicado" : "Aplicar estilo"}
                     </div>
