@@ -50,6 +50,8 @@ export const CONCEPT_TYPOLOGIES: Array<{
   subtitle: string;
   floors: number;
   suggestedArea: number;
+  imageUrl?: string;
+  imageAlt?: string;
   rooms: TemplateRoom[];
 }> = [
   {
@@ -58,6 +60,8 @@ export const CONCEPT_TYPOLOGIES: Array<{
     subtitle: "2 quartos · 1 banheiro · social integrada",
     floors: 1,
     suggestedArea: 105,
+    imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1400&q=88",
+    imageAlt: "Referência fotográfica de residência térrea contemporânea",
     rooms: [
       { kind: "garagem", label: "Garagem 2 vagas", width: 5.8, depth: 5.5, floor: 0 },
       { kind: "sala", label: "Sala + jantar", width: 5.4, depth: 4.2, floor: 0 },
@@ -75,6 +79,8 @@ export const CONCEPT_TYPOLOGIES: Array<{
     subtitle: "1 suíte + 2 quartos · garagem dupla",
     floors: 1,
     suggestedArea: 145,
+    imageUrl: "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1400&q=88",
+    imageAlt: "Referência fotográfica de casa térrea familiar contemporânea",
     rooms: [
       { kind: "garagem", label: "Garagem 2 vagas", width: 5.8, depth: 5.5, floor: 0 },
       { kind: "sala", label: "Sala + jantar", width: 5.8, depth: 4.4, floor: 0 },
@@ -93,6 +99,8 @@ export const CONCEPT_TYPOLOGIES: Array<{
     subtitle: "1 suíte + 2 quartos · gourmet + piscina",
     floors: 1,
     suggestedArea: 175,
+    imageUrl: "https://images.unsplash.com/photo-1572331165267-854da2b10ccc?auto=format&fit=crop&w=1400&q=88",
+    imageAlt: "Referência fotográfica de residência térrea com área de lazer e piscina",
     rooms: [
       { kind: "garagem", label: "Garagem 2 vagas", width: 5.8, depth: 5.5, floor: 0 },
       { kind: "sala", label: "Sala + jantar", width: 6.0, depth: 4.6, floor: 0 },
@@ -113,6 +121,8 @@ export const CONCEPT_TYPOLOGIES: Array<{
     subtitle: "social no térreo · 3 dormitórios no superior",
     floors: 2,
     suggestedArea: 190,
+    imageUrl: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1400&q=88",
+    imageAlt: "Referência fotográfica de sobrado residencial contemporâneo",
     rooms: [
       { kind: "garagem", label: "Garagem 2 vagas", width: 5.8, depth: 5.5, floor: 0 },
       { kind: "sala", label: "Sala + jantar", width: 6.0, depth: 4.6, floor: 0 },
@@ -135,6 +145,8 @@ export const CONCEPT_TYPOLOGIES: Array<{
     subtitle: "master reservada · social ampla · lazer",
     floors: 2,
     suggestedArea: 235,
+    imageUrl: "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1400&q=88",
+    imageAlt: "Referência fotográfica de sobrado contemporâneo de alto padrão",
     rooms: [
       { kind: "garagem", label: "Garagem 2 vagas", width: 5.8, depth: 5.5, floor: 0 },
       { kind: "sala", label: "Sala + jantar", width: 6.4, depth: 4.8, floor: 0 },

@@ -415,6 +415,35 @@ const DEFAULT_FACADE: ConceptFacadePreferences = {
   landscaping: "medio",
 };
 
+function ConceptTypologyCardVisual({
+  item,
+  lotWidth,
+  lotDepth,
+}: {
+  item: (typeof CONCEPT_TYPOLOGIES)[number];
+  lotWidth: number;
+  lotDepth: number;
+}) {
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-slate-100">
+      <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
+      {item.imageUrl && (
+        <img
+          src={item.imageUrl}
+          alt={item.imageAlt ?? `Referência visual de ${item.title}`}
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/20 via-transparent to-transparent" />
+    </div>
+  );
+}
+
 const roomDefaults: Record<RoomKind, Omit<Room, "id" | "x" | "y" | "floor">> = {
   sala: { kind: "sala", label: "Sala + jantar", width: 5.5, depth: 4.5 },
   cozinha: { kind: "cozinha", label: "Cozinha", width: 3.5, depth: 3.5 },
@@ -3806,8 +3835,8 @@ export default function ConceptPlanner() {
                           : "relative overflow-hidden rounded-2xl border bg-slate-50 transition group-hover:-translate-y-0.5 group-hover:border-slate-400 group-hover:shadow-lg"}
                         >
                           <div className="aspect-[4/3]">
-                            <ConceptTypologyPreview
-                              typology={item.id}
+                            <ConceptTypologyCardVisual
+                              item={item}
                               lotWidth={lotWidth}
                               lotDepth={lotDepth}
                             />
@@ -4308,7 +4337,7 @@ export default function ConceptPlanner() {
                             : "group overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"}
                         >
                           <div className="relative aspect-[4/3] overflow-hidden">
-                            <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
+                            <ConceptTypologyCardVisual item={item} lotWidth={lotWidth} lotDepth={lotDepth} />
                             <div className="absolute left-3 top-3 flex gap-2">
                               <span className="rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-bold shadow-sm">
                                 {item.floors === 1 ? "TÉRREA" : "SOBRADO"}
@@ -4509,7 +4538,7 @@ export default function ConceptPlanner() {
                             className="overflow-hidden rounded-xl border bg-white text-left transition hover:border-slate-300 hover:shadow-sm"
                           >
                             <div className="aspect-[16/8] overflow-hidden">
-                              <ConceptTypologyPreview typology={item.id} lotWidth={lotWidth} lotDepth={lotDepth} />
+                              <ConceptTypologyCardVisual item={item} lotWidth={lotWidth} lotDepth={lotDepth} />
                             </div>
                             <div className="p-2.5">
                               <div className="flex items-center justify-between gap-2">
