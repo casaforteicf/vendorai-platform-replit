@@ -23,6 +23,7 @@ type PurchaseRequest = {
   financeId?: string | null;
   notes?: string | null;
   inputId?: string | null;
+  documents?: Array<Record<string, any>>;
 };
 
 type Quote = {
@@ -39,6 +40,7 @@ type Quote = {
   expectedDelivery?: string | null;
   quoteNumber?: string | null;
   status: string;
+  documents?: Array<Record<string, any>>;
 };
 
 type Receipt = {
@@ -65,7 +67,7 @@ type Bundle = {
   finance: FinanceLaunch[];
 };
 
-type Props = { arqState: any; onNavigate?: (module: string) => void };
+type Props = { arqState?: any; onNavigate?: (module: string) => void; obraId?: string; compact?: boolean };
 
 function token() {
   return localStorage.getItem("vendorai_token") ?? "";
@@ -127,6 +129,7 @@ function normalizeRequest(raw: any): PurchaseRequest {
     financeId: raw?.lancamento_financeiro_id ?? null,
     notes: raw?.observacoes ?? null,
     inputId: raw?.insumo_id ?? null,
+    documents: Array.isArray(raw?.documentos) ? raw.documentos : [],
   };
 }
 
@@ -145,6 +148,7 @@ function normalizeQuote(raw: any): Quote {
     expectedDelivery: raw?.expected_delivery ?? null,
     quoteNumber: raw?.quote_number ?? null,
     status: String(raw?.status ?? "quoted"),
+    documents: Array.isArray(raw?.documents) ? raw.documents : [],
   };
 }
 
@@ -199,7 +203,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
   return <div className="rounded-[26px] border border-slate-100 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{hint}</p></div>;
 }
 
-export default function RealProcurementWorkspace({ arqState, onNavigate }: Props) {
+export default function RealProcurementWorkspace({ arqState = {}, onNavigate, obraId: directObraId = "", compact = false }: Props) {
   const { projectCtx, setProjectCtx } = useWorkspaceProject();
   const meta = useMemo(() => projectMeta(arqState, projectCtx), [arqState, projectCtx]);
   const [view, setView] = useState<View>("requests");
@@ -214,14 +218,17 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
   const [financeDueDate, setFinanceDueDate] = useState("");
 
   const load = useCallback(async () => {
-    if (!meta.id) { setLoading(false); return; }
+    if (!directObraId && !meta.id) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const ensured = await api<{ obra: any }>("/api/arch/construction/ensure", { method: "POST", body: JSON.stringify({ projectId: meta.id, name: meta.name, clientName: meta.clientName, budget: meta.budget, status: meta.status }) });
-      const obraId = String(ensured.obra?.id ?? "");
-      if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
-      if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
+      let obraId = directObraId;
+      if (!obraId) {
+        const ensured = await api<{ obra: any }>("/api/arch/construction/ensure", { method: "POST", body: JSON.stringify({ projectId: meta.id, name: meta.name, clientName: meta.clientName, budget: meta.budget, status: meta.status }) });
+        obraId = String(ensured.obra?.id ?? "");
+        if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
+        if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
+      }
       const raw = await api<any>(`/api/arch/procurement/${obraId}`);
       const requests = (raw.requests ?? []).map(normalizeRequest);
       const normalized: Bundle = {
@@ -239,7 +246,7 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
     } finally {
       setLoading(false);
     }
-  }, [meta.budget, meta.clientName, meta.id, meta.name, meta.status, projectCtx, setProjectCtx]);
+  }, [directObraId, meta.budget, meta.clientName, meta.id, meta.name, meta.status, projectCtx, setProjectCtx]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -322,13 +329,13 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
     finally { setBusy(null); }
   }
 
-  if (!meta.id) return <div className="rounded-3xl border border-dashed p-8 text-center text-sm text-slate-500">Selecione um projeto para abrir Compras.</div>;
+  if (!directObraId && !meta.id) return <div className="rounded-3xl border border-dashed p-8 text-center text-sm text-slate-500">Selecione um projeto ou obra para abrir Compras.</div>;
   if (loading) return <div className="p-8 text-sm text-slate-500">Carregando Compras da obra…</div>;
   if (!bundle) return <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">{error || "Não foi possível carregar Compras."}</div>;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
-      <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
+    <div className={compact ? "text-slate-950" : "min-h-screen bg-[#f7f7f8] text-slate-950"}>
+      <div className={compact ? "flex w-full flex-col gap-5" : "mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6"}>
         <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Compras da Obra</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{bundle.obra.nome}</h1><p className="mt-1 text-sm text-slate-500">Solicitação → Cotação → Aprovação → Pedido → Recebimento → Financeiro</p></div>
