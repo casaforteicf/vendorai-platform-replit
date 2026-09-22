@@ -29,10 +29,10 @@ RUN corepack enable \
 
 COPY . .
 
-# O workspace pode receber um pacote novo antes da regeneração do lockfile.
-# Permitir a atualização durante o build evita derrubar a API por lock drift.
-RUN pnpm install --no-frozen-lockfile \
-  && pnpm --filter @workspace/api-server run ci:railway
+# Produção não corrige lockfile silenciosamente. O mesmo gate pode rodar no
+# Railway, Cloudflare ou localmente sem depender de GitHub Actions.
+RUN pnpm install --frozen-lockfile \
+  && pnpm run validate:api
 
 ENV NODE_ENV=production
 
