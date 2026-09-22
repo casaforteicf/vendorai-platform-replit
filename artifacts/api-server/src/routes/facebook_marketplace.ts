@@ -49,7 +49,7 @@ function hasTenantAccess(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
-function uniqueMedia(product: {
+export function uniqueMedia(product: {
   imagemUrl?: string | null;
   imagens?: string[] | null;
 }, provided?: string[]) {
@@ -63,7 +63,7 @@ function uniqueMedia(product: {
   return [...new Set(values)].slice(0, 10);
 }
 
-function effectivePrice(product: {
+export function effectivePrice(product: {
   precoBase: string;
   precoPromocional?: string | null;
   promocaoAtivaAte?: Date | null;
@@ -74,7 +74,7 @@ function effectivePrice(product: {
   return String(promoStillValid ? product.precoPromocional : product.precoBase);
 }
 
-function fallbackDraft(product: {
+export function fallbackDraft(product: {
   nome: string;
   marca?: string | null;
   descricao?: string | null;
