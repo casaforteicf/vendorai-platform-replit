@@ -1820,7 +1820,7 @@ export default function ConceptWebGLScene({
         <div className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-orange-400 bg-orange-500/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]">
           <div className="rounded-2xl border border-orange-200 bg-white/95 px-4 py-3 text-center shadow-xl backdrop-blur">
             <div className="text-sm font-bold text-slate-900">Solte para inserir no 3D</div>
-            <div className="mt-1 text-[11px] font-semibold text-orange-600">Pavimento ${activeFloor + 1} · posição exata pela câmera</div>
+            <div className="mt-1 text-[11px] font-semibold text-orange-600">Pavimento {activeFloor + 1} · posição exata pela câmera</div>
           </div>
         </div>
       )}
