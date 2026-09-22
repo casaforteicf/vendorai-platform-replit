@@ -557,6 +557,86 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   return { externalCampaignId: campaignRes.id, campaignId: campaignRes.id, adSetId: adSetRes.id, creativeId: creativeRes.id, adId: adRes.id };
 }
 
+export async function publishMetaAdsCreativeVariant(
+  tenantId: string,
+  campaignId: string,
+  creativeId: string,
+): Promise<{ externalAdId: string; externalCreativeId: string }> {
+  const [[campaign], [creative]] = await Promise.all([
+    db.select().from(adCampaignsTable)
+      .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId))),
+    db.select().from(adCreativesTable)
+      .where(and(eq(adCreativesTable.id, creativeId), eq(adCreativesTable.campaignId, campaignId))),
+  ]);
+  if (!campaign?.externalCampaignId) throw new MetaAdsPublishError("Publique a campanha antes de adicionar uma variação A/B.");
+  if (!creative) throw new MetaAdsPublishError("Variação não encontrada.");
+  if (creative.status !== "aprovado") throw new MetaAdsPublishError("Aprove a variação antes de publicar no teste A/B.");
+  if (creative.externalAdId && creative.externalCreativeId) return { externalAdId: creative.externalAdId, externalCreativeId: creative.externalCreativeId };
+  if (!creative.imagens[0]) throw new MetaAdsPublishError("Variação sem imagem.");
+
+  const finalUrl = await resolveFinalUrl(tenantId, campaign);
+  const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
+  const adAccountPath = normalizeMetaAdAccountId(adAccountId);
+  const { pageId, instagramUserId } = await getInstagramIdentity(tenantId, accessToken);
+  const adSets = await metaApi<{ data?: Array<{ id: string }> }>(
+    `${campaign.externalCampaignId}/adsets`,
+    accessToken,
+    "GET",
+    { fields: "id", limit: "100" },
+  );
+  const adSetId = adSets.data?.[0]?.id;
+  if (!adSetId) throw new MetaAdsPublishError("Conjunto de anúncios não encontrado na Meta.");
+
+  const headline = creative.headlines[0] ?? campaign.vertical;
+  const primaryText = creative.headlines[1] ?? headline;
+  const description = creative.descriptions[0] ?? "";
+  const creativeRes = await metaApi<{ id: string }>(`${adAccountPath}/adcreatives`, accessToken, "POST", {
+    name: `Vendor.ai A/B — ${headline} — ${new Date().toISOString().slice(0, 10)}`,
+    object_story_spec: JSON.stringify({
+      page_id: pageId,
+      instagram_user_id: instagramUserId,
+      link_data: {
+        message: primaryText,
+        link: finalUrl,
+        name: headline,
+        description,
+        picture: creative.imagens[0],
+        call_to_action: { type: "LEARN_MORE", value: { link: finalUrl } },
+      },
+    }),
+  });
+  const adRes = await metaApi<{ id: string }>(`${adAccountPath}/ads`, accessToken, "POST", {
+    name: `Vendor.ai A/B — ${headline}`,
+    adset_id: adSetId,
+    creative: JSON.stringify({ creative_id: creativeRes.id }),
+    status: "PAUSED",
+  });
+
+  await db.update(adCreativesTable)
+    .set({ externalCreativeId: creativeRes.id, externalAdId: adRes.id })
+    .where(eq(adCreativesTable.id, creativeId));
+
+  return { externalAdId: adRes.id, externalCreativeId: creativeRes.id };
+}
+
+export async function setMetaAdsCreativeVariantStatus(
+  tenantId: string,
+  campaignId: string,
+  creativeId: string,
+  ativar: boolean,
+): Promise<void> {
+  const [[campaign], [creative]] = await Promise.all([
+    db.select().from(adCampaignsTable)
+      .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId))),
+    db.select().from(adCreativesTable)
+      .where(and(eq(adCreativesTable.id, creativeId), eq(adCreativesTable.campaignId, campaignId))),
+  ]);
+  if (!campaign?.externalCampaignId) throw new MetaAdsPublishError("Campanha ainda não publicada.");
+  if (!creative?.externalAdId) throw new MetaAdsPublishError("Variação ainda não publicada.");
+  const { accessToken } = await getValidAccessToken(tenantId);
+  await metaApi(creative.externalAdId, accessToken, "POST", { status: ativar ? "ACTIVE" : "PAUSED" });
+}
+
 export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: string, ativar: boolean): Promise<void> {
   const [campanha] = await db
     .select()
