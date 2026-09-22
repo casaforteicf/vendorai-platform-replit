@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -157,7 +157,8 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
         inArray(workCardsTable.etapa, [...ACTIVE_SUPPORT_STAGES]),
       ),
     )
-    .limit(500);
+    .orderBy(asc(workCardsTable.updatedAt))
+    .limit(1000);
 
   const now = new Date();
   const businessHoursCache = new Map<string, boolean>();
