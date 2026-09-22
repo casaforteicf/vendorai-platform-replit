@@ -1061,8 +1061,7 @@ export async function sendOutgoingMessage(
       tipoConteudo: input.midia ? inferTipoConteudo(input.midia.mimeType) : "texto",
       midiaUrl: input.midia?.url ?? null,
       status: "enviado",
-      sourceMessageId: externalMessageId,
-      provider: canal === "email" ? "resend" : null,
+      externalId: externalMessageId,
     })
     .returning();
 
