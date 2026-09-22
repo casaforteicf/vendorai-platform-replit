@@ -1,4 +1,12 @@
 export type ColdEvidenceConfidence = "high" | "medium" | "low";
+export type ColdOutreachChannel = "whatsapp" | "instagram" | "email";
+
+export interface ColdOutreachChannelPlan {
+  channel: ColdOutreachChannel;
+  available: boolean;
+  autoExecutable: boolean;
+  reason: string;
+}
 
 export interface ColdEvidence {
   key: string;
@@ -14,6 +22,7 @@ export interface ColdProspectQualityInput {
   telefone?: string | null;
   email?: string | null;
   instagramHandle?: string | null;
+  instagramScopedId?: string | null;
   websiteUrl?: string | null;
   source?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -45,6 +54,9 @@ export interface ColdProspectQualityResult {
   evidence: ColdEvidence[];
   evidenceCount: number;
   hasValidContact: boolean;
+  hasExecutableChannel: boolean;
+  preferredChannel: ColdOutreachChannel | null;
+  channels: ColdOutreachChannelPlan[];
   segmentIdentified: boolean;
   fitScore: number;
   painScore: number;
@@ -57,15 +69,14 @@ export interface ColdProspectQualityResult {
   };
 }
 
-const ODONTO_TOKENS = ["odonto", "odontolog", "dent", "implant", "ortodont", "clinica_dental"];
-
 function normalized(value: string | null | undefined): string {
   return (value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-function isOdonto(segmento: string): boolean {
-  const value = normalized(segmento);
-  return ODONTO_TOKENS.some((token) => value.includes(token));
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
 }
 
 function cleanText(value: unknown): string | null {
@@ -133,7 +144,50 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
     );
   }
 
-  const hasValidContact = Boolean(cleanText(input.telefone) || cleanText(input.email) || cleanText(input.instagramHandle));
+  const phone = cleanText(input.telefone);
+  const email = cleanText(input.email);
+  const instagramHandle = cleanText(input.instagramHandle);
+  const instagramScopedId = cleanText(input.instagramScopedId);
+
+  // "Contato encontrado" e "canal que o sistema consegue executar agora" são
+  // conceitos diferentes. Um @ público do Instagram, por exemplo, não permite
+  // DM fria pela API da Meta sem um scoped id prévio. E-mail continua sendo
+  // preservado como opção comercial, mas o transporte automático ainda não é
+  // executado pelo Prospecctor.
+  const channels: ColdOutreachChannelPlan[] = [
+    {
+      channel: "whatsapp",
+      available: Boolean(phone),
+      autoExecutable: Boolean(phone),
+      reason: phone ? "telefone_comercial_disponivel" : "sem_telefone",
+    },
+    {
+      channel: "instagram",
+      available: Boolean(instagramHandle || instagramScopedId),
+      autoExecutable: Boolean(instagramScopedId),
+      reason: instagramScopedId
+        ? "instagram_scoped_id_disponivel"
+        : instagramHandle
+          ? "handle_publico_sem_permissao_de_dm_automatica"
+          : "sem_instagram",
+    },
+    {
+      channel: "email",
+      available: Boolean(email),
+      autoExecutable: false,
+      reason: email ? "email_disponivel_transporte_prospector_pendente" : "sem_email",
+    },
+  ];
+
+  const hasValidContact = channels.some((item) => item.available);
+  const executableChannels = channels.filter((item) => item.autoExecutable);
+  const hasExecutableChannel = executableChannels.length > 0;
+  const preferredChannel =
+    executableChannels.find((item) => item.channel === "whatsapp")?.channel ??
+    executableChannels.find((item) => item.channel === "instagram")?.channel ??
+    channels.find((item) => item.available)?.channel ??
+    null;
+
   const segmentIdentified = normalized(input.segmento) !== "" && normalized(input.segmento) !== "geral";
   const requiredEvidence = 2;
 
@@ -145,9 +199,10 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
   if (input.websiteUrl || input.instagramHandle) fitScore += 10;
   fitScore = Math.min(100, fitScore);
 
+  // Score universal: não embute regras de um nicho específico no núcleo.
+  // Pesos específicos de segmento devem vir do tenant/preset, não deste gate.
   let painScore = 20;
-  if (!input.digital.indicio_crm) painScore += 20;
-  if (!input.digital.tem_agendamento_online && isOdonto(input.segmento)) painScore += 15;
+  if (!input.digital.indicio_crm) painScore += 15;
   if (input.growth.anuncios_ativos) painScore += 15;
   if (input.growth.reviews_velocity >= 5) painScore += 10;
   if (input.growth.multiplas_unidades) painScore += 10;
@@ -156,6 +211,7 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
 
   const reasons: string[] = [];
   if (!hasValidContact) reasons.push("sem_contato_utilizavel");
+  else if (!hasExecutableChannel) reasons.push("sem_canal_automatico_executavel");
   if (!segmentIdentified) reasons.push("segmento_nao_identificado");
   if (evidence.length < requiredEvidence) reasons.push("evidencias_insuficientes");
   if (input.propensityScore < input.dispatchThreshold) reasons.push("score_abaixo_do_threshold");
@@ -167,7 +223,9 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
       ? "below_score"
       : "needs_more_data";
 
-  const odonto = isOdonto(input.segmento);
+  const configuredFocusSignals = stringArray(meta["prospector_focus_signals"]);
+  const configuredModules = stringArray(meta["prospector_recommended_modules"]);
+
   return {
     ready,
     status,
@@ -175,22 +233,22 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
     evidence,
     evidenceCount: evidence.length,
     hasValidContact,
+    hasExecutableChannel,
+    preferredChannel,
+    channels,
     segmentIdentified,
     fitScore,
     painScore,
     requiredEvidence,
-    playbook: odonto
-      ? {
-          segment: "saude",
-          niche: "clinicas_odontologicas",
-          focusSignals: ["google_reviews", "website", "instagram", "online_booking", "active_ads", "multiple_units", "commercial_contact"],
-          recommendedModules: ["crm", "sdr", "follow_up", "agendamento", "whatsapp", "marketing", "revenue_scout", "jarvis"],
-        }
-      : {
-          segment: input.segmento,
-          niche: input.segmento,
-          focusSignals: ["google_presence", "website", "instagram", "active_ads", "reviews", "commercial_contact"],
-          recommendedModules: ["crm", "sdr", "follow_up", "marketing", "revenue_scout", "jarvis"],
-        },
+    playbook: {
+      segment: input.segmento,
+      niche: cleanText(meta["prospector_niche"]) ?? input.segmento,
+      focusSignals: configuredFocusSignals.length > 0
+        ? configuredFocusSignals
+        : ["google_presence", "website", "instagram", "active_ads", "reviews", "commercial_contact"],
+      recommendedModules: configuredModules.length > 0
+        ? configuredModules
+        : ["crm", "sdr", "follow_up", "marketing", "revenue_scout"],
+    },
   };
 }
