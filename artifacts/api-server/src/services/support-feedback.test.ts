@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifySupportResolution,
   extractSupportRating,
-} from "./support-feedback.js";
+} from "./support-feedback-logic.js";
 
 describe("support feedback flow", () => {
   it("classifica confirmação de resolução", () => {
