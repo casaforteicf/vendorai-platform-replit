@@ -794,7 +794,7 @@ export default function ConceptPlanner() {
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
   const [polyHavenInsertSlug, setPolyHavenInsertSlug] = useState<string | null>(null);
   const [autoModelPreviews, setAutoModelPreviews] = useState<Record<string, AutoModelPreview>>({});
-  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("build");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("site");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
   const closeLibraryOnMobile = () => {
@@ -4125,7 +4125,7 @@ export default function ConceptPlanner() {
               </div>
 
               <div className="flex shrink-0 items-center gap-1">
-                {editorView === "plan" && (
+                {editorView === "plan" && editorExperienceMode === "professional" && (
                 <button
                   type="button"
                   onClick={() => setShowDimensions((value) => !value)}
@@ -4137,7 +4137,7 @@ export default function ConceptPlanner() {
                   <Ruler className="h-4 w-4" />
                 </button>
                 )}
-                {editorView === "plan" && (
+                {editorView === "plan" && editorExperienceMode === "professional" && (
                   <button
                     type="button"
                     onClick={() => setModelGalleryOpen(true)}
@@ -4493,7 +4493,8 @@ export default function ConceptPlanner() {
                             type="button"
                             onClick={() => {
                               const current = GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab);
-                              const next = GUIDED_LIBRARY_FLOW[Math.min(GUIDED_LIBRARY_FLOW.length - 1, Math.max(0, current) + 1)];
+                              const nextIndex = Math.max(0, current) + 1;
+                              const next = GUIDED_LIBRARY_FLOW[nextIndex];
                               if (next) {
                                 setEditorLibraryTab(next.id);
                                 setLibraryOpen(true);
@@ -4504,7 +4505,9 @@ export default function ConceptPlanner() {
                             }}
                             className="shrink-0 rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white"
                           >
-                            Próximo
+                            {GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab) >= GUIDED_LIBRARY_FLOW.length - 1
+                              ? "Ir para fachada"
+                              : "Próximo"}
                           </button>
                         </div>
                       )}
@@ -4816,6 +4819,9 @@ export default function ConceptPlanner() {
                             ["suite", BedDouble, "Suíte"],
                             ["banheiro", Bath, "Banheiro"],
                             ["lavanderia", Home, "Lavanderia"],
+                            ["garagem", CarFront, "Garagem"],
+                            ["gourmet", ChefHat, "Área gourmet"],
+                            ["piscina", Waves, "Piscina"],
                           ] as Array<[RoomKind, typeof Home, string]>).map(([kind, Icon, label]) => (
                             <button
                               key={kind}
