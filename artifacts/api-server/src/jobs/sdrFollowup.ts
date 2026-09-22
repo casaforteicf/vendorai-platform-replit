@@ -58,6 +58,7 @@ async function retryPendingInitialColdOutreach(log: Logger): Promise<number> {
       tenantId: leadsTable.tenantId,
       source: leadsTable.source,
       telefone: leadsTable.telefone,
+      email: leadsTable.email,
     })
     .from(leadsTable)
     .where(and(
@@ -68,7 +69,7 @@ async function retryPendingInitialColdOutreach(log: Logger): Promise<number> {
 
   let retried = 0;
   for (const lead of candidates) {
-    if (!lead.tenantId || !lead.telefone || !isColdProspectSource(lead.source)) continue;
+    if (!lead.tenantId || (!lead.telefone && !lead.email) || !isColdProspectSource(lead.source)) continue;
     if (!(await tenantIsWithinBusinessHours(lead.tenantId))) continue;
 
     const [alreadyApproached] = await db
@@ -77,7 +78,7 @@ async function retryPendingInitialColdOutreach(log: Logger): Promise<number> {
       .where(and(
         eq(activitiesTable.leadId, lead.id),
         eq(activitiesTable.tenantId, lead.tenantId),
-        eq(activitiesTable.tipo, "whatsapp"),
+        or(eq(activitiesTable.tipo, "whatsapp"), eq(activitiesTable.tipo, "email")),
         or(
           sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:%'`,
           sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:%|template_ordem:1%'`,
@@ -128,16 +129,18 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
       tenantId: activitiesTable.tenantId,
       sentAt: activitiesTable.concluidaEm,
       resultado: activitiesTable.resultadoExecucao,
+      channel: activitiesTable.tipo,
     })
     .from(activitiesTable)
     .where(and(
-      eq(activitiesTable.tipo, "whatsapp"),
+      or(eq(activitiesTable.tipo, "whatsapp"), eq(activitiesTable.tipo, "email")),
       gte(activitiesTable.concluidaEm, windowStart),
       lte(activitiesTable.concluidaEm, windowEnd),
       or(
         sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:%|template_ordem:1%'`,
         sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:v1%'`,
         sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:v2%'`,
+        sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:v3%'`,
       ),
     ))
     .limit(300);
@@ -154,6 +157,7 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
   for (const approach of approaches) {
     try {
       const { leadId, dealId, tenantId, sentAt } = approach;
+      const channel = approach.channel === "email" ? "email" : "whatsapp";
       if (!leadId || !tenantId || !sentAt) continue;
 
       if (!(await tenantIsWithinBusinessHours(tenantId))) continue;
@@ -185,7 +189,10 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         .where(and(
           eq(activitiesTable.leadId, leadId),
           eq(activitiesTable.tenantId, tenantId),
-          sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:followup_%|prospector_cadence:v2'`,
+          or(
+            sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:followup_%|prospector_cadence:v2%'`,
+            sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:followup_%|prospector_cadence:v3%'`,
+          ),
         ))
         .orderBy(desc(activitiesTable.createdAt));
 
@@ -273,7 +280,8 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         continue;
       }
 
-      if (!lead.telefone) continue;
+      if (channel === "whatsapp" && !lead.telefone) continue;
+      if (channel === "email" && !lead.email) continue;
 
       const hoursSinceFirst = (now.getTime() - sentAt.getTime()) / 3_600_000;
       const nextStep = nextProspectorCadenceStep(hoursSinceFirst, sentKeys);
@@ -301,6 +309,7 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         lead.telefone,
         log,
         nextStep,
+        channel,
       );
       sent++;
 
