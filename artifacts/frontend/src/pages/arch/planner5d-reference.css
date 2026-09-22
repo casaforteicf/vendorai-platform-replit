@@ -350,8 +350,8 @@
 @media (min-width: 1280px) {
   .arqdor-reference-ui .arq-workspace-shell {
     min-height: calc(100dvh - var(--arq-chrome-height));
-    display: grid;
-    grid-template-columns: var(--arq-sidebar-width) minmax(0, 1fr) var(--arq-inspector-width);
+    display: block;
+    position: relative;
     background: var(--arq-canvas);
   }
 
@@ -372,6 +372,7 @@
 
   .arqdor-reference-ui .arq-workspace-center {
     min-width: 0;
+    width: 100%;
     position: relative;
     overflow: hidden;
   }
