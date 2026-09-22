@@ -33,4 +33,12 @@ describe("financeiro da obra vinculado ao orçamento", () => {
     expect(uiSource).toContain("Custo orçado");
     expect(uiSource).toContain("Custo realizado");
   });
+
+  it("incorpora mão de obra apontada em campo ao custo realizado", () => {
+    expect(apiSource).toContain("obra_apontamentos_producao");
+    expect(apiSource).toContain("maoObraApontada");
+    expect(apiSource).toContain("totalGastoFinanceiro + maoObraApontada");
+    expect(uiSource).toContain("M.O. apontada");
+    expect(uiSource).toContain("Mão de obra apontada");
+  });
 });

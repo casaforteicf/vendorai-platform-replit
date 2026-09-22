@@ -40,6 +40,8 @@ interface DreData {
   orcamentoTotal: number;
   custoOrcado: number;
   totalGasto: number;
+  totalGastoFinanceiro?: number;
+  maoObraApontada?: number;
   totalPago: number;
   totalPendente: number;
   saldo: number;
@@ -97,6 +99,7 @@ const TIPO_LABEL: Record<string, string> = {
   boleto:      "Boleto",
   recibo:      "Recibo",
   outros:      "Outros",
+  mao_de_obra_apontada: "Mão de obra apontada",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -401,7 +404,7 @@ function DrePanel({
 
       {expanded && (
         <div className="border-t px-4 py-4 space-y-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pago</p>
               <p className="text-sm font-semibold text-emerald-700 mt-1">{fmtBRL(dre.totalPago)}</p>
@@ -409,6 +412,10 @@ function DrePanel({
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">A pagar</p>
               <p className="text-sm font-semibold text-amber-700 mt-1">{fmtBRL(dre.totalPendente)}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">M.O. apontada</p>
+              <p className="text-sm font-semibold text-orange-700 mt-1">{fmtBRL(dre.maoObraApontada ?? 0)}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">BDI / margem orçada</p>
@@ -458,7 +465,7 @@ function DrePanel({
 
           {dre.porTipo.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Custos por tipo de documento</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Custos por origem</p>
               <div className="space-y-1.5">
                 {dre.porTipo.map((t) => (
                   <div key={t.tipo} className="flex items-center justify-between text-sm">

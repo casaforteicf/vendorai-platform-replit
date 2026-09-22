@@ -87,6 +87,7 @@ import archBudgetEngineRouter from "./arch_budget_engine";
 import archClientPortalApprovalRouter from "./arch_client_portal_approval";
 import archProductionProcurementRouter from "./arch_production_procurement";
 import archConstructionDiaryRouter from "./arch_construction_diary";
+import obraFieldRouter, { obraFieldPublicRouter } from "./obra_field_access";
 import archProcurementRealRouter from "./arch_procurement_real";
 import archPostSaleRouter from "./arch_post_sale";
 import { createSystemConsolidationRouter } from "./arch_system_consolidation";
@@ -172,7 +173,7 @@ import internalScoutSignalRouter from "./internal_scout_signal";
 import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
 import contentAutopilotRouter from "./content_autopilot";
 import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
-import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { authenticate, enforceAccessScope, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { enforceAccessLicense } from "../middlewares/accessLicense";
 import { configurationBusinessProfileAudit } from "../middlewares/configurationBusinessProfileAudit";
 import { eq } from "drizzle-orm";
@@ -184,6 +185,7 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(storageRouter);
 router.use(authRouter);
+router.use(obraFieldPublicRouter);
 router.use(googleLoginRouter);
 router.use(manifestRouter);
 router.use(invitesRouter);
@@ -218,6 +220,9 @@ router.use(publicAgentSimulatorRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
+
+// Scoped worksite tokens must be fenced before any general tenant endpoint is reachable.
+router.use(enforceAccessScope);
 
 // Session endpoints must be mounted immediately after JWT validation. The
 // frontend needs /auth/me before tenant, onboarding or license checks.
@@ -512,6 +517,7 @@ router.use(archSpecObjectsRouter);
 router.use(archBudgetEngineRouter);
 router.use(archClientPortalApprovalRouter);
 router.use(archProductionProcurementRouter);
+router.use(obraFieldRouter);
 router.use(archConstructionDiaryRouter);
 router.use(archProcurementRealRouter);
 router.use(archPostSaleRouter);

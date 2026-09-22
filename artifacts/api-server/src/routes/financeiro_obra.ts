@@ -7,6 +7,7 @@ import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   db,
+  pool,
   obrasTable,
   obraEtapasTable,
   obraLancamentosTable,
@@ -30,9 +31,16 @@ async function recalcCustoRealizado(obraId: string, tenantId: string): Promise<v
     })
     .from(obraLancamentosTable)
     .where(and(eq(obraLancamentosTable.obraId, obraId), eq(obraLancamentosTable.tenantId, tenantId)));
+  const maoObraResult = await pool.query(
+    `SELECT COALESCE(SUM(custo_mao_obra), 0)::numeric AS total
+       FROM obra_apontamentos_producao
+      WHERE obra_id = $1 AND tenant_id = $2`,
+    [obraId, tenantId],
+  );
+  const totalRealizado = Number(result?.total ?? 0) + Number(maoObraResult.rows[0]?.total ?? 0);
   await db
     .update(obrasTable)
-    .set({ custoRealizado: result?.total ?? "0", updatedAt: new Date() })
+    .set({ custoRealizado: String(totalRealizado), updatedAt: new Date() })
     .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tenantId)));
 }
 
@@ -394,6 +402,21 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
       obraLancamentosTable.status,
     );
 
+  const maoObraApontadaResult = await pool.query(
+    `SELECT etapa_id, COALESCE(SUM(custo_mao_obra), 0)::numeric AS total
+       FROM obra_apontamentos_producao
+      WHERE obra_id = $1 AND tenant_id = $2
+      GROUP BY etapa_id`,
+    [obraId, tenantId],
+  );
+  const maoObraPorEtapa = new Map<string | null, number>(
+    maoObraApontadaResult.rows.map((row: any) => [row.etapa_id ?? null, Number(row.total ?? 0)]),
+  );
+  const maoObraApontada = maoObraApontadaResult.rows.reduce(
+    (sum: number, row: any) => sum + Number(row.total ?? 0),
+    0,
+  );
+
   // Totais globais
   const [totais] = await db
     .select({
@@ -425,7 +448,8 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
     )
     .groupBy(obraLancamentosTable.tipo);
 
-  const totalGasto = Number(totais?.totalGasto ?? 0);
+  const totalGastoFinanceiro = Number(totais?.totalGasto ?? 0);
+  const totalGasto = totalGastoFinanceiro + maoObraApontada;
   const normalizeEtapa = (nome: string) =>
     nome
       .normalize("NFD")
@@ -439,9 +463,11 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
   );
 
   const etapasCompatibilizadas = etapas.map((e) => {
-    const gasto = lancamentosRows
+    const gastoFinanceiro = lancamentosRows
       .filter((l) => l.etapaId === e.id && l.status !== "cancelado")
       .reduce((s, l) => s + Number(l.total), 0);
+    const maoObra = maoObraPorEtapa.get(e.id) ?? 0;
+    const gasto = gastoFinanceiro + maoObra;
     const previsto = custoOrcadoPorNome.get(normalizeEtapa(e.nome)) ?? 0;
     return {
       id: e.id,
@@ -463,6 +489,8 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
     orcamentoTotal,
     custoOrcado: custoOrcadoBase,
     totalGasto,
+    totalGastoFinanceiro,
+    maoObraApontada,
     totalPago: Number(totais?.totalPago ?? 0),
     totalPendente: Number(totais?.totalPendente ?? 0),
     // compatibilidade com clientes existentes: saldo continua sendo valor de venda menos gasto
@@ -480,12 +508,15 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
           status: orcamentoVinculado.status,
         }
       : null,
-    porTipo: porTipo.map((p) => ({ tipo: p.tipo, total: Number(p.total) })),
+    porTipo: [
+      ...porTipo.map((p) => ({ tipo: p.tipo, total: Number(p.total) })),
+      ...(maoObraApontada > 0 ? [{ tipo: "mao_de_obra_apontada", total: maoObraApontada }] : []),
+    ],
     etapas: etapasCompatibilizadas,
     orcamentoEtapas,
     semEtapa: lancamentosRows
       .filter((l) => !l.etapaId && l.status !== "cancelado")
-      .reduce((s, l) => s + Number(l.total), 0),
+      .reduce((s, l) => s + Number(l.total), 0) + (maoObraPorEtapa.get(null) ?? 0),
   });
 });
 

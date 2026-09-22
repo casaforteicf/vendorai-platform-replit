@@ -35,6 +35,8 @@ const authLimiter = rateLimit({
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/obra/login", authLimiter);
+app.use("/api/auth/obra/activate", authLimiter);
 
 // Compressão gzip padrão, exceto pra respostas de site gerado (JSON com HTML
 // embutido, tipicamente 50-100KB) — vimos corte determinístico no meio da

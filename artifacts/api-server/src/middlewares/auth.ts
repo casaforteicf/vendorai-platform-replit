@@ -73,6 +73,30 @@ function isCriticalConfigurationMutation(req: Request): boolean {
   return /^\/tenants\/[^/]+\/(?:whatsapp-connections\/[^/]+|whatsapp-connection(?:\/refresh)?|instagram-connection(?:\/refresh)?|google-ads-connection(?:\/(?:select-account|refresh|data-manager))?|search-console-connection(?:\/(?:verify|refresh))?|meta-ads-connection(?:\/(?:select-account|refresh))?|social-connections\/(?:youtube|linkedin|tiktok))$/.test(req.path);
 }
 
+export const enforceAccessScope: RequestHandler = (req, res, next) => {
+  const user = req.user;
+  if (!user || user.accessScope !== "obra") {
+    next();
+    return;
+  }
+
+  const allowed =
+    req.path === "/auth/obra/session"
+    || req.path === "/auth/obra/change-password"
+    || req.path.startsWith("/arch/worksite/");
+
+  if (!allowed) {
+    res.status(403).json({
+      error: "OBRA_SCOPE_DENIED",
+      message: "Este acesso é restrito à obra vinculada e não pode abrir outros módulos do tenant.",
+      obraId: user.obraId ?? null,
+    });
+    return;
+  }
+
+  next();
+};
+
 export const authenticate: RequestHandler = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   if (!authHeader?.startsWith("Bearer ")) {

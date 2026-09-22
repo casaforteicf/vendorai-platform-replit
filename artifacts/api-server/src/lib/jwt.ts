@@ -11,6 +11,11 @@ export interface JwtPayload {
   role: "admin" | "member";
   userFunction?: string;
   partnerId?: string;
+  accessScope?: "tenant" | "obra";
+  obraId?: string;
+  obraExecutorId?: string;
+  obraPermissions?: string[];
+  obraProfile?: string;
   // Tokens de usuários existentes omitem este campo e são tratados como humanos.
   // Somente credenciais internas/confiáveis devem emitir `ai` ou `system`.
   actorType?: "human" | "ai" | "system";

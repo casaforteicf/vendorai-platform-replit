@@ -21,6 +21,7 @@ const ResetPassword      = lazy(() => import("@/pages/ResetPassword"));
 const GoogleAuthSuccess  = lazy(() => import("@/pages/GoogleAuthSuccess"));
 const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
+const ObraCampo           = lazy(() => import("@/pages/ObraCampo"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
 const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
@@ -606,6 +607,7 @@ function AppRoutes() {
         <Route path="/esqueci-senha"><PublicRoute component={ForgotPassword} /></Route>
         <Route path="/redefinir-senha"><ResetPassword /></Route>
         <Route path="/portal/obra/:token"><PublicRoute component={PortalObra} /></Route>
+        <Route path="/obra/campo/:obraId">{() => <ObraCampo />}</Route>
         <Route path="/p/:token">{() => <PublicProposta />}</Route>
         <Route path="/rastreio/:id">{() => <RastreioFrete />}</Route>
         <Route path="/acompanhar-entrega/:token">{() => <AcompanharEntrega />}</Route>

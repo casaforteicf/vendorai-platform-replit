@@ -58,6 +58,7 @@ import {
   Search, Loader2, FileText, Download, Sparkles,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
+import EquipeProducao from "./EquipeProducao";
 import RealProcurementWorkspace from "@/modules/arqdor/workspace/procurement-studio/RealProcurementWorkspace";
 import { format, differenceInCalendarDays, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -117,6 +118,7 @@ const ETAPAS_MODELO_EMPRESA: EtapaTemplate[] = [
 const DIARIO_STATUS: Record<string, { label: string; color: string }> = {
   rascunho:           { label: "Rascunho",         color: "bg-slate-100 text-slate-600" },
   pendente_aprovacao: { label: "Pend. aprovação",   color: "bg-amber-100 text-amber-700" },
+  revisao:            { label: "Em revisão",        color: "bg-blue-100 text-blue-700" },
   aprovado:           { label: "Aprovado",          color: "bg-emerald-100 text-emerald-700" },
 };
 
@@ -135,6 +137,7 @@ const TABS = [
   { id: "cronograma",   label: "Cronograma",     icon: Calendar },
   { id: "medicoes",     label: "Medições",       icon: ClipboardList },
   { id: "diario",       label: "Diário de Obra", icon: BookOpen },
+  { id: "equipe-producao", label: "Equipe & Produção", icon: User },
   { id: "financeiro",   label: "Financeiro",     icon: DollarSign },
   { id: "estoque",      label: "Estoque",        icon: Package },
   { id: "compras",      label: "Compras",        icon: ShoppingCart },
@@ -1514,7 +1517,7 @@ function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obr
                           Enviar p/ aprovação
                         </Button>
                       )}
-                      {entry.status === "pendente_aprovacao" && (
+                      {(entry.status === "pendente_aprovacao" || entry.status === "revisao") && (
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-emerald-600 border-emerald-200" onClick={() => handleApprove(entry)}>
                           Aprovar
                         </Button>
@@ -2778,6 +2781,7 @@ export default function ObraDetalhe() {
         {activeTab === "cronograma"   && <Cronograma tenantId={tenantId} obraId={obraId} etapas={etapas} portalToken={(obra as any).portalToken} />}
         {activeTab === "medicoes"     && <Medicoes tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
+        {activeTab === "equipe-producao" && <EquipeProducao tenantId={tenantId} obraId={obraId} etapas={etapas as any} />}
         {activeTab === "financeiro"   && (
           <TabFinanceiro
             tenantId={tenantId}
