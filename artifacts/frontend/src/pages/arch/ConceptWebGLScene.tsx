@@ -29,7 +29,7 @@ type Props = {
   cameraPresetDegrees: number;
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
-  navigationMode?: "orbit" | "walk";
+  navigationMode?: "orbit" | "walk" | "spin";
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -62,7 +62,7 @@ type Runtime = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   };
-  navigationMode: "orbit" | "walk";
+  navigationMode: "orbit" | "walk" | "spin";
   walkKeys: Set<string>;
   walkYaw: number;
   walkPitch: number;
@@ -496,6 +496,16 @@ export default function ConceptWebGLScene({
         });
 
         const loop = () => {
+          if (runtime.navigationMode === "spin" && !runtime.cameraGoal) {
+            const target = controls.target;
+            const dx = camera.position.x - target.x;
+            const dz = camera.position.z - target.z;
+            const radius = Math.max(1, Math.hypot(dx, dz));
+            const angle = Math.atan2(dx, dz) + 0.0035;
+            camera.position.x = target.x + Math.sin(angle) * radius;
+            camera.position.z = target.z + Math.cos(angle) * radius;
+          }
+
           if (runtime.navigationMode === "walk") {
             const forward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
               - Number(runtime.walkKeys.has("s") || runtime.walkKeys.has("arrowdown"));
