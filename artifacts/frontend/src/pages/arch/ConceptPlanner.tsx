@@ -3194,6 +3194,7 @@ export default function ConceptPlanner() {
         facadeDesign,
         renderView,
         lightingMode: options?.lightingMode,
+        sitePlacement,
         objects: safeObjects,
         wallMaterialIds: Object.values(wallMaterials),
         floorMaterialIds: [
@@ -6008,6 +6009,8 @@ export default function ConceptPlanner() {
                   {editorView === "facade" && (
                     <ConceptFacadeEditor
                       lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                      sitePlacement={sitePlacement}
                       levels={modelLevels}
                       rooms={safeRooms}
                       facade={facadePreferences}
