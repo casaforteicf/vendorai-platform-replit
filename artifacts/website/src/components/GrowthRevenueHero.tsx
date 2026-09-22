@@ -18,7 +18,7 @@ const PT = {
   title: "Sua operação comercial trabalhando com IA.",
   accent: "Do primeiro sinal à próxima venda.",
   description:
-    "O VendorAI transforma dados, canais e equipes em um ciclo comercial contínuo: cria campanhas, encontra oportunidades, atende, vende, acompanha e indica a próxima melhor ação.",
+    "O VendorAI conecta prospecção, atendimento, CRM, propostas, follow-up, marketing, cobrança e pós-venda. O TAD entende o contexto e aciona o agente certo em cada etapa.",
   primary: "Testar 5 dias grátis",
   secondary: "Explorar a plataforma",
   proof: "5 dias grátis · CRM e histórico preservados · suporte em português",
@@ -39,19 +39,19 @@ const ES = {
   title: "Tu operación comercial trabajando con IA.",
   accent: "Desde la primera señal hasta la próxima venta.",
   description:
-    "VendorAI transforma datos, canales y equipos en un ciclo comercial continuo: crea campañas, encuentra oportunidades, atiende, vende, acompaña e indica la próxima mejor acción.",
+    "VendorAI conecta prospección, atención, CRM, propuestas, seguimiento, marketing, cobranza y posventa. TAD entiende el contexto y activa al agente correcto en cada etapa.",
   primary: "Probar 5 días gratis",
   secondary: "Explorar la plataforma",
   proof: "5 días gratis · CRM e historial preservados · soporte en español",
   enginesIntro: "Una operación, tres momentos coordinados",
   engines: [
-    { icon: Megaphone, title: "Atraer", text: "Ads, contenido, social, sitios y landing pages." },
-    { icon: Radar, title: "Encontrar", text: "Prospecta, enriquece y prioriza nuevas oportunidades." },
-    { icon: Target, title: "Convertir y expandir", text: "CRM, agentes de IA, follow-up y Revenue Intelligence." },
+    { icon: Megaphone, title: "Generar demanda", text: "Ads, contenido, social, sitios, landing pages y campañas." },
+    { icon: Radar, title: "Encontrar oportunidades", text: "Prospector, señales, enriquecimiento, priorización y Revenue Scout." },
+    { icon: Target, title: "Convertir y expandir", text: "CRM, SDR, Closer, seguimiento, propuestas, cobranza y posventa." },
   ],
   previewLabel: "VendorAI en operación",
-  previewTitle: "De la visita al cierre, todo conectado",
-  previewText: "Vea pipeline, contexto comercial y próxima acción en una única experiencia.",
+  previewTitle: "Pantalla real de VendorAI en operación",
+  previewText: "Este es el producto real: pipeline, contexto comercial, responsables, etapa y próxima acción en el mismo lugar.",
   previewLink: "Conocer el CRM",
 };
 
@@ -144,21 +144,21 @@ export default function GrowthRevenueHero() {
               </span>
             </div>
 
-            <picture>
-              <source type="image/webp" media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.webp`} />
-              <source type="image/webp" srcSet={`${MEDIA}/crm-pipeline/desktop-1440.webp`} />
-              <source media="(max-width: 640px)" srcSet={`${MEDIA}/crm-pipeline/mobile-390.png`} />
-              <img
-                src={`${MEDIA}/crm-pipeline/desktop-1440.png`}
-                alt={copy.previewTitle}
-                width={1440}
-                height={810}
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-                className="aspect-[16/9] w-full object-cover object-top"
-              />
-            </picture>
+            <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster={`${MEDIA}/crm-pipeline/desktop-1440.webp`}
+                className="h-full w-full object-cover object-top"
+                aria-label={copy.previewTitle}
+              >
+                <source src={`${MEDIA}/videos/crm-short.webm`} type="video/webm" />
+              </video>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white/35 to-transparent" />
+            </div>
 
             <div className="flex flex-col gap-4 border-t border-slate-200/70 bg-white/95 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="max-w-xl text-sm leading-6 text-slate-600">{copy.previewText}</p>
