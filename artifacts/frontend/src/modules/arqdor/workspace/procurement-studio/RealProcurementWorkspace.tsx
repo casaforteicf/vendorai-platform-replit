@@ -850,6 +850,93 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
             </section>
 
             <section className="space-y-3">
+              {selected ? (
+                <div className="rounded-[30px] border border-violet-100 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-600">Tomada de preços</p>
+                      <h2 className="mt-1 text-lg font-semibold">Enviar solicitação aos fornecedores</h2>
+                      <p className="mt-1 text-xs text-slate-500">{selected.code} · {selected.item}</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">{selectedDeliveries.length} fornecedor(es) contatado(s)</span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <input
+                      value={rfqDraft.supplier}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, supplier: e.target.value }))}
+                      placeholder="Nome do fornecedor"
+                      className="rounded-xl border px-3 py-2 text-sm"
+                    />
+                    <select
+                      value={rfqDraft.channel}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, channel: e.target.value as "whatsapp" | "email", destination: "" }))}
+                      className="rounded-xl border px-3 py-2 text-sm"
+                    >
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="email">E-mail</option>
+                    </select>
+                    <input
+                      value={rfqDraft.destination}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, destination: e.target.value }))}
+                      placeholder={rfqDraft.channel === "whatsapp" ? "WhatsApp do fornecedor" : "E-mail do fornecedor"}
+                      className="rounded-xl border px-3 py-2 text-sm md:col-span-2"
+                    />
+                    <textarea
+                      rows={8}
+                      value={rfqDraft.message}
+                      onChange={(e) => setRfqDraft((value) => ({ ...value, message: e.target.value }))}
+                      placeholder="Mensagem da solicitação de cotação"
+                      className="rounded-xl border px-3 py-2 text-sm md:col-span-2"
+                    />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!rfqDraft.supplier.trim() || !rfqDraft.destination.trim() || busy === "send-rfq"}
+                      onClick={() => void sendRfq()}
+                      className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy === "send-rfq" ? "Enviando…" : rfqDraft.channel === "whatsapp" ? "Enviar por WhatsApp" : "Enviar por e-mail"}
+                    </button>
+                    <button type="button" onClick={() => openRfq(selected)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold">Visualizar modelo</button>
+                    <button type="button" onClick={() => void copyRfq(selected)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold">Copiar texto</button>
+                  </div>
+
+                  {selectedDeliveries.length ? (
+                    <div className="mt-5 border-t pt-4">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold">Fornecedores acionados</h3>
+                        <span className="text-[11px] text-slate-400">Enviado → Visualizado → Respondido → Cotação recebida</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDeliveries.map((delivery) => (
+                          <div key={delivery.id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium text-sm">{delivery.supplier}</span>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rfqStatusClass(delivery.status)}`}>{rfqStatusLabel(delivery.status)}</span>
+                                </div>
+                                <p className="mt-1 truncate text-xs text-slate-500">{delivery.channel === "whatsapp" ? "WhatsApp" : "E-mail"} · {delivery.destination}</p>
+                                {delivery.sentAt ? <p className="mt-1 text-[10px] text-slate-400">Enviado em {new Date(delivery.sentAt).toLocaleString("pt-BR")}</p> : null}
+                                {delivery.errorMessage ? <p className="mt-1 text-[11px] text-rose-600">{delivery.errorMessage}</p> : null}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                                {delivery.status === "sent" ? <button type="button" disabled={busy === `rfq-${delivery.id}-viewed`} onClick={() => void updateRfqStatus(delivery, "viewed")} className="rounded-lg border bg-white px-2.5 py-1.5 text-[11px] font-semibold">Marcar visualizado</button> : null}
+                                {["sent", "viewed"].includes(delivery.status) ? <button type="button" disabled={busy === `rfq-${delivery.id}-responded`} onClick={() => void updateRfqStatus(delivery, "responded")} className="rounded-lg border bg-white px-2.5 py-1.5 text-[11px] font-semibold">Marcar respondido</button> : null}
+                                {!delivery.quoteId && delivery.status !== "failed" ? <button type="button" onClick={() => prepareQuoteFromDelivery(delivery)} className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[11px] font-semibold text-white">Registrar cotação</button> : null}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {bundle.requests.length ? bundle.requests.map((request) => (
                 <article key={request.id} onClick={() => setSelectedId(request.id)} className={`cursor-pointer rounded-[28px] border bg-white p-5 shadow-sm ${selectedId === request.id ? "border-violet-300 ring-2 ring-violet-100" : "border-slate-100"}`}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -867,7 +954,7 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
                         </div>
                       ) : null}
                     </div>
-                    <div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões)</p></div>
+                    <div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões) · {bundle.rfqDeliveries.filter((delivery) => delivery.requestId === request.id).length} fornecedor(es)</p></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button type="button" onClick={(e) => { e.stopPropagation(); openRfq(request); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Gerar solicitação de cotação</button>
@@ -892,6 +979,24 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
               </select>
               {selected ? (
                 <div className="mt-4 space-y-3">
+                  {selectedDeliveries.length ? (
+                    <label className="block text-[11px] font-medium text-slate-500">
+                      Tomada de preços relacionada
+                      <select
+                        value={quoteDeliveryId}
+                        onChange={(e) => selectQuoteDelivery(e.target.value)}
+                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm text-slate-800"
+                      >
+                        <option value="">Cotação recebida sem envio vinculado</option>
+                        {selectedDeliveries.map((delivery) => (
+                          <option key={delivery.id} value={delivery.id}>
+                            {delivery.supplier} · {delivery.channel === "whatsapp" ? "WhatsApp" : "E-mail"} · {rfqStatusLabel(delivery.status)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
                   <label className="block cursor-pointer rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center transition hover:bg-violet-50">
                     <input
                       type="file"
