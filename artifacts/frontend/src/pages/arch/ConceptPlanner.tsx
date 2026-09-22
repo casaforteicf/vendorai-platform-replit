@@ -197,31 +197,6 @@ function getCatalogPolyHavenQuery(item: RealCatalogProduct) {
   return typeof value === "string" && value.trim().length >= 2 ? value.trim().slice(0, 100) : undefined;
 }
 
-async function resolveCatalogAutoModel(query: string) {
-  try {
-    const search = await fetch(`/api/arch/polyhaven/search?q=${encodeURIComponent(query)}&limit=6`);
-    if (!search.ok) return undefined;
-    const payload = await search.json();
-    const items = Array.isArray(payload?.items) ? payload.items : [];
-    for (const candidate of items.slice(0, 4)) {
-      if (!candidate || typeof candidate.slug !== "string") continue;
-      try {
-        const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(candidate.slug)}`);
-        if (!response.ok) continue;
-        const asset = await response.json();
-        if (typeof asset?.model3dUrl === "string") {
-          return {
-            model3dUrl: asset.model3dUrl as string,
-            modelLabel: typeof asset?.name === "string" ? asset.name as string : candidate.name,
-            supplier: "Poly Haven",
-          };
-        }
-      } catch {}
-    }
-  } catch {}
-  return undefined;
-}
-
 type ConceptMaterialOption = {
   id: string;
   name: string;
@@ -4909,23 +4884,42 @@ export default function ConceptPlanner() {
                                         // Se a resolução remota falhar, o objeto ainda entra com fallback paramétrico.
                                       }
                                     }
-                                    if (!model3dUrl && polyHavenQuery && autoPreview?.slug) {
+                                    if (!model3dUrl && polyHavenQuery) {
                                       try {
-                                        const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(autoPreview.slug)}`);
+                                        const response = await fetch(`/api/arch/catalogo/${encodeURIComponent(item.id)}/resolve-real-model`, {
+                                          method: "POST",
+                                        });
                                         if (response.ok) {
                                           const asset = await response.json();
                                           if (typeof asset?.model3dUrl === "string") {
                                             model3dUrl = asset.model3dUrl;
                                             resolvedSupplier = "Poly Haven";
+                                            setRealCatalogProducts((current) => current.map((product) => {
+                                              if (product.id !== item.id) return product;
+                                              const specs = product.especificacoes && typeof product.especificacoes === "object"
+                                                ? product.especificacoes
+                                                : {};
+                                              const thumbnailUrl = typeof asset?.thumbnailUrl === "string" ? asset.thumbnailUrl : null;
+                                              return {
+                                                ...product,
+                                                imagens: thumbnailUrl
+                                                  ? [thumbnailUrl, ...((product.imagens ?? []).filter((url) => url !== thumbnailUrl))].slice(0, 5)
+                                                  : product.imagens,
+                                                especificacoes: {
+                                                  ...specs,
+                                                  model3dUrl: asset.model3dUrl,
+                                                  polyHavenSlug: typeof asset?.polyHavenSlug === "string" ? asset.polyHavenSlug : specs.polyHavenSlug,
+                                                  modelLicense: "CC0",
+                                                  modelSource: "Poly Haven",
+                                                  lod: "real-remote",
+                                                  source: "arqdor-auto-polyhaven",
+                                                },
+                                              };
+                                            }));
                                           }
                                         }
-                                      } catch {}
-                                    }
-                                    if (!model3dUrl && polyHavenQuery) {
-                                      const autoModel = await resolveCatalogAutoModel(polyHavenQuery);
-                                      if (autoModel?.model3dUrl) {
-                                        model3dUrl = autoModel.model3dUrl;
-                                        resolvedSupplier = autoModel.supplier;
+                                      } catch {
+                                        // Mantém fallback paramétrico se a persistência/resolução remota falhar.
                                       }
                                     }
                                     addObjectAt(
