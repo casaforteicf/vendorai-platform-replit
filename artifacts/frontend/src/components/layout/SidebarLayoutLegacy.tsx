@@ -43,6 +43,24 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       return next;
     });
   }
+
+  // Bloco inferior da sidebar: IA Assistente, usuário, ajuda, novidades e sair.
+  // Fica recolhível de forma independente do menu principal e persiste a
+  // preferência do usuário entre navegações/recarregamentos.
+  const SIDEBAR_UTILITIES_STORAGE_KEY = "vendorai_sidebar_utilities_expanded";
+  const [sidebarUtilitiesExpanded, setSidebarUtilitiesExpanded] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const saved = window.localStorage.getItem(SIDEBAR_UTILITIES_STORAGE_KEY);
+    return saved === null ? true : saved === "true";
+  });
+  function toggleSidebarUtilities() {
+    setSidebarUtilitiesExpanded((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(SIDEBAR_UTILITIES_STORAGE_KEY, String(next));
+      return next;
+    });
+  }
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
@@ -911,40 +929,76 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   function UserFooter() {
+    const showUtilities = sidebarExpanded && sidebarUtilitiesExpanded;
+
     return (
-      <div className="p-4 border-t">
-        <div className="flex items-center gap-3 mb-3 px-2">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-            {user?.name?.charAt(0).toUpperCase() || "U"}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-          </div>
-        </div>
-        <div className="mb-1 space-y-1">
-          <Link
-            href="/faq"
-            className={cn(
-              "flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              location === "/faq"
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
-            )}
+      <div
+        data-vendorai-sidebar-footer="true"
+        data-vendorai-sidebar-utilities-expanded={showUtilities ? "true" : "false"}
+        className="border-t border-sidebar-border/70"
+      >
+        {sidebarExpanded && (
+          <button
+            type="button"
+            onClick={toggleSidebarUtilities}
+            className="flex min-h-[40px] w-full items-center justify-between gap-2 px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent/80 hover:text-foreground"
+            aria-expanded={showUtilities}
+            aria-label={showUtilities ? "Ocultar usuário e atalhos" : "Mostrar usuário e atalhos"}
+            title={showUtilities ? "Ocultar IA Assistente, usuário, ajuda, novidades e sair" : "Mostrar IA Assistente, usuário, ajuda, novidades e sair"}
           >
-            <HelpCircle className="h-4 w-4" />
-            Ajuda / FAQ
-          </Link>
-          <NovidadesBell />
-        </div>
-        <Button
-          variant="outline"
-          className="w-full justify-start text-muted-foreground hover:text-foreground min-h-[44px]"
-          onClick={logout}
-        >
-          <LogOut className="h-4 w-4 mr-2" />
-          Sair
-        </Button>
+            <span className="flex items-center gap-2">
+              <User2 className="h-4 w-4" />
+              Conta e atalhos
+            </span>
+            {showUtilities ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+        )}
+
+        {showUtilities && (
+          <>
+            {/* O UnifiedAssistantLauncher usa este slot por portal; quando
+                os atalhos estão recolhidos o slot some e o botão de IA
+                também fica oculto automaticamente. */}
+            <div data-vendorai-unified-assistant-slot className="px-3 pb-2" />
+
+            <div className="px-4 pb-4">
+              <div className="flex items-center gap-3 mb-3 px-2">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                  {user?.name?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
+              </div>
+
+              <div className="mb-1 space-y-1">
+                <Link
+                  href="/faq"
+                  className={cn(
+                    "flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    location === "/faq"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
+                  )}
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  Central de Ajuda
+                </Link>
+                <NovidadesBell />
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full justify-start text-muted-foreground hover:text-foreground min-h-[44px]"
+                onClick={logout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
