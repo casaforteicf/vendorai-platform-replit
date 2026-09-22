@@ -1,4 +1,6 @@
 import type { ConceptFacadePreferences, VolumetryRoom } from "./ConceptVolumetry";
+import type { SitePlacement } from "./conceptSitePlacement";
+import { buildSiteExteriorPlan } from "./conceptSiteExterior";
 import {
   getFacadeMaterial,
   type FacadeDesignState,
@@ -27,6 +29,7 @@ export type ConceptRenderBriefInput = {
   wallMaterialIds?: string[];
   floorMaterialIds?: string[];
   lightingMode?: "day" | "sunset" | "night";
+  sitePlacement?: SitePlacement;
 };
 
 const styleLabel: Record<ConceptFacadePreferences["style"], string> = {
@@ -72,6 +75,9 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
     .join("; ");
 
   const pool = input.rooms.find((room) => room.kind === "piscina");
+  const siteExterior = input.sitePlacement
+    ? buildSiteExteriorPlan(input.rooms, input.lotWidth, input.lotDepth, input.sitePlacement)
+    : null;
   const facade = input.facade;
   const design = input.facadeDesign;
   const surfaceSummary = design
@@ -111,6 +117,10 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       ? "CRITICAL PRESERVATION: preserve the modeled floor plan geometry, wall positions, openings, furniture placement, object rotation, room proportions and material assignments visible in the source 3D view. Do not redesign the layout."
       : "CRITICAL PRESERVATION: preserve the number of floors, garage position, main entrance hierarchy, facade proportions, roof strategy and the major opening rhythm shown in the source elevation. Do not invent a different house.",
     `Site: rectangular lot ${input.lotWidth} x ${input.lotDepth} m. Building: ${input.floors} floor(s), target area approximately ${input.desiredArea} m².`,
+    siteExterior
+      ? `SITE ORIENTATION LOCK: ${siteExterior.frontLabel}; street-facing frontage approximately ${siteExterior.frontageLength.toFixed(1)} m. Garage appears ${siteExterior.garageSide ?? "without defined side"} on the street facade. Preserve the modeled relationship between street, garage/access, house and rear leisure.`
+      : "",
+    siteExterior ? `EXTERIOR SITE LOGIC: ${siteExterior.leisureSummary}. Do not move pool or gourmet to the street frontage if they are modeled at the rear/side.` : "",
     `Architectural direction: ${styleLabel[facade.style]}.`,
     `Roof: ${roofLabel[facade.roof]}.`,
     surfaceSummary
