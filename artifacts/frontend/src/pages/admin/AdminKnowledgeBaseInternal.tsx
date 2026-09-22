@@ -7182,7 +7182,116 @@ const autopecasCentroAutomotivoModules: ScopeModule[] = [
 ];
 
 
-type SegmentKey = "construtoras" | "arquitetura-design" | "farmacias" | "seguros" | "fruteiras" | "acougues" | "mercados" | "moda" | "produtos-naturais" | "moveis-casa" | "eletronicos-tecnologia" | "materiais-construcao" | "pet-veterinario" | "advocacia" | "contabilidade" | "beleza-barbearia" | "saude-clinicas" | "restaurantes-delivery" | "academias-fitness" | "imobiliarias-corretores" | "distribuidores-alimentos-bebidas" | "distribuidores-materiais-construcao" | "veiculos-mobilidade" | "autopecas-centro-automotivo";
+
+const hoteisPousadasModules: ScopeModule[] = [
+  { id:"captacao-hotel", group:"Aquisição", title:"Captação e Reservas Diretas", summary:"Atrai hóspedes por campanhas, Google, redes sociais, site e WhatsApp.", bullets:["Campanhas por período, público e experiência.","Landing Pages e motor de contato/reserva.","Origem do hóspede no CRM.","Remarketing de interessados."], angle:"Mostre como aumentar reservas diretas e reduzir dependência de intermediários." },
+  { id:"reservas-hotel", group:"Reservas", title:"Reservas e Disponibilidade", summary:"Organiza quartos, datas, tarifas, ocupação e status.", bullets:["Disponibilidade por categoria.","Tarifas e pacotes.","Reserva, alteração e cancelamento.","Mapa de ocupação."], angle:"Destaque controle de ocupação e previsibilidade." },
+  { id:"hospede-crm", group:"CRM", title:"CRM de Hóspedes", summary:"Centraliza perfil, histórico, preferências e estadias.", bullets:["Dados e contatos.","Histórico de reservas.","Preferências e observações.","Campanhas e recorrência."], angle:"Mostre relacionamento que continua após o checkout." },
+  { id:"checkin-checkout-hotel", group:"Operação", title:"Check-in, Check-out e Hospedagem", summary:"Organiza chegada, permanência, consumo e saída.", bullets:["Pré-check-in.","Status do quarto.","Consumos e adicionais.","Check-out e avaliação."], angle:"Destaque uma jornada sem atritos." },
+  { id:"housekeeping-hotel", group:"Operação", title:"Governança e Limpeza", summary:"Controla quartos limpos, ocupados, manutenção e liberação.", bullets:["Status do quarto.","Tarefas de limpeza.","Inspeção e liberação.","Ocorrências."], angle:"Mostre integração entre recepção e governança." },
+  { id:"upsell-hotel", group:"Comercial", title:"Upsell e Experiências", summary:"Oferece adicionais relevantes antes e durante a hospedagem.", bullets:["Café, estacionamento e late checkout.","Passeios e experiências.","Upgrade de categoria.","Pacotes e datas especiais."], angle:"Destaque aumento de receita por hóspede." },
+  { id:"whatsapp-hotel", group:"Atendimento", title:"WhatsApp e Concierge", summary:"Centraliza dúvidas, reservas, solicitações e pós-estadia.", bullets:["Reserva e confirmação.","Solicitações durante hospedagem.","Informações locais.","Follow-up pós-checkout."], angle:"Mostre atendimento rápido com contexto do hóspede." },
+  { id:"revenue-scout-hotel", group:"Inteligência", title:"Revenue Scout para Hospedagem", summary:"Encontra oportunidades de retorno, upsell e ocupação.", bullets:["Hóspedes recorrentes.","Períodos de baixa ocupação.","Reservas abandonadas.","Campanhas por perfil e sazonalidade."], angle:"Mostre receita escondida na base e na ocupação ociosa." },
+  { id:"dashboard-hotel", group:"Inteligência", title:"Dashboard de Hospedagem", summary:"Consolida ocupação, diária média, reservas, canais e receita.", bullets:["Ocupação.","Receita por canal.","Reservas diretas versus intermediadas.","Recorrência e avaliações."], angle:"Destaque gestão comercial e operacional integrada." },
+];
+
+const escolasCursosModules: ScopeModule[] = [
+  { id:"captacao-educacao", group:"Aquisição", title:"Captação de Alunos", summary:"Atrai interessados por curso, turma, faixa etária e objetivo.", bullets:["Campanhas por curso e unidade.","Landing Pages de matrícula.","Aula experimental quando aplicável.","Origem e interesse no CRM."], angle:"Mostre o funil completo do lead à matrícula." },
+  { id:"crm-alunos-educacao", group:"CRM", title:"CRM de Alunos e Responsáveis", summary:"Centraliza aluno, responsável, histórico e relacionamento.", bullets:["Dados cadastrais.","Responsáveis e contatos.","Curso, turma e unidade.","Histórico comercial e acadêmico administrativo."], angle:"Destaque visão única do relacionamento." },
+  { id:"matriculas-educacao", group:"Comercial", title:"Matrículas e Contratos", summary:"Organiza proposta, matrícula, documentos, contrato e aceite.", bullets:["Plano e turma.","Documentos pendentes.","Contrato e condições.","Status da matrícula."], angle:"Mostre menos abandono entre interesse e início." },
+  { id:"turmas-calendario", group:"Operação", title:"Turmas, Agenda e Calendário", summary:"Organiza turmas, professores, salas e horários.", bullets:["Capacidade por turma.","Calendário de aulas.","Professor e sala.","Reposições e eventos."], angle:"Destaque ocupação e organização acadêmica." },
+  { id:"mensalidades-educacao", group:"Financeiro", title:"Mensalidades e Inadimplência", summary:"Acompanha cobranças, vencimentos e pendências.", bullets:["Parcelas e vencimentos.","Lembretes e cobrança.","Descontos e bolsas quando aplicável.","Indicadores de inadimplência."], angle:"Mostre previsibilidade financeira." },
+  { id:"retencao-rematricula", group:"Relacionamento", title:"Retenção e Rematrícula", summary:"Identifica alunos em risco e prepara renovação.", bullets:["Frequência e engajamento administrativo.","Sinais de cancelamento.","Campanhas de rematrícula.","Reativação de ex-alunos."], angle:"Destaque retenção antes de nova aquisição." },
+  { id:"whatsapp-educacao", group:"Atendimento", title:"WhatsApp e Atendimento", summary:"Centraliza dúvidas, matrícula, documentos e comunicação.", bullets:["Informações sobre cursos.","Agendamento de visita.","Pendências de matrícula.","Follow-up."], angle:"Mostre atendimento rápido e rastreável." },
+  { id:"revenue-scout-educacao", group:"Inteligência", title:"Revenue Scout para Educação", summary:"Encontra oportunidades de rematrícula, novos cursos e indicações.", bullets:["Ex-alunos.","Cursos complementares.","Turmas com vagas.","Indicações e familiares."], angle:"Mostre crescimento dentro da própria base." },
+  { id:"dashboard-educacao", group:"Inteligência", title:"Dashboard Educacional", summary:"Consolida leads, matrículas, ocupação, retenção e financeiro.", bullets:["Conversão por curso.","Vagas e ocupação.","Cancelamentos e rematrículas.","Receita e inadimplência."], angle:"Destaque gestão baseada em funil e permanência." },
+];
+
+const energiaSolarModules: ScopeModule[] = [
+  { id:"captacao-solar", group:"Aquisição", title:"Captação para Energia Solar", summary:"Atrai residências, empresas e propriedades rurais por perfil de consumo e região.", bullets:["Campanhas por economia e geração própria.","Landing Pages com diagnóstico inicial.","Conta de energia como entrada de dados.","Origem e interesse no CRM."], angle:"Mostre aquisição baseada em potencial real de projeto." },
+  { id:"diagnostico-solar", group:"Pré-venda", title:"Diagnóstico e Dimensionamento Comercial", summary:"Organiza consumo, local, tarifa e premissas para estudo técnico.", bullets:["Histórico de consumo.","Local da instalação.","Tipo de telhado ou área.","Premissas para revisão técnica."], angle:"Destaque velocidade sem substituir projeto de engenharia." },
+  { id:"proposta-solar", group:"Comercial", title:"Propostas e Simulações", summary:"Monta proposta com sistema, geração estimada, investimento e condições.", bullets:["Potência e equipamentos.","Geração estimada.","Investimento e condições.","Cenários financeiros sem garantia de retorno."], angle:"Mostre proposta técnica-comercial clara." },
+  { id:"projeto-homologacao-solar", group:"Execução", title:"Projeto e Homologação", summary:"Acompanha etapas técnicas, documentação e concessionária.", bullets:["Projeto técnico.","Documentos.","Protocolo e pendências.","Status de homologação."], angle:"Destaque acompanhamento ponta a ponta." },
+  { id:"instalacao-solar", group:"Execução", title:"Instalação e Comissionamento", summary:"Organiza equipe, materiais, etapas e entrega.", bullets:["Agenda de instalação.","Checklist de materiais.","Fotos e evidências.","Comissionamento e entrega."], angle:"Mostre execução rastreável." },
+  { id:"estoque-solar", group:"Operação", title:"Equipamentos e Estoque", summary:"Controla módulos, inversores, estruturas, cabos e acessórios.", bullets:["SKU e fabricante.","Número de série quando aplicável.","Disponibilidade.","Reserva por obra."], angle:"Destaque ligação entre venda e execução." },
+  { id:"monitoramento-solar", group:"Pós-venda", title:"Monitoramento e Pós-venda", summary:"Acompanha sistema instalado, garantias e atendimento.", bullets:["Dados do sistema.","Garantias.","Chamados e manutenção.","Relacionamento pós-instalação."], angle:"Mostre continuidade após a entrega." },
+  { id:"revenue-scout-solar", group:"Inteligência", title:"Revenue Scout Solar", summary:"Identifica expansão, manutenção e indicações.", bullets:["Ampliação de sistema.","Baterias e carregadores.","Clientes com novas unidades.","Indicações."], angle:"Destaque novas receitas na base instalada." },
+  { id:"dashboard-solar", group:"Inteligência", title:"Dashboard Solar", summary:"Consolida leads, propostas, projetos, instalação e pós-venda.", bullets:["Conversão.","Ticket e margem.","Projetos por etapa.","Prazo de implantação."], angle:"Mostre gestão do comercial à entrega." },
+];
+
+const transportadorasLogisticaModules: ScopeModule[] = [
+  { id:"captacao-logistica", group:"Aquisição", title:"Captação B2B de Embarcadores", summary:"Prospecta empresas por rota, perfil de carga e frequência.", bullets:["Segmentação por região.","Perfil de carga.","Volume e recorrência.","CRM de oportunidades."], angle:"Mostre prospecção baseada em capacidade e rota." },
+  { id:"cotacao-frete", group:"Comercial", title:"Cotação de Frete", summary:"Organiza origem, destino, carga, prazo e condição.", bullets:["Peso e cubagem.","Origem e destino.","Prazo e modalidade.","Preço e validade."], angle:"Destaque rapidez e padronização de cotações." },
+  { id:"coletas-logistica", group:"Operação", title:"Coletas e Expedição", summary:"Agenda coletas e acompanha preparação da carga.", bullets:["Janela de coleta.","Veículo e motorista.","Documentos.","Status da coleta."], angle:"Mostre rastreabilidade desde a origem." },
+  { id:"roteirizacao-logistica", group:"Operação", title:"Roteirização e Cargas", summary:"Organiza rotas, veículos, capacidade e sequência.", bullets:["Rota e paradas.","Capacidade.","Consolidação de cargas.","Ocorrências."], angle:"Destaque eficiência operacional." },
+  { id:"rastreio-logistica", group:"Cliente", title:"Rastreio e Portal do Cliente", summary:"Disponibiliza status e eventos da entrega.", bullets:["Coletado, em trânsito e entregue.","Previsão.","Ocorrências.","Comprovante de entrega."], angle:"Mostre transparência ao embarcador." },
+  { id:"frota-motoristas", group:"Frota", title:"Frota e Motoristas", summary:"Organiza veículos, motoristas, documentos e disponibilidade.", bullets:["Veículo e capacidade.","Motorista responsável.","Documentos e vencimentos.","Manutenção e disponibilidade."], angle:"Destaque capacidade operacional real." },
+  { id:"ocorrencias-logistica", group:"Operação", title:"Ocorrências e SLA", summary:"Controla atrasos, avarias, devoluções e tratativas.", bullets:["Tipo de ocorrência.","Responsável.","Prazo de solução.","Comunicação ao cliente."], angle:"Mostre tratamento estruturado de exceções." },
+  { id:"financeiro-logistica", group:"Financeiro", title:"Financeiro por Frete e Cliente", summary:"Organiza receitas, custos, motoristas, combustível e margem.", bullets:["Receita por carga.","Custos de viagem.","Comissões e terceiros.","Margem por rota."], angle:"Destaque rentabilidade por operação." },
+  { id:"revenue-scout-logistica", group:"Inteligência", title:"Revenue Scout Logístico", summary:"Encontra clientes inativos, rotas ociosas e oportunidades recorrentes.", bullets:["Rotas com capacidade.","Clientes com queda de volume.","Novos trechos.","Cross-sell de serviços."], angle:"Mostre receita a partir da malha existente." },
+];
+
+const agroMaquinasModules: ScopeModule[] = [
+  { id:"captacao-agro", group:"Aquisição", title:"Captação de Produtores e Empresas Rurais", summary:"Prospecta por região, cultura, propriedade e perfil de operação.", bullets:["Produtor e propriedade.","Cultura e safra.","Máquinas e necessidades.","Origem no CRM."], angle:"Mostre prospecção baseada em contexto produtivo." },
+  { id:"crm-propriedade-agro", group:"CRM", title:"CRM por Produtor e Propriedade", summary:"Centraliza clientes, propriedades, máquinas e histórico.", bullets:["Propriedade e localização.","Culturas e calendário.","Máquinas instaladas.","Compras e serviços."], angle:"Destaque relacionamento por propriedade, não só por contato." },
+  { id:"catalogo-maquinas-agro", group:"Catálogo", title:"Máquinas, Implementos e Peças", summary:"Organiza equipamentos, implementos, peças e acessórios.", bullets:["Marca e modelo.","Aplicação.","Peças compatíveis.","Estoque e disponibilidade."], angle:"Mostre catálogo técnico ligado ao parque do cliente." },
+  { id:"propostas-agro", group:"Comercial", title:"Propostas e Financiamento", summary:"Organiza máquinas, entrada, troca, financiamento e condições.", bullets:["Equipamento.","Usado na troca.","Condições.","Status de crédito sem garantia de aprovação."], angle:"Destaque negociação de alto valor." },
+  { id:"assistencia-agro", group:"Serviços", title:"Assistência Técnica e Campo", summary:"Agenda técnicos e acompanha chamados em propriedades.", bullets:["Máquina e ocorrência.","Técnico e rota.","Peças utilizadas.","Conclusão e evidências."], angle:"Mostre pós-venda em campo." },
+  { id:"safra-oportunidades", group:"Inteligência", title:"Safra e Oportunidades", summary:"Relaciona ciclos produtivos a demandas comerciais legítimas.", bullets:["Calendário de safra.","Manutenção pré-safra.","Peças e consumíveis.","Renovação de máquinas."], angle:"Destaque timing comercial do agro." },
+  { id:"revenue-scout-agro", group:"Inteligência", title:"Revenue Scout Agro", summary:"Encontra oportunidades por propriedade, parque de máquinas e ciclo.", bullets:["Máquinas sem revisão recente.","Peças recorrentes.","Upgrade e renovação.","Clientes inativos."], angle:"Mostre receita escondida na base instalada." },
+  { id:"dashboard-agro", group:"Inteligência", title:"Dashboard Agro Comercial", summary:"Consolida carteira, propostas, máquinas, serviços e receita.", bullets:["Vendas por região.","Parque instalado.","Chamados e peças.","Margem e recorrência."], angle:"Destaque visão territorial e por propriedade." },
+];
+
+const industriasModules: ScopeModule[] = [
+  { id:"captacao-industria", group:"Aquisição", title:"Captação B2B Industrial", summary:"Prospecta clientes por segmento, aplicação, região e potencial.", bullets:["Segmentação por indústria.","Aplicação e demanda.","Prospector B2B.","CRM de oportunidades."], angle:"Mostre venda consultiva orientada a aplicação." },
+  { id:"catalogo-industrial", group:"Catálogo", title:"Catálogo Técnico Industrial", summary:"Organiza produtos, especificações, aplicações e versões.", bullets:["Família e produto.","Ficha técnica.","Aplicações.","Variantes e customizações."], angle:"Destaque catálogo técnico para vendas complexas." },
+  { id:"cotacao-industrial", group:"Comercial", title:"Cotações e Propostas Técnicas", summary:"Organiza escopo, preço, prazo e condições.", bullets:["Itens e especificações.","Quantidade e lote.","Prazo de produção.","Condição comercial."], angle:"Mostre rastreabilidade da proposta ao pedido." },
+  { id:"pedidos-industria", group:"Pedidos", title:"Pedidos e Carteira", summary:"Acompanha pedidos B2B, recorrência e programação.", bullets:["Pedido e cliente.","Itens e quantidades.","Prazo prometido.","Status."], angle:"Destaque previsibilidade comercial." },
+  { id:"producao-industria", group:"Operação", title:"Produção e Atendimento do Pedido", summary:"Conecta pedido a etapas produtivas quando integrado.", bullets:["Ordem de produção.","Status.","Pendências.","Previsão de conclusão."], angle:"Mostre integração comercial-operacional." },
+  { id:"qualidade-industria", group:"Qualidade", title:"Qualidade e Não Conformidades", summary:"Registra ocorrências, devoluções e tratativas.", bullets:["Lote e item.","Não conformidade.","Ação corretiva.","Retorno ao cliente."], angle:"Destaque pós-venda técnico." },
+  { id:"representantes-industria", group:"Comercial", title:"Representantes e Territórios", summary:"Organiza carteira, região, comissão e metas.", bullets:["Território.","Carteira.","Metas.","Comissões."], angle:"Mostre gestão de canais de venda." },
+  { id:"revenue-scout-industria", group:"Inteligência", title:"Revenue Scout Industrial", summary:"Encontra recompra, cross-sell e clientes com queda de volume.", bullets:["Recompra atrasada.","Mix incompleto.","Clientes inativos.","Novas aplicações."], angle:"Mostre expansão na carteira instalada." },
+  { id:"dashboard-industria", group:"Inteligência", title:"Dashboard Industrial Comercial", summary:"Consolida carteira, propostas, pedidos, margem e prazo.", bullets:["Conversão.","Backlog.","Prazo prometido.","Margem por cliente e produto."], angle:"Destaque gestão do pedido à receita." },
+];
+
+const assistenciaTecnicaModules: ScopeModule[] = [
+  { id:"captacao-assistencia", group:"Aquisição", title:"Captação de Serviços", summary:"Atrai clientes por equipamento, marca, problema e região.", bullets:["Campanhas locais.","Landing Pages por categoria.","WhatsApp e formulário.","Origem no CRM."], angle:"Mostre entrada organizada de chamados." },
+  { id:"cadastro-equipamento", group:"CRM", title:"Cliente e Equipamento", summary:"Centraliza cliente, equipamento, número de série e histórico.", bullets:["Marca e modelo.","Número de série.","Garantia.","Serviços anteriores."], angle:"Destaque histórico técnico por equipamento." },
+  { id:"ordem-servico-assistencia", group:"Operação", title:"Ordem de Serviço", summary:"Controla entrada, diagnóstico, orçamento, autorização e execução.", bullets:["Defeito relatado.","Diagnóstico técnico.","Peças e mão de obra.","Status até entrega."], angle:"Mostre fluxo claro para cliente e equipe." },
+  { id:"orcamento-assistencia", group:"Comercial", title:"Orçamento e Aprovação", summary:"Organiza itens, mão de obra, prazo e aceite.", bullets:["Peças.","Serviços.","Prazo.","Aprovação do cliente."], angle:"Destaque conversão e menos atraso por aprovação." },
+  { id:"pecas-assistencia", group:"Estoque", title:"Peças e Estoque", summary:"Controla peças usadas em reparos e reposição.", bullets:["Estoque.","Reserva por OS.","Compras.","Fornecedores."], angle:"Mostre disponibilidade ligada ao prazo." },
+  { id:"agenda-tecnicos", group:"Agenda", title:"Agenda de Técnicos e Campo", summary:"Organiza bancada, visitas e técnicos.", bullets:["Técnico responsável.","Agenda.","Rota quando externo.","Evidências de conclusão."], angle:"Destaque capacidade e SLA." },
+  { id:"garantia-assistencia", group:"Pós-venda", title:"Garantia do Serviço", summary:"Controla garantia, retorno e recorrência.", bullets:["Prazo de garantia.","Retorno técnico.","Peças trocadas.","Histórico."], angle:"Mostre confiança e rastreabilidade." },
+  { id:"revenue-scout-assistencia", group:"Inteligência", title:"Revenue Scout para Assistência", summary:"Encontra manutenção, acessórios e clientes recorrentes.", bullets:["Equipamentos antigos.","Serviços recorrentes.","Orçamentos não aprovados.","Contratos empresariais."], angle:"Mostre receita na base instalada." },
+  { id:"dashboard-assistencia", group:"Inteligência", title:"Dashboard da Assistência", summary:"Consolida OS, prazo, conversão, peças e receita.", bullets:["OS abertas.","Tempo médio.","Conversão de orçamento.","Margem por serviço."], angle:"Destaque produtividade e rentabilidade." },
+];
+
+const provedoresInternetModules: ScopeModule[] = [
+  { id:"captacao-isp", group:"Aquisição", title:"Captação e Consulta de Cobertura", summary:"Atrai clientes e valida região atendida.", bullets:["Endereço e cobertura.","Planos disponíveis.","Origem do lead.","Agendamento de instalação."], angle:"Mostre conversão baseada em cobertura real." },
+  { id:"crm-assinantes-isp", group:"CRM", title:"CRM de Assinantes", summary:"Centraliza cliente, plano, endereço, equipamentos e histórico.", bullets:["Plano contratado.","Endereço de instalação.","Equipamentos.","Atendimentos e pagamentos."], angle:"Destaque visão completa do assinante." },
+  { id:"instalacao-isp", group:"Operação", title:"Instalação e Ativação", summary:"Organiza agenda, técnico, equipamentos e ativação.", bullets:["Ordem de instalação.","Roteador/ONU.","Técnico e rota.","Checklist de ativação."], angle:"Mostre implantação rastreável." },
+  { id:"suporte-isp", group:"Suporte", title:"Suporte e Tickets", summary:"Controla falhas, chamados, SLA e solução.", bullets:["Tipo de problema.","Prioridade.","Técnico responsável.","Follow-up até resolução."], angle:"Destaque suporte até o fechamento do ticket." },
+  { id:"cobranca-isp", group:"Financeiro", title:"Mensalidades e Cobrança", summary:"Acompanha vencimentos, inadimplência e negociação.", bullets:["Faturas.","Lembretes.","Pendências.","Reativação após pagamento."], angle:"Mostre previsibilidade e menos cobrança manual." },
+  { id:"retencao-isp", group:"Relacionamento", title:"Retenção e Churn", summary:"Identifica clientes em risco e ações de retenção.", bullets:["Tickets repetidos.","Atrasos.","Pedido de cancelamento.","Ofertas de upgrade ou ajuste."], angle:"Mostre prevenção de churn baseada em sinais." },
+  { id:"upgrade-isp", group:"Comercial", title:"Upgrade e Serviços Adicionais", summary:"Encontra oportunidades de aumento de plano e adicionais.", bullets:["Maior velocidade.","Mesh e Wi-Fi.","IP fixo ou serviços empresariais.","Novos pontos."], angle:"Destaque expansão na base instalada." },
+  { id:"revenue-scout-isp", group:"Inteligência", title:"Revenue Scout para ISP", summary:"Encontra upgrades, clientes empresariais e áreas de expansão.", bullets:["Planos antigos.","Clientes de alto uso.","Bairros com demanda.","Serviços adicionais."], angle:"Mostre crescimento por base e cobertura." },
+  { id:"dashboard-isp", group:"Inteligência", title:"Dashboard do Provedor", summary:"Consolida leads, instalações, tickets, churn e receita.", bullets:["Conversão.","Instalações.","SLA de suporte.","Churn e inadimplência."], angle:"Destaque gestão da jornada completa do assinante." },
+];
+
+const saasTecnologiaModules: ScopeModule[] = [
+  { id:"captacao-saas", group:"Aquisição", title:"Captação B2B para SaaS", summary:"Atrai empresas por dor, segmento, porte e caso de uso.", bullets:["Campanhas por ICP.","Landing Pages por solução.","Demo ou trial.","Origem e intenção no CRM."], angle:"Mostre aquisição orientada ao problema real." },
+  { id:"pipeline-saas", group:"Comercial", title:"Pipeline SaaS", summary:"Acompanha lead, discovery, demo, proposta, trial e fechamento.", bullets:["Etapa e responsável.","Próxima ação.","Stakeholders.","Motivos de perda."], angle:"Destaque venda consultiva previsível." },
+  { id:"trial-onboarding-saas", group:"Onboarding", title:"Trial e Onboarding", summary:"Acompanha ativação, configuração e primeiros resultados.", bullets:["Checklist de implantação.","Integrações.","Usuários.","Marcos de ativação."], angle:"Mostre redução do time-to-value." },
+  { id:"assinaturas-saas", group:"Financeiro", title:"Planos e Assinaturas", summary:"Organiza plano, usuários, cobrança e renovação.", bullets:["Plano e limites.","MRR/ARR.","Upgrade e downgrade.","Renovação."], angle:"Destaque receita recorrente e expansão." },
+  { id:"customer-success-saas", group:"Relacionamento", title:"Customer Success", summary:"Acompanha adoção, resultados, riscos e plano de sucesso.", bullets:["Uso e engajamento.","Objetivos do cliente.","Health score.","QBR e follow-ups."], angle:"Mostre retenção baseada em valor entregue." },
+  { id:"suporte-saas", group:"Suporte", title:"Suporte e Tickets", summary:"Controla chamados, SLA, bugs e acompanhamento.", bullets:["Prioridade.","Produto/módulo.","Status.","Avaliação final."], angle:"Destaque suporte até a resolução." },
+  { id:"churn-expansao-saas", group:"Inteligência", title:"Churn, Upsell e Expansão", summary:"Identifica risco e oportunidades de crescimento.", bullets:["Queda de uso.","Tickets críticos.","Novos usuários.","Módulos adicionais."], angle:"Mostre crescimento na base antes de nova aquisição." },
+  { id:"revenue-scout-saas", group:"Inteligência", title:"Revenue Scout SaaS", summary:"Encontra expansão, renovação e reativação.", bullets:["Trials parados.","Clientes subutilizando.","Contas com potencial.","Ex-clientes."], angle:"Destaque receita recorrente escondida." },
+  { id:"dashboard-saas", group:"Inteligência", title:"Dashboard SaaS", summary:"Consolida funil, MRR, churn, expansão e suporte.", bullets:["CAC comercial quando disponível.","MRR/ARR.","Churn e expansão.","Ativação e tickets."], angle:"Destaque visão integrada de crescimento e retenção." },
+];
+
+
+type SegmentKey = "construtoras" | "arquitetura-design" | "farmacias" | "seguros" | "fruteiras" | "acougues" | "mercados" | "moda" | "produtos-naturais" | "moveis-casa" | "eletronicos-tecnologia" | "materiais-construcao" | "pet-veterinario" | "advocacia" | "contabilidade" | "beleza-barbearia" | "saude-clinicas" | "restaurantes-delivery" | "academias-fitness" | "imobiliarias-corretores" | "distribuidores-alimentos-bebidas" | "distribuidores-materiais-construcao" | "veiculos-mobilidade" | "autopecas-centro-automotivo" | "hoteis-pousadas" | "escolas-cursos" | "energia-solar" | "transportadoras-logistica" | "agro-maquinas" | "industrias" | "assistencia-tecnica" | "provedores-internet" | "saas-tecnologia";
 
 const segmentCatalog: Record<SegmentKey, { label: string; description: string; modules: ScopeModule[] }> = {
   construtoras: {
@@ -7294,6 +7403,61 @@ const segmentCatalog: Record<SegmentKey, { label: string; description: string; m
     label: "Distribuidores de Materiais de Construção",
     description: "Carteira B2B, representantes, catálogo técnico, cotações, pedidos, estoque, compras, frete, crédito, comissões e inteligência.",
     modules: distribuidoresMateriaisConstrucaoModules,
+  },
+  "veiculos-mobilidade": {
+    label: "Lojas de Veículos & Mobilidade",
+    description: "0 km, seminovos, motos e mobilidade elétrica com estoque, CRM, avaliação, test-drive, financiamento, anúncios, pós-venda e inteligência.",
+    modules: veiculosMobilidadeModules,
+  },
+  "autopecas-centro-automotivo": {
+    label: "Autopeças & Centro Automotivo",
+    description: "Catálogo por veículo, placa/chassi, compatibilidade, estoque, orçamento, OS, oficina, pneus, compras, B2B, garantia e inteligência.",
+    modules: autopecasCentroAutomotivoModules,
+  },
+  "hoteis-pousadas": {
+    label: "Hotéis, Pousadas & Hospedagem",
+    description: "Reservas, disponibilidade, hóspedes, check-in/out, governança, upsell, atendimento, Revenue Scout e indicadores.",
+    modules: hoteisPousadasModules,
+  },
+  "escolas-cursos": {
+    label: "Escolas, Cursos & Educação",
+    description: "Captação, matrículas, turmas, mensalidades, retenção, rematrícula, atendimento e inteligência.",
+    modules: escolasCursosModules,
+  },
+  "energia-solar": {
+    label: "Energia Solar",
+    description: "Captação, diagnóstico, proposta, projeto, homologação, instalação, equipamentos, monitoramento e pós-venda.",
+    modules: energiaSolarModules,
+  },
+  "transportadoras-logistica": {
+    label: "Transportadoras & Logística",
+    description: "Captação B2B, cotação, coletas, roteirização, rastreio, frota, SLA, financeiro e inteligência.",
+    modules: transportadorasLogisticaModules,
+  },
+  "agro-maquinas": {
+    label: "Agro, Máquinas & Implementos",
+    description: "Produtores, propriedades, máquinas, peças, propostas, assistência de campo, safra e Revenue Scout.",
+    modules: agroMaquinasModules,
+  },
+  industrias: {
+    label: "Indústrias & Fábricas",
+    description: "Captação B2B, catálogo técnico, cotações, pedidos, produção, qualidade, representantes e inteligência.",
+    modules: industriasModules,
+  },
+  "assistencia-tecnica": {
+    label: "Assistência Técnica",
+    description: "Cliente/equipamento, ordem de serviço, orçamento, peças, técnicos, garantia, Revenue Scout e indicadores.",
+    modules: assistenciaTecnicaModules,
+  },
+  "provedores-internet": {
+    label: "Provedores de Internet & Telecom",
+    description: "Cobertura, assinantes, instalação, suporte, cobrança, retenção, upgrades, Revenue Scout e dashboard.",
+    modules: provedoresInternetModules,
+  },
+  "saas-tecnologia": {
+    label: "SaaS & Empresas de Tecnologia",
+    description: "Captação B2B, pipeline, trial, onboarding, assinatura, Customer Success, suporte, churn, expansão e inteligência.",
+    modules: saasTecnologiaModules,
   },
 };
 
