@@ -1485,8 +1485,8 @@ export default function ConceptModel3D({
               });
             }}
             className={interiorMode
-              ? "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"
-              : "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"}
+              ? "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"
+              : "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"}
           >
             {interiorMode ? "Interior ativo" : "Modo interior"}
           </button>
@@ -1494,8 +1494,8 @@ export default function ConceptModel3D({
             type="button"
             onClick={() => setShowRoof((value) => !value)}
             className={showRoof
-              ? "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
-              : "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"}
+              ? "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"
+              : "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"}
           >
             {showRoof ? "Ocultar cobertura" : "Mostrar cobertura"}
           </button>
@@ -1504,8 +1504,8 @@ export default function ConceptModel3D({
             type="button"
             onClick={() => setShowLabels((value) => !value)}
             className={showLabels
-              ? "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
-              : "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"}
+              ? "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"
+              : "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"}
           >
             {showLabels ? "Ocultar nomes" : "Mostrar nomes"}
           </button>
@@ -1528,8 +1528,8 @@ export default function ConceptModel3D({
               type="button"
               onClick={() => setShowAllFloors((value) => !value)}
               className={showAllFloors
-                ? "rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700"
-                : "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"}
+                ? "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"
+                : "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"}
             >
               {showAllFloors ? "Todos pavimentos" : "Pavimento ativo"}
             </button>

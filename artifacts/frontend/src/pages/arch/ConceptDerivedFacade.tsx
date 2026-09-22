@@ -437,13 +437,13 @@ export default function ConceptDerivedFacade({
     );
   };
 
-  const facadeViewY = floors > 1 ? 14 : 28;
-  const facadeViewHeight = floors > 1 ? 58 : 44;
+  const facadeViewY = floors > 1 ? 18 : 30;
+  const facadeViewHeight = floors > 1 ? 48 : 38;
 
   return (
     <svg
       ref={svgRef}
-      viewBox={`5 ${facadeViewY} 130 ${facadeViewHeight}`}
+      viewBox={`10 ${facadeViewY} 120 ${facadeViewHeight}`}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => {
         if (drag?.pointerId === event.pointerId) setDrag(null);
