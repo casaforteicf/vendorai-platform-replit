@@ -190,6 +190,14 @@ export default function ConceptFacadeEditor({
     [rooms, lotWidth, lotDepth, sitePlacement],
   );
 
+  const siteSynced = design.volumes.some((volume) => volume.label.startsWith("Implantação ·"));
+  const siteGeneratedItems = [
+    "Muro frontal",
+    "Portão da garagem",
+    "Jardim frontal",
+    ...(siteExteriorPlan.hasGourmet ? ["Pergolado do lazer"] : []),
+  ];
+
   useEffect(() => {
     const alreadySynced = design.volumes.some((volume) => volume.label.startsWith("Implantação ·"));
     if (!alreadySynced) {
@@ -472,19 +480,41 @@ export default function ConceptFacadeEditor({
               Complete a fachada com jardim, muro, portão, pergolado e elementos externos.
             </p>
 
-            <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-600">Implantação vinculada</div>
-              <div className="mt-1 text-[11px] font-semibold text-slate-800">
-                {siteExteriorPlan.frontLabel} · garagem {siteExteriorPlan.garageSide === "left" ? "à esquerda" : siteExteriorPlan.garageSide === "right" ? "à direita" : siteExteriorPlan.garageSide === "center" ? "central" : "não identificada"}
+            <div className="mt-4 overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white">
+              <div className="border-b border-orange-100 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-600">Implantação vinculada</div>
+                  <span className={siteSynced ? "rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-bold text-emerald-700" : "rounded-full bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600"}>
+                    {siteSynced ? "Sincronizada" : "Pendente"}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs font-bold text-slate-900">
+                  {siteExteriorPlan.frontLabel} · garagem {siteExteriorPlan.garageSide === "left" ? "à esquerda" : siteExteriorPlan.garageSide === "right" ? "à direita" : siteExteriorPlan.garageSide === "center" ? "central" : "não identificada"}
+                </div>
+                <div className="mt-1 text-[10px] leading-4 text-slate-500">{siteExteriorPlan.leisureSummary}</div>
               </div>
-              <div className="mt-1 text-[10px] leading-4 text-slate-500">{siteExteriorPlan.leisureSummary}</div>
-              <button
-                type="button"
-                onClick={() => onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan))}
-                className="mt-3 w-full rounded-lg bg-slate-950 px-3 py-2 text-[11px] font-bold text-white"
-              >
-                Aplicar implantação ao exterior
-              </button>
+
+              <div className="p-3">
+                <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">Gerado a partir do terreno</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {siteGeneratedItems.map((item) => (
+                    <span key={item} className="rounded-full border bg-white px-2 py-1 text-[9px] font-semibold text-slate-600">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan))}
+                  className="mt-3 w-full rounded-xl bg-slate-950 px-3 py-2.5 text-[11px] font-bold text-white"
+                >
+                  {siteSynced ? "Reaplicar implantação" : "Aplicar implantação ao exterior"}
+                </button>
+                <div className="mt-2 text-center text-[9px] leading-4 text-slate-400">
+                  Mantém frente, garagem e lazer coerentes com a planta.
+                </div>
+              </div>
             </div>
 
             <label className="mt-4 flex items-center justify-between rounded-xl border p-3">
