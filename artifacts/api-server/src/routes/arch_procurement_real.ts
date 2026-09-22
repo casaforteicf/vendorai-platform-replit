@@ -5,6 +5,8 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { resolveAIKey, logUsage, estimateCost } from "../lib/ai-gateway.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
+import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -66,6 +68,45 @@ async function ownedQuote(tid: string, obraId: string, requestId: string, quoteI
     [quoteId, requestId, obraId, tid],
   );
   return result.rows[0] ?? null;
+}
+
+async function ownedRfqDelivery(tid: string, obraId: string, requestId: string, deliveryId: string) {
+  const result = await pool.query(
+    `SELECT * FROM obra_compra_cotacao_envios
+      WHERE id = $1::uuid AND compra_id = $2 AND obra_id = $3 AND tenant_id = $4
+      LIMIT 1`,
+    [deliveryId, requestId, obraId, tid],
+  );
+  return result.rows[0] ?? null;
+}
+
+function rfqMessage(obra: any, request: any) {
+  const needDate = request?.data_necessidade || request?.data_prevista;
+  const dateText = needDate
+    ? new Date(`${String(needDate).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR")
+    : "a combinar";
+  return [
+    "SOLICITAÇÃO DE COTAÇÃO / TOMADA DE PREÇOS",
+    `Obra: ${obra?.nome || "Obra"}`,
+    `Solicitação: ${request?.codigo || request?.id || ""}`,
+    "",
+    `Item/serviço: ${request?.descricao || ""}`,
+    `Quantidade: ${num(request?.quantidade, 1)} ${request?.unidade || "un"}`,
+    request?.ambiente ? `Local/ambiente: ${request.ambiente}` : "",
+    request?.disciplina ? `Disciplina: ${request.disciplina}` : "",
+    `Necessário até: ${dateText}`,
+    request?.observacoes ? `Observações: ${request.observacoes}` : "",
+    "",
+    "Favor informar:",
+    "• preço unitário e valor total;",
+    "• frete, impostos e descontos;",
+    "• prazo de entrega;",
+    "• validade da proposta;",
+    "• condição de pagamento;",
+    "• marca/modelo/especificação quando aplicável.",
+    "",
+    "A cotação será comparada com outras propostas antes da emissão do pedido de compra.",
+  ].filter(Boolean).join("\n");
 }
 
 function num(value: unknown, fallback = 0) {
@@ -193,15 +234,16 @@ router.get("/arch/procurement/:obraId", async (req, res, next) => {
     const obra = await ownedObra(tid, obraId);
     if (!obra) { res.status(404).json({ error: "Obra não encontrada" }); return; }
 
-    const [requests, quotes, receipts, stages, finance] = await Promise.all([
+    const [requests, quotes, receipts, stages, finance, rfqDeliveries] = await Promise.all([
       pool.query(`SELECT * FROM compras_obras WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
       pool.query(`SELECT * FROM arch_supplier_orders WHERE obra_id = $1 AND tenant_id::text = $2 AND deleted_at IS NULL ORDER BY created_at DESC`, [obraId, tid]),
       pool.query(`SELECT * FROM obra_compra_recebimentos WHERE obra_id = $1 AND tenant_id = $2 ORDER BY data_recebimento DESC`, [obraId, tid]),
       pool.query(`SELECT id, nome, ordem FROM obra_etapas WHERE obra_id = $1 ORDER BY ordem ASC, created_at ASC`, [obraId]),
       pool.query(`SELECT id, fornecedor, valor, data_vencimento, status, descricao FROM obra_lancamentos WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
+      pool.query(`SELECT * FROM obra_compra_cotacao_envios WHERE obra_id = $1 AND tenant_id = $2 ORDER BY created_at DESC`, [obraId, tid]),
     ]);
 
-    res.json({ obra, requests: requests.rows, quotes: quotes.rows, receipts: receipts.rows, stages: stages.rows, finance: finance.rows });
+    res.json({ obra, requests: requests.rows, quotes: quotes.rows, receipts: receipts.rows, stages: stages.rows, finance: finance.rows, rfqDeliveries: rfqDeliveries.rows });
   } catch (err) {
     logger.error({ err }, "arch procurement GET error");
     next(err);
@@ -314,6 +356,110 @@ router.delete("/arch/procurement/:obraId/requests/:requestId", async (req, res, 
   }
 });
 
+router.post("/arch/procurement/:obraId/requests/:requestId/rfq/send", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const requestId = String(req.params["requestId"] ?? "");
+    const [obra, request] = await Promise.all([ownedObra(tid, obraId), ownedRequest(tid, obraId, requestId)]);
+    if (!obra || !request) { res.status(404).json({ error: "Obra ou solicitação não encontrada" }); return; }
+
+    const channel = String(req.body?.channel ?? "").trim();
+    const supplierName = String(req.body?.supplierName ?? "").trim();
+    const destination = String(req.body?.destination ?? "").trim();
+    if (!["whatsapp", "email"].includes(channel)) { res.status(400).json({ error: "Canal deve ser whatsapp ou email" }); return; }
+    if (!supplierName) { res.status(400).json({ error: "Fornecedor é obrigatório" }); return; }
+    if (!destination) { res.status(400).json({ error: "Telefone ou e-mail do fornecedor é obrigatório" }); return; }
+    if (channel === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destination)) {
+      res.status(400).json({ error: "E-mail do fornecedor inválido" }); return;
+    }
+    if (channel === "whatsapp" && destination.replace(/\D/g, "").length < 10) {
+      res.status(400).json({ error: "Telefone do fornecedor inválido" }); return;
+    }
+
+    const message = String(req.body?.message ?? "").trim() || rfqMessage(obra, request);
+    const draft = await pool.query(
+      `INSERT INTO obra_compra_cotacao_envios (
+         tenant_id, obra_id, compra_id, supplier_name, channel, destination, status, message, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,now(),now())
+       RETURNING *`,
+      [tid, obraId, requestId, supplierName, channel, destination, message],
+    );
+    const delivery = draft.rows[0];
+
+    try {
+      let providerMessageId: string | null = null;
+      if (channel === "whatsapp") {
+        providerMessageId = (await sendDirectWhatsAppMessage(tid, destination, message, logger)) ?? null;
+      } else {
+        const tenantResult = await pool.query(`SELECT name FROM tenants WHERE id = $1 LIMIT 1`, [tid]);
+        const email = await sendJarvisEmail({
+          to: destination,
+          subject: `Solicitação de cotação — ${obra.nome || "Obra"} — ${request.codigo || request.id}`,
+          body: message,
+          tenantName: tenantResult.rows[0]?.name ?? null,
+        });
+        providerMessageId = email.id;
+      }
+
+      const sent = await pool.query(
+        `UPDATE obra_compra_cotacao_envios
+           SET status = 'sent', provider_message_id = $1, sent_at = now(), error_message = null, updated_at = now()
+         WHERE id = $2::uuid AND tenant_id = $3
+         RETURNING *`,
+        [providerMessageId, delivery.id, tid],
+      );
+      res.status(201).json({ delivery: sent.rows[0] });
+    } catch (sendError) {
+      const messageText = sendError instanceof Error ? sendError.message : "Falha no envio";
+      const failed = await pool.query(
+        `UPDATE obra_compra_cotacao_envios
+           SET status = 'failed', error_message = $1, updated_at = now()
+         WHERE id = $2::uuid AND tenant_id = $3
+         RETURNING *`,
+        [messageText, delivery.id, tid],
+      );
+      res.status(502).json({ error: messageText, delivery: failed.rows[0] });
+    }
+  } catch (err) {
+    logger.error({ err }, "arch procurement RFQ send error");
+    next(err);
+  }
+});
+
+router.patch("/arch/procurement/:obraId/requests/:requestId/rfq/:deliveryId/status", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    const requestId = String(req.params["requestId"] ?? "");
+    const deliveryId = String(req.params["deliveryId"] ?? "");
+    const current = await ownedRfqDelivery(tid, obraId, requestId, deliveryId);
+    if (!current) { res.status(404).json({ error: "Envio da cotação não encontrado" }); return; }
+
+    const status = String(req.body?.status ?? "");
+    if (!["sent", "viewed", "responded"].includes(status)) {
+      res.status(400).json({ error: "Status permitido: sent, viewed ou responded" }); return;
+    }
+
+    const result = await pool.query(
+      `UPDATE obra_compra_cotacao_envios
+         SET status = $1,
+             viewed_at = CASE WHEN $1 IN ('viewed','responded') THEN COALESCE(viewed_at, now()) ELSE viewed_at END,
+             responded_at = CASE WHEN $1 = 'responded' THEN COALESCE(responded_at, now()) ELSE responded_at END,
+             updated_at = now()
+       WHERE id = $2::uuid AND compra_id = $3 AND obra_id = $4 AND tenant_id = $5
+       RETURNING *`,
+      [status, deliveryId, requestId, obraId, tid],
+    );
+    res.json({ delivery: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "arch procurement RFQ status error");
+    next(err);
+  }
+});
+
 router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
@@ -360,6 +506,36 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
       ],
     );
     await pool.query(`UPDATE compras_obras SET status = CASE WHEN status IN ('pendente','rascunho') THEN 'cotacao' ELSE status END, updated_at = now() WHERE id = $1 AND obra_id = $2 AND tenant_id = $3`, [requestId, obraId, tid]);
+
+    const deliveryId = String(req.body?.deliveryId ?? "").trim();
+    if (deliveryId) {
+      await pool.query(
+        `UPDATE obra_compra_cotacao_envios
+           SET status = 'quote_received', quote_id = $1::uuid,
+               viewed_at = COALESCE(viewed_at, now()),
+               responded_at = COALESCE(responded_at, now()),
+               quote_received_at = now(), updated_at = now()
+         WHERE id = $2::uuid AND compra_id = $3 AND obra_id = $4 AND tenant_id = $5`,
+        [result.rows[0].id, deliveryId, requestId, obraId, tid],
+      );
+    } else {
+      await pool.query(
+        `UPDATE obra_compra_cotacao_envios
+           SET status = 'quote_received', quote_id = $1::uuid,
+               viewed_at = COALESCE(viewed_at, now()),
+               responded_at = COALESCE(responded_at, now()),
+               quote_received_at = now(), updated_at = now()
+         WHERE id = (
+           SELECT id FROM obra_compra_cotacao_envios
+            WHERE compra_id = $2 AND obra_id = $3 AND tenant_id = $4
+              AND lower(supplier_name) = lower($5)
+              AND status IN ('sent','viewed','responded')
+            ORDER BY created_at DESC LIMIT 1
+         )`,
+        [result.rows[0].id, requestId, obraId, tid, supplierName],
+      );
+    }
+
     res.status(201).json({ quote: result.rows[0] });
   } catch (err) {
     logger.error({ err }, "arch procurement quote POST error");
