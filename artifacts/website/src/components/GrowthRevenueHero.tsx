@@ -67,28 +67,28 @@ export default function GrowthRevenueHero() {
       <div className="vendor-home-orb vendor-home-orb-orange" aria-hidden="true" />
       <div className="vendor-home-orb vendor-home-orb-blue" aria-hidden="true" />
 
-      <div className="relative mx-auto grid max-w-[1480px] gap-14 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8 lg:pb-24 lg:pt-20 xl:gap-20">
+      <div className="relative mx-auto grid max-w-[1480px] gap-10 px-4 pb-12 pt-10 sm:gap-12 sm:px-6 sm:pb-16 sm:pt-14 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-14 lg:px-8 lg:pb-24 lg:pt-20 xl:gap-20">
         <motion.div
           className="max-w-3xl"
           initial={{ opacity: 0, y: 26 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.65, ease: "easeOut" }}
         >
-          <div className="vendor-hero-eyebrow mb-7 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold">
+          <div className="vendor-hero-eyebrow mb-5 inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold leading-5 sm:mb-7 sm:px-4 sm:text-sm">
             <WandSparkles className="h-4 w-4" />
             {copy.eyebrow}
           </div>
 
-          <h1 className="vendor-display text-[clamp(2.7rem,5.4vw,5.5rem)] font-semibold leading-[0.94] tracking-[-0.065em] text-[#111827]">
+          <h1 className="vendor-display text-[clamp(2.25rem,11vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.055em] text-[#111827] sm:leading-[0.95] sm:tracking-[-0.06em] lg:leading-[0.94] lg:tracking-[-0.065em]">
             {copy.title}
             <span className="vendor-hero-accent mt-4 block">{copy.accent}</span>
           </h1>
 
-          <p className="mt-8 max-w-2xl text-[17px] leading-8 text-slate-600 sm:text-xl sm:leading-9">
+          <p className="mt-6 max-w-2xl text-[16px] leading-7 text-slate-600 sm:mt-8 sm:text-xl sm:leading-9">
             {copy.description}
           </p>
 
-          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-7 flex flex-col gap-3 sm:mt-9 sm:flex-row">
             <Link href="/demo" className="vendor-cta-primary group inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-7 font-semibold text-white">
               {copy.primary}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
@@ -103,7 +103,7 @@ export default function GrowthRevenueHero() {
             <span>{copy.proof}</span>
           </div>
 
-          <div className="mt-10">
+          <div className="mt-8 sm:mt-10">
             <p className="mb-4 text-xs font-bold uppercase tracking-[0.19em] text-slate-400">{copy.enginesIntro}</p>
             <div className="grid gap-3 sm:grid-cols-3">
               {copy.engines.map((engine, index) => {
@@ -131,8 +131,8 @@ export default function GrowthRevenueHero() {
           animate={{ opacity: 1, x: 0, scale: 1 }}
           transition={{ duration: 0.78, delay: 0.08, ease: "easeOut" }}
         >
-          <div className="vendor-product-window overflow-hidden rounded-[30px]">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white/90 px-5 py-4 backdrop-blur-xl sm:px-6">
+          <div className="vendor-product-window overflow-hidden rounded-[22px] sm:rounded-[30px]">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white/90 px-4 py-3.5 backdrop-blur-xl sm:px-6 sm:py-4">
               <div>
                 <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.17em] text-orange-600">
                   <Sparkles className="h-3.5 w-3.5" /> {copy.previewLabel}
@@ -144,7 +144,7 @@ export default function GrowthRevenueHero() {
               </span>
             </div>
 
-            <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+            <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 sm:aspect-[16/9]">
               <video
                 autoPlay
                 muted
@@ -152,7 +152,7 @@ export default function GrowthRevenueHero() {
                 playsInline
                 preload="metadata"
                 poster={`${MEDIA}/crm-pipeline/desktop-1440.webp`}
-                className="h-full w-full object-cover object-top"
+                className="h-full w-full object-cover object-top sm:object-cover"
                 aria-label={copy.previewTitle}
               >
                 <source src={`${MEDIA}/videos/crm-short.webm`} type="video/webm" />
@@ -160,7 +160,7 @@ export default function GrowthRevenueHero() {
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white/35 to-transparent" />
             </div>
 
-            <div className="flex flex-col gap-4 border-t border-slate-200/70 bg-white/95 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex flex-col gap-3 border-t border-slate-200/70 bg-white/95 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
               <p className="max-w-xl text-sm leading-6 text-slate-600">{copy.previewText}</p>
               <Link href="/produtos/crm" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-700 hover:text-orange-600">
                 {copy.previewLink} <ArrowRight className="h-4 w-4" />
