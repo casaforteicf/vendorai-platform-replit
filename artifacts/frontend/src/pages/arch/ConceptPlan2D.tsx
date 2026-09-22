@@ -489,7 +489,7 @@ export default function ConceptPlan2D({
   }, [rooms, geometry.walls, customWalls, closedSpaces, objects, previewObjects, lotWidth, lotDepth]);
 
   const fitView = useMemo(() => {
-    const margin = projectBounds.hasProject ? 1.35 : 2.4;
+    const margin = projectBounds.hasProject ? 1.9 : 2.6;
     const centerX = (projectBounds.minX + projectBounds.maxX) / 2;
     const centerY = (projectBounds.minY + projectBounds.maxY) / 2;
     let width = Math.max(4, projectBounds.maxX - projectBounds.minX + margin * 2);
@@ -510,17 +510,11 @@ export default function ConceptPlan2D({
   }, [projectBounds, viewportAspect]);
 
   const workingView = useMemo(() => {
-    if (!projectBounds.hasProject) return fitView;
-    const rawWidth = Math.max(1, projectBounds.maxX - projectBounds.minX);
-    const rawHeight = Math.max(1, projectBounds.maxY - projectBounds.minY);
-    const tallRatio = rawHeight / rawWidth;
-    const scale = tallRatio > 2.2 ? 0.58 : tallRatio > 1.55 ? 0.7 : 0.88;
-    const width = fitView.width * scale;
-    const height = fitView.height * scale;
-    const centerX = (projectBounds.minX + projectBounds.maxX) / 2;
-    const centerY = (projectBounds.minY + projectBounds.maxY) / 2;
-    return { x: centerX - width / 2, y: centerY - height / 2, width, height };
-  }, [fitView, projectBounds]);
+    // The initial view must always contain the entire project.
+    // Extra zoom on tall/narrow plans caused the top/bottom of the floor plan
+    // to be clipped as soon as the editor opened.
+    return fitView;
+  }, [fitView]);
 
   const [view, setView] = useState(workingView);
   const [panGesture, setPanGesture] = useState<null | {
@@ -601,7 +595,7 @@ export default function ConceptPlan2D({
     });
   };
 
-  const resetView = () => setView(workingView);
+  const resetView = () => setView(fitView);
 
   const toSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -1380,46 +1374,55 @@ export default function ConceptPlan2D({
                   strokeWidth={selectedSpace ? "0.035" : "0"}
                 />
               ))}
-              <g pointerEvents="none">
-                <rect
-                  x={space.centroid.x - 1.25}
-                  y={space.centroid.y - (label ? 0.52 : 0.36)}
-                  width="2.5"
-                  height={label ? "0.92" : "0.58"}
-                  rx="0.14"
-                  fill="#ffffff"
-                  opacity="0.94"
-                  stroke={selectedSpace ? "#f97316" : "#d1d5db"}
-                  strokeWidth="0.035"
-                />
-                {label && (
-                  <text
-                    x={space.centroid.x}
-                    y={space.centroid.y - 0.12}
-                    textAnchor="middle"
-                    fontSize="0.22"
-                    fontWeight="800"
-                    fill="#0f172a"
-                  >
-                    {label}
-                  </text>
-                )}
-                <text
-                  x={space.centroid.x}
-                  y={space.centroid.y + (label ? 0.24 : 0.03)}
-                  textAnchor="middle"
-                  fontSize="0.22"
-                  fontWeight="800"
-                  fill={selectedSpace ? "#c2410c" : "#166534"}
-                >
-                  {space.area.toFixed(1)} m²
-                </text>
-              </g>
+              {(() => {
+                const badgeWidth = Math.max(1.15, Math.min(2.6, space.bounds.width - 0.35));
+                const compact = space.bounds.width < 2.2 || space.bounds.height < 2.0;
+                const showLabel = Boolean(label) && !compact;
+                const badgeHeight = showLabel ? 0.92 : 0.56;
+                const top = space.centroid.y - badgeHeight / 2;
+                return (
+                  <g pointerEvents="none">
+                    <rect
+                      x={space.centroid.x - badgeWidth / 2}
+                      y={top}
+                      width={badgeWidth}
+                      height={badgeHeight}
+                      rx="0.14"
+                      fill="#ffffff"
+                      fillOpacity="0.88"
+                      stroke={selectedSpace ? "#f97316" : "#cbd5e1"}
+                      strokeWidth="0.03"
+                    />
+                    {showLabel && (
+                      <text
+                        x={space.centroid.x}
+                        y={space.centroid.y - 0.10}
+                        textAnchor="middle"
+                        fontSize="0.22"
+                        fontWeight="800"
+                        fill="#0f172a"
+                      >
+                        {label}
+                      </text>
+                    )}
+                    <text
+                      x={space.centroid.x}
+                      y={space.centroid.y + (showLabel ? 0.24 : 0.07)}
+                      textAnchor="middle"
+                      fontSize={compact ? "0.19" : "0.22"}
+                      fontWeight="800"
+                      fill={selectedSpace ? "#c2410c" : "#334155"}
+                    >
+                      {space.area.toFixed(1)} m²
+                    </text>
+                  </g>
+                );
+              })()}
             </g>
           );
         })}
 
-        {rooms.map((room) => {
+        {(closedSpaces.length > 0 ? rooms.filter((room) => room.kind === "piscina") : rooms).map((room) => {
           const selected = selectedId === room.id;
           const fill = floorMaterialFill(roomFloorMaterials[room.id]) ?? ROOM_FILL[room.kind] ?? "#ffffff";
           const isPool = room.kind === "piscina";
