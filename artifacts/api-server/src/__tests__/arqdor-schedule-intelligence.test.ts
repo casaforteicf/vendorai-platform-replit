@@ -35,6 +35,8 @@ describe("Arqdor schedule intelligence contracts", () => {
     expect(routeSource).toContain("custoRealizadoCalculado");
     expect(routeSource).toContain("comprasRealizadas");
     expect(routeSource).toContain("maoObraExecutadaEstimada");
+    expect(routeSource).toContain("maoObraApontada");
+    expect(routeSource).toContain("maoObraConsiderada");
     expect(routeSource).toContain("percentual_executado");
   });
 });
