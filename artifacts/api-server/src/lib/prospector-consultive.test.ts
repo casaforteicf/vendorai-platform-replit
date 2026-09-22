@@ -56,6 +56,23 @@ describe("prospector consultive playbook", () => {
     expect(message).toContain("Processo 123");
   });
 
+  it("honors tenant qualification criteria and construction radar source", () => {
+    const playbook = resolveProspectorPlaybook({
+      qualification: {
+        terrainDefined: false,
+        projectOrClearIntent: true,
+        estimatedTimeline: false,
+        declaredPain: true,
+        acceptsNextStep: true,
+      },
+    }, null, { lead_source: "construction_radar" });
+
+    expect(playbook.identity.sector).toBe("Construção civil residencial");
+    expect(playbook.qualification.terrainDefined).toBe(false);
+    expect(playbook.qualification.estimatedTimeline).toBe(false);
+    expect(playbook.qualification.declaredPain).toBe(true);
+  });
+
   it("only confirms state after an explicit positive reply to the right question", () => {
     const confirmed = detectProspectorStateFromReply({
       incomingMessage: "Sim, é isso mesmo.",
