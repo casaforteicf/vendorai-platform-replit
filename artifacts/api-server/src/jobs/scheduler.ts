@@ -2104,7 +2104,6 @@ async function runDomainVerification(log: Logger): Promise<void> {
     }
   }
 }
-
 // ── Job 6: Reset demo tenants ──────────────────────────────────
 
 async function resetDemoTenants(log: Logger): Promise<void> {
