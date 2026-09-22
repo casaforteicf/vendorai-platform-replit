@@ -651,42 +651,96 @@ export async function sendSdrFollowup(
   dealId: string | null,
   tenantId: string,
   leadNome: string,
-  leadTelefone: string,
+  leadTelefone: string | null,
   log: Logger,
   step: ProspectorCadenceStep = DEFAULT_PROSPECTOR_FOLLOWUP,
+  channel: "whatsapp" | "email" = "whatsapp",
 ): Promise<boolean> {
   // Follow-up frio obedece exatamente as mesmas regras de horário, opt-out,
   // lead desativado e bloqueio usadas na primeira abordagem.
   await assertColdOutreachAllowed(leadId, tenantId, log);
 
-  dispatchAgentBackground({
-    tenantId,
-    leadId,
-    mensagem: `[CADÊNCIA FRIA PROSPECCTOR — ${step.label}] ${leadNome.split(" ")[0]} ainda não respondeu. ` +
-      step.instruction + " " +
-      "Mantenha o modelo de pesquisa consultiva, use apenas evidências verificadas já existentes e não presuma segmento, dor, produto ou solução.",
-    log,
-    forcedAgent: "sdr",
-    scenario: {
-      cold_outreach: true,
-      origem: `prospector_${step.key}`,
-      prospector_cadence_step: step.key,
-      template_ordem: step.key === "followup_48h" ? 2 : step.key === "followup_120h" ? 3 : 4,
-    },
-  });
+  if (channel === "email") {
+    const [lead] = await db
+      .select({
+        email: leadsTable.email,
+        empresa: leadsTable.empresa,
+        metadata: leadsTable.metadata,
+      })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+      .limit(1);
+    if (!lead?.email) return false;
+
+    const dossier = dossierFromMetadata((lead.metadata ?? {}) as Record<string, unknown>);
+    const primaryEvidence = Array.isArray(dossier?.evidence) ? dossier.evidence[0] : null;
+    const evidenceText = primaryEvidence
+      ? `${primaryEvidence.label}: ${String(primaryEvidence.value)}`
+      : null;
+    const firstName = leadNome.trim().split(/\s+/)[0] || leadNome;
+    let message: string;
+
+    if (step.key === "followup_216h") {
+      message =
+        `${firstName}, encerro meu contato por aqui para não insistir. ` +
+        (evidenceText ? `O contexto que motivou minha mensagem foi ${evidenceText}. ` : "") +
+        "Se isso fizer sentido mais adiante, fico à disposição. Se não for prioridade, sem problema.";
+    } else if (step.key === "followup_120h") {
+      message =
+        `${firstName}, olhando novamente o contexto, ` +
+        (evidenceText ? `o ponto que me chamou atenção foi ${evidenceText}. ` : "") +
+        "Isso está em andamento agora ou ainda está em avaliação?";
+    } else {
+      message =
+        `${firstName}, retomo por uma dúvida objetiva. ` +
+        (evidenceText ? `Vi ${evidenceText}. ` : "") +
+        "Esse tema está em andamento hoje ou ainda não entrou como prioridade?";
+    }
+
+    const [bp] = await db
+      .select({ nomeFantasia: businessProfilesTable.nomeFantasia })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1);
+    const sent = await sendProspectorColdEmail({
+      to: lead.email,
+      leadId,
+      subject: buildProspectorEmailSubject(lead.empresa ?? leadNome),
+      body: message,
+      tenantName: bp?.nomeFantasia ?? null,
+    });
+    await recordProspectorOutboundMessage(tenantId, leadId, message, "email", log, sent.id);
+  } else {
+    if (!leadTelefone) return false;
+    dispatchAgentBackground({
+      tenantId,
+      leadId,
+      mensagem: `[CADÊNCIA FRIA PROSPECCTOR — ${step.label}] ${leadNome.split(" ")[0]} ainda não respondeu. ` +
+        step.instruction + " " +
+        "Mantenha o modelo de pesquisa consultiva, use apenas evidências verificadas já existentes e não presuma segmento, dor, produto ou solução.",
+      log,
+      forcedAgent: "sdr",
+      scenario: {
+        cold_outreach: true,
+        origem: `prospector_${step.key}`,
+        prospector_cadence_step: step.key,
+        template_ordem: step.key === "followup_48h" ? 2 : step.key === "followup_120h" ? 3 : 4,
+      },
+    });
+  }
 
   await db.insert(activitiesTable).values({
     tenantId,
     leadId,
     dealId: dealId ?? undefined,
-    tipo: "whatsapp",
-    titulo: `Prospecctor — cadência fria — ${step.label}`,
+    tipo: channel,
+    titulo: `Prospecctor — cadência fria — ${step.label} — ${channel}`,
     descricao: `Cadência automática ${step.label} para ${leadNome}`,
     status: "concluida",
     concluidaEm: new Date(),
-    resultadoExecucao: `cenario:${step.key}|prospector_cadence:v2`,
+    resultadoExecucao: `cenario:${step.key}|prospector_cadence:v3|channel:${channel}`,
   });
 
-  log.info({ leadId, tenantId, step: step.key }, "sdrService: Prospecctor cadence step dispatched");
+  log.info({ leadId, tenantId, step: step.key, channel }, "sdrService: Prospecctor cadence step dispatched");
   return true;
 }
