@@ -11,6 +11,8 @@ import {
   dealsTable,
   sdrTemplatesTable,
   businessProfilesTable,
+  conversationsTable,
+  messagesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -53,6 +55,59 @@ type ColdProspectDossier = {
   lpSlug?: string;
   lpGeneratedAt?: string;
 };
+
+async function recordProspectorOutboundMessage(
+  tenantId: string,
+  leadId: string,
+  message: string,
+  log: Logger,
+): Promise<void> {
+  let [conversation] = await db
+    .select()
+    .from(conversationsTable)
+    .where(and(
+      eq(conversationsTable.tenantId, tenantId),
+      eq(conversationsTable.leadId, leadId),
+      eq(conversationsTable.channel, "whatsapp"),
+    ))
+    .orderBy(desc(conversationsTable.ultimaMensagemEm))
+    .limit(1);
+
+  if (!conversation) {
+    [conversation] = await db
+      .insert(conversationsTable)
+      .values({
+        tenantId,
+        leadId,
+        channel: "whatsapp",
+        status: "open",
+        naoLidas: 0,
+      })
+      .returning();
+  }
+
+  if (!conversation) throw new Error("PROSPECTOR_CONVERSATION_NOT_CREATED");
+
+  await db.insert(messagesTable).values({
+    tenantId,
+    conversationId: conversation.id,
+    leadId,
+    conteudo: message,
+    direcao: "saida",
+    enviadoPor: "agente_ia",
+    agentName: "sdr",
+    tipoConteudo: "texto",
+    status: "enviado",
+    canal: "whatsapp",
+  });
+
+  await db
+    .update(conversationsTable)
+    .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
+    .where(eq(conversationsTable.id, conversation.id));
+
+  log.debug({ tenantId, leadId, conversationId: conversation.id }, "sdrService: Prospecctor outbound persisted");
+}
 
 function metadataSuppressesColdOutreach(metadata: Record<string, unknown>): boolean {
   const booleanFlags = ["optOut", "opt_out", "doNotContact", "nao_contatar", "não_contatar", "unsubscribed", "blacklisted"];
@@ -442,6 +497,7 @@ export async function sendSdrFirstApproach(
     });
 
     await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
+    await recordProspectorOutboundMessage(tenantId, leadId, message, log);
     await db.insert(activitiesTable).values({
       tenantId,
       leadId,
