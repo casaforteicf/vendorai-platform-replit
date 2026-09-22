@@ -13,6 +13,7 @@ import {
   Search,
   Sparkles,
   UserPlus,
+  UserRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,48 @@ type AdResult = {
   pageName: string;
   snapshotUrl: string | null;
   startDate: string | null;
+};
+
+type ConstructionWorkSignal = {
+  id: string;
+  obra: string;
+  categoria: string | null;
+  local: string;
+  endereco: string | null;
+  proprietario: string | null;
+  proprietarioTipo: "pessoa" | "empresa" | "orgao_publico" | "nao_informado";
+  responsavelTecnico: string | null;
+  construtora: string | null;
+  incorporadora: string | null;
+  fase: string | null;
+  evidencia: string;
+  dataReferencia: string | null;
+  sourceUrl: string | null;
+  sourceTitle: string | null;
+  sourceFamily:
+    | "prefeitura_alvara"
+    | "diario_oficial"
+    | "crea_cau"
+    | "licenciamento_ambiental"
+    | "incorporadora_construtora"
+    | "arquiteto_engenheiro"
+    | "noticia_portal"
+    | "portal_imobiliario"
+    | "outro";
+  sourceAuthority: "oficial" | "primaria" | "secundaria";
+  confidence: number;
+};
+
+type ConstructionWorkSearchResponse = {
+  works?: ConstructionWorkSignal[];
+  sources?: Array<{
+    url: string;
+    title: string;
+    family: ConstructionWorkSignal["sourceFamily"];
+    authority: ConstructionWorkSignal["sourceAuthority"];
+  }>;
+  retrievedAt?: string;
+  error?: string;
 };
 
 type ProspectorConfigResponse = {
@@ -62,6 +105,18 @@ const CATEGORY_LABEL: Record<WorkCategory, string> = {
   empreendimentos: "Empreendimento",
   industrial: "Industrial",
   publica: "Pública",
+};
+
+const CONSTRUCTION_SOURCE_LABEL: Record<ConstructionWorkSignal["sourceFamily"], string> = {
+  prefeitura_alvara: "Prefeitura / Alvará",
+  diario_oficial: "Diário Oficial",
+  crea_cau: "CREA / CAU",
+  licenciamento_ambiental: "Licenciamento ambiental",
+  incorporadora_construtora: "Construtora / Incorporadora",
+  arquiteto_engenheiro: "Arquiteto / Engenheiro",
+  noticia_portal: "Notícia / Portal",
+  portal_imobiliario: "Portal imobiliário",
+  outro: "Fonte pública",
 };
 
 function authHeaders() {
@@ -126,6 +181,8 @@ export default function ConstructionRadarWorkspace() {
   const [searched, setSearched] = useState(false);
   const [companies, setCompanies] = useState<ProspectorSearchResult[]>([]);
   const [ads, setAds] = useState<AdResult[]>([]);
+  const [works, setWorks] = useState<ConstructionWorkSignal[]>([]);
+  const [workSources, setWorkSources] = useState<NonNullable<ConstructionWorkSearchResponse["sources"]>>([]);
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
   const [prospectedCompanies, setProspectedCompanies] = useState<Set<string>>(new Set());
   const [prospectedAds, setProspectedAds] = useState<Set<string>>(new Set());
@@ -156,6 +213,8 @@ export default function ConstructionRadarWorkspace() {
     setSearched(false);
     setCompanies([]);
     setAds([]);
+    setWorks([]);
+    setWorkSources([]);
     setSourceWarnings([]);
     if (next !== "publica") setModel(MODELS[next][0]);
   }
@@ -195,7 +254,7 @@ export default function ConstructionRadarWorkspace() {
     const adTerms = queryParts.join(" ");
     const companyTerms = actorSearchTerm(category, model);
 
-    const [companyResponse, adsResponse] = await Promise.allSettled([
+    const [companyResponse, adsResponse, worksResponse] = await Promise.allSettled([
       fetch("/api/prospector/search", {
         method: "POST",
         headers: authHeaders(),
@@ -214,6 +273,25 @@ export default function ConstructionRadarWorkspace() {
         if (!response.ok) throw new Error(data.error ?? "Falha ao consultar sinais de anúncios");
         return data.ads ?? [];
       }),
+      fetch("/api/prospector/construction-signals/search", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          category: CATEGORY_LABEL[category],
+          model,
+          locality: locality.trim(),
+          intervention,
+          standard,
+          phase,
+          productInterest,
+          maxResults: 12,
+          ...tenantField(),
+        }),
+      }).then(async (response) => {
+        const data = await response.json() as ConstructionWorkSearchResponse;
+        if (!response.ok) throw new Error(data.error ?? "Falha ao localizar obras privadas");
+        return data;
+      }),
     ]);
 
     const warnings: string[] = [];
@@ -231,11 +309,24 @@ export default function ConstructionRadarWorkspace() {
       warnings.push("A fonte de anúncios/sinais digitais não respondeu ou não está configurada.");
     }
 
+    if (worksResponse.status === "fulfilled") {
+      setWorks(worksResponse.value.works ?? []);
+      setWorkSources(worksResponse.value.sources ?? []);
+    } else {
+      setWorks([]);
+      setWorkSources([]);
+      warnings.push("A pesquisa web de obras privadas não respondeu nesta consulta.");
+    }
+
     setSourceWarnings(warnings);
     setSearched(true);
     setSearching(false);
 
-    if (companyResponse.status === "rejected" && adsResponse.status === "rejected") {
+    if (
+      companyResponse.status === "rejected" &&
+      adsResponse.status === "rejected" &&
+      worksResponse.status === "rejected"
+    ) {
       toast({ title: "Não foi possível consultar as fontes privadas", description: "Tente novamente ou revise as integrações do Prospector.", variant: "destructive" });
     }
   }
@@ -293,8 +384,17 @@ export default function ConstructionRadarWorkspace() {
 
   const stats = useMemo(() => {
     const strong = companies.filter((item) => privateScore(item) >= 80).length;
-    return { actors: companies.length, digitalSignals: ads.length, strong };
-  }, [ads.length, companies]);
+    const withOwner = works.filter((item) => item.proprietario).length;
+    const officialSources = workSources.filter((item) => item.authority === "oficial").length;
+    return {
+      works: works.length,
+      withOwner,
+      officialSources,
+      actors: companies.length,
+      digitalSignals: ads.length,
+      strong,
+    };
+  }, [ads.length, companies, workSources, works]);
 
   const currentCategory = CATEGORY_OPTIONS.find((item) => item.value === category)!;
 
@@ -353,7 +453,7 @@ export default function ConstructionRadarWorkspace() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base">O que você quer encontrar?</CardTitle>
               <CardDescription>
-                Para obras privadas não existe uma base nacional única como nas obras públicas. O Radar cruza sinais digitais e empresas relacionadas e marca tudo como sinal até a validação.
+                O Radar cruza pesquisa web atual, sinais digitais e empresas relacionadas para identificar a obra específica, sua localização, proprietário/contratante quando publicamente informado e os responsáveis envolvidos.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -421,7 +521,7 @@ export default function ConstructionRadarWorkspace() {
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Fluxo: sinal detectado → validar → identificar responsável → criar oportunidade → CRM.
+                  Fluxo: obra detectada → validar local e fonte → identificar proprietário/contratante e responsáveis → criar oportunidade → CRM.
                 </p>
                 <Button onClick={() => void runPrivateSearch()} disabled={searching} className="sm:min-w-[180px]">
                   {searching ? <Spinner className="mr-2 h-4 w-4" /> : <Search className="mr-2 h-4 w-4" />}
@@ -433,11 +533,103 @@ export default function ConstructionRadarWorkspace() {
 
           {searched && (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Obras detectadas</p><p className="mt-1 text-2xl font-bold">{stats.works}</p><p className="text-xs text-muted-foreground">obras / empreendimentos individualizados</p></CardContent></Card>
+                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Com proprietário</p><p className="mt-1 text-2xl font-bold">{stats.withOwner}</p><p className="text-xs text-muted-foreground">proprietário/contratante publicado na fonte</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Sinais digitais</p><p className="mt-1 text-2xl font-bold">{stats.digitalSignals}</p><p className="text-xs text-muted-foreground">anunciantes / campanhas relacionadas</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Atores relacionados</p><p className="mt-1 text-2xl font-bold">{stats.actors}</p><p className="text-xs text-muted-foreground">construtoras, incorporadoras e empresas locais</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Alta prioridade</p><p className="mt-1 text-2xl font-bold">{stats.strong}</p><p className="text-xs text-muted-foreground">pré-score ≥ 80 entre empresas encontradas</p></CardContent></Card>
               </div>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <HardHat className="h-4 w-4 text-primary" />
+                    Obras privadas localizadas
+                  </CardTitle>
+                  <CardDescription>
+                    Resultado por obra: local, endereço, proprietário/contratante quando publicado, responsáveis e fonte para validação.
+                  </CardDescription>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {["Prefeitura / Alvarás", "Diários Oficiais", "CREA / CAU", "Licenciamento ambiental", "Construtoras / Incorporadoras"].map((source) => (
+                      <Badge key={source} variant="outline" className="text-[10px]">{source}</Badge>
+                    ))}
+                    {stats.officialSources > 0 && (
+                      <Badge variant="secondary" className="text-[10px]">{stats.officialSources} fontes oficiais citadas</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {works.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      Nenhuma obra privada individualizada foi encontrada nesta consulta. Os demais sinais continuam disponíveis abaixo.
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {works.map((work) => (
+                        <div key={work.id} className="rounded-xl border p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="secondary">Obra detectada</Badge>
+                                {work.fase && <Badge variant="outline">{work.fase}</Badge>}
+                                <Badge variant="outline">{CONSTRUCTION_SOURCE_LABEL[work.sourceFamily]}</Badge>
+                                {work.sourceAuthority === "oficial" && <Badge variant="outline">Fonte oficial</Badge>}
+                                <Badge variant="outline">{work.confidence}% confiança</Badge>
+                              </div>
+                              <p className="mt-2 font-semibold">{work.obra}</p>
+                            </div>
+                            {work.sourceUrl && (
+                              <a
+                                href={work.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted"
+                                title={work.sourceTitle ?? "Abrir fonte pública"}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="mt-3 space-y-2 text-xs">
+                            <div className="flex items-start gap-2">
+                              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                              <div>
+                                <p className="font-medium text-foreground">{work.local}</p>
+                                {work.endereco && <p className="text-muted-foreground">{work.endereco}</p>}
+                              </div>
+                            </div>
+
+                            <div className="flex items-start gap-2">
+                              <UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                              <div>
+                                <p className="font-medium text-foreground">
+                                  Proprietário / contratante: {work.proprietario || "não publicado"}
+                                </p>
+                                {(work.construtora || work.incorporadora || work.responsavelTecnico) && (
+                                  <p className="mt-0.5 text-muted-foreground">
+                                    {[work.construtora && `Construtora: ${work.construtora}`, work.incorporadora && `Incorporadora: ${work.incorporadora}`, work.responsavelTecnico && `Resp. técnico: ${work.responsavelTecnico}`]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <p className="rounded-lg bg-muted/40 p-2.5 leading-5 text-muted-foreground">{work.evidencia}</p>
+                            {work.dataReferencia && (
+                              <p className="text-[11px] text-muted-foreground">
+                                Referência: {new Date(`${work.dataReferencia}T12:00:00`).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {sourceWarnings.length > 0 && (
                 <Card className="border-amber-200 bg-amber-50/40"><CardContent className="p-3 text-xs text-amber-900">{sourceWarnings.join(" ")}</CardContent></Card>
