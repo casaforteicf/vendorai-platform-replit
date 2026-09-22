@@ -88,6 +88,7 @@ type Runtime = {
   panoramaRenderTarget?: any;
   panoramaPreviousBackground?: any;
   panoramaHiddenObjects?: Array<{ object: any; visible: boolean }>;
+  panoramaModelRootVisible?: boolean;
   panoramaPreviousCamera?: {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
@@ -653,6 +654,9 @@ export default function ConceptWebGLScene({
       if (runtime.panoramaHiddenObjects) {
         for (const entry of runtime.panoramaHiddenObjects) entry.object.visible = entry.visible;
       }
+      if (typeof runtime.panoramaModelRootVisible === "boolean") {
+        runtime.modelRoot.visible = runtime.panoramaModelRootVisible;
+      }
       // handleWalkKeyDownCleanupMarker
             (runtime as any).observer?.disconnect?.();
       runtime.renderer.domElement.removeEventListener("click", (runtime as any).handlePointer);
@@ -667,7 +671,7 @@ export default function ConceptWebGLScene({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime || engineState !== "ready" || runtime.navigationMode === "walk") return;
+    if (!runtime || engineState !== "ready" || ["walk", "panorama"].includes(runtime.navigationMode)) return;
     const radius = Math.max(9, Math.hypot(lotWidth, lotDepth) * 0.82) / Math.max(0.6, cameraZoom);
     const radians = (cameraPresetDegrees * Math.PI) / 180;
     const elevation = Math.max(5.5, radius * 0.54);
@@ -1456,6 +1460,9 @@ export default function ConceptWebGLScene({
         for (const entry of runtime.panoramaHiddenObjects) entry.object.visible = entry.visible;
       }
       runtime.scene.background = runtime.panoramaPreviousBackground ?? null;
+      if (typeof runtime.panoramaModelRootVisible === "boolean") {
+        runtime.modelRoot.visible = runtime.panoramaModelRootVisible;
+      }
       if (runtime.panoramaPreviousCamera) {
         runtime.camera.position.set(
           runtime.panoramaPreviousCamera.position.x,
@@ -1474,6 +1481,7 @@ export default function ConceptWebGLScene({
       runtime.panoramaRenderTarget = undefined;
       runtime.panoramaPreviousBackground = undefined;
       runtime.panoramaHiddenObjects = undefined;
+      runtime.panoramaModelRootVisible = undefined;
       runtime.panoramaPreviousCamera = undefined;
     }
 
@@ -1515,6 +1523,8 @@ export default function ConceptWebGLScene({
           }
         });
         runtime.panoramaHiddenObjects = hidden;
+        runtime.panoramaModelRootVisible = runtime.modelRoot.visible;
+        runtime.modelRoot.visible = false;
         runtime.panoramaRenderTarget = renderTarget;
         scene.background = renderTarget.texture;
         camera.fov = 72;
