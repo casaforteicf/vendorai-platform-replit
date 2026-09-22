@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+type CampaignSummary = {
+  id: string;
+  nome: string;
+  tipo: string;
+  status: string;
+};
+
 type CatalogProduct = {
   id: string;
   nome: string;
@@ -87,8 +94,10 @@ export default function FacebookMarketplaceManager() {
   const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [listings, setListings] = useState<MarketplaceListing[]>([]);
   const [productId, setProductId] = useState("");
+  const [campaignId, setCampaignId] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [category, setCategory] = useState("");
@@ -100,14 +109,19 @@ export default function FacebookMarketplaceManager() {
 
   const loadData = useCallback(async () => {
     if (!tenantId) return;
-    const [productResponse, listingResponse] = await Promise.all([
+    const [productResponse, campaignResponse, listingResponse] = await Promise.all([
       fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: authHeaders() }),
+      fetch(`/api/tenants/${tenantId}/campaigns`, { headers: authHeaders() }),
       fetch(`/api/tenants/${tenantId}/facebook-marketplace/listings`, { headers: authHeaders() }),
     ]);
 
     if (productResponse.ok) {
       const data = (await productResponse.json()) as CatalogProduct[];
       setProducts(data.filter((item) => item.ativo !== false));
+    }
+    if (campaignResponse.ok) {
+      const data = (await campaignResponse.json()) as CampaignSummary[];
+      setCampaigns(data);
     }
     if (listingResponse.ok) {
       const data = (await listingResponse.json()) as MarketplaceListing[];
@@ -145,6 +159,7 @@ export default function FacebookMarketplaceManager() {
         headers: authHeaders(),
         body: JSON.stringify({
           productId,
+          campaignId: campaignId || null,
           city: city.trim() || null,
           state: state.trim() || null,
           category: category.trim() || null,
@@ -154,6 +169,7 @@ export default function FacebookMarketplaceManager() {
       if (!response.ok) throw new Error(data?.error || "Não foi possível gerar o anúncio.");
       toast({ title: "Rascunho criado", description: "Título e descrição foram preparados a partir do catálogo." });
       setProductId("");
+      setCampaignId("");
       setCategory("");
       await loadData();
     } catch (error) {
@@ -326,7 +342,7 @@ export default function FacebookMarketplaceManager() {
             <p className="text-xs text-muted-foreground">A IA cria título e descrição sem inventar dados fora do produto cadastrado.</p>
           </div>
         </div>
-        <div className="grid gap-3 lg:grid-cols-[2fr_1fr_100px_1fr_auto]">
+        <div className="grid gap-3 xl:grid-cols-[2fr_1.5fr_1fr_100px_1.2fr_auto]">
           <select
             value={productId}
             onChange={(event) => setProductId(event.target.value)}
@@ -339,8 +355,20 @@ export default function FacebookMarketplaceManager() {
               </option>
             ))}
           </select>
+          <select
+            value={campaignId}
+            onChange={(event) => setCampaignId(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Sem campanha vinculada</option>
+            {campaigns.map((campaign) => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.nome} · {campaign.status}
+              </option>
+            ))}
+          </select>
           <Input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Cidade" />
-          <Input value={state} onChange={(event) => setState(event.target.value)} placeholder="UF" maxLength={2} />
+          <Input value={state} onChange={(event) => setState(event.target.value.toUpperCase())} placeholder="UF" maxLength={2} />
           <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Categoria (opcional)" />
           <Button onClick={() => void createDraft()} disabled={creating || !productId}>
             {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
