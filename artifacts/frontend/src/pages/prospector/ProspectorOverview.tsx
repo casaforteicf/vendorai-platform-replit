@@ -34,6 +34,7 @@ type QueueLead = {
   id: string;
   nome: string;
   empresa?: string | null;
+  source?: string | null;
   telefone?: string | null;
   endereco?: string | null;
   mercadoSegmento?: string | null;
@@ -75,6 +76,34 @@ function money(value?: number) {
     currency: "BRL",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function sourceLabel(source?: string | null) {
+  const labels: Record<string, string> = {
+    prospector: "Prospecctor",
+    prospector_auto: "Prospecctor IA",
+    cnpj: "CNPJ",
+    recem_aberta: "Empresa recém-aberta",
+    ad_library: "Meta Ads",
+    revenue_scout: "Revenue Scout",
+    business_directory: "Diretório",
+    public_registry: "Registro público",
+    google_maps_prospecting: "Google Maps",
+    google_business_profile: "Google Business",
+    linkedin_prospecting: "LinkedIn",
+    instagram_prospecting: "Instagram",
+    facebook_prospecting: "Facebook",
+    marketplace_prospecting: "Marketplace",
+    event_prospecting: "Evento",
+    referral_prospecting: "Indicação",
+    imported_prospect_list: "Lista importada",
+    manual_prospecting: "Manual",
+    website_prospecting: "Website",
+    construction_radar: "Radar de Obras",
+    obra_radar: "Radar de Obras",
+  };
+  if (!source) return null;
+  return labels[source] ?? source.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export default function ProspectorOverview({ onNavigate }: Props) {
@@ -328,6 +357,11 @@ export default function ProspectorOverview({ onNavigate }: Props) {
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold">{lead.nome}</p>
                           <Badge variant="outline" className={scoreClass(score)}>Score {score}</Badge>
+                          {sourceLabel(lead.source) && (
+                            <Badge variant="secondary" className="text-[10px] font-medium">
+                              {sourceLabel(lead.source)}
+                            </Badge>
+                          )}
                         </div>
                         {lead.priorityReason && (
                           <p className="mt-1 text-xs leading-5 text-muted-foreground">{lead.priorityReason}</p>
