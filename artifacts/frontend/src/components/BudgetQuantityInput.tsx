@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
+// Budget inputs are intentionally normalized to two decimal places.
 export function quantityStep(_isComposition: boolean): number {
   return 0.01;
 }
