@@ -4642,9 +4642,12 @@ export default function ConceptPlanner() {
                 </div>
               </aside>
 
-              <div className={`arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8] pl-14 sm:pl-16 ${hasEditorSelection && (editorView === "plan" || editorView === "model3d") ? "md:pr-[360px]" : ""}`}>
+              <div className="arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
                   {editorView === "plan" && (
-                      <div className="absolute left-16 right-3 top-3 z-30 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:left-20 md:right-auto">
+                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                        left-16 right-3 md:right-auto
+                        ${libraryOpen ? "md:left-[380px]" : "md:left-20"}
+                      `}>
                         <button
                           type="button"
                           onClick={() => {
@@ -4741,7 +4744,13 @@ export default function ConceptPlanner() {
                           </button>
                         </div>
                       )}
-                      <div className="absolute inset-0 z-10">
+                      <div
+                        className={`absolute bottom-0 top-0 z-10
+                          left-14 right-0 sm:left-16
+                          ${libraryOpen ? "md:left-[364px]" : "md:left-16"}
+                          ${hasEditorSelection ? "md:right-[364px]" : "md:right-0"}
+                        `}
+                      >
                       <ConceptPlan2D
                         rooms={visibleRooms}
                         lotWidth={lotWidth}
