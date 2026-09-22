@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useWorkspaceProject } from "../WorkspaceContext";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { EMPTY_PROJECT_CONTEXT, WorkspaceContext } from "../WorkspaceContext";
 
 type View = "requests" | "quotes" | "orders" | "receiving" | "finance";
 
@@ -23,6 +23,7 @@ type PurchaseRequest = {
   financeId?: string | null;
   notes?: string | null;
   inputId?: string | null;
+  documents?: Array<Record<string, any>>;
 };
 
 type Quote = {
@@ -39,6 +40,7 @@ type Quote = {
   expectedDelivery?: string | null;
   quoteNumber?: string | null;
   status: string;
+  documents?: Array<Record<string, any>>;
 };
 
 type Receipt = {
@@ -65,7 +67,7 @@ type Bundle = {
   finance: FinanceLaunch[];
 };
 
-type Props = { arqState: any; onNavigate?: (module: string) => void };
+type Props = { arqState?: any; onNavigate?: (module: string) => void; obraId?: string; compact?: boolean };
 
 function token() {
   return localStorage.getItem("vendorai_token") ?? "";
@@ -127,6 +129,7 @@ function normalizeRequest(raw: any): PurchaseRequest {
     financeId: raw?.lancamento_financeiro_id ?? null,
     notes: raw?.observacoes ?? null,
     inputId: raw?.insumo_id ?? null,
+    documents: Array.isArray(raw?.documentos) ? raw.documentos : [],
   };
 }
 
@@ -145,6 +148,7 @@ function normalizeQuote(raw: any): Quote {
     expectedDelivery: raw?.expected_delivery ?? null,
     quoteNumber: raw?.quote_number ?? null,
     status: String(raw?.status ?? "quoted"),
+    documents: Array.isArray(raw?.documents) ? raw.documents : [],
   };
 }
 
@@ -172,10 +176,13 @@ function statusLabel(status: string) {
     rascunho: "Rascunho",
     cotacao: "Em cotação",
     aprovado: "Cotação aprovada",
+    aprovada: "Aprovada",
     pedido_emitido: "Pedido emitido",
     parcial: "Recebido parcial",
     recebido: "Recebido",
+    efetuada: "Compra efetuada",
     cancelado: "Cancelado",
+    cancelada: "Cancelada",
     quoted: "Cotado",
     approved: "Aprovado",
     rejected: "Não selecionado",
@@ -187,20 +194,149 @@ function statusLabel(status: string) {
 }
 
 function statusClass(status: string) {
-  if (["recebido", "delivered"].includes(status)) return "bg-emerald-100 text-emerald-800";
-  if (["aprovado", "approved"].includes(status)) return "bg-emerald-50 text-emerald-700";
+  if (["recebido", "delivered", "efetuada"].includes(status)) return "bg-emerald-100 text-emerald-800";
+  if (["aprovado", "aprovada", "approved"].includes(status)) return "bg-emerald-50 text-emerald-700";
   if (["pedido_emitido", "ordered", "partial", "parcial"].includes(status)) return "bg-violet-50 text-violet-700";
   if (["cotacao", "quoted"].includes(status)) return "bg-blue-50 text-blue-700";
-  if (["cancelado", "rejected"].includes(status)) return "bg-rose-50 text-rose-700";
+  if (["cancelado", "cancelada", "rejected"].includes(status)) return "bg-rose-50 text-rose-700";
   return "bg-amber-50 text-amber-700";
+}
+
+
+type ExtractedItem = {
+  descricao?: string | null;
+  quantidade?: number | null;
+  unidade?: string | null;
+  valorUnitario?: number | null;
+  valorTotal?: number | null;
+};
+
+type ProcurementDocumentExtraction = {
+  tipo?: string | null;
+  fornecedor?: string | null;
+  numero?: string | null;
+  dataPrevista?: string | null;
+  condicaoPagamento?: string | null;
+  prazoEntregaDias?: number | null;
+  frete?: number | null;
+  desconto?: number | null;
+  taxas?: number | null;
+  observacoes?: string | null;
+  itens?: ExtractedItem[];
+};
+
+type StoredDocument = {
+  name?: string;
+  url?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
+  [key: string]: any;
+};
+
+function normalizedHeader(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function finiteNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const cleaned = raw
+    .replace(/R\$/gi, "")
+    .replace(/\s/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".")
+    .replace(/[^0-9.-]/g, "");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readRowValue(row: Record<string, unknown>, aliases: string[]) {
+  const entries = Object.entries(row);
+  for (const alias of aliases) {
+    const wanted = normalizedHeader(alias);
+    const found = entries.find(([key]) => normalizedHeader(key) === wanted);
+    if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim() !== "") return found[1];
+  }
+  return undefined;
+}
+
+async function parseSpreadsheetFile(file: File): Promise<ProcurementDocumentExtraction> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new Error("A planilha não possui uma aba legível.");
+  const sheet = workbook.Sheets[firstSheet];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  const itens: ExtractedItem[] = rows.map((row) => {
+    const descricao = readRowValue(row, ["descricao", "descrição", "item", "produto", "material", "serviço", "servico"]);
+    const quantidade = finiteNumber(readRowValue(row, ["quantidade", "qtd", "qtde"]));
+    const unidade = readRowValue(row, ["unidade", "un", "und"]);
+    const valorUnitario = finiteNumber(readRowValue(row, ["valor unitario", "valor unitário", "preco unitario", "preço unitário", "unitario", "preco"]));
+    let valorTotal = finiteNumber(readRowValue(row, ["valor total", "total", "subtotal"]));
+    if (!valorTotal && quantidade && valorUnitario) valorTotal = quantidade * valorUnitario;
+    return {
+      descricao: descricao ? String(descricao).trim() : "",
+      quantidade: quantidade || 1,
+      unidade: unidade ? String(unidade).trim() : "un",
+      valorUnitario,
+      valorTotal,
+    };
+  }).filter((item) => Boolean(item.descricao));
+
+  const first = rows[0] ?? {};
+  return {
+    tipo: "orcamento",
+    fornecedor: String(readRowValue(first, ["fornecedor", "empresa", "razao social", "razão social"]) ?? "").trim() || null,
+    numero: String(readRowValue(first, ["numero", "número", "orcamento", "orçamento", "pedido"]) ?? "").trim() || null,
+    condicaoPagamento: String(readRowValue(first, ["condicao pagamento", "condição pagamento", "pagamento"]) ?? "").trim() || null,
+    itens,
+  };
+}
+
+function rfqText(obraName: string, request: PurchaseRequest) {
+  const needDate = request.needDate ? new Date(`${request.needDate}T12:00:00`).toLocaleDateString("pt-BR") : "a combinar";
+  return [
+    "SOLICITAÇÃO DE COTAÇÃO / TOMADA DE PREÇOS",
+    `Obra: ${obraName}`,
+    `Solicitação: ${request.code}`,
+    "",
+    `Item/serviço: ${request.item}`,
+    `Quantidade: ${request.quantity} ${request.unit}`,
+    request.environment ? `Local/ambiente: ${request.environment}` : "",
+    request.discipline ? `Disciplina: ${request.discipline}` : "",
+    `Necessário até: ${needDate}`,
+    request.notes ? `Observações: ${request.notes}` : "",
+    "",
+    "Favor informar:",
+    "• preço unitário e valor total;",
+    "• frete, impostos e descontos;",
+    "• prazo de entrega;",
+    "• validade da proposta;",
+    "• condição de pagamento;",
+    "• marca/modelo/especificação quando aplicável.",
+    "",
+    "A cotação será comparada com outras propostas antes da emissão do pedido de compra.",
+  ].filter(Boolean).join("\n");
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char] ?? char));
 }
 
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return <div className="rounded-[26px] border border-slate-100 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{hint}</p></div>;
 }
 
-export default function RealProcurementWorkspace({ arqState, onNavigate }: Props) {
-  const { projectCtx, setProjectCtx } = useWorkspaceProject();
+export default function RealProcurementWorkspace({ arqState = {}, onNavigate, obraId: directObraId = "", compact = false }: Props) {
+  const workspace = useContext(WorkspaceContext);
+  const projectCtx = workspace?.projectCtx ?? EMPTY_PROJECT_CONTEXT;
+  const setProjectCtx = workspace?.setProjectCtx;
   const meta = useMemo(() => projectMeta(arqState, projectCtx), [arqState, projectCtx]);
   const [view, setView] = useState<View>("requests");
   const [bundle, setBundle] = useState<Bundle | null>(null);
@@ -212,16 +348,25 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
   const [quoteDraft, setQuoteDraft] = useState({ supplier: "", value: "0", freight: "0", discount: "0", taxes: "0", leadTime: "", expectedDelivery: "", paymentTerms: "", quoteNumber: "" });
   const [receiptDraft, setReceiptDraft] = useState({ received: "", approved: "", rejected: "0", notes: "" });
   const [financeDueDate, setFinanceDueDate] = useState("");
+  const [requestDocuments, setRequestDocuments] = useState<StoredDocument[]>([]);
+  const [quoteDocuments, setQuoteDocuments] = useState<StoredDocument[]>([]);
+  const [requestExtraction, setRequestExtraction] = useState<ProcurementDocumentExtraction | null>(null);
+  const [requestItemIndex, setRequestItemIndex] = useState(0);
+  const [requestImporting, setRequestImporting] = useState(false);
+  const [quoteImporting, setQuoteImporting] = useState(false);
 
   const load = useCallback(async () => {
-    if (!meta.id) { setLoading(false); return; }
+    if (!directObraId && !meta.id) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const ensured = await api<{ obra: any }>("/api/arch/construction/ensure", { method: "POST", body: JSON.stringify({ projectId: meta.id, name: meta.name, clientName: meta.clientName, budget: meta.budget, status: meta.status }) });
-      const obraId = String(ensured.obra?.id ?? "");
-      if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
-      if ((projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
+      let obraId = directObraId;
+      if (!obraId) {
+        const ensured = await api<{ obra: any }>("/api/arch/construction/ensure", { method: "POST", body: JSON.stringify({ projectId: meta.id, name: meta.name, clientName: meta.clientName, budget: meta.budget, status: meta.status }) });
+        obraId = String(ensured.obra?.id ?? "");
+        if (!obraId) throw new Error("Não foi possível vincular o projeto à obra.");
+        if (setProjectCtx && (projectCtx as any)?.obraId !== obraId) setProjectCtx({ ...(projectCtx as any), id: meta.id, name: meta.name, obraId } as any);
+      }
       const raw = await api<any>(`/api/arch/procurement/${obraId}`);
       const requests = (raw.requests ?? []).map(normalizeRequest);
       const normalized: Bundle = {
@@ -239,7 +384,7 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
     } finally {
       setLoading(false);
     }
-  }, [meta.budget, meta.clientName, meta.id, meta.name, meta.status, projectCtx, setProjectCtx]);
+  }, [directObraId, meta.budget, meta.clientName, meta.id, meta.name, meta.status, projectCtx, setProjectCtx]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -257,12 +402,143 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
     return { requests: requests.length, quotes: quotes.length, ordered, received, committed };
   }, [bundle]);
 
+  function applyRequestExtraction(extracted: ProcurementDocumentExtraction, index = 0) {
+    const items = Array.isArray(extracted.itens) ? extracted.itens : [];
+    const item = items[index] ?? items[0] ?? {};
+    const quantity = Math.max(0, finiteNumber(item.quantidade) || 1);
+    const unitValue = Math.max(0, finiteNumber(item.valorUnitario));
+    const totalValue = Math.max(0, finiteNumber(item.valorTotal) || (quantity * unitValue));
+    const extraNotes = [
+      extracted.fornecedor ? `Fornecedor no documento: ${extracted.fornecedor}` : "",
+      extracted.numero ? `Documento: ${extracted.numero}` : "",
+      extracted.observacoes ?? "",
+    ].filter(Boolean).join(" · ");
+
+    setRequestItemIndex(index);
+    setRequestDraft((value) => ({
+      ...value,
+      item: item.descricao ? String(item.descricao) : value.item,
+      quantity: quantity ? String(quantity) : value.quantity,
+      unit: item.unidade ? String(item.unidade) : value.unit,
+      value: totalValue ? String(totalValue) : value.value,
+      needDate: extracted.dataPrevista || value.needDate,
+      notes: extraNotes || value.notes,
+    }));
+  }
+
+  async function analyzeDocument(file: File, context: "request" | "quote") {
+    if (!bundle) throw new Error("Obra não carregada.");
+    const data = new FormData();
+    data.append("documento", file);
+    data.append("context", context);
+    const response = await fetch(`/api/arch/procurement/${bundle.obra.id}/analyze-document`, {
+      method: "POST",
+      headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
+      body: data,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error ?? "Falha ao importar documento.");
+    const extracted = /\.(xlsx|xls)$/i.test(file.name)
+      ? { ...(payload?.extracted ?? {}), ...(await parseSpreadsheetFile(file)) }
+      : (payload?.extracted ?? {});
+    return { extracted: extracted as ProcurementDocumentExtraction, document: payload?.document as StoredDocument | undefined };
+  }
+
+  async function importRequestDocument(file?: File) {
+    if (!file) return;
+    setRequestImporting(true);
+    setError(null);
+    try {
+      const result = await analyzeDocument(file, "request");
+      const extracted = result.extracted;
+      setRequestExtraction(extracted);
+      if (result.document) setRequestDocuments((docs) => [...docs, result.document!]);
+      applyRequestExtraction(extracted, 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao importar orçamento/pedido.");
+    } finally {
+      setRequestImporting(false);
+    }
+  }
+
+  async function importQuoteDocument(file?: File) {
+    if (!file) return;
+    setQuoteImporting(true);
+    setError(null);
+    try {
+      const result = await analyzeDocument(file, "quote");
+      const extracted = result.extracted;
+      if (result.document) setQuoteDocuments((docs) => [...docs, result.document!]);
+      const items = Array.isArray(extracted.itens) ? extracted.itens : [];
+      const totalFromItems = items.reduce((sum, item) => {
+        const quantity = Math.max(0, finiteNumber(item.quantidade) || 1);
+        return sum + Math.max(0, finiteNumber(item.valorTotal) || (quantity * finiteNumber(item.valorUnitario)));
+      }, 0);
+      setQuoteDraft((value) => ({
+        ...value,
+        supplier: extracted.fornecedor || value.supplier,
+        value: totalFromItems ? String(totalFromItems) : value.value,
+        freight: extracted.frete != null ? String(Math.max(0, finiteNumber(extracted.frete))) : value.freight,
+        discount: extracted.desconto != null ? String(Math.max(0, finiteNumber(extracted.desconto))) : value.discount,
+        taxes: extracted.taxas != null ? String(Math.max(0, finiteNumber(extracted.taxas))) : value.taxes,
+        leadTime: extracted.prazoEntregaDias != null ? String(Math.max(0, finiteNumber(extracted.prazoEntregaDias))) : value.leadTime,
+        expectedDelivery: extracted.dataPrevista || value.expectedDelivery,
+        paymentTerms: extracted.condicaoPagamento || value.paymentTerms,
+        quoteNumber: extracted.numero || value.quoteNumber,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao importar cotação.");
+    } finally {
+      setQuoteImporting(false);
+    }
+  }
+
+  async function copyRfq(request: PurchaseRequest) {
+    try {
+      await navigator.clipboard.writeText(rfqText(bundle?.obra.nome ?? "Obra", request));
+    } catch {
+      setError("Não foi possível copiar automaticamente. Gere o modelo para visualizar o texto.");
+    }
+  }
+
+  function openRfq(request: PurchaseRequest) {
+    const text = rfqText(bundle?.obra.nome ?? "Obra", request);
+    const popup = window.open("", "_blank", "width=900,height=760");
+    if (!popup) {
+      setError("O navegador bloqueou a janela do modelo. Libere pop-ups para gerar a solicitação.");
+      return;
+    }
+    popup.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<title>Solicitação de Cotação - ${escapeHtml(request.code)}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;padding:32px;background:#fff}
+.wrap{max-width:800px;margin:0 auto}
+.head{border-bottom:2px solid #172033;padding-bottom:18px;margin-bottom:22px}
+.kicker{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;font-weight:700}
+h1{font-size:25px;margin:6px 0}
+pre{font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap;line-height:1.55;font-size:14px}
+.actions{margin-top:24px;display:flex;gap:10px}
+button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+.primary{background:#172033;color:white}.secondary{background:#eef2f7;color:#172033}
+@media print{.actions{display:none}body{padding:0}}
+</style>
+</head>
+<body><div class="wrap"><div class="head"><div class="kicker">Compras da Obra</div><h1>Solicitação de cotação / tomada de preços</h1></div><pre>${escapeHtml(text)}</pre><div class="actions"><button class="primary" onclick="window.print()">Imprimir / Salvar PDF</button><button class="secondary" onclick="window.close()">Fechar</button></div></div></body></html>`);
+    popup.document.close();
+  }
+
   async function createRequest() {
     if (!bundle || !requestDraft.item.trim()) return;
     setBusy("new-request"); setError(null);
     try {
-      await api(`/api/arch/procurement/${bundle.obra.id}/requests`, { method: "POST", body: JSON.stringify({ descricao: requestDraft.item.trim(), quantidade: n(requestDraft.quantity), unidade: requestDraft.unit || "un", valorTotal: n(requestDraft.value), prioridade: requestDraft.priority, etapaId: requestDraft.stageId || null, ambiente: requestDraft.environment || null, disciplina: requestDraft.discipline || null, dataNecessidade: requestDraft.needDate || null, observacoes: requestDraft.notes || null }) });
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests`, { method: "POST", body: JSON.stringify({ descricao: requestDraft.item.trim(), quantidade: n(requestDraft.quantity), unidade: requestDraft.unit || "un", valorTotal: n(requestDraft.value), prioridade: requestDraft.priority, etapaId: requestDraft.stageId || null, ambiente: requestDraft.environment || null, disciplina: requestDraft.discipline || null, dataNecessidade: requestDraft.needDate || null, observacoes: requestDraft.notes || null, documentos: requestDocuments, origem: requestDocuments.length ? "documento_importado" : "manual" }) });
       setRequestDraft({ item: "", quantity: "1", unit: "un", value: "0", priority: "media", stageId: "", environment: "", discipline: "", needDate: "", notes: "" });
+      setRequestDocuments([]);
+      setRequestExtraction(null);
+      setRequestItemIndex(0);
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao criar solicitação."); }
     finally { setBusy(null); }
@@ -280,8 +556,9 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
     if (!bundle || !selected || !quoteDraft.supplier.trim()) return;
     setBusy("new-quote"); setError(null);
     try {
-      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({ projectId: meta.id, supplierName: quoteDraft.supplier.trim(), confirmedValue: n(quoteDraft.value), freightValue: n(quoteDraft.freight), discountValue: n(quoteDraft.discount), taxValue: n(quoteDraft.taxes), leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime), expectedDelivery: quoteDraft.expectedDelivery || null, paymentTerms: quoteDraft.paymentTerms || null, quoteNumber: quoteDraft.quoteNumber || null }) });
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({ projectId: meta.id || undefined, supplierName: quoteDraft.supplier.trim(), confirmedValue: n(quoteDraft.value), freightValue: n(quoteDraft.freight), discountValue: n(quoteDraft.discount), taxValue: n(quoteDraft.taxes), leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime), expectedDelivery: quoteDraft.expectedDelivery || null, paymentTerms: quoteDraft.paymentTerms || null, quoteNumber: quoteDraft.quoteNumber || null, documents: quoteDocuments }) });
       setQuoteDraft({ supplier: "", value: "0", freight: "0", discount: "0", taxes: "0", leadTime: "", expectedDelivery: "", paymentTerms: "", quoteNumber: "" });
+      setQuoteDocuments([]);
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao registrar cotação."); }
     finally { setBusy(null); }
@@ -322,19 +599,19 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
     finally { setBusy(null); }
   }
 
-  if (!meta.id) return <div className="rounded-3xl border border-dashed p-8 text-center text-sm text-slate-500">Selecione um projeto para abrir Compras.</div>;
+  if (!directObraId && !meta.id) return <div className="rounded-3xl border border-dashed p-8 text-center text-sm text-slate-500">Selecione um projeto ou obra para abrir Compras.</div>;
   if (loading) return <div className="p-8 text-sm text-slate-500">Carregando Compras da obra…</div>;
   if (!bundle) return <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">{error || "Não foi possível carregar Compras."}</div>;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
-      <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
+    <div className={compact ? "text-slate-950" : "min-h-screen bg-[#f7f7f8] text-slate-950"}>
+      <div className={compact ? "flex w-full flex-col gap-5" : "mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6"}>
         <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Compras da Obra</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{bundle.obra.nome}</h1><p className="mt-1 text-sm text-slate-500">Solicitação → Cotação → Aprovação → Pedido → Recebimento → Financeiro</p></div>
             <div className="flex flex-wrap gap-2">
               {([['requests','Solicitações'],['quotes','Cotações'],['orders','Pedidos'],['receiving','Recebimento'],['finance','Financeiro']] as Array<[View,string]>).map(([id,label]) => <button key={id} type="button" onClick={() => setView(id)} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === id ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700"}`}>{label}</button>)}
-              <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold">Orçamento</button>
+              {onNavigate ? <button type="button" onClick={() => onNavigate("real-budget")} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold">Orçamento</button> : null}
             </div>
           </div>
         </header>
@@ -349,18 +626,192 @@ export default function RealProcurementWorkspace({ arqState, onNavigate }: Props
           <Metric label="Comprometido" value={money(metrics.committed)} hint="cotações selecionadas" />
         </section>
 
-        {view === "requests" ? <div className="grid gap-5 2xl:grid-cols-[430px_1fr]">
-          <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold">Nova solicitação</h2><p className="mt-1 text-xs text-slate-500">Cadastre o que a obra precisa comprar antes de pedir preços.</p>
-            <div className="mt-4 space-y-3"><input value={requestDraft.item} onChange={(e) => setRequestDraft((v) => ({ ...v, item: e.target.value }))} placeholder="Item ou serviço" className="w-full rounded-xl border px-3 py-2 text-sm" /><div className="grid grid-cols-3 gap-2"><input type="number" min="0" value={requestDraft.quantity} onChange={(e) => setRequestDraft((v) => ({ ...v, quantity: e.target.value }))} placeholder="Qtd." className="rounded-xl border px-3 py-2 text-sm" /><input value={requestDraft.unit} onChange={(e) => setRequestDraft((v) => ({ ...v, unit: e.target.value }))} placeholder="un/m²" className="rounded-xl border px-3 py-2 text-sm" /><input type="number" min="0" value={requestDraft.value} onChange={(e) => setRequestDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Estimativa" className="rounded-xl border px-3 py-2 text-sm" /></div><div className="grid grid-cols-2 gap-2"><select value={requestDraft.stageId} onChange={(e) => setRequestDraft((v) => ({ ...v, stageId: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm"><option value="">Etapa da obra</option>{bundle.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select><select value={requestDraft.priority} onChange={(e) => setRequestDraft((v) => ({ ...v, priority: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></div><div className="grid grid-cols-2 gap-2"><input value={requestDraft.environment} onChange={(e) => setRequestDraft((v) => ({ ...v, environment: e.target.value }))} placeholder="Ambiente/local" className="rounded-xl border px-3 py-2 text-sm" /><input value={requestDraft.discipline} onChange={(e) => setRequestDraft((v) => ({ ...v, discipline: e.target.value }))} placeholder="Disciplina" className="rounded-xl border px-3 py-2 text-sm" /></div><label className="block text-[11px] text-slate-500">Necessário até<input type="date" value={requestDraft.needDate} onChange={(e) => setRequestDraft((v) => ({ ...v, needDate: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" /></label><textarea rows={2} value={requestDraft.notes} onChange={(e) => setRequestDraft((v) => ({ ...v, notes: e.target.value }))} placeholder="Observações" className="w-full rounded-xl border px-3 py-2 text-sm" /><button disabled={!requestDraft.item.trim() || busy === "new-request"} onClick={() => void createRequest()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy === "new-request" ? "Salvando…" : "Criar solicitação"}</button></div>
-          </section>
-          <section className="space-y-3">{bundle.requests.length ? bundle.requests.map((request) => <article key={request.id} onClick={() => setSelectedId(request.id)} className={`cursor-pointer rounded-[28px] border bg-white p-5 shadow-sm ${selectedId === request.id ? "border-violet-300 ring-2 ring-violet-100" : "border-slate-100"}`}><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-mono text-slate-400">{request.code}</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(request.status)}`}>{statusLabel(request.status)}</span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{request.priority}</span></div><h3 className="mt-2 text-lg font-semibold">{request.item}</h3><p className="mt-1 text-xs text-slate-500">{request.quantity} {request.unit}{request.environment ? ` · ${request.environment}` : ""}{request.discipline ? ` · ${request.discipline}` : ""}</p></div><div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões)</p></div></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={(e) => { e.stopPropagation(); setSelectedId(request.id); setView("quotes"); }} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Abrir cotações</button>{!request.supplierOrderId && !request.financeId ? <button type="button" onClick={(e) => { e.stopPropagation(); void deleteRequest(request); }} disabled={busy === request.id} className="rounded-xl border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600">Excluir</button> : null}</div></article>) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma solicitação cadastrada.</div>}</section>
-        </div> : null}
+        {view === "requests" ? (
+          <div className="grid gap-5 2xl:grid-cols-[460px_1fr]">
+            <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+              <div>
+                <h2 className="text-lg font-semibold">Nova solicitação de compra</h2>
+                <p className="mt-1 text-xs text-slate-500">Digite os dados ou anexe um orçamento/pedido para importar as informações.</p>
+              </div>
 
-        {view === "quotes" ? <div className="grid gap-5 2xl:grid-cols-[430px_1fr]">
-          <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Registrar cotação</h2><select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"><option value="">Selecione a solicitação</option>{bundle.requests.map((request) => <option key={request.id} value={request.id}>{request.code} · {request.item}</option>)}</select>{selected ? <div className="mt-4 space-y-3"><input value={quoteDraft.supplier} onChange={(e) => setQuoteDraft((v) => ({ ...v, supplier: e.target.value }))} placeholder="Fornecedor" className="w-full rounded-xl border px-3 py-2 text-sm" /><div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={quoteDraft.value} onChange={(e) => setQuoteDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Valor" className="rounded-xl border px-3 py-2 text-sm" /><input type="number" min="0" value={quoteDraft.freight} onChange={(e) => setQuoteDraft((v) => ({ ...v, freight: e.target.value }))} placeholder="Frete" className="rounded-xl border px-3 py-2 text-sm" /></div><div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={quoteDraft.discount} onChange={(e) => setQuoteDraft((v) => ({ ...v, discount: e.target.value }))} placeholder="Desconto" className="rounded-xl border px-3 py-2 text-sm" /><input type="number" min="0" value={quoteDraft.taxes} onChange={(e) => setQuoteDraft((v) => ({ ...v, taxes: e.target.value }))} placeholder="Taxas" className="rounded-xl border px-3 py-2 text-sm" /></div><div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={quoteDraft.leadTime} onChange={(e) => setQuoteDraft((v) => ({ ...v, leadTime: e.target.value }))} placeholder="Prazo em dias" className="rounded-xl border px-3 py-2 text-sm" /><input type="date" value={quoteDraft.expectedDelivery} onChange={(e) => setQuoteDraft((v) => ({ ...v, expectedDelivery: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm" /></div><input value={quoteDraft.paymentTerms} onChange={(e) => setQuoteDraft((v) => ({ ...v, paymentTerms: e.target.value }))} placeholder="Condição de pagamento" className="w-full rounded-xl border px-3 py-2 text-sm" /><input value={quoteDraft.quoteNumber} onChange={(e) => setQuoteDraft((v) => ({ ...v, quoteNumber: e.target.value }))} placeholder="Número da proposta" className="w-full rounded-xl border px-3 py-2 text-sm" /><button disabled={!quoteDraft.supplier.trim() || busy === "new-quote"} onClick={() => void createQuote()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Adicionar cotação</button></div> : <p className="mt-4 text-sm text-slate-500">Selecione uma solicitação.</p>}</section>
-          <section className="space-y-3">{selected ? <div className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase text-violet-600">{selected.code}</p><h2 className="mt-1 text-xl font-semibold">{selected.item}</h2><p className="mt-1 text-sm text-slate-500">Compare preço final, prazo e condições. A decisão de aprovação permanece humana.</p></div> : null}{selectedQuotes.length ? selectedQuotes.map((quote, index) => <article key={quote.id} className={`rounded-[28px] border bg-white p-5 shadow-sm ${selected?.selectedQuoteId === quote.id ? "border-emerald-300" : "border-slate-100"}`}><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{quote.supplier}</h3><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>{index === 0 ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase text-blue-700">Menor valor atual</span> : null}</div><p className="mt-1 text-xs text-slate-500">{quote.leadTimeDays != null ? `${quote.leadTimeDays} dias` : "Prazo não informado"}{quote.expectedDelivery ? ` · entrega ${new Date(`${quote.expectedDelivery}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}{quote.paymentTerms ? ` · ${quote.paymentTerms}` : ""}</p></div><div className="text-right"><p className="text-xl font-semibold">{money(quoteTotal(quote))}</p><p className="text-[11px] text-slate-400">base {money(quote.value)} · frete {money(quote.freight)}</p></div></div><div className="mt-4 flex flex-wrap gap-2">{quote.status === "quoted" ? <button disabled={busy === quote.id} onClick={() => void approveQuote(quote)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Aprovar cotação</button> : null}{quote.status === "approved" && selected?.selectedQuoteId === quote.id ? <button disabled={busy === `order-${selected.id}`} onClick={() => void issueOrder(selected)} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Emitir pedido</button> : null}</div></article>) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma cotação para a solicitação selecionada.</div>}</section>
-        </div> : null}
+              <label className="mt-4 block cursor-pointer rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center transition hover:bg-violet-50">
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xls,.xlsx,.txt,.xml"
+                  onChange={(e) => { const file = e.target.files?.[0]; void importRequestDocument(file); e.currentTarget.value = ""; }}
+                />
+                <span className="block text-sm font-semibold text-violet-700">{requestImporting ? "Lendo documento…" : "Anexar orçamento ou pedido"}</span>
+                <span className="mt-1 block text-[11px] text-slate-500">PDF, imagem, Excel, CSV, TXT ou XML · os campos são preenchidos para revisão</span>
+              </label>
+
+              {requestDocuments.length ? (
+                <div className="mt-3 space-y-1.5">
+                  {requestDocuments.map((doc, index) => (
+                    <div key={`${doc.url ?? doc.name}-${index}`} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium text-violet-700 hover:underline">{doc.name ?? "Documento anexado"}</a>
+                      <button type="button" className="shrink-0 text-slate-400 hover:text-rose-600" onClick={() => setRequestDocuments((docs) => docs.filter((_, i) => i !== index))}>Remover</button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {requestExtraction?.itens && requestExtraction.itens.length > 1 ? (
+                <label className="mt-3 block text-[11px] font-medium text-slate-500">
+                  Item importado
+                  <select
+                    value={requestItemIndex}
+                    onChange={(e) => applyRequestExtraction(requestExtraction, Number(e.target.value))}
+                    className="mt-1 w-full rounded-xl border px-3 py-2 text-sm text-slate-800"
+                  >
+                    {requestExtraction.itens.map((item, index) => <option key={index} value={index}>{index + 1}. {item.descricao || "Item sem descrição"}</option>)}
+                  </select>
+                </label>
+              ) : null}
+
+              <div className="mt-4 space-y-3">
+                <input value={requestDraft.item} onChange={(e) => setRequestDraft((v) => ({ ...v, item: e.target.value }))} placeholder="Item ou serviço" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" min="0" value={requestDraft.quantity} onChange={(e) => setRequestDraft((v) => ({ ...v, quantity: e.target.value }))} placeholder="Qtd." className="rounded-xl border px-3 py-2 text-sm" />
+                  <input value={requestDraft.unit} onChange={(e) => setRequestDraft((v) => ({ ...v, unit: e.target.value }))} placeholder="un/m²" className="rounded-xl border px-3 py-2 text-sm" />
+                  <input type="number" min="0" value={requestDraft.value} onChange={(e) => setRequestDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Estimativa" className="rounded-xl border px-3 py-2 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={requestDraft.stageId} onChange={(e) => setRequestDraft((v) => ({ ...v, stageId: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm">
+                    <option value="">Etapa da obra</option>
+                    {bundle.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                  </select>
+                  <select value={requestDraft.priority} onChange={(e) => setRequestDraft((v) => ({ ...v, priority: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm">
+                    <option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="critica">Crítica</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={requestDraft.environment} onChange={(e) => setRequestDraft((v) => ({ ...v, environment: e.target.value }))} placeholder="Ambiente/local" className="rounded-xl border px-3 py-2 text-sm" />
+                  <input value={requestDraft.discipline} onChange={(e) => setRequestDraft((v) => ({ ...v, discipline: e.target.value }))} placeholder="Disciplina" className="rounded-xl border px-3 py-2 text-sm" />
+                </div>
+                <label className="block text-[11px] text-slate-500">Necessário até
+                  <input type="date" value={requestDraft.needDate} onChange={(e) => setRequestDraft((v) => ({ ...v, needDate: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" />
+                </label>
+                <textarea rows={3} value={requestDraft.notes} onChange={(e) => setRequestDraft((v) => ({ ...v, notes: e.target.value }))} placeholder="Observações" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                <button disabled={!requestDraft.item.trim() || busy === "new-request" || requestImporting} onClick={() => void createRequest()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                  {busy === "new-request" ? "Salvando…" : "Criar solicitação"}
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              {bundle.requests.length ? bundle.requests.map((request) => (
+                <article key={request.id} onClick={() => setSelectedId(request.id)} className={`cursor-pointer rounded-[28px] border bg-white p-5 shadow-sm ${selectedId === request.id ? "border-violet-300 ring-2 ring-violet-100" : "border-slate-100"}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-mono text-slate-400">{request.code}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(request.status)}`}>{statusLabel(request.status)}</span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{request.priority}</span>
+                      </div>
+                      <h3 className="mt-2 text-lg font-semibold">{request.item}</h3>
+                      <p className="mt-1 text-xs text-slate-500">{request.quantity} {request.unit}{request.environment ? ` · ${request.environment}` : ""}{request.discipline ? ` · ${request.discipline}` : ""}</p>
+                      {request.documents?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {request.documents.map((doc, index) => <a key={`${doc.url ?? doc.name}-${index}`} href={doc.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="rounded-lg bg-slate-50 px-2 py-1 text-[11px] font-medium text-violet-700 hover:underline">{doc.name ?? "Anexo"}</a>)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="text-right"><p className="font-semibold">{money(request.estimatedValue)}</p><p className="text-xs text-slate-400">{bundle.quotes.filter((quote) => quote.requestId === request.id).length} cotação(ões)</p></div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openRfq(request); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Gerar solicitação de cotação</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); void copyRfq(request); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Copiar texto</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedId(request.id); setView("quotes"); }} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Abrir cotações</button>
+                    {!request.supplierOrderId && !request.financeId ? <button type="button" onClick={(e) => { e.stopPropagation(); void deleteRequest(request); }} disabled={busy === request.id} className="rounded-xl border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600">Excluir</button> : null}
+                  </div>
+                </article>
+              )) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma solicitação cadastrada.</div>}
+            </section>
+          </div>
+        ) : null}
+
+        {view === "quotes" ? (
+          <div className="grid gap-5 2xl:grid-cols-[460px_1fr]">
+            <section className="self-start rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold">Registrar cotação recebida</h2>
+              <p className="mt-1 text-xs text-slate-500">Anexe o orçamento do fornecedor para preencher preço, prazo e condições automaticamente.</p>
+              <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="mt-3 w-full rounded-xl border px-3 py-2 text-sm">
+                <option value="">Selecione a solicitação</option>
+                {bundle.requests.map((request) => <option key={request.id} value={request.id}>{request.code} · {request.item}</option>)}
+              </select>
+              {selected ? (
+                <div className="mt-4 space-y-3">
+                  <label className="block cursor-pointer rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 text-center transition hover:bg-violet-50">
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xls,.xlsx,.txt,.xml"
+                      onChange={(e) => { const file = e.target.files?.[0]; void importQuoteDocument(file); e.currentTarget.value = ""; }}
+                    />
+                    <span className="block text-sm font-semibold text-violet-700">{quoteImporting ? "Lendo cotação…" : "Anexar orçamento do fornecedor"}</span>
+                    <span className="mt-1 block text-[11px] text-slate-500">O arquivo fica vinculado à cotação para consulta futura</span>
+                  </label>
+
+                  {quoteDocuments.length ? (
+                    <div className="space-y-1.5">
+                      {quoteDocuments.map((doc, index) => (
+                        <div key={`${doc.url ?? doc.name}-${index}`} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                          <a href={doc.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium text-violet-700 hover:underline">{doc.name ?? "Cotação anexada"}</a>
+                          <button type="button" className="shrink-0 text-slate-400 hover:text-rose-600" onClick={() => setQuoteDocuments((docs) => docs.filter((_, i) => i !== index))}>Remover</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <input value={quoteDraft.supplier} onChange={(e) => setQuoteDraft((v) => ({ ...v, supplier: e.target.value }))} placeholder="Fornecedor" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={quoteDraft.value} onChange={(e) => setQuoteDraft((v) => ({ ...v, value: e.target.value }))} placeholder="Valor da cotação" className="rounded-xl border px-3 py-2 text-sm" />
+                    <input type="number" min="0" value={quoteDraft.freight} onChange={(e) => setQuoteDraft((v) => ({ ...v, freight: e.target.value }))} placeholder="Frete" className="rounded-xl border px-3 py-2 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={quoteDraft.discount} onChange={(e) => setQuoteDraft((v) => ({ ...v, discount: e.target.value }))} placeholder="Desconto" className="rounded-xl border px-3 py-2 text-sm" />
+                    <input type="number" min="0" value={quoteDraft.taxes} onChange={(e) => setQuoteDraft((v) => ({ ...v, taxes: e.target.value }))} placeholder="Taxas" className="rounded-xl border px-3 py-2 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={quoteDraft.leadTime} onChange={(e) => setQuoteDraft((v) => ({ ...v, leadTime: e.target.value }))} placeholder="Prazo em dias" className="rounded-xl border px-3 py-2 text-sm" />
+                    <input type="date" value={quoteDraft.expectedDelivery} onChange={(e) => setQuoteDraft((v) => ({ ...v, expectedDelivery: e.target.value }))} className="rounded-xl border px-3 py-2 text-sm" />
+                  </div>
+                  <input value={quoteDraft.paymentTerms} onChange={(e) => setQuoteDraft((v) => ({ ...v, paymentTerms: e.target.value }))} placeholder="Condição de pagamento" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                  <input value={quoteDraft.quoteNumber} onChange={(e) => setQuoteDraft((v) => ({ ...v, quoteNumber: e.target.value }))} placeholder="Número da proposta" className="w-full rounded-xl border px-3 py-2 text-sm" />
+                  <button disabled={!quoteDraft.supplier.trim() || busy === "new-quote" || quoteImporting} onClick={() => void createQuote()} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                    {busy === "new-quote" ? "Salvando…" : "Adicionar cotação"}
+                  </button>
+                </div>
+              ) : <p className="mt-4 text-sm text-slate-500">Selecione uma solicitação.</p>}
+            </section>
+
+            <section className="space-y-3">
+              {selected ? <div className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase text-violet-600">{selected.code}</p><h2 className="mt-1 text-xl font-semibold">{selected.item}</h2><p className="mt-1 text-sm text-slate-500">Compare valor final, prazo, frete e condições; selecione a cotação que seguirá para o pedido.</p></div> : null}
+              {selectedQuotes.length ? selectedQuotes.map((quote, index) => (
+                <article key={quote.id} className={`rounded-[28px] border bg-white p-5 shadow-sm ${selected?.selectedQuoteId === quote.id ? "border-emerald-300 ring-2 ring-emerald-50" : "border-slate-100"}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold">{quote.supplier}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>
+                        {index === 0 ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase text-blue-700">Menor valor atual</span> : null}
+                        {selected?.selectedQuoteId === quote.id ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase text-emerald-800">Selecionada para compra</span> : null}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{quote.leadTimeDays != null ? `${quote.leadTimeDays} dias` : "Prazo não informado"}{quote.expectedDelivery ? ` · entrega ${new Date(`${quote.expectedDelivery}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}{quote.paymentTerms ? ` · ${quote.paymentTerms}` : ""}</p>
+                      {quote.documents?.length ? <div className="mt-2 flex flex-wrap gap-2">{quote.documents.map((doc, docIndex) => <a key={`${doc.url ?? doc.name}-${docIndex}`} href={doc.url} target="_blank" rel="noreferrer" className="rounded-lg bg-slate-50 px-2 py-1 text-[11px] font-medium text-violet-700 hover:underline">{doc.name ?? "Cotação"}</a>)}</div> : null}
+                    </div>
+                    <div className="text-right"><p className="text-xl font-semibold">{money(quoteTotal(quote))}</p><p className="text-[11px] text-slate-400">base {money(quote.value)} · frete {money(quote.freight)}{quote.discount ? ` · desconto ${money(quote.discount)}` : ""}</p></div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {quote.status === "quoted" ? <button disabled={busy === quote.id} onClick={() => void approveQuote(quote)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Selecionar cotação</button> : null}
+                    {quote.status === "approved" && selected?.selectedQuoteId === quote.id ? <button disabled={busy === `order-${selected.id}`} onClick={() => void issueOrder(selected)} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Dar sequência · Emitir pedido</button> : null}
+                  </div>
+                </article>
+              )) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhuma cotação para a solicitação selecionada.</div>}
+            </section>
+          </div>
+        ) : null}
 
         {view === "orders" ? <section className="space-y-3">{orderedRequests.length ? orderedRequests.map((request) => { const order = bundle.quotes.find((quote) => quote.id === request.supplierOrderId); return <article key={request.id} className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex gap-2"><span className="font-mono text-xs text-slate-400">{request.code}</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusClass(request.status)}`}>{statusLabel(request.status)}</span></div><h3 className="mt-2 text-lg font-semibold">{request.item}</h3><p className="text-sm text-slate-500">{order?.supplier || request.supplier}{order?.expectedDelivery ? ` · entrega ${new Date(`${order.expectedDelivery}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}</p></div><div className="flex flex-wrap items-center gap-2"><p className="mr-2 text-lg font-semibold">{money(order ? quoteTotal(order) : request.estimatedValue)}</p>{request.financeId ? <span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Financeiro vinculado</span> : <button onClick={() => { setSelectedId(request.id); setView("finance"); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold">Enviar ao financeiro</button>}<button onClick={() => { setSelectedId(request.id); setReceiptDraft((v) => ({ ...v, received: String(Math.max(0, request.quantity - selectedReceipts.reduce((sum, r) => sum + r.approved, 0))) })); setView("receiving"); }} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Registrar recebimento</button></div></div></article>; }) : <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-slate-500">Nenhum pedido emitido ainda.</div>}</section> : null}
 

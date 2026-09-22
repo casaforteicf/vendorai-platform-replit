@@ -1,8 +1,36 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
+import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveAIKey, logUsage, estimateCost } from "../lib/ai-gateway.js";
+import { objectStorageClient } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+
+function safeFilename(name: string) {
+  return name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(0, 120) || "documento";
+}
+
+async function saveProcurementDocument(tid: string, obraId: string, file: Express.Multer.File) {
+  const privateDir = process.env["PRIVATE_OBJECT_DIR"] || "/app-uploads/private";
+  const storedName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safeFilename(file.originalname)}`;
+  const fullPath = `${privateDir}/procurement/${tid}/${obraId}/${storedName}`;
+  const parts = fullPath.split("/").filter(Boolean);
+  const bucketName = parts.shift();
+  if (!bucketName || !parts.length) throw new Error("PRIVATE_OBJECT_DIR inválido");
+  const objectName = parts.join("/");
+  await objectStorageClient.bucket(bucketName).file(objectName).save(file.buffer, { contentType: file.mimetype, resumable: false });
+  return {
+    name: file.originalname,
+    storedName,
+    mimeType: file.mimetype,
+    size: file.size,
+    url: `/objects/procurement/${tid}/${obraId}/${storedName}`,
+    uploadedAt: new Date().toISOString(),
+  };
+}
 
 function tenantId(req: any): string | null {
   return req?.user?.tenantId ?? req?.tenantId ?? null;
@@ -55,6 +83,108 @@ function makeCode() {
   return `COMP-${date}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
+router.post("/arch/procurement/:obraId/analyze-document", upload.single("documento"), async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res);
+    if (!tid) return;
+    const obraId = String(req.params["obraId"] ?? "");
+    if (!await ownedObra(tid, obraId)) { res.status(404).json({ error: "Obra não encontrada" }); return; }
+    const file = req.file;
+    if (!file) { res.status(422).json({ error: "Anexe um orçamento, pedido ou cotação." }); return; }
+
+    const lower = file.originalname.toLowerCase();
+    const isPdf = file.mimetype === "application/pdf" || lower.endsWith(".pdf");
+    const isImage = file.mimetype.startsWith("image/");
+    const isText = file.mimetype.startsWith("text/") || /\.(txt|csv|xml)$/i.test(lower);
+    const isSpreadsheet = /\.(xlsx|xls)$/i.test(lower);
+    if (!isPdf && !isImage && !isText && !isSpreadsheet) {
+      res.status(422).json({ error: "Use PDF, imagem, CSV, XLS/XLSX, TXT ou XML." });
+      return;
+    }
+
+    const context = String(req.body?.context ?? "request");
+    const document = await saveProcurementDocument(tid, obraId, file);
+    if (isSpreadsheet) {
+      res.json({ extracted: { tipo: "orcamento", itens: [] }, document, parseLocally: true });
+      return;
+    }
+    const aiKey = await resolveAIKey(tid, "anthropic");
+    const anthropic = new Anthropic({ apiKey: aiKey.apiKey });
+    const system = `Você extrai dados de documentos de compras de obras no Brasil.
+Retorne APENAS JSON válido, sem markdown:
+{
+  "tipo": "orcamento" | "pedido" | "cotacao" | "nota" | "outro",
+  "fornecedor": "string ou null",
+  "numero": "string ou null",
+  "dataPrevista": "YYYY-MM-DD ou null",
+  "condicaoPagamento": "string ou null",
+  "prazoEntregaDias": 0,
+  "frete": 0,
+  "desconto": 0,
+  "taxas": 0,
+  "observacoes": "string ou null",
+  "itens": [
+    {
+      "descricao": "string",
+      "quantidade": 1,
+      "unidade": "un",
+      "valorUnitario": 0,
+      "valorTotal": 0
+    }
+  ]
+}
+Não invente valores. Quando ausente use null ou 0. Se houver vários itens, extraia todos. Contexto: ${context}.`;
+
+    let content: Anthropic.MessageParam["content"];
+    if (isPdf) {
+      content = [
+        { type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data: file.buffer.toString("base64") } },
+        { type: "text" as const, text: "Extraia os dados deste documento para o fluxo de compras da obra." },
+      ];
+    } else if (isImage) {
+      const mediaType = ["image/jpeg","image/png","image/gif","image/webp"].includes(file.mimetype) ? file.mimetype : "image/jpeg";
+      content = [
+        { type: "image" as const, source: { type: "base64" as const, media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: file.buffer.toString("base64") } },
+        { type: "text" as const, text: "Extraia os dados deste documento para o fluxo de compras da obra." },
+      ];
+    } else {
+      content = [{ type: "text" as const, text: `Extraia os dados do documento abaixo:\n\n${file.buffer.toString("utf-8").slice(0, 50000)}` }];
+    }
+
+    const model = "claude-sonnet-4-6";
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 1800,
+      system,
+      messages: [{ role: "user", content }],
+    });
+    const raw = response.content[0]?.type === "text" ? response.content[0].text : "{}";
+    const match = raw.match(/\{[\s\S]*\}/);
+    let extracted: Record<string, unknown> = {};
+    try { extracted = JSON.parse(match?.[0] ?? "{}"); }
+    catch { extracted = { tipo: "outro", itens: [], observacoes: raw.slice(0, 2000) }; }
+
+    const inputTokens = response.usage.input_tokens;
+    const outputTokens = response.usage.output_tokens;
+    await logUsage({
+      tenantId: tid,
+      provider: "anthropic",
+      model,
+      feature: "document_extraction",
+      inputTokens,
+      outputTokens,
+      costEstimateUsd: estimateCost(model, inputTokens, outputTokens),
+      usedByok: aiKey.usedByok,
+      success: true,
+    });
+
+    res.json({ extracted, document });
+  } catch (err) {
+    logger.error({ err }, "arch procurement document analysis error");
+    next(err);
+  }
+});
+
 router.get("/arch/procurement/:obraId", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res);
@@ -100,7 +230,7 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
        ) VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
          $11,$12,$13,$14,$15,$16,$17,$18,
-         $19,$20,$21,$22,'[]'::jsonb,now(),now()
+         $19,$20,$21,$22,$23::jsonb,now(),now()
        ) RETURNING *`,
       [
         id, tid, obraId, req.body?.insumoId || null, req.body?.codigo || makeCode(), req.body?.etapaId || null,
@@ -109,6 +239,7 @@ router.post("/arch/procurement/:obraId/requests", async (req, res, next) => {
         String(req.body?.prioridade || "media"), String(req.body?.status || "pendente"), req.body?.dataPrevista || null,
         req.body?.dataNecessidade || null, req.user?.sub ?? null, req.user?.email ?? null,
         String(req.body?.origem || "manual"), req.body?.observacoes || null,
+        JSON.stringify(Array.isArray(req.body?.documentos) ? req.body.documentos : []),
       ],
     );
     res.status(201).json({ request: result.rows[0] });
@@ -192,8 +323,15 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
     const request = await ownedRequest(tid, obraId, requestId);
     if (!request) { res.status(404).json({ error: "Solicitação não encontrada" }); return; }
     const supplierName = String(req.body?.supplierName ?? "").trim();
-    const projectId = String(req.body?.projectId ?? "").trim();
-    if (!supplierName || !projectId) { res.status(400).json({ error: "Fornecedor e projectId são obrigatórios" }); return; }
+    let projectId = String(req.body?.projectId ?? "").trim() || null;
+    if (!supplierName) { res.status(400).json({ error: "Fornecedor é obrigatório" }); return; }
+    if (!projectId) {
+      const linkedProject = await pool.query(
+        `SELECT id FROM arch_projetos WHERE obra_id = $1 AND tenant_id = $2 ORDER BY updated_at DESC LIMIT 1`,
+        [obraId, tid],
+      );
+      projectId = linkedProject.rows[0]?.id ?? null;
+    }
 
     const quantity = Math.max(0, num(req.body?.quantity, request.quantidade || 1));
     const estimatedValue = Math.max(0, num(req.body?.estimatedValue, request.valor_total || 0));
@@ -208,7 +346,7 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
        ) VALUES (
          gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5::uuid,
          $6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-         $21,'quoted',now(),now(),$22,$23,'[]'::jsonb,now(),now()
+         $21,'quoted',now(),now(),$22,$23,$24::jsonb,now(),now()
        ) RETURNING *`,
       [
         tid, projectId, obraId, requestId, req.body?.workOrderId || null,
@@ -218,6 +356,7 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
         req.body?.paymentTerms || null, req.body?.quoteValidUntil || null,
         req.body?.leadTimeDays == null ? null : Math.max(0, Math.round(num(req.body.leadTimeDays))),
         req.body?.quoteNumber || null, req.body?.expectedDelivery || null, req.body?.notes || null,
+        JSON.stringify(Array.isArray(req.body?.documents) ? req.body.documents : []),
       ],
     );
     await pool.query(`UPDATE compras_obras SET status = CASE WHEN status IN ('pendente','rascunho') THEN 'cotacao' ELSE status END, updated_at = now() WHERE id = $1 AND obra_id = $2 AND tenant_id = $3`, [requestId, obraId, tid]);
