@@ -137,3 +137,112 @@ export function clampBuildingOrigin(
     fits: bounds.width <= envelope.width + 0.001 && bounds.depth <= envelope.depth + 0.001,
   };
 }
+
+
+export type SitePlacementSuggestion = {
+  id: "access" | "balanced" | "free_area";
+  title: string;
+  description: string;
+  origin: { x: number; y: number };
+  metrics: {
+    frontFree: number;
+    rearFree: number;
+    leftFree: number;
+    rightFree: number;
+  };
+};
+
+function clearanceMetrics(
+  origin: { x: number; y: number },
+  bounds: SiteBuildingBounds,
+  lotWidth: number,
+  lotDepth: number,
+  placement: SitePlacement,
+) {
+  const envelope = getBuildableEnvelope(lotWidth, lotDepth, placement);
+  const leftFree = Math.max(0, origin.x - envelope.minX);
+  const rightFree = Math.max(0, envelope.maxX - (origin.x + bounds.width));
+  const topFree = Math.max(0, origin.y - envelope.minY);
+  const bottomFree = Math.max(0, envelope.maxY - (origin.y + bounds.depth));
+
+  if (placement.frontSide === "top") {
+    return { frontFree: topFree, rearFree: bottomFree, leftFree, rightFree };
+  }
+  if (placement.frontSide === "left") {
+    return { frontFree: leftFree, rearFree: rightFree, leftFree: bottomFree, rightFree: topFree };
+  }
+  if (placement.frontSide === "right") {
+    return { frontFree: rightFree, rearFree: leftFree, leftFree: topFree, rightFree: bottomFree };
+  }
+  return { frontFree: bottomFree, rearFree: topFree, leftFree, rightFree };
+}
+
+function frontAlignedOrigin(
+  bounds: SiteBuildingBounds,
+  envelope: ReturnType<typeof getBuildableEnvelope>,
+  placement: SitePlacement,
+  crossAxisRatio: number,
+) {
+  const xSpan = Math.max(0, envelope.width - bounds.width);
+  const ySpan = Math.max(0, envelope.depth - bounds.depth);
+  const crossX = envelope.minX + xSpan * crossAxisRatio;
+  const crossY = envelope.minY + ySpan * crossAxisRatio;
+
+  if (placement.frontSide === "top") return { x: crossX, y: envelope.minY };
+  if (placement.frontSide === "left") return { x: envelope.minX, y: crossY };
+  if (placement.frontSide === "right") return { x: envelope.maxX - bounds.width, y: crossY };
+  return { x: crossX, y: envelope.maxY - bounds.depth };
+}
+
+export function buildSitePlacementSuggestions(
+  rooms: Array<{ kind: string; x: number; y: number; width: number; depth: number }>,
+  lotWidth: number,
+  lotDepth: number,
+  placement: SitePlacement,
+): SitePlacementSuggestion[] {
+  const bounds = getBuildingBounds(rooms);
+  if (!bounds) return [];
+
+  const envelope = getBuildableEnvelope(lotWidth, lotDepth, placement);
+  if (bounds.width > envelope.width + 0.001 || bounds.depth > envelope.depth + 0.001) return [];
+
+  const centered = {
+    x: envelope.minX + Math.max(0, (envelope.width - bounds.width) / 2),
+    y: envelope.minY + Math.max(0, (envelope.depth - bounds.depth) / 2),
+  };
+
+  const frontCenter = frontAlignedOrigin(bounds, envelope, placement, 0.5);
+
+  // Leaves the widest continuous side strip available for garden, access or leisure.
+  const sideA = frontAlignedOrigin(bounds, envelope, placement, 0);
+  const sideB = frontAlignedOrigin(bounds, envelope, placement, 1);
+  const sideAMetrics = clearanceMetrics(sideA, bounds, lotWidth, lotDepth, placement);
+  const sideBMetrics = clearanceMetrics(sideB, bounds, lotWidth, lotDepth, placement);
+  const sideAScore = Math.max(sideAMetrics.leftFree, sideAMetrics.rightFree) + sideAMetrics.rearFree * 1.25;
+  const sideBScore = Math.max(sideBMetrics.leftFree, sideBMetrics.rightFree) + sideBMetrics.rearFree * 1.25;
+  const freeAreaOrigin = sideBScore > sideAScore ? sideB : sideA;
+
+  return [
+    {
+      id: "access",
+      title: "Acesso e garagem",
+      description: "Aproxima a casa da rua e facilita entrada de veículos e pedestres.",
+      origin: frontCenter,
+      metrics: clearanceMetrics(frontCenter, bounds, lotWidth, lotDepth, placement),
+    },
+    {
+      id: "balanced",
+      title: "Implantação equilibrada",
+      description: "Distribui os espaços livres ao redor da casa de forma mais uniforme.",
+      origin: centered,
+      metrics: clearanceMetrics(centered, bounds, lotWidth, lotDepth, placement),
+    },
+    {
+      id: "free_area",
+      title: "Mais área livre",
+      description: "Encosta a casa em uma lateral para liberar uma faixa maior para jardim, lazer ou circulação.",
+      origin: freeAreaOrigin,
+      metrics: clearanceMetrics(freeAreaOrigin, bounds, lotWidth, lotDepth, placement),
+    },
+  ];
+}
