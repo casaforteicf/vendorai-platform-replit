@@ -432,7 +432,7 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
       .where(eq(adCampaignsTable.id, campaignId));
     await tx
       .update(adCreativesTable)
-      .set({ externalAdId: adResourceName })
+      .set({ externalAdId: adResourceName, externalStatus: "paused" })
       .where(eq(adCreativesTable.id, creative.id));
   });
 
@@ -500,7 +500,7 @@ export async function publishGoogleAdsCreativeVariant(
   const externalAdId = adRes.results[0]?.resourceName;
   if (!externalAdId) throw new GoogleAdsPublishError("Google Ads não retornou o anúncio da variação.");
 
-  await db.update(adCreativesTable).set({ externalAdId }).where(eq(adCreativesTable.id, creativeId));
+  await db.update(adCreativesTable).set({ externalAdId, externalStatus: "paused" }).where(eq(adCreativesTable.id, creativeId));
   return { externalAdId };
 }
 
@@ -525,6 +525,9 @@ export async function setGoogleAdsCreativeVariantStatus(
     update: { resourceName: creative.externalAdId, status: ativar ? "ENABLED" : "PAUSED" },
     updateMask: "status",
   }]);
+  await db.update(adCreativesTable)
+    .set({ externalStatus: ativar ? "active" : "paused" })
+    .where(eq(adCreativesTable.id, creativeId));
 }
 
 export async function setGoogleAdsCampaignStatus(
