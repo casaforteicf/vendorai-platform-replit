@@ -367,6 +367,58 @@ router.post("/tenants/:tenantId/ads/events/:id/resolve", async (req, res) => {
   return res.json(event);
 });
 
+router.get("/tenants/:tenantId/ads/campaigns/:id/destination-preview", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+
+  if (campaign.destinoClique === "whatsapp") {
+    const [profile] = await db.select({ telefone: businessProfilesTable.telefone })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1);
+    const number = profile?.telefone?.replace(/\D/g, "");
+    if (!number) return res.json({ type: "whatsapp", url: null, label: "WhatsApp", ready: false, reason: "Telefone não configurado no perfil do negócio." });
+    const suffix = campaign.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campaign.utmCode}`)}` : "";
+    return res.json({ type: "whatsapp", url: `https://wa.me/${number}${suffix}`, label: "WhatsApp", ready: true });
+  }
+
+  if (campaign.destinoClique === "landing_page") {
+    if (!campaign.landingPageId) return res.json({ type: "landing_page", url: null, label: "Landing Page", ready: false, reason: "Landing Page não selecionada." });
+    const [site] = await db.select({ siteSlug: generatedSitesTable.siteSlug, published: generatedSitesTable.published })
+      .from(generatedSitesTable)
+      .where(and(eq(generatedSitesTable.id, campaign.landingPageId), eq(generatedSitesTable.tenantId, tenantId)))
+      .limit(1);
+    if (!site?.siteSlug) return res.json({ type: "landing_page", url: null, label: "Landing Page", ready: false, reason: "Landing Page não encontrada." });
+    const url = new URL(`https://${site.siteSlug}.appvendorai.com`);
+    if (campaign.utmCode) url.searchParams.set("utm_campaign", campaign.utmCode);
+    return res.json({ type: "landing_page", url: url.toString(), label: "Landing Page", ready: site.published === true, reason: site.published ? null : "A landing page ainda não está publicada." });
+  }
+
+  if (campaign.destinoClique === "formulario_lead") {
+    return res.json({
+      type: "formulario_lead",
+      url: null,
+      label: "Formulário VendorAI",
+      ready: false,
+      reason: "O formulário integrado ficará disponível quando o fluxo de formulários da campanha estiver publicado.",
+    });
+  }
+
+  return res.json({
+    type: "produto",
+    url: null,
+    label: "Produto / estoque",
+    ready: Boolean(campaign.itemId),
+    reason: campaign.itemId ? "Destino do produto é resolvido na publicação conforme o tipo de item." : "Nenhum item selecionado.",
+  });
+});
+
 router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
