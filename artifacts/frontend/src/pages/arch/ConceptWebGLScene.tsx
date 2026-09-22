@@ -44,6 +44,10 @@ type Props = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }) => void;
+  panoramaExportToken?: number;
+  panoramaExportWidth?: number;
+  onPanoramaExport?: (dataUrl: string) => void;
+  onPanoramaExportError?: (message: string) => void;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -237,6 +241,10 @@ export default function ConceptWebGLScene({
   cameraSnapshotToken = 0,
   savedCameraViewpoint = null,
   onCameraSnapshot,
+  panoramaExportToken = 0,
+  panoramaExportWidth = 4096,
+  onPanoramaExport,
+  onPanoramaExportError,
   paintTool = null,
   onReady,
   onSelectObject,
@@ -1407,6 +1415,96 @@ export default function ConceptWebGLScene({
       target: { x: targetX, y: floorY, z: targetZ },
     };
   }, [engineState, lotDepth, lotWidth, navigationMode, tourPoint?.floor, tourPoint?.token, tourPoint?.x, tourPoint?.y]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || !panoramaExportToken) return;
+    if (!runtime.panoramaRenderTarget?.texture) {
+      onPanoramaExportError?.("Abra o modo Panorama 360° antes de exportar.");
+      return;
+    }
+
+    const { THREE, renderer } = runtime;
+    const width = Math.max(1024, Math.min(8192, Math.round(panoramaExportWidth)));
+    const height = Math.round(width / 2);
+    const target = new THREE.WebGLRenderTarget(width, height, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: false,
+      stencilBuffer: false,
+    });
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        cubeMap: { value: runtime.panoramaRenderTarget.texture },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        uniform samplerCube cubeMap;
+        varying vec2 vUv;
+        const float PI = 3.1415926535897932384626433832795;
+        void main() {
+          float longitude = (vUv.x * 2.0 - 1.0) * PI;
+          float latitude = (0.5 - vUv.y) * PI;
+          float cosLat = cos(latitude);
+          vec3 dir = normalize(vec3(
+            sin(longitude) * cosLat,
+            sin(latitude),
+            cos(longitude) * cosLat
+          ));
+          gl_FragColor = textureCube(cubeMap, dir);
+        }
+      `,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+    scene.add(quad);
+
+    try {
+      const previousTarget = renderer.getRenderTarget?.() ?? null;
+      renderer.setRenderTarget(target);
+      renderer.clear();
+      renderer.render(scene, camera);
+
+      const pixels = new Uint8Array(width * height * 4);
+      renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+      renderer.setRenderTarget(previousTarget);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D indisponível.");
+
+      const image = ctx.createImageData(width, height);
+      const rowSize = width * 4;
+      for (let y = 0; y < height; y += 1) {
+        const srcOffset = (height - 1 - y) * rowSize;
+        const dstOffset = y * rowSize;
+        image.data.set(pixels.subarray(srcOffset, srcOffset + rowSize), dstOffset);
+      }
+      ctx.putImageData(image, 0, 0);
+      onPanoramaExport?.(canvas.toDataURL("image/png", 1));
+    } catch (error) {
+      onPanoramaExportError?.(error instanceof Error ? error.message : "Falha ao exportar panorama 360°.");
+    } finally {
+      material.dispose?.();
+      quad.geometry?.dispose?.();
+      target.dispose?.();
+    }
+  }, [engineState, onPanoramaExport, onPanoramaExportError, panoramaExportToken, panoramaExportWidth]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
