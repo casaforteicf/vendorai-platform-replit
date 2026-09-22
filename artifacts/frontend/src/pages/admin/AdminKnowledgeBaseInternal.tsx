@@ -1,23 +1,21 @@
-import { useMemo, useState } from "react";
-import { useLocation } from "wouter";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
   BookOpen,
   Building2,
-  CheckCircle2,
-  Clipboard,
-  FileQuestion,
-  LayoutTemplate,
-  Megaphone,
-  Presentation,
+  Eye,
+  Pencil,
+  Plus,
+  RotateCcw,
   Search,
-  Sparkles,
-  Target,
+  Trash2,
 } from "lucide-react";
 
 type ScopeModule = {
@@ -7461,80 +7459,164 @@ const segmentCatalog: Record<SegmentKey, { label: string; description: string; m
   },
 };
 
-const actionBriefs = {
-  marketing: {
-    title: "Usar no Marketing",
-    instruction: "Crie um plano de marketing usando somente o escopo selecionado. Defina posicionamento, público, dores, promessa, temas, formatos, canais, frequência e CTAs.",
-    href: "/content?tab=planejamento&source=superadmin-scope",
-  },
-  lp: {
-    title: "Gerar LP",
-    instruction: "Crie uma Landing Page de alta conversão usando somente o escopo selecionado. Estruture headline, promessa, problema, benefícios, funcionamento, prova, CTA e captura de lead.",
-    href: "/content?tab=campanhas&view=lp&source=superadmin-scope",
-  },
-  campaign: {
-    title: "Gerar campanha",
-    instruction: "Crie uma campanha completa usando somente o escopo selecionado. Defina público, promessa, canais, criativos, CTA, Landing Page, nutrição e indicadores.",
-    href: "/content?tab=campanhas&source=superadmin-scope",
-  },
-  presentation: {
-    title: "Gerar apresentação comercial",
-    instruction: "Monte uma apresentação comercial exclusiva sobre o escopo selecionado. Linguagem comercial, não técnica. Explique a dor, como funciona, aplicação prática, benefícios, exemplo de uso e resultado esperado.",
-  },
-  faq: {
-    title: "Gerar FAQ",
-    instruction: "Crie um FAQ exclusivamente sobre o escopo selecionado, com perguntas comerciais e respostas simples, objetivas e orientadas a benefícios.",
-  },
-  audit: {
-    title: "Auditar produto contra o escopo",
-    instruction: "Audite somente o escopo selecionado no produto. Classifique os requisitos como pronto, parcial, ausente ou precisa validar. Liste evidência esperada, impacto comercial, prioridade e próximo passo.",
-  },
-} as const;
+type KnowledgeSegment = {
+  key: string;
+  label: string;
+  description: string;
+  modules: ScopeModule[];
+  isCustom: boolean;
+  persisted: boolean;
+};
 
-type ActionKey = keyof typeof actionBriefs;
+type SegmentForm = {
+  key: string;
+  label: string;
+  description: string;
+};
 
-function moduleContext(segmentLabel: string, modules: ScopeModule[], module: ScopeModule | null) {
-  if (!module) {
-    return [
-      `ESCOPO: ${segmentLabel} — visão completa`,
-      ...modules.map((item) => `- ${item.title}: ${item.summary}`),
-    ].join("\n");
-  }
+type ModuleForm = {
+  id: string;
+  group: string;
+  title: string;
+  summary: string;
+  bullets: string;
+  angle: string;
+};
 
-  return [
-    `ESCOPO PONTUAL: ${module.title}`,
-    `GRUPO: ${module.group}`,
-    `RESUMO: ${module.summary}`,
-    "CARACTERÍSTICAS:",
-    ...module.bullets.map((item) => `- ${item}`),
-    `ÂNGULO COMERCIAL: ${module.angle}`,
-    "",
-    "REGRA: use somente este escopo como tema principal. Não transforme o material em uma apresentação geral de todo o sistema.",
-  ].join("\n");
+const EMPTY_MODULE_FORM: ModuleForm = {
+  id: "",
+  group: "",
+  title: "",
+  summary: "",
+  bullets: "",
+  angle: "",
+};
+
+function authHeaders() {
+  const token = localStorage.getItem("vendorai_token");
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function moduleToForm(module?: ScopeModule | null): ModuleForm {
+  if (!module) return { ...EMPTY_MODULE_FORM };
+  return {
+    id: module.id,
+    group: module.group,
+    title: module.title,
+    summary: module.summary,
+    bullets: module.bullets.join("\n"),
+    angle: module.angle,
+  };
 }
 
 export default function AdminKnowledgeBaseInternal() {
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [segment, setSegment] = useState<SegmentKey>("construtoras");
+  const [overrides, setOverrides] = useState<Record<string, KnowledgeSegment>>({});
+  const [segment, setSegment] = useState<string>("construtoras");
   const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [segmentSearch, setSegmentSearch] = useState("");
   const [group, setGroup] = useState("Todos");
-  const [preparedBrief, setPreparedBrief] = useState("");
-  const [preparedTitle, setPreparedTitle] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const activeCatalog = segmentCatalog[segment];
-  const scopeModules = activeCatalog.modules;
+  const [segmentDialogOpen, setSegmentDialogOpen] = useState(false);
+  const [editingSegmentKey, setEditingSegmentKey] = useState<string | null>(null);
+  const [segmentForm, setSegmentForm] = useState<SegmentForm>({ key: "", label: "", description: "" });
+
+  const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
+  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
+  const [moduleForm, setModuleForm] = useState<ModuleForm>({ ...EMPTY_MODULE_FORM });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/internal-knowledge", { headers: authHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const rows = await res.json() as Array<{
+          key: string;
+          label: string;
+          description: string;
+          modules: ScopeModule[];
+          isCustom: boolean;
+        }>;
+        if (cancelled) return;
+        const next: Record<string, KnowledgeSegment> = {};
+        for (const row of rows) {
+          next[row.key] = { ...row, persisted: true };
+        }
+        setOverrides(next);
+      } catch (error) {
+        console.error("[internal-knowledge] load failed", error);
+        toast({
+          title: "Base carregada com conteúdo padrão",
+          description: "Não foi possível carregar edições salvas no banco agora.",
+          variant: "destructive",
+        });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const catalog = useMemo(() => {
+    const merged: Record<string, KnowledgeSegment> = {};
+    for (const [key, item] of Object.entries(segmentCatalog)) {
+      merged[key] = {
+        key,
+        label: item.label,
+        description: item.description,
+        modules: item.modules,
+        isCustom: false,
+        persisted: false,
+      };
+    }
+    for (const [key, item] of Object.entries(overrides)) {
+      merged[key] = item;
+    }
+    return merged;
+  }, [overrides]);
+
+  const activeCatalog = catalog[segment] ?? Object.values(catalog)[0];
+  const scopeModules = activeCatalog?.modules ?? [];
+
+  useEffect(() => {
+    if (!catalog[segment]) {
+      const first = Object.keys(catalog)[0];
+      if (first) setSegment(first);
+    }
+  }, [catalog, segment]);
 
   const groups = useMemo(
-    () => ["Todos", ...Array.from(new Set(scopeModules.map((item) => item.group)))],
+    () => ["Todos", ...Array.from(new Set(scopeModules.map((item) => item.group))).sort()],
     [scopeModules],
   );
 
   const selectedScope = useMemo(
     () => scopeModules.find((item) => item.id === selectedScopeId) ?? null,
-    [selectedScopeId],
+    [scopeModules, selectedScopeId],
   );
+
+  const filteredSegments = useMemo(() => {
+    const q = segmentSearch.trim().toLowerCase();
+    const items = Object.values(catalog);
+    if (!q) return items;
+    return items.filter((item) =>
+      [item.label, item.description].join(" ").toLowerCase().includes(q),
+    );
+  }, [catalog, segmentSearch]);
 
   const filteredScopes = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -7544,57 +7626,179 @@ export default function AdminKnowledgeBaseInternal() {
       const haystack = [item.title, item.group, item.summary, item.angle, ...item.bullets].join(" ").toLowerCase();
       return haystack.includes(query);
     });
-  }, [group, search]);
+  }, [group, scopeModules, search]);
 
-  function selectScope(scopeId: string | null) {
-    setSelectedScopeId(scopeId);
-    setPreparedBrief("");
-    setPreparedTitle("");
-    const module = scopeModules.find((item) => item.id === scopeId);
-    toast({
-      title: module ? `Escopo selecionado: ${module.title}` : "Escopo completo selecionado",
-      description: module
-        ? "As próximas ações usarão somente esta característica."
-        : `As próximas ações poderão usar a visão completa de ${activeCatalog.label}.`,
-    });
+  async function persistSegment(payload: KnowledgeSegment) {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/internal-knowledge/${encodeURIComponent(payload.key)}`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          label: payload.label,
+          description: payload.description,
+          modules: payload.modules,
+          isCustom: payload.isCustom,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+      const saved: KnowledgeSegment = { ...body, persisted: true };
+      setOverrides((current) => ({ ...current, [saved.key]: saved }));
+      return saved;
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function prepareAction(key: ActionKey) {
-    const action = actionBriefs[key];
-    const context = moduleContext(activeCatalog.label, scopeModules, selectedScope);
-    const brief = `${context}\n\nOBJETIVO\n${action.instruction}`;
-    const scopeSlug = selectedScope?.id ?? `${segment}-completo`;
+  function chooseSegment(key: string) {
+    setSegment(key);
+    setSelectedScopeId(null);
+    setSearch("");
+    setGroup("Todos");
+  }
 
-    sessionStorage.setItem("vendorai_superadmin_internal_scope_v1", JSON.stringify({
-      scope: scopeSlug,
-      title: selectedScope?.title ?? `Escopo Comercial — ${activeCatalog.label}`,
-      group: selectedScope?.group ?? "Completo",
-      action: key,
-      brief,
-      createdAt: new Date().toISOString(),
-    }));
+  function openNewSegment() {
+    setEditingSegmentKey(null);
+    setSegmentForm({ key: "", label: "", description: "" });
+    setSegmentDialogOpen(true);
+  }
 
-    setPreparedTitle(`${action.title} — ${selectedScope?.title ?? activeCatalog.label}`);
-    setPreparedBrief(brief);
+  function openEditSegment() {
+    if (!activeCatalog) return;
+    setEditingSegmentKey(activeCatalog.key);
+    setSegmentForm({
+      key: activeCatalog.key,
+      label: activeCatalog.label,
+      description: activeCatalog.description,
+    });
+    setSegmentDialogOpen(true);
+  }
 
-    if ("href" in action && action.href) {
-      const separator = action.href.includes("?") ? "&" : "?";
-      setLocation(`${action.href}${separator}scope=${encodeURIComponent(scopeSlug)}`);
+  async function saveSegmentForm() {
+    const label = segmentForm.label.trim();
+    const key = editingSegmentKey ?? slugify(segmentForm.key || label);
+    if (!label || !key) {
+      toast({ title: "Informe o nome do segmento", variant: "destructive" });
+      return;
+    }
+    if (!editingSegmentKey && catalog[key]) {
+      toast({ title: "Já existe um segmento com essa chave", variant: "destructive" });
       return;
     }
 
-    toast({
-      title: action.title,
-      description: selectedScope
-        ? `Brief preparado usando somente “${selectedScope.title}”.`
-        : "Brief preparado usando o escopo completo.",
-    });
+    const current = editingSegmentKey ? catalog[editingSegmentKey] : null;
+    try {
+      const saved = await persistSegment({
+        key,
+        label,
+        description: segmentForm.description.trim(),
+        modules: current?.modules ?? [],
+        isCustom: current?.isCustom ?? true,
+        persisted: true,
+      });
+      setSegmentDialogOpen(false);
+      chooseSegment(saved.key);
+      toast({ title: editingSegmentKey ? "Segmento atualizado" : "Segmento criado" });
+    } catch (error) {
+      toast({ title: "Não foi possível salvar", description: String(error), variant: "destructive" });
+    }
   }
 
-  async function copyPreparedBrief() {
-    if (!preparedBrief) return;
-    await navigator.clipboard.writeText(preparedBrief);
-    toast({ title: "Brief copiado" });
+  function openNewModule() {
+    setEditingModuleId(null);
+    setModuleForm({ ...EMPTY_MODULE_FORM });
+    setModuleDialogOpen(true);
+  }
+
+  function openEditModule(module: ScopeModule) {
+    setEditingModuleId(module.id);
+    setModuleForm(moduleToForm(module));
+    setModuleDialogOpen(true);
+  }
+
+  async function saveModuleForm() {
+    if (!activeCatalog) return;
+    const title = moduleForm.title.trim();
+    const id = editingModuleId ?? slugify(moduleForm.id || title);
+    const groupValue = moduleForm.group.trim();
+    const summary = moduleForm.summary.trim();
+    if (!title || !id || !groupValue || !summary) {
+      toast({ title: "Preencha grupo, título e resumo", variant: "destructive" });
+      return;
+    }
+    if (!editingModuleId && scopeModules.some((item) => item.id === id)) {
+      toast({ title: "Já existe uma informação com esse identificador", variant: "destructive" });
+      return;
+    }
+
+    const nextModule: ScopeModule = {
+      id,
+      group: groupValue,
+      title,
+      summary,
+      bullets: moduleForm.bullets.split("\n").map((item) => item.trim()).filter(Boolean),
+      angle: moduleForm.angle.trim(),
+    };
+    const modules = editingModuleId
+      ? scopeModules.map((item) => item.id === editingModuleId ? nextModule : item)
+      : [...scopeModules, nextModule];
+
+    try {
+      await persistSegment({ ...activeCatalog, modules });
+      setSelectedScopeId(id);
+      setModuleDialogOpen(false);
+      toast({ title: editingModuleId ? "Informação atualizada" : "Informação adicionada" });
+    } catch (error) {
+      toast({ title: "Não foi possível salvar", description: String(error), variant: "destructive" });
+    }
+  }
+
+  async function deleteModule(module: ScopeModule) {
+    if (!activeCatalog) return;
+    if (!window.confirm(`Excluir “${module.title}” desta base?`)) return;
+    try {
+      await persistSegment({
+        ...activeCatalog,
+        modules: scopeModules.filter((item) => item.id !== module.id),
+      });
+      if (selectedScopeId === module.id) setSelectedScopeId(null);
+      toast({ title: "Informação excluída" });
+    } catch (error) {
+      toast({ title: "Não foi possível excluir", description: String(error), variant: "destructive" });
+    }
+  }
+
+  async function removeOrResetSegment() {
+    if (!activeCatalog) return;
+    const isStatic = Object.prototype.hasOwnProperty.call(segmentCatalog, activeCatalog.key);
+    const action = isStatic ? "restaurar o conteúdo padrão" : "excluir este segmento";
+    if (!window.confirm(`Confirma ${action}?`)) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/internal-knowledge/${encodeURIComponent(activeCatalog.key)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setOverrides((current) => {
+        const next = { ...current };
+        delete next[activeCatalog.key];
+        return next;
+      });
+      setSelectedScopeId(null);
+      if (!isStatic) setSegment("construtoras");
+      toast({ title: isStatic ? "Conteúdo padrão restaurado" : "Segmento excluído" });
+    } catch (error) {
+      toast({ title: "Não foi possível concluir", description: String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!activeCatalog) {
+    return <div className="p-6 text-sm text-muted-foreground">Carregando base interna...</div>;
   }
 
   return (
@@ -7605,44 +7809,59 @@ export default function AdminKnowledgeBaseInternal() {
             <div className="mb-2 flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-primary" />
               <Badge variant="secondary">Somente Superadmin</Badge>
+              <Badge variant="outline">{Object.keys(catalog).length} segmentos</Badge>
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Base Interna da Empresa</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Biblioteca estratégica modular. Selecione uma característica específica do sistema e gere material exclusivo sobre ela, sem precisar usar o escopo completo.
+              Base estratégica e funcional do Vendor.ai. Aqui você lê, adiciona e edita o conhecimento de cada segmento. Esta tela não gera campanhas ou materiais de marketing.
             </p>
           </div>
-          <Badge variant="outline">{activeCatalog.label} · Biblioteca modular</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={openNewSegment}>
+              <Plus className="mr-2 h-4 w-4" /> Novo segmento
+            </Button>
+            <Button onClick={openNewModule}>
+              <Plus className="mr-2 h-4 w-4" /> Nova informação
+            </Button>
+          </div>
         </div>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Segmento</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base">Segmentos</CardTitle>
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={segmentSearch}
+                onChange={(event) => setSegmentSearch(event.target.value)}
+                placeholder="Buscar segmento..."
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {(Object.keys(segmentCatalog) as SegmentKey[]).map((key) => {
-              const item = segmentCatalog[key];
-              const active = segment === key;
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredSegments.map((item) => {
+              const active = segment === item.key;
               return (
-                <Button
-                  key={key}
-                  variant={active ? "default" : "outline"}
-                  className="h-auto justify-start p-4 text-left"
-                  onClick={() => {
-                    setSegment(key);
-                    setSelectedScopeId(null);
-                    setGroup("Todos");
-                    setSearch("");
-                    setPreparedBrief("");
-                    setPreparedTitle("");
-                  }}
+                <button
+                  type="button"
+                  key={item.key}
+                  onClick={() => chooseSegment(item.key)}
+                  className={[
+                    "min-w-0 rounded-xl border p-4 text-left transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted/50",
+                  ].join(" ")}
                 >
-                  <span>
-                    <strong className="block">{item.label}</strong>
-                    <span className={active ? "text-xs text-primary-foreground/80" : "text-xs text-muted-foreground"}>{item.description}</span>
+                  <strong className="block break-words text-sm leading-5">{item.label}</strong>
+                  <span className={active ? "mt-1 block break-words text-xs leading-5 text-primary-foreground/80" : "mt-1 block break-words text-xs leading-5 text-muted-foreground"}>
+                    {item.description}
                   </span>
-                </Button>
+                </button>
               );
             })}
           </div>
@@ -7651,168 +7870,211 @@ export default function AdminKnowledgeBaseInternal() {
 
       <Card className="border-primary/20">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Target className="h-5 w-5 text-primary" />
-            Centro de comando
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4 rounded-xl border bg-muted/30 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contexto ativo</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge>{selectedScope?.title ?? `Escopo Completo — ${activeCatalog.label}`}</Badge>
-              {selectedScope && <Badge variant="outline">{selectedScope.group}</Badge>}
-              {selectedScope && (
-                <Button variant="ghost" size="sm" onClick={() => selectScope(null)}>
-                  Usar escopo completo
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                <Badge>{activeCatalog.label}</Badge>
+                {activeCatalog.persisted && <Badge variant="outline">Editado no banco</Badge>}
+              </div>
+              <CardTitle className="text-xl">{activeCatalog.label}</CardTitle>
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">{activeCatalog.description}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={openEditSegment}>
+                <Pencil className="mr-2 h-4 w-4" /> Editar segmento
+              </Button>
+              {activeCatalog.persisted && (
+                <Button variant="outline" onClick={removeOrResetSegment} disabled={saving}>
+                  {activeCatalog.isCustom ? <Trash2 className="mr-2 h-4 w-4" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                  {activeCatalog.isCustom ? "Excluir segmento" : "Restaurar padrão"}
                 </Button>
               )}
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {selectedScope?.summary ?? activeCatalog.description}
-            </p>
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("marketing")}>
-              <Megaphone className="h-5 w-5 shrink-0" />
-              <span><strong className="block">Usar no Marketing</strong><span className="text-xs text-muted-foreground">Planejamento focado no escopo ativo</span></span>
-            </Button>
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("lp")}>
-              <LayoutTemplate className="h-5 w-5 shrink-0" />
-              <span><strong className="block">Gerar LP</strong><span className="text-xs text-muted-foreground">Página exclusiva sobre a característica</span></span>
-            </Button>
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("campaign")}>
-              <Megaphone className="h-5 w-5 shrink-0" />
-              <span><strong className="block">Gerar campanha</strong><span className="text-xs text-muted-foreground">Campanha focada no escopo ativo</span></span>
-            </Button>
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("presentation")}>
-              <Presentation className="h-5 w-5 shrink-0" />
-              <span><strong className="block">Apresentação comercial</strong><span className="text-xs text-muted-foreground">Material exclusivo da função</span></span>
-            </Button>
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("faq")}>
-              <FileQuestion className="h-5 w-5 shrink-0" />
-              <span><strong className="block">Gerar FAQ</strong><span className="text-xs text-muted-foreground">FAQ somente desta função</span></span>
-            </Button>
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("audit")}>
-              <Clipboard className="h-5 w-5 shrink-0" />
-              <span><strong className="block">Auditar produto</strong><span className="text-xs text-muted-foreground">Validar somente este escopo</span></span>
-            </Button>
-          </div>
-
-          {preparedBrief && (
-            <div className="mt-5 rounded-xl border bg-muted/30 p-4">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold">{preparedTitle}</p>
-                  <p className="text-xs text-muted-foreground">Brief interno preparado com escopo pontual.</p>
-                </div>
-                <Button size="sm" variant="secondary" onClick={copyPreparedBrief}>
-                  <Clipboard className="mr-2 h-4 w-4" />
-                  Copiar brief
-                </Button>
-              </div>
-              <Textarea value={preparedBrief} readOnly className="min-h-48 resize-y text-xs leading-5" />
-            </div>
-          )}
-        </CardContent>
+        </CardHeader>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Building2 className="h-5 w-5" />
-            Biblioteca de Escopos — {activeCatalog.label}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-3">
-            <div className="relative max-w-xl">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.7fr)]">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-lg">Informações da base</CardTitle>
+              <Badge variant="outline">{scopeModules.length} itens</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar uma função, dor, recurso ou característica..."
+                placeholder="Buscar função, dor, recurso ou característica..."
                 className="pl-9"
               />
             </div>
             <div className="flex flex-wrap gap-2">
               {groups.map((item) => (
-                <Button
-                  key={item}
-                  type="button"
-                  size="sm"
-                  variant={group === item ? "default" : "outline"}
-                  onClick={() => setGroup(item)}
-                >
+                <Button key={item} size="sm" variant={group === item ? "default" : "outline"} onClick={() => setGroup(item)}>
                   {item}
                 </Button>
               ))}
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {filteredScopes.map((item) => {
-          const active = selectedScopeId === item.id;
-          return (
-            <Card key={item.id} className={active ? "border-primary shadow-sm" : ""}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <Badge variant="outline" className="mb-2">{item.group}</Badge>
-                    <CardTitle className="text-base">{item.title}</CardTitle>
+            <div className="space-y-3">
+              {filteredScopes.map((item) => {
+                const active = selectedScopeId === item.id;
+                return (
+                  <div key={item.id} className={active ? "rounded-xl border border-primary bg-primary/5 p-4" : "rounded-xl border p-4"}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <Badge variant="outline" className="mb-2">{item.group}</Badge>
+                        <h3 className="break-words font-semibold">{item.title}</h3>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.summary}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant={active ? "secondary" : "outline"} onClick={() => setSelectedScopeId(item.id)}>
+                          <Eye className="mr-2 h-4 w-4" /> Ler
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => openEditModule(item)} aria-label={`Editar ${item.title}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => deleteModule(item)} aria-label={`Excluir ${item.title}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  {active && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
+                );
+              })}
+              {filteredScopes.length === 0 && (
+                <div className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">
+                  Nenhuma informação encontrada. Use “Nova informação” para adicionar.
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm leading-6 text-muted-foreground">{item.summary}</p>
-                <div className="space-y-1.5">
-                  {item.bullets.map((bullet) => (
-                    <p key={bullet} className="text-xs leading-5 text-muted-foreground">• {bullet}</p>
-                  ))}
-                </div>
-                <div className="rounded-lg bg-muted/40 p-3">
-                  <p className="text-xs font-semibold">Ângulo para material</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.angle}</p>
-                </div>
-                <Button
-                  className="w-full"
-                  variant={active ? "secondary" : "outline"}
-                  onClick={() => selectScope(item.id)}
-                >
-                  {active ? "Escopo selecionado" : "Usar somente este escopo"}
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {filteredScopes.length === 0 && (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Nenhum escopo encontrado para esta busca.
+              )}
+            </div>
           </CardContent>
         </Card>
-      )}
 
-      <Card className="border-primary/20 bg-primary/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4" />
-            Como usar
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
-          <p>1. Escolha uma característica na Biblioteca de Escopos.</p>
-          <p>2. Clique em “Usar somente este escopo”.</p>
-          <p>3. No Centro de Comando, escolha Marketing, LP, Campanha, Apresentação, FAQ ou Auditoria.</p>
-          <p>4. O material será preparado com foco naquela função, sem transformar o conteúdo em uma apresentação geral do sistema.</p>
-        </CardContent>
-      </Card>
+        <Card className="h-fit xl:sticky xl:top-4">
+          <CardHeader>
+            <CardTitle className="text-lg">Conteúdo completo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {selectedScope ? (
+              <div className="space-y-5">
+                <div>
+                  <Badge variant="outline">{selectedScope.group}</Badge>
+                  <h2 className="mt-3 text-xl font-semibold">{selectedScope.title}</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedScope.summary}</p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold">Características / informações</p>
+                  <div className="mt-2 space-y-2">
+                    {selectedScope.bullets.length > 0 ? selectedScope.bullets.map((bullet) => (
+                      <p key={bullet} className="text-sm leading-6 text-muted-foreground">• {bullet}</p>
+                    )) : (
+                      <p className="text-sm text-muted-foreground">Nenhum detalhe adicional cadastrado.</p>
+                    )}
+                  </div>
+                </div>
+
+                {selectedScope.angle && (
+                  <div className="rounded-xl border bg-muted/30 p-4">
+                    <p className="text-sm font-semibold">Observação estratégica</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedScope.angle}</p>
+                  </div>
+                )}
+
+                <Button className="w-full" variant="outline" onClick={() => openEditModule(selectedScope)}>
+                  <Pencil className="mr-2 h-4 w-4" /> Editar esta informação
+                </Button>
+              </div>
+            ) : (
+              <div className="py-12 text-center">
+                <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
+                <p className="mt-3 font-medium">Selecione uma informação para ler</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Clique em “Ler” em qualquer item da lista. O conteúdo completo aparecerá aqui.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={segmentDialogOpen} onOpenChange={setSegmentDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{editingSegmentKey ? "Editar segmento" : "Novo segmento"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="segment-label">Nome do segmento</Label>
+              <Input id="segment-label" className="mt-1" value={segmentForm.label} onChange={(e) => setSegmentForm((v) => ({ ...v, label: e.target.value }))} />
+            </div>
+            {!editingSegmentKey && (
+              <div>
+                <Label htmlFor="segment-key">Identificador</Label>
+                <Input id="segment-key" className="mt-1" placeholder="Gerado automaticamente se deixar vazio" value={segmentForm.key} onChange={(e) => setSegmentForm((v) => ({ ...v, key: e.target.value }))} />
+              </div>
+            )}
+            <div>
+              <Label htmlFor="segment-description">Descrição</Label>
+              <Textarea id="segment-description" className="mt-1 min-h-28" value={segmentForm.description} onChange={(e) => setSegmentForm((v) => ({ ...v, description: e.target.value }))} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setSegmentDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={saveSegmentForm} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={moduleDialogOpen} onOpenChange={setModuleDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingModuleId ? "Editar informação" : `Nova informação — ${activeCatalog.label}`}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="module-group">Grupo</Label>
+                <Input id="module-group" className="mt-1" placeholder="Ex.: CRM, Comercial, Operação" value={moduleForm.group} onChange={(e) => setModuleForm((v) => ({ ...v, group: e.target.value }))} />
+              </div>
+              {!editingModuleId && (
+                <div>
+                  <Label htmlFor="module-id">Identificador</Label>
+                  <Input id="module-id" className="mt-1" placeholder="Gerado pelo título se vazio" value={moduleForm.id} onChange={(e) => setModuleForm((v) => ({ ...v, id: e.target.value }))} />
+                </div>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="module-title">Título</Label>
+              <Input id="module-title" className="mt-1" value={moduleForm.title} onChange={(e) => setModuleForm((v) => ({ ...v, title: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="module-summary">Resumo</Label>
+              <Textarea id="module-summary" className="mt-1 min-h-24" value={moduleForm.summary} onChange={(e) => setModuleForm((v) => ({ ...v, summary: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="module-bullets">Características / informações</Label>
+              <Textarea id="module-bullets" className="mt-1 min-h-36" placeholder={"Uma informação por linha\nOutra informação\nOutra característica"} value={moduleForm.bullets} onChange={(e) => setModuleForm((v) => ({ ...v, bullets: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="module-angle">Observação estratégica</Label>
+              <Textarea id="module-angle" className="mt-1 min-h-24" value={moduleForm.angle} onChange={(e) => setModuleForm((v) => ({ ...v, angle: e.target.value }))} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setModuleDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={saveModuleForm} disabled={saving}>{saving ? "Salvando..." : "Salvar informação"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {loading && <p className="text-center text-xs text-muted-foreground">Sincronizando edições salvas...</p>}
     </div>
   );
 }
