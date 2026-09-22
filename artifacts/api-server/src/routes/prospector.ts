@@ -32,6 +32,7 @@ import {
 import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { enrichLead } from "../jobs/leadEnrichment.js";
+import { searchConstructionWorkSignals } from "../services/construction-radar-search.js";
 import {
   searchByCnae,
   getCompanyByCnpj,
@@ -766,6 +767,71 @@ router.post("/prospector/search", async (req, res) => {
     }));
 
   return res.status(200).json({ query, total: results.length, results });
+});
+
+
+// ── POST /prospector/construction-signals/search — busca obras privadas individualizadas ──
+const constructionSignalsSearchBodySchema = z.object({
+  category: z.string().min(2),
+  model: z.string().min(2),
+  locality: z.string().min(2, "Informe a localidade"),
+  intervention: z.string().optional(),
+  standard: z.string().optional(),
+  phase: z.string().optional(),
+  productInterest: z.string().optional(),
+  maxResults: z.number().int().min(1).max(15).optional().default(10),
+  tenantId: z.string().optional(),
+});
+
+router.post("/prospector/construction-signals/search", async (req, res) => {
+  const parsed = constructionSignalsSearchBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
+  }
+
+  const {
+    category,
+    model,
+    locality,
+    intervention,
+    standard,
+    phase,
+    productInterest,
+    maxResults,
+    tenantId: bodyTenantId,
+  } = parsed.data;
+
+  let tenantId: string;
+  try {
+    tenantId = resolveTenantId(req, bodyTenantId);
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status ?? 401;
+    const message = err instanceof Error ? err.message : "Não autenticado";
+    return res.status(status).json({ error: message });
+  }
+
+  try {
+    const result = await searchConstructionWorkSignals({
+      tenantId,
+      category,
+      model,
+      locality: locality.trim(),
+      intervention,
+      standard,
+      phase,
+      productInterest,
+      maxResults,
+    });
+
+    return res.status(200).json({
+      ...result,
+      total: result.works.length,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro ao pesquisar obras privadas";
+    req.log.error({ err }, "prospector/construction-signals/search failed");
+    return res.status(502).json({ error: message });
+  }
 });
 
 // ── GET /prospector/export — exporta enriquecimentos do tenant em CSV ─────────
