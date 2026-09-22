@@ -16,6 +16,12 @@ import {
   RefreshCw,
   Sparkles,
   Target,
+  BarChart3,
+  ExternalLink,
+  ImageIcon,
+  MapPin,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import "./PlanoMidia.responsive.css";
 
@@ -69,6 +75,50 @@ type MediaPlan = {
 };
 
 type CalendarItem = { id: string; mediaPlanId?: string | null };
+
+type PlannerAdCreative = {
+  id: string;
+  headlines: string[];
+  descriptions: string[];
+  imagens: string[];
+  status: "rascunho" | "aprovado";
+};
+
+type PlannerAdCampaign = {
+  id: string;
+  plataforma: string;
+  tipoAnuncio: string;
+  itemLabel: string | null;
+  vertical: string;
+  status: string;
+  destinoClique: "landing_page" | "whatsapp" | "produto" | "formulario_lead";
+  orcamentoDiario: string;
+  latestCreative: PlannerAdCreative | null;
+  segmentacao?: {
+    localizacao?: { locais?: string[]; raioKm?: number | null };
+    marketingContext?: { campaignId?: string; campaignName?: string };
+    campaignControl?: { startDate?: string; endDate?: string };
+  };
+};
+
+type PlannerAdsOverviewItem = {
+  campaignId: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  sales: number;
+  revenue: number;
+  costPerLead: number | null;
+  roas: number | null;
+};
+
+type PlannerAdEvent = {
+  id: string;
+  eventType: string;
+  message: string;
+  createdAt: string;
+};
 
 type QuickOption = { label: string; value: string };
 
@@ -181,6 +231,11 @@ export default function PlanoMidia() {
   const [approving, setApproving] = useState(false);
   const [creatingCampaigns, setCreatingCampaigns] = useState(false);
   const [campaignsGenerated, setCampaignsGenerated] = useState(false);
+  const [adCampaigns, setAdCampaigns] = useState<PlannerAdCampaign[]>([]);
+  const [adsOverview, setAdsOverview] = useState<PlannerAdsOverviewItem[]>([]);
+  const [adEvents, setAdEvents] = useState<Record<string, PlannerAdEvent[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [sendingComment, setSendingComment] = useState<string | null>(null);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -194,6 +249,83 @@ export default function PlanoMidia() {
     config.observacoes,
     config.canaisPreferidos.length > 0 ? "canais" : "",
   ].filter(Boolean).length, [config]);
+
+
+  const adByPlannerCampaign = useMemo(() => {
+    const map = new Map<string, PlannerAdCampaign[]>();
+    for (const ad of adCampaigns) {
+      const plannerCampaignId = ad.segmentacao?.marketingContext?.campaignId;
+      if (!plannerCampaignId) continue;
+      const list = map.get(plannerCampaignId) ?? [];
+      list.push(ad);
+      map.set(plannerCampaignId, list);
+    }
+    return map;
+  }, [adCampaigns]);
+
+  const overviewByAd = useMemo(
+    () => new Map(adsOverview.map((item) => [item.campaignId, item])),
+    [adsOverview],
+  );
+
+  async function refreshAdsWorkspace() {
+    if (!tenantId) return;
+    try {
+      const [campaignResponse, overviewResponse] = await Promise.all([
+        fetch(`/api/tenants/${tenantId}/ads/campaigns`, { headers: authHeaders() }),
+        fetch(`/api/tenants/${tenantId}/ads/overview`, { headers: authHeaders() }),
+      ]);
+      if (!campaignResponse.ok) return;
+      const campaignsData = await campaignResponse.json() as PlannerAdCampaign[];
+      setAdCampaigns(campaignsData);
+      if (overviewResponse.ok) {
+        const overviewData = await overviewResponse.json() as { campaigns?: PlannerAdsOverviewItem[] };
+        setAdsOverview(overviewData.campaigns ?? []);
+      }
+
+      const eventEntries = await Promise.all(campaignsData.map(async (ad) => {
+        try {
+          const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/events`, { headers: authHeaders() });
+          if (!response.ok) return [ad.id, []] as const;
+          const events = await response.json() as PlannerAdEvent[];
+          return [ad.id, events] as const;
+        } catch {
+          return [ad.id, []] as const;
+        }
+      }));
+      setAdEvents(Object.fromEntries(eventEntries));
+    } catch {
+      // O planejador continua utilizável mesmo se Ads estiver temporariamente indisponível.
+    }
+  }
+
+  async function addInternalComment(adId: string) {
+    const message = (commentDrafts[adId] ?? "").trim();
+    if (message.length < 2 || sendingComment) return;
+    setSendingComment(adId);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${adId}/comments`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const data = await response.json() as PlannerAdEvent & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível salvar o comentário.");
+      setAdEvents((current) => ({ ...current, [adId]: [data, ...(current[adId] ?? [])] }));
+      setCommentDrafts((current) => ({ ...current, [adId]: "" }));
+      toast({ title: "Comentário registrado", description: "A observação ficou no histórico do anúncio." });
+    } catch (error) {
+      toast({ title: "Não foi possível comentar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSendingComment(null);
+    }
+  }
+
+
+  useEffect(() => {
+    if (!tenantId || !plan) return;
+    void refreshAdsWorkspace();
+  }, [tenantId, plan?.id, campaignsGenerated]);
 
   async function checkGeneratedCampaigns(planId: string) {
     try {
@@ -538,6 +670,116 @@ export default function PlanoMidia() {
                       <div><span className="text-muted-foreground">Materiais previstos: </span>{campaign.materiaisPlanejados}</div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">{campaign.canais.map((channel) => <Badge key={channel.canal} variant="outline" className="text-[10px]">{channel.canal}</Badge>)}</div>
+
+                    {(() => {
+                      const linkedAds = adByPlannerCampaign.get(campaign.id) ?? [];
+                      if (linkedAds.length === 0) {
+                        return campaignsGenerated ? (
+                          <div className="mt-4 rounded-lg border border-dashed bg-muted/10 p-3 text-xs text-muted-foreground">
+                            A campanha já foi enviada para execução, mas ainda não há anúncio pago vinculado. Quando um anúncio for criado, o preview e os resultados aparecerão aqui automaticamente.
+                          </div>
+                        ) : null;
+                      }
+
+                      return (
+                        <div className="mt-4 space-y-3 border-t pt-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold flex items-center gap-1.5"><BarChart3 className="h-3.5 w-3.5 text-primary" />Central do anúncio</p>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => navigate("/ads")}>
+                              Abrir Ads <ExternalLink className="ml-1 h-3 w-3" />
+                            </Button>
+                          </div>
+                          {linkedAds.map((ad) => {
+                            const creative = ad.latestCreative;
+                            const metric = overviewByAd.get(ad.id);
+                            const comments = (adEvents[ad.id] ?? []).filter((event) => event.eventType === "internal_comment");
+                            const imageUrl = creative?.imagens?.[0];
+                            const title = creative?.headlines?.[0] || ad.itemLabel || campaign.nome;
+                            const primaryText = creative?.headlines?.[1] || creative?.descriptions?.[0] || campaign.mensagemCentral;
+                            const locations = ad.segmentacao?.localizacao?.locais ?? [];
+                            const destinationLabel = {
+                              whatsapp: "WhatsApp",
+                              landing_page: "Landing Page",
+                              produto: "Produto / estoque",
+                              formulario_lead: "Formulário",
+                            }[ad.destinoClique] ?? ad.destinoClique;
+
+                            return (
+                              <div key={ad.id} className="rounded-xl border bg-muted/[0.12] p-3">
+                                <div className="grid gap-3 md:grid-cols-[160px_1fr]">
+                                  <div className="overflow-hidden rounded-lg border bg-background">
+                                    {imageUrl ? (
+                                      <img src={imageUrl} alt={title} className="aspect-square h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="flex aspect-square items-center justify-center text-muted-foreground"><ImageIcon className="h-8 w-8" /></div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <Badge variant="outline">{ad.plataforma === "meta" ? "Meta" : "Google"}</Badge>
+                                      <Badge variant="outline">{ad.tipoAnuncio}</Badge>
+                                      <Badge className={ad.status === "ativo" ? "bg-emerald-600" : ad.status === "pausado" ? "bg-amber-600" : ""}>{ad.status}</Badge>
+                                      <Badge variant={creative?.status === "aprovado" ? "default" : "secondary"}>{creative?.status === "aprovado" ? "Criativo aprovado" : "Criativo em revisão"}</Badge>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold">{title}</p>
+                                      <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">{primaryText}</p>
+                                    </div>
+                                    <div className="grid gap-1.5 text-[11px] sm:grid-cols-2">
+                                      <div><span className="font-medium">Destino:</span> {destinationLabel}</div>
+                                      <div><span className="font-medium">Orçamento:</span> R$ {Number(ad.orcamentoDiario || 0).toFixed(2)}/dia</div>
+                                      <div className="flex items-start gap-1"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /><span>{locations.length ? locations.join(", ") : "Localização não definida"}</span></div>
+                                      <div><span className="font-medium">Período:</span> {ad.segmentacao?.campaignControl?.startDate ?? "—"} → {ad.segmentacao?.campaignControl?.endDate ?? "—"}</div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                                  {[
+                                    ["Gasto", `R$ ${(metric?.spend ?? 0).toFixed(2)}`],
+                                    ["Impressões", String(metric?.impressions ?? 0)],
+                                    ["Cliques", String(metric?.clicks ?? 0)],
+                                    ["Leads", String(metric?.leads ?? 0)],
+                                    ["Vendas", String(metric?.sales ?? 0)],
+                                    ["Receita", `R$ ${(metric?.revenue ?? 0).toFixed(2)}`],
+                                  ].map(([label, value]) => (
+                                    <div key={label} className="rounded-lg border bg-background p-2 text-center">
+                                      <p className="text-[10px] text-muted-foreground">{label}</p>
+                                      <p className="mt-0.5 text-xs font-semibold">{value}</p>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="mt-3 rounded-lg border bg-background p-3">
+                                  <div className="flex items-center gap-1.5 text-xs font-semibold"><MessageSquare className="h-3.5 w-3.5" />Comentários internos</div>
+                                  <div className="mt-2 flex gap-2">
+                                    <Input
+                                      value={commentDrafts[ad.id] ?? ""}
+                                      onChange={(event) => setCommentDrafts((current) => ({ ...current, [ad.id]: event.target.value }))}
+                                      placeholder="Ex.: trocar imagem, destacar garantia, revisar preço..."
+                                      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addInternalComment(ad.id); } }}
+                                    />
+                                    <Button size="icon" onClick={() => void addInternalComment(ad.id)} disabled={sendingComment === ad.id || (commentDrafts[ad.id] ?? "").trim().length < 2}>
+                                      {sendingComment === ad.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                    </Button>
+                                  </div>
+                                  {comments.length > 0 ? (
+                                    <div className="mt-2 space-y-1.5">
+                                      {comments.slice(0, 3).map((comment) => (
+                                        <div key={comment.id} className="rounded-md bg-muted/40 px-2.5 py-2 text-[11px]">
+                                          <p>{comment.message}</p>
+                                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(comment.createdAt).toLocaleString("pt-BR")}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : <p className="mt-2 text-[10px] text-muted-foreground">Nenhum comentário ainda.</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
