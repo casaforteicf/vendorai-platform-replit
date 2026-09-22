@@ -12,6 +12,8 @@ import {
   Network,
   Radar,
   RefreshCw,
+  Search,
+  ShoppingBag,
   Sparkles,
   Upload,
   UsersRound,
@@ -68,6 +70,8 @@ const ICONS: Record<string, typeof MapPin> = {
   website_research: Globe2,
   referrals: UsersRound,
   events: CalendarDays,
+  marketplaces: ShoppingBag,
+  manual_research: Search,
   linkedin: Linkedin,
   social_discovery: Network,
 };
