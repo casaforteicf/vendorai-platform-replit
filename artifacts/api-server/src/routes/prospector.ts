@@ -26,9 +26,16 @@ import {
   agentConfigsTable,
   whatsappConnectionsTable,
   instagramConnectionsTable,
+  tenantAgentConfigsTable,
 } from "@workspace/db";
 import { registerLeadFeedback } from "../lib/prospectorMemory.js";
 import { COLD_PROSPECT_SOURCES, isColdProspectSource } from "../lib/prospector-consultive.js";
+import {
+  configurableProspectorSourceKeys,
+  prospectorSourceCatalogForTenant,
+  resolveProspectorEnabledSources,
+  type ProspectorSourceKey,
+} from "../lib/prospector-sources.js";
 import {
   callOpenAI as gatewayCallOpenAI,
   generateEmbedding,
@@ -1529,6 +1536,123 @@ router.patch("/prospector/approvals/:id", async (req, res) => {
   }
 
   return res.status(200).json({ ok: true, action, approvedCount, automationUnlocked });
+});
+
+async function loadProspectorSourceSettings(tenantId: string) {
+  const [[tenant], [businessProfile], [agentConfig]] = await Promise.all([
+    db
+      .select({ segmento: tenantsTable.segmento, vertical: tenantsTable.vertical })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+    db
+      .select({ vertical: businessProfilesTable.vertical })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({ parametros: tenantAgentConfigsTable.parametros })
+      .from(tenantAgentConfigsTable)
+      .where(and(
+        eq(tenantAgentConfigsTable.tenantId, tenantId),
+        eq(tenantAgentConfigsTable.agentKey, "prospector"),
+      ))
+      .limit(1),
+  ]);
+
+  const segment =
+    tenant?.segmento?.trim() ||
+    tenant?.vertical?.trim() ||
+    businessProfile?.vertical?.trim() ||
+    null;
+  const params = (agentConfig?.parametros ?? {}) as Record<string, unknown>;
+  const enabled = resolveProspectorEnabledSources(params["prospectorSources"], segment);
+
+  return {
+    segment,
+    enabled,
+    catalog: prospectorSourceCatalogForTenant({ enabled, segment }),
+    explicitlyConfigured: Array.isArray(params["prospectorSources"]),
+  };
+}
+
+// ── GET /prospector/sources ──────────────────────────────────────────────────
+router.get("/prospector/sources", async (req, res) => {
+  const explicitTenantId =
+    typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
+  const tenantId = resolveTenantId(req, explicitTenantId);
+  const settings = await loadProspectorSourceSettings(tenantId);
+
+  return res.status(200).json({
+    segment: settings.segment,
+    enabledSources: settings.enabled,
+    explicitlyConfigured: settings.explicitlyConfigured,
+    sources: settings.catalog,
+  });
+});
+
+// ── PUT /prospector/sources ──────────────────────────────────────────────────
+router.put("/prospector/sources", async (req, res) => {
+  const bodySchema = z.object({
+    enabledSources: z.array(z.string()).max(20),
+    tenantId: z.string().optional(),
+  });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(422).json({ error: parsed.error.issues[0]?.message ?? "Configuração inválida" });
+  }
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const allowed = new Set(configurableProspectorSourceKeys());
+  const invalid = parsed.data.enabledSources.filter((key) => !allowed.has(key as ProspectorSourceKey));
+  if (invalid.length > 0) {
+    return res.status(422).json({
+      error: "Uma ou mais fontes ainda não podem ser ativadas.",
+      invalidSources: invalid,
+    });
+  }
+
+  const enabledSources = [...new Set(parsed.data.enabledSources)] as ProspectorSourceKey[];
+  const [existing] = await db
+    .select({ id: tenantAgentConfigsTable.id, ativo: tenantAgentConfigsTable.ativo, parametros: tenantAgentConfigsTable.parametros })
+    .from(tenantAgentConfigsTable)
+    .where(and(
+      eq(tenantAgentConfigsTable.tenantId, tenantId),
+      eq(tenantAgentConfigsTable.agentKey, "prospector"),
+    ))
+    .limit(1);
+
+  const currentParams = (existing?.parametros ?? {}) as Record<string, unknown>;
+  const nextParams = {
+    ...currentParams,
+    prospectorSources: enabledSources,
+  };
+
+  await db
+    .insert(tenantAgentConfigsTable)
+    .values({
+      tenantId,
+      agentKey: "prospector",
+      // Configurar fontes não deve ativar silenciosamente o agente.
+      ativo: existing?.ativo ?? false,
+      parametros: nextParams,
+    })
+    .onConflictDoUpdate({
+      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+      set: {
+        parametros: nextParams,
+        updatedAt: new Date(),
+      },
+    });
+
+  const settings = await loadProspectorSourceSettings(tenantId);
+  return res.status(200).json({
+    ok: true,
+    segment: settings.segment,
+    enabledSources: settings.enabled,
+    explicitlyConfigured: true,
+    sources: settings.catalog,
+  });
 });
 
 // ── GET /prospector/channels/status ──────────────────────────────────────────
