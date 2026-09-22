@@ -313,6 +313,28 @@ export default function Ads() {
   const [autoGenerateAfterCreate, setAutoGenerateAfterCreate] = useState(false);
   const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
   const [historyCampaignId, setHistoryCampaignId] = useState<string | null>(null);
+  const [scheduleCampaign, setScheduleCampaign] = useState<AdCampaign | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    startDate: "",
+    startTime: "08:00",
+    endDate: "",
+    endTime: "18:00",
+    timezone: "America/Sao_Paulo",
+    days: ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"] as string[],
+  });
+
+  const openScheduleEditor = (campaign: AdCampaign) => {
+    const control = campaign.segmentacao?.campaignControl;
+    setScheduleCampaign(campaign);
+    setScheduleForm({
+      startDate: control?.startDate ?? new Date().toISOString().slice(0,10),
+      startTime: control?.startTime ?? "08:00",
+      endDate: control?.endDate ?? new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0,10),
+      endTime: control?.endTime ?? "18:00",
+      timezone: control?.timezone ?? "America/Sao_Paulo",
+      days: control?.weeklySchedule?.[0]?.days ?? ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"],
+    });
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -480,6 +502,39 @@ export default function Ads() {
     refetchInterval: 60_000,
   });
   const overviewByCampaign = new Map((adsOverview?.campaigns ?? []).map((item) => [item.campaignId, item]));
+
+  const updateSchedule = useMutation({
+    mutationFn: async () => {
+      if (!scheduleCampaign) return;
+      const body = {
+        startDate: scheduleForm.startDate,
+        startTime: scheduleForm.startTime,
+        endDate: scheduleForm.endDate,
+        endTime: scheduleForm.endTime,
+        timezone: scheduleForm.timezone,
+        weeklySchedule: scheduleForm.days.length ? [{
+          days: scheduleForm.days,
+          startTime: scheduleForm.startTime,
+          endTime: scheduleForm.endTime,
+        }] : [],
+      };
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${scheduleCampaign.id}/schedule`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Não foi possível atualizar o horário da campanha.");
+      return payload;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      qc.invalidateQueries({ queryKey: ["ads-overview", tenantId] });
+      toast({ title: "Agendamento atualizado", description: "Data e horário foram sincronizados com a campanha." });
+      setScheduleCampaign(null);
+    },
+    onError: (error: Error) => toast({ title: "Erro ao atualizar agendamento", description: error.message, variant: "destructive" }),
+  });
 
   const resolveAlert = useMutation({
     mutationFn: async (eventId: string) => {
@@ -940,6 +995,9 @@ export default function Ads() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => openScheduleEditor(c)}>
+                        Editar horário
+                      </Button>
                       <Button size="sm" variant="ghost" className="h-8" onClick={() => setHistoryCampaignId(c.id)}>
                         <Eye className="h-3.5 w-3.5 mr-1" /> Histórico
                       </Button>
@@ -1470,6 +1528,53 @@ export default function Ads() {
           </TooltipProvider>
         </DialogContent>
       </Dialog>
+      <Dialog open={!!scheduleCampaign} onOpenChange={(value) => !value && setScheduleCampaign(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Editar horário de veiculação</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Data inicial</Label><Input type="date" value={scheduleForm.startDate} onChange={(e) => setScheduleForm((f) => ({ ...f, startDate: e.target.value }))} /></div>
+              <div><Label>Hora inicial</Label><Input type="time" step="900" value={scheduleForm.startTime} onChange={(e) => setScheduleForm((f) => ({ ...f, startTime: e.target.value }))} /></div>
+              <div><Label>Data final</Label><Input type="date" min={scheduleForm.startDate} value={scheduleForm.endDate} onChange={(e) => setScheduleForm((f) => ({ ...f, endDate: e.target.value }))} /></div>
+              <div><Label>Hora final</Label><Input type="time" step="900" value={scheduleForm.endTime} onChange={(e) => setScheduleForm((f) => ({ ...f, endTime: e.target.value }))} /></div>
+            </div>
+            <div className="space-y-2">
+              <Label>Dias de veiculação</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["MONDAY","Seg"],["TUESDAY","Ter"],["WEDNESDAY","Qua"],["THURSDAY","Qui"],
+                  ["FRIDAY","Sex"],["SATURDAY","Sáb"],["SUNDAY","Dom"],
+                ].map(([value,label]) => {
+                  const active = scheduleForm.days.includes(value);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setScheduleForm((f) => ({
+                        ...f,
+                        days: active ? f.days.filter((day) => day !== value) : [...f.days, value],
+                      }))}
+                      className={`rounded-md border px-3 py-2 text-sm ${active ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+              {scheduleCampaign?.plataforma === "google"
+                ? "Google Ads: data e programação semanal serão sincronizadas."
+                : "Meta Ads: horário inicial/final será sincronizado no conjunto de anúncios. A programação semanal recorrente continua registrada no VendorAI."}
+            </div>
+            <Button className="w-full" disabled={updateSchedule.isPending || !scheduleForm.days.length} onClick={() => updateSchedule.mutate()}>
+              {updateSchedule.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Salvar e sincronizar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!historyCampaignId} onOpenChange={(value) => !value && setHistoryCampaignId(null)}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Histórico da campanha</DialogTitle></DialogHeader>
