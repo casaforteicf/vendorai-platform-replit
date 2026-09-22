@@ -89,6 +89,32 @@ export default function GrowthRevenueHero() {
   const { isSpanish } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
   const reduceMotion = usePrefersReducedMotion();
+  const [videoEnabled, setVideoEnabled] = useState(false);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+    const start = () => setVideoEnabled(true);
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    const schedule = () => {
+      if (idleWindow.requestIdleCallback) idleId = idleWindow.requestIdleCallback(start, { timeout: 1800 });
+      else timeoutId = window.setTimeout(start, 900);
+    };
+
+    if (document.readyState === "complete") schedule();
+    else window.addEventListener("load", schedule, { once: true });
+
+    return () => {
+      window.removeEventListener("load", schedule);
+      if (idleId != null) idleWindow.cancelIdleCallback?.(idleId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [reduceMotion]);
 
   return (
     <section className="vendor-home-hero vendor-home-hero-cinematic relative overflow-hidden text-white">
@@ -170,18 +196,31 @@ export default function GrowthRevenueHero() {
             </div>
 
             <div className="relative aspect-[4/3] overflow-hidden bg-[#05080d] sm:aspect-[16/9]">
-              <video
-                autoPlay={!reduceMotion}
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                poster={MEDIA + "/crm-pipeline/desktop-1440.webp"}
-                className="h-full w-full object-cover object-top"
-                aria-label={copy.previewTitle}
-              >
-                <source src={MEDIA + "/videos/crm-short.webm"} type="video/webm" />
-              </video>
+              <picture className="absolute inset-0 block">
+                <source media="(max-width: 640px)" srcSet={MEDIA + "/crm-pipeline/mobile-390.webp"} type="image/webp" />
+                <img
+                  src={MEDIA + "/crm-pipeline/desktop-1440.webp"}
+                  alt="Tela real do CRM Pipeline do VendorAI"
+                  width={1440}
+                  height={810}
+                  fetchPriority="high"
+                  decoding="async"
+                  className="h-full w-full object-cover object-top"
+                />
+              </picture>
+              {videoEnabled ? (
+                <video
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className="absolute inset-0 h-full w-full object-cover object-top"
+                  aria-label={copy.previewTitle}
+                >
+                  <source src={MEDIA + "/videos/crm-short.webm"} type="video/webm" />
+                </video>
+              ) : null}
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,transparent_50%,rgba(249,115,22,0.07)_100%)]" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#05080d]/70 to-transparent" />
             </div>

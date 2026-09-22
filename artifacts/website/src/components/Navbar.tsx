@@ -60,7 +60,10 @@ export default function Navbar() {
           <img
             src="/logo-full-light.svg"
             alt="Vendor.ai"
-            className="h-10 w-auto max-w-[176px] object-contain"
+            width={176}
+            height={40}
+            decoding="async"
+            className="h-10 w-[176px] max-w-[176px] object-contain object-left"
           />
         </Link>
 

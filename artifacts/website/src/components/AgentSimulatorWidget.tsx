@@ -55,10 +55,10 @@ const ES = {
   sendError: "Hubo un error de conexión. Intentá nuevamente.",
 } as const;
 
-export function AgentSimulatorWidget() {
+export function AgentSimulatorWidget({ initialOpen = false }: { initialOpen?: boolean } = {}) {
   const { country, isSpanish } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
-  const [step, setStep] = useState<Step>("closed");
+  const [step, setStep] = useState<Step>(initialOpen ? "form" : "closed");
   const [personName, setPersonName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
