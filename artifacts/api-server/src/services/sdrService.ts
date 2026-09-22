@@ -2,7 +2,7 @@
  * SDR Service — Cmd 16
  * Detects approach scenario, resolves template variables, sends first WhatsApp approach.
  */
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, isNull, desc, or, sql } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -15,11 +15,15 @@ import {
   messagesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
-import { sendDirectWhatsAppMessage } from "./omnichannel.js";
+import { sendDirectWhatsAppMessage, sendOutgoingMessage } from "./omnichannel.js";
 import { dispatchAgentBackground } from "./agent-dispatch.js";
 import { ensureColdProspectLandingPage } from "./coldProspectLandingPage.js";
-import type { ColdEvidence } from "../lib/coldProspectQuality.js";
+import type { ColdEvidence, ColdOutreachChannel, ColdOutreachChannelPlan } from "../lib/coldProspectQuality.js";
 import { PROSPECTOR_COLD_CADENCE, type ProspectorCadenceStep } from "../lib/prospector-cold-cadence.js";
+import {
+  buildProspectorEmailSubject,
+  sendProspectorColdEmail,
+} from "./prospector-email.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { getAgentConfig } from "../lib/agent-engine.js";
 import {
@@ -35,6 +39,8 @@ type ColdProspectDossier = {
   fitScore?: number;
   painScore?: number;
   evidence?: ColdEvidence[];
+  preferredChannel?: ColdOutreachChannel | null;
+  outreachChannels?: ColdOutreachChannelPlan[];
   playbook?: {
     segment?: string;
     niche?: string;
@@ -53,7 +59,9 @@ async function recordProspectorOutboundMessage(
   tenantId: string,
   leadId: string,
   message: string,
+  channel: "whatsapp" | "email",
   log: Logger,
+  sourceMessageId?: string | null,
 ): Promise<void> {
   let [conversation] = await db
     .select()
@@ -61,7 +69,7 @@ async function recordProspectorOutboundMessage(
     .where(and(
       eq(conversationsTable.tenantId, tenantId),
       eq(conversationsTable.leadId, leadId),
-      eq(conversationsTable.channel, "whatsapp"),
+      eq(conversationsTable.channel, channel),
     ))
     .orderBy(desc(conversationsTable.ultimaMensagemEm))
     .limit(1);
@@ -72,7 +80,7 @@ async function recordProspectorOutboundMessage(
       .values({
         tenantId,
         leadId,
-        channel: "whatsapp",
+        channel,
         status: "open",
         naoLidas: 0,
       })
@@ -91,7 +99,9 @@ async function recordProspectorOutboundMessage(
     agentName: "sdr",
     tipoConteudo: "texto",
     status: "enviado",
-    canal: "whatsapp",
+    canal: channel,
+    sourceMessageId: sourceMessageId ?? null,
+    provider: channel === "email" ? "resend" : null,
   });
 
   await db
@@ -99,7 +109,7 @@ async function recordProspectorOutboundMessage(
     .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
     .where(eq(conversationsTable.id, conversation.id));
 
-  log.debug({ tenantId, leadId, conversationId: conversation.id }, "sdrService: Prospecctor outbound persisted");
+  log.debug({ tenantId, leadId, conversationId: conversation.id, channel }, "sdrService: Prospecctor outbound persisted");
 }
 
 function metadataSuppressesColdOutreach(metadata: Record<string, unknown>): boolean {
@@ -413,7 +423,7 @@ export async function sendSdrFirstApproach(
   dealId: string | null,
   tenantId: string,
   log: Logger,
-): Promise<{ sent: boolean; cenario: SdrCenario; message?: string }> {
+): Promise<{ sent: boolean; cenario: SdrCenario; message?: string; channel?: "whatsapp" | "email" }> {
   const cenario = await detectSdrCenario(leadId, tenantId);
   if (!cenario || cenario === "frio_revelacao") {
     log.info({ leadId, cenario }, "sdrService: no applicable scenario for first approach");
@@ -433,7 +443,11 @@ export async function sendSdrFirstApproach(
     .where(and(
       eq(activitiesTable.leadId, leadId),
       eq(activitiesTable.tenantId, tenantId),
-      eq(activitiesTable.tipo, "whatsapp"),
+      or(eq(activitiesTable.tipo, "whatsapp"), eq(activitiesTable.tipo, "email")),
+      or(
+        sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:%'`,
+        sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:%|template_ordem:1%'`,
+      ),
     ))
     .orderBy(desc(activitiesTable.createdAt))
     .limit(1);
@@ -446,6 +460,7 @@ export async function sendSdrFirstApproach(
   const [lead] = await db
     .select({
       telefone: leadsTable.telefone,
+      email: leadsTable.email,
       nome: leadsTable.nome,
       empresa: leadsTable.empresa,
       mercadoSegmento: leadsTable.mercadoSegmento,
@@ -456,8 +471,8 @@ export async function sendSdrFirstApproach(
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!lead?.telefone) {
-    log.warn({ leadId }, "sdrService: lead has no phone — cannot send SDR WhatsApp approach");
+  if (!lead) {
+    log.warn({ leadId }, "sdrService: lead not found for first approach");
     return { sent: false, cenario };
   }
 
@@ -489,25 +504,78 @@ export async function sendSdrFirstApproach(
       metadata: (lead.metadata ?? {}) as Record<string, unknown>,
     });
 
-    await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
-    await recordProspectorOutboundMessage(tenantId, leadId, message, log);
+    const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+    const dossier = dossierFromMetadata(metadata);
+    const executableChannels = (dossier?.outreachChannels ?? []).filter((item) => item.autoExecutable);
+    const preferredChannel =
+      (dossier?.preferredChannel && executableChannels.some((item) => item.channel === dossier.preferredChannel)
+        ? dossier.preferredChannel
+        : null) ??
+      (lead.telefone && executableChannels.some((item) => item.channel === "whatsapp") ? "whatsapp" : null) ??
+      (lead.email && executableChannels.some((item) => item.channel === "email") ? "email" : null);
+
+    if (preferredChannel === "whatsapp" && lead.telefone) {
+      // Usa o omnichannel canônico para aproveitar conexão QR/Evolution ativa e
+      // persistir corretamente a conversa. O quality gate só libera cold-start
+      // WhatsApp quando há transporte de texto livre.
+      await sendOutgoingMessage({
+        tenantId,
+        leadId,
+        conteudo: message,
+        canal: "whatsapp",
+        agentName: "sdr",
+      }, log);
+    } else if (preferredChannel === "email" && lead.email) {
+      const [bp] = await db
+        .select({ nomeFantasia: businessProfilesTable.nomeFantasia })
+        .from(businessProfilesTable)
+        .where(eq(businessProfilesTable.tenantId, tenantId))
+        .limit(1);
+      const emailResult = await sendProspectorColdEmail({
+        to: lead.email,
+        leadId,
+        subject: buildProspectorEmailSubject(lead.empresa ?? lead.nome),
+        body: message,
+        tenantName: bp?.nomeFantasia ?? null,
+      });
+      await recordProspectorOutboundMessage(
+        tenantId,
+        leadId,
+        message,
+        "email",
+        log,
+        emailResult.id,
+      );
+    } else {
+      log.info(
+        { leadId, tenantId, preferredChannel, executableChannels },
+        "sdrService: no executable cold channel available at send time",
+      );
+      return { sent: false, cenario };
+    }
+
     await db.insert(activitiesTable).values({
       tenantId,
       leadId,
       dealId: dealId ?? undefined,
-      tipo: "whatsapp",
-      titulo: "Prospecctor — primeira abordagem consultiva",
+      tipo: preferredChannel,
+      titulo: `Prospecctor — primeira abordagem consultiva — ${preferredChannel}`,
       descricao: message,
       status: "concluida",
       concluidaEm: new Date(),
-      resultadoExecucao: "cenario:frio_teste|template_ordem:1|prospector_consultivo:v2",
+      resultadoExecucao: `cenario:frio_teste|template_ordem:1|prospector_consultivo:v3|channel:${preferredChannel}`,
     });
 
-    log.info({ leadId, tenantId }, "sdrService: Prospecctor research-first opening sent");
-    return { sent: true, cenario, message };
+    log.info({ leadId, tenantId, channel: preferredChannel }, "sdrService: Prospecctor research-first opening sent");
+    return { sent: true, cenario, message, channel: preferredChannel };
   }
 
-  const rawTemplate = await getTemplateForCenario(tenantId, cenario);
+  if (!lead.telefone) {
+    log.warn({ leadId, cenario }, "sdrService: legacy SDR scenario requires phone");
+    return { sent: false, cenario };
+  }
+
+    const rawTemplate = await getTemplateForCenario(tenantId, cenario);
   if (!rawTemplate) {
     log.warn({ leadId, cenario }, "sdrService: no active template for cenario");
     return { sent: false, cenario };
