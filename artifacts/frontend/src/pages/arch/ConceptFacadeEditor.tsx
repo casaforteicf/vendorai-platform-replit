@@ -555,18 +555,35 @@ export default function ConceptFacadeEditor({
 
         {panel === "style" && (
           <div className="p-4 pt-11">
-            <div className="text-sm font-semibold">Linguagem da fachada</div>
+            <div className="text-sm font-semibold">Escolha o estilo</div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              Comece pela linguagem visual; depois refine volumes, materiais, esquadrias e área externa.
+            </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              {STYLE_LABELS.map(([value, label]) => (
+              {STYLE_LABELS.map(([value, label], index) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => onFacadeChange({ ...facade, style: value })}
                   className={facade.style === value
-                    ? "rounded-xl border border-orange-400 bg-orange-50 px-3 py-2.5 text-xs font-semibold text-orange-800"
-                    : "rounded-xl border px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"}
+                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
                 >
-                  {label}
+                  <div className={[
+                    "relative h-16 overflow-hidden",
+                    index % 3 === 0 ? "bg-gradient-to-br from-stone-100 to-slate-200"
+                      : index % 3 === 1 ? "bg-gradient-to-br from-white to-zinc-100"
+                      : "bg-gradient-to-br from-orange-50 to-stone-100",
+                  ].join(" ")}>
+                    <div className="absolute bottom-2 left-3 right-3 h-9 rounded-t-md bg-white/90 shadow-sm" />
+                    <div className="absolute bottom-2 left-5 h-6 w-7 rounded-sm bg-slate-700" />
+                    <div className="absolute bottom-5 right-5 h-4 w-9 rounded-sm bg-slate-500/70" />
+                    <div className="absolute left-3 right-3 top-3 h-1.5 rounded-full bg-orange-400/70" />
+                  </div>
+                  <div className="p-2.5">
+                    <div className="text-[11px] font-bold text-slate-800">{label}</div>
+                    <div className="mt-0.5 text-[9px] text-slate-400">Aplicar como direção principal</div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -593,51 +610,13 @@ export default function ConceptFacadeEditor({
               </div>
             </div>
 
-            <div className="mt-5">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Iluminação</div>
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  ["day", "Dia"],
-                  ["sunset", "Pôr do sol"],
-                  ["night", "Noite"],
-                ] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => updateDesign({ lighting: value })}
-                    className={design.lighting === value
-                      ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-2 text-[10px] font-semibold text-orange-800"
-                      : "rounded-lg border px-2 py-2 text-[10px] font-semibold text-slate-600"}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="mt-5 flex items-center justify-between rounded-xl border p-3">
-              <span>
-                <span className="block text-xs font-semibold">Paisagismo</span>
-                <span className="block text-[10px] text-slate-400">Exibir vegetação frontal</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={design.showLandscaping}
-                onChange={(event) => updateDesign({ showLandscaping: event.target.checked })}
-                className="h-4 w-4"
-              />
-            </label>
-
-            {onOpenRender && (
-              <button
-                type="button"
-                onClick={onOpenRender}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
-              >
-                <Sparkles className="h-4 w-4" />
-                Gerar fachada renderizada
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setPanel("volumes")}
+              className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-xs font-bold text-white"
+            >
+              Continuar para volumes
+            </button>
           </div>
         )}
       </div>
