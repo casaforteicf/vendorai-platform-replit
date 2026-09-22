@@ -74,6 +74,8 @@ import { automationLogsTable } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-construction-catalog.js";
+import { ensureArqdorStarterLibrary } from "../lib/arqdor/starter-library.js";
+import { searchPolyHavenModels, resolvePolyHavenModel } from "../lib/arqdor/polyhaven.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1373,10 +1375,38 @@ router.delete("/arch/cenas/:cenaId", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Catálogo
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/polyhaven/search?q=mesa
+router.get("/arch/polyhaven/search", authenticate, async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "furniture");
+    const limit = Number(req.query.limit ?? 18);
+    const items = await searchPolyHavenModels(q, limit);
+    return res.json({ items, poweredBy: "Poly Haven", license: "CC0" });
+  } catch (error) {
+    console.error("[arqdor/polyhaven/search]", error);
+    return res.status(502).json({ error: "Não foi possível consultar a biblioteca Poly Haven agora." });
+  }
+});
+
+// GET /api/arch/polyhaven/assets/:slug
+router.get("/arch/polyhaven/assets/:slug", authenticate, async (req, res) => {
+  try {
+    const asset = await resolvePolyHavenModel(String(req.params.slug));
+    if (!asset.model3dUrl) {
+      return res.status(404).json({ error: "Este asset não possui GLB compatível disponível." });
+    }
+    return res.json(asset);
+  } catch (error) {
+    console.error("[arqdor/polyhaven/asset]", error);
+    return res.status(502).json({ error: "Não foi possível resolver o modelo 3D da Poly Haven." });
+  }
+});
+
 
 // GET /api/arch/catalogo
 router.get("/arch/catalogo", authenticate, async (req, res) => {
   const tid = tenantId(req);
+  await ensureArqdorStarterLibrary(tid);
   const { categoria, fornecedor, busca, limit = "20", offset = "0" } =
     req.query as Record<string, string | undefined>;
 
