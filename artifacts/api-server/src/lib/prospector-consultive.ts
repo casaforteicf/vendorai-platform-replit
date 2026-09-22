@@ -450,12 +450,12 @@ export function evaluateProspectorQualification(params: {
   hasTerrainSignal?: boolean;
 }) {
   const dd = params.discoveryData ?? {};
-  const requiredQuestions = params.playbook.diagnosis.filter((q) =>
-    ["project_stage", "prospector_stage", "project_or_permit", "prospector_context", "start_timeline", "prospector_timeline", "main_challenge", "prospector_challenge"].includes(q.fieldKey),
-  );
-  const diagnosticsComplete = requiredQuestions.length > 0
-    ? requiredQuestions.every((q) => Boolean(dd[q.fieldKey]))
-    : params.playbook.diagnosis.every((q) => Boolean(dd[q.fieldKey]));
+  // Todas as perguntas configuradas como diagnóstico são obrigatórias. O SQL gate
+  // não fecha só porque os quatro campos mínimos comerciais apareceram: primeiro
+  // o Prospecctor precisa concluir o entendimento definido pelo tenant.
+  const diagnosticsComplete =
+    params.playbook.diagnosis.length > 0 &&
+    params.playbook.diagnosis.every((q) => Boolean(dd[q.fieldKey]));
 
   const hasTimeline = Boolean(dd["start_timeline"] ?? dd["prospector_timeline"] ?? dd["urgencia"]);
   const hasPain = Boolean(dd["main_challenge"] ?? dd["prospector_challenge"] ?? dd["dor_principal"]);
