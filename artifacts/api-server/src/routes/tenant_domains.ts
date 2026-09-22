@@ -8,10 +8,11 @@ import {
 } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
-  createCustomHostname,
+  createOrGetCustomHostname,
   getCustomHostname,
   deleteCustomHostname,
   getDnsInstructions,
+  getCloudflareCustomDomainConfig,
 } from "../lib/cloudflare.js";
 
 const router: IRouter = Router();
@@ -95,6 +96,33 @@ async function findTenantDomain(tenantId: string, domainId: string) {
   return domain ?? null;
 }
 
+type ProvisionableTenantDomain = {
+  id: string;
+  domain: string;
+  cloudflareCustomHostnameId: string | null;
+};
+
+async function loadOrProvisionCloudflareHostname(domain: ProvisionableTenantDomain) {
+  const config = getCloudflareCustomDomainConfig();
+  if (!config.apiConfigured) return null;
+
+  if (domain.cloudflareCustomHostnameId) {
+    return getCustomHostname(domain.cloudflareCustomHostnameId);
+  }
+
+  const cf = await createOrGetCustomHostname(domain.domain);
+  await db
+    .update(tenantDomainsTable)
+    .set({
+      cloudflareCustomHostnameId: cf.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantDomainsTable.id, domain.id));
+
+  domain.cloudflareCustomHostnameId = cf.id;
+  return cf;
+}
+
 // ── GET /tenants/:tenantId/domains ───────────────────────────────────────────
 router.get("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
@@ -170,7 +198,7 @@ router.post("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async 
   let cfStatus: DomainStatus = "pending_dns";
 
   try {
-    const cf = await createCustomHostname(domain);
+    const cf = await createOrGetCustomHostname(domain);
     cfId = cf.id;
     cfStatus = cf.status === "active" && cf.sslStatus === "active" ? "active" : "pending_dns";
   } catch (err: unknown) {
@@ -188,7 +216,7 @@ router.post("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async 
       status: cfStatus,
       cloudflareCustomHostnameId: cfId,
       dnsRecordName: dnsInstructions.name,
-      dnsRecordValue: dnsInstructions.value,
+      dnsRecordValue: dnsInstructions.value || null,
     })
     .returning();
 
@@ -200,6 +228,7 @@ router.post("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async 
       value: dnsInstructions.value,
     },
     provisioningAvailable: Boolean(cfId),
+    infrastructure: getCloudflareCustomDomainConfig(),
   });
 });
 
@@ -221,9 +250,9 @@ router.get(
     let cloudflareStatus: string | null = null;
     let cloudflareSslStatus: string | null = null;
 
-    if (domain.cloudflareCustomHostnameId) {
-      try {
-        const cf = await getCustomHostname(domain.cloudflareCustomHostnameId);
+    try {
+      const cf = await loadOrProvisionCloudflareHostname(domain);
+      if (cf) {
         cloudflareStatus = cf.status;
         cloudflareSslStatus = cf.sslStatus;
         const status = statusFromCloudflare(cf, dnsCheck);
@@ -235,11 +264,19 @@ router.get(
             .where(eq(tenantDomainsTable.id, domainId));
           domain.status = status;
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        req.log.warn({ error: msg, domainId }, "Cloudflare status check failed");
+      } else if (dnsCheck.matches && domain.status === "pending_dns") {
+        await db
+          .update(tenantDomainsTable)
+          .set({ status: "pending_ssl", updatedAt: new Date() })
+          .where(eq(tenantDomainsTable.id, domainId));
+        domain.status = "pending_ssl";
       }
-    } else if (dnsCheck.matches && domain.status === "pending_dns") {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      req.log.warn({ error: msg, domainId }, "Cloudflare status check/provisioning failed");
+    }
+
+    if (!domain.cloudflareCustomHostnameId && dnsCheck.matches && domain.status === "pending_dns") {
       // DNS is correct, but without a provisioned custom hostname we cannot
       // truthfully mark SSL/site activation as complete.
       await db
@@ -258,6 +295,7 @@ router.get(
       },
       dnsCheck,
       provisioningAvailable: Boolean(domain.cloudflareCustomHostnameId),
+      infrastructure: getCloudflareCustomDomainConfig(),
       cloudflareStatus,
       cloudflareSslStatus,
     });
@@ -280,6 +318,17 @@ router.post(
 
     const dnsCheck = await inspectCname(domain.dnsRecordName, domain.dnsRecordValue);
 
+    // Re-attempt provisioning on every explicit verification. This self-heals
+    // domains created while Cloudflare credentials/origin were temporarily
+    // unavailable and also recovers an existing hostname already present in
+    // Cloudflare.
+    try {
+      await loadOrProvisionCloudflareHostname(domain);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      req.log.warn({ error: msg, domainId }, "Cloudflare reprovisioning failed");
+    }
+
     // DNS verification remains useful even if Cloudflare provisioning is not
     // available. It lets the UI distinguish "record not created" from
     // "record correct, waiting for SSL/provisioning" instead of returning a
@@ -299,6 +348,7 @@ router.post(
         provisioningAvailable: false,
         cloudflareStatus: null,
         cloudflareSslStatus: null,
+        infrastructure: getCloudflareCustomDomainConfig(),
         message: dnsCheck.matches
           ? "DNS verified. VendorAI hosting still needs custom-hostname/SSL provisioning before publication can be enabled."
           : "CNAME not found yet. Check the DNS record and propagation.",
@@ -321,6 +371,7 @@ router.post(
         provisioningAvailable: true,
         cloudflareStatus: cf.status,
         cloudflareSslStatus: cf.sslStatus,
+        infrastructure: getCloudflareCustomDomainConfig(),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
