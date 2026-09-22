@@ -100,8 +100,7 @@ async function recordProspectorOutboundMessage(
     tipoConteudo: "texto",
     status: "enviado",
     canal: channel,
-    sourceMessageId: sourceMessageId ?? null,
-    provider: channel === "email" ? "resend" : null,
+    externalId: sourceMessageId ?? null,
   });
 
   await db
