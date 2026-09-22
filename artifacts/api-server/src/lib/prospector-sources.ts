@@ -8,6 +8,8 @@ export type ProspectorSourceKey =
   | "website_research"
   | "referrals"
   | "events"
+  | "marketplaces"
+  | "manual_research"
   | "linkedin"
   | "social_discovery";
 
@@ -102,6 +104,24 @@ export const PROSPECTOR_SOURCE_CATALOG: ProspectorSourceDefinition[] = [
     description: "Contatos captados em feiras, eventos e ações comerciais.",
     availability: "manual",
     leadSources: ["event_prospecting"],
+    defaultEnabled: true,
+    universal: true,
+  },
+  {
+    key: "marketplaces",
+    label: "Marketplaces",
+    description: "Oportunidades identificadas manualmente em marketplaces permitidos.",
+    availability: "manual",
+    leadSources: ["marketplace_prospecting"],
+    defaultEnabled: true,
+    universal: true,
+  },
+  {
+    key: "manual_research",
+    label: "Pesquisa manual",
+    description: "Prospects incluídos manualmente pela equipe comercial com origem registrada.",
+    availability: "manual",
+    leadSources: ["manual_prospecting"],
     defaultEnabled: true,
     universal: true,
   },
