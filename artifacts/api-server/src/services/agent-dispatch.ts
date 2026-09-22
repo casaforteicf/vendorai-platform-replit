@@ -489,7 +489,10 @@ export async function processAgentInternal(params: {
       isColdProspectSource(ctx.lead.source);
     if (isColdConversation && isProspectorOptOut(mensagem)) {
       const currentMetadata = (ctx.lead.metadata ?? {}) as Record<string, unknown>;
-      const channel = ctx.conversation?.channel === "email" ? "email" : "whatsapp";
+      const channel =
+        scenario?.["response_channel"] === "email" || ctx.conversation?.channel === "email"
+          ? "email"
+          : "whatsapp";
       const now = new Date();
 
       await db.update(leadsTable)
