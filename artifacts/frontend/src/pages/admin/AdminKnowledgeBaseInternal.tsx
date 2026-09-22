@@ -1039,7 +1039,322 @@ const farmaciaModules: ScopeModule[] = [
   },
 ];
 
-type SegmentKey = "construtoras" | "arquitetura-design" | "farmacias";
+const segurosModules: ScopeModule[] = [
+  {
+    id: "captacao-seguros",
+    group: "Aquisição",
+    title: "Captação de Leads para Seguros",
+    summary: "Organiza a aquisição por produto, perfil, região e momento de vida, conectando campanhas, LPs, WhatsApp e CRM.",
+    bullets: [
+      "Campanhas por ramo: auto, residencial, empresarial, vida, saúde, viagem e outros produtos disponíveis.",
+      "Landing Pages por público, produto, renovação ou oportunidade.",
+      "Origem da campanha e interesse registrados no CRM.",
+      "Triagem inicial antes da cotação.",
+    ],
+    angle: "Mostre como a corretora deixa de depender apenas de indicação e carteira antiga para gerar oportunidades novas de forma previsível.",
+  },
+  {
+    id: "landing-pages-seguros",
+    group: "Aquisição",
+    title: "Landing Pages por Produto e Perfil",
+    summary: "Cria páginas específicas para captar leads de seguros com mensagem e formulário adequados a cada contexto.",
+    bullets: [
+      "LP por produto, campanha, região ou perfil de cliente.",
+      "Formulários com dados necessários para pré-qualificação comercial.",
+      "CTA para WhatsApp, cotação ou contato consultivo.",
+      "Integração da origem e do interesse com o CRM.",
+    ],
+    angle: "Destaque a possibilidade de vender cada ramo com uma proposta de valor própria, em vez de usar uma única página genérica.",
+  },
+  {
+    id: "perfil-necessidades-seguros",
+    group: "Comercial",
+    title: "Perfil e Necessidades do Cliente",
+    summary: "Estrutura o entendimento das necessidades antes da apresentação das opções disponíveis.",
+    bullets: [
+      "Momento de vida ou contexto empresarial.",
+      "Bens, pessoas, responsabilidades e riscos declarados.",
+      "Prioridades, faixa de investimento e coberturas desejadas.",
+      "Registro estruturado para apoiar atendimento e cotação.",
+    ],
+    angle: "Material focado em venda consultiva: entender a necessidade antes de falar de preço.",
+  },
+  {
+    id: "cotacao-seguros",
+    group: "Comercial",
+    title: "Cotação e Comparação de Opções",
+    summary: "Organiza propostas de seguradoras e facilita a comparação comercial para o cliente.",
+    bullets: [
+      "Registro de seguradora, produto, coberturas, franquias, prêmio e condições.",
+      "Comparação lado a lado de opções recebidas.",
+      "Histórico de versões e negociações.",
+      "Apresentação clara sem ocultar diferenças relevantes.",
+    ],
+    angle: "Destaque clareza e agilidade na comparação, reduzindo planilhas e mensagens dispersas.",
+  },
+  {
+    id: "crm-seguros",
+    group: "CRM",
+    title: "CRM e Cliente 360",
+    summary: "Centraliza relacionamento, produtos contratados, oportunidades, documentos e histórico comercial.",
+    bullets: [
+      "Dados de contato e origem.",
+      "Apólices, propostas, renovações e oportunidades.",
+      "Conversas, documentos e atividades.",
+      "Preferências de contato e histórico de relacionamento.",
+    ],
+    angle: "Mostre a carteira organizada em um só lugar, sem depender da memória do corretor.",
+  },
+  {
+    id: "pipeline-seguros",
+    group: "Comercial",
+    title: "Pipeline de Cotações e Vendas",
+    summary: "Acompanha oportunidades desde o primeiro contato até proposta, fechamento e emissão.",
+    bullets: [
+      "Etapas configuráveis por produto.",
+      "Valor estimado, probabilidade, responsável e próxima ação.",
+      "Motivos de perda.",
+      "Visão por corretor, produto, canal e região.",
+    ],
+    angle: "Material ideal para destacar previsibilidade comercial e gestão ativa da carteira de oportunidades.",
+  },
+  {
+    id: "renovacoes-seguros",
+    group: "Relacionamento",
+    title: "Renovações Automáticas e Antecipadas",
+    summary: "Organiza a carteira de vencimentos e cria cadências para iniciar a renovação antes da última hora.",
+    bullets: [
+      "Alertas de vencimento.",
+      "Cadências por prazo e produto.",
+      "Contato antecipado e registro das respostas.",
+      "Nova cotação e acompanhamento até renovação ou perda.",
+    ],
+    angle: "Destaque redução de perda de carteira por esquecimento ou contato tardio.",
+  },
+  {
+    id: "cross-sell-seguros",
+    group: "Inteligência",
+    title: "Cross-sell de Produtos",
+    summary: "Identifica oportunidades complementares na própria carteira com base em produtos contratados e necessidades declaradas.",
+    bullets: [
+      "Clientes com um produto e potencial para outros ramos.",
+      "Campanhas de oportunidade configuráveis.",
+      "Priorização por perfil e relacionamento.",
+      "Abordagem consultiva, sem venda automática indevida.",
+    ],
+    angle: "Material focado em aumentar receita por cliente antes de aumentar investimento em aquisição.",
+  },
+  {
+    id: "revenue-scout-seguros",
+    group: "Inteligência",
+    title: "Revenue Scout para Seguros",
+    summary: "Encontra receita escondida na carteira de clientes, leads e propostas antigas.",
+    bullets: [
+      "Renovações próximas.",
+      "Propostas não fechadas.",
+      "Clientes inativos.",
+      "Oportunidades de cross-sell e indicação.",
+    ],
+    angle: "Destaque uma rotina contínua de recuperação e expansão da carteira.",
+  },
+  {
+    id: "marketing-seguros",
+    group: "Marketing",
+    title: "Marketing Ativo para Seguros",
+    summary: "Planeja conteúdo e campanhas por produto, público, momento de vida e objetivo comercial.",
+    bullets: [
+      "Calendário de conteúdo por ramo.",
+      "Campanhas de aquisição, renovação e educação.",
+      "Nutrição de leads ainda não prontos.",
+      "Remarketing de visitantes, propostas e contatos antigos.",
+    ],
+    angle: "Venda o marketing como parte do funil comercial, não apenas como presença institucional.",
+  },
+  {
+    id: "conteudo-seguros",
+    group: "Marketing",
+    title: "Conteúdo, Reels e Vídeos",
+    summary: "Ajuda a transformar dúvidas frequentes e temas de proteção em conteúdo comercial e educativo.",
+    bullets: [
+      "Posts, legendas, Reels, vídeos e CTAs.",
+      "Conteúdo sobre coberturas, situações de uso e prevenção.",
+      "Materiais por ramo e perfil de público.",
+      "Revisão humana para afirmações reguladas ou sensíveis.",
+    ],
+    angle: "Mostre autoridade consultiva sem prometer cobertura, indenização ou resultado que dependa das condições contratuais.",
+  },
+  {
+    id: "whatsapp-seguros",
+    group: "Atendimento",
+    title: "WhatsApp e Omnichannel",
+    summary: "Centraliza atendimento e histórico comercial em torno do cliente e da oportunidade.",
+    bullets: [
+      "WhatsApp, Instagram, e-mail e outros canais conectados.",
+      "Transferência entre corretores preservando histórico.",
+      "Registro de documentos, tarefas e próximos passos.",
+      "IA auxilia respostas operacionais e comerciais dentro das regras da corretora.",
+    ],
+    angle: "Mostre como conversas deixam de ficar dispersas em celulares individuais.",
+  },
+  {
+    id: "agentes-ia-seguros",
+    group: "IA",
+    title: "Agentes de IA para Seguros",
+    summary: "Distribui qualificação, negociação, follow-up, atendimento e relacionamento ao longo da jornada.",
+    bullets: [
+      "SDR qualifica e coleta contexto inicial.",
+      "Closer acompanha proposta e objeções.",
+      "Follow-up trabalha cotações, pendências e renovações.",
+      "Suporte acompanha dúvidas operacionais e pós-venda.",
+    ],
+    angle: "Destaque automação de tarefas repetitivas sem substituir a responsabilidade do corretor em recomendações reguladas.",
+  },
+  {
+    id: "documentos-seguros",
+    group: "Operação",
+    title: "Documentos e Pendências",
+    summary: "Organiza documentos necessários para cotação, contratação, endosso, renovação e sinistro.",
+    bullets: [
+      "Checklist por produto e etapa.",
+      "Solicitação e recebimento de documentos.",
+      "Pendências e responsáveis.",
+      "Histórico vinculado ao cliente e à apólice.",
+    ],
+    angle: "Material focado em reduzir retrabalho e perda de tempo com documentação espalhada.",
+  },
+  {
+    id: "apolices-seguros",
+    group: "Operação",
+    title: "Apólices e Carteira",
+    summary: "Centraliza apólices, vigências, seguradoras, produtos, coberturas registradas e status da carteira.",
+    bullets: [
+      "Apólice, produto, seguradora e vigência.",
+      "Prêmio, parcelas e condições comerciais quando disponíveis.",
+      "Responsável e cliente vinculado.",
+      "Alertas operacionais e de renovação.",
+    ],
+    angle: "Destaque visão única da carteira e facilidade para localizar informações rapidamente.",
+  },
+  {
+    id: "sinistros-seguros",
+    group: "Pós-venda",
+    title: "Acompanhamento de Sinistros",
+    summary: "Organiza o atendimento ao cliente durante o sinistro sem prometer decisão ou indenização da seguradora.",
+    bullets: [
+      "Abertura e registro da ocorrência.",
+      "Documentos e pendências.",
+      "Status e contatos.",
+      "Follow-up com cliente e seguradora até encerramento.",
+    ],
+    angle: "Mostre o valor do corretor no momento mais sensível da relação: acompanhar, informar e organizar.",
+  },
+  {
+    id: "endossos-seguros",
+    group: "Operação",
+    title: "Endossos e Alterações de Apólice",
+    summary: "Controla solicitações de alteração durante a vigência da apólice.",
+    bullets: [
+      "Solicitação do cliente.",
+      "Documentos necessários.",
+      "Envio à seguradora e acompanhamento.",
+      "Registro da alteração concluída.",
+    ],
+    angle: "Material focado em organização do pós-venda e redução de solicitações esquecidas.",
+  },
+  {
+    id: "comissoes-seguros",
+    group: "Financeiro",
+    title: "Comissões e Produção",
+    summary: "Organiza receitas de comissão e produção comercial por corretor, seguradora e produto.",
+    bullets: [
+      "Comissão prevista e recebida.",
+      "Produção por período.",
+      "Visão por corretor, produto e seguradora.",
+      "Pendências de conciliação quando houver integração.",
+    ],
+    angle: "Destaque visibilidade financeira da carteira e produtividade comercial.",
+  },
+  {
+    id: "cobranca-seguros",
+    group: "Financeiro",
+    title: "Cobrança e Pendências Financeiras",
+    summary: "Acompanha pendências comerciais e financeiras relacionadas à carteira quando a integração permitir.",
+    bullets: [
+      "Parcelas ou pendências registradas.",
+      "Follow-up e alertas.",
+      "Histórico de contato.",
+      "Encaminhamento para responsável financeiro quando necessário.",
+    ],
+    angle: "Material focado em reduzir falhas operacionais sem transformar o sistema em instituição financeira.",
+  },
+  {
+    id: "parcerias-seguros",
+    group: "Aquisição",
+    title: "Parcerias e Canais de Indicação",
+    summary: "Estrutura canais de aquisição com parceiros como imobiliárias, concessionárias, contadores, empresas e associações.",
+    bullets: [
+      "Cadastro de parceiro e origem.",
+      "Campanhas ou ofertas específicas.",
+      "Leads indicados e conversão.",
+      "Comissões ou regras comerciais quando aplicável.",
+    ],
+    angle: "Destaque crescimento por ecossistema e canais de indicação mensuráveis.",
+  },
+  {
+    id: "empresarial-beneficios",
+    group: "B2B",
+    title: "Seguros Empresariais e Benefícios",
+    summary: "Organiza oportunidades B2B com múltiplos produtos, decisores, documentos e ciclos de renovação.",
+    bullets: [
+      "Empresas, responsáveis e decisores.",
+      "Produtos, coberturas e necessidades declaradas.",
+      "Propostas e renovações.",
+      "Relacionamento por conta e oportunidade.",
+    ],
+    angle: "Material focado em gestão de contas empresariais mais complexas.",
+  },
+  {
+    id: "compliance-seguros",
+    group: "Compliance",
+    title: "Compliance, Consentimento e Governança",
+    summary: "Mantém regras para comunicação, documentação, consentimento e recomendações comerciais.",
+    bullets: [
+      "Registro de opt-in, opt-out e preferências de contato.",
+      "Separação entre informação, simulação e contratação.",
+      "Revisão humana para recomendações reguladas ou sensíveis.",
+      "Registro de histórico e evidências comerciais.",
+    ],
+    angle: "Destaque governança e rastreabilidade sem transformar automação em decisão autônoma sobre cobertura adequada.",
+  },
+  {
+    id: "dashboard-seguros",
+    group: "Inteligência",
+    title: "Dashboard Comercial da Corretora",
+    summary: "Consolida indicadores de leads, cotações, vendas, carteira, renovações e produção.",
+    bullets: [
+      "Leads por origem e produto.",
+      "Conversão por etapa.",
+      "Renovações, perdas e motivos.",
+      "Produção, ticket e carteira por corretor.",
+    ],
+    angle: "Destaque decisões baseadas em dados da carteira, não apenas em percepção individual.",
+  },
+  {
+    id: "pos-venda-seguros",
+    group: "Pós-venda",
+    title: "Pós-venda e Relacionamento",
+    summary: "Mantém contato após a contratação para fortalecer retenção, renovação e indicação.",
+    bullets: [
+      "Boas-vindas e confirmação de informações.",
+      "Acompanhamento de solicitações.",
+      "Check-ins antes da renovação.",
+      "Avaliação, indicação e novas oportunidades.",
+    ],
+    angle: "Mostre que o relacionamento começa depois da venda e sustenta o valor da carteira no longo prazo.",
+  },
+];
+
+type SegmentKey = "construtoras" | "arquitetura-design" | "farmacias" | "seguros";
 
 const segmentCatalog: Record<SegmentKey, { label: string; description: string; modules: ScopeModule[] }> = {
   construtoras: {
@@ -1056,6 +1371,11 @@ const segmentCatalog: Record<SegmentKey, { label: string; description: string; m
     label: "Farmácias",
     description: "Captação, atendimento, CRM, fidelização, catálogo, estoque, compras, delivery, compliance, inteligência e pós-venda.",
     modules: farmaciaModules,
+  },
+  seguros: {
+    label: "Seguros",
+    description: "Captação, cotação, CRM, carteira, renovações, sinistros, cross-sell, parceiros, compliance, financeiro e pós-venda.",
+    modules: segurosModules,
   },
 };
 
@@ -1218,7 +1538,7 @@ export default function AdminKnowledgeBaseInternal() {
           <CardTitle className="text-base">Segmento</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(Object.keys(segmentCatalog) as SegmentKey[]).map((key) => {
               const item = segmentCatalog[key];
               const active = segment === key;
