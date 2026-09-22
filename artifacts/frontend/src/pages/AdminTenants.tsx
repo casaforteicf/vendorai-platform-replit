@@ -295,7 +295,7 @@ export default function AdminTenants() {
   async function handleProvision(sendEmail: boolean) {
     setSaving(true);
     try {
-      const { segmentTemplateId, ...provisionPayload } = form;
+      const { segmentTemplateId: _segmentTemplateId, ...provisionPayload } = form;
       const res = await fetch("/api/superadmin/tenants/provision", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -308,18 +308,8 @@ export default function AdminTenants() {
       }
 
       const provisionResult = data as ProvisionResult;
-      if (segmentTemplateId) {
-        try {
-          await applySegmentTemplate(provisionResult.tenant.id, segmentTemplateId, false);
-        } catch (error) {
-          toast({
-            title: "Tenant criado, mas o segmento não foi aplicado",
-            description: error instanceof Error ? error.message : "Abra a Gestão 360º e aplique o segmento novamente.",
-            variant: "destructive",
-          });
-        }
-      }
-
+      // Configurações operacionais (segmento, agentes, integrações, funis e automações)
+      // são feitas depois, dentro do tenant. A criação inicial precisa ser imediata.
       setResult(provisionResult);
       setFormOpen(false);
       resetForm();
@@ -623,48 +613,62 @@ export default function AdminTenants() {
       </Card>
 
       <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Novo Tenant</DialogTitle><DialogDescription>Cria empresa e usuário admin. Se você selecionar um segmento, o mesmo template operacional configura perfil, prompts sugeridos e funil inicial sem criar uma segunda fonte de verdade.</DialogDescription></DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2 space-y-1.5"><Label>Nome da empresa *</Label><Input value={form.companyName} onChange={(event) => setForm((current) => ({ ...current, companyName: event.target.value }))} placeholder="Ex: Confecções Silva" /></div>
-              <div className="sm:col-span-2 space-y-1.5"><Label>Nome do responsável *</Label><Input value={form.responsibleName} onChange={(event) => setForm((current) => ({ ...current, responsibleName: event.target.value }))} placeholder="João Silva" /></div>
-              <div className="sm:col-span-2 space-y-1.5"><Label>E-mail *</Label><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="joao@empresa.com" /></div>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Tenant</DialogTitle>
+            <DialogDescription>
+              Crie a empresa e o administrador agora. Agentes, integrações e demais configurações são feitas depois, dentro do VendorAI.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 mt-2">
+            <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label>País *</Label>
-                <Select value={form.countryCode} onValueChange={(value) => setForm((current) => ({ ...current, countryCode: value as CountryCode, taxIdentifier: "" }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(COUNTRY_OPTIONS).map(([code, country]) => <SelectItem key={code} value={code}>{country.label}</SelectItem>)}</SelectContent>
-                </Select>
+                <Label>Empresa *</Label>
+                <Input
+                  value={form.companyName}
+                  onChange={(event) => setForm((current) => ({ ...current, companyName: event.target.value }))}
+                  placeholder="Nome da empresa"
+                  autoFocus
+                />
               </div>
-              <div className="space-y-1.5"><Label>Telefone</Label><Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Telefone com DDD/código local" /></div>
-              <div className="sm:col-span-2 space-y-1.5"><Label>{selectedCountry.taxLabel} (opcional)</Label><Input value={form.taxIdentifier} onChange={(event) => setForm((current) => ({ ...current, taxIdentifier: event.target.value }))} placeholder={selectedCountry.taxPlaceholder} /><p className="text-xs text-muted-foreground">O país define automaticamente idioma, fuso horário, moeda principal e tipo de documento fiscal.</p></div>
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label>Segmento</Label>
-                <Select value={form.segmentTemplateId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, segmentTemplateId: value === "none" ? "" : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar segmento operacional..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Definir depois</SelectItem>
-                    {segmentTemplates.map((segment) => <SelectItem key={segment.id} value={segment.id}>{segment.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {segmentsLoading ? <p className="text-xs text-muted-foreground">Carregando segmentos oficiais...</p> : <p className="text-xs text-muted-foreground">O template selecionado será aplicado após a criação do tenant.</p>}
+
+              <div className="border-t pt-4">
+                <p className="text-sm font-semibold mb-3">Administrador</p>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Nome *</Label>
+                    <Input
+                      value={form.responsibleName}
+                      onChange={(event) => setForm((current) => ({ ...current, responsibleName: event.target.value }))}
+                      placeholder="Nome do responsável"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>E-mail *</Label>
+                    <Input
+                      type="email"
+                      value={form.email}
+                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                      placeholder="email@empresa.com"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Plano</Label>
-                <Select value={form.planId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, planId: value === "none" ? "" : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                  <SelectContent><SelectItem value="none">Sem plano</SelectItem>{availablePlans.map((plan) => <SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>)}</SelectContent>
-                </Select>
-                {plansLoading ? <p className="text-xs text-muted-foreground">Carregando planos ativos...</p> : null}
-              </div>
-              <div className="space-y-1.5"><Label>Ciclo</Label><Select value={form.billingCycle} onValueChange={(value) => setForm((current) => ({ ...current, billingCycle: value as "monthly" | "annual" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="annual">Anual</SelectItem></SelectContent></Select></div>
-              <div className="sm:col-span-2 space-y-1.5"><Label>Observações internas</Label><Textarea value={form.internalNotes} onChange={(event) => setForm((current) => ({ ...current, internalNotes: event.target.value }))} rows={2} placeholder="Notas visíveis apenas para o super admin..." /></div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-              <Button onClick={() => handleProvision(false)} disabled={saving || !form.companyName || !form.responsibleName || !form.email}>{saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Criar (sem e-mail)</Button>
-              <Button variant="secondary" onClick={() => handleProvision(true)} disabled={saving || !form.companyName || !form.responsibleName || !form.email}>{saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}Criar e enviar e-mail</Button>
-            </div>
+
+            <Button
+              className="w-full"
+              onClick={() => handleProvision(true)}
+              disabled={saving || !form.companyName.trim() || !form.responsibleName.trim() || !form.email.trim()}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Criar tenant e liberar acesso
+            </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              O restante da configuração poderá ser concluído depois, sem bloquear o primeiro acesso.
+            </p>
           </div>
         </DialogContent>
       </Dialog>
