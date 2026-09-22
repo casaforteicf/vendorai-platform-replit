@@ -7519,6 +7519,34 @@ function moduleToForm(module?: ScopeModule | null): ModuleForm {
   };
 }
 
+function sanitizeStaticSegmentOverride(key: string, item: KnowledgeSegment): KnowledgeSegment {
+  const base = segmentCatalog[key];
+  if (!base) return item;
+
+  const ownIds = new Set(base.modules.map((module) => module.id));
+  const foreignStaticIds = new Set<string>();
+
+  for (const [otherKey, otherSegment] of Object.entries(segmentCatalog)) {
+    if (otherKey === key) continue;
+    for (const module of otherSegment.modules) {
+      if (!ownIds.has(module.id)) foreignStaticIds.add(module.id);
+    }
+  }
+
+  const hasCrossSegmentModule = item.modules.some((module) => foreignStaticIds.has(module.id));
+  if (!hasCrossSegmentModule) return item;
+
+  const cleanedModules = item.modules.filter((module) => !foreignStaticIds.has(module.id));
+  const stillHasOwnModule = cleanedModules.some((module) => ownIds.has(module.id));
+
+  return {
+    ...item,
+    label: item.label || base.label,
+    description: item.description || base.description,
+    modules: stillHasOwnModule ? cleanedModules : base.modules,
+  };
+}
+
 export default function AdminKnowledgeBaseInternal() {
   const { toast } = useToast();
   const [overrides, setOverrides] = useState<Record<string, KnowledgeSegment>>({});
@@ -7584,7 +7612,7 @@ export default function AdminKnowledgeBaseInternal() {
       };
     }
     for (const [key, item] of Object.entries(overrides)) {
-      merged[key] = item;
+      merged[key] = sanitizeStaticSegmentOverride(key, item);
     }
     return merged;
   }, [overrides]);
