@@ -35,6 +35,25 @@ describe("prospector consultive playbook", () => {
     expect(message.toLowerCase()).not.toContain("movimentação de terra");
   });
 
+  it("prioritizes construction evidence over generic digital evidence in the opening", () => {
+    const playbook = defaultProspectorPlaybook("Construção civil residencial");
+    const message = buildProspectorOpening({
+      playbook,
+      leadName: "Carlos",
+      companyName: "Projeto Carlos",
+      metadata: {
+        coldProspectDossier: {
+          evidence: [
+            { key: "website", label: "Site comercial encontrado", value: "https://empresa.com.br" },
+            { key: "construction_work_signal", label: "Obra/projeto identificado em fonte pública", value: "Sobrado · fase aprovação" },
+          ],
+        },
+      },
+    });
+    expect(message).toContain("Obra/projeto identificado em fonte pública");
+    expect(message.indexOf("Obra/projeto")).toBeLessThan(message.indexOf("Site comercial"));
+  });
+
   it("uses verified public evidence when it exists", () => {
     const playbook = defaultProspectorPlaybook("Construção civil residencial");
     const message = buildProspectorOpening({
