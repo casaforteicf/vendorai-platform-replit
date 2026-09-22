@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: Arqdor Concept mobile crash fix 2026-09-20.
+# Redeploy marker: Motion AI site generator 2026-09-22.
 
 on:
   push:
