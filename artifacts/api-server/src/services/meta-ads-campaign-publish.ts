@@ -545,7 +545,7 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
       .where(eq(adCampaignsTable.id, campaignId));
     await tx
       .update(adCreativesTable)
-      .set({ externalCreativeId: creativeRes.id, externalAdId: adRes.id })
+      .set({ externalCreativeId: creativeRes.id, externalAdId: adRes.id, externalStatus: "paused" })
       .where(eq(adCreativesTable.id, creative.id));
   });
 
@@ -635,6 +635,9 @@ export async function setMetaAdsCreativeVariantStatus(
   if (!creative?.externalAdId) throw new MetaAdsPublishError("Variação ainda não publicada.");
   const { accessToken } = await getValidAccessToken(tenantId);
   await metaApi(creative.externalAdId, accessToken, "POST", { status: ativar ? "ACTIVE" : "PAUSED" });
+  await db.update(adCreativesTable)
+    .set({ externalStatus: ativar ? "active" : "paused" })
+    .where(eq(adCreativesTable.id, creativeId));
 }
 
 export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: string, ativar: boolean): Promise<void> {
