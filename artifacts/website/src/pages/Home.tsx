@@ -96,14 +96,40 @@ const AGENT_FLOW_ES = [
   ["Revenue Scout", "Busca la próxima oportunidad en la cartera", "revenue-scout"],
 ] as const;
 
+const AI_TEAM_PT = [
+  ["Prospector", "Encontra oportunidades por sinais reais antes de virar lead."],
+  ["SDR", "Atende, entende contexto e qualifica a oportunidade."],
+  ["Closer", "Conduz proposta, objeções, negociação e decisão."],
+  ["Follow-up", "Mantém a oportunidade viva e executa a próxima ação."],
+  ["Agenda", "Marca, confirma e reorganiza compromissos."],
+  ["Marketing", "Planeja conteúdo, campanhas e presença digital."],
+  ["Financeiro", "Acompanha pagamentos e indicadores comerciais."],
+  ["Cobrança", "Atua sobre valores em aberto com contexto do cliente."],
+  ["Suporte", "Resolve demandas sem perder histórico e prioridade."],
+  ["Pós-venda", "Continua o relacionamento e identifica novas oportunidades."],
+] as const;
+
+const AI_TEAM_ES = [
+  ["Prospector", "Encuentra oportunidades por señales reales antes de convertirse en lead."],
+  ["SDR", "Atiende, entiende el contexto y califica la oportunidad."],
+  ["Closer", "Conduce propuesta, objeciones, negociación y decisión."],
+  ["Follow-up", "Mantiene viva la oportunidad y ejecuta la próxima acción."],
+  ["Agenda", "Agenda, confirma y reorganiza compromisos."],
+  ["Marketing", "Planifica contenido, campañas y presencia digital."],
+  ["Finanzas", "Acompaña pagos e indicadores comerciales."],
+  ["Cobranza", "Actúa sobre valores pendientes con contexto del cliente."],
+  ["Soporte", "Resuelve demandas sin perder historial ni prioridad."],
+  ["Posventa", "Continúa la relación e identifica nuevas oportunidades."],
+] as const;
+
 const HOME_PT = {
-  heroBadge: "Operação comercial funcionando com Inteligência Artificial",
-  heroTitle: "Você já pagou pelo lead.",
-  heroAccent: "Não pague para perdê-lo.",
-  heroDescription: "Do anúncio à próxima venda, o VendorAI conecta marketing, atendimento, CRM, follow-up, fechamento, pós-venda e Revenue Scout em uma única operação orientada à receita.",
+  heroBadge: "TAD + agentes especializados + CRM + execução",
+  heroTitle: "Sua operação comercial",
+  heroAccent: "trabalhando com IA.",
+  heroDescription: "Prospecção, atendimento, vendas, marketing, propostas, follow-up, cobrança e pós-venda operando em um único sistema. Os agentes compartilham contexto, registram tudo no CRM e executam a próxima ação.",
   trialCta: "Testar 5 dias grátis",
   howCta: "Ver como funciona",
-  heroBenefits: ["Sem cobrança durante o teste", "Jornada configurada por mercado", "Dados reais substituem suposições"],
+  heroBenefits: ["Equipe de IA coordenada pelo TAD", "CRM e canais na mesma operação", "5 dias para testar com seu contexto"],
   timelineTitle: "Timeline comercial",
   timelineSubtitle: "Demonstração da jornada do VendorAI",
   operating: "Em operação",
@@ -215,13 +241,13 @@ const HOME_PT = {
 
 const HOME_ES = {
   ...HOME_PT,
-  heroBadge: "Operación comercial funcionando con Inteligencia Artificial",
-  heroTitle: "Ya pagaste por el lead.",
-  heroAccent: "No pagues para perderlo.",
-  heroDescription: "Desde el anuncio hasta la próxima venta, VendorAI conecta marketing, atención, CRM, seguimiento, cierre, posventa y Revenue Scout en una única operación orientada a ingresos.",
+  heroBadge: "TAD + agentes especializados + CRM + ejecución",
+  heroTitle: "Tu operación comercial",
+  heroAccent: "trabajando con IA.",
+  heroDescription: "Prospección, atención, ventas, marketing, propuestas, seguimiento, cobranza y posventa operando en un solo sistema. Los agentes comparten contexto, registran todo en el CRM y ejecutan la próxima acción.",
   trialCta: "Probar 5 días gratis",
   howCta: "Ver cómo funciona",
-  heroBenefits: ["Sin cobro durante la prueba", "Jornada configurada por mercado", "Los datos reales reemplazan suposiciones"],
+  heroBenefits: ["Equipo de IA coordinado por TAD", "CRM y canales en la misma operación", "5 días para probar con tu contexto"],
   timelineTitle: "Timeline comercial",
   timelineSubtitle: "Demostración de la jornada de VendorAI",
   operating: "En operación",
@@ -355,6 +381,7 @@ export default function Home() {
   const macrosegments = isSpanish ? MACROSEGMENTS_ES : MACROSEGMENTS_PT;
   const growthCycle = isSpanish ? GROWTH_CYCLE_ES : GROWTH_CYCLE_PT;
   const agentFlow = isSpanish ? AGENT_FLOW_ES : AGENT_FLOW_PT;
+  const aiTeam = isSpanish ? AI_TEAM_ES : AI_TEAM_PT;
   const defaultProfile = pickDefaultProfile();
   const [macrosegment, setMacrosegment] = useState<MarketingMacrosegmentKey>(defaultProfile.macrosegment);
   const [selectedSlug, setSelectedSlug] = useState(defaultProfile.slug);
@@ -395,19 +422,19 @@ export default function Home() {
   return (
     <div className="bg-white text-slate-950" lang={country.locale}>
       <section className="relative overflow-hidden border-b border-white/10 bg-[#070b14] text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(37,99,235,0.25),transparent_34%),radial-gradient(circle_at_78%_20%,rgba(99,102,241,0.18),transparent_30%),linear-gradient(180deg,#0a1020_0%,#070b14_76%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(249,115,22,0.22),transparent_34%),radial-gradient(circle_at_78%_20%,rgba(251,146,60,0.15),transparent_30%),linear-gradient(180deg,#0a1020_0%,#070b14_76%)]" />
         <div className="container relative mx-auto grid min-h-[760px] items-center gap-14 px-4 py-20 lg:grid-cols-[1.03fr_.97fr] lg:py-24">
           <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55 }}>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/10 px-4 py-2 text-sm font-medium text-blue-200">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-4 py-2 text-sm font-medium text-orange-200">
               <Sparkles className="h-4 w-4" /> {copy.heroBadge}
             </div>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:text-7xl xl:text-[80px]">
               {copy.heroTitle}
-              <span className="block bg-gradient-to-r from-blue-300 via-blue-400 to-indigo-300 bg-clip-text text-transparent">{copy.heroAccent}</span>
+              <span className="block bg-gradient-to-r from-orange-300 via-orange-400 to-amber-300 bg-clip-text text-transparent">{copy.heroAccent}</span>
             </h1>
             <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 md:text-xl">{copy.heroDescription}</p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg" className="h-14 rounded-xl bg-blue-500 px-7 text-base font-semibold text-white shadow-[0_16px_55px_rgba(37,99,235,0.28)] hover:bg-blue-400">
+              <Button asChild size="lg" className="h-14 rounded-xl bg-orange-500 px-7 text-base font-semibold text-white shadow-[0_16px_55px_rgba(249,115,22,0.28)] hover:bg-orange-400">
                 <Link href="/demo">{copy.trialCta} <ArrowRight className="ml-2 h-5 w-5" /></Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="h-14 rounded-xl border-white/15 bg-white/[0.04] px-7 text-base text-white hover:bg-white/[0.09] hover:text-white">
@@ -436,6 +463,75 @@ export default function Home() {
               <div className="border-t border-white/10 bg-emerald-400/[0.06] px-5 py-4"><div className="flex items-center gap-3"><RefreshCcw className="h-5 w-5 text-emerald-300" /><div><p className="text-sm font-medium text-emerald-100">{copy.opportunityAlive}</p><p className="text-xs text-slate-500">{copy.sellerMemory}</p></div></div></div>
             </div>
           </motion.div>
+        </div>
+      </section>
+
+      <section className="border-b border-slate-200 bg-[#fffaf5] py-20 md:py-24">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-orange-600">{isSpanish ? "UNA EQUIPO, NO AGENTES AISLADOS" : "UMA EQUIPE, NÃO AGENTES ISOLADOS"}</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-slate-950 md:text-5xl">
+              {isSpanish ? "Conoce al equipo que opera tu ciclo comercial." : "Conheça a equipe que opera seu ciclo comercial."}
+            </h2>
+            <p className="mt-5 text-lg leading-8 text-slate-600">
+              {isSpanish
+                ? "TAD coordina especialistas que comparten contexto, trabajan dentro del mismo CRM y pasan la oportunidad de una etapa a la siguiente."
+                : "O TAD coordena especialistas que compartilham contexto, trabalham dentro do mesmo CRM e passam a oportunidade de uma etapa para a seguinte."}
+            </p>
+          </div>
+
+          <div className="mx-auto mt-12 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {aiTeam.map(([name, role], index) => (
+              <motion.div
+                key={name}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.2 }}
+                transition={{ delay: index * 0.035 }}
+                className="rounded-[22px] border border-orange-100 bg-white p-5 shadow-[0_12px_35px_rgba(15,23,42,0.05)]"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><Bot className="h-5 w-5" /></div>
+                <h3 className="mt-4 text-base font-semibold text-slate-950">{name}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{role}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="mx-auto mt-12 max-w-6xl overflow-hidden rounded-[30px] border border-slate-200 bg-slate-950 p-6 text-white md:p-8">
+            <div className="grid gap-6 lg:grid-cols-[.72fr_1.28fr] lg:items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-1.5 text-xs font-semibold text-orange-200">
+                  <Sparkles className="h-4 w-4" /> TAD
+                </div>
+                <h3 className="mt-4 text-3xl font-semibold tracking-[-0.035em]">
+                  {isSpanish ? "El cerebro que coordina toda la operación." : "O cérebro que coordena toda a operação."}
+                </h3>
+                <p className="mt-4 text-sm leading-7 text-slate-400">
+                  {isSpanish
+                    ? "El cliente no necesita elegir qué IA usar. TAD entiende la intención, activa al especialista correcto y mantiene el historial dentro de Vendor CRM."
+                    : "O cliente não precisa escolher qual IA usar. O TAD entende a intenção, aciona o especialista certo e mantém o histórico dentro do Vendor CRM."}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  [isSpanish ? "Inteligencia" : "Inteligência", "Prospector · Revenue Scout · CIH · Observador"],
+                  ["Comercial", "SDR · Closer · Follow-up · Agenda · Propostas"],
+                  [isSpanish ? "Relación" : "Relacionamento", isSpanish ? "Soporte · Posventa · Finanzas · Cobranza" : "Suporte · Pós-venda · Financeiro · Cobrança"],
+                  [isSpanish ? "Canales" : "Canais", "WhatsApp · Instagram · Facebook · E-mail · Google · Web"],
+                ].map(([title, items]) => (
+                  <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-300">{title}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{items}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-6 border-t border-white/10 pt-5 text-sm text-slate-400">
+              {isSpanish
+                ? "Señal → Prospector → CRM → SDR → Closer → Propuesta → Venta → Finanzas → Posventa → Nueva oportunidad"
+                : "Sinal → Prospector → CRM → SDR → Closer → Proposta → Venda → Financeiro → Pós-venda → Nova oportunidade"}
+            </div>
+          </div>
         </div>
       </section>
 
