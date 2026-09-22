@@ -2,7 +2,11 @@ const CF_API_BASE = "https://api.cloudflare.com/client/v4";
 
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ZONE_ID = process.env.CLOUDFLARE_ZONE_ID;
-const SAAS_ORIGIN = (process.env.CLOUDFLARE_SAAS_ORIGIN ?? "").trim();
+const SAAS_CNAME_TARGET = (
+  process.env.CLOUDFLARE_SAAS_CNAME_TARGET ??
+  process.env.CLOUDFLARE_SAAS_ORIGIN ??
+  ""
+).trim();
 
 if (!API_TOKEN) {
   console.warn("[Cloudflare] CLOUDFLARE_API_TOKEN not set — custom domains will not work");
@@ -10,8 +14,8 @@ if (!API_TOKEN) {
 if (!ZONE_ID) {
   console.warn("[Cloudflare] CLOUDFLARE_ZONE_ID not set — custom domains will not work");
 }
-if (!SAAS_ORIGIN) {
-  console.warn("[Cloudflare] CLOUDFLARE_SAAS_ORIGIN not set — DNS instructions will stay unavailable");
+if (!SAAS_CNAME_TARGET) {
+  console.warn("[Cloudflare] CLOUDFLARE_SAAS_CNAME_TARGET not set — DNS instructions will stay unavailable");
 }
 
 type CustomHostnameResult = {
@@ -58,8 +62,10 @@ function mapCustomHostname(result: CustomHostnameResult) {
 export function getCloudflareCustomDomainConfig() {
   return {
     apiConfigured: Boolean(API_TOKEN && ZONE_ID),
-    originConfigured: Boolean(SAAS_ORIGIN),
-    ready: Boolean(API_TOKEN && ZONE_ID && SAAS_ORIGIN),
+    cnameTargetConfigured: Boolean(SAAS_CNAME_TARGET),
+    // Backward-compatible field for older frontend builds.
+    originConfigured: Boolean(SAAS_CNAME_TARGET),
+    ready: Boolean(API_TOKEN && ZONE_ID && SAAS_CNAME_TARGET),
   };
 }
 
@@ -178,6 +184,6 @@ export function getDnsInstructions(domain: string): {
     // Never expose a made-up fallback hostname to customers. If the SaaS
     // origin is not configured, the UI will show "Preparando destino..." and
     // the API will report that infrastructure provisioning is incomplete.
-    value: SAAS_ORIGIN,
+    value: SAAS_CNAME_TARGET,
   };
 }
