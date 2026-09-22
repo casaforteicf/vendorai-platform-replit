@@ -22,6 +22,7 @@ import messagesRouter from "./messages";
 import customerIntelligenceRouter from "./customer_intelligence";
 import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
+import facebookMarketplaceRouter from "./facebook_marketplace";
 import produtosCatalogoRouter from "./produtos_catalogo";
 import solicitacoesCompraRouter from "./solicitacoes_compra";
 import categoriasProdutoRouter from "./categorias_produto";
@@ -379,6 +380,7 @@ router.use(agentsRouter);
 
 // Marketing Hub
 router.use(campaignsRouter);
+router.use(facebookMarketplaceRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
