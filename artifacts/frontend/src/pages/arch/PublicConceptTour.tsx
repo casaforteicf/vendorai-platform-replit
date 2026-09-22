@@ -192,7 +192,7 @@ export default function PublicConceptTour() {
   const [error, setError] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState(0);
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
-  const [navigationMode, setNavigationMode] = useState<"orbit" | "panorama">("orbit");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "tour" | "panorama">("orbit");
   const [webglReady, setWebglReady] = useState(false);
   const [viewToken, setViewToken] = useState(0);
 
@@ -221,7 +221,26 @@ export default function PublicConceptTour() {
   }, [token]);
 
   const levels = useMemo(() => data ? buildPublicLevels(data) : [], [data]);
-  const scenes = data?.configuration?.savedTourPoints ?? [];
+  const savedScenes = data?.configuration?.savedTourPoints ?? [];
+  const automaticScenes = useMemo(() => {
+    return levels.flatMap((level) =>
+      level.closedSpaces
+        .filter((space) => Number.isFinite(space.centroid?.x) && Number.isFinite(space.centroid?.y) && space.area >= 1.5)
+        .sort((a, b) => b.area - a.area)
+        .map((space, index) => ({
+          id: `auto:${level.floor}:${space.id}`,
+          name: level.labels?.[space.id] ?? `Ambiente ${index + 1}`,
+          floor: level.floor,
+          area: space.area,
+          x: space.centroid.x,
+          y: space.centroid.y,
+          kind: "auto" as const,
+        }))
+    );
+  }, [levels]);
+  const scenes = savedScenes.length
+    ? savedScenes.map((scene) => ({ ...scene, kind: "saved" as const }))
+    : automaticScenes;
   const activeScene = scenes.length ? scenes[Math.min(activeSceneIndex, scenes.length - 1)] : null;
   const lotWidth = Math.max(5, Number(data?.lot?.width) || 12);
   const lotDepth = Math.max(10, Number(data?.lot?.depth) || 30);
@@ -230,7 +249,7 @@ export default function PublicConceptTour() {
   useEffect(() => {
     if (!activeScene) return;
     setActiveFloor(Math.max(0, Math.min(levels.length - 1, activeScene.floor)));
-    setNavigationMode("orbit");
+    setNavigationMode(activeScene.kind === "saved" ? "orbit" : "tour");
     setViewToken((value) => value + 1);
   }, [activeScene?.id, levels.length]);
 
@@ -280,7 +299,17 @@ export default function PublicConceptTour() {
           cameraPresetDegrees={35}
           cameraZoom={1.32}
           navigationMode={navigationMode}
-          savedCameraViewpoint={activeScene ? { ...activeScene, id: `${activeScene.id}:${viewToken}` } : null}
+          savedCameraViewpoint={activeScene?.kind === "saved"
+            ? { ...activeScene, id: `${activeScene.id}:${viewToken}` }
+            : null}
+          tourPoint={activeScene?.kind === "auto"
+            ? {
+                x: activeScene.x,
+                y: activeScene.y,
+                floor: activeScene.floor,
+                token: viewToken,
+              }
+            : null}
           onReady={setWebglReady}
         />
       </div>
@@ -290,7 +319,7 @@ export default function PublicConceptTour() {
           <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-400">Arqdor Tour</div>
           <h1 className="mt-1 truncate text-lg font-bold sm:text-xl">{data.title || "Projeto residencial"}</h1>
           <div className="mt-1 text-xs text-slate-300">
-            {levels.length} pavimento{levels.length === 1 ? "" : "s"} · {scenes.length} cena{scenes.length === 1 ? "" : "s"}
+            {levels.length} pavimento{levels.length === 1 ? "" : "s"} · {scenes.length} cena{scenes.length === 1 ? "" : "s"} {savedScenes.length ? "salva" : "automática"}{scenes.length === 1 ? "" : "s"}
           </div>
         </div>
       </header>
@@ -298,7 +327,10 @@ export default function PublicConceptTour() {
       <div className="absolute right-4 top-28 z-30 flex flex-col gap-2 sm:right-6">
         <button
           type="button"
-          onClick={() => setNavigationMode((mode) => mode === "panorama" ? "orbit" : "panorama")}
+          onClick={() => setNavigationMode((mode) => {
+            if (mode === "panorama") return activeScene?.kind === "auto" ? "tour" : "orbit";
+            return "panorama";
+          })}
           disabled={!webglReady}
           className={navigationMode === "panorama"
             ? "inline-flex items-center gap-2 rounded-xl border border-violet-400/40 bg-violet-600 px-3 py-2 text-xs font-bold text-white shadow-xl"
@@ -341,7 +373,10 @@ export default function PublicConceptTour() {
                     ? "shrink-0 rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white"
                     : "shrink-0 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-white/10"}
                 >
-                  {scene.name || `Cena ${index + 1}`}
+                  <span className="block">{scene.name || `Cena ${index + 1}`}</span>
+                  <span className="mt-0.5 block text-[9px] font-medium opacity-75">
+                    Pav. {scene.floor + 1}{scene.kind === "auto" && Number.isFinite(scene.area) ? ` · ${scene.area.toFixed(1)} m²` : ""}
+                  </span>
                 </button>
               ))}
             </div>
