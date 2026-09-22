@@ -26,6 +26,7 @@ export * from "./solicitacoes_compra";
 export * from "./tenant_distribuicao_config";
 export * from "./lead_responsavel_historico";
 export * from "./changelog";
+export * from "./admin_internal_knowledge";
 export * from "./brand_programs";
 export * from "./ml_feature_snapshots";
 export * from "./receitas_medicas";
