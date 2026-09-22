@@ -905,14 +905,14 @@ export default function ConceptModel3D({
 
   return (
     <div className="relative h-[calc(100dvh-64px)] overflow-hidden bg-[#edf1f4]">
-      <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/92 px-4 py-3 text-slate-800 shadow-xl backdrop-blur">
-        <div>
+      <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-start justify-between gap-3">
+        <div className="pointer-events-auto hidden max-w-[360px] rounded-2xl border border-slate-200/90 bg-white/94 px-3.5 py-3 text-slate-800 shadow-lg backdrop-blur lg:block">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Layers3 className="h-4 w-4" /> {webglReady ? "Modelo 3D Pro" : "Modelo 3D sincronizado"}
           </div>
-          <div className="text-xs text-slate-500">{webglReady ? "WebGL com perspectiva, luz, sombras e gizmo real · selecione objetos, paredes, pisos e aberturas diretamente." : "Arraste o fundo para orbitar · arraste objetos para mover · pinça no celular ou roda do mouse para zoom."}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">{webglReady ? "Selecione e edite diretamente na cena." : "Arraste para orbitar · roda do mouse para zoom."}</div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="pointer-events-auto ml-auto flex max-w-[calc(100%-1rem)] flex-wrap items-center justify-end gap-1.5 rounded-2xl border border-slate-200/90 bg-white/94 p-1.5 text-slate-800 shadow-lg backdrop-blur">
           {webglReady && selectedObjectId && (
             <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
               <button
@@ -1127,22 +1127,26 @@ export default function ConceptModel3D({
               {showAllFloors ? "Todos pavimentos" : "Pavimento ativo"}
             </button>
           )}
-          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Girar para esquerda">
-            <RotateCcw className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Girar para direita">
-            <RotateCw className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Reduzir">
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Ampliar">
-            <ZoomIn className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={resetCamera} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50" title="Restaurar câmera">
-            <Maximize2 className="h-4 w-4" />
-          </button>
         </div>
+      </div>
+
+      <div className="absolute bottom-20 right-3 z-20 flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white/94 p-1.5 shadow-xl backdrop-blur">
+        <button type="button" onClick={() => setRotation((value) => normalizeRotation(value - 15))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100" title="Girar para esquerda">
+          <RotateCcw className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={() => setRotation((value) => normalizeRotation(value + 15))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100" title="Girar para direita">
+          <RotateCw className="h-4 w-4" />
+        </button>
+        <div className="mx-auto my-0.5 h-px w-7 bg-slate-200" />
+        <button type="button" onClick={() => setZoom((value) => Math.min(2.35, Number((value + 0.12).toFixed(2))))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100" title="Ampliar">
+          <ZoomIn className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.12).toFixed(2))))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100" title="Reduzir">
+          <ZoomOut className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={resetCamera} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100" title="Centralizar cena">
+          <Maximize2 className="h-4 w-4" />
+        </button>
       </div>
 
       <ConceptWebGLScene
@@ -1894,9 +1898,9 @@ export default function ConceptModel3D({
         )}
       </svg>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-slate-900 px-4 py-3 text-xs text-white/60">
+      <div className="absolute bottom-3 left-3 z-20 hidden max-w-[calc(100%-5rem)] flex-wrap items-center gap-3 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-[11px] text-slate-500 shadow-md backdrop-blur md:flex">
         <span>{visibleLevels.length} pavimento{visibleLevels.length !== 1 ? "s" : ""} · {wallCount} paredes · {openingCount} vãos · {spaceCount} espaços</span>
-        <span>Vista {Math.round(rotation)}° · pé-direito {WALL_HEIGHT.toFixed(2).replace(".", ",")} m · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm</span>
+        <span className="hidden xl:inline">Vista {Math.round(rotation)}° · pé-direito {WALL_HEIGHT.toFixed(2).replace(".", ",")} m · laje {(FLOOR_THICKNESS * 100).toFixed(0)} cm</span>
       </div>
     </div>
   );
