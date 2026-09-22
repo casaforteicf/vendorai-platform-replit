@@ -199,6 +199,133 @@ function statusClass(status: string) {
   return "bg-amber-50 text-amber-700";
 }
 
+
+type ExtractedItem = {
+  descricao?: string | null;
+  quantidade?: number | null;
+  unidade?: string | null;
+  valorUnitario?: number | null;
+  valorTotal?: number | null;
+};
+
+type ProcurementDocumentExtraction = {
+  tipo?: string | null;
+  fornecedor?: string | null;
+  numero?: string | null;
+  dataPrevista?: string | null;
+  condicaoPagamento?: string | null;
+  prazoEntregaDias?: number | null;
+  frete?: number | null;
+  desconto?: number | null;
+  taxas?: number | null;
+  observacoes?: string | null;
+  itens?: ExtractedItem[];
+};
+
+type StoredDocument = {
+  name?: string;
+  url?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
+  [key: string]: any;
+};
+
+function normalizedHeader(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function finiteNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const cleaned = raw
+    .replace(/R\$/gi, "")
+    .replace(/\s/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".")
+    .replace(/[^0-9.-]/g, "");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readRowValue(row: Record<string, unknown>, aliases: string[]) {
+  const entries = Object.entries(row);
+  for (const alias of aliases) {
+    const wanted = normalizedHeader(alias);
+    const found = entries.find(([key]) => normalizedHeader(key) === wanted);
+    if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim() !== "") return found[1];
+  }
+  return undefined;
+}
+
+async function parseSpreadsheetFile(file: File): Promise<ProcurementDocumentExtraction> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new Error("A planilha não possui uma aba legível.");
+  const sheet = workbook.Sheets[firstSheet];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  const itens: ExtractedItem[] = rows.map((row) => {
+    const descricao = readRowValue(row, ["descricao", "descrição", "item", "produto", "material", "serviço", "servico"]);
+    const quantidade = finiteNumber(readRowValue(row, ["quantidade", "qtd", "qtde"]));
+    const unidade = readRowValue(row, ["unidade", "un", "und"]);
+    const valorUnitario = finiteNumber(readRowValue(row, ["valor unitario", "valor unitário", "preco unitario", "preço unitário", "unitario", "preco"]));
+    let valorTotal = finiteNumber(readRowValue(row, ["valor total", "total", "subtotal"]));
+    if (!valorTotal && quantidade && valorUnitario) valorTotal = quantidade * valorUnitario;
+    return {
+      descricao: descricao ? String(descricao).trim() : "",
+      quantidade: quantidade || 1,
+      unidade: unidade ? String(unidade).trim() : "un",
+      valorUnitario,
+      valorTotal,
+    };
+  }).filter((item) => Boolean(item.descricao));
+
+  const first = rows[0] ?? {};
+  return {
+    tipo: "orcamento",
+    fornecedor: String(readRowValue(first, ["fornecedor", "empresa", "razao social", "razão social"]) ?? "").trim() || null,
+    numero: String(readRowValue(first, ["numero", "número", "orcamento", "orçamento", "pedido"]) ?? "").trim() || null,
+    condicaoPagamento: String(readRowValue(first, ["condicao pagamento", "condição pagamento", "pagamento"]) ?? "").trim() || null,
+    itens,
+  };
+}
+
+function rfqText(obraName: string, request: PurchaseRequest) {
+  const needDate = request.needDate ? new Date(`${request.needDate}T12:00:00`).toLocaleDateString("pt-BR") : "a combinar";
+  return [
+    "SOLICITAÇÃO DE COTAÇÃO / TOMADA DE PREÇOS",
+    `Obra: ${obraName}`,
+    `Solicitação: ${request.code}`,
+    "",
+    `Item/serviço: ${request.item}`,
+    `Quantidade: ${request.quantity} ${request.unit}`,
+    request.environment ? `Local/ambiente: ${request.environment}` : "",
+    request.discipline ? `Disciplina: ${request.discipline}` : "",
+    `Necessário até: ${needDate}`,
+    request.notes ? `Observações: ${request.notes}` : "",
+    "",
+    "Favor informar:",
+    "• preço unitário e valor total;",
+    "• frete, impostos e descontos;",
+    "• prazo de entrega;",
+    "• validade da proposta;",
+    "• condição de pagamento;",
+    "• marca/modelo/especificação quando aplicável.",
+    "",
+    "A cotação será comparada com outras propostas antes da emissão do pedido de compra.",
+  ].filter(Boolean).join("\n");
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char] ?? char));
+}
+
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return <div className="rounded-[26px] border border-slate-100 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{hint}</p></div>;
 }
