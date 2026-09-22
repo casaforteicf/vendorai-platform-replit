@@ -23,6 +23,8 @@ import {
   businessProfilesTable,
   produtosCatalogoTable,
   insertProspectFeedbackSchema,
+  agentConfigsTable,
+  whatsappConnectionsTable,
 } from "@workspace/db";
 import { registerLeadFeedback } from "../lib/prospectorMemory.js";
 import {
@@ -32,6 +34,7 @@ import {
 import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { enrichLead } from "../jobs/leadEnrichment.js";
+import { prospectorEmailAutomationConfigured } from "../services/prospector-email.js";
 import { searchConstructionWorkSignals, scoreConstructionOpportunity } from "../services/construction-radar-search.js";
 import {
   searchByCnae,
@@ -1523,6 +1526,148 @@ router.patch("/prospector/approvals/:id", async (req, res) => {
   }
 
   return res.status(200).json({ ok: true, action, approvedCount, automationUnlocked });
+});
+
+// ── GET /prospector/channels/status ──────────────────────────────────────────
+router.get("/prospector/channels/status", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+
+  const [legacyConfigRows, activeWhatsappConnections] = await Promise.all([
+    db
+      .select({
+        zapiInstanceId: agentConfigsTable.zapiInstanceId,
+        zapiToken: agentConfigsTable.zapiToken,
+        zapiClientToken: agentConfigsTable.zapiClientToken,
+        evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
+        evolutionConnected: agentConfigsTable.evolutionConnected,
+        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+        metaAccessToken: agentConfigsTable.metaAccessToken,
+        instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+        instagramPageId: agentConfigsTable.instagramPageId,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({
+        id: whatsappConnectionsTable.id,
+        provider: whatsappConnectionsTable.provider,
+        label: whatsappConnectionsTable.label,
+        displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber,
+      })
+      .from(whatsappConnectionsTable)
+      .where(and(
+        eq(whatsappConnectionsTable.tenantId, tenantId),
+        eq(whatsappConnectionsTable.status, "active"),
+      )),
+  ]);
+
+  const legacy = legacyConfigRows[0] ?? null;
+  const activeEvolution = activeWhatsappConnections.find((connection) => connection.provider === "evolution");
+  const activeMeta = activeWhatsappConnections.find((connection) => connection.provider === "meta");
+  const hasLegacyEvolution = Boolean(legacy?.evolutionInstanceName && legacy.evolutionConnected);
+  const hasLegacyZapi = Boolean(legacy?.zapiInstanceId && legacy.zapiToken && legacy.zapiClientToken);
+  const hasLegacyMeta = Boolean(legacy?.metaPhoneNumberId && legacy.metaAccessToken);
+  const whatsappAutoExecutable = Boolean(activeEvolution || hasLegacyEvolution || hasLegacyZapi);
+  const whatsappConnected = Boolean(
+    activeWhatsappConnections.length > 0 ||
+    hasLegacyEvolution ||
+    hasLegacyZapi ||
+    hasLegacyMeta
+  );
+
+  const emailApi = Boolean(process.env["RESEND_API_KEY"]?.trim());
+  const emailReplyDomain = Boolean(process.env["RESEND_PROSPECTOR_REPLY_DOMAIN"]?.trim());
+  const emailWebhookSecret = Boolean(process.env["RESEND_WEBHOOK_SECRET"]?.trim());
+  const emailReceivingVerified =
+    process.env["RESEND_PROSPECTOR_RECEIVING_VERIFIED"]?.trim().toLowerCase() === "true";
+  const emailAutoExecutable = prospectorEmailAutomationConfigured();
+
+  const instagramConnected = Boolean(
+    legacy?.instagramPageAccessToken && legacy.instagramPageId
+  );
+
+  const channels = [
+    {
+      key: "whatsapp",
+      label: "WhatsApp",
+      priority: 1,
+      state: whatsappAutoExecutable
+        ? "active"
+        : whatsappConnected
+          ? "limited"
+          : "not_configured",
+      connected: whatsappConnected,
+      autoExecutable: whatsappAutoExecutable,
+      transport: activeEvolution || hasLegacyEvolution
+        ? "Evolution / QR Code"
+        : hasLegacyZapi
+          ? "Z-API legado"
+          : activeMeta || hasLegacyMeta
+            ? "Meta Cloud API"
+            : null,
+      detail: whatsappAutoExecutable
+        ? "Pronto para prospecção fria com mensagem consultiva em texto livre."
+        : whatsappConnected
+          ? "Conectado via Meta, mas cold-start personalizado fora da janela de 24h depende de template."
+          : "Conecte o WhatsApp por QR Code para liberar o primeiro contato automático.",
+      setupHref: "/configuracoes?tab=integracoes&integration=whatsapp",
+    },
+    {
+      key: "email",
+      label: "E-mail",
+      priority: 2,
+      state: emailAutoExecutable
+        ? "active"
+        : emailApi
+          ? "pending_setup"
+          : "not_configured",
+      connected: emailApi,
+      autoExecutable: emailAutoExecutable,
+      transport: emailApi ? "Resend" : null,
+      detail: emailAutoExecutable
+        ? "Envio e respostas inbound verificados; cadência pode continuar pelo mesmo canal."
+        : emailApi
+          ? !emailReplyDomain
+            ? "Envio disponível, mas falta o domínio dedicado de respostas."
+            : !emailReceivingVerified
+              ? "Domínio de resposta criado, aguardando DNS/Receiving verificado."
+              : !emailWebhookSecret
+                ? "Receiving verificado, mas falta o signing secret do webhook."
+                : "Configuração de inbound incompleta."
+          : "Canal de e-mail ainda não configurado administrativamente.",
+      setupHref: null,
+      readiness: {
+        sendApi: emailApi,
+        replyDomain: emailReplyDomain,
+        receivingVerified: emailReceivingVerified,
+        signedWebhook: emailWebhookSecret,
+      },
+    },
+    {
+      key: "instagram",
+      label: "Instagram",
+      priority: 3,
+      state: instagramConnected ? "limited" : "not_configured",
+      connected: instagramConnected,
+      autoExecutable: false,
+      transport: instagramConnected ? "Meta Messaging" : null,
+      detail: instagramConnected
+        ? "Disponível para conversas já autorizadas/iniciadas pelo usuário; não é usado para DM fria por @ público."
+        : "Conecte a conta profissional. DM fria automática continua bloqueada sem IGSID/permissão.",
+      setupHref: "/configuracoes?tab=integracoes&integration=instagram",
+    },
+  ] as const;
+
+  return res.status(200).json({
+    priority: ["whatsapp", "email", "instagram"],
+    channels,
+    summary: {
+      executable: channels.filter((channel) => channel.autoExecutable).length,
+      connected: channels.filter((channel) => channel.connected).length,
+      coldOutreachReady: channels.some((channel) => channel.autoExecutable),
+    },
+  });
 });
 
 // ── GET /prospector/config ────────────────────────────────────────────────────
