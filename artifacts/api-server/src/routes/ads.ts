@@ -144,8 +144,8 @@ function validateAutonomousCampaignControl(campanha: AdCampaign) {
   if (!control) throw new AdAutomationError("Campanha sem controle de orçamento/período. A IA não pode ativar mídia sem limites definidos.");
   if (!Number.isFinite(dailyBudget) || dailyBudget <= 0) throw new AdAutomationError("Limite diário inválido para patrocínio automático.");
   if (!Number.isFinite(totalBudget) || totalBudget < dailyBudget) throw new AdAutomationError("Orçamento total inválido para patrocínio automático.");
-  const start = new Date(`${control.startDate}T00:00:00`);
-  const end = new Date(`${control.endDate}T23:59:59`);
+  const start = new Date(`${control.startDate}T${control.startTime ?? "00:00"}:00`);
+  const end = new Date(`${control.endDate}T${control.endTime ?? "23:59"}:59`);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
     throw new AdAutomationError("Período inválido para patrocínio automático.");
   }
@@ -400,12 +400,29 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   if (!control) {
     return res.status(422).json({ error: "Defina objetivo, período, orçamento total e medição antes de criar a campanha." });
   }
-  const startDate = new Date(`${control.startDate}T00:00:00`);
-  const endDate = new Date(`${control.endDate}T23:59:59`);
-  const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000);
+  const startTime = typeof control.startTime === "string" && /^\d{2}:\d{2}$/.test(control.startTime) ? control.startTime : "00:00";
+  const endTime = typeof control.endTime === "string" && /^\d{2}:\d{2}$/.test(control.endTime) ? control.endTime : "23:59";
+  const startDate = new Date(`${control.startDate}T${startTime}:00`);
+  const endDate = new Date(`${control.endDate}T${endTime}:59`);
+  const durationDays = Math.ceil((new Date(`${control.endDate}T00:00:00`).getTime() - new Date(`${control.startDate}T00:00:00`).getTime()) / 86_400_000) + 1;
   const dailyBudget = Number(parsed.data.orcamentoDiario);
-  if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || durationDays < 1 || durationDays > 90) {
-    return res.status(422).json({ error: "O período da campanha deve ter entre 2 e 90 dias." });
+  if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || endDate <= startDate || durationDays < 1 || durationDays > 90) {
+    return res.status(422).json({ error: "O período e os horários da campanha são inválidos ou excedem 90 dias." });
+  }
+  if (Array.isArray(control.weeklySchedule)) {
+    const validDays = new Set(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"]);
+    for (const slot of control.weeklySchedule) {
+      if (!Array.isArray(slot?.days) || slot.days.length === 0 || slot.days.some((day: string) => !validDays.has(day))) {
+        return res.status(422).json({ error: "Selecione pelo menos um dia válido para a programação de anúncios." });
+      }
+      if (!/^\d{2}:\d{2}$/.test(slot.startTime ?? "") || !/^\d{2}:\d{2}$/.test(slot.endTime ?? "") || slot.startTime >= slot.endTime) {
+        return res.status(422).json({ error: "A faixa de horário dos anúncios é inválida." });
+      }
+      const mins = [slot.startTime, slot.endTime].map((v: string) => Number(v.slice(3,5)));
+      if (mins.some((m: number) => ![0,15,30,45].includes(m))) {
+        return res.status(422).json({ error: "No Google Ads, os horários precisam usar intervalos de 15 minutos." });
+      }
+    }
   }
   if (!Number.isFinite(control.totalBudget) || control.totalBudget < dailyBudget) {
     return res.status(422).json({ error: "O orçamento total precisa ser igual ou maior que o limite diário." });
