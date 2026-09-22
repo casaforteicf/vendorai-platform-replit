@@ -207,7 +207,11 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
 
         if (stage === "feedback_cliente" && !metadata.supportFeedbackRequestedAt) {
           const result = await requestSupportFeedback(card.tenantId, card.id, log);
-          if (result.sent) feedbackRequests++;
+          if (result.sent) {
+            nextMetadata.supportFeedbackRequestedAt = now.toISOString();
+            nextMetadata.supportFeedbackStatus = "aguardando";
+            feedbackRequests++;
+          }
         }
       }
 
@@ -295,7 +299,7 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
 
       await db
         .update(workCardsTable)
-        .set({ metadata: nextMetadata, updatedAt: card.updatedAt })
+        .set({ metadata: nextMetadata })
         .where(and(eq(workCardsTable.id, card.id), eq(workCardsTable.tenantId, card.tenantId)));
     } catch (error) {
       log.error(
