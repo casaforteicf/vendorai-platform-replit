@@ -95,6 +95,7 @@ type QueueLead = {
   id: string;
   nome: string;
   empresa?: string | null;
+  source?: string | null;
   telefone?: string | null;
   endereco?: string | null;
   mercadoSegmento?: string | null;
@@ -210,6 +211,34 @@ function formatMoney(value?: number | null) {
     currency: "BRL",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function sourceLabel(source?: string | null) {
+  const labels: Record<string, string> = {
+    prospector: "Prospecctor",
+    prospector_auto: "Prospecctor IA",
+    cnpj: "CNPJ",
+    recem_aberta: "Empresa recém-aberta",
+    ad_library: "Meta Ads",
+    revenue_scout: "Revenue Scout",
+    business_directory: "Diretório",
+    public_registry: "Registro público",
+    google_maps_prospecting: "Google Maps",
+    google_business_profile: "Google Business",
+    linkedin_prospecting: "LinkedIn",
+    instagram_prospecting: "Instagram",
+    facebook_prospecting: "Facebook",
+    marketplace_prospecting: "Marketplace",
+    event_prospecting: "Evento",
+    referral_prospecting: "Indicação",
+    imported_prospect_list: "Lista importada",
+    manual_prospecting: "Manual",
+    website_prospecting: "Website",
+    construction_radar: "Radar de Obras",
+    obra_radar: "Radar de Obras",
+  };
+  if (!source) return null;
+  return labels[source] ?? source.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function MultiValueInput({
@@ -641,21 +670,47 @@ export default function ProspectorClassic() {
   const dispatchSdrMutation = useMutation({
     mutationFn: async (leadId: string) => {
       const response = await fetch(`/api/prospector/dispatch-sdr/${leadId}`, { method: "POST", headers: authHeaders() });
-      if (!response.ok) throw new Error("Falha ao disparar SDR");
-      return response.json();
+      const data = await response.json() as { error?: string; channel?: string | null; alreadyDispatched?: boolean };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao iniciar o Prospecctor");
+      return data;
     },
-    onSuccess: () => { toast({ title: "SDR disparado" }); queryClient.invalidateQueries({ queryKey: ["prospector-fila"] }); },
-    onError: () => toast({ title: "Falha ao disparar SDR", variant: "destructive" }),
+    onSuccess: (data) => {
+      toast({
+        title: data.alreadyDispatched ? "Prospecctor já iniciado" : "Prospecctor iniciado",
+        description: data.channel ? `Primeiro contato enviado por ${data.channel}.` : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+      queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
+      queryClient.invalidateQueries({ queryKey: ["prospector-channel-status"] });
+    },
+    onError: (error) => toast({
+      title: "Não foi possível iniciar o Prospecctor",
+      description: error instanceof Error ? error.message : undefined,
+      variant: "destructive",
+    }),
   });
 
   const dispatchTopMutation = useMutation({
     mutationFn: async (n: number) => {
       const response = await fetch("/api/prospector/dispatch-top", { method: "POST", headers: authHeaders(), body: JSON.stringify({ n }) });
-      if (!response.ok) throw new Error("Falha ao disparar em lote");
-      return response.json() as Promise<{ dispatched: number }>;
+      const data = await response.json() as { dispatched?: number; blocked?: number; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao iniciar Prospecctor em lote");
+      return { dispatched: data.dispatched ?? 0, blocked: data.blocked ?? 0 };
     },
-    onSuccess: (data) => { toast({ title: `${data.dispatched} SDR(s) disparado(s)` }); queryClient.invalidateQueries({ queryKey: ["prospector-fila"] }); },
-    onError: () => toast({ title: "Falha no disparo em lote", variant: "destructive" }),
+    onSuccess: (data) => {
+      toast({
+        title: `${data.dispatched} prospect(s) iniciado(s)`,
+        description: data.blocked > 0 ? `${data.blocked} ficaram bloqueados por falta de canal seguro/executável.` : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+      queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
+      queryClient.invalidateQueries({ queryKey: ["prospector-channel-status"] });
+    },
+    onError: (error) => toast({
+      title: "Falha ao iniciar Prospecctor em lote",
+      description: error instanceof Error ? error.message : undefined,
+      variant: "destructive",
+    }),
   });
 
   const discardMutation = useMutation({
@@ -974,9 +1029,9 @@ export default function ProspectorClassic() {
         </TabsContent>
 
         <TabsContent value="fila" className="mt-4 space-y-4">
-          <Card><CardHeader className="pb-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4 text-primary" />Fila de oportunidades</CardTitle><CardDescription>Prospects enriquecidos e ordenados por chance comercial. As tags preservam a origem da prospecção.</CardDescription></div><div className="flex flex-wrap gap-2"><Select value={queueFilter} onValueChange={(value) => changeQueueFilter(value as QueueFilter)}><SelectTrigger className="h-9 w-[160px]"><Filter className="mr-1.5 h-3.5 w-3.5" /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="quentes">Quentes ≥80</SelectItem><SelectItem value="aquecendo">50–79</SelectItem><SelectItem value="analisando">Analisando</SelectItem></SelectContent></Select><Button size="sm" variant="outline" onClick={() => filaQuery.refetch()} disabled={filaQuery.isFetching}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${filaQuery.isFetching ? "animate-spin" : ""}`} />Atualizar</Button>{selectedFilaLeadIds.size > 0 && <Button size="sm" variant="secondary" onClick={() => createCampaignPackageMutation.mutate([...selectedFilaLeadIds])} disabled={createCampaignPackageMutation.isPending}><Megaphone className="mr-1.5 h-3.5 w-3.5" />Criar pacote ({selectedFilaLeadIds.size})</Button>}<Button size="sm" onClick={() => dispatchTopMutation.mutate(10)} disabled={dispatchTopMutation.isPending || !queueLeads.length}><Zap className="mr-1.5 h-3.5 w-3.5" />Disparar top 10</Button></div></div></CardHeader></Card>
+          <Card><CardHeader className="pb-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4 text-primary" />Fila de oportunidades</CardTitle><CardDescription>Prospects enriquecidos e ordenados por chance comercial. As tags preservam a origem da prospecção.</CardDescription></div><div className="flex flex-wrap gap-2"><Select value={queueFilter} onValueChange={(value) => changeQueueFilter(value as QueueFilter)}><SelectTrigger className="h-9 w-[160px]"><Filter className="mr-1.5 h-3.5 w-3.5" /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="quentes">Quentes ≥80</SelectItem><SelectItem value="aquecendo">50–79</SelectItem><SelectItem value="analisando">Analisando</SelectItem></SelectContent></Select><Button size="sm" variant="outline" onClick={() => filaQuery.refetch()} disabled={filaQuery.isFetching}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${filaQuery.isFetching ? "animate-spin" : ""}`} />Atualizar</Button>{selectedFilaLeadIds.size > 0 && <Button size="sm" variant="secondary" onClick={() => createCampaignPackageMutation.mutate([...selectedFilaLeadIds])} disabled={createCampaignPackageMutation.isPending}><Megaphone className="mr-1.5 h-3.5 w-3.5" />Criar pacote ({selectedFilaLeadIds.size})</Button>}<Button size="sm" onClick={() => dispatchTopMutation.mutate(10)} disabled={dispatchTopMutation.isPending || !queueLeads.length}><Zap className="mr-1.5 h-3.5 w-3.5" />Iniciar top 10</Button></div></div></CardHeader></Card>
 
-          {filaQuery.isLoading ? <div className="flex justify-center py-10 text-sm text-muted-foreground"><Spinner className="mr-2 h-5 w-5" />Carregando oportunidades...</div> : filaQuery.isError ? <Card className="border-destructive/30"><CardContent className="py-6 text-center text-sm text-destructive">Falha ao carregar a fila.</CardContent></Card> : queueLeads.length === 0 ? <Card className="border-dashed"><CardContent className="py-10 text-center text-sm text-muted-foreground"><Target className="mx-auto mb-2 h-8 w-8 opacity-40" />Nenhuma oportunidade neste filtro.</CardContent></Card> : <div className="space-y-2">{queueLeads.map((lead) => { const score = lead.propensityScore ?? 0; const pending = lead.enrichmentStatus === "pending"; const roi = lead.roiEstimate; const tagNichos = lead.metadata?.prospector_nichos ?? []; const tagLocais = lead.metadata?.prospector_localidades ?? []; return <Card key={lead.id} className={score >= 80 ? "border-emerald-200" : ""}><CardContent className="flex items-start gap-3 py-4"><input type="checkbox" className="mt-3 h-4 w-4 accent-primary" checked={selectedFilaLeadIds.has(lead.id)} disabled={pending} onChange={() => setSelectedFilaLeadIds((current) => { const next = new Set(current); if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id); return next; })} /><div className={`min-w-[66px] rounded-lg border px-2 py-2 text-center ${pending ? "border-slate-200 bg-slate-50 text-slate-500" : scoreClass(score)}`}>{pending ? <><Spinner className="mx-auto h-4 w-4" /><p className="mt-1 text-[10px]">analisando</p></> : <><p className="text-xl font-bold leading-none">{score}</p><p className="mt-1 text-[10px]">/100</p></>}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{lead.nome}</p>{score >= 80 && !pending && <Badge className="bg-emerald-100 text-emerald-700"><Flame className="mr-1 h-3 w-3" />Quente</Badge>}{lead.enrichmentStatus !== "pending" && <Badge variant="outline">{lead.enrichmentStatus}</Badge>}</div>{(tagNichos.length > 0 || tagLocais.length > 0) && <div className="mt-1.5 flex flex-wrap gap-1">{tagNichos.map((tag) => <Badge key={`qn-${tag}`} variant="secondary" className="text-[10px]">{tag}</Badge>)}{tagLocais.map((tag) => <Badge key={`ql-${tag}`} variant="outline" className="text-[10px]"><MapPin className="mr-1 h-2.5 w-2.5" />{tag}</Badge>)}</div>}{lead.priorityReason && <p className="mt-1 text-sm text-muted-foreground">{lead.priorityReason}</p>}{lead.events.map((event) => <p key={`${event.tipo}-${event.descricao}`} className="mt-1 text-xs font-medium text-primary">{event.descricao}</p>)}<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{lead.telefone && <span><Phone className="mr-1 inline h-3 w-3" />{lead.telefone}</span>}{lead.endereco && <span><MapPin className="mr-1 inline h-3 w-3" />{lead.endereco}</span>}{lead.mercadoSegmento && <span>{lead.mercadoSegmento}</span>}</div>{roi?.perda_estimada_mes != null && <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-emerald-700"><BarChart3 className="h-3.5 w-3.5" />Potencial recuperável: {formatMoney(roi.perda_estimada_mes)}/mês</div>}<div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={pending || dispatchSdrMutation.isPending} onClick={() => dispatchSdrMutation.mutate(lead.id)}><PlayCircle className="mr-1.5 h-3.5 w-3.5" />Disparar SDR</Button><Button size="sm" variant="outline" disabled={pending || createCampaignPackageMutation.isPending} onClick={() => createCampaignPackageMutation.mutate([lead.id])}><Sparkles className="mr-1.5 h-3.5 w-3.5" />Criar pacote</Button>{lead.metadata?.revenue_scout_campaign_ids?.[0] && <Link href={`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(lead.metadata.revenue_scout_campaign_ids[0])}&from=revenue-scout`}><Button size="sm" variant="outline"><Megaphone className="mr-1.5 h-3.5 w-3.5" />Abrir campanha</Button></Link>}<Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={discardMutation.isPending} onClick={() => discardMutation.mutate(lead.id)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Descartar</Button></div></div></CardContent></Card>; })}</div>}
+          {filaQuery.isLoading ? <div className="flex justify-center py-10 text-sm text-muted-foreground"><Spinner className="mr-2 h-5 w-5" />Carregando oportunidades...</div> : filaQuery.isError ? <Card className="border-destructive/30"><CardContent className="py-6 text-center text-sm text-destructive">Falha ao carregar a fila.</CardContent></Card> : queueLeads.length === 0 ? <Card className="border-dashed"><CardContent className="py-10 text-center text-sm text-muted-foreground"><Target className="mx-auto mb-2 h-8 w-8 opacity-40" />Nenhuma oportunidade neste filtro.</CardContent></Card> : <div className="space-y-2">{queueLeads.map((lead) => { const score = lead.propensityScore ?? 0; const pending = lead.enrichmentStatus === "pending"; const roi = lead.roiEstimate; const tagNichos = lead.metadata?.prospector_nichos ?? []; const tagLocais = lead.metadata?.prospector_localidades ?? []; return <Card key={lead.id} className={score >= 80 ? "border-emerald-200" : ""}><CardContent className="flex items-start gap-3 py-4"><input type="checkbox" className="mt-3 h-4 w-4 accent-primary" checked={selectedFilaLeadIds.has(lead.id)} disabled={pending} onChange={() => setSelectedFilaLeadIds((current) => { const next = new Set(current); if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id); return next; })} /><div className={`min-w-[66px] rounded-lg border px-2 py-2 text-center ${pending ? "border-slate-200 bg-slate-50 text-slate-500" : scoreClass(score)}`}>{pending ? <><Spinner className="mx-auto h-4 w-4" /><p className="mt-1 text-[10px]">analisando</p></> : <><p className="text-xl font-bold leading-none">{score}</p><p className="mt-1 text-[10px]">/100</p></>}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{lead.nome}</p>{sourceLabel(lead.source) && <Badge variant="secondary" className="text-[10px]">{sourceLabel(lead.source)}</Badge>}{score >= 80 && !pending && <Badge className="bg-emerald-100 text-emerald-700"><Flame className="mr-1 h-3 w-3" />Quente</Badge>}{lead.enrichmentStatus !== "pending" && <Badge variant="outline">{lead.enrichmentStatus}</Badge>}</div>{(tagNichos.length > 0 || tagLocais.length > 0) && <div className="mt-1.5 flex flex-wrap gap-1">{tagNichos.map((tag) => <Badge key={`qn-${tag}`} variant="secondary" className="text-[10px]">{tag}</Badge>)}{tagLocais.map((tag) => <Badge key={`ql-${tag}`} variant="outline" className="text-[10px]"><MapPin className="mr-1 h-2.5 w-2.5" />{tag}</Badge>)}</div>}{lead.priorityReason && <p className="mt-1 text-sm text-muted-foreground">{lead.priorityReason}</p>}{lead.events.map((event) => <p key={`${event.tipo}-${event.descricao}`} className="mt-1 text-xs font-medium text-primary">{event.descricao}</p>)}<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{lead.telefone && <span><Phone className="mr-1 inline h-3 w-3" />{lead.telefone}</span>}{lead.endereco && <span><MapPin className="mr-1 inline h-3 w-3" />{lead.endereco}</span>}{lead.mercadoSegmento && <span>{lead.mercadoSegmento}</span>}</div>{roi?.perda_estimada_mes != null && <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-emerald-700"><BarChart3 className="h-3.5 w-3.5" />Potencial recuperável: {formatMoney(roi.perda_estimada_mes)}/mês</div>}<div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={pending || dispatchSdrMutation.isPending} onClick={() => dispatchSdrMutation.mutate(lead.id)}><PlayCircle className="mr-1.5 h-3.5 w-3.5" />Iniciar Prospecctor</Button><Button size="sm" variant="outline" disabled={pending || createCampaignPackageMutation.isPending} onClick={() => createCampaignPackageMutation.mutate([lead.id])}><Sparkles className="mr-1.5 h-3.5 w-3.5" />Criar pacote</Button>{lead.metadata?.revenue_scout_campaign_ids?.[0] && <Link href={`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(lead.metadata.revenue_scout_campaign_ids[0])}&from=revenue-scout`}><Button size="sm" variant="outline"><Megaphone className="mr-1.5 h-3.5 w-3.5" />Abrir campanha</Button></Link>}<Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={discardMutation.isPending} onClick={() => discardMutation.mutate(lead.id)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Descartar</Button></div></div></CardContent></Card>; })}</div>}
         </TabsContent>
 
         <TabsContent value="aprovacoes" className="mt-4"><ProspectorAprovacoesContent /></TabsContent>
