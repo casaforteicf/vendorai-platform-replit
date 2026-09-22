@@ -4,12 +4,8 @@ import {
   Activity,
   ArrowRight,
   CheckCircle2,
-  FileSearch,
   Flame,
-  HardHat,
   MapPin,
-  Megaphone,
-  Radar,
   RefreshCw,
   Sparkles,
   Target,
@@ -22,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import ProspectorChannelStatus from "./ProspectorChannelStatus";
+import ProspectorSourcesPanel from "./ProspectorSourcesPanel";
 
 export type ProspectorNavigationTarget = {
   mode: "empresas" | "obras";
@@ -158,37 +155,6 @@ export default function ProspectorOverview({ onNavigate }: Props) {
       target: { mode: "empresas", tab: "busca" } as ProspectorNavigationTarget,
     };
   }, [stats.hot.length, stats.warm.length]);
-
-  const sourceCards = [
-    {
-      title: "Empresas locais",
-      description: "Google Places + enriquecimento + deduplicação.",
-      icon: MapPin,
-      status: "Ativo",
-      target: { mode: "empresas", tab: "busca" } as ProspectorNavigationTarget,
-    },
-    {
-      title: "CNPJ / CNAE",
-      description: "Empresas por atividade, cidade, porte e abertura.",
-      icon: FileSearch,
-      status: "Ativo",
-      target: { mode: "empresas", tab: "cnpj" } as ProspectorNavigationTarget,
-    },
-    {
-      title: "Anunciantes",
-      description: "Empresas investindo em Meta Ads e com intenção comercial.",
-      icon: Megaphone,
-      status: "Ativo",
-      target: { mode: "empresas", tab: "anunciantes" } as ProspectorNavigationTarget,
-    },
-    {
-      title: "Radar de Obras",
-      description: "Projetos e obras para chegar antes da concorrência.",
-      icon: HardHat,
-      status: "Ativo",
-      target: { mode: "obras" } as ProspectorNavigationTarget,
-    },
-  ];
 
   const openQueue = (filter: QueueFilter = "todos") => {
     if (typeof window !== "undefined") {
@@ -385,37 +351,7 @@ export default function ProspectorOverview({ onNavigate }: Props) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Radar className="h-4 w-4 text-primary" /> Fontes de prospecção
-            </CardTitle>
-            <CardDescription>Escolha de onde virá o próximo sinal comercial.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {sourceCards.map((source) => {
-              const Icon = source.icon;
-              return (
-                <button
-                  type="button"
-                  key={source.title}
-                  onClick={() => onNavigate(source.target)}
-                  className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
-                >
-                  <div className="rounded-lg bg-muted p-2"><Icon className="h-4 w-4" /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold">{source.title}</p>
-                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">{source.status}</Badge>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{source.description}</p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-              );
-            })}
-          </CardContent>
-        </Card>
+        <ProspectorSourcesPanel onNavigate={onNavigate} />
       </div>
     </div>
   );
