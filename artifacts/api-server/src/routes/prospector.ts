@@ -25,6 +25,7 @@ import {
   insertProspectFeedbackSchema,
   agentConfigsTable,
   whatsappConnectionsTable,
+  instagramConnectionsTable,
 } from "@workspace/db";
 import { registerLeadFeedback } from "../lib/prospectorMemory.js";
 import { COLD_PROSPECT_SOURCES, isColdProspectSource } from "../lib/prospector-consultive.js";
@@ -1534,7 +1535,7 @@ router.patch("/prospector/approvals/:id", async (req, res) => {
 router.get("/prospector/channels/status", async (req, res) => {
   const tenantId = resolveTenantId(req, undefined);
 
-  const [legacyConfigRows, activeWhatsappConnections] = await Promise.all([
+  const [legacyConfigRows, activeWhatsappConnections, instagramConnectionRows] = await Promise.all([
     db
       .select({
         zapiInstanceId: agentConfigsTable.zapiInstanceId,
@@ -1562,6 +1563,17 @@ router.get("/prospector/channels/status", async (req, res) => {
         eq(whatsappConnectionsTable.tenantId, tenantId),
         eq(whatsappConnectionsTable.status, "active"),
       )),
+    db
+      .select({
+        id: instagramConnectionsTable.id,
+        username: instagramConnectionsTable.username,
+        pageAccessToken: instagramConnectionsTable.pageAccessToken,
+        disconnectedAt: instagramConnectionsTable.disconnectedAt,
+      })
+      .from(instagramConnectionsTable)
+      .where(eq(instagramConnectionsTable.tenantId, tenantId))
+      .orderBy(desc(instagramConnectionsTable.updatedAt))
+      .limit(1),
   ]);
 
   const legacy = legacyConfigRows[0] ?? null;
@@ -1585,9 +1597,16 @@ router.get("/prospector/channels/status", async (req, res) => {
     process.env["RESEND_PROSPECTOR_RECEIVING_VERIFIED"]?.trim().toLowerCase() === "true";
   const emailAutoExecutable = prospectorEmailAutomationConfigured();
 
+  const canonicalInstagram = instagramConnectionRows[0] ?? null;
   const instagramConnected = Boolean(
-    legacy?.instagramPageAccessToken && legacy.instagramPageId
+    (canonicalInstagram?.pageAccessToken && !canonicalInstagram.disconnectedAt) ||
+    (legacy?.instagramPageAccessToken && legacy.instagramPageId)
   );
+  const instagramTransportLabel = canonicalInstagram?.username
+    ? `Meta Messaging · @${canonicalInstagram.username}`
+    : instagramConnected
+      ? "Meta Messaging"
+      : null;
 
   const channels = [
     {
@@ -1653,7 +1672,7 @@ router.get("/prospector/channels/status", async (req, res) => {
       state: instagramConnected ? "limited" : "not_configured",
       connected: instagramConnected,
       autoExecutable: false,
-      transport: instagramConnected ? "Meta Messaging" : null,
+      transport: instagramTransportLabel,
       detail: instagramConnected
         ? "Disponível para conversas já autorizadas/iniciadas pelo usuário; não é usado para DM fria por @ público."
         : "Conecte a conta profissional. DM fria automática continua bloqueada sem IGSID/permissão.",
