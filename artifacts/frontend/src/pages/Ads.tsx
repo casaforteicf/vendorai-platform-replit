@@ -151,7 +151,17 @@ interface AdCampaign {
       google: { keywords: string[] };
       meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
     };
-    campaignControl?: { objective: string; startDate: string; endDate: string; totalBudget: number; specialAdCategory: string };
+    campaignControl?: {
+      objective: string;
+      startDate: string;
+      startTime?: string;
+      endDate: string;
+      endTime?: string;
+      timezone?: string;
+      weeklySchedule?: { days: string[]; startTime: string; endTime: string }[];
+      totalBudget: number;
+      specialAdCategory: string;
+    };
     platformReview?: {
       status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
       reason?: string;
@@ -257,7 +267,11 @@ const EMPTY_FORM = {
   remarketing: [] as string[], customerMatch: [] as string[], semelhantes: [] as string[],
   objective: "whatsapp" as "whatsapp" | "lead" | "sale" | "visit" | "awareness",
   startDate: new Date().toISOString().slice(0, 10),
+  startTime: "08:00",
   endDate: new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0, 10),
+  endTime: "18:00",
+  timezone: "America/Sao_Paulo",
+  scheduleDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] as string[],
   specialAdCategory: "NONE" as "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS",
   conversionMode: "vendorai" as "vendorai" | "platform" | "clicks",
   conversionConfirmed: true,
@@ -574,7 +588,11 @@ export default function Ads() {
           campaignControl: {
             objective: form.objective,
             startDate: form.startDate,
+            startTime: form.startTime,
             endDate: form.endDate,
+            endTime: form.endTime,
+            timezone: form.timezone,
+            weeklySchedule: form.scheduleDays.length ? [{ days: form.scheduleDays as any, startTime: form.startTime, endTime: form.endTime }] : [],
             totalBudget: Number(form.orcamentoDiario) * campaignDays(form.startDate, form.endDate),
             specialAdCategory: form.specialAdCategory,
             conversionTracking: { mode: form.conversionMode, confirmed: form.conversionMode !== "platform" || form.conversionConfirmed },
@@ -1291,9 +1309,38 @@ export default function Ads() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><Label>Começa em</Label><Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} /></div>
-                <div><Label>Termina em</Label><Input type="date" min={form.startDate} value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div><Label>Data inicial</Label><Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} /></div>
+                <div><Label>Hora inicial</Label><Input type="time" step="900" value={form.startTime} onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} /></div>
+                <div><Label>Data final</Label><Input type="date" min={form.startDate} value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} /></div>
+                <div><Label>Hora final</Label><Input type="time" step="900" value={form.endTime} onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} /></div>
+              </div>
+              <div className="space-y-2">
+                <Label>Dias de veiculação</Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["MONDAY","Seg"],["TUESDAY","Ter"],["WEDNESDAY","Qua"],["THURSDAY","Qui"],
+                    ["FRIDAY","Sex"],["SATURDAY","Sáb"],["SUNDAY","Dom"],
+                  ].map(([value,label]) => {
+                    const active = form.scheduleDays.includes(value);
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setForm((f) => ({
+                          ...f,
+                          scheduleDays: active ? f.scheduleDays.filter((d) => d !== value) : [...f.scheduleDays, value],
+                        }))}
+                        className={`rounded-md border px-3 py-2 text-sm transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Faixa diária: {form.startTime}–{form.endTime}. Google Ads aplica os dias/horários selecionados; Meta usa o horário real de início e término da campanha.
+                </p>
               </div>
               <div className="rounded-lg border bg-primary/5 p-3 text-sm">
                 <p><strong>{campaignDays(form.startDate, form.endDate)} dias</strong> · até <strong>R$ {Number(form.orcamentoDiario || 0).toFixed(2)}/dia</strong></p>
