@@ -286,6 +286,12 @@ const FORM_TEMPLATES = [
   ["reserva_compra", "Comprar / reservar"],
 ] as const;
 
+const recommendedDestination = (objective: string, itemTipo: ItemTipo): DestinoClique => {
+  if (objective === "whatsapp") return "whatsapp";
+  if (objective === "lead" || objective === "visit" || objective === "sale") return "formulario_lead";
+  return itemTipo === "landing_page" ? "landing_page" : "formulario_lead";
+};
+
 const recommendedFormTemplate = (objective: string, itemTipo: ItemTipo) => {
   if (["produto","veiculo","imovel"].includes(itemTipo)) return objective === "sale" ? "reserva_compra" : "produto_interesse";
   if (objective === "visit") return "agendar_atendimento";
@@ -1144,7 +1150,7 @@ export default function Ads() {
                   itemTipo,
                   itemId: "",
                   itemLabel: "",
-                  destinoClique,
+                  destinoClique: recommendedDestination(f.objective, itemTipo),
                   contentGenerationId: "",
                   formTemplateId: recommendedFormTemplate(f.objective, itemTipo),
                 }));
@@ -1325,6 +1331,7 @@ export default function Ads() {
                   ...f,
                   objective: v as typeof f.objective,
                   conversionMode: v === "awareness" ? "clicks" : "vendorai",
+                  destinoClique: recommendedDestination(v, f.itemTipo),
                   formTemplateId: recommendedFormTemplate(v, f.itemTipo),
                 }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
