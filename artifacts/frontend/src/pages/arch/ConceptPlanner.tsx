@@ -177,6 +177,13 @@ function getCatalogModel3dUrl(item: RealCatalogProduct) {
   return undefined;
 }
 
+function getCatalogPolyHavenSlug(item: RealCatalogProduct) {
+  const specs = item.especificacoes;
+  if (!specs || typeof specs !== "object") return undefined;
+  const value = specs.polyHavenSlug;
+  return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value) ? value : undefined;
+}
+
 function catalogDimensions(item: RealCatalogProduct) {
   const specs = item.especificacoes;
   const dims = specs && typeof specs === "object" ? specs.dimensionsM : null;
@@ -4724,22 +4731,35 @@ export default function ConceptPlanner() {
                                   onKeyDown={(event) => {
                                     if (event.key === "Enter" || event.key === " ") event.currentTarget.click();
                                   }}
-                                  onClick={() => {
+                                  onClick={async () => {
                                     rememberRecentItem(realLibraryItemKey(item.id));
+                                    let model3dUrl = getCatalogModel3dUrl(item);
+                                    const polyHavenSlug = getCatalogPolyHavenSlug(item);
+                                    if (!model3dUrl && polyHavenSlug) {
+                                      try {
+                                        const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(polyHavenSlug)}`);
+                                        if (response.ok) {
+                                          const asset = await response.json();
+                                          if (typeof asset?.model3dUrl === "string") model3dUrl = asset.model3dUrl;
+                                        }
+                                      } catch {
+                                        // Se a resolução remota falhar, o objeto ainda entra com fallback paramétrico.
+                                      }
+                                    }
                                     addObjectAt(
-                                    preset.kind,
-                                    item.nome,
-                                    preset.width,
-                                    preset.depth,
-                                    libraryInsertPoint,
-                                    {
-                                      catalogProductId: item.id,
-                                      imageUrl,
-                                      supplier: item.fornecedor ?? undefined,
-                                      price: price > 0 ? price : undefined,
-                                      model3dUrl: getCatalogModel3dUrl(item),
-                                    },
-                                  );
+                                      preset.kind,
+                                      item.nome,
+                                      preset.width,
+                                      preset.depth,
+                                      libraryInsertPoint,
+                                      {
+                                        catalogProductId: item.id,
+                                        imageUrl,
+                                        supplier: item.fornecedor ?? undefined,
+                                        price: price > 0 ? price : undefined,
+                                        model3dUrl,
+                                      },
+                                    );
                                   }}
                                   className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
                                 >
@@ -4772,9 +4792,9 @@ export default function ConceptPlanner() {
                                     <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
                                       {starter ? "ARQDOR BASE" : "CATÁLOGO"}
                                     </span>
-                                    {getCatalogModel3dUrl(item) && (
+                                    {(getCatalogModel3dUrl(item) || getCatalogPolyHavenSlug(item)) && (
                                       <span className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-[9px] font-bold text-white shadow">
-                                        3D
+                                        3D REAL
                                       </span>
                                     )}
                                   </div>

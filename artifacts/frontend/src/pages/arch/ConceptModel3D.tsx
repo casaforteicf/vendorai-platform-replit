@@ -573,7 +573,8 @@ export default function ConceptModel3D({
   const [renderQuality, setRenderQuality] = useState<"fast" | "realistic" | "ultra">("realistic");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
-  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk">("orbit");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin">("orbit");
+  const [walkControl, setWalkControl] = useState({ forward: 0, strafe: 0 });
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -615,6 +616,10 @@ export default function ConceptModel3D({
   }>(null);
 
   const normalizeRotation = (value: number) => ((value % 360) + 360) % 360;
+  useEffect(() => {
+    if (navigationMode !== "walk") setWalkControl({ forward: 0, strafe: 0 });
+  }, [navigationMode]);
+
   const resetCamera = () => {
     setRotation(35);
     setZoom(1.32);
@@ -1038,6 +1043,21 @@ export default function ConceptModel3D({
               >
                 Caminhar
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNavigationMode("spin");
+                  setInteriorMode(false);
+                  setShowAllFloors(true);
+                  setShowRoof(true);
+                }}
+                className={navigationMode === "spin"
+                  ? "border-l border-slate-700 bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                title="Giro automático de inspeção ao redor do projeto"
+              >
+                Giro 360°
+              </button>
             </div>
           )}
           <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white" title="Qualidade da visualização 3D">
@@ -1210,6 +1230,7 @@ export default function ConceptModel3D({
         cameraZoom={zoom}
         transformMode={transformMode}
         navigationMode={navigationMode}
+        walkControl={walkControl}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
@@ -1232,6 +1253,80 @@ export default function ConceptModel3D({
         onObjectEditStart={onObjectEditStart}
         onObjectEditEnd={onObjectEditEnd}
       />
+
+      {webglReady && navigationMode === "walk" && (
+        <div
+          aria-label="Controles touch do walkthrough"
+          className="absolute bottom-5 left-5 z-20 grid grid-cols-3 gap-1 rounded-2xl border border-white/30 bg-slate-950/70 p-2 shadow-xl backdrop-blur md:hidden"
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div />
+          <button
+            type="button"
+            aria-label="Andar para frente"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setWalkControl({ forward: 1, strafe: 0 });
+            }}
+            onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
+          >
+            ↑
+          </button>
+          <div />
+          <button
+            type="button"
+            aria-label="Andar para esquerda"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setWalkControl({ forward: 0, strafe: -1 });
+            }}
+            onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            aria-label="Andar para trás"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setWalkControl({ forward: -1, strafe: 0 });
+            }}
+            onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            aria-label="Andar para direita"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setWalkControl({ forward: 0, strafe: 1 });
+            }}
+            onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
+            onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
+          >
+            →
+          </button>
+          <div className="col-span-3 pt-1 text-center text-[9px] font-semibold uppercase tracking-wide text-white/70">
+            Arraste na tela para olhar
+          </div>
+        </div>
+      )}
 
       <svg
         ref={svgRef}

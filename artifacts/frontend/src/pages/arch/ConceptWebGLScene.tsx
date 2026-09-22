@@ -29,7 +29,8 @@ type Props = {
   cameraPresetDegrees: number;
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
-  navigationMode?: "orbit" | "walk";
+  navigationMode?: "orbit" | "walk" | "spin";
+  walkControl?: { forward: number; strafe: number };
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -62,8 +63,9 @@ type Runtime = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   };
-  navigationMode: "orbit" | "walk";
+  navigationMode: "orbit" | "walk" | "spin";
   walkKeys: Set<string>;
+  walkControl: { forward: number; strafe: number };
   walkYaw: number;
   walkPitch: number;
   walkDragging: boolean;
@@ -205,6 +207,7 @@ export default function ConceptWebGLScene({
   cameraZoom,
   transformMode = "translate",
   navigationMode = "orbit",
+  walkControl = { forward: 0, strafe: 0 },
   paintTool = null,
   onReady,
   onSelectObject,
@@ -339,6 +342,7 @@ export default function ConceptWebGLScene({
           cameraGoal: null,
           navigationMode: "orbit",
           walkKeys: new Set(),
+          walkControl: { forward: 0, strafe: 0 },
           walkYaw: 0,
           walkPitch: 0,
           walkDragging: false,
@@ -496,11 +500,23 @@ export default function ConceptWebGLScene({
         });
 
         const loop = () => {
+          if (runtime.navigationMode === "spin" && !runtime.cameraGoal) {
+            const target = controls.target;
+            const dx = camera.position.x - target.x;
+            const dz = camera.position.z - target.z;
+            const radius = Math.max(1, Math.hypot(dx, dz));
+            const angle = Math.atan2(dx, dz) + 0.0035;
+            camera.position.x = target.x + Math.sin(angle) * radius;
+            camera.position.z = target.z + Math.cos(angle) * radius;
+          }
+
           if (runtime.navigationMode === "walk") {
-            const forward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
+            const keyboardForward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
               - Number(runtime.walkKeys.has("s") || runtime.walkKeys.has("arrowdown"));
-            const strafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
+            const keyboardStrafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
               - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
+            const forward = Math.max(-1, Math.min(1, keyboardForward + runtime.walkControl.forward));
+            const strafe = Math.max(-1, Math.min(1, keyboardStrafe + runtime.walkControl.strafe));
             const speed = 0.12;
             if (forward || strafe) {
               const stepX = (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
@@ -1308,6 +1324,15 @@ export default function ConceptWebGLScene({
     roof,
     visibleFloors,
   ]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+    runtime.walkControl = {
+      forward: Math.max(-1, Math.min(1, walkControl.forward || 0)),
+      strafe: Math.max(-1, Math.min(1, walkControl.strafe || 0)),
+    };
+  }, [engineState, walkControl.forward, walkControl.strafe]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
