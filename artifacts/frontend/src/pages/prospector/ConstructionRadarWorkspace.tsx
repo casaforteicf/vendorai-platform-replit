@@ -235,6 +235,7 @@ export default function ConstructionRadarWorkspace() {
     setAds([]);
     setWorks([]);
     setWorkSources([]);
+    setProspectedWorks(new Set());
     setSourceWarnings([]);
     if (next !== "publica") setModel(MODELS[next][0]);
   }
@@ -330,8 +331,22 @@ export default function ConstructionRadarWorkspace() {
     }
 
     if (worksResponse.status === "fulfilled") {
-      setWorks(worksResponse.value.works ?? []);
+      const locatedWorks = worksResponse.value.works ?? [];
+      setWorks(locatedWorks);
       setWorkSources(worksResponse.value.sources ?? []);
+
+      const autoEligible = locatedWorks.filter((work) => work.opportunityScore >= 60);
+      if (autoEligible.length > 0) {
+        void Promise.allSettled(autoEligible.map((work) => prospectWork(work, true))).then((results) => {
+          const imported = results.filter((item) => item.status === "fulfilled").length;
+          if (imported > 0) {
+            toast({
+              title: "Prospecctor atualizado automaticamente",
+              description: `${imported} obra${imported === 1 ? "" : "s"} de prioridade alta/média enviada${imported === 1 ? "" : "s"} para pesquisa e qualificação.`,
+            });
+          }
+        });
+      }
     } else {
       setWorks([]);
       setWorkSources([]);
@@ -380,7 +395,7 @@ export default function ConstructionRadarWorkspace() {
     }
   }
 
-  async function prospectWork(work: ConstructionWorkSignal) {
+  async function prospectWork(work: ConstructionWorkSignal, silent = false) {
     setProspectingWork(work.id);
     try {
       const response = await fetch("/api/prospector/construction-signals/prospect", {
@@ -402,21 +417,26 @@ export default function ConstructionRadarWorkspace() {
       if (!response.ok) throw new Error(data.error ?? "Falha ao enviar obra ao Prospecctor");
 
       setProspectedWorks((current) => new Set(current).add(work.id));
-      toast({
-        title: data.merged ? "Obra atualizada no Prospecctor" : "Obra enviada ao Prospecctor",
-        description: data.message ?? (data.readyForOutreach
-          ? "Contato empresarial público encontrado e oportunidade pronta para pesquisa consultiva."
-          : "O sinal foi salvo; o Prospecctor seguirá a pesquisa antes de qualquer abordagem."),
-      });
+      if (!silent) {
+        toast({
+          title: data.merged ? "Obra atualizada no Prospecctor" : "Obra enviada ao Prospecctor",
+          description: data.message ?? (data.readyForOutreach
+            ? "Contato empresarial público encontrado e oportunidade pronta para pesquisa consultiva."
+            : "O sinal foi salvo; o Prospecctor seguirá a pesquisa antes de qualquer abordagem."),
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
       queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
     } catch (error) {
-      toast({
-        title: "Falha ao enviar obra",
-        description: error instanceof Error ? error.message : undefined,
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: "Falha ao enviar obra",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        });
+      }
+      throw error;
     } finally {
       setProspectingWork(null);
     }
