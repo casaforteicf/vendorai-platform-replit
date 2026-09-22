@@ -1,6 +1,7 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Home, Move, Ruler } from "lucide-react";
 import {
+  buildSitePlacementSuggestions,
   clampBuildingOrigin,
   getBuildableEnvelope,
   getBuildingBounds,
@@ -43,6 +44,10 @@ export default function ConceptSitePlacementPanel({
   const envelope = useMemo(
     () => getBuildableEnvelope(lotWidth, lotDepth, placement),
     [lotWidth, lotDepth, placement],
+  );
+  const suggestions = useMemo(
+    () => buildSitePlacementSuggestions(rooms, lotWidth, lotDepth, placement),
+    [rooms, lotWidth, lotDepth, placement],
   );
 
   const applyOrigin = (x: number, y: number) => {
@@ -237,6 +242,36 @@ export default function ConceptSitePlacementPanel({
           ))}
         </div>
       </section>
+
+      {bounds && suggestions.length > 0 && (
+        <section>
+          <div className="mb-2 text-xs font-bold text-slate-800">Sugestões automáticas</div>
+          <div className="space-y-2">
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion.id}
+                type="button"
+                onClick={() => applyOrigin(suggestion.origin.x, suggestion.origin.y)}
+                className="w-full rounded-2xl border bg-white p-3 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-bold text-slate-900">{suggestion.title}</div>
+                    <p className="mt-1 text-[10px] leading-4 text-slate-500">{suggestion.description}</p>
+                  </div>
+                  <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600">
+                    Aplicar
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] font-semibold text-slate-500">
+                  <span>Fundo livre: {suggestion.metrics.rearFree.toFixed(1)} m</span>
+                  <span>Maior lateral: {Math.max(suggestion.metrics.leftFree, suggestion.metrics.rightFree).toFixed(1)} m</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {bounds && (
         <section>
