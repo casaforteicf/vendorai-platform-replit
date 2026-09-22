@@ -711,7 +711,335 @@ const arquiteturaDesignModules: ScopeModule[] = [
   },
 ];
 
-type SegmentKey = "construtoras" | "arquitetura-design";
+const farmaciaModules: ScopeModule[] = [
+  {
+    id: "captacao-local-farmacia",
+    group: "Aquisição",
+    title: "Captação Local e Presença Digital",
+    summary: "Transforma a farmácia em uma operação ativa de aquisição, conectando campanhas locais, busca, redes sociais, WhatsApp e CRM.",
+    bullets: [
+      "Campanhas por bairro, cidade, raio de atendimento e perfil de público.",
+      "Landing Pages para serviços, conveniência, dermocosméticos e categorias.",
+      "Origem da campanha registrada no CRM.",
+      "Rastreamento do primeiro contato até recompra e fidelização.",
+    ],
+    angle: "Mostre como a farmácia deixa de depender apenas do fluxo de balcão e passa a gerar demanda local de forma mensurável.",
+  },
+  {
+    id: "busca-produtos-farmacia",
+    group: "Atendimento",
+    title: "Busca Inteligente de Produtos",
+    summary: "Ajuda a equipe e o cliente a localizar produtos do catálogo com rapidez por nome, categoria, marca, princípio ativo cadastrado ou finalidade de uso não clínica.",
+    bullets: [
+      "Busca por produto, marca, categoria e características cadastradas.",
+      "Consulta de disponibilidade por loja ou canal.",
+      "Sugestão de alternativas comerciais equivalentes somente quando previamente cadastradas e permitidas pela operação.",
+      "Sem diagnóstico, prescrição ou substituição clínica automática.",
+    ],
+    angle: "Material focado em velocidade de atendimento e redução da perda de venda por dificuldade de localizar o item certo no catálogo.",
+  },
+  {
+    id: "atendimento-whatsapp-farmacia",
+    group: "Atendimento",
+    title: "WhatsApp e Atendimento Omnichannel",
+    summary: "Centraliza conversas de clientes e liga cada atendimento ao histórico, pedidos e relacionamento.",
+    bullets: [
+      "WhatsApp, Instagram e demais canais no contexto do cliente.",
+      "Transferência entre atendentes preservando histórico.",
+      "Registro de pedidos, dúvidas, tarefas e próximos contatos.",
+      "IA auxilia respostas operacionais e comerciais dentro das regras definidas pela farmácia.",
+    ],
+    angle: "Mostre como o WhatsApp deixa de ser uma caixa isolada e passa a fazer parte do relacionamento e da venda.",
+  },
+  {
+    id: "crm-farmacia",
+    group: "CRM",
+    title: "CRM e Cliente 360",
+    summary: "Organiza o histórico comercial e de relacionamento do cliente sem transformar o CRM em prontuário clínico.",
+    bullets: [
+      "Dados de contato, origem, preferências comerciais e consentimentos.",
+      "Histórico de compras quando permitido e integrado.",
+      "Campanhas, cupons, atendimentos e interações.",
+      "Segmentação por comportamento de compra e relacionamento, respeitando regras de privacidade.",
+    ],
+    angle: "Destaque fidelização e atendimento contextual sem depender da memória do balconista.",
+  },
+  {
+    id: "fidelidade-farmacia",
+    group: "Relacionamento",
+    title: "Programa de Fidelidade",
+    summary: "Cria recorrência com benefícios, pontos, cupons e regras de relacionamento configuráveis.",
+    bullets: [
+      "Pontos, cashback ou benefícios conforme política da farmácia.",
+      "Cupons por campanha, categoria ou perfil comercial.",
+      "Comunicação de saldo e benefícios.",
+      "Medição de frequência, recompra e retenção.",
+    ],
+    angle: "Material focado em transformar compra pontual em relacionamento recorrente.",
+  },
+  {
+    id: "convenios-empresas",
+    group: "Relacionamento",
+    title: "Convênios e Parcerias com Empresas",
+    summary: "Permite estruturar programas comerciais para empresas, associações e grupos de clientes.",
+    bullets: [
+      "Cadastro de empresas e regras de benefício.",
+      "Cartão ou identificação do cliente vinculado ao convênio.",
+      "Condições comerciais específicas por parceria.",
+      "Acompanhamento de adesão, uso e resultado da parceria.",
+    ],
+    angle: "Destaque aquisição B2B2C: a farmácia cria canais recorrentes de clientes por meio de empresas parceiras.",
+  },
+  {
+    id: "cartao-cliente-especial",
+    group: "Relacionamento",
+    title: "Cartão Cliente Especial",
+    summary: "Organiza um programa próprio de vantagens para clientes vinculados a campanhas, empresas ou perfis comerciais.",
+    bullets: [
+      "Identificação do cliente e vínculo com benefício.",
+      "Regras por campanha, empresa ou grupo.",
+      "Cupons e vantagens comerciais.",
+      "Histórico de utilização e resultado.",
+    ],
+    angle: "Use este escopo para materiais focados em fidelização e parcerias locais.",
+  },
+  {
+    id: "marketing-farmacia",
+    group: "Marketing",
+    title: "Marketing Ativo para Farmácias",
+    summary: "Planeja campanhas e conteúdo com foco em categorias, sazonalidade, conveniência, serviços e relacionamento.",
+    bullets: [
+      "Calendário de conteúdo por categoria e objetivo.",
+      "Campanhas sazonais e institucionais.",
+      "Conteúdo de serviços, conveniência, beleza, cuidados pessoais e categorias permitidas.",
+      "Remarketing e reativação de clientes inativos.",
+    ],
+    angle: "Venda o marketing como operação contínua de relacionamento e geração de demanda, não apenas postagens esporádicas.",
+  },
+  {
+    id: "campanhas-farmacia",
+    group: "Marketing",
+    title: "Campanhas por Categoria, Público e Região",
+    summary: "Cria campanhas completas ligadas ao estoque, catálogo, público, localidade e objetivos comerciais.",
+    bullets: [
+      "Público, região, mensagem, criativos, CTA e canais.",
+      "Campanhas por categoria, marca, serviço ou benefício.",
+      "Landing Page, WhatsApp e cupom como pontos de conversão.",
+      "Medição até atendimento, pedido e recompra quando houver integração.",
+    ],
+    angle: "Destaque campanhas conectadas ao resultado comercial e à disponibilidade real da operação.",
+  },
+  {
+    id: "conteudo-farmacia",
+    group: "Marketing",
+    title: "Conteúdo, Reels e Vídeos",
+    summary: "Ajuda a produzir conteúdo comercial, institucional e educativo dentro de regras definidas pela farmácia.",
+    bullets: [
+      "Posts, legendas, Reels, vídeos e CTAs.",
+      "Conteúdo sobre serviços, categorias, conveniência e bastidores.",
+      "Campanhas de fidelidade, benefícios e parceiros.",
+      "Revisão humana para conteúdos regulados ou sensíveis.",
+    ],
+    angle: "Mostre consistência de comunicação com governança para evitar promessas ou orientações indevidas.",
+  },
+  {
+    id: "catalogo-farmacia",
+    group: "Catálogo",
+    title: "Catálogo de Produtos",
+    summary: "Centraliza produtos, categorias, marcas, variações, preços, imagens e informações operacionais.",
+    bullets: [
+      "Categoria, subcategoria, marca, linha e produto.",
+      "Preço, promoção, imagem e descrição comercial.",
+      "Status de disponibilidade e canais de venda.",
+      "Campos específicos para produtos sujeitos a regras adicionais.",
+    ],
+    angle: "Destaque catálogo único alimentando atendimento, marketing, campanhas e canais digitais.",
+  },
+  {
+    id: "estoque-farmacia",
+    group: "Operação",
+    title: "Estoque e Disponibilidade",
+    summary: "Conecta atendimento e campanhas à disponibilidade real, reduzindo promessa de item indisponível.",
+    bullets: [
+      "Consulta por loja, depósito ou canal.",
+      "Alertas de baixo estoque e ruptura.",
+      "Produtos parados e excesso.",
+      "Integração com catálogo e compras.",
+    ],
+    angle: "Material focado em vender o que existe, reduzir ruptura e melhorar giro.",
+  },
+  {
+    id: "validade-lotes",
+    group: "Operação",
+    title: "Lotes e Validades",
+    summary: "Organiza informações de lote e validade quando disponíveis nas integrações operacionais.",
+    bullets: [
+      "Acompanhamento por lote.",
+      "Alertas de validade próxima.",
+      "Priorização operacional conforme políticas internas.",
+      "Histórico e rastreabilidade.",
+    ],
+    angle: "Destaque redução de perda e maior controle operacional.",
+  },
+  {
+    id: "compras-reposicao-farmacia",
+    group: "Compras",
+    title: "Compras e Reposição",
+    summary: "Transforma sinais de estoque, giro e demanda em apoio para decisão de compra.",
+    bullets: [
+      "Necessidade de reposição.",
+      "Fornecedores e condições.",
+      "Cotações e comparação.",
+      "Pedido e acompanhamento.",
+    ],
+    angle: "Mostre uma compra mais orientada por necessidade real e menos por percepção isolada.",
+  },
+  {
+    id: "fornecedores-farmacia",
+    group: "Compras",
+    title: "Fornecedores e Cotações",
+    summary: "Organiza fornecedores, preços, prazos e condições para facilitar tomada de decisão.",
+    bullets: [
+      "Cadastro por categoria e linha.",
+      "Solicitação de cotação.",
+      "Comparação de preço, prazo e condição.",
+      "Histórico comercial por fornecedor.",
+    ],
+    angle: "Material para destacar eficiência de compras e histórico de negociação.",
+  },
+  {
+    id: "delivery-farmacia",
+    group: "Operação",
+    title: "Pedidos e Delivery",
+    summary: "Organiza a jornada do pedido desde o atendimento até separação, entrega e confirmação.",
+    bullets: [
+      "Pedido ligado ao cliente.",
+      "Separação e status.",
+      "Endereço, rota e responsável pela entrega.",
+      "Confirmação e acompanhamento.",
+    ],
+    angle: "Destaque experiência de compra rápida e rastreável fora do balcão físico.",
+  },
+  {
+    id: "pedidos-recorrentes",
+    group: "Relacionamento",
+    title: "Recorrência e Lembretes de Compra",
+    summary: "Ajuda a lembrar o cliente de compras recorrentes com base em regras comerciais autorizadas e preferências de contato.",
+    bullets: [
+      "Cadências configuráveis.",
+      "Lembretes de recompra de itens recorrentes.",
+      "Opt-in e canal preferido.",
+      "Sem alterar tratamento, dose ou orientação clínica.",
+    ],
+    angle: "Material focado em conveniência e fidelização, mantendo o cliente no controle.",
+  },
+  {
+    id: "agentes-ia-farmacia",
+    group: "IA",
+    title: "Agentes de IA para Atendimento e Relacionamento",
+    summary: "Distribui tarefas de atendimento, follow-up, cobrança, suporte e relacionamento, com limites claros para temas de saúde.",
+    bullets: [
+      "Atendimento comercial e operacional.",
+      "Follow-up de pedidos e contatos.",
+      "Suporte sobre status, benefícios e serviços.",
+      "Encaminhamento para farmacêutico quando houver questão clínica ou regulatória.",
+    ],
+    angle: "Mostre automação de tarefas repetitivas preservando a responsabilidade profissional em assuntos clínicos.",
+  },
+  {
+    id: "triagem-farmacista",
+    group: "Atendimento",
+    title: "Encaminhamento ao Farmacêutico",
+    summary: "Reconhece quando uma conversa precisa sair do fluxo comercial e ser encaminhada a um profissional habilitado.",
+    bullets: [
+      "Sinais de dúvida clínica ou uso de medicamento.",
+      "Solicitação de orientação sobre dose, interação ou substituição.",
+      "Questões envolvendo receita ou restrições.",
+      "Registro do encaminhamento sem gerar diagnóstico automático.",
+    ],
+    angle: "Material focado em segurança e qualidade de atendimento: IA sabe quando não deve responder sozinha.",
+  },
+  {
+    id: "receitas-regulados",
+    group: "Compliance",
+    title: "Receitas e Produtos Regulados",
+    summary: "Mantém fluxos específicos para itens sujeitos a prescrição, retenção de receita ou outras exigências.",
+    bullets: [
+      "Validação humana e regras configuradas pela operação.",
+      "Registro de status documental quando aplicável.",
+      "Bloqueio de fluxos incompatíveis com as regras internas.",
+      "Sem recomendação automática de medicamentos controlados ou substituição clínica.",
+    ],
+    angle: "Destaque governança e separação entre automação comercial e decisão profissional regulada.",
+  },
+  {
+    id: "privacidade-farmacia",
+    group: "Compliance",
+    title: "Privacidade e Consentimento",
+    summary: "Organiza consentimentos e regras de uso de dados em campanhas, relacionamento e atendimento.",
+    bullets: [
+      "Preferência de canal.",
+      "Opt-in e opt-out.",
+      "Finalidade de uso dos dados.",
+      "Separação entre informação comercial e dados sensíveis.",
+    ],
+    angle: "Material para destacar relacionamento responsável e governança de dados.",
+  },
+  {
+    id: "dashboard-farmacia",
+    group: "Inteligência",
+    title: "Dashboard Comercial e Operacional",
+    summary: "Consolida indicadores de vendas, clientes, campanhas, estoque e relacionamento.",
+    bullets: [
+      "Vendas e ticket por período.",
+      "Clientes novos, recorrentes e inativos.",
+      "Campanhas e canais.",
+      "Categorias, produtos e indicadores operacionais disponíveis.",
+    ],
+    angle: "Destaque decisões baseadas em dados da operação, não apenas no fechamento diário.",
+  },
+  {
+    id: "revenue-scout-farmacia",
+    group: "Inteligência",
+    title: "Revenue Scout para Farmácias",
+    summary: "Procura oportunidades comerciais na própria base de clientes e produtos.",
+    bullets: [
+      "Clientes inativos.",
+      "Campanhas de recompra e fidelidade.",
+      "Cross-sell entre categorias permitidas e previamente configuradas.",
+      "Oportunidades de convênios e parcerias.",
+    ],
+    angle: "Material focado em gerar receita a partir da base existente antes de aumentar investimento em aquisição.",
+  },
+  {
+    id: "pos-venda-farmacia",
+    group: "Relacionamento",
+    title: "Pós-venda e Suporte",
+    summary: "Acompanha pedidos, entregas, dúvidas operacionais, avaliações e recuperação de experiência.",
+    bullets: [
+      "Status e confirmação de entrega.",
+      "Tratamento de ocorrências.",
+      "Follow-up até solução.",
+      "Avaliação e recuperação de cliente.",
+    ],
+    angle: "Destaque experiência e retenção depois que a venda já aconteceu.",
+  },
+  {
+    id: "financeiro-farmacia",
+    group: "Financeiro",
+    title: "Financeiro e Cobrança",
+    summary: "Organiza informações financeiras e rotinas de cobrança ligadas à operação comercial.",
+    bullets: [
+      "Recebimentos e pendências.",
+      "Cobrança e follow-up.",
+      "Indicadores por canal ou parceria.",
+      "Integrações financeiras quando disponíveis.",
+    ],
+    angle: "Material focado em reduzir trabalho manual e dar visibilidade às pendências financeiras.",
+  },
+];
+
+type SegmentKey = "construtoras" | "arquitetura-design" | "farmacias";
 
 const segmentCatalog: Record<SegmentKey, { label: string; description: string; modules: ScopeModule[] }> = {
   construtoras: {
@@ -723,6 +1051,11 @@ const segmentCatalog: Record<SegmentKey, { label: string; description: string; m
     label: "Arquitetura & Design",
     description: "Captação, briefing, criação, apresentação, aprovação, gestão de projeto, fornecedores e relacionamento.",
     modules: arquiteturaDesignModules,
+  },
+  farmacias: {
+    label: "Farmácias",
+    description: "Captação, atendimento, CRM, fidelização, catálogo, estoque, compras, delivery, compliance, inteligência e pós-venda.",
+    modules: farmaciaModules,
   },
 };
 
@@ -885,7 +1218,7 @@ export default function AdminKnowledgeBaseInternal() {
           <CardTitle className="text-base">Segmento</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {(Object.keys(segmentCatalog) as SegmentKey[]).map((key) => {
               const item = segmentCatalog[key];
               const active = segment === key;
