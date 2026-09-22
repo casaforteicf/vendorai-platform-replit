@@ -23,14 +23,30 @@ import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.
 import { calcularOrcamentoProdutoArea, ErroCalculoOrcamento, type ProdutoCalculo, type TipoCalculo } from "../lib/calculoOrcamentoM2.js";
 import { resolverECalcularOrcamento, ErroResolucaoOrcamento } from "../lib/calculoOrcamentoM2Resolver.js";
 import { buildProposalProductContext, proposalProductPromptRules } from "../lib/proposal-catalog-context.js";
+import {
+  normalizeOrcamentoMoney,
+  normalizeOrcamentoQuantity,
+  roundOrcamentoNumber,
+} from "../lib/orcamento-numbers.js";
 const router: IRouter = Router();
 
 // ── Proposal number generation ────────────────────────────────────────────────
 function normalizarItensExecucao(itens: PropostaItem[]): PropostaItem[] {
   return itens.map((item, index) => ({
     ...item,
+    quantidade: normalizeOrcamentoQuantity(item.quantidade),
+    valorUnitario: normalizeOrcamentoMoney(item.valorUnitario),
     ordemExecucao: item.ordemExecucao ?? index + 1,
     statusExecucao: item.statusExecucao ?? "pendente",
+  }));
+}
+
+function normalizarComposicoesPagamento(
+  composicoes: Array<{ forma: string; valor: string | number; comprovanteUrl?: string | null }> | undefined,
+) {
+  return composicoes?.map((item) => ({
+    ...item,
+    valor: roundOrcamentoNumber(item.valor).toFixed(2),
   }));
 }
 
@@ -77,7 +93,20 @@ router.post("/propostas", async (req, res) => {
 
   const [proposta] = await db
     .insert(propostasTable)
-    .values({ ...parsed.data, itens: itensNormalizados, numero })
+    .values({
+      ...parsed.data,
+      itens: itensNormalizados,
+      ...(parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
+        ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
+        : {}),
+      ...(parsed.data.valorMensal !== undefined && parsed.data.valorMensal !== null
+        ? { valorMensal: roundOrcamentoNumber(parsed.data.valorMensal).toFixed(2) }
+        : {}),
+      ...(parsed.data.paymentCompositions
+        ? { paymentCompositions: normalizarComposicoesPagamento(parsed.data.paymentCompositions) }
+        : {}),
+      numero,
+    })
     .returning();
   res.status(201).json(proposta);
 });
@@ -320,16 +349,32 @@ router.patch("/propostas/:id", async (req, res) => {
     return;
   }
 
+  const normalizedUpdate = {
+    ...parsed.data,
+    ...(parsed.data.itens
+      ? { itens: normalizarItensExecucao(parsed.data.itens as PropostaItem[]) }
+      : {}),
+    ...(parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
+      ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
+      : {}),
+    ...(parsed.data.valorMensal !== undefined && parsed.data.valorMensal !== null
+      ? { valorMensal: roundOrcamentoNumber(parsed.data.valorMensal).toFixed(2) }
+      : {}),
+    ...(parsed.data.paymentCompositions
+      ? { paymentCompositions: normalizarComposicoesPagamento(parsed.data.paymentCompositions) }
+      : {}),
+  };
+
   const [proposta] = await db
     .update(propostasTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...normalizedUpdate, updatedAt: new Date() })
     .where(eq(propostasTable.id, existing.id))
     .returning();
 
-  if (proposta?.dealId && parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null) {
+  if (proposta?.dealId && normalizedUpdate.valorTotal !== undefined && normalizedUpdate.valorTotal !== null) {
     await db
       .update(dealsTable)
-      .set({ valor: String(parsed.data.valorTotal), updatedAt: new Date() })
+      .set({ valor: String(normalizedUpdate.valorTotal), updatedAt: new Date() })
       .where(and(
         eq(dealsTable.id, proposta.dealId),
         eq(dealsTable.tenantId, proposta.tenantId),
@@ -678,13 +723,16 @@ router.post(
     const propostaItens = itens.map((item) => {
       if (item.produtoId) {
         const produto = produtoMap.get(item.produtoId)!;
-        const valorUnitario = item.precoUnitario !== undefined
-          ? item.precoUnitario
-          : parseFloat(produto.precoBase);
-        valorTotal += item.quantidade * valorUnitario;
+        const quantidade = normalizeOrcamentoQuantity(item.quantidade);
+        const valorUnitario = normalizeOrcamentoMoney(
+          item.precoUnitario !== undefined
+            ? item.precoUnitario
+            : parseFloat(produto.precoBase),
+        );
+        valorTotal += quantidade * valorUnitario;
         return {
           nome: item.nome || produto.nome,
-          quantidade: item.quantidade,
+          quantidade,
           valorUnitario,
           produtoId: produto.id,
           sku: produto.sku ?? undefined,
@@ -697,13 +745,16 @@ router.post(
       }
 
       const composicao = composicaoMap.get(item.composicaoId!)!;
-      const valorUnitario = item.precoUnitario !== undefined
-        ? item.precoUnitario
-        : Number(composicao.custoTotal ?? 0);
-      valorTotal += item.quantidade * valorUnitario;
+      const quantidade = normalizeOrcamentoQuantity(item.quantidade);
+      const valorUnitario = normalizeOrcamentoMoney(
+        item.precoUnitario !== undefined
+          ? item.precoUnitario
+          : Number(composicao.custoTotal ?? 0),
+      );
+      valorTotal += quantidade * valorUnitario;
       return {
         nome: item.nome || composicao.nome,
-        quantidade: item.quantidade,
+        quantidade,
         valorUnitario,
         composicaoId: composicao.id,
         sku: composicao.codigo ?? undefined,
@@ -732,18 +783,18 @@ router.post(
         ...(condPagamento ? { condPagamento } : {}),
         ...(prazoEntrega ? { prazoEntrega } : {}),
         ...(recorrente !== undefined ? { recorrente } : {}),
-        ...(valorMensal !== undefined ? { valorMensal: String(valorMensal) } : {}),
+        ...(valorMensal !== undefined ? { valorMensal: roundOrcamentoNumber(valorMensal).toFixed(2) } : {}),
         ...(prazoContratoMeses !== undefined ? { prazoContratoMeses } : {}),
         ...(numParcelas !== undefined ? { numParcelas } : {}),
         ...(paymentCompositions ? {
           paymentCompositions: paymentCompositions.map((pc) => ({
             forma: pc.forma,
-            valor: String(pc.valor),
+            valor: roundOrcamentoNumber(pc.valor).toFixed(2),
             comprovanteUrl: pc.comprovanteUrl ?? null,
           })),
         } : {}),
         itens: normalizarItensExecucao(propostaItens as PropostaItem[]),
-        valorTotal: valorTotal.toFixed(2),
+        valorTotal: roundOrcamentoNumber(valorTotal).toFixed(2),
       })
       .returning();
 
@@ -1070,7 +1121,11 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
     ...(extraItens ?? []),
   ];
 
-  const valorTotal = itens.reduce((sum, i) => sum + i.quantidade * i.valorUnitario, 0);
+  const itensNormalizados = normalizarItensExecucao(itens as PropostaItem[]);
+  const valorTotal = itensNormalizados.reduce(
+    (sum, item) => sum + item.quantidade * item.valorUnitario,
+    0,
+  );
   const numero = await generateNumero(tenantId);
   const validadeAte = new Date();
   validadeAte.setDate(validadeAte.getDate() + 15);
@@ -1083,8 +1138,8 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
       dealId: dealId ?? null,
       titulo: `${template.name} — ${lead.nome}`,
       numero,
-      itens: normalizarItensExecucao(itens as PropostaItem[]),
-      valorTotal: String(valorTotal.toFixed(2)),
+      itens: itensNormalizados,
+      valorTotal: roundOrcamentoNumber(valorTotal).toFixed(2),
       status: "rascunho",
       validadeAte,
       recorrente: template.cycle !== "annual" && template.planSlug !== "",

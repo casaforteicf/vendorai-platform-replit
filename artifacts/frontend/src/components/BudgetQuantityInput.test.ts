@@ -7,8 +7,8 @@ import {
 } from "./BudgetQuantityInput";
 
 describe("BudgetQuantityInput helpers", () => {
-  it("usa passo 1 para produto e 0,01 para composição", () => {
-    expect(quantityStep(false)).toBe(1);
+  it("usa passo 0,01 para produto e composição", () => {
+    expect(quantityStep(false)).toBe(0.01);
     expect(quantityStep(true)).toBe(0.01);
   });
 
@@ -23,8 +23,10 @@ describe("BudgetQuantityInput helpers", () => {
     expect(parseBudgetQuantity("12.25", true)).toBe(12.25);
   });
 
-  it("mantém produto inteiro e mínimo 1", () => {
-    expect(normalizeBudgetQuantity(4.9, false)).toBe(4);
-    expect(normalizeBudgetQuantity(0, false)).toBe(1);
+  it("limita produto a duas casas decimais e mínimo 0,01", () => {
+    expect(normalizeBudgetQuantity(4.999, false)).toBe(5);
+    expect(normalizeBudgetQuantity(4.987, false)).toBe(4.99);
+    expect(normalizeBudgetQuantity(0, false)).toBe(0.01);
+    expect(parseBudgetQuantity("3,1415", false)).toBeNull();
   });
 });

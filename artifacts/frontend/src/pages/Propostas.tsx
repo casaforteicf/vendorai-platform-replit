@@ -175,6 +175,12 @@ function fmtCurrency(val: string | number | null | undefined) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function roundBudgetNumber(value: number | string | null | undefined): number {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 // ── Catalog Modal (CRUD) ──────────────────────────────────────────────────────
 const catFormSchema = z.object({
   nome: z.string().min(1, "Obrigatório"),
@@ -436,7 +442,13 @@ export function CatalogoModal({
   const [composicaoLoading, setComposicaoLoading] = useState(false);
 
   const { data: catalog = [], isLoading } = useListProdutosCatalogo(tenantId, {
-    query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
+    query: {
+      queryKey: getListProdutosCatalogoQueryKey(tenantId),
+      enabled: !!tenantId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 300_000,
+    },
   });
 
   const createMut = useCreateProdutoCatalogo();
@@ -2097,6 +2109,89 @@ function newFreeItem(): FreeItem {
         skipAsaasBilling: false,
       },
     });
+
+    const budgetDraftKey = `vendorai:orcamento-draft:v1:${tenantId}:${lockedLeadId ?? "novo"}`;
+    const [draftHydrated, setDraftHydrated] = useState(false);
+
+    useEffect(() => {
+      if (!open) {
+        setDraftHydrated(false);
+        return;
+      }
+      if (editingProposta) {
+        setDraftHydrated(true);
+        return;
+      }
+
+      try {
+        const raw = sessionStorage.getItem(budgetDraftKey);
+        if (raw) {
+          const draft = JSON.parse(raw) as {
+            form?: Partial<PropostaFormValues>;
+            mode?: "catalogo" | "livre" | "template" | "importar";
+            selectedTemplateSlug?: string;
+            constructionSystem?: ConstructionSystem;
+            orcamentoEtapas?: OrcamentoEtapaDraft[];
+            cartLines?: CartLine[];
+            freeItems?: FreeItem[];
+          };
+          if (draft.form) form.reset({ ...form.getValues(), ...draft.form });
+          if (draft.mode) setMode(draft.mode);
+          if (draft.selectedTemplateSlug !== undefined) setSelectedTemplateSlug(draft.selectedTemplateSlug);
+          if (draft.constructionSystem) setConstructionSystem(draft.constructionSystem);
+          if (draft.orcamentoEtapas?.length) setOrcamentoEtapas(draft.orcamentoEtapas);
+          if (draft.cartLines?.length) setCartLines(draft.cartLines);
+          if (draft.freeItems?.length) setFreeItems(draft.freeItems);
+          standardBudgetAppliedRef.current = true;
+        }
+      } catch {
+        sessionStorage.removeItem(budgetDraftKey);
+      } finally {
+        setDraftHydrated(true);
+      }
+    }, [open, editingProposta?.id, budgetDraftKey]);
+
+    useEffect(() => {
+      if (!open || editingProposta || !draftHydrated) return;
+
+      const persistDraft = () => {
+        sessionStorage.setItem(budgetDraftKey, JSON.stringify({
+          form: form.getValues(),
+          mode,
+          selectedTemplateSlug,
+          constructionSystem,
+          orcamentoEtapas,
+          cartLines,
+          freeItems,
+        }));
+      };
+
+      persistDraft();
+      const subscription = form.watch(() => persistDraft());
+      return () => subscription.unsubscribe();
+    }, [
+      open,
+      editingProposta?.id,
+      draftHydrated,
+      budgetDraftKey,
+      mode,
+      selectedTemplateSlug,
+      constructionSystem,
+      orcamentoEtapas,
+      cartLines,
+      freeItems,
+      form,
+    ]);
+
+    useEffect(() => {
+      if (!open || editingProposta) return;
+      const preventAccidentalRefresh = (event: BeforeUnloadEvent) => {
+        event.preventDefault();
+        event.returnValue = "";
+      };
+      window.addEventListener("beforeunload", preventAccidentalRefresh);
+      return () => window.removeEventListener("beforeunload", preventAccidentalRefresh);
+    }, [open, editingProposta?.id]);
   
     const watchRecorrente = form.watch("recorrente");
     const watchValorMensal = form.watch("valorMensal");
@@ -2104,10 +2199,22 @@ function newFreeItem(): FreeItem {
     const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
   
     const { data: leads = [] } = useListTenantLeads(tenantId, {
-      query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId && !lockedLeadId },
+      query: {
+        queryKey: getListTenantLeadsQueryKey(tenantId),
+        enabled: !!tenantId && !lockedLeadId,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        staleTime: 300_000,
+      },
     });
     const { data: paymentMethods } = useListPaymentMethods(tenantId, {
-      query: { queryKey: getListPaymentMethodsQueryKey(tenantId), enabled: !!tenantId },
+      query: {
+        queryKey: getListPaymentMethodsQueryKey(tenantId),
+        enabled: !!tenantId,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        staleTime: 300_000,
+      },
     });
     const pmLabels = paymentMethods?.methods?.reduce((acc: Record<string, string>, m) => {
       if (m.enabled && m.code) acc[m.code] = m.label ?? m.code;
@@ -2124,7 +2231,13 @@ function newFreeItem(): FreeItem {
     });
     const activeCatalog     = catalog.filter((p) => p.ativo);
     const { data: composicoes = [] } = useListComposicoes(tenantId, {}, {
-      query: { queryKey: getListComposicoesQueryKey(tenantId), enabled: !!tenantId && open },
+      query: {
+        queryKey: getListComposicoesQueryKey(tenantId),
+        enabled: !!tenantId && open,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        staleTime: 300_000,
+      },
     });
   
     useEffect(() => {
@@ -2190,8 +2303,8 @@ function newFreeItem(): FreeItem {
           tipo: item.composicaoId ? "composicao" as const : "produto" as const,
           produtoId: item.produtoId ?? undefined,
           composicaoId: item.composicaoId ?? undefined,
-          quantidade: Number(item.quantidade ?? 1),
-          precoUnitarioOverride: Number(item.valorUnitario ?? 0),
+          quantidade: roundBudgetNumber(item.quantidade ?? 1),
+          precoUnitarioOverride: roundBudgetNumber(item.valorUnitario ?? 0),
           nomeOverride: item.nome ?? undefined,
         })));
         setFreeItems([newFreeItem()]);
@@ -2201,8 +2314,8 @@ function newFreeItem(): FreeItem {
           ? currentItems.map((item, index) => ({
               id: String(item.id ?? `item-existente-${index}`),
               nome: item.nome ?? "",
-              quantidade: Number(item.quantidade ?? 1),
-              valorUnitario: Number(item.valorUnitario ?? 0),
+              quantidade: roundBudgetNumber(item.quantidade ?? 1),
+              valorUnitario: roundBudgetNumber(item.valorUnitario ?? 0),
             }))
           : [newFreeItem()]
         );
@@ -2243,7 +2356,7 @@ function newFreeItem(): FreeItem {
     }, [open, composicoes, constructionSystem, initialProductIds.join(",")]);
   
     // totals
-    const catTotal = cartLines.reduce((sum, line) => {
+    const catTotal = roundBudgetNumber(cartLines.reduce((sum, line) => {
       const produto = line.produtoId ? activeCatalog.find((item) => item.id === line.produtoId) : undefined;
       const composicao = line.composicaoId ? composicoes.find((item) => item.id === line.composicaoId) : undefined;
       if (!produto && !composicao) return sum;
@@ -2251,10 +2364,16 @@ function newFreeItem(): FreeItem {
       const basePrice = produto
         ? parseFloat(produto.precoBase)
         : Number(composicao?.custoTotal ?? 0);
-      const unitPrice = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice;
-      return sum + line.quantidade * unitPrice;
-    }, 0);
-    const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+      const unitPrice = roundBudgetNumber(line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : basePrice);
+      const quantidade = roundBudgetNumber(line.quantidade);
+      return sum + quantidade * unitPrice;
+    }, 0));
+    const freeTotal = roundBudgetNumber(
+      freeItems.reduce(
+        (sum, item) => sum + roundBudgetNumber(item.quantidade) * roundBudgetNumber(item.valorUnitario),
+        0,
+      ),
+    );
 
     // ── Importar orçamento de outro sistema ──────────────────────────────
     const [importValorTotal, setImportValorTotal] = useState<number>(0);
@@ -2306,6 +2425,8 @@ function newFreeItem(): FreeItem {
     setCartError("");
     setShowAllByStage({});
     standardBudgetAppliedRef.current = false;
+    if (!editingProposta) sessionStorage.removeItem(budgetDraftKey);
+    setDraftHydrated(false);
     setFreeItems([newFreeItem()]);
     setFreeError("");
     setContextoIA("");
@@ -2668,8 +2789,8 @@ function newFreeItem(): FreeItem {
 
           return {
             nome: line.nomeOverride?.trim() || produto?.nome || composicao?.nome || "Item do orçamento",
-            quantidade: Number(line.quantidade ?? 1),
-            valorUnitario,
+            quantidade: roundBudgetNumber(line.quantidade ?? 1),
+            valorUnitario: roundBudgetNumber(valorUnitario),
             ...(produto?.id ? { produtoId: produto.id } : {}),
             ...(composicao?.id ? { composicaoId: composicao.id } : {}),
             sku: produto?.sku ?? composicao?.codigo ?? undefined,
@@ -2696,11 +2817,11 @@ function newFreeItem(): FreeItem {
           prazoEntrega: vals.prazoEntrega || undefined,
           ...recFields,
           itens: materializedItems,
-          valorTotal: updatedTotal,
+          valorTotal: roundBudgetNumber(updatedTotal),
           paymentCompositions: paymentComp?.length
             ? paymentComp.map((pc) => ({
                 forma: pc.forma as PaymentCompositionLineForma,
-                valor: pc.valor,
+                valor: roundBudgetNumber(pc.valor),
                 comprovanteUrl: pc.comprovanteUrl,
               }))
             : undefined,
@@ -2725,8 +2846,10 @@ function newFreeItem(): FreeItem {
             itens: valid.map((line, itemIndex) => ({
               ...(line.tipo === "produto" && line.produtoId ? { produtoId: line.produtoId } : {}),
               ...(line.tipo === "composicao" && line.composicaoId ? { composicaoId: line.composicaoId } : {}),
-              quantidade: line.quantidade,
-              precoUnitario: line.precoUnitarioOverride,
+              quantidade: roundBudgetNumber(line.quantidade),
+              precoUnitario: line.precoUnitarioOverride !== undefined
+                ? roundBudgetNumber(line.precoUnitarioOverride)
+                : undefined,
               nome: line.nomeOverride?.trim() || undefined,
               etapaId: line.etapaId,
               etapaNome: etapaName.get(line.etapaId),
@@ -2734,7 +2857,7 @@ function newFreeItem(): FreeItem {
               ordemExecucao: itemIndex + 1,
             })),
             paymentCompositions: paymentComp?.length
-              ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl }))
+              ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl }))
               : undefined,
             skipAsaasBilling: skipAsaas,
           } as any,
@@ -2770,8 +2893,8 @@ function newFreeItem(): FreeItem {
           const previous = oldItems[index];
           return {
             nome: item.nome,
-            quantidade: Number(item.quantidade ?? 1),
-            valorUnitario: Number(item.valorUnitario ?? 0),
+            quantidade: roundBudgetNumber(item.quantidade ?? 1),
+            valorUnitario: roundBudgetNumber(item.valorUnitario ?? 0),
             sku: previous?.sku,
             descricao: previous?.descricao,
             unidade: previous?.unidade,
@@ -2800,11 +2923,11 @@ function newFreeItem(): FreeItem {
           prazoEntrega: vals.prazoEntrega || undefined,
           ...recFields,
           itens: updatedItems,
-          valorTotal: updatedTotal,
+          valorTotal: roundBudgetNumber(updatedTotal),
           paymentCompositions: paymentComp2?.length
             ? paymentComp2.map((pc) => ({
                 forma: pc.forma as PaymentCompositionLineForma,
-                valor: pc.valor,
+                valor: roundBudgetNumber(pc.valor),
                 comprovanteUrl: pc.comprovanteUrl,
               }))
             : undefined,
@@ -2814,7 +2937,7 @@ function newFreeItem(): FreeItem {
       }
 
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
+        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: roundBudgetNumber(i.quantidade), valorUnitario: roundBudgetNumber(i.valorUnitario) })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: roundBudgetNumber(pc.valor), comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -2877,7 +3000,15 @@ function newFreeItem(): FreeItem {
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(mode === "template" ? onSubmitTemplate : onSubmit)} className="space-y-5">
+          <form
+            onSubmit={form.handleSubmit(mode === "template" ? onSubmitTemplate : onSubmit)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+                event.preventDefault();
+              }
+            }}
+            className="space-y-5"
+          >
             {/* Lead + Título */}
             <div className="grid grid-cols-2 gap-3">
               <FormField control={form.control} name="leadId" render={({ field }) => (
@@ -3311,7 +3442,7 @@ function newFreeItem(): FreeItem {
                                             disabled={!selected}
                                             placeholder="0,00"
                                             value={selected ? precoUnit : ""}
-                                            onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: parseFloat(e.target.value) || 0 })}
+                                            onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: roundBudgetNumber(parseFloat(e.target.value) || 0) })}
                                           />
                                           {selected && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{unidade}</span>}
                                         </div>
@@ -3360,8 +3491,8 @@ function newFreeItem(): FreeItem {
                   onConfirm={(resultado: ResultadoConfirmadoCalculoM2) => {
                     if (calcM2Idx === null) return;
                     updateCatLine(calcM2Idx, {
-                      quantidade: resultado.quantidade,
-                      precoUnitarioOverride: resultado.precoUnitario,
+                      quantidade: roundBudgetNumber(resultado.quantidade),
+                      precoUnitarioOverride: roundBudgetNumber(resultado.precoUnitario),
                     });
                     if (resultado.itensComposicao && resultado.itensComposicao.length > 0) {
                       setCartLines((prev) => [
@@ -3370,8 +3501,8 @@ function newFreeItem(): FreeItem {
                           etapaId: prev[calcM2Idx]?.etapaId ?? DEFAULT_ETAPA_ID,
                           tipo: "produto" as const,
                           produtoId: item.produtoId,
-                          quantidade: item.quantidade,
-                          precoUnitarioOverride: item.precoUnitario,
+                          quantidade: roundBudgetNumber(item.quantidade),
+                          precoUnitarioOverride: roundBudgetNumber(item.precoUnitario),
                           nomeOverride: item.nome,
                         })),
                       ]);
@@ -3460,13 +3591,11 @@ function newFreeItem(): FreeItem {
                                 />
                               </TableCell>
                               <TableCell className="py-1.5">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  step={1}
-                                  className="h-8 text-sm w-16"
+                                <BudgetQuantityInput
                                   value={item.quantidade}
-                                  onChange={(e) => updateFreeItem(item.id, { quantidade: Math.max(1, parseFloat(e.target.value) || 1) })}
+                                  isComposition={false}
+                                  className="h-8 w-24"
+                                  onChange={(quantidade) => updateFreeItem(item.id, { quantidade })}
                                 />
                               </TableCell>
                               <TableCell className="py-1.5">
@@ -3477,7 +3606,7 @@ function newFreeItem(): FreeItem {
                                   className="h-8 text-sm w-28"
                                   value={item.valorUnitario || ""}
                                   placeholder="0,00"
-                                  onChange={(e) => updateFreeItem(item.id, { valorUnitario: parseFloat(e.target.value) || 0 })}
+                                  onChange={(e) => updateFreeItem(item.id, { valorUnitario: roundBudgetNumber(parseFloat(e.target.value) || 0) })}
                                 />
                               </TableCell>
                               <TableCell className="py-1.5 text-right font-mono text-sm font-medium">
@@ -3548,7 +3677,7 @@ function newFreeItem(): FreeItem {
                     step="0.01"
                     min="0"
                     value={importValorTotal || ""}
-                    onChange={(e) => setImportValorTotal(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setImportValorTotal(roundBudgetNumber(parseFloat(e.target.value) || 0))}
                     placeholder="0,00"
                   />
                 </div>
@@ -4415,15 +4544,33 @@ export default function Propostas() {
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatus ?? "all");
 
   const { data: propostas = [], isLoading } = useListPropostas(tenantId, undefined, {
-    query: { queryKey: getListPropostasQueryKey(tenantId), enabled: !!tenantId },
+    query: {
+      queryKey: getListPropostasQueryKey(tenantId),
+      enabled: !!tenantId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 300_000,
+    },
   });
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
-    query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
+    query: {
+      queryKey: getListTenantLeadsQueryKey(tenantId),
+      enabled: !!tenantId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 300_000,
+    },
   });
 
   const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
-    query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
+    query: {
+      queryKey: getListProdutosCatalogoQueryKey(tenantId),
+      enabled: !!tenantId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 300_000,
+    },
   });
 
   const statusMut = useUpdatePropostaStatus();
