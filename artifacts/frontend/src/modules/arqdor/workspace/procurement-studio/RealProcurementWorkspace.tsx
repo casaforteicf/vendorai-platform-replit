@@ -531,8 +531,11 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
     if (!bundle || !requestDraft.item.trim()) return;
     setBusy("new-request"); setError(null);
     try {
-      await api(`/api/arch/procurement/${bundle.obra.id}/requests`, { method: "POST", body: JSON.stringify({ descricao: requestDraft.item.trim(), quantidade: n(requestDraft.quantity), unidade: requestDraft.unit || "un", valorTotal: n(requestDraft.value), prioridade: requestDraft.priority, etapaId: requestDraft.stageId || null, ambiente: requestDraft.environment || null, disciplina: requestDraft.discipline || null, dataNecessidade: requestDraft.needDate || null, observacoes: requestDraft.notes || null }) });
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests`, { method: "POST", body: JSON.stringify({ descricao: requestDraft.item.trim(), quantidade: n(requestDraft.quantity), unidade: requestDraft.unit || "un", valorTotal: n(requestDraft.value), prioridade: requestDraft.priority, etapaId: requestDraft.stageId || null, ambiente: requestDraft.environment || null, disciplina: requestDraft.discipline || null, dataNecessidade: requestDraft.needDate || null, observacoes: requestDraft.notes || null, documentos: requestDocuments, origem: requestDocuments.length ? "documento_importado" : "manual" }) });
       setRequestDraft({ item: "", quantity: "1", unit: "un", value: "0", priority: "media", stageId: "", environment: "", discipline: "", needDate: "", notes: "" });
+      setRequestDocuments([]);
+      setRequestExtraction(null);
+      setRequestItemIndex(0);
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao criar solicitação."); }
     finally { setBusy(null); }
@@ -550,8 +553,9 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
     if (!bundle || !selected || !quoteDraft.supplier.trim()) return;
     setBusy("new-quote"); setError(null);
     try {
-      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({ projectId: meta.id, supplierName: quoteDraft.supplier.trim(), confirmedValue: n(quoteDraft.value), freightValue: n(quoteDraft.freight), discountValue: n(quoteDraft.discount), taxValue: n(quoteDraft.taxes), leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime), expectedDelivery: quoteDraft.expectedDelivery || null, paymentTerms: quoteDraft.paymentTerms || null, quoteNumber: quoteDraft.quoteNumber || null }) });
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({ projectId: meta.id || undefined, supplierName: quoteDraft.supplier.trim(), confirmedValue: n(quoteDraft.value), freightValue: n(quoteDraft.freight), discountValue: n(quoteDraft.discount), taxValue: n(quoteDraft.taxes), leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime), expectedDelivery: quoteDraft.expectedDelivery || null, paymentTerms: quoteDraft.paymentTerms || null, quoteNumber: quoteDraft.quoteNumber || null, documents: quoteDocuments }) });
       setQuoteDraft({ supplier: "", value: "0", freight: "0", discount: "0", taxes: "0", leadTime: "", expectedDelivery: "", paymentTerms: "", quoteNumber: "" });
+      setQuoteDocuments([]);
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao registrar cotação."); }
     finally { setBusy(null); }
@@ -604,7 +608,7 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
             <div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Compras da Obra</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{bundle.obra.nome}</h1><p className="mt-1 text-sm text-slate-500">Solicitação → Cotação → Aprovação → Pedido → Recebimento → Financeiro</p></div>
             <div className="flex flex-wrap gap-2">
               {([['requests','Solicitações'],['quotes','Cotações'],['orders','Pedidos'],['receiving','Recebimento'],['finance','Financeiro']] as Array<[View,string]>).map(([id,label]) => <button key={id} type="button" onClick={() => setView(id)} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === id ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700"}`}>{label}</button>)}
-              <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold">Orçamento</button>
+              {onNavigate ? <button type="button" onClick={() => onNavigate("real-budget")} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold">Orçamento</button> : null}
             </div>
           </div>
         </header>
