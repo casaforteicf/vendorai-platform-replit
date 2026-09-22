@@ -112,7 +112,7 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
   return [
     renderView === "interior"
       ? "Convert this synchronized 3D architectural model into a photorealistic INTERIOR architectural visualization from the current camera/view direction."
-      : "Convert this conceptual FRONT ELEVATION and the structured plan data into a photorealistic exterior architectural photograph.",
+      : "The source image is a TECHNICAL LINE ELEVATION, not the desired visual style. Convert its exact geometry and composition into a highly realistic exterior architectural photograph.",
     renderView === "interior"
       ? "CRITICAL PRESERVATION: preserve the modeled floor plan geometry, wall positions, openings, furniture placement, object rotation, room proportions and material assignments visible in the source 3D view. Do not redesign the layout."
       : "CRITICAL PRESERVATION: preserve the number of floors, garage position, main entrance hierarchy, facade proportions, roof strategy and the major opening rhythm shown in the source elevation. Do not invent a different house.",
@@ -140,7 +140,11 @@ export function buildConceptRenderBrief(input: ConceptRenderBriefInput) {
       : "Do not invent a swimming pool.",
     renderView === "interior"
       ? "Preserve all modeled openings and furniture. Improve only realism, material quality, lighting, decor coherence and photographic finish without changing positions or dimensions."
-      : "Refine facade openings and entrance details only within the composition shown in the source elevation. Keep the garage, social facade and upper-floor composition recognizable.",
+      : "Use the line elevation only as strict geometry/composition guidance. Preserve every major edge, opening location, floor count, garage/entrance relationship, wall/gate position and added volume, while replacing schematic linework and hatching with realistic construction materials and depth.",
+    "PHOTOREALISM REQUIREMENT: the final exterior must look like a real built house photographed with a professional architectural camera, never like SVG, vector art, CAD shading, cartoon, illustration, flat graphic, clay render or schematic elevation.",
+    "Use physically believable material texture and roughness: painted plaster with subtle surface variation, realistic wood grain, stone depth, metal gate finish, concrete/paving texture, and glazing with controlled reflections and interior depth.",
+    "Create real architectural depth using contact shadows, soffit shadows, window reveals, parapet thickness, wall returns, gate thickness and natural ambient occlusion. Avoid flat front-facing blocks.",
+    "Landscaping must look natural and photographic: realistic Brazilian residential plants, ground cover and shrubs with varied scale. Never use simple circles, blobs or icon-like vegetation.",
     "Use realistic exterior materials, physically plausible daylight, architectural shadows, reflections and professional real-estate photography quality.",
     renderView === "interior"
       ? "Preserve the current 3D camera direction as closely as possible. Use natural eye-level architectural perspective; avoid fisheye distortion."
