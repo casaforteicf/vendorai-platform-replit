@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.60.0-noble
+FROM node:24-bookworm-slim
 
 WORKDIR /workspace
 
@@ -6,7 +6,8 @@ RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
 
-RUN pnpm install --filter @workspace/e2e --frozen-lockfile
+RUN pnpm install --filter @workspace/e2e... --frozen-lockfile \
+  && pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
 
 ENV CI=1
 ENV E2E_BASE_URL=https://app.appvendorai.com
