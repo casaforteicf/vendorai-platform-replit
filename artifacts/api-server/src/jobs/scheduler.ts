@@ -62,7 +62,12 @@ import {
   churnActionsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
-import { getCustomHostname } from "../lib/cloudflare.js";
+import {
+  createOrGetCustomHostname,
+  getCloudflareCustomDomainConfig,
+  getCustomHostname,
+  getDnsInstructions,
+} from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
@@ -2006,20 +2011,72 @@ async function runDomainVerification(log: Logger): Promise<void> {
   const pending = await db
     .select()
     .from(tenantDomainsTable)
-    .where(
-      and(
-        isNotNull(tenantDomainsTable.cloudflareCustomHostnameId),
-        inArray(tenantDomainsTable.status, ["pending_dns", "pending_ssl"])
-      )
-    );
+    .where(inArray(tenantDomainsTable.status, ["pending_dns", "pending_ssl"]));
 
   if (pending.length === 0) return;
 
-  log.info({ count: pending.length }, "scheduler/domain-verify: checking pending domains");
+  const infrastructure = getCloudflareCustomDomainConfig();
+  log.info(
+    {
+      count: pending.length,
+      cloudflareApiConfigured: infrastructure.apiConfigured,
+      cnameTargetConfigured: infrastructure.cnameTargetConfigured,
+    },
+    "scheduler/domain-verify: checking pending domains",
+  );
 
   for (const domain of pending) {
     try {
-      const cf = await getCustomHostname(domain.cloudflareCustomHostnameId!);
+      // Keep stored DNS instructions aligned with the current SaaS CNAME
+      // target. This repairs rows created before the target was configured.
+      const dns = getDnsInstructions(domain.domain);
+      const dnsValue = dns.value || null;
+      if (domain.dnsRecordName !== dns.name || domain.dnsRecordValue !== dnsValue) {
+        await db
+          .update(tenantDomainsTable)
+          .set({
+            dnsRecordName: dns.name,
+            dnsRecordValue: dnsValue,
+            updatedAt: new Date(),
+          })
+          .where(eq(tenantDomainsTable.id, domain.id));
+        domain.dnsRecordName = dns.name;
+        domain.dnsRecordValue = dnsValue;
+      }
+
+      let cf: Awaited<ReturnType<typeof getCustomHostname>>;
+
+      if (domain.cloudflareCustomHostnameId) {
+        cf = await getCustomHostname(domain.cloudflareCustomHostnameId);
+      } else {
+        // Previous behavior skipped these rows forever. Re-provision them
+        // automatically once Cloudflare API credentials are available.
+        if (!infrastructure.apiConfigured) {
+          log.debug(
+            { domainId: domain.id, domain: domain.domain },
+            "scheduler/domain-verify: Cloudflare API not configured; waiting",
+          );
+          continue;
+        }
+
+        const provisioned = await createOrGetCustomHostname(domain.domain);
+        cf = provisioned;
+
+        await db
+          .update(tenantDomainsTable)
+          .set({
+            cloudflareCustomHostnameId: provisioned.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(tenantDomainsTable.id, domain.id));
+
+        domain.cloudflareCustomHostnameId = provisioned.id;
+        log.info(
+          { domainId: domain.id, domain: domain.domain },
+          "scheduler/domain-verify: recovered missing Cloudflare hostname",
+        );
+      }
+
       let newStatus: "pending_dns" | "pending_ssl" | "active" | "failed";
       if (cf.status === "active" && cf.sslStatus === "active") {
         newStatus = "active";
@@ -2034,10 +2091,16 @@ async function runDomainVerification(log: Logger): Promise<void> {
           .update(tenantDomainsTable)
           .set({ status: newStatus, updatedAt: new Date() })
           .where(eq(tenantDomainsTable.id, domain.id));
-        log.info({ domainId: domain.id, domain: domain.domain, status: newStatus }, "scheduler/domain-verify: status updated");
+        log.info(
+          { domainId: domain.id, domain: domain.domain, status: newStatus },
+          "scheduler/domain-verify: status updated",
+        );
       }
     } catch (err) {
-      log.warn({ err, domainId: domain.id }, "scheduler/domain-verify: CF check failed");
+      log.warn(
+        { err, domainId: domain.id },
+        "scheduler/domain-verify: CF check/provisioning failed",
+      );
     }
   }
 }
