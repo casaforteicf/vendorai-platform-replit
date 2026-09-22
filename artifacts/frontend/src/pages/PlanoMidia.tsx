@@ -137,6 +137,32 @@ type PlannerAdsOverviewItem = {
   } | null;
 };
 
+type BudgetRedistributionDecision = {
+  campaignId: string;
+  currentAllocation: number;
+  spend: number;
+  leads: number;
+  sales: number;
+  revenue: number;
+  roas: number | null;
+  remainingAllocation: number;
+  targetAllocation: number;
+  delta: number;
+  action: "increase" | "decrease" | "hold";
+  reason: string;
+};
+
+type BudgetRedistributionPlan = {
+  planBudgetTotal: number;
+  currentAllocatedTotal: number;
+  unallocatedBudget: number;
+  transferableBudget: number;
+  targetAllocatedTotal: number;
+  humanCeilingRespected: boolean;
+  hasSufficientEvidence: boolean;
+  decisions: BudgetRedistributionDecision[];
+};
+
 type PlannerDestinationPreview = {
   type: string;
   url: string | null;
@@ -274,6 +300,9 @@ export default function PlanoMidia() {
   const [destinationByAd, setDestinationByAd] = useState<Record<string, PlannerDestinationPreview>>({});
   const [optimizationBusy, setOptimizationBusy] = useState<string | null>(null);
   const [abPreparing, setAbPreparing] = useState<string | null>(null);
+  const [budgetPlan, setBudgetPlan] = useState<BudgetRedistributionPlan | null>(null);
+  const [budgetPlanError, setBudgetPlanError] = useState<string | null>(null);
+  const [budgetApplying, setBudgetApplying] = useState<string | null>(null);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -332,6 +361,26 @@ export default function PlanoMidia() {
         }
       }));
       setDestinationByAd(Object.fromEntries(destinationEntries.filter(Boolean) as Array<readonly [string, PlannerDestinationPreview]>));
+
+      if (plan?.id) {
+        try {
+          const budgetResponse = await fetch(
+            `/api/tenants/${tenantId}/marketing/media-plan/${plan.id}/budget-redistribution?maxTransferFractionPerCycle=0.2`,
+            { headers: authHeaders() },
+          );
+          const budgetData = await budgetResponse.json().catch(() => ({})) as BudgetRedistributionPlan & { error?: string };
+          if (budgetResponse.ok) {
+            setBudgetPlan(budgetData);
+            setBudgetPlanError(null);
+          } else {
+            setBudgetPlan(null);
+            setBudgetPlanError(budgetData.error ?? "Redistribuição indisponível.");
+          }
+        } catch {
+          setBudgetPlan(null);
+          setBudgetPlanError("Redistribuição indisponível.");
+        }
+      }
 
       const eventEntries = await Promise.all(campaignsData.map(async (ad) => {
         try {
@@ -442,6 +491,57 @@ export default function PlanoMidia() {
       toast({ title: "Não foi possível aprovar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
     } finally {
       setAdActionBusy(null);
+    }
+  }
+
+  async function applyBudgetDecision(ad: PlannerAdCampaign, decision: BudgetRedistributionDecision) {
+    if (!plan?.id || budgetApplying) return;
+    if (decision.action === "hold" || decision.delta === 0) return;
+
+    const direction = decision.delta > 0 ? "aumentar" : "reduzir";
+    const amount = Math.abs(decision.delta).toFixed(2);
+    const confirmed = window.confirm(
+      `Confirmar redistribuição de verba?\n\n${direction} R$ ${amount} nesta campanha.\nAlocação atual: R$ ${decision.currentAllocation.toFixed(2)}\nNova alocação: R$ ${decision.targetAllocation.toFixed(2)}\n\nMotivo: ${decision.reason}\n\nO total aprovado do Plano de Mídia não será ultrapassado.`,
+    );
+    if (!confirmed) return;
+
+    setBudgetApplying(ad.id);
+    try {
+      const response = await fetch(
+        `/api/tenants/${tenantId}/marketing/media-plan/${plan.id}/budget-redistribution/${ad.id}/apply`,
+        {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            authorization: "human-approved",
+            maxTransferFractionPerCycle: 0.2,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({})) as {
+        applied?: boolean;
+        reason?: string;
+        error?: string;
+        decision?: BudgetRedistributionDecision;
+        schedule?: { dailyBudget?: number; remainingDays?: number };
+      };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível aplicar a redistribuição.");
+
+      await refreshAdsWorkspace();
+      toast({
+        title: data.applied ? "Redistribuição aplicada" : "Nenhuma mudança necessária",
+        description: data.applied
+          ? `Novo orçamento diário: R$ ${Number(data.schedule?.dailyBudget ?? 0).toFixed(2)} por ${Number(data.schedule?.remainingDays ?? 0)} dia(s).`
+          : data.reason ?? "O motor manteve a verba atual.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível redistribuir",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setBudgetApplying(null);
     }
   }
 
@@ -840,6 +940,44 @@ export default function PlanoMidia() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {budgetPlan && (
+              <div className="rounded-xl border bg-muted/10 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">Orçamento inteligente do plano</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      O VendorAI analisa venda, ROAS, leads e gasto real antes de sugerir qualquer redistribuição.
+                    </p>
+                  </div>
+                  <Badge variant={budgetPlan.hasSufficientEvidence ? "default" : "outline"}>
+                    {budgetPlan.hasSufficientEvidence ? "Há verba redistribuível" : "Sem evidência suficiente"}
+                  </Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {[
+                    ["Teto aprovado", `R$ ${budgetPlan.planBudgetTotal.toFixed(2)}`],
+                    ["Alocado hoje", `R$ ${budgetPlan.currentAllocatedTotal.toFixed(2)}`],
+                    ["Ainda não alocado", `R$ ${budgetPlan.unallocatedBudget.toFixed(2)}`],
+                    ["Redistribuível", `R$ ${budgetPlan.transferableBudget.toFixed(2)}`],
+                    ["Alvo após ajuste", `R$ ${budgetPlan.targetAllocatedTotal.toFixed(2)}`],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border bg-background p-2 text-center">
+                      <p className="text-[10px] text-muted-foreground">{label}</p>
+                      <p className="mt-0.5 text-xs font-semibold">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  {budgetPlan.humanCeilingRespected
+                    ? "O cálculo respeita o teto total aprovado pelo usuário."
+                    : "Atenção: o cálculo atual não respeita o teto aprovado e não deve ser aplicado."}
+                </p>
+              </div>
+            )}
+            {!budgetPlan && budgetPlanError ? (
+              <div className="rounded-xl border border-dashed p-3 text-xs text-muted-foreground">{budgetPlanError}</div>
+            ) : null}
+
             {plan.conteudo.diagnostico && (
               <div className="rounded-xl border bg-muted/20 p-4">
                 <p className="text-xs font-semibold">Direção recomendada</p>
@@ -908,6 +1046,7 @@ export default function PlanoMidia() {
                             const creative = variants.find((item) => item.id === selectedCreativeId) ?? ad.latestCreative ?? variants[0] ?? null;
                             const placement = placementByAd[ad.id] ?? (ad.plataforma === "google" ? "google" : "feed");
                             const metric = overviewByAd.get(ad.id);
+                            const budgetDecision = budgetPlan?.decisions.find((row) => row.campaignId === ad.id) ?? null;
                             const ctr = metric?.impressions ? (metric.clicks / metric.impressions) * 100 : null;
                             const clickToLead = metric?.clicks ? (metric.leads / metric.clicks) * 100 : null;
                             const comparableVariants = variants.filter((variant) => {
@@ -1388,6 +1527,58 @@ export default function PlanoMidia() {
                                     <p className="mt-1 text-[11px] text-muted-foreground">
                                       Existem {variants.length} variações disponíveis. Hoje as métricas oficiais são consolidadas por campanha; por isso o sistema não declara uma variação vencedora sem atribuição por criativo.
                                     </p>
+                                  </div>
+                                )}
+
+                                {budgetDecision && (
+                                  <div className="mt-3 rounded-lg border bg-background p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-xs font-semibold">Sugestão de redistribuição de verba</p>
+                                        <p className="mt-1 text-[11px] text-muted-foreground">{budgetDecision.reason}</p>
+                                      </div>
+                                      <Badge
+                                        variant={budgetDecision.action === "increase" ? "default" : budgetDecision.action === "decrease" ? "secondary" : "outline"}
+                                      >
+                                        {budgetDecision.action === "increase" ? "Receber verba" : budgetDecision.action === "decrease" ? "Ceder verba" : "Manter"}
+                                      </Badge>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                      <div className="rounded-md bg-muted/30 p-2 text-center">
+                                        <p className="text-[10px] text-muted-foreground">Alocação atual</p>
+                                        <p className="text-xs font-semibold">R$ {budgetDecision.currentAllocation.toFixed(2)}</p>
+                                      </div>
+                                      <div className="rounded-md bg-muted/30 p-2 text-center">
+                                        <p className="text-[10px] text-muted-foreground">Já gasto</p>
+                                        <p className="text-xs font-semibold">R$ {budgetDecision.spend.toFixed(2)}</p>
+                                      </div>
+                                      <div className="rounded-md bg-muted/30 p-2 text-center">
+                                        <p className="text-[10px] text-muted-foreground">Movimento sugerido</p>
+                                        <p className={`text-xs font-semibold ${budgetDecision.delta > 0 ? "text-emerald-600" : budgetDecision.delta < 0 ? "text-amber-700" : ""}`}>
+                                          {budgetDecision.delta > 0 ? "+" : ""}R$ {budgetDecision.delta.toFixed(2)}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-md bg-muted/30 p-2 text-center">
+                                        <p className="text-[10px] text-muted-foreground">Nova alocação</p>
+                                        <p className="text-xs font-semibold">R$ {budgetDecision.targetAllocation.toFixed(2)}</p>
+                                      </div>
+                                    </div>
+                                    {budgetDecision.action !== "hold" && (
+                                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+                                        <p className="text-[10px] text-muted-foreground">
+                                          Máximo de 20% por ciclo. Só usa verba ainda não gasta e respeita o teto humano do Plano de Mídia.
+                                        </p>
+                                        <Button
+                                          size="sm"
+                                          className="h-7 text-[11px]"
+                                          disabled={budgetApplying === ad.id}
+                                          onClick={() => void applyBudgetDecision(ad, budgetDecision)}
+                                        >
+                                          {budgetApplying === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />}
+                                          Aprovar redistribuição
+                                        </Button>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
