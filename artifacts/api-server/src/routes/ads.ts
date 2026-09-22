@@ -27,8 +27,8 @@ import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { decideItemReservation, reserveUniqueItem } from "../services/item-reservation.js";
 import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
-import { setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
-import { setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, updateGoogleAdsCampaignSchedule, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
+import { setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, updateMetaAdsCampaignSchedule, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 import { publishCampaignThroughChannelRegistry } from "../services/channelPublishBridge.js";
 import { getAdsOverview, recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
@@ -340,6 +340,75 @@ router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     if (!latestByCampaign.has(creative.campaignId)) latestByCampaign.set(creative.campaignId, creative);
   }
   return res.json(rows.map((row) => ({ ...row, latestCreative: latestByCampaign.get(row.id) ?? null })));
+});
+
+const campaignScheduleSchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).default("00:00"),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/).default("23:59"),
+  timezone: z.string().min(1).default("America/Sao_Paulo"),
+  weeklySchedule: z.array(z.object({
+    days: z.array(z.enum(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"])).min(1),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/),
+    endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  })).default([]),
+});
+
+router.patch("/tenants/:tenantId/ads/campaigns/:id/schedule", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = campaignScheduleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const schedule = parsed.data;
+  const start = new Date(`${schedule.startDate}T${schedule.startTime}:00`);
+  const end = new Date(`${schedule.endDate}T${schedule.endTime}:59`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    return res.status(422).json({ error: "Data/hora final precisa ser posterior ao início." });
+  }
+  for (const slot of schedule.weeklySchedule) {
+    if (slot.startTime >= slot.endTime) return res.status(422).json({ error: "Faixa diária inválida." });
+    const mins = [slot.startTime, slot.endTime].map((v) => Number(v.slice(3,5)));
+    if (mins.some((m) => ![0,15,30,45].includes(m))) {
+      return res.status(422).json({ error: "Use intervalos de 15 minutos na programação." });
+    }
+  }
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+  const current = campaign.segmentacao?.campaignControl;
+  if (!current) return res.status(422).json({ error: "Campanha sem controle de período." });
+  const campaignControl = { ...current, ...schedule };
+
+  try {
+    if (campaign.externalCampaignId) {
+      if (campaign.plataforma === "google") await updateGoogleAdsCampaignSchedule(tenantId, campaignId, campaignControl);
+      if (campaign.plataforma === "meta") await updateMetaAdsCampaignSchedule(tenantId, campaignId, campaignControl);
+    }
+    const segmentacao = { ...campaign.segmentacao, campaignControl };
+    const [updated] = await db.update(adCampaignsTable)
+      .set({ segmentacao, updatedAt: new Date() })
+      .where(eq(adCampaignsTable.id, campaignId))
+      .returning();
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId,
+      userId: (req as any).user?.sub,
+      eventType: "schedule_updated",
+      severity: "info",
+      message: "Período e horário de veiculação atualizados.",
+      metadata: schedule,
+    });
+    return res.json(updated);
+  } catch (error) {
+    if (error instanceof GoogleAdsPublishError || error instanceof MetaAdsPublishError) {
+      return res.status(422).json({ error: error.message });
+    }
+    throw error;
+  }
 });
 
 router.delete("/tenants/:tenantId/ads/campaigns/:id", async (req, res) => {
