@@ -132,8 +132,7 @@ app.use(
   }),
 );
 
-// Resend assina o corpo bruto. Esta rota precisa vir antes do express.json()
- // para que a assinatura Svix possa ser verificada sem reserialização.
+// Resend assina o corpo bruto. Esta rota precisa vir antes do express.json().
 app.use(
   "/api/webhooks/resend/prospector",
   express.raw({ type: "application/json", limit: "2mb" }),
@@ -203,6 +202,14 @@ function hostnameFromUrlHeader(value: string | undefined): string | null {
     return null;
   }
 }
+
+function trustedTenantCustomHost(req: Request): string | null {
+  const expected = process.env["TENANT_EDGE_PROXY_SECRET"]?.trim();
+  const provided = req.headers["x-vendorai-edge-secret"];
+  if (!expected || typeof provided !== "string" || provided !== expected) return null;
+  return normalizeHostHeader(req.headers["x-tenant-custom-host"]);
+}
+
 function isCrmHostname(hostname: string | null): boolean {
   if (!hostname) return false;
   return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`);
@@ -216,6 +223,8 @@ function firstPathSegment(pathname: string): string | null {
 
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   const hostname = req.hostname.toLowerCase();
+  const customHostFromEdge = trustedTenantCustomHost(req);
+  const publicHostname = customHostFromEdge ?? hostname;
   const cfSubdomain = req.headers["x-tenant-subdomain"];
   const subdomainFromHeader = typeof cfSubdomain === "string" && cfSubdomain.trim()
     ? cfSubdomain.trim()
@@ -281,16 +290,16 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   // públicos. O Worker pode encaminhar a chamada usando um host interno/CRM,
   // então esse host não pode anular o subdomínio público explicitamente enviado.
   // Sem o header, mantemos o bypass do CRM para proteger /auth e o painel.
-  if (!subdomainFromHeader && isCrmRequest) return next();
+  if (!subdomainFromHeader && !customHostFromEdge && isCrmRequest) return next();
 
-  const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
+  const isWildcard = publicHostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = isApiRequest;
 
   // Endereço real digitado pelo visitante, só para mensagens de erro — o
   // Cloudflare Worker que faz proxy do *.appvendorai.com remove o Host
   // original e a Railway sobrescreve X-Forwarded-Host com o domínio dela
   // mesma, então `hostname` (req.hostname) não é confiável para exibição.
-  const displayAddress = subdomainFromHeader ? `${subdomainFromHeader}.${ROOT_DOMAIN}` : hostname;
+  const displayAddress = subdomainFromHeader ? `${subdomainFromHeader}.${ROOT_DOMAIN}` : publicHostname;
 
   try {
     let tenant: { id: string; name: string; status: string } | undefined;
@@ -302,7 +311,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     let matchedSiteSlug: string | null = null;
 
     const identifier = subdomainFromHeader
-      ?? (isWildcard ? hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1) : null);
+      ?? (isWildcard ? publicHostname.slice(0, publicHostname.length - ROOT_DOMAIN.length - 1) : null);
 
     if (identifier === "") {
       return next();
@@ -339,7 +348,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       const [domainRow] = await db
         .select({ tenantId: tenantDomainsTable.tenantId, domainStatus: tenantDomainsTable.status })
         .from(tenantDomainsTable)
-        .where(eq(tenantDomainsTable.domain, hostname));
+        .where(eq(tenantDomainsTable.domain, publicHostname));
 
       if (domainRow?.domainStatus === "active") {
         const [found] = await db
