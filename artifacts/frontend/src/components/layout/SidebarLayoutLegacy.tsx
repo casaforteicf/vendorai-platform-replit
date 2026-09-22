@@ -987,6 +987,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                   Central de Ajuda
                 </Link>
                 <NovidadesBell />
+                <div
+                  data-ai-budget-sidebar-slot
+                  className="flex min-h-7 items-center justify-end px-2 pt-1"
+                  aria-label="Uso de IA"
+                />
               </div>
 
               <Button
