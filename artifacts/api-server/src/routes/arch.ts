@@ -1437,6 +1437,97 @@ router.post("/arch/catalogo", authenticate, async (req, res) => {
   return res.status(201).json(produto);
 });
 
+// POST /api/arch/catalogo/:id/resolve-real-model
+// Resolve um item 3D AUTO e persiste o resultado no catálogo do tenant.
+router.post("/arch/catalogo/:id/resolve-real-model", authenticate, async (req, res) => {
+  const id = String(req.params.id);
+  const tid = tenantId(req);
+
+  const [produto] = await db
+    .select()
+    .from(archCatalogoTable)
+    .where(and(
+      eq(archCatalogoTable.id, id),
+      eq(archCatalogoTable.tenantId, tid),
+      eq(archCatalogoTable.ativo, true),
+    ))
+    .limit(1);
+
+  if (!produto) return res.status(404).json({ error: "Item de catálogo não encontrado." });
+
+  const specs = (produto.especificacoes ?? {}) as Record<string, unknown>;
+  const existingUrl = typeof specs.model3dUrl === "string" ? specs.model3dUrl : null;
+  if (existingUrl) {
+    return res.json({
+      id: produto.id,
+      model3dUrl: existingUrl,
+      thumbnailUrl: Array.isArray(produto.imagens) ? produto.imagens[0] ?? null : null,
+      polyHavenSlug: typeof specs.polyHavenSlug === "string" ? specs.polyHavenSlug : null,
+      cached: true,
+    });
+  }
+
+  const query = typeof specs.polyHavenQuery === "string" ? specs.polyHavenQuery.trim() : "";
+  if (!query) return res.status(400).json({ error: "Este item não possui estratégia automática de modelo 3D." });
+
+  try {
+    const candidates = await searchPolyHavenModels(query, 6);
+    for (const candidate of candidates.slice(0, 4)) {
+      try {
+        const asset = await resolvePolyHavenModel(candidate.slug);
+        if (!asset.model3dUrl) continue;
+
+        const nextSpecs = {
+          ...specs,
+          model3dUrl: asset.model3dUrl,
+          modelLabel: asset.name,
+          modelLicense: "CC0",
+          modelSource: "Poly Haven",
+          polyHavenSlug: candidate.slug,
+          lod: "real-remote",
+          source: "arqdor-auto-polyhaven",
+          autoResolvedFromQuery: query,
+          autoResolvedAt: new Date().toISOString(),
+        };
+        const thumbnailUrl = asset.thumbnailUrl ?? candidate.thumbnailUrl ?? null;
+        const nextImages = thumbnailUrl
+          ? [thumbnailUrl, ...((produto.imagens as string[] | null) ?? []).filter((url) => url !== thumbnailUrl)].slice(0, 5)
+          : (produto.imagens as string[] | null) ?? [];
+
+        const [updated] = await db
+          .update(archCatalogoTable)
+          .set({
+            especificacoes: nextSpecs,
+            imagens: nextImages,
+          })
+          .where(and(
+            eq(archCatalogoTable.id, id),
+            eq(archCatalogoTable.tenantId, tid),
+          ))
+          .returning();
+
+        return res.json({
+          id: updated.id,
+          model3dUrl: asset.model3dUrl,
+          thumbnailUrl,
+          polyHavenSlug: candidate.slug,
+          modelLabel: asset.name,
+          source: "Poly Haven",
+          license: "CC0",
+          cached: false,
+        });
+      } catch {
+        // Tenta o próximo candidato sem quebrar o catálogo.
+      }
+    }
+
+    return res.status(404).json({ error: "Nenhum modelo 3D compatível foi encontrado para este item." });
+  } catch (error) {
+    console.error("[arqdor/catalogo/resolve-real-model]", error);
+    return res.status(502).json({ error: "Não foi possível resolver o modelo 3D automático agora." });
+  }
+});
+
 // POST /api/arch/catalogo/:id/imagens
 router.post(
   "/arch/catalogo/:id/imagens",
