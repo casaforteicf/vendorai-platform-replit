@@ -50,6 +50,7 @@ import { generateTypologyLayout } from "./conceptTypologyLayout";
 import { buildConceptRenderBrief, svgElementToPngDataUrl } from "./conceptRender";
 import { buildOrthogonalWallTopology, detectClosedSpaces, type ClosedSpace, type WallTopologyEndpointRef } from "./conceptWallNetwork";
 import { conceptStepCta, nextConceptStep, normalizeConceptStep, previousConceptStep } from "./conceptNavigation";
+import { CONCEPT_OPENING_FAMILIES } from "./catalogs/conceptOpeningCatalog";
 import { blockingConceptIssues, buildCompletedRenderPatch, canAdvanceConceptLayout } from "./conceptWorkflow";
 
 type RoomKind =
@@ -106,6 +107,8 @@ type CustomOpening = {
   sillHeight?: number;
   openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn";
   swing?: "left" | "right";
+  familyId?: string;
+  familyLabel?: string;
 };
 
 type SpaceProfile = {
@@ -493,6 +496,8 @@ function normalizeLoadedOpenings(input: unknown, walls: CustomWall[]): CustomOpe
         ? raw.openingStyle
         : type === "door" ? "hinged" : "sliding",
       swing: raw.swing === "right" ? "right" : "left",
+      familyId: typeof raw.familyId === "string" ? raw.familyId : undefined,
+      familyLabel: typeof raw.familyLabel === "string" ? raw.familyLabel : undefined,
     }];
   });
 }
@@ -2645,7 +2650,7 @@ export default function ConceptPlanner() {
 
   const addOpeningPreset = (
     wallId: string,
-    preset: Pick<CustomOpening, "type" | "width" | "height" | "sillHeight" | "openingStyle">,
+    preset: Pick<CustomOpening, "type" | "width" | "height" | "sillHeight" | "openingStyle" | "swing"> & Partial<Pick<CustomOpening, "familyId" | "familyLabel">>,
   ) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
@@ -2660,7 +2665,9 @@ export default function ConceptPlanner() {
       height: preset.height,
       sillHeight: preset.type === "door" ? 0 : preset.sillHeight,
       openingStyle: preset.openingStyle,
-      swing: "left",
+      swing: preset.swing ?? "left",
+      familyId: preset.familyId,
+      familyLabel: preset.familyLabel,
     };
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
@@ -4404,22 +4411,29 @@ export default function ConceptPlanner() {
                           <span className="text-[10px] text-slate-400">{selectedCustomWall ? "Parede selecionada" : "Selecione uma parede"}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          {([
-                            ["Porta 90", { type: "door", width: 0.90, height: 2.10, sillHeight: 0, openingStyle: "hinged" }],
-                            ["Porta correr 160", { type: "door", width: 1.60, height: 2.10, sillHeight: 0, openingStyle: "sliding" }],
-                            ["Janela 120", { type: "window", width: 1.20, height: 1.20, sillHeight: 0.90, openingStyle: "sliding" }],
-                            ["Janela 180", { type: "window", width: 1.80, height: 1.20, sillHeight: 0.90, openingStyle: "sliding" }],
-                          ] as const).map(([label, preset]) => (
+                          {CONCEPT_OPENING_FAMILIES.map((family) => (
                             <button
-                              key={label}
+                              key={family.id}
                               type="button"
                               disabled={!selectedCustomWall}
-                              onClick={() => selectedCustomWall && addOpeningPreset(selectedCustomWall.id, preset)}
+                              onClick={() => selectedCustomWall && addOpeningPreset(selectedCustomWall.id, {
+                                type: family.type,
+                                width: family.width,
+                                height: family.height,
+                                sillHeight: family.sillHeight,
+                                openingStyle: family.openingStyle,
+                                swing: family.swing,
+                                familyId: family.id,
+                                familyLabel: family.label,
+                              })}
                               className="rounded-xl border bg-white px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40 hover:border-orange-300 hover:bg-orange-50/40"
                             >
-                              <div className="text-xs font-semibold">{label}</div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold">{family.label}</div>
+                                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">{family.type === "door" ? "porta" : "janela"}</span>
+                              </div>
                               <div className="mt-1 text-[10px] text-slate-500">
-                                {preset.width.toFixed(2).replace(".", ",")} × {preset.height.toFixed(2).replace(".", ",")} m
+                                {family.width.toFixed(2).replace(".", ",")} × {family.height.toFixed(2).replace(".", ",")} m · {family.openingStyle === "hinged" ? "giro" : family.openingStyle === "sliding" ? "correr" : family.openingStyle === "fixed" ? "fixa" : "oscilo/maxim"}
                               </div>
                             </button>
                           ))}
