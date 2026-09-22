@@ -256,6 +256,7 @@ export default function PlanoMidia() {
   const [selectedCreativeByAd, setSelectedCreativeByAd] = useState<Record<string, string>>({});
   const [placementByAd, setPlacementByAd] = useState<Record<string, "feed" | "story" | "reels" | "google">>({});
   const [destinationByAd, setDestinationByAd] = useState<Record<string, PlannerDestinationPreview>>({});
+  const [abPreparing, setAbPreparing] = useState<string | null>(null);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -328,6 +329,28 @@ export default function PlanoMidia() {
       setAdEvents(Object.fromEntries(eventEntries));
     } catch {
       // O planejador continua utilizável mesmo se Ads estiver temporariamente indisponível.
+    }
+  }
+
+  async function prepareAbTest(ad: PlannerAdCampaign) {
+    if (abPreparing) return;
+    setAbPreparing(ad.id);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/ab-test/prepare`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; variants?: PlannerAdCreative[]; note?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível preparar o teste A/B.");
+      await refreshAdsWorkspace();
+      if (data.variants?.[0]?.id) {
+        setSelectedCreativeByAd((current) => ({ ...current, [ad.id]: data.variants![0].id }));
+      }
+      toast({ title: "Teste A/B preparado", description: data.note ?? "Duas variações ficaram prontas para revisão." });
+    } catch (error) {
+      toast({ title: "Não foi possível preparar o A/B", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setAbPreparing(null);
     }
   }
 
@@ -943,6 +966,31 @@ export default function PlanoMidia() {
                                     )}
                                   </div>
                                 </div>
+
+                                {metric?.recommendation && (
+                                  <div className="mt-3 rounded-lg border border-primary/20 bg-primary/[0.03] p-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div>
+                                        <p className="text-xs font-semibold">Recomendação da IA</p>
+                                        <p className="mt-1 text-sm font-medium">{metric.recommendation.title}</p>
+                                        <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{metric.recommendation.reason}</p>
+                                      </div>
+                                      {metric.recommendation.requiresApproval ? <Badge variant="outline">Requer aprovação</Badge> : <Badge variant="secondary">Sugestão</Badge>}
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => navigate("/ads")}>
+                                        Revisar ação
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="h-8 text-xs" disabled={abPreparing === ad.id} onClick={() => void prepareAbTest(ad)}>
+                                        {abPreparing === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                        Preparar teste A/B
+                                      </Button>
+                                      {metric.recommendation.action === "scale_winner" && (
+                                        <span className="self-center text-[10px] text-muted-foreground">Aumento de verba não é automático.</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
                                   {[
