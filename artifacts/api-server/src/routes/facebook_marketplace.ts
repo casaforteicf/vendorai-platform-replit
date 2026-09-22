@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -30,6 +30,12 @@ const createDraftSchema = z.object({
   condition: z.string().trim().max(80).optional().default("new"),
   mediaUrls: z.array(z.string().url()).max(10).optional(),
 });
+
+const createBulkDraftSchema = createDraftSchema
+  .omit({ productId: true })
+  .extend({
+    productIds: z.array(z.string().min(1)).min(1).max(40),
+  });
 
 const updateListingSchema = z.object({
   title: z.string().trim().min(3).max(180).optional(),
@@ -296,6 +302,124 @@ router.post("/tenants/:tenantId/facebook-marketplace/drafts", async (req, res) =
     .returning();
 
   res.status(201).json(listing);
+});
+
+
+router.post("/tenants/:tenantId/facebook-marketplace/drafts/bulk", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasTenantAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = createBulkDraftSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  if (parsed.data.campaignId) {
+    const [campaign] = await db
+      .select({ id: campaignsTable.id })
+      .from(campaignsTable)
+      .where(
+        and(
+          eq(campaignsTable.id, parsed.data.campaignId),
+          eq(campaignsTable.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!campaign) {
+      res.status(422).json({ error: "A campanha selecionada não pertence a esta empresa." });
+      return;
+    }
+  }
+
+  const productIds = [...new Set(parsed.data.productIds)];
+  const products = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(
+      and(
+        eq(produtosCatalogoTable.tenantId, tenantId),
+        inArray(produtosCatalogoTable.id, productIds),
+      ),
+    );
+
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const missingProductIds = productIds.filter((id) => !productById.has(id));
+  const created: typeof facebookMarketplaceListingsTable.$inferSelect[] = [];
+  const failed: Array<{ productId: string; error: string }> = [];
+
+  // Limita a concorrência para não disparar dezenas de gerações de IA ao
+  // mesmo tempo em catálogos grandes. O lote aceita até 40 produtos.
+  for (let index = 0; index < productIds.length; index += 5) {
+    const chunk = productIds.slice(index, index + 5);
+    const results = await Promise.all(
+      chunk.map(async (productId) => {
+        const product = productById.get(productId);
+        if (!product) return { ok: false as const, productId, error: "Produto não encontrado para esta empresa." };
+
+        try {
+          const copy = await generateMarketplaceCopy(tenantId, product, parsed.data.category);
+          const mediaUrls = uniqueMedia(product, parsed.data.mediaUrls);
+          const [listing] = await db
+            .insert(facebookMarketplaceListingsTable)
+            .values({
+              tenantId,
+              productId: product.id,
+              campaignId: parsed.data.campaignId ?? null,
+              publishMode: "assisted",
+              status: "draft",
+              title: copy.title,
+              description: copy.description,
+              price: effectivePrice(product),
+              category: copy.category,
+              condition: parsed.data.condition ?? "new",
+              city: parsed.data.city ?? null,
+              state: parsed.data.state ?? null,
+              mediaUrls,
+              metadata: {
+                generatedBy: copy.generatedBy,
+                source: "catalog_bulk",
+                productSku: product.sku ?? null,
+              },
+            })
+            .returning();
+
+          return { ok: true as const, listing };
+        } catch (error) {
+          return {
+            ok: false as const,
+            productId,
+            error: error instanceof Error ? error.message : "Falha ao gerar anúncio.",
+          };
+        }
+      }),
+    );
+
+    for (const result of results) {
+      if (result.ok) created.push(result.listing);
+      else failed.push({ productId: result.productId, error: result.error });
+    }
+  }
+
+  for (const productId of missingProductIds) {
+    if (!failed.some((item) => item.productId === productId)) {
+      failed.push({ productId, error: "Produto não encontrado para esta empresa." });
+    }
+  }
+
+  res.status(created.length > 0 ? 201 : 422).json({
+    created,
+    failed,
+    summary: {
+      requested: productIds.length,
+      created: created.length,
+      failed: failed.length,
+    },
+  });
 });
 
 router.patch("/tenants/:tenantId/facebook-marketplace/listings/:listingId", async (req, res) => {
