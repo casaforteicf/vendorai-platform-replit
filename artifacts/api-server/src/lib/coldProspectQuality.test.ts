@@ -33,6 +33,7 @@ function baseInput(overrides: Partial<Parameters<typeof evaluateColdProspectQual
     },
     propensityScore: 90,
     dispatchThreshold: 80,
+    channelCapabilities: { whatsapp: true, email: false, instagram: false },
     ...overrides,
   };
 }
@@ -51,6 +52,7 @@ describe("cold prospect quality — executable channels", () => {
     const result = evaluateColdProspectQuality(baseInput({
       telefone: null,
       email: "compras@empresa.example",
+      channelCapabilities: { whatsapp: false, email: false, instagram: false },
     }));
     expect(result.hasValidContact).toBe(true);
     expect(result.hasExecutableChannel).toBe(false);
@@ -58,6 +60,19 @@ describe("cold prospect quality — executable channels", () => {
     expect(result.ready).toBe(false);
     expect(result.status).toBe("needs_more_data");
     expect(result.reasons).toContain("sem_canal_automatico_executavel");
+  });
+
+
+  it("allows email-only automatic outreach only when the safe inbound reply loop is enabled", () => {
+    const result = evaluateColdProspectQuality(baseInput({
+      telefone: null,
+      email: "compras@empresa.example",
+      channelCapabilities: { whatsapp: false, email: true, instagram: false },
+    }));
+    expect(result.ready).toBe(true);
+    expect(result.hasExecutableChannel).toBe(true);
+    expect(result.preferredChannel).toBe("email");
+    expect(result.channels.find((item) => item.channel === "email")?.autoExecutable).toBe(true);
   });
 
   it("does not treat a public Instagram handle as permission for automated cold DM", () => {
