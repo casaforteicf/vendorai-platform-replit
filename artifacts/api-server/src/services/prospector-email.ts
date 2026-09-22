@@ -133,7 +133,9 @@ export async function sendProspectorColdEmail(input: {
   const fromDomain = cleanDomain(process.env["RESEND_FROM_DOMAIN"]) ?? "vendorai.app";
   const displayName = (input.tenantName ?? "").trim() || "Equipe Comercial";
   const from = fixedFrom
-    ? `${displayName} <${fixedFrom}>`
+    ? fixedFrom.includes("<")
+      ? fixedFrom
+      : `${displayName} <${fixedFrom}>`
     : `${displayName} <noreply@${fromDomain}>`;
 
   const optOut =
