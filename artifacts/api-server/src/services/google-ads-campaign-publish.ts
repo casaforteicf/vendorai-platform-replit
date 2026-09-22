@@ -313,6 +313,11 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   }
   const googleDate = (value: string) => value.replace(/-/g, "");
   const amountMicros = String(Math.round(Number(campanha.orcamentoDiario) * 1_000_000));
+  const minuteEnum = (minute: number) => ({ 0: "ZERO", 15: "FIFTEEN", 30: "THIRTY", 45: "FORTY_FIVE" } as Record<number, string>)[minute];
+  const parseTime = (value: string) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return { hour, minute };
+  };
 
   // 1) Orçamento
   const budgetRes = await mutate(customerId, accessToken, "campaignBudgets", [
@@ -358,12 +363,29 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   const campaignResourceName = campaignRes.results[0]?.resourceName;
   if (!campaignResourceName) throw new GoogleAdsPublishError("Google Ads não retornou a campanha criada.");
 
-  // 3) Segmentação geográfica real resolvida pela API + idioma.
+  // 3) Segmentação geográfica, idioma e janela semanal real de veiculação.
+  const scheduleOperations = (campaignControl.weeklySchedule ?? []).flatMap((slot) => {
+    const start = parseTime(slot.startTime);
+    const end = parseTime(slot.endTime);
+    return slot.days.map((dayOfWeek) => ({
+      create: {
+        campaign: campaignResourceName,
+        adSchedule: {
+          dayOfWeek,
+          startHour: start.hour,
+          startMinute: minuteEnum(start.minute),
+          endHour: end.hour,
+          endMinute: minuteEnum(end.minute),
+        },
+      },
+    }));
+  });
   await mutate(customerId, accessToken, "campaignCriteria", [
     ...geoTargetResources.map((geoTargetConstant) => ({
       create: { campaign: campaignResourceName, location: { geoTargetConstant } },
     })),
     { create: { campaign: campaignResourceName, language: { languageConstant: LANGUAGE_PORTUGUES } } },
+    ...scheduleOperations,
   ]);
 
   // 4) Ad group
