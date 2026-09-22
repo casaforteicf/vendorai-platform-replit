@@ -9,6 +9,7 @@ import {
   Layers3,
   Sparkles,
   Waves,
+  type LucideIcon,
 } from "lucide-react";
 import type { ClientBrief } from "./conceptClientBrief";
 
