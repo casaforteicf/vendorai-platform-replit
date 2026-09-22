@@ -99,13 +99,6 @@ interface ProvisionResult {
   emailSent: boolean;
 }
 
-interface AvailablePlan {
-  id: string;
-  slug: string;
-  name: string;
-  isActive: boolean;
-}
-
 export default function AdminTenants() {
   const [, setLocation] = useLocation();
   const { token } = useAuth();
@@ -137,16 +130,6 @@ export default function AdminTenants() {
     },
   });
 
-  const { data: availablePlans = [], isLoading: plansLoading } = useQuery<AvailablePlan[]>({
-    queryKey: ["admin-plans", "active"],
-    queryFn: async () => {
-      const response = await fetch("/api/admin/plans", { headers: { Authorization: `Bearer ${token}` } });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Não foi possível carregar os planos");
-      return data as AvailablePlan[];
-    },
-    enabled: Boolean(token),
-  });
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterKind, setFilterKind] = useState("all");
@@ -191,7 +174,6 @@ export default function AdminTenants() {
     }>;
   } | null>(null);
 
-  const selectedCountry = COUNTRY_OPTIONS[form.countryCode];
   const activeCount = tenants.filter((tenant) => tenant.status === "active").length;
   const suspendedCount = tenants.filter((tenant) => tenant.status === "suspended").length;
   const demoCount = tenants.filter((tenant) => tenant.isDemo).length;
