@@ -11,7 +11,7 @@ import {
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
   Store, Package, PackagePlus, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
-  BarChart3, ChevronRight, ChevronLeft, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
+  BarChart3, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
