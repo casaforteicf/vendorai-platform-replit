@@ -653,7 +653,7 @@ export default function ConceptFacadeEditor({
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
               >
                 <Sparkles className="h-4 w-4" />
-                Gerar render desta opção
+                Gerar imagem realista
               </button>
             )}
           </div>
@@ -663,7 +663,7 @@ export default function ConceptFacadeEditor({
           <div className="p-4 pt-11">
             <div className="text-sm font-semibold">Escolha o estilo</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Comece pela linguagem visual; depois refine volumes, materiais, esquadrias e área externa.
+              Escolha a linguagem da fachada. A elevação permanece em linhas para editar com clareza; o Render gera a imagem realista.
             </p>
             <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
               {STYLE_LABELS.map(([value, label]) => (
@@ -722,9 +722,10 @@ export default function ConceptFacadeEditor({
       )}
 
       <div className="absolute inset-0 grid grid-cols-1 bg-slate-200 md:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
-        <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-[#eef1f3]">
+        <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-white">
           <div className="absolute inset-x-0 bottom-20 top-14 md:inset-0">
           <ConceptDerivedFacade
+            viewMode="line"
             lotWidth={lotWidth}
             levels={levels}
             rooms={rooms}
@@ -742,6 +743,11 @@ export default function ConceptFacadeEditor({
               setPanelOpen(true);
             }}
           />
+          </div>
+
+          <div className="pointer-events-none absolute left-4 top-16 z-20 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:top-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-orange-600">Fachada em linhas</div>
+            <div className="mt-0.5 text-[10px] font-semibold text-slate-600">Elevação arquitetônica editável</div>
           </div>
 
           <div className="absolute right-4 top-16 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:top-4">

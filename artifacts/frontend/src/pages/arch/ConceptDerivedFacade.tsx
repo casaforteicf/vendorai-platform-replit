@@ -21,6 +21,7 @@ type Props = {
   onVolumeChange?: (id: string, patch: Partial<FacadeVolume>) => void;
   selectedSurface?: FacadeSurfaceKey | null;
   onSelectSurface?: (surface: FacadeSurfaceKey | null) => void;
+  viewMode?: "line" | "material";
 };
 
 type Bounds = { minX: number; maxX: number; width: number };
@@ -126,8 +127,8 @@ function Roof({
   if (facade.roof === "platibanda") {
     return (
       <g>
-        <rect x={x - 0.8} y={y - 2.2} width={width + 1.6} height="2.5" rx="0.25" fill={color} />
-        <line x1={x} y1={y - 0.35} x2={x + width} y2={y - 0.35} stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.32" />
+        <rect x={x - 0.8} y={y - 2.2} width={width + 1.6} height="2.5" rx="0.25" fill={color} stroke="#334155" strokeWidth="0.55" />
+        <line x1={x} y1={y - 0.35} x2={x + width} y2={y - 0.35} stroke="#94a3b8" strokeOpacity="0.75" strokeWidth="0.28" />
       </g>
     );
   }
@@ -195,6 +196,7 @@ export default function ConceptDerivedFacade({
   onVolumeChange,
   selectedSurface,
   onSelectSurface,
+  viewMode = "line",
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<{
@@ -206,6 +208,7 @@ export default function ConceptDerivedFacade({
     startY: number;
   } | null>(null);
   const colors = facadePalette(facade, design);
+  const lineMode = viewMode === "line";
   const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
   const fallback = modelBounds(levels) ?? { minX: 0, maxX: Math.max(6, lotWidth), width: Math.max(6, lotWidth) };
 
@@ -269,16 +272,27 @@ export default function ConceptDerivedFacade({
     .sort((a, b) => a.x - b.x)
     .slice(0, 2);
 
-  const accentFill = design
-    ? `url(#facade-material-${design.surfaceMaterials.accent})`
-    : facade.accentMaterial === "pedra"
-      ? "url(#derived-stone)"
-      : colors.accent;
-  const mainFill = design ? `url(#facade-material-${design.surfaceMaterials.main})` : colors.wall;
-  const garageFill = design ? `url(#facade-material-${design.surfaceMaterials.garage})` : "#33393e";
-  const entranceFill = design ? `url(#facade-material-${design.surfaceMaterials.entrance})` : facade.accentMaterial === "madeira" ? "#7f523c" : "#4e555a";
-  const pavingFill = design ? `url(#facade-material-${design.surfaceMaterials.paving})` : "url(#derived-driveway)";
-  const frameColor = design ? getFacadeMaterial(design.surfaceMaterials.frames).baseColor : colors.frame;
+  const accentFill = lineMode
+    ? "url(#technical-accent)"
+    : design
+      ? `url(#facade-material-${design.surfaceMaterials.accent})`
+      : facade.accentMaterial === "pedra"
+        ? "url(#derived-stone)"
+        : colors.accent;
+  const mainFill = lineMode
+    ? "url(#technical-wall)"
+    : design ? `url(#facade-material-${design.surfaceMaterials.main})` : colors.wall;
+  const garageFill = lineMode
+    ? "url(#technical-gate)"
+    : design ? `url(#facade-material-${design.surfaceMaterials.garage})` : "#33393e";
+  const entranceFill = lineMode
+    ? "#ffffff"
+    : design ? `url(#facade-material-${design.surfaceMaterials.entrance})` : facade.accentMaterial === "madeira" ? "#7f523c" : "#4e555a";
+  const pavingFill = lineMode
+    ? "url(#technical-paving)"
+    : design ? `url(#facade-material-${design.surfaceMaterials.paving})` : "url(#derived-driveway)";
+  const frameColor = lineMode ? "#334155" : design ? getFacadeMaterial(design.surfaceMaterials.frames).baseColor : colors.frame;
+  const glassPatternId = lineMode ? "technical-glass" : "derived-facade-glass";
 
   const buildingHeight = STORY_HEIGHT * floors;
   const buildingTop = groundY - buildingHeight;
@@ -319,13 +333,13 @@ export default function ConceptDerivedFacade({
     const y = buildingTop + buildingHeight * (volume.y / 100);
     const width = Math.max(2.8, facadeWidth * (volume.width / 100));
     const height = Math.max(1.8, buildingHeight * (volume.height / 100));
-    const fill = `url(#facade-material-${volume.materialId})`;
+    const fill = lineMode ? "url(#technical-volume)" : `url(#facade-material-${volume.materialId})`;
     const selected = selectedVolumeId === volume.id;
     const common = {
       fill,
-      opacity: volume.opacity ?? 1,
-      stroke: selected ? "#f97316" : "#374151",
-      strokeWidth: selected ? 0.9 : 0.32,
+      opacity: lineMode ? 1 : (volume.opacity ?? 1),
+      stroke: selected ? "#f97316" : "#334155",
+      strokeWidth: selected ? 0.9 : lineMode ? 0.55 : 0.32,
     };
 
     const beginDrag = (event: React.PointerEvent<SVGGElement>) => {
@@ -363,14 +377,14 @@ export default function ConceptDerivedFacade({
               width={Math.max(1, width - Math.min(4.4, width * 0.28))}
               height={Math.max(1, height - Math.min(3.2, height * 0.18))}
               rx="0.35"
-              fill="url(#derived-facade-glass)"
+              fill={lineMode ? "#ffffff" : "url(#derived-facade-glass)"}
               fillOpacity="0.16"
               stroke="none"
             />
           </>
         ) : volume.kind === "slats" ? (
           <>
-            <rect x={x} y={y} width={width} height={height} rx="0.3" fill={getFacadeMaterial(volume.materialId).shadeColor} opacity="0.2" />
+            <rect x={x} y={y} width={width} height={height} rx="0.3" fill={lineMode ? "#ffffff" : getFacadeMaterial(volume.materialId).shadeColor} opacity={lineMode ? 1 : 0.2} stroke="#64748b" strokeWidth="0.32" />
             {Array.from({ length: Math.max(3, Math.round(width / 1.6)) }).map((_, index) => (
               <rect
                 key={index}
@@ -399,12 +413,12 @@ export default function ConceptDerivedFacade({
         ) : volume.kind === "planter" ? (
           <>
             <rect x={x} y={y} width={width} height={height} rx="0.35" {...common} />
-            <ellipse cx={x + width * 0.3} cy={y - 0.4} rx={Math.max(0.8, width * 0.12)} ry="1" fill="#66835f" />
-            <ellipse cx={x + width * 0.68} cy={y - 0.45} rx={Math.max(0.8, width * 0.13)} ry="1.05" fill="#78936f" />
+            <ellipse cx={x + width * 0.3} cy={y - 0.4} rx={Math.max(0.8, width * 0.12)} ry="1" fill={lineMode ? "#ffffff" : "#66835f"} stroke={lineMode ? "#64748b" : "none"} strokeWidth="0.28" />
+            <ellipse cx={x + width * 0.68} cy={y - 0.45} rx={Math.max(0.8, width * 0.13)} ry="1.05" fill={lineMode ? "#ffffff" : "#78936f"} stroke={lineMode ? "#64748b" : "none"} strokeWidth="0.28" />
           </>
         ) : volume.kind === "gate" ? (
           <>
-            <rect x={x} y={y} width={width} height={height} rx="0.25" fill={getFacadeMaterial(volume.materialId).shadeColor} stroke={common.stroke} strokeWidth={common.strokeWidth} />
+            <rect x={x} y={y} width={width} height={height} rx="0.25" fill={lineMode ? "#ffffff" : getFacadeMaterial(volume.materialId).shadeColor} stroke={common.stroke} strokeWidth={common.strokeWidth} />
             {Array.from({ length: 8 }).map((_, index) => (
               <line
                 key={index}
@@ -421,7 +435,7 @@ export default function ConceptDerivedFacade({
         ) : volume.kind === "balcony" ? (
           <>
             <rect x={x} y={y + height * 0.58} width={width} height={height * 0.42} rx="0.18" {...common} />
-            <rect x={x + width * 0.04} y={y + height * 0.12} width={width * 0.92} height={height * 0.48} rx="0.2" fill="#b8d0dc" fillOpacity="0.42" stroke="#64748b" strokeWidth="0.38" />
+            <rect x={x + width * 0.04} y={y + height * 0.12} width={width * 0.92} height={height * 0.48} rx="0.2" fill={lineMode ? "#ffffff" : "#b8d0dc"} fillOpacity={lineMode ? 1 : 0.42} stroke="#64748b" strokeWidth="0.38" />
           </>
         ) : (
           <rect x={x} y={y} width={width} height={height} rx={volume.kind === "canopy" ? 0.18 : 0.42} {...common} />
@@ -461,6 +475,30 @@ export default function ConceptDerivedFacade({
       aria-label="Fachada arquitetônica conceitual derivada do pré-projeto"
     >
       <defs>
+        <pattern id="technical-wall" width="7" height="7" patternUnits="userSpaceOnUse">
+          <rect width="7" height="7" fill="#ffffff" />
+          <path d="M0 7 L7 0" stroke="#cbd5e1" strokeWidth="0.22" />
+        </pattern>
+        <pattern id="technical-accent" width="5" height="5" patternUnits="userSpaceOnUse">
+          <rect width="5" height="5" fill="#ffffff" />
+          <path d="M1 0 V5 M3 0 V5" stroke="#94a3b8" strokeWidth="0.24" />
+        </pattern>
+        <pattern id="technical-gate" width="4" height="4" patternUnits="userSpaceOnUse">
+          <rect width="4" height="4" fill="#ffffff" />
+          <path d="M0 2 H4" stroke="#64748b" strokeWidth="0.26" />
+        </pattern>
+        <pattern id="technical-paving" width="5" height="5" patternUnits="userSpaceOnUse">
+          <rect width="5" height="5" fill="#ffffff" />
+          <path d="M0 0 H5 M0 2.5 H5 M0 5 H5 M0 0 V5 M2.5 0 V5 M5 0 V5" stroke="#cbd5e1" strokeWidth="0.18" />
+        </pattern>
+        <pattern id="technical-volume" width="5" height="5" patternUnits="userSpaceOnUse">
+          <rect width="5" height="5" fill="#ffffff" />
+          <path d="M0 5 L5 0" stroke="#cbd5e1" strokeWidth="0.2" />
+        </pattern>
+        <pattern id="technical-glass" width="6" height="6" patternUnits="userSpaceOnUse">
+          <rect width="6" height="6" fill="#f8fafc" />
+          <path d="M0 6 L6 0" stroke="#cbd5e1" strokeWidth="0.2" />
+        </pattern>
         {FACADE_MATERIALS.map((material) => (
           <pattern
             key={material.id}
@@ -517,19 +555,19 @@ export default function ConceptDerivedFacade({
       <rect
         width="140"
         height="78"
-        fill={design?.lighting === "night" ? "#111827" : design?.lighting === "sunset" ? "#ead8c8" : "url(#derived-facade-sky)"}
+        fill={lineMode ? "#ffffff" : design?.lighting === "night" ? "#111827" : design?.lighting === "sunset" ? "#ead8c8" : "url(#derived-facade-sky)"}
       />
-      <rect y="63" width="140" height="15" fill="#e4e9e2" />
-      <path d="M0 63 H140" stroke="#b9c3b7" strokeWidth="0.55" />
+      <rect y="63" width="140" height="15" fill={lineMode ? "#ffffff" : "#e4e9e2"} />
+      <path d="M0 63 H140" stroke={lineMode ? "#64748b" : "#b9c3b7"} strokeWidth={lineMode ? "0.72" : "0.55"} />
 
-      <ellipse cx="70" cy="65.2" rx="56" ry="2.5" fill="#94a3a8" opacity="0.14" filter="url(#soft-shadow)" />
+      {!lineMode && <ellipse cx="70" cy="65.2" rx="56" ry="2.5" fill="#94a3a8" opacity="0.14" filter="url(#soft-shadow)" />}
 
       <path
         d={"M " + (garageDoorX - 2) + " 63 L " + (garageDoorX + garageW + 2) + " 63 L " + (garageDoorX + garageW + 9) + " 78 L " + (garageDoorX - 9) + " 78 Z"}
         fill={pavingFill}
         opacity="0.95"
-        stroke={selectedSurface === "paving" ? "#f97316" : "transparent"}
-        strokeWidth={selectedSurface === "paving" ? "0.8" : "0"}
+        stroke={selectedSurface === "paving" ? "#f97316" : lineMode ? "#94a3b8" : "transparent"}
+        strokeWidth={selectedSurface === "paving" ? "0.8" : lineMode ? "0.3" : "0"}
         className={onSelectSurface ? "cursor-pointer" : undefined}
         onClick={(event) => {
           if (!onSelectSurface) return;
@@ -539,7 +577,7 @@ export default function ConceptDerivedFacade({
         }}
       />
 
-      <g filter="url(#derived-facade-shadow)">
+      <g filter={lineMode ? undefined : "url(#derived-facade-shadow)"}>
         <rect
           x={baseX}
           y={groundTop}
@@ -547,8 +585,8 @@ export default function ConceptDerivedFacade({
           height={STORY_HEIGHT}
           rx="0.42"
           fill={mainFill}
-          stroke={selectedSurface === "main" ? "#f97316" : "none"}
-          strokeWidth={selectedSurface === "main" ? "0.8" : "0"}
+          stroke={selectedSurface === "main" ? "#f97316" : lineMode ? "#334155" : "none"}
+          strokeWidth={selectedSurface === "main" ? "0.8" : lineMode ? "0.7" : "0"}
           className={onSelectSurface ? "cursor-pointer" : undefined}
           onClick={(event) => {
             if (!onSelectSurface) return;
@@ -566,6 +604,8 @@ export default function ConceptDerivedFacade({
             height={STORY_HEIGHT}
             rx="0.42"
             fill={mainFill}
+            stroke={lineMode ? "#334155" : "none"}
+            strokeWidth={lineMode ? "0.7" : "0"}
           />
         )}
 
@@ -576,9 +616,9 @@ export default function ConceptDerivedFacade({
           height={floors > 1 ? STORY_HEIGHT * 2 - 1.3 : STORY_HEIGHT + 3.8}
           rx="0.32"
           fill={accentFill}
-          opacity={facade.accentMaterial === "nenhum" ? 0.34 : 0.96}
-          stroke={selectedSurface === "accent" ? "#f97316" : "none"}
-          strokeWidth={selectedSurface === "accent" ? "0.8" : "0"}
+          opacity={lineMode ? 1 : facade.accentMaterial === "nenhum" ? 0.34 : 0.96}
+          stroke={selectedSurface === "accent" ? "#f97316" : lineMode ? "#475569" : "none"}
+          strokeWidth={selectedSurface === "accent" ? "0.8" : lineMode ? "0.55" : "0"}
           className={onSelectSurface ? "cursor-pointer" : undefined}
           onClick={(event) => {
             if (!onSelectSurface) return;
@@ -595,8 +635,10 @@ export default function ConceptDerivedFacade({
             width={socialGlassW + 2.8}
             height="11.7"
             rx="0.35"
-            fill="#30363a"
-            opacity="0.9"
+            fill={lineMode ? "#ffffff" : "#30363a"}
+            opacity={lineMode ? 1 : 0.9}
+            stroke={lineMode ? "#475569" : "none"}
+            strokeWidth={lineMode ? "0.42" : "0"}
           />
         )}
 
@@ -606,12 +648,14 @@ export default function ConceptDerivedFacade({
             y={roofY - 3}
             width="7.2"
             height={groundY - roofY + 3}
-            fill="#444b50"
+            fill={lineMode ? "#ffffff" : "#444b50"}
+            stroke={lineMode ? "#475569" : "none"}
+            strokeWidth={lineMode ? "0.42" : "0"}
           />
         )}
 
         {facade.style === "rustico_contemporaneo" && (
-          <rect x={baseX} y={groundY - 5.2} width={facadeWidth} height="5.2" fill="url(#derived-stone)" opacity="0.92" />
+          <rect x={baseX} y={groundY - 5.2} width={facadeWidth} height="5.2" fill={lineMode ? "url(#technical-wall)" : "url(#derived-stone)"} opacity={lineMode ? 1 : 0.92} stroke={lineMode ? "#64748b" : "none"} strokeWidth={lineMode ? "0.35" : "0"} />
         )}
 
         <rect
@@ -657,8 +701,8 @@ export default function ConceptDerivedFacade({
                 onSelectVolume?.(null);
               }}
             />
-            <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill="#43545d" opacity="0.78" />
-            <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill="#d9c7b2" />
+            <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill={lineMode ? "url(#technical-glass)" : "#43545d"} opacity={lineMode ? 1 : 0.78} stroke={lineMode ? "#64748b" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
+            <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill={lineMode ? "#334155" : "#d9c7b2"} />
           </>
         )}
 
@@ -669,8 +713,8 @@ export default function ConceptDerivedFacade({
               y={groundTop + 5.1}
               width={socialGlassW}
               height="8.8"
-              frame={colors.frame}
-              id="derived-facade-glass"
+              frame={frameColor}
+              id={glassPatternId}
             />
             {onSelectSurface && (
               <rect
@@ -707,8 +751,8 @@ export default function ConceptDerivedFacade({
               y={groundTop + 6.2 + index * 0.15}
               width={width}
               height="7.2"
-              frame={colors.frame}
-              id="derived-facade-glass"
+              frame={frameColor}
+              id={glassPatternId}
             />
           );
         })}
@@ -723,8 +767,8 @@ export default function ConceptDerivedFacade({
               y={groundTop - STORY_HEIGHT + 5.2 + (index % 2) * 0.2}
               width={width}
               height="7.4"
-              frame={colors.frame}
-              id="derived-facade-glass"
+              frame={frameColor}
+              id={glassPatternId}
             />
           );
         })}
@@ -809,11 +853,11 @@ export default function ConceptDerivedFacade({
         )}
 
         {facade.style === "minimalista" && (
-          <rect x={socialGlassX - 2.2} y={groundTop + 2.4} width={socialGlassW + 4.4} height="0.8" rx="0.2" fill="#7c8287" opacity="0.75" />
+          <rect x={socialGlassX - 2.2} y={groundTop + 2.4} width={socialGlassW + 4.4} height="0.8" rx="0.2" fill={lineMode ? "#ffffff" : "#7c8287"} opacity={lineMode ? 1 : 0.75} stroke={lineMode ? "#475569" : "none"} strokeWidth={lineMode ? "0.34" : "0"} />
         )}
 
         {facade.style === "tropical" && (
-          <g fill="#9b6a47">
+          <g fill={lineMode ? "#ffffff" : "#9b6a47"} stroke={lineMode ? "#64748b" : "none"} strokeWidth={lineMode ? "0.28" : "0"}>
             <rect x={socialGlassX - 2.8} y={groundTop + 1.6} width={socialGlassW + 5.6} height="1.05" rx="0.22" />
             {Array.from({ length: 7 }).map((_, index) => (
               <rect
@@ -828,27 +872,27 @@ export default function ConceptDerivedFacade({
         )}
 
         {design?.volumes.map(renderVolume)}
-        <Roof x={roofX} y={roofY} width={roofW} facade={facade} color={colors.roof} />
-        <rect x={baseX} y={groundY - 0.75} width={facadeWidth} height="0.75" fill={colors.wallShade} opacity="0.72" />
+        <Roof x={roofX} y={roofY} width={roofW} facade={facade} color={lineMode ? "#ffffff" : colors.roof} />
+        <rect x={baseX} y={groundY - 0.75} width={facadeWidth} height="0.75" fill={lineMode ? "#ffffff" : colors.wallShade} opacity={lineMode ? 1 : 0.72} stroke={lineMode ? "#64748b" : "none"} strokeWidth={lineMode ? "0.32" : "0"} />
       </g>
 
       {(design?.showLandscaping ?? true) && (
-      <g opacity={facade.landscaping === "leve" ? 0.66 : facade.landscaping === "intenso" ? 1 : 0.86}>
-        <ellipse cx={baseX + 5} cy="64.2" rx="7.4" ry="2.1" fill="#7f9c79" />
-        <ellipse cx={baseX + facadeWidth - 5} cy="64" rx="6.7" ry="1.9" fill="#89a481" />
-        <ellipse cx={baseX + facadeWidth * 0.71} cy="64.6" rx="4.8" ry="1.35" fill="#93aa89" />
+      <g opacity={lineMode ? 1 : facade.landscaping === "leve" ? 0.66 : facade.landscaping === "intenso" ? 1 : 0.86}>
+        <ellipse cx={baseX + 5} cy="64.2" rx="7.4" ry="2.1" fill={lineMode ? "#ffffff" : "#7f9c79"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
+        <ellipse cx={baseX + facadeWidth - 5} cy="64" rx="6.7" ry="1.9" fill={lineMode ? "#ffffff" : "#89a481"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
+        <ellipse cx={baseX + facadeWidth * 0.71} cy="64.6" rx="4.8" ry="1.35" fill={lineMode ? "#ffffff" : "#93aa89"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
         {facade.landscaping === "intenso" && (
           <>
-            <circle cx={baseX + 2.6} cy="59.7" r="3.25" fill="#73906f" />
-            <circle cx={baseX + facadeWidth - 2.2} cy="60.1" r="2.8" fill="#7e9d77" />
-            <rect x={baseX + facadeWidth * 0.76} y="55.2" width="0.65" height="7.5" fill="#7b6754" />
-            <ellipse cx={baseX + facadeWidth * 0.763} cy="54.4" rx="3.8" ry="2.4" fill="#809d77" />
+            <circle cx={baseX + 2.6} cy="59.7" r="3.25" fill={lineMode ? "#ffffff" : "#73906f"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
+            <circle cx={baseX + facadeWidth - 2.2} cy="60.1" r="2.8" fill={lineMode ? "#ffffff" : "#7e9d77"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
+            <rect x={baseX + facadeWidth * 0.76} y="55.2" width="0.65" height="7.5" fill={lineMode ? "#ffffff" : "#7b6754"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.2" : "0"} />
+            <ellipse cx={baseX + facadeWidth * 0.763} cy="54.4" rx="3.8" ry="2.4" fill={lineMode ? "#ffffff" : "#809d77"} stroke={lineMode ? "#94a3b8" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
           </>
         )}
       </g>
       )}
 
-      <path d={"M " + (baseX - 4) + " 65.5 H " + (baseX + facadeWidth + 4)} stroke="#a9b2a8" strokeWidth="0.58" />
+      <path d={"M " + (baseX - 4) + " 65.5 H " + (baseX + facadeWidth + 4)} stroke={lineMode ? "#475569" : "#a9b2a8"} strokeWidth={lineMode ? "0.72" : "0.58"} />
       <text x="70" y="74.2" textAnchor="middle" fontSize="1.65" fill="#667085" fontWeight="650" letterSpacing="0.08">
         {Math.round(overall.width * 10) / 10} m de frente construída · lote {lotWidth.toFixed(1)} m
       </text>
