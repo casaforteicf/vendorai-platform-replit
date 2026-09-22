@@ -93,38 +93,21 @@ export function UnifiedAssistantLauncher() {
   }, []);
 
   useEffect(() => {
-    let createdSlot: HTMLElement | null = null;
-
     const attachToSidebar = () => {
       if (window.innerWidth < 768) {
         setSidebarSlot(null);
         return;
       }
 
-      const sidebarInner = document.querySelector<HTMLElement>(".hidden.md\\:flex.sticky.top-0.h-screen > div");
-      const footer = sidebarInner?.querySelector<HTMLElement>(".p-4.border-t");
-      if (!sidebarInner || !footer) {
-        setSidebarSlot(null);
-        return;
-      }
-
-      let slot = sidebarInner.querySelector<HTMLElement>("[data-vendorai-unified-assistant-slot]");
-      if (!slot) {
-        slot = document.createElement("div");
-        slot.dataset.vendoraiUnifiedAssistantSlot = "true";
-        slot.style.flex = "0 0 auto";
-        slot.style.padding = "0 12px 8px";
-        slot.style.position = "relative";
-        slot.style.zIndex = "20";
-        sidebarInner.insertBefore(slot, footer);
-        createdSlot = slot;
-      }
-
+      // O slot agora é declarativo e vive dentro do bloco "Conta e atalhos"
+      // da sidebar. Quando o usuário recolhe esse bloco, o slot é desmontado
+      // pelo React e o launcher de IA desaparece junto, sem manipulação de DOM.
+      const slot = document.querySelector<HTMLElement>("[data-vendorai-unified-assistant-slot]");
       setSidebarSlot((current) => current === slot ? current : slot);
     };
 
     attachToSidebar();
-    const timer = window.setInterval(attachToSidebar, 750);
+    const timer = window.setInterval(attachToSidebar, 500);
     window.addEventListener("resize", attachToSidebar);
     window.addEventListener("popstate", attachToSidebar);
 
@@ -132,7 +115,6 @@ export function UnifiedAssistantLauncher() {
       window.clearInterval(timer);
       window.removeEventListener("resize", attachToSidebar);
       window.removeEventListener("popstate", attachToSidebar);
-      if (createdSlot?.isConnected) createdSlot.remove();
     };
   }, []);
 
