@@ -152,6 +152,14 @@ for (const filePath of walk(root)) {
       previousLine.includes('router.get("/tenants/:tenantId/site-generator/:siteId/qa"') &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /if\s*\(!canAccess\(req,\s*tenantId\)\)/.test(guardWindow);
+    // Facebook Marketplace routes resolve the route tenant only to enforce the
+    // shared same-tenant/Super Admin guard immediately before touching catalog,
+    // campaign or listing data. Keep the exception exact to this router/guard;
+    // any route that omits the immediate guard remains a HIGH candidate.
+    const guardedFacebookMarketplaceTenant =
+      relativeFile === "routes/facebook_marketplace.ts" &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!hasTenantAccess\(req,\s*tenantId\)\)/.test(guardWindow);
 
     if (
       line.includes("tenant-audit: reviewed") ||
@@ -165,7 +173,8 @@ for (const filePath of walk(root)) {
       guardedMetaGrowthWebhookTenant ||
       guardedSocialIdentityRoleTenant ||
       guardedGenerationPackTenant ||
-      guardedSiteGeneratorQaTenant
+      guardedSiteGeneratorQaTenant ||
+      guardedFacebookMarketplaceTenant
     ) {
       return;
     }
