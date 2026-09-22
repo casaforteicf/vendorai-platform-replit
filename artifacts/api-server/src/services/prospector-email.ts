@@ -60,6 +60,7 @@ export async function sendProspectorColdEmail(input: {
   subject: string;
   body: string;
   tenantName?: string | null;
+  includeOptOut?: boolean;
 }): Promise<{ id: string; replyTo: string }> {
   const apiKey = process.env["RESEND_API_KEY"]?.trim();
   if (!apiKey) throw new Error("RESEND_API_KEY não configurada");
@@ -80,7 +81,9 @@ export async function sendProspectorColdEmail(input: {
 
   const optOut =
     'Se este assunto não for relevante ou você preferir não receber novas mensagens, basta responder "não tenho interesse".';
-  const body = `${input.body.trim()}\n\n${optOut}`;
+  const body = input.includeOptOut === false
+    ? input.body.trim()
+    : `${input.body.trim()}\n\n${optOut}`;
   const html = body
     .split("\n")
     .map((line) => line.trim()
