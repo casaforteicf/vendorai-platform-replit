@@ -52,6 +52,21 @@ export function mergeResponseStats(
   return next;
 }
 
+export function markResponseConversion(
+  current: ObjectionResponseStat[],
+  responseText: string | null | undefined,
+): ObjectionResponseStat[] {
+  const text = responseText?.trim();
+  if (!text) return current;
+
+  const normalized = text.toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
+  return current.map((item) =>
+    item.texto.toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim() === normalized
+      ? { ...item, conversoes: item.conversoes + 1 }
+      : { ...item },
+  );
+}
+
 export function outcomeBreaksObjection(outcome: SalesObjectionOutcome): boolean {
   return outcome === "advanced" || outcome === "won";
 }
@@ -63,6 +78,7 @@ export function resolveEventOutcome(input: {
   const leadStatus = input.leadStatus?.toLocaleLowerCase("pt-BR");
   if (leadStatus === "cliente" || leadStatus === "ganho" || leadStatus === "won") return "won";
   if (leadStatus === "perdido" || leadStatus === "lost") return "lost";
+  if (leadStatus === "qualificado") return "advanced";
 
   switch (input.inferredOutcome) {
     case "advanced":
