@@ -2,25 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-export function quantityStep(isComposition: boolean): number {
-  return isComposition ? 0.01 : 1;
+export function quantityStep(_isComposition: boolean): number {
+  return 0.01;
 }
 
 export function normalizeBudgetQuantity(value: number, isComposition: boolean): number {
-  const step = quantityStep(isComposition);
-  const minimum = step;
+  const minimum = quantityStep(isComposition);
   if (!Number.isFinite(value)) return minimum;
-  const normalized = isComposition
-    ? Math.round((value + Number.EPSILON) * 100) / 100
-    : Math.trunc(value);
+  const normalized = Math.round((value + Number.EPSILON) * 100) / 100;
   return Math.max(minimum, normalized);
 }
 
 export function formatBudgetQuantity(value: number, isComposition: boolean): string {
   const normalized = normalizeBudgetQuantity(value, isComposition);
-  return isComposition
-    ? normalized.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")
-    : String(normalized);
+  return normalized.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
 }
 
 export function parseBudgetQuantity(raw: string, isComposition: boolean): number | null {
@@ -68,7 +63,7 @@ export function BudgetQuantityInput({ value, isComposition, onChange, className 
     <div className={`flex h-9 w-[132px] overflow-hidden rounded-md border bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${className}`}>
       <Input
         type="text"
-        inputMode={isComposition ? "decimal" : "numeric"}
+        inputMode="decimal"
         aria-label="Quantidade"
         className="h-full min-w-0 flex-1 rounded-none border-0 px-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         value={draft}
@@ -87,9 +82,7 @@ export function BudgetQuantityInput({ value, isComposition, onChange, className 
         }}
         onChange={(event) => {
           const raw = event.target.value;
-          const allowed = isComposition
-            ? /^\d*(?:[.,]\d{0,2})?$/
-            : /^\d*$/;
+          const allowed = /^\d*(?:[.,]\d{0,2})?$/;
           if (!allowed.test(raw)) return;
           setDraft(raw);
 
