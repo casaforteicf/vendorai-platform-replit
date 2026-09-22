@@ -4161,7 +4161,7 @@ export default function ConceptPlanner() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setEditorExperienceMode("professional"); if (editorLibraryTab === "brief") setEditorLibraryTab("build"); }}
+                    onClick={() => { setEditorExperienceMode("professional"); if (editorLibraryTab === "brief" || editorLibraryTab === "placement") setEditorLibraryTab("build"); }}
                     className={editorExperienceMode === "professional"
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
                       : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
