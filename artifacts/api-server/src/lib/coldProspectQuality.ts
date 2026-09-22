@@ -45,6 +45,7 @@ export interface ColdProspectQualityInput {
   };
   propensityScore: number;
   dispatchThreshold: number;
+  channelCapabilities?: Partial<Record<ColdOutreachChannel, boolean>>;
 }
 
 export interface ColdProspectQualityResult {
@@ -150,42 +151,60 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
   const instagramScopedId = cleanText(input.instagramScopedId);
 
   // "Contato encontrado" e "canal que o sistema consegue executar agora" são
-  // conceitos diferentes. Um @ público do Instagram, por exemplo, não permite
-  // DM fria pela API da Meta sem um scoped id prévio. E-mail continua sendo
-  // preservado como opção comercial, mas o transporte automático ainda não é
-  // executado pelo Prospecctor.
+  // conceitos diferentes. A capacidade é calculada fora deste gate a partir
+  // das integrações realmente ativas do tenant (WhatsApp, Resend/inbound etc.).
+  const capabilities = input.channelCapabilities ?? {};
   const channels: ColdOutreachChannelPlan[] = [
     {
       channel: "whatsapp",
       available: Boolean(phone),
-      autoExecutable: Boolean(phone),
-      reason: phone ? "telefone_comercial_disponivel" : "sem_telefone",
+      autoExecutable: Boolean(phone && capabilities.whatsapp === true),
+      reason: !phone
+        ? "sem_telefone"
+        : capabilities.whatsapp === true
+          ? "whatsapp_ativo_no_tenant"
+          : "telefone_disponivel_sem_transporte_whatsapp_ativo",
     },
     {
       channel: "instagram",
       available: Boolean(instagramHandle || instagramScopedId),
-      autoExecutable: false,
-      reason: instagramScopedId
-        ? "instagram_disponivel_mas_cadencia_automatica_ainda_nao_habilitada"
-        : instagramHandle
+      autoExecutable: Boolean(instagramScopedId && capabilities.instagram === true),
+      reason: !instagramHandle && !instagramScopedId
+        ? "sem_instagram"
+        : !instagramScopedId
           ? "handle_publico_sem_permissao_de_dm_automatica"
-          : "sem_instagram",
+          : capabilities.instagram === true
+            ? "instagram_scoped_id_e_transporte_ativos"
+            : "instagram_disponivel_sem_cadencia_fria_habilitada",
     },
     {
       channel: "email",
       available: Boolean(email),
-      autoExecutable: false,
-      reason: email ? "email_disponivel_transporte_prospector_pendente" : "sem_email",
+      autoExecutable: Boolean(email && capabilities.email === true),
+      reason: !email
+        ? "sem_email"
+        : capabilities.email === true
+          ? "email_resend_com_reply_inbound_ativo"
+          : "email_disponivel_sem_inbound_seguro_configurado",
     },
   ];
 
   const hasValidContact = channels.some((item) => item.available);
   const executableChannels = channels.filter((item) => item.autoExecutable);
   const hasExecutableChannel = executableChannels.length > 0;
+
+  const configuredPriority = stringArray(meta["prospector_channel_priority"])
+    .filter((value): value is ColdOutreachChannel => ["whatsapp", "email", "instagram"].includes(value));
+  const channelPriority: ColdOutreachChannel[] = [
+    ...configuredPriority,
+    "whatsapp",
+    "email",
+    "instagram",
+  ].filter((value, index, all) => all.indexOf(value) === index);
+
   const preferredChannel =
-    executableChannels.find((item) => item.channel === "whatsapp")?.channel ??
-    executableChannels.find((item) => item.channel === "instagram")?.channel ??
-    channels.find((item) => item.available)?.channel ??
+    channelPriority.find((channel) => executableChannels.some((item) => item.channel === channel)) ??
+    channelPriority.find((channel) => channels.some((item) => item.channel === channel && item.available)) ??
     null;
 
   const segmentIdentified = normalized(input.segmento) !== "" && normalized(input.segmento) !== "geral";
