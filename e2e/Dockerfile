@@ -6,7 +6,7 @@ RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
 
-RUN pnpm install --filter @workspace/e2e... --frozen-lockfile \
+RUN pnpm install --filter @workspace/e2e... --no-frozen-lockfile \
   && pnpm --filter @workspace/e2e exec playwright install --with-deps chromium
 
 ENV CI=1
