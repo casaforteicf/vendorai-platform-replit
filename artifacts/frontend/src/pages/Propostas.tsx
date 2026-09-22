@@ -2227,7 +2227,13 @@ function newFreeItem(): FreeItem {
     const createFromTemplateMut = useCreatePropostaFromTemplate();
     const { mutate: createDeal } = useCreateDeal();
     const { data: propostaTemplates = [] } = useListPropostaTemplates(tenantId, {
-      query: { queryKey: getListPropostaTemplatesQueryKey(tenantId), enabled: !!tenantId },
+      query: {
+        queryKey: getListPropostaTemplatesQueryKey(tenantId),
+        enabled: !!tenantId && open,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        staleTime: 300_000,
+      },
     });
     const activeCatalog     = catalog.filter((p) => p.ativo);
     const { data: composicoes = [] } = useListComposicoes(tenantId, {}, {
@@ -2994,7 +3000,10 @@ function newFreeItem(): FreeItem {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-[96vw] xl:max-w-[1600px] max-h-[95vh] overflow-y-auto">
+      <DialogContent
+        data-vendorai-refresh-protected="true"
+        className="max-w-[96vw] xl:max-w-[1600px] max-h-[95vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>{editingProposta ? "Editar Orçamento" : "Novo Orçamento"}</DialogTitle>
         </DialogHeader>
