@@ -342,6 +342,7 @@ export default function ConceptWebGLScene({
           cameraGoal: null,
           navigationMode: "orbit",
           walkKeys: new Set(),
+          walkControl: { forward: 0, strafe: 0 },
           walkYaw: 0,
           walkPitch: 0,
           walkDragging: false,
