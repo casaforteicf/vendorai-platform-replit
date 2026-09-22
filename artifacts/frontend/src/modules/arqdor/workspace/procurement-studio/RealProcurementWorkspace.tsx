@@ -43,6 +43,23 @@ type Quote = {
   documents?: Array<Record<string, any>>;
 };
 
+type RfqDelivery = {
+  id: string;
+  requestId: string;
+  supplier: string;
+  channel: "whatsapp" | "email";
+  destination: string;
+  status: string;
+  message?: string | null;
+  providerMessageId?: string | null;
+  errorMessage?: string | null;
+  sentAt?: string | null;
+  viewedAt?: string | null;
+  respondedAt?: string | null;
+  quoteReceivedAt?: string | null;
+  quoteId?: string | null;
+};
+
 type Receipt = {
   id: string;
   requestId: string;
@@ -63,6 +80,7 @@ type Bundle = {
   requests: PurchaseRequest[];
   quotes: Quote[];
   receipts: Receipt[];
+  rfqDeliveries: RfqDelivery[];
   stages: Stage[];
   finance: FinanceLaunch[];
 };
@@ -152,6 +170,25 @@ function normalizeQuote(raw: any): Quote {
   };
 }
 
+function normalizeRfqDelivery(raw: any): RfqDelivery {
+  return {
+    id: String(raw?.id ?? ""),
+    requestId: String(raw?.compra_id ?? ""),
+    supplier: String(raw?.supplier_name ?? "Fornecedor"),
+    channel: raw?.channel === "email" ? "email" : "whatsapp",
+    destination: String(raw?.destination ?? ""),
+    status: String(raw?.status ?? "draft"),
+    message: raw?.message ?? null,
+    providerMessageId: raw?.provider_message_id ?? null,
+    errorMessage: raw?.error_message ?? null,
+    sentAt: raw?.sent_at ?? null,
+    viewedAt: raw?.viewed_at ?? null,
+    respondedAt: raw?.responded_at ?? null,
+    quoteReceivedAt: raw?.quote_received_at ?? null,
+    quoteId: raw?.quote_id ?? null,
+  };
+}
+
 function normalizeReceipt(raw: any): Receipt {
   return {
     id: String(raw?.id ?? ""),
@@ -200,6 +237,27 @@ function statusClass(status: string) {
   if (["cotacao", "quoted"].includes(status)) return "bg-blue-50 text-blue-700";
   if (["cancelado", "cancelada", "rejected"].includes(status)) return "bg-rose-50 text-rose-700";
   return "bg-amber-50 text-amber-700";
+}
+
+function rfqStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "Preparando",
+    sent: "Enviado",
+    viewed: "Visualizado",
+    responded: "Respondido",
+    quote_received: "Cotação recebida",
+    failed: "Falha no envio",
+  };
+  return labels[status] ?? status;
+}
+
+function rfqStatusClass(status: string) {
+  if (status === "quote_received") return "bg-emerald-100 text-emerald-800";
+  if (status === "responded") return "bg-violet-100 text-violet-800";
+  if (status === "viewed") return "bg-blue-100 text-blue-800";
+  if (status === "sent") return "bg-sky-50 text-sky-700";
+  if (status === "failed") return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-600";
 }
 
 
@@ -354,6 +412,8 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
   const [requestItemIndex, setRequestItemIndex] = useState(0);
   const [requestImporting, setRequestImporting] = useState(false);
   const [quoteImporting, setQuoteImporting] = useState(false);
+  const [rfqDraft, setRfqDraft] = useState<{ supplier: string; channel: "whatsapp" | "email"; destination: string; message: string }>({ supplier: "", channel: "whatsapp", destination: "", message: "" });
+  const [quoteDeliveryId, setQuoteDeliveryId] = useState("");
 
   const load = useCallback(async () => {
     if (!directObraId && !meta.id) { setLoading(false); return; }
@@ -374,6 +434,7 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
         requests,
         quotes: (raw.quotes ?? []).map(normalizeQuote),
         receipts: (raw.receipts ?? []).map(normalizeReceipt),
+        rfqDeliveries: (raw.rfqDeliveries ?? []).map(normalizeRfqDelivery),
         stages: (raw.stages ?? []).map((stage: any) => ({ id: String(stage.id), name: String(stage.nome ?? "Etapa") })),
         finance: (raw.finance ?? []).map((item: any) => ({ id: String(item.id), supplier: item.fornecedor ?? null, value: n(item.valor), dueDate: item.data_vencimento ?? null, status: String(item.status ?? "pendente"), description: item.descricao ?? null })),
       };
@@ -389,8 +450,22 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
   useEffect(() => { void load(); }, [load]);
 
   const selected = bundle?.requests.find((request) => request.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selected || !bundle) return;
+    setRfqDraft({
+      supplier: "",
+      channel: "whatsapp",
+      destination: "",
+      message: rfqText(bundle.obra.nome, selected),
+    });
+    setQuoteDeliveryId("");
+  }, [selectedId, bundle?.obra.nome]);
+
+  const selectedQuotes = bundle?.requests.find((request) => request.id === selectedId) ?? null;
   const selectedQuotes = useMemo(() => (bundle?.quotes ?? []).filter((quote) => quote.requestId === selectedId).sort((a, b) => quoteTotal(a) - quoteTotal(b)), [bundle, selectedId]);
   const selectedReceipts = useMemo(() => (bundle?.receipts ?? []).filter((receipt) => receipt.requestId === selectedId), [bundle, selectedId]);
+  const selectedDeliveries = useMemo(() => (bundle?.rfqDeliveries ?? []).filter((delivery) => delivery.requestId === selectedId), [bundle, selectedId]);
   const orderedRequests = (bundle?.requests ?? []).filter((request) => Boolean(request.supplierOrderId));
 
   const metrics = useMemo(() => {
