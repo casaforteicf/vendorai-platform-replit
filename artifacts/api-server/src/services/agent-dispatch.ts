@@ -68,6 +68,14 @@ import { ErroCalculoOrcamento } from "../lib/calculoOrcamentoM2.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
+import {
+  detectProspectorStateFromReply,
+  evaluateProspectorQualification,
+  isColdProspectSource,
+  prospectorQuestionsForExtraction as buildProspectorQuestionsForExtraction,
+  resolveProspectorPlaybook,
+  type ProspectorPlaybook,
+} from "../lib/prospector-consultive.js";
 
 /**
  * Finds the tenant's agenda with a refresh token, creates a provisional
@@ -1172,6 +1180,9 @@ export async function processAgentInternal(params: {
     // Resolve DB-driven system prompt override
     let dispatchSystemPrompt: string | null = null;
     let spinQualificationForExtraction: SpinQuestion[] | null = null;
+    let prospectorMode = false;
+    let prospectorPlaybookForExtraction: ProspectorPlaybook | null = null;
+    let prospectorQuestionsForExtraction: SpinQuestion[] | null = null;
     const dispatchAgentKey = AGENT_NAME_TO_KEY[resolvedAgentName];
     if (dispatchAgentKey) {
       try {
@@ -1193,6 +1204,64 @@ export async function processAgentInternal(params: {
         }
       } catch (err) {
         log.warn({ err, agentName: resolvedAgentName, tenantId }, "dispatch: getAgentConfig failed, using hardcoded fallback");
+      }
+    }
+
+    // ── Prospecctor consultivo: cold outbound is research-first, not generic SDR ──
+    if (resolvedAgentName === "sdr" && (scenario?.["cold_outreach"] === true || isColdProspectSource(ctx.lead.source))) {
+      try {
+        const resolvedProspector = await getAgentConfig(tenantId, "prospector");
+        const prospectorParams = (resolvedProspector?.parametros ?? {}) as Record<string, unknown>;
+        const playbook = resolveProspectorPlaybook(
+          prospectorParams["prospectorPlaybook"],
+          ctx.lead.mercadoSegmento,
+          (ctx.lead.metadata ?? {}) as Record<string, unknown>,
+        );
+        const previousAgentMessage = [...ctx.recentMessages]
+          .reverse()
+          .find((item) => item.enviadoPor === "agente_ia")?.conteudo ?? null;
+        const existingDiscoveryData = (ctx.lead.discoveryData ?? {}) as Record<string, unknown>;
+        const state = detectProspectorStateFromReply({
+          incomingMessage: mensagem,
+          previousAgentMessage,
+          existingDiscoveryData,
+        });
+
+        const stateChanged =
+          (state.contextConfirmed && existingDiscoveryData["prospector_context_confirmed"] !== true) ||
+          (state.nextStepAccepted && existingDiscoveryData["prospector_next_step_accepted"] !== true);
+
+        if (stateChanged) {
+          const nextDiscoveryData = {
+            ...existingDiscoveryData,
+            ...(state.contextConfirmed ? { prospector_context_confirmed: true } : {}),
+            ...(state.nextStepAccepted ? { prospector_next_step_accepted: true } : {}),
+          };
+          await db.update(leadsTable)
+            .set({ discoveryData: nextDiscoveryData, updatedAt: new Date() })
+            .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+          ctx.lead.discoveryData = nextDiscoveryData;
+        }
+
+        prospectorMode = true;
+        prospectorPlaybookForExtraction = playbook;
+        prospectorQuestionsForExtraction = buildProspectorQuestionsForExtraction(playbook) as SpinQuestion[];
+        enrichedScenario = {
+          ...(enrichedScenario ?? {}),
+          prospector_mode: true,
+          prospector_playbook: playbook,
+          prospector_system_prompt: resolvedProspector?.systemPrompt ?? null,
+          prospector_state: state,
+        };
+        log.debug(
+          { tenantId, leadId, diagnosisFields: prospectorQuestionsForExtraction.map((q) => q.fieldKey) },
+          "dispatch: Prospecctor consultive mode injected",
+        );
+      } catch (err) {
+        log.warn(
+          { err, tenantId, leadId },
+          "dispatch: Prospecctor mode unavailable; keeping standard SDR behavior",
+        );
       }
     }
 
@@ -1233,7 +1302,7 @@ export async function processAgentInternal(params: {
     // ── Maturity survey response detection (frio_teste pesquisa) ─────────────
     // When the lead replies after the survey message, detect and persist the
     // maturity level so it's available in the scenario AND in the lead record.
-    if (resolvedAgentName === "sdr") {
+    if (resolvedAgentName === "sdr" && !prospectorMode) {
       try {
         const trimmedMsg = mensagem.trim();
         const lastAgentMsg = [...ctx.recentMessages].reverse().find((m) => m.enviadoPor === "agente_ia");
@@ -1650,10 +1719,75 @@ export async function processAgentInternal(params: {
           mensagem,
           finalResposta,
           log,
-          resolvedAgentName === "sdr" ? spinQualificationForExtraction : null,
+          resolvedAgentName === "sdr" ? (prospectorQuestionsForExtraction ?? spinQualificationForExtraction) : null,
         );
       } catch (err) {
         log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction failed");
+      }
+
+      // After the synchronous extractor has persisted the latest answer, compute
+      // the Prospecctor SQL gate from CRM state. Qualification only happens after
+      // explicit context confirmation AND acceptance of the configured next step.
+      if (prospectorMode && prospectorPlaybookForExtraction) {
+        try {
+          const [freshLead] = await db
+            .select({
+              discoveryData: leadsTable.discoveryData,
+              metadata: leadsTable.metadata,
+              endereco: leadsTable.endereco,
+              status: leadsTable.status,
+            })
+            .from(leadsTable)
+            .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+            .limit(1);
+
+          if (freshLead) {
+            const dd = (freshLead.discoveryData ?? {}) as Record<string, unknown>;
+            const meta = (freshLead.metadata ?? {}) as Record<string, unknown>;
+            const hasTerrainSignal = Boolean(
+              freshLead.endereco ||
+              meta["endereco_obra"] ||
+              meta["obra"] ||
+              meta["terrain"] ||
+              meta["terreno"] ||
+              meta["constructionSignal"],
+            );
+            const result = evaluateProspectorQualification({
+              playbook: prospectorPlaybookForExtraction,
+              discoveryData: dd,
+              hasTerrainSignal,
+            });
+            const nextDiscoveryData = {
+              ...dd,
+              prospector_sql_checks: result.checks,
+              prospector_diagnostics_complete: result.diagnosticsComplete,
+              prospector_sql_qualified: result.qualified,
+              prospector_last_evaluated_at: new Date().toISOString(),
+            };
+
+            await db.update(leadsTable)
+              .set({
+                discoveryData: nextDiscoveryData,
+                ...(result.qualified ? {
+                  status: "qualificado",
+                  proximaAcao: prospectorPlaybookForExtraction.nextStep.offer,
+                } : {
+                  proximaAcao: result.diagnosticsComplete
+                    ? "Confirmar entendimento do contexto e validar próximo passo"
+                    : "Continuar diagnóstico consultivo do Prospecctor",
+                }),
+                updatedAt: new Date(),
+              })
+              .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+            log.info(
+              { tenantId, leadId, qualified: result.qualified, checks: result.checks },
+              "dispatch: Prospecctor SQL gate evaluated",
+            );
+          }
+        } catch (err) {
+          log.warn({ err, tenantId, leadId }, "dispatch: Prospecctor SQL gate evaluation failed");
+        }
       }
 
       // SPIN briefing (texto livre pro histórico/CRM) não afeta o que o
@@ -1665,7 +1799,7 @@ export async function processAgentInternal(params: {
         mensagem,
         finalResposta,
         log,
-        resolvedAgentName === "sdr" ? spinQualificationForExtraction : null,
+        resolvedAgentName === "sdr" ? (prospectorQuestionsForExtraction ?? spinQualificationForExtraction) : null,
       ).catch((err) => {
         log.warn({ err, leadId, tenantId }, "dispatch: SPIN briefing extraction failed");
       });
