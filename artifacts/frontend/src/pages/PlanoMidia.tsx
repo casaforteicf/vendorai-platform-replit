@@ -95,6 +95,7 @@ type PlannerAdCampaign = {
   destinoClique: "landing_page" | "whatsapp" | "produto" | "formulario_lead";
   orcamentoDiario: string;
   latestCreative: PlannerAdCreative | null;
+  creatives?: PlannerAdCreative[];
   segmentacao?: {
     localizacao?: { locais?: string[]; raioKm?: number | null };
     marketingContext?: { campaignId?: string; campaignName?: string };
@@ -238,6 +239,8 @@ export default function PlanoMidia() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [sendingComment, setSendingComment] = useState<string | null>(null);
   const [adActionBusy, setAdActionBusy] = useState<string | null>(null);
+  const [selectedCreativeByAd, setSelectedCreativeByAd] = useState<Record<string, string>>({});
+  const [placementByAd, setPlacementByAd] = useState<Record<string, "feed" | "story" | "reels" | "google">>({});
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -298,6 +301,45 @@ export default function PlanoMidia() {
       setAdEvents(Object.fromEntries(eventEntries));
     } catch {
       // O planejador continua utilizável mesmo se Ads estiver temporariamente indisponível.
+    }
+  }
+
+  async function generateCreativeVariation(ad: PlannerAdCampaign) {
+    if (adActionBusy) return;
+    setAdActionBusy(`${ad.id}:generate`);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/gerar-criativo`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await response.json().catch(() => ({})) as PlannerAdCreative & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível gerar a nova variação.");
+      await refreshAdsWorkspace();
+      setSelectedCreativeByAd((current) => ({ ...current, [ad.id]: data.id }));
+      toast({ title: "Nova variação criada", description: "O novo criativo já está disponível para comparação." });
+    } catch (error) {
+      toast({ title: "Não foi possível gerar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setAdActionBusy(null);
+    }
+  }
+
+  async function approveSpecificCreative(ad: PlannerAdCampaign, creativeId: string) {
+    if (adActionBusy) return;
+    setAdActionBusy(`${ad.id}:approve:${creativeId}`);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/creatives/${creativeId}/aprovar`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível aprovar o criativo.");
+      await refreshAdsWorkspace();
+      toast({ title: "Criativo aprovado" });
+    } catch (error) {
+      toast({ title: "Não foi possível aprovar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setAdActionBusy(null);
     }
   }
 
@@ -722,7 +764,10 @@ export default function PlanoMidia() {
                             </Button>
                           </div>
                           {linkedAds.map((ad) => {
-                            const creative = ad.latestCreative;
+                            const variants = ad.creatives?.length ? ad.creatives : ad.latestCreative ? [ad.latestCreative] : [];
+                            const selectedCreativeId = selectedCreativeByAd[ad.id];
+                            const creative = variants.find((item) => item.id === selectedCreativeId) ?? ad.latestCreative ?? variants[0] ?? null;
+                            const placement = placementByAd[ad.id] ?? (ad.plataforma === "google" ? "google" : "feed");
                             const metric = overviewByAd.get(ad.id);
                             const comments = (adEvents[ad.id] ?? []).filter((event) => event.eventType === "internal_comment");
                             const imageUrl = creative?.imagens?.[0];
@@ -738,12 +783,57 @@ export default function PlanoMidia() {
 
                             return (
                               <div key={ad.id} className="rounded-xl border bg-muted/[0.12] p-3">
+                                {variants.length > 0 && (
+                                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {variants.slice(0, 6).map((variant, index) => (
+                                        <Button
+                                          key={variant.id}
+                                          size="sm"
+                                          variant={creative?.id === variant.id ? "default" : "outline"}
+                                          className="h-7 px-2.5 text-[11px]"
+                                          onClick={() => setSelectedCreativeByAd((current) => ({ ...current, [ad.id]: variant.id }))}
+                                        >
+                                          Variação {String.fromCharCode(65 + index)}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={!!adActionBusy} onClick={() => void generateCreativeVariation(ad)}>
+                                      {adActionBusy === `${ad.id}:generate` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                                      Gerar variação
+                                    </Button>
+                                  </div>
+                                )}
+                                <div className="mb-3 flex flex-wrap gap-1.5">
+                                  {(ad.plataforma === "google"
+                                    ? [["google","Google Search"]]
+                                    : [["feed","Feed"],["story","Story"],["reels","Reels"]]
+                                  ).map(([value,label]) => (
+                                    <Button
+                                      key={value}
+                                      size="sm"
+                                      variant={placement === value ? "secondary" : "ghost"}
+                                      className="h-7 px-2.5 text-[11px]"
+                                      onClick={() => setPlacementByAd((current) => ({ ...current, [ad.id]: value as "feed" | "story" | "reels" | "google" }))}
+                                    >
+                                      {label}
+                                    </Button>
+                                  ))}
+                                </div>
                                 <div className="grid gap-3 md:grid-cols-[160px_1fr]">
-                                  <div className="overflow-hidden rounded-lg border bg-background">
-                                    {imageUrl ? (
-                                      <img src={imageUrl} alt={title} className="aspect-square h-full w-full object-cover" />
+                                  <div className={`overflow-hidden rounded-lg border bg-background ${placement === "story" || placement === "reels" ? "md:max-w-[140px]" : ""}`}>
+                                    {placement === "google" ? (
+                                      <div className="flex min-h-[150px] flex-col justify-center p-3">
+                                        <p className="text-[10px] text-muted-foreground">Anúncio · {ad.itemLabel || ad.vertical}</p>
+                                        <p className="mt-1 text-sm font-semibold text-primary">{title}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">{creative?.descriptions?.[0] || primaryText}</p>
+                                      </div>
+                                    ) : imageUrl ? (
+                                      <div className={placement === "story" || placement === "reels" ? "aspect-[9/16]" : "aspect-square"}>
+                                        <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
+                                      </div>
                                     ) : (
-                                      <div className="flex aspect-square items-center justify-center text-muted-foreground"><ImageIcon className="h-8 w-8" /></div>
+                                      <div className={`flex items-center justify-center text-muted-foreground ${placement === "story" || placement === "reels" ? "aspect-[9/16]" : "aspect-square"}`}><ImageIcon className="h-8 w-8" /></div>
                                     )}
                                   </div>
                                   <div className="min-w-0 space-y-2">
@@ -765,9 +855,9 @@ export default function PlanoMidia() {
                                     </div>
                                     <div className="flex flex-wrap gap-2 pt-1">
                                       {creative && creative.status !== "aprovado" && (
-                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!!adActionBusy} onClick={() => void runAdAction(ad, "approve")}>
-                                          {adActionBusy === `${ad.id}:approve` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-                                          Aprovar criativo
+                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!!adActionBusy} onClick={() => void approveSpecificCreative(ad, creative.id)}>
+                                          {adActionBusy === `${ad.id}:approve:${creative.id}` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                          Aprovar esta variação
                                         </Button>
                                       )}
                                       {creative?.status === "aprovado" && !ad.externalCampaignId && (
