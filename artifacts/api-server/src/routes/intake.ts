@@ -261,7 +261,8 @@ intakeRouter.get("/public/:tenantSlug/forms/:templateId", async (req, res) => {
   const template = getLeadFormTemplate(templateId);
   if (!template) return res.status(404).send("Formulário não encontrado");
 
-  const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[char] ?? char));
+  const htmlEntities: Record<string, string> = { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" };
+  const escape = (value: string) => value.replace(/[&<>"']/g, (char) => htmlEntities[char] ?? char);
   const fields = template.fields.map((field) => {
     const required = field.required ? "required" : "";
     const common = `name="${escape(field.key)}" ${required} placeholder="${escape(field.placeholder ?? "")}"`;
@@ -384,7 +385,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       orcamento: d.orcamento || null,
       tamanhoEquipe: d.tamanhoEquipe || null,
       status: "novo",
-      source: slug === "vendorai" ? "website_warmup" : "website",
+      source: d.formTemplateId ? "ads_form" : slug === "vendorai" ? "website_warmup" : "website",
       adCampaignId,
       discoveryData,
       possivelDuplicata: match.similar ? true : false,
