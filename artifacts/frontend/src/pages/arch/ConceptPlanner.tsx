@@ -4644,7 +4644,7 @@ export default function ConceptPlanner() {
 
               <div className="arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
                   {editorView === "plan" && (
-                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl border bg-white/95 p-1.5 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
                         ${libraryOpen ? "md:left-[380px]" : "md:left-20"}
                       `}>
