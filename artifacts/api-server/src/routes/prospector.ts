@@ -27,6 +27,7 @@ import {
   whatsappConnectionsTable,
 } from "@workspace/db";
 import { registerLeadFeedback } from "../lib/prospectorMemory.js";
+import { COLD_PROSPECT_SOURCES } from "../lib/prospector-consultive.js";
 import {
   callOpenAI as gatewayCallOpenAI,
   generateEmbedding,
@@ -1776,6 +1777,7 @@ router.post("/prospector/campaign-package", async (req, res) => {
       id: leadsTable.id,
       nome: leadsTable.nome,
       empresa: leadsTable.empresa,
+      source: leadsTable.source,
       telefone: leadsTable.telefone,
       endereco: leadsTable.endereco,
       mercadoSegmento: leadsTable.mercadoSegmento,
@@ -2134,7 +2136,12 @@ router.get("/prospector/fila", async (req, res) => {
     .where(
       and(
         eq(leadsTable.tenantId, tenantId),
-        inArray(leadsTable.source, ["prospector_auto", "prospector", "cnpj", "recem_aberta", "ad_library"]),
+        or(
+          inArray(leadsTable.source, Array.from(COLD_PROSPECT_SOURCES)),
+          sql`${leadsTable.source} LIKE 'prospector_%'`,
+          sql`${leadsTable.source} LIKE 'cold_%'`,
+          sql`${leadsTable.source} LIKE 'outbound_%'`,
+        ),
         inArray(leadsTable.enrichmentStatus, ["pending", "enriched", "scored"]),
       ),
     )
