@@ -425,10 +425,16 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
     ...campanha.segmentacao,
     platformReview: { status: "em_analise" as const, reason: "Enviado ao Google Ads para análise automática.", syncedAt: new Date().toISOString() },
   };
-  await db
-    .update(adCampaignsTable)
-    .set({ externalCampaignId, status: "pausado", segmentacao, updatedAt: new Date() })
-    .where(eq(adCampaignsTable.id, campaignId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(adCampaignsTable)
+      .set({ externalCampaignId, status: "pausado", segmentacao, updatedAt: new Date() })
+      .where(eq(adCampaignsTable.id, campaignId));
+    await tx
+      .update(adCreativesTable)
+      .set({ externalAdId: adResourceName })
+      .where(eq(adCreativesTable.id, creative.id));
+  });
 
   logger.info(
     { tenantId, campaignId, externalCampaignId, campaignResourceName },
@@ -523,8 +529,8 @@ export async function fetchGoogleAdsCampaignPerformance(tenantId: string, campai
   const { accessToken, customerId } = await getValidAccessToken(tenantId);
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
   const query = [
-    "SELECT metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions",
-    "FROM campaign",
+    "SELECT ad_group_ad.resource_name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions",
+    "FROM ad_group_ad",
     `WHERE campaign.id = ${campaign.externalCampaignId} AND segments.date = '${today}'`,
   ].join(" ");
   const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
@@ -537,14 +543,25 @@ export async function fetchGoogleAdsCampaignPerformance(tenantId: string, campai
     body: JSON.stringify({ query }),
   });
   if (!res.ok) throw new GoogleAdsPublishError(traduzirErroGoogleAds(res.status, await res.text()));
-  const chunks = await res.json() as Array<{ results?: Array<{ metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number } }> }>;
+  const chunks = await res.json() as Array<{ results?: Array<{
+    adGroupAd?: { resourceName?: string };
+    metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number };
+  }> }>;
   const rows = chunks.flatMap((chunk) => chunk.results ?? []);
-  return rows.reduce((total, row) => ({
-    impressions: total.impressions + Number(row.metrics?.impressions ?? 0),
-    clicks: total.clicks + Number(row.metrics?.clicks ?? 0),
-    spend: total.spend + Number(row.metrics?.costMicros ?? 0) / 1_000_000,
-    conversions: total.conversions + Number(row.metrics?.conversions ?? 0),
+  const creatives = rows.map((row) => ({
+    externalAdId: row.adGroupAd?.resourceName ?? null,
+    impressions: Number(row.metrics?.impressions ?? 0),
+    clicks: Number(row.metrics?.clicks ?? 0),
+    spend: Number(row.metrics?.costMicros ?? 0) / 1_000_000,
+    conversions: Number(row.metrics?.conversions ?? 0),
+  }));
+  const totals = creatives.reduce((total, row) => ({
+    impressions: total.impressions + row.impressions,
+    clicks: total.clicks + row.clicks,
+    spend: total.spend + row.spend,
+    conversions: total.conversions + row.conversions,
   }), { impressions: 0, clicks: 0, spend: 0, conversions: 0 });
+  return { ...totals, creatives };
 }
 
 export async function syncGoogleAdsReviewStatus(tenantId: string, campaignId: string) {
