@@ -127,6 +127,25 @@ export function wilsonLowerBound(successes: number, trials: number): number {
   return Math.max(0, (centre - adjustment) / denominator);
 }
 
+export function sanitizeLearnedResponse(value: string): string | null {
+  const raw = value.trim();
+  if (!raw || raw.includes("{{action:") || raw.includes("<!--")) return null;
+
+  const sanitized = raw
+    .replace(/https?:\/\/\S+/gi, "[link omitido]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email omitido]")
+    .replace(/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}/g, "[telefone omitido]")
+    .replace(/R\$\s*\d[\d.]*([,]\d{1,2})?/gi, "[valor específico omitido]")
+    .replace(/\b\d+(?:[.,]\d+)?\s*%/g, "[percentual específico omitido]")
+    .replace(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, "[documento omitido]")
+    .replace(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g, "[documento omitido]")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!sanitized) return null;
+  return sanitized.slice(0, 600);
+}
+
 export async function loadCloserWinningResponses(input: {
   tenantId: string;
   segmento?: string | null;
@@ -158,7 +177,6 @@ export async function loadCloserWinningResponses(input: {
       category: salesObjectionEventsTable.category,
       responseText: salesObjectionEventsTable.responseText,
       brokeObjection: salesObjectionEventsTable.brokeObjection,
-      createdAt: salesObjectionEventsTable.createdAt,
     })
     .from(salesObjectionEventsTable)
     .where(and(...conditions))
@@ -177,7 +195,9 @@ export async function loadCloserWinningResponses(input: {
   >();
 
   for (const event of events) {
-    const response = event.responseText?.trim();
+    const response = event.responseText
+      ? sanitizeLearnedResponse(event.responseText)
+      : null;
     if (!response) continue;
     const responseKey = response.toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
     const key = `${event.category}::${event.normalizedObjection}::${responseKey}`;
