@@ -554,6 +554,32 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   return { externalCampaignId: campaignRes.id, campaignId: campaignRes.id, adSetId: adSetRes.id, creativeId: creativeRes.id, adId: adRes.id };
 }
 
+export async function updateMetaAdsCampaignSchedule(
+  tenantId: string,
+  campaignId: string,
+  control: NonNullable<NonNullable<AdCampaign["segmentacao"]>["campaignControl"]>,
+): Promise<void> {
+  const [campanha] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campanha?.externalCampaignId) return;
+
+  const { accessToken } = await getValidAccessToken(tenantId);
+  const adSets = await metaApi<{ data?: Array<{ id: string }> }>(
+    `${campanha.externalCampaignId}/adsets`,
+    accessToken,
+    "GET",
+    { fields: "id", limit: "100" },
+  );
+  const startIso = new Date(`${control.startDate}T${control.startTime ?? "00:00"}:00-03:00`).toISOString();
+  const endIso = new Date(`${control.endDate}T${control.endTime ?? "23:59"}:59-03:00`).toISOString();
+  for (const adSet of adSets.data ?? []) {
+    await metaApi(adSet.id, accessToken, "POST", {
+      ...(new Date(startIso).getTime() > Date.now() + 60_000 ? { start_time: startIso } : {}),
+      end_time: endIso,
+    });
+  }
+}
+
 export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: string, ativar: boolean): Promise<void> {
   const [campanha] = await db
     .select()
