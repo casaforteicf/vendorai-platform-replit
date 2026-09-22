@@ -271,6 +271,14 @@ function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   return null;
 }
 
+type TourPoint = {
+  id: string;
+  name: string;
+  floor: number;
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+};
+
 type ConceptDraftResponse = {
   id: string;
   status?: string;
@@ -289,6 +297,7 @@ type ConceptDraftResponse = {
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptPlanObject[];
     wallMaterials?: Record<string, string>;
+    tourPoints?: TourPoint[];
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -735,6 +744,7 @@ export default function ConceptPlanner() {
       return [];
     }
   });
+  const [tourPoints, setTourPoints] = useState<TourPoint[]>([]);
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
@@ -1057,6 +1067,7 @@ export default function ConceptPlanner() {
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
+        setTourPoints(Array.isArray(draft.configuration?.tourPoints) ? draft.configuration.tourPoints : []);
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1084,7 +1095,7 @@ export default function ConceptPlanner() {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, tourPoints },
       rooms,
       openingOverrides,
       customerProfile,
@@ -5681,6 +5692,11 @@ export default function ConceptPlanner() {
                       onPaintWall={applyWallMaterialToId}
                       onPaintFloor={applyFloorMaterialToSpace}
                       onCancelPaint={() => setPaintTool(null)}
+                      tourPoints={tourPoints}
+                      onTourPointsChange={(points) => {
+                        setTourPoints(points);
+                        window.setTimeout(() => void saveConcept(), 0);
+                      }}
                       onRenderView={(lightingMode, renderView) => void generateConceptRender({ source: "model3d", renderView, lightingMode })}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
