@@ -30,6 +30,7 @@ type Props = {
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
   navigationMode?: "orbit" | "walk" | "spin";
+  walkControl?: { forward: number; strafe: number };
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -64,6 +65,7 @@ type Runtime = {
   };
   navigationMode: "orbit" | "walk" | "spin";
   walkKeys: Set<string>;
+  walkControl: { forward: number; strafe: number };
   walkYaw: number;
   walkPitch: number;
   walkDragging: boolean;
@@ -205,6 +207,7 @@ export default function ConceptWebGLScene({
   cameraZoom,
   transformMode = "translate",
   navigationMode = "orbit",
+  walkControl = { forward: 0, strafe: 0 },
   paintTool = null,
   onReady,
   onSelectObject,
@@ -507,10 +510,12 @@ export default function ConceptWebGLScene({
           }
 
           if (runtime.navigationMode === "walk") {
-            const forward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
+            const keyboardForward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
               - Number(runtime.walkKeys.has("s") || runtime.walkKeys.has("arrowdown"));
-            const strafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
+            const keyboardStrafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
               - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
+            const forward = Math.max(-1, Math.min(1, keyboardForward + runtime.walkControl.forward));
+            const strafe = Math.max(-1, Math.min(1, keyboardStrafe + runtime.walkControl.strafe));
             const speed = 0.12;
             if (forward || strafe) {
               const stepX = (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
@@ -1318,6 +1323,15 @@ export default function ConceptWebGLScene({
     roof,
     visibleFloors,
   ]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+    runtime.walkControl = {
+      forward: Math.max(-1, Math.min(1, walkControl.forward || 0)),
+      strafe: Math.max(-1, Math.min(1, walkControl.strafe || 0)),
+    };
+  }, [engineState, walkControl.forward, walkControl.strafe]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
