@@ -95,7 +95,7 @@ async function findSimilarArticles(
         sql`${contentAutopilotArticlesTable.embedding} IS NOT NULL`,
       ),
     )
-    .orderBy(sql`${contentAutopilotArticlesTable.embedding} <=> ${vec}::vector`)
+    .orderBy(sql`${contentAutopilotArticlesTable.embedding} OPERATOR(extensions.<=>) ${vec}::extensions.vector`)
     .limit(limit);
   return rows.filter((r): r is { id: string; titulo: string; slug: string } => !!r.titulo && !!r.slug);
 }
