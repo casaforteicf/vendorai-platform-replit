@@ -36,7 +36,7 @@ const server = http.createServer((req, res) => {
   res.setHeader("content-type", "application/json; charset=utf-8");
 
   if (req.url === "/health") {
-    res.statusCode = state === "passed" ? 200 : state === "running" ? 202 : 503;
+    res.statusCode = state === "passed" ? 200 : 503;
     res.end(payload);
     return;
   }
