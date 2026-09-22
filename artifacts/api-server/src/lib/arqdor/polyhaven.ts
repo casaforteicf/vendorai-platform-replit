@@ -17,8 +17,34 @@ type PolyHavenAsset = {
   [key: string]: unknown;
 };
 
+const PT_EN_TERMS: Array<[RegExp, string]> = [
+  [/\bsof[áa]\b/gi, "sofa"], [/\bpoltrona\b/gi, "armchair"], [/\bcama\b/gi, "bed"],
+  [/\bmesa de jantar\b/gi, "dining table"], [/\bmesa\b/gi, "table"], [/\bcadeira\b/gi, "chair"],
+  [/\bbanqueta\b/gi, "stool"], [/\bbanco\b/gi, "bench"], [/\barm[áa]rio\b/gi, "cabinet"],
+  [/\broupeiro\b/gi, "wardrobe"], [/\bestante\b/gi, "shelf"], [/\bgeladeira\b/gi, "refrigerator"],
+  [/\brefrigerador\b/gi, "refrigerator"], [/\bforno\b/gi, "oven"], [/\bmicro-ondas\b/gi, "microwave"],
+  [/\bmicroondas\b/gi, "microwave"], [/\bcooktop\b/gi, "cooktop"], [/\bcoifa\b/gi, "range hood"],
+  [/\blumin[áa]ria\b/gi, "lamp"], [/\bpendente\b/gi, "pendant lamp"], [/\babajur\b/gi, "table lamp"],
+  [/\bplanta\b/gi, "plant"], [/\b[áa]rvore\b/gi, "tree"], [/\bpalmeira\b/gi, "palm"],
+  [/\bvaso\b/gi, "vase"], [/\bdecora[cç][aã]o\b/gi, "decor"], [/\btapete\b/gi, "rug"],
+  [/\bespregui[cç]adeira\b/gi, "sun lounger"], [/\bm[óo]veis externos\b/gi, "outdoor furniture"],
+  [/\bcozinha\b/gi, "kitchen"], [/\bbanheiro\b/gi, "bathroom"], [/\bescrit[óo]rio\b/gi, "office"],
+];
+
 function safeQuery(value: string) {
-  return value.trim().toLocaleLowerCase("pt-BR").slice(0, 100);
+  let query = value.trim().toLocaleLowerCase("pt-BR").slice(0, 100);
+  for (const [pattern, replacement] of PT_EN_TERMS) query = query.replace(pattern, replacement);
+  return query.replace(/\s+/g, " ").trim();
+}
+
+let assetsCache: { expiresAt: number; value: Record<string, PolyHavenAsset> } | null = null;
+
+async function getModelAssets() {
+  const now = Date.now();
+  if (assetsCache && assetsCache.expiresAt > now) return assetsCache.value;
+  const value = await phFetch("/assets?t=models") as Record<string, PolyHavenAsset>;
+  assetsCache = { value, expiresAt: now + 10 * 60 * 1000 };
+  return value;
 }
 
 async function phFetch(path: string) {
@@ -37,13 +63,19 @@ async function phFetch(path: string) {
 export async function searchPolyHavenModels(query: string, limit = 18) {
   const q = safeQuery(query || "furniture");
   const safeLimit = Math.max(1, Math.min(30, Number(limit) || 18));
-  const search = await phFetch(`/search?q=${encodeURIComponent(q)}&t=models&limit=${safeLimit}`) as {
-    results?: PolyHavenSearchRow[];
-  };
+  let search: { results?: PolyHavenSearchRow[] };
+  try {
+    search = await phFetch(`/search?q=${encodeURIComponent(q)}&t=models&limit=${safeLimit}`) as {
+      results?: PolyHavenSearchRow[];
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("404")) return [];
+    throw error;
+  }
   const rows = Array.isArray(search.results) ? search.results.slice(0, safeLimit) : [];
   if (!rows.length) return [];
 
-  const assets = await phFetch("/assets?t=models") as Record<string, PolyHavenAsset>;
+  const assets = await getModelAssets();
   return rows.flatMap((row) => {
     const asset = assets?.[row.slug];
     if (!asset) return [];
