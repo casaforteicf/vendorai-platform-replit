@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Copy,
@@ -189,6 +189,13 @@ export default function ConceptFacadeEditor({
     () => buildSiteExteriorPlan(rooms, lotWidth, lotDepth, sitePlacement),
     [rooms, lotWidth, lotDepth, sitePlacement],
   );
+
+  useEffect(() => {
+    const alreadySynced = design.volumes.some((volume) => volume.label.startsWith("Implantação ·"));
+    if (!alreadySynced) {
+      onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan));
+    }
+  }, [design, onDesignChange, siteExteriorPlan]);
 
   const facadeMetrics = useMemo(() => {
     const builtRooms = (Array.isArray(rooms) ? rooms : []).filter((room) => room.kind !== "piscina");
