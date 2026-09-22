@@ -55,6 +55,11 @@ type DomainStatusResponse = {
   dnsInstructions?: { recordType?: string; name?: string | null; value?: string | null };
   dnsCheck?: DnsCheck;
   provisioningAvailable?: boolean;
+  infrastructure?: {
+    apiConfigured?: boolean;
+    originConfigured?: boolean;
+    ready?: boolean;
+  };
   cloudflareStatus?: string | null;
   cloudflareSslStatus?: string | null;
   message?: string;
@@ -68,7 +73,7 @@ const PROVIDERS: Record<ProviderKey, { label: string; url: string; steps: string
     url: "https://registro.br/",
     steps: [
       "Abra o domínio no Registro.br e entre em DNS → Editar Zona.",
-      "Adicione um registro CNAME usando exatamente o nome e o destino mostrados pelo VendorAI.",
+      "Adicione um registro CNAME. No campo Nome/Host use o prefixo mostrado pelo VendorAI (ex.: www ou lp) e no Destino cole o endereço informado.",
       "Salve a zona e volte ao VendorAI para verificar a propagação.",
     ],
   },
@@ -143,6 +148,23 @@ function suggestLpDomain(connection: WebsiteConnection | null): string {
   return `lp.${hostname}`;
 }
 
+function isRegistroBrApex(domain: string): boolean {
+  const labels = domain.toLowerCase().split(".").filter(Boolean);
+  if (!domain.toLowerCase().endsWith(".br")) return false;
+  // A maioria dos domínios do Registro.br usa <nome>.<categoria>.br.
+  // Nesse caso 3 labels representam a raiz (ex.: empresa.com.br), que não
+  // deve receber CNAME. Para o fluxo automático usamos www/lp/site.
+  return labels.length <= 3;
+}
+
+function registroBrRecordName(fqdn: string): string {
+  const labels = fqdn.toLowerCase().split(".").filter(Boolean);
+  if (fqdn.toLowerCase().endsWith(".br") && labels.length > 3) {
+    return labels.slice(0, -3).join(".");
+  }
+  return fqdn;
+}
+
 async function copyText(value: string) {
   await navigator.clipboard.writeText(value);
 }
@@ -203,6 +225,15 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
   async function registerDomain() {
     const domain = domainInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
     if (!domain) return;
+    if (provider === "registro_br" && isRegistroBrApex(domain)) {
+      const suggestedDomain = `www.${domain}`;
+      toast({
+        title: "Use www ou outro subdomínio",
+        description: `No DNS do Registro.br, o fluxo automático usa CNAME e não deve ser aplicado na raiz. Cadastre ${suggestedDomain}, site.${domain} ou lp.${domain}.`,
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/domains`, {
@@ -270,16 +301,16 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
               </div>
               <div className="rounded-xl border bg-muted/20 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Regra de DNS</p>
-                <p className="mt-2 text-sm">Se a LP for publicada no CMS atual, o DNS não muda. Para hospedar a LP no VendorAI, use um subdomínio dedicado, como <strong>{suggested || "lp.suaempresa.com.br"}</strong>.</p>
-                <p className="mt-2 text-xs text-muted-foreground">Não pedimos troca de nameservers e não alteramos registros de e-mail/site que já funcionam.</p>
+                <p className="mt-2 text-sm">Para hospedar o site no VendorAI sem mexer no e-mail ou nos demais serviços, use <strong>www</strong> ou um subdomínio dedicado, como <strong>{suggested || "www.suaempresa.com.br"}</strong>.</p>
+                <p className="mt-2 text-xs text-muted-foreground">No Registro.br, não usamos CNAME na raiz do domínio. Não trocamos nameservers e não apagamos MX, SPF, DKIM ou outros registros existentes.</p>
               </div>
             </div>
 
             <div className="rounded-xl border p-4">
               <div className="grid gap-3 lg:grid-cols-[1fr_220px_auto] lg:items-end">
                 <div>
-                  <Label>Subdomínio para LPs hospedadas pelo VendorAI</Label>
-                  <Input className="mt-1" value={domainInput} onChange={(event) => setDomainInput(event.target.value)} placeholder={suggested || "lp.suaempresa.com.br"} />
+                  <Label>Domínio personalizado do site</Label>
+                  <Input className="mt-1" value={domainInput} onChange={(event) => setDomainInput(event.target.value)} placeholder={suggested || "www.suaempresa.com.br"} />
                 </div>
                 <div>
                   <Label>Onde seu DNS é gerenciado?</Label>
@@ -305,6 +336,9 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
                   const recordValue = live?.dnsInstructions?.value ?? domain.dnsRecordValue ?? "";
                   const dnsCheck = live?.dnsCheck;
                   const status = live?.domain?.status ?? domain.status;
+                  const displayedRecordName = provider === "registro_br"
+                    ? registroBrRecordName(String(recordName))
+                    : String(recordName);
                   return (
                     <div key={domain.id} className="rounded-xl border p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -322,7 +356,8 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
                         <div className="rounded-lg border bg-muted/20 p-3">
                           <p className="text-[11px] font-semibold uppercase text-muted-foreground">Tipo / Nome</p>
-                          <div className="mt-1 flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-xs">CNAME · {recordName}</code><Button size="icon" variant="ghost" onClick={() => void copyText(String(recordName)).then(() => toast({ title: "Nome copiado" }))}><Copy className="h-3.5 w-3.5" /></Button></div>
+                          <div className="mt-1 flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-xs">CNAME · {displayedRecordName}</code><Button size="icon" variant="ghost" onClick={() => void copyText(displayedRecordName).then(() => toast({ title: "Nome copiado" }))}><Copy className="h-3.5 w-3.5" /></Button></div>
+                          {provider === "registro_br" && displayedRecordName !== recordName && <p className="mt-1 text-[11px] text-muted-foreground">Zona completa: {recordName}</p>}
                         </div>
                         <div className="rounded-lg border bg-muted/20 p-3">
                           <p className="text-[11px] font-semibold uppercase text-muted-foreground">Destino</p>
@@ -339,6 +374,7 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
                       </div>
 
                       {dnsCheck?.error && <p className="mt-2 text-xs text-destructive">Verificação DNS: {dnsCheck.error}</p>}
+                      {live?.infrastructure?.originConfigured === false && <p className="mt-2 text-xs text-amber-700">A infraestrutura ainda não definiu o destino CNAME do VendorAI. Não altere o DNS até aparecer um Destino válido acima.</p>}
                       {live && live.provisioningAvailable === false && dnsCheck?.matches && <p className="mt-2 text-xs text-amber-700">O CNAME está correto, mas o provisionamento de hostname/SSL do VendorAI ainda não está disponível neste ambiente. Por segurança, a publicação continua bloqueada.</p>}
                       {status === "active" && (
                         <div className="mt-3 space-y-2 rounded-lg border border-green-200 bg-green-50/60 p-3 dark:border-green-900/40 dark:bg-green-950/20">
