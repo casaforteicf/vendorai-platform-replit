@@ -53,3 +53,7 @@ Assim o Cloudflare valida e publica sem depender do runner do GitHub Actions.
 3. Falhou o gate: não publica.
 4. Correção de regressão deve incluir teste ou auditoria automática.
 5. GitHub Actions passa a ser uma proteção adicional, não dependência única.
+
+## Validação de branch antes do merge
+
+O serviço de validação externo deve acompanhar a branch candidata e executar `pnpm validate:production` antes do merge. Assim, um PR pode ser comprovado mesmo quando os runners do GitHub Actions estiverem indisponíveis.
