@@ -346,7 +346,7 @@ router.post("/arch/procurement/:obraId/requests/:requestId/quotes", async (req, 
        ) VALUES (
          gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5::uuid,
          $6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-         $21,'quoted',now(),now(),$22,$23,'[]'::jsonb,now(),now()
+         $21,'quoted',now(),now(),$22,$23,$24::jsonb,now(),now()
        ) RETURNING *`,
       [
         tid, projectId, obraId, requestId, req.body?.workOrderId || null,
