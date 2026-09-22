@@ -2232,7 +2232,7 @@ router.post("/prospector/dispatch-sdr/:leadId", async (req, res) => {
   const { leadId } = req.params as { leadId: string };
 
   const [lead] = await db
-    .select({ id: leadsTable.id })
+    .select({ id: leadsTable.id, source: leadsTable.source })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
