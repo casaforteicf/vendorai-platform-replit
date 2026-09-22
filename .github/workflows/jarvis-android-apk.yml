@@ -13,8 +13,8 @@ permissions:
 
 jobs:
   build-and-publish-apk:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     env:
       PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
       CI: '1'
@@ -36,10 +36,24 @@ jobs:
           cache: pnpm
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Validate Android signing credentials
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "::error::ANDROID_KEYSTORE_BASE64 is missing" && exit 1)
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || (echo "::error::ANDROID_KEYSTORE_PASSWORD is missing" && exit 1)
+          test -n "$ANDROID_KEY_ALIAS" || (echo "::error::ANDROID_KEY_ALIAS is missing" && exit 1)
+          test -n "$ANDROID_KEY_PASSWORD" || (echo "::error::ANDROID_KEY_PASSWORD is missing" && exit 1)
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -67,6 +81,53 @@ jobs:
           CI: '1'
         run: pnpm exec expo prebuild --platform android --clean --no-install
 
+      - name: Restore production keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > artifacts/mobile/android/app/vendorai-release.keystore
+          test -s artifacts/mobile/android/app/vendorai-release.keystore
+
+      - name: Configure persistent release signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cat >> artifacts/mobile/android/gradle.properties <<EOF
+          VENDORAI_UPLOAD_STORE_FILE=vendorai-release.keystore
+          VENDORAI_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
+          VENDORAI_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS
+          VENDORAI_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("artifacts/mobile/android/app/build.gradle")
+          s = p.read_text()
+          if "signingConfigs {" not in s:
+              raise SystemExit("signingConfigs block not found")
+
+          s = s.replace(
+              "signingConfigs {\n",
+              """signingConfigs {
+              release {
+                  storeFile file(VENDORAI_UPLOAD_STORE_FILE)
+                  storePassword VENDORAI_UPLOAD_STORE_PASSWORD
+                  keyAlias VENDORAI_UPLOAD_KEY_ALIAS
+                  keyPassword VENDORAI_UPLOAD_KEY_PASSWORD
+              }
+          """,
+              1,
+          )
+          s = s.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+          p.write_text(s)
+          PY
+
       - name: Sync dependencies after prebuild
         run: pnpm install --no-frozen-lockfile
 
@@ -75,23 +136,34 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Locate APK
+      - name: Locate and validate APK
         shell: bash
         run: |
           set -euo pipefail
           APK_PATH=$(find artifacts/mobile/android/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)
           test -n "$APK_PATH"
           test -s "$APK_PATH"
+
+          BUILD_TOOLS_DIR="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$APK_PATH" | tee /tmp/apk-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apk-signature.txt
+          "$BUILD_TOOLS_DIR/aapt" dump badging "$APK_PATH" | tee /tmp/apk-badging.txt
+          grep -q "package: name='com.appvendorai.vendorai'" /tmp/apk-badging.txt
+
+          sha256sum "$APK_PATH" | tee /tmp/vendorai-build.sha256
           echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+          echo "APK_SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')" >> "$GITHUB_ENV"
           ls -lh "$APK_PATH"
 
-      - name: Prepare VendorAI website with direct APK
+      - name: Prepare VendorAI website with approved APK
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts/website/public/downloads
           cp "$APK_PATH" artifacts/website/public/downloads/vendorai.apk
+          printf '%s  vendorai.apk\n' "$APK_SHA256" > artifacts/website/public/downloads/vendorai.apk.sha256
           rm -f artifacts/website/public/_redirects
           test -s artifacts/website/public/downloads/vendorai.apk
 
@@ -101,9 +173,11 @@ jobs:
       - name: Verify website bundle and APK
         shell: bash
         run: |
+          set -euo pipefail
           test -f artifacts/website/dist/public/index.html
           test -f artifacts/website/dist/public/_worker.js
           test -s artifacts/website/dist/public/downloads/vendorai.apk
+          echo "$APK_SHA256  artifacts/website/dist/public/downloads/vendorai.apk" | sha256sum -c -
           ls -lh artifacts/website/dist/public/downloads/vendorai.apk
 
       - name: Ensure Cloudflare Pages project
@@ -118,20 +192,20 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Verify direct APK URL
+      - name: Verify published APK matches approved build
         shell: bash
         run: |
           set -euo pipefail
           for attempt in {1..12}; do
             status=$(curl -L -sS -o /tmp/vendorai.apk -w '%{http_code}' https://appvendorai.com/downloads/vendorai.apk || true)
-            type=$(file -b --mime-type /tmp/vendorai.apk 2>/dev/null || true)
             size=$(wc -c < /tmp/vendorai.apk 2>/dev/null || echo 0)
-            echo "Attempt $attempt: HTTP $status, type=$type, size=$size"
-            if [ "$status" = "200" ] && [ "$size" -gt 1000000 ]; then
-              echo "APK direto publicado com sucesso em https://appvendorai.com/downloads/vendorai.apk"
+            remote_sha=$(sha256sum /tmp/vendorai.apk 2>/dev/null | awk '{print $1}' || true)
+            echo "Attempt $attempt: HTTP $status, size=$size, sha256=$remote_sha"
+            if [ "$status" = "200" ] && [ "$size" -gt 1000000 ] && [ "$remote_sha" = "$APK_SHA256" ]; then
+              echo "Approved APK published successfully."
               exit 0
             fi
             sleep 10
           done
-          echo "APK ainda não ficou disponível no domínio após o deploy."
+          echo "::error::Published APK does not match the approved release build."
           exit 1
