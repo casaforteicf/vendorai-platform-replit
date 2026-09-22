@@ -1472,8 +1472,8 @@ export default function ConceptWebGLScene({
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
     scene.add(quad);
 
+    const previousTarget = renderer.getRenderTarget?.() ?? null;
     try {
-      const previousTarget = renderer.getRenderTarget?.() ?? null;
       renderer.setRenderTarget(target);
       renderer.clear();
       renderer.render(scene, camera);
@@ -1500,6 +1500,7 @@ export default function ConceptWebGLScene({
     } catch (error) {
       onPanoramaExportError?.(error instanceof Error ? error.message : "Falha ao exportar panorama 360°.");
     } finally {
+      renderer.setRenderTarget(previousTarget);
       material.dispose?.();
       quad.geometry?.dispose?.();
       target.dispose?.();
