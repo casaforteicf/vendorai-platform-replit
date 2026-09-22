@@ -40,7 +40,7 @@ import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptFacadeEditor from "./ConceptFacadeEditor";
 import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
-import { buildClientBriefPlan, type ClientBrief } from "./conceptClientBrief";
+import { type ClientBriefAlternative } from "./conceptClientBrief";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import {
   DEFAULT_FACADE_DESIGN,
@@ -1263,23 +1263,11 @@ export default function ConceptPlanner() {
     setStep(4);
   };
 
-  const applyClientBrief = (brief: ClientBrief) => {
-    const generated = buildClientBriefPlan(brief);
-    let nextRooms = generated.rooms as Room[];
-
-    for (let floor = 0; floor < generated.floors; floor += 1) {
-      nextRooms = generateTypologyLayout(
-        nextRooms,
-        lotWidth,
-        lotDepth,
-        floor,
-        generated.typology,
-        layoutVariant,
-        generated.layoutPreferences,
-      ) as Room[];
-    }
+  const applyClientBrief = (generated: ClientBriefAlternative) => {
+    const nextRooms = generated.rooms.map((room) => ({ ...room })) as Room[];
 
     setTypology(generated.typology);
+    setLayoutVariant(generated.variant);
     setLayoutPreferences(generated.layoutPreferences);
     setFloors(generated.floors);
     setDesiredArea(generated.suggestedArea);
@@ -4846,7 +4834,11 @@ export default function ConceptPlanner() {
                   )}
 
                   {editorLibraryTab === "brief" && (
-                    <ConceptClientBriefPanel onGenerate={applyClientBrief} />
+                    <ConceptClientBriefPanel
+                      lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                      onGenerate={applyClientBrief}
+                    />
                   )}
 
                   {editorLibraryTab === "rooms" && (

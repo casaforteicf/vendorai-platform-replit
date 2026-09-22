@@ -4,6 +4,7 @@ import {
   type ConceptTypology,
   type LayoutPreferences,
 } from "./conceptTemplates";
+import { generateTypologyLayout } from "./conceptTypologyLayout";
 
 export type ClientBrief = {
   bedrooms: 2 | 3 | 4;
@@ -25,6 +26,15 @@ export type ClientBriefPlan = {
   rooms: ReturnType<typeof buildTypologyRooms>;
 };
 
+export type ClientBriefAlternativeId = "compact" | "balanced" | "integrated";
+
+export type ClientBriefAlternative = ClientBriefPlan & {
+  id: ClientBriefAlternativeId;
+  title: string;
+  description: string;
+  variant: 0 | 1 | 2;
+};
+
 function nextId(prefix: string, index: number) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${prefix}-${index}-${Date.now()}`;
@@ -39,6 +49,13 @@ function chooseBaseTypology(brief: ClientBrief): ConceptTypology {
   if (brief.pool || brief.gourmet) return "terrea_lazer";
   if (brief.bedrooms <= 2) return "terrea_2q";
   return "terrea_3q";
+}
+
+function calculateSuggestedArea(rooms: ClientBriefPlan["rooms"]) {
+  const roomArea = rooms
+    .filter((room) => room.kind !== "piscina")
+    .reduce((sum, room) => sum + room.width * room.depth, 0);
+  return Math.max(80, Math.round((roomArea * 1.12) / 5) * 5);
 }
 
 export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
@@ -145,16 +162,134 @@ export function buildClientBriefPlan(brief: ClientBrief): ClientBriefPlan {
     privateAwaySocial: brief.privateAwaySocial,
   };
 
-  const roomArea = rooms
-    .filter((room) => room.kind !== "piscina")
-    .reduce((sum, room) => sum + room.width * room.depth, 0);
-  const suggestedArea = Math.max(80, Math.round((roomArea * 1.12) / 5) * 5);
-
   return {
     typology,
     floors: brief.floors,
-    suggestedArea,
+    suggestedArea: calculateSuggestedArea(rooms),
     layoutPreferences,
     rooms,
   };
+}
+
+function resizeRoomsForAlternative(
+  rooms: ClientBriefPlan["rooms"],
+  profile: ClientBriefAlternativeId,
+  lotWidth: number,
+  lotDepth: number,
+) {
+  const maxWidth = Math.max(2.4, lotWidth - 1.2);
+  const maxDepth = Math.max(2.4, lotDepth - 1.2);
+
+  return rooms.map((room) => {
+    let widthFactor = 1;
+    let depthFactor = 1;
+
+    if (profile === "compact") {
+      if (["sala", "cozinha", "gourmet", "outro"].includes(room.kind)) {
+        widthFactor = 0.9;
+        depthFactor = 0.92;
+      }
+    }
+
+    if (profile === "integrated") {
+      if (["sala", "cozinha", "gourmet"].includes(room.kind)) {
+        widthFactor = 1.08;
+        depthFactor = 1.06;
+      }
+      if (room.kind === "suite") {
+        widthFactor = 1.03;
+        depthFactor = 1.03;
+      }
+    }
+
+    return {
+      ...room,
+      width: Math.max(1.8, Math.min(maxWidth, Math.round(room.width * widthFactor * 20) / 20)),
+      depth: Math.max(1.5, Math.min(maxDepth, Math.round(room.depth * depthFactor * 20) / 20)),
+      x: 0,
+      y: 0,
+    };
+  });
+}
+
+export function buildClientBriefAlternatives(
+  brief: ClientBrief,
+  lotWidth: number,
+  lotDepth: number,
+): ClientBriefAlternative[] {
+  const base = buildClientBriefPlan(brief);
+
+  const profiles: Array<{
+    id: ClientBriefAlternativeId;
+    title: string;
+    description: string;
+    variant: 0 | 1 | 2;
+    preferences: Partial<LayoutPreferences>;
+  }> = [
+    {
+      id: "compact",
+      title: "Opção A · Compacta",
+      description: "Reduz circulação e aproxima os ambientes para aproveitar melhor a área.",
+      variant: 0,
+      preferences: {
+        livingIntegratedKitchen: true,
+        privateAwaySocial: brief.privateAwaySocial,
+      },
+    },
+    {
+      id: "balanced",
+      title: "Opção B · Equilibrada",
+      description: "Distribuição intermediária, equilibrando privacidade, circulação e área social.",
+      variant: 1,
+      preferences: {},
+    },
+    {
+      id: "integrated",
+      title: "Opção C · Mais integrada",
+      description: "Valoriza sala, cozinha e lazer conectados, com área social mais generosa.",
+      variant: 2,
+      preferences: {
+        livingIntegratedKitchen: true,
+        kitchenNearGourmet: brief.gourmet,
+        gourmetNearPool: brief.gourmet && brief.pool,
+      },
+    },
+  ];
+
+  return profiles.map((profile) => {
+    const layoutPreferences: LayoutPreferences = {
+      ...base.layoutPreferences,
+      ...profile.preferences,
+    };
+
+    let rooms = resizeRoomsForAlternative(
+      base.rooms.map((room) => ({ ...room })),
+      profile.id,
+      lotWidth,
+      lotDepth,
+    );
+
+    for (let floor = 0; floor < base.floors; floor += 1) {
+      rooms = generateTypologyLayout(
+        rooms,
+        lotWidth,
+        lotDepth,
+        floor,
+        base.typology,
+        profile.variant,
+        layoutPreferences,
+      );
+    }
+
+    return {
+      ...base,
+      id: profile.id,
+      title: profile.title,
+      description: profile.description,
+      variant: profile.variant,
+      layoutPreferences,
+      suggestedArea: calculateSuggestedArea(rooms),
+      rooms,
+    };
+  });
 }
