@@ -60,6 +60,7 @@ import {
   tenantDomainsTable,
   campaignSentLogsTable,
   churnActionsTable,
+  tenantAgentConfigsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import {
@@ -72,6 +73,7 @@ import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
 import { searchAllPlaces } from "../routes/prospector.js";
+import { resolveProspectorEnabledSources } from "../lib/prospector-sources.js";
 import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
 import { runSdrFollowup } from "./sdrFollowup.js";
@@ -1928,6 +1930,32 @@ async function runProspectorSync(log: Logger): Promise<void> {
 
   for (const config of configs) {
     try {
+      const [[tenant], [prospectorAgentConfig]] = await Promise.all([
+        db
+          .select({ segmento: tenantsTable.segmento, vertical: tenantsTable.vertical })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, config.tenantId))
+          .limit(1),
+        db
+          .select({ parametros: tenantAgentConfigsTable.parametros })
+          .from(tenantAgentConfigsTable)
+          .where(and(
+            eq(tenantAgentConfigsTable.tenantId, config.tenantId),
+            eq(tenantAgentConfigsTable.agentKey, "prospector"),
+          ))
+          .limit(1),
+      ]);
+      const sourceParams = (prospectorAgentConfig?.parametros ?? {}) as Record<string, unknown>;
+      const segment = tenant?.segmento ?? tenant?.vertical ?? null;
+      const enabledSources = resolveProspectorEnabledSources(sourceParams["prospectorSources"], segment);
+      if (!enabledSources.includes("google_places")) {
+        log.info(
+          { tenantId: config.tenantId },
+          "scheduler/prospector-sync: Google Places source disabled for tenant — skipping discovery",
+        );
+        continue;
+      }
+
       if (!config.setor || !config.cidade) {
         log.warn({ tenantId: config.tenantId }, "scheduler/prospector-sync: setor or cidade missing — skipping");
         continue;
