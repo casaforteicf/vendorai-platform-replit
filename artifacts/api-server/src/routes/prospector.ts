@@ -882,12 +882,13 @@ function compactConstructionKey(value: string): string {
 }
 
 function constructionWorkKey(work: z.infer<typeof constructionSignalProspectBodySchema>["work"]): string {
-  return compactConstructionKey([
-    work.sourceUrl ?? "",
-    work.endereco ?? "",
-    work.obra,
-    work.local,
-  ].join("|"));
+  // A identidade comercial da obra não deve mudar quando uma nova fonte pública
+  // passa a confirmá-la. Fonte é evidência; endereço/nome/local são identidade.
+  return compactConstructionKey(
+    work.endereco
+      ? `${work.endereco}|${work.obra}|${work.local}`
+      : `${work.obra}|${work.local}`,
+  );
 }
 
 router.post("/prospector/construction-signals/prospect", async (req, res) => {
@@ -974,6 +975,8 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
     origem: "construction_radar",
     source: "construction_radar",
     source_family: work.sourceFamily,
+    cidade: work.local,
+    localidade: work.local,
     construction_work_key: workKey,
     construction_prospect_key: prospectKey,
     construction_actor_role: actorRole,
