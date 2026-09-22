@@ -15,6 +15,7 @@ import {
 import { VENDORAI_LP_OFFER } from "@workspace/vendor-brain";
 import { MARKETING_VERTICALS } from "@workspace/vendor-brain/marketing-verticals";
 import publicVerticalSlugs from "@/data/publicVerticalSlugs.json";
+import { usePublicCountry } from "@/lib/publicCountry";
 import { findWrittenSegment, type IntentKey } from "./intentLpOverrides";
 import { findAdditionalIntentSegment } from "./intentLpAdditional";
 
@@ -212,6 +213,7 @@ function CommercialOffer({ profile }: { profile: ViewProfile }) {
 }
 
 export default function IntentVerticalLp() {
+  usePublicCountry();
   const params = useParams<{ slug: string; intent: string }>();
   const rawSlug = params.slug ?? "";
   const intent = (params.intent ?? "") as Intent;
