@@ -974,10 +974,9 @@ router.post("/tenants/:tenantId/ads/creatives/:id/publish-variant", async (req, 
   }
 });
 
-router.post("/tenants/:tenantId/ads/creatives/:id/:action(ativar|pausar)-variant", async (req, res) => {
+async function handleCreativeVariantStatus(req: any, res: any, ativar: boolean) {
   const tenantId = req.params.tenantId as string;
   const creativeId = req.params.id as string;
-  const ativar = req.params.action === "ativar";
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [creative] = await db.select({ id: adCreativesTable.id, campaignId: adCreativesTable.campaignId })
@@ -995,7 +994,7 @@ router.post("/tenants/:tenantId/ads/creatives/:id/:action(ativar|pausar)-variant
     await recordAdCampaignEvent({
       tenantId,
       campaignId: creative.campaignId,
-      userId: (req as any).user?.sub,
+      userId: req.user?.sub,
       eventType: ativar ? "creative_variant_activated" : "creative_variant_paused",
       severity: ativar ? "success" : "warning",
       message: ativar ? "Variação A/B ativada manualmente." : "Variação A/B pausada manualmente.",
@@ -1007,7 +1006,15 @@ router.post("/tenants/:tenantId/ads/creatives/:id/:action(ativar|pausar)-variant
     req.log.error({ error, tenantId, creativeId }, "ads: falha ao alterar variação A/B");
     return res.status(500).json({ error: "Não foi possível alterar a variação A/B." });
   }
-});
+}
+
+router.post("/tenants/:tenantId/ads/creatives/:id/ativar-variant", async (req, res) =>
+  handleCreativeVariantStatus(req, res, true),
+);
+
+router.post("/tenants/:tenantId/ads/creatives/:id/pausar-variant", async (req, res) =>
+  handleCreativeVariantStatus(req, res, false),
+);
 
 router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => {
   const tenantId = req.params.tenantId as string;
