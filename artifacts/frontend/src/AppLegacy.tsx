@@ -60,6 +60,7 @@ const AppEntregadorPraca = lazy(() => import("@/pages/AppEntregadorPraca"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
 const CatalogoProdutos   = lazy(() => import("@/pages/CatalogoProdutos"));
+const FacebookMarketplaceManager = lazy(() => import("@/pages/FacebookMarketplaceManager"));
 const CategoriasProduto  = lazy(() => import("@/pages/CategoriasProduto"));
 const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
 const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
@@ -644,6 +645,7 @@ function AppRoutes() {
         <Route path="/usuarios"><ProtectedRoute component={Usuarios} /></Route>
         <Route path="/propostas">{() => <ProtectedRoute component={Propostas} />}</Route>
         <Route path="/catalogo">{() => <ProtectedRoute component={CatalogoProdutos} />}</Route>
+        <Route path="/marketing/facebook-marketplace">{() => <ProtectedRoute component={FacebookMarketplaceManager} />}</Route>
         <Route path="/catalogo/categorias">{() => <ProtectedRoute component={CategoriasProduto} />}</Route>
         <Route path="/base-conhecimento">{() => <ProtectedRoute component={KnowledgeBase} />}</Route>
         <Route path="/solicitacao-compra">{() => <ProtectedRoute component={SolicitacaoCompra} />}</Route>
