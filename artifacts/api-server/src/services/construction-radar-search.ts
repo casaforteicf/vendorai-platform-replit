@@ -240,7 +240,7 @@ function sourceConfidenceBonus(authority: ConstructionSourceAuthority): number {
   return 0;
 }
 
-function normalizedPhase(phase: string | null): string {
+function normalizedPhase(phase: string | null | undefined): string {
   return (phase ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
