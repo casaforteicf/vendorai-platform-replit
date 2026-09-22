@@ -462,6 +462,71 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
 
 // Liga/desliga a veiculação de verdade — a única chamada que de fato
 // pode gastar dinheiro. Só funciona depois de publishCampaignToGoogleAds.
+export async function updateGoogleAdsCampaignSchedule(
+  tenantId: string,
+  campaignId: string,
+  control: NonNullable<NonNullable<AdCampaign["segmentacao"]>["campaignControl"]>,
+): Promise<void> {
+  const [campanha] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campanha?.externalCampaignId) return;
+
+  const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const campaignResourceName = `customers/${customerId}/campaigns/${campanha.externalCampaignId}`;
+  const googleDate = (value: string) => value.replace(/-/g, "");
+
+  await mutate(customerId, accessToken, "campaigns", [{
+    update: {
+      resourceName: campaignResourceName,
+      startDate: googleDate(control.startDate),
+      endDate: googleDate(control.endDate),
+    },
+    updateMask: "start_date,end_date",
+  }]);
+
+  const query = [
+    "SELECT campaign_criterion.resource_name",
+    "FROM campaign_criterion",
+    `WHERE campaign.id = ${campanha.externalCampaignId} AND campaign_criterion.type = AD_SCHEDULE`,
+  ].join(" ");
+  const searchRes = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!searchRes.ok) throw new GoogleAdsPublishError(traduzirErroGoogleAds(searchRes.status, await searchRes.text()));
+  const chunks = await searchRes.json() as Array<{ results?: Array<{ campaignCriterion?: { resourceName?: string } }> }>;
+  const existing = chunks.flatMap((chunk) => chunk.results ?? [])
+    .map((row) => row.campaignCriterion?.resourceName)
+    .filter(Boolean) as string[];
+  if (existing.length) {
+    await mutate(customerId, accessToken, "campaignCriteria", existing.map((resourceName) => ({ remove: resourceName })));
+  }
+
+  const minuteEnum = (minute: number) => ({ 0: "ZERO", 15: "FIFTEEN", 30: "THIRTY", 45: "FORTY_FIVE" } as Record<number, string>)[minute];
+  const ops = (control.weeklySchedule ?? []).flatMap((slot) => {
+    const [startHour, startMinute] = slot.startTime.split(":").map(Number);
+    const [endHour, endMinute] = slot.endTime.split(":").map(Number);
+    return slot.days.map((dayOfWeek) => ({
+      create: {
+        campaign: campaignResourceName,
+        adSchedule: {
+          dayOfWeek,
+          startHour,
+          startMinute: minuteEnum(startMinute),
+          endHour,
+          endMinute: minuteEnum(endMinute),
+        },
+      },
+    }));
+  });
+  if (ops.length) await mutate(customerId, accessToken, "campaignCriteria", ops);
+}
+
 export async function setGoogleAdsCampaignStatus(
   tenantId: string,
   campaignId: string,
