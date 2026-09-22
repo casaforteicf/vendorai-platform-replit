@@ -138,6 +138,8 @@ export const adCreativesTable = pgTable("ad_creatives", {
   headlines: jsonb("headlines").$type<string[]>().notNull().default([]),
   descriptions: jsonb("descriptions").$type<string[]>().notNull().default([]),
   imagens: jsonb("imagens").$type<string[]>().notNull().default([]),
+  externalCreativeId: text("external_creative_id"),
+  externalAdId: text("external_ad_id"),
   status: adCriativoStatusEnum("status").notNull().default("rascunho"),
   geradoEm: timestamp("gerado_em").notNull().defaultNow(),
   aprovadoPorId: text("aprovado_por_id").references(() => usersTable.id, { onDelete: "set null" }),
@@ -149,6 +151,7 @@ export const adCreativesTable = pgTable("ad_creatives", {
 export const adPerformanceSnapshotsTable = pgTable("ad_performance_snapshots", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   campaignId: text("campaign_id").notNull().references(() => adCampaignsTable.id, { onDelete: "cascade" }),
+  creativeId: text("creative_id").references(() => adCreativesTable.id, { onDelete: "cascade" }),
   data: date("data").notNull(),
   impressoes: integer("impressoes").notNull().default(0),
   cliques: integer("cliques").notNull().default(0),
