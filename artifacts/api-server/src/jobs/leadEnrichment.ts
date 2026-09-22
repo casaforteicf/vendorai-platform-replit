@@ -478,7 +478,7 @@ export async function enrichLead(
         .limit(1)
         .then((rows) => rows[0] ?? null),
       db
-        .select({ id: whatsappConnectionsTable.id })
+        .select({ id: whatsappConnectionsTable.id, provider: whatsappConnectionsTable.provider })
         .from(whatsappConnectionsTable)
         .where(and(
           eq(whatsappConnectionsTable.tenantId, tenantId),
@@ -488,13 +488,17 @@ export async function enrichLead(
         .then((rows) => rows[0] ?? null),
     ]);
 
+    // Cold-start consultivo exige transporte que aceite texto livre. Evolution
+    // (QR) é o padrão; Z-API permanece como fallback legado. Meta Cloud fora da
+    // janela de 24h depende de template e, por isso, não é tratado como canal
+    // automático de prospecção fria personalizada.
     const hasLegacyWhatsapp = Boolean(
       (legacyChannelConfig?.zapiInstanceId && legacyChannelConfig.zapiToken && legacyChannelConfig.zapiClientToken) ||
-      (legacyChannelConfig?.evolutionInstanceName && legacyChannelConfig.evolutionConnected) ||
-      (legacyChannelConfig?.metaPhoneNumberId && legacyChannelConfig.metaAccessToken),
+      (legacyChannelConfig?.evolutionInstanceName && legacyChannelConfig.evolutionConnected),
     );
+    const hasActiveFreeTextWhatsapp = activeWhatsappConnection?.provider === "evolution";
     const channelCapabilities = {
-      whatsapp: Boolean(activeWhatsappConnection || hasLegacyWhatsapp),
+      whatsapp: Boolean(hasActiveFreeTextWhatsapp || hasLegacyWhatsapp),
       // E-mail só entra em automação fria quando envio + recebimento assinado
       // estão configurados; assim a cadência consegue parar quando houver reply.
       email: prospectorEmailAutomationConfigured(),
