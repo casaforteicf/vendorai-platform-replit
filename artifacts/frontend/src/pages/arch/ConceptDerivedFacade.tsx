@@ -566,8 +566,8 @@ export default function ConceptDerivedFacade({
         d={"M " + (garageDoorX - 2) + " 63 L " + (garageDoorX + garageW + 2) + " 63 L " + (garageDoorX + garageW + 9) + " 78 L " + (garageDoorX - 9) + " 78 Z"}
         fill={pavingFill}
         opacity="0.95"
-        stroke={selectedSurface === "paving" ? "#f97316" : "transparent"}
-        strokeWidth={selectedSurface === "paving" ? "0.8" : "0"}
+        stroke={selectedSurface === "paving" ? "#f97316" : lineMode ? "#94a3b8" : "transparent"}
+        strokeWidth={selectedSurface === "paving" ? "0.8" : lineMode ? "0.3" : "0"}
         className={onSelectSurface ? "cursor-pointer" : undefined}
         onClick={(event) => {
           if (!onSelectSurface) return;
@@ -701,8 +701,8 @@ export default function ConceptDerivedFacade({
                 onSelectVolume?.(null);
               }}
             />
-            <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill="#43545d" opacity="0.78" />
-            <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill="#d9c7b2" />
+            <rect x={entryX + entryW * 0.68} y={groundY - 14.8} width={entryW * 0.32} height="14.8" fill={lineMode ? "url(#technical-glass)" : "#43545d"} opacity={lineMode ? 1 : 0.78} stroke={lineMode ? "#64748b" : "none"} strokeWidth={lineMode ? "0.28" : "0"} />
+            <circle cx={entryX + entryW * 0.58} cy={groundY - 7.1} r="0.34" fill={lineMode ? "#334155" : "#d9c7b2"} />
           </>
         )}
 
@@ -713,7 +713,7 @@ export default function ConceptDerivedFacade({
               y={groundTop + 5.1}
               width={socialGlassW}
               height="8.8"
-              frame={colors.frame}
+              frame={frameColor}
               id={glassPatternId}
             />
             {onSelectSurface && (
@@ -751,7 +751,7 @@ export default function ConceptDerivedFacade({
               y={groundTop + 6.2 + index * 0.15}
               width={width}
               height="7.2"
-              frame={colors.frame}
+              frame={frameColor}
               id={glassPatternId}
             />
           );
@@ -767,7 +767,7 @@ export default function ConceptDerivedFacade({
               y={groundTop - STORY_HEIGHT + 5.2 + (index % 2) * 0.2}
               width={width}
               height="7.4"
-              frame={colors.frame}
+              frame={frameColor}
               id={glassPatternId}
             />
           );
@@ -853,11 +853,11 @@ export default function ConceptDerivedFacade({
         )}
 
         {facade.style === "minimalista" && (
-          <rect x={socialGlassX - 2.2} y={groundTop + 2.4} width={socialGlassW + 4.4} height="0.8" rx="0.2" fill="#7c8287" opacity="0.75" />
+          <rect x={socialGlassX - 2.2} y={groundTop + 2.4} width={socialGlassW + 4.4} height="0.8" rx="0.2" fill={lineMode ? "#ffffff" : "#7c8287"} opacity={lineMode ? 1 : 0.75} stroke={lineMode ? "#475569" : "none"} strokeWidth={lineMode ? "0.34" : "0"} />
         )}
 
         {facade.style === "tropical" && (
-          <g fill="#9b6a47">
+          <g fill={lineMode ? "#ffffff" : "#9b6a47"} stroke={lineMode ? "#64748b" : "none"} strokeWidth={lineMode ? "0.28" : "0"}>
             <rect x={socialGlassX - 2.8} y={groundTop + 1.6} width={socialGlassW + 5.6} height="1.05" rx="0.22" />
             {Array.from({ length: 7 }).map((_, index) => (
               <rect
@@ -892,7 +892,7 @@ export default function ConceptDerivedFacade({
       </g>
       )}
 
-      <path d={"M " + (baseX - 4) + " 65.5 H " + (baseX + facadeWidth + 4)} stroke="#a9b2a8" strokeWidth="0.58" />
+      <path d={"M " + (baseX - 4) + " 65.5 H " + (baseX + facadeWidth + 4)} stroke={lineMode ? "#475569" : "#a9b2a8"} strokeWidth={lineMode ? "0.72" : "0.58"} />
       <text x="70" y="74.2" textAnchor="middle" fontSize="1.65" fill="#667085" fontWeight="650" letterSpacing="0.08">
         {Math.round(overall.width * 10) / 10} m de frente construída · lote {lotWidth.toFixed(1)} m
       </text>
