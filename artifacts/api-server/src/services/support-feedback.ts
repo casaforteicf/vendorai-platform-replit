@@ -176,7 +176,12 @@ export async function tryHandleSupportFeedbackMessage(input: {
             ${now},
             ${JSON.stringify({ source: "support_agent", assistanceCode: ratingCard.codigo })}::jsonb
           )
-        `);
+        `).catch((error) => {
+          input.log?.warn?.(
+            { err: error, workCardId: ratingCard.id, codigo: ratingCard.codigo },
+            "support-feedback: CSAT official metric insert failed (non-fatal)",
+          );
+        });
       }
 
       await sendDirectWhatsAppMessage(
