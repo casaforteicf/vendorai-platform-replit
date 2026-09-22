@@ -76,6 +76,20 @@ export default function ConceptSitePlacementPanel({
   const stopDrag = () => setDragOffset(null);
   const fits = !bounds || (bounds.width <= envelope.width + 0.001 && bounds.depth <= envelope.depth + 0.001);
 
+  const frontAlignedOrigin = () => {
+    if (!bounds) return { x: 0, y: 0 };
+    if (placement.frontSide === "top") {
+      return { x: bounds.minX, y: envelope.minY };
+    }
+    if (placement.frontSide === "left") {
+      return { x: envelope.minX, y: bounds.minY };
+    }
+    if (placement.frontSide === "right") {
+      return { x: envelope.maxX - bounds.width, y: bounds.minY };
+    }
+    return { x: bounds.minX, y: envelope.maxY - bounds.depth };
+  };
+
   const frontLabel =
     placement.frontSide === "bottom" ? "Rua embaixo"
       : placement.frontSide === "top" ? "Rua em cima"
@@ -240,7 +254,7 @@ export default function ConceptSitePlacementPanel({
             </button>
             <button
               type="button"
-              onClick={() => applyOrigin(bounds.minX, envelope.maxY - bounds.depth)}
+              onClick={() => { const next = frontAlignedOrigin(); applyOrigin(next.x, next.y); }}
               className="rounded-xl border bg-white px-3 py-2.5 text-[11px] font-bold text-slate-700"
             >
               Alinhar à frente
