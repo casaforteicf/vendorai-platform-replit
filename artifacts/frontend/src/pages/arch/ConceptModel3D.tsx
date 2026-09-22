@@ -45,6 +45,11 @@ type Props = {
   selectedObjectId?: string | null;
   onSelectObject?: (objectId: string | null) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl">>) => void;
+  onObjectDrop?: (
+    preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
+    point: { x: number; y: number },
+  ) => void;
   onObjectRotate?: (objectId: string) => void;
   onObjectDuplicate?: (objectId: string) => void;
   onObjectDelete?: (objectId: string) => void;
@@ -562,6 +567,7 @@ export default function ConceptModel3D({
   selectedObjectId = null,
   onSelectObject,
   onObjectChange,
+  onObjectDrop,
   onObjectRotate,
   onObjectDuplicate,
   onObjectDelete,
@@ -1623,6 +1629,7 @@ export default function ConceptModel3D({
         onPaintWall={onPaintWall}
         onPaintFloor={onPaintFloor}
         onObjectChange={onObjectChange}
+        onObjectDrop={onObjectDrop}
         onObjectEditStart={onObjectEditStart}
         onObjectEditEnd={onObjectEditEnd}
       />
