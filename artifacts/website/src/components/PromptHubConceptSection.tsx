@@ -109,38 +109,26 @@ export default function PromptHubConceptSection() {
             </div>
 
             <div className="mt-6 grid gap-5 md:grid-cols-[0.9fr_1.1fr]">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:rounded-3xl sm:p-4">
-                <div className="relative overflow-hidden rounded-2xl border border-white/10">
-                  <img
-                    src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=1100&q=92"
-                    alt={isSpanish ? "Retrato cinematográfico con iluminación profesional" : "Retrato cinematográfico com iluminação profissional"}
-                    className="h-[250px] w-full object-cover object-top contrast-125 saturate-110 brightness-90 sm:h-[360px]"
-                    loading="lazy"
-                  />
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_30%,rgba(251,146,60,.28),transparent_27%),linear-gradient(115deg,rgba(2,6,23,.72),transparent_48%,rgba(79,70,229,.30))]" />
-                  <div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white backdrop-blur">
-                    {isSpanish ? "Resultado generado" : "Resultado gerado"}
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-4 pt-16">
-                    <p className="text-sm font-bold text-white">
-                      {isSpanish ? "Luz de cine, profundidad y atmósfera — sin perder la identidad." : "Luz de cinema, profundidade e atmosfera — sem perder a identidade."}
-                    </p>
-                  </div>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#090d16] sm:rounded-3xl">
+                <img
+                  src="/product-screens/prompt-hub-system.svg"
+                  alt={isSpanish ? "Interfaz real del Prompt Hub de VendorAI" : "Interface real do Prompt Hub do VendorAI"}
+                  className="block w-full"
+                  loading="lazy"
+                />
+                <div className="border-t border-white/10 px-4 py-3">
+                  <p className="text-xs font-semibold text-white">
+                    {isSpanish ? "Pantalla real del sistema" : "Tela real do sistema"}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                    {isSpanish
+                      ? "Biblioteca de Medios, controles de iluminación, prompt técnico y generación en el mismo flujo."
+                      : "Biblioteca de Mídias, controles de iluminação, prompt técnico e geração no mesmo fluxo."}
+                  </p>
                 </div>
+              </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">
-                  {[copy.preserve, copy.keyLight, copy.contrast, copy.background].map((label) => (
-                    <div key={label} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-semibold text-slate-300">
-                      {label}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 hidden items-center gap-2 text-xs font-medium text-slate-300 sm:flex">
-                  <Library className="h-4 w-4 text-orange-400" />
-                  {isSpanish ? "Biblioteca de Medios" : "Biblioteca de Mídias"}
-                </div>
-              </div>              <div className="hidden space-y-3 md:block">
+              <div className="hidden space-y-3 md:block">
                 {[
                   [copy.preserve, "ON", "100%"],
                   [copy.keyLight, isSpanish ? "Derecha" : "Direita", "88%"],
