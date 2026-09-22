@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, ExternalLink, Loader2, PackageCheck, Plus, Sparkles, Store, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Loader2, PackageCheck, Pencil, Plus, Save, Sparkles, Store, Trash2, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type CatalogProduct = {
   id: string;
@@ -17,6 +18,15 @@ type CatalogProduct = {
 };
 
 type MarketplaceStatus = "draft" | "ready" | "published" | "paused" | "sold" | "renewal_due" | "failed";
+
+type ListingEdit = {
+  title: string;
+  description: string;
+  price: string;
+  category: string;
+  city: string;
+  state: string;
+};
 
 type MarketplaceListing = {
   id: string;
@@ -85,6 +95,8 @@ export default function FacebookMarketplaceManager() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [externalUrls, setExternalUrls] = useState<Record<string, string>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<ListingEdit | null>(null);
 
   const loadData = useCallback(async () => {
     if (!tenantId) return;
@@ -187,6 +199,37 @@ export default function FacebookMarketplaceManager() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  function beginEdit(listing: MarketplaceListing) {
+    setEditingId(listing.id);
+    setEditForm({
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      category: listing.category ?? "",
+      city: listing.city ?? "",
+      state: listing.state ?? "",
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm(null);
+  }
+
+  async function saveEdit(listingId: string) {
+    if (!editForm) return;
+    await patchListing(listingId, {
+      title: editForm.title.trim(),
+      description: editForm.description.trim(),
+      price: editForm.price,
+      category: editForm.category.trim() || null,
+      city: editForm.city.trim() || null,
+      state: editForm.state.trim() || null,
+    });
+    cancelEdit();
+    toast({ title: "Rascunho atualizado", description: "As alterações foram salvas antes da publicação." });
   }
 
   async function patchListing(listingId: string, body: Record<string, unknown>) {
@@ -332,21 +375,86 @@ export default function FacebookMarketplaceManager() {
                           <StatusPill status={listing.status} />
                           <span className="text-xs text-muted-foreground">{listing.productName}</span>
                         </div>
-                        <h3 className="mt-2 text-lg font-semibold">{listing.title}</h3>
-                        <p className="mt-1 text-xl font-bold text-primary">{money(listing.price)}</p>
-                        <p className="mt-2 line-clamp-3 whitespace-pre-line text-sm text-muted-foreground">
-                          {listing.description}
-                        </p>
+                        {editingId === listing.id && editForm ? (
+                          <div className="mt-3 grid gap-3">
+                            <Input
+                              value={editForm.title}
+                              onChange={(event) => setEditForm((current) => current ? { ...current, title: event.target.value } : current)}
+                              placeholder="Título do anúncio"
+                            />
+                            <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={editForm.price}
+                                onChange={(event) => setEditForm((current) => current ? { ...current, price: event.target.value } : current)}
+                                placeholder="Preço"
+                              />
+                              <Input
+                                value={editForm.category}
+                                onChange={(event) => setEditForm((current) => current ? { ...current, category: event.target.value } : current)}
+                                placeholder="Categoria"
+                              />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-[1fr_100px]">
+                              <Input
+                                value={editForm.city}
+                                onChange={(event) => setEditForm((current) => current ? { ...current, city: event.target.value } : current)}
+                                placeholder="Cidade"
+                              />
+                              <Input
+                                value={editForm.state}
+                                onChange={(event) => setEditForm((current) => current ? { ...current, state: event.target.value } : current)}
+                                placeholder="UF"
+                                maxLength={2}
+                              />
+                            </div>
+                            <Textarea
+                              value={editForm.description}
+                              onChange={(event) => setEditForm((current) => current ? { ...current, description: event.target.value } : current)}
+                              rows={6}
+                              placeholder="Descrição do anúncio"
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="mt-2 text-lg font-semibold">{listing.title}</h3>
+                            <p className="mt-1 text-xl font-bold text-primary">{money(listing.price)}</p>
+                            <p className="mt-2 line-clamp-3 whitespace-pre-line text-sm text-muted-foreground">
+                              {listing.description}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={() => void copyListing(listing)}>
-                          <Copy className="mr-1.5 h-4 w-4" />
-                          Copiar
-                        </Button>
-                        <Button size="sm" onClick={() => void prepareAndOpen(listing)} disabled={busy}>
-                          {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
-                          Publicar
-                        </Button>
+                        {editingId === listing.id ? (
+                          <>
+                            <Button variant="outline" size="sm" onClick={cancelEdit} disabled={busy}>
+                              <X className="mr-1.5 h-4 w-4" />
+                              Cancelar
+                            </Button>
+                            <Button size="sm" onClick={() => void saveEdit(listing.id)} disabled={busy || !editForm?.title.trim() || !editForm?.description.trim()}>
+                              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+                              Salvar
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => beginEdit(listing)}>
+                              <Pencil className="mr-1.5 h-4 w-4" />
+                              Editar
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => void copyListing(listing)}>
+                              <Copy className="mr-1.5 h-4 w-4" />
+                              Copiar
+                            </Button>
+                            <Button size="sm" onClick={() => void prepareAndOpen(listing)} disabled={busy}>
+                              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
+                              Publicar
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
 
