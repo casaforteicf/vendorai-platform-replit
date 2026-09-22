@@ -271,6 +271,14 @@ function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   return null;
 }
 
+type SavedTourPoint = {
+  id: string;
+  name: string;
+  floor: number;
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+};
+
 type ConceptDraftResponse = {
   id: string;
   status?: string;
@@ -289,6 +297,7 @@ type ConceptDraftResponse = {
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptPlanObject[];
     wallMaterials?: Record<string, string>;
+    savedTourPoints?: SavedTourPoint[];
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -735,6 +744,7 @@ export default function ConceptPlanner() {
       return [];
     }
   });
+  const [savedTourPoints, setSavedTourPoints] = useState<SavedTourPoint[]>([]);
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
@@ -1057,6 +1067,7 @@ export default function ConceptPlanner() {
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
+        setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1078,13 +1089,13 @@ export default function ConceptPlanner() {
     };
   }, []);
 
-  const saveConcept = async (stepOverride?: number) => {
+  const saveConcept = async (stepOverride?: number, savedTourPointsOverride?: SavedTourPoint[]) => {
     setSaveState("saving");
     const payload = {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, savedTourPoints: savedTourPointsOverride ?? savedTourPoints },
       rooms,
       openingOverrides,
       customerProfile,
@@ -5681,6 +5692,14 @@ export default function ConceptPlanner() {
                       onPaintWall={applyWallMaterialToId}
                       onPaintFloor={applyFloorMaterialToSpace}
                       onCancelPaint={() => setPaintTool(null)}
+                      savedTourPoints={savedTourPoints}
+                      onSavedTourPointsChange={(points) => {
+                        setSavedTourPoints(points);
+                        void saveConcept(undefined, points);
+                      }}
+                      onSavedTourPointActivate={(point) => {
+                        setActiveFloor(Math.max(0, Math.min(floors - 1, point.floor)));
+                      }}
                       onRenderView={(lightingMode, renderView) => void generateConceptRender({ source: "model3d", renderView, lightingMode })}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
