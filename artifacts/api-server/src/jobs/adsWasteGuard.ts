@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Logger } from "pino";
-import { adCampaignsTable, adPerformanceSnapshotsTable, db, leadsTable, mediaPlansTable } from "@workspace/db";
+import { adCampaignsTable, adCreativesTable, adPerformanceSnapshotsTable, db, leadsTable, mediaPlansTable } from "@workspace/db";
 import { fetchGoogleAdsCampaignPerformance, setGoogleAdsCampaignStatus } from "../services/google-ads-campaign-publish.js";
 import { fetchMetaAdsCampaignPerformance, setMetaAdsCampaignStatus } from "../services/meta-ads-campaign-publish.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
@@ -74,12 +74,39 @@ export async function runAdsWasteGuard(log: Logger): Promise<void> {
       ));
       await db.insert(adPerformanceSnapshotsTable).values({
         campaignId: campaign.id,
+        creativeId: null,
         data: today,
         impressoes: Math.round(metrics.impressions),
         cliques: Math.round(metrics.clicks),
         custo: metrics.spend.toFixed(2),
         conversoesPlataforma: Math.round(metrics.conversions),
       });
+
+      const creativeMetrics = Array.isArray(metrics.creatives) ? metrics.creatives : [];
+      if (creativeMetrics.length > 0) {
+        const localCreatives = await db.select({
+          id: adCreativesTable.id,
+          externalAdId: adCreativesTable.externalAdId,
+        }).from(adCreativesTable).where(eq(adCreativesTable.campaignId, campaign.id));
+        const creativeIdByExternalAd = new Map(localCreatives
+          .filter((row) => row.externalAdId)
+          .map((row) => [row.externalAdId!, row.id]));
+        const rows = creativeMetrics.flatMap((row) => {
+          if (!row.externalAdId) return [];
+          const creativeId = creativeIdByExternalAd.get(row.externalAdId);
+          if (!creativeId) return [];
+          return [{
+            campaignId: campaign.id,
+            creativeId,
+            data: today,
+            impressoes: Math.round(row.impressions),
+            cliques: Math.round(row.clicks),
+            custo: row.spend.toFixed(2),
+            conversoesPlataforma: Math.round(row.conversions),
+          }];
+        });
+        if (rows.length > 0) await db.insert(adPerformanceSnapshotsTable).values(rows);
+      }
       refreshedCampaignIds.add(campaign.id);
     } catch (err) {
       log.error({ err, campaignId: campaign.id }, "scheduler/ads-waste-guard: performance refresh failed (non-fatal)");
