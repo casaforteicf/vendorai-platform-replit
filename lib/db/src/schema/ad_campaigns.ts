@@ -94,7 +94,15 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
     campaignControl?: {
       objective: "whatsapp" | "lead" | "sale" | "visit" | "awareness";
       startDate: string;
+      startTime?: string;
       endDate: string;
+      endTime?: string;
+      timezone?: string;
+      weeklySchedule?: {
+        days: Array<"MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY">;
+        startTime: string;
+        endTime: string;
+      }[];
       totalBudget: number;
       specialAdCategory: "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS";
       conversionTracking: { mode: "vendorai" | "platform" | "clicks"; confirmed: boolean };
