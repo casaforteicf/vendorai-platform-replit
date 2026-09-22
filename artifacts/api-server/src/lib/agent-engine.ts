@@ -28,6 +28,7 @@ import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
 import { callOpenAI as gatewayCallOpenAI, callAnthropic as gatewayCallAnthropic } from "./ai-gateway.js";
 import { CLOSER_OBJECTION_PLAYBOOK_PROMPT } from "./closer-objection-playbook.js";
+import { buildProspectorConsultivePrompt, resolveProspectorPlaybook } from "./prospector-consultive.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lead         = typeof leadsTable.$inferSelect;
@@ -757,6 +758,46 @@ function joinWithCalibration(parts: string[]): string {
 export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
+
+  // Cold outbound discovered by Prospector runs in a dedicated research-first mode.
+  // This intentionally bypasses the generic SPIN/product pitch until the lead has
+  // confirmed stage, timeline and challenge. The same SDR transport/runtime is
+  // reused, but the commercial behavior is governed by the Prospector playbook.
+  if (scenario?.["prospector_mode"] === true) {
+    const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+    const discoveryData = (lead.discoveryData ?? {}) as Record<string, unknown>;
+    const playbook = resolveProspectorPlaybook(
+      scenario?.["prospector_playbook"],
+      lead.mercadoSegmento,
+      { ...metadata, lead_source: lead.source ?? "" },
+    );
+    const state = scenario?.["prospector_state"] && typeof scenario["prospector_state"] === "object"
+      ? scenario["prospector_state"] as Record<string, unknown>
+      : null;
+    const prospectorSystemPrompt = typeof scenario?.["prospector_system_prompt"] === "string"
+      ? scenario["prospector_system_prompt"] as string
+      : null;
+
+    parts.push(buildProspectorConsultivePrompt({
+      playbook,
+      discoveryData,
+      metadata,
+      customSystemPrompt: prospectorSystemPrompt,
+      state,
+    }));
+    parts.push(buildLeadSection(lead));
+
+    if (ci) {
+      const lines = ["## INTELIGÊNCIA DE CLIENTE (somente contexto interno; não trate inferências como fatos)"];
+      if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+      if (ci.intentAnalysis)       lines.push(`Intenção: ${ci.intentAnalysis}`);
+      if (ci.goalAnalysis)         lines.push(`Objetivo: ${ci.goalAnalysis}`);
+      if (ci.nextBestAction)       lines.push(`Próxima ação sugerida: ${ci.nextBestAction}`);
+      if (lines.length > 1) parts.push(lines.join("\n"));
+    }
+
+    return joinWithCalibration(parts);
+  }
   if (systemPromptOverride?.trim()) {
     parts.push(systemPromptOverride.trim());
   } else {

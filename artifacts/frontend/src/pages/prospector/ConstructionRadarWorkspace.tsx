@@ -63,6 +63,10 @@ type ConstructionWorkSignal = {
     | "outro";
   sourceAuthority: "oficial" | "primaria" | "secundaria";
   confidence: number;
+  opportunityScore: number;
+  priority: "alta" | "media" | "baixa";
+  priorityReason: string;
+  recommendedActor: "proprietario" | "responsavel_tecnico" | "construtora" | "incorporadora" | "identificar";
 };
 
 type ConstructionWorkSearchResponse = {
@@ -83,6 +87,8 @@ type ProspectorConfigResponse = {
     setor?: string | null;
   } | null;
 };
+
+type ConstructionActorChoice = "auto" | "proprietario" | "responsavel_tecnico" | "construtora" | "incorporadora";
 
 const CATEGORY_OPTIONS: Array<{ value: WorkCategory; label: string; icon: typeof Home; description: string }> = [
   { value: "residencial", label: "Residenciais", icon: Home, description: "Casas, sobrados, geminadas e edifícios residenciais" },
@@ -149,6 +155,20 @@ function scoreClass(score: number) {
   return "border-border bg-muted text-muted-foreground";
 }
 
+function workPriorityClass(priority: ConstructionWorkSignal["priority"]) {
+  if (priority === "alta") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (priority === "media") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-border bg-muted text-muted-foreground";
+}
+
+function actorLabel(work: ConstructionWorkSignal) {
+  if (work.recommendedActor === "proprietario") return work.proprietario ? `Proprietário: ${work.proprietario}` : "Proprietário";
+  if (work.recommendedActor === "responsavel_tecnico") return work.responsavelTecnico ? `Resp. técnico: ${work.responsavelTecnico}` : "Responsável técnico";
+  if (work.recommendedActor === "construtora") return work.construtora ? `Construtora: ${work.construtora}` : "Construtora";
+  if (work.recommendedActor === "incorporadora") return work.incorporadora ? `Incorporadora: ${work.incorporadora}` : "Incorporadora";
+  return "Contato ainda a identificar";
+}
+
 function actorSearchTerm(category: Exclude<WorkCategory, "publica">, model: string) {
   const prefix = category === "residencial"
     ? "construtora arquitetura residencial"
@@ -186,8 +206,11 @@ export default function ConstructionRadarWorkspace() {
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
   const [prospectedCompanies, setProspectedCompanies] = useState<Set<string>>(new Set());
   const [prospectedAds, setProspectedAds] = useState<Set<string>>(new Set());
+  const [prospectedWorks, setProspectedWorks] = useState<Set<string>>(new Set());
+  const [workActorChoice, setWorkActorChoice] = useState<Record<string, ConstructionActorChoice>>({});
   const [prospectingCompany, setProspectingCompany] = useState<string | null>(null);
   const [prospectingAd, setProspectingAd] = useState<string | null>(null);
+  const [prospectingWork, setProspectingWork] = useState<string | null>(null);
 
   const configQuery = useQuery({
     queryKey: ["prospector-radar-config", tenantId],
@@ -215,6 +238,8 @@ export default function ConstructionRadarWorkspace() {
     setAds([]);
     setWorks([]);
     setWorkSources([]);
+    setProspectedWorks(new Set());
+    setWorkActorChoice({});
     setSourceWarnings([]);
     if (next !== "publica") setModel(MODELS[next][0]);
   }
@@ -310,8 +335,22 @@ export default function ConstructionRadarWorkspace() {
     }
 
     if (worksResponse.status === "fulfilled") {
-      setWorks(worksResponse.value.works ?? []);
+      const locatedWorks = worksResponse.value.works ?? [];
+      setWorks(locatedWorks);
       setWorkSources(worksResponse.value.sources ?? []);
+
+      const autoEligible = locatedWorks.filter((work) => work.opportunityScore >= 60);
+      if (autoEligible.length > 0) {
+        void Promise.all(autoEligible.map((work) => prospectWork(work, true))).then((results) => {
+          const imported = results.filter(Boolean).length;
+          if (imported > 0) {
+            toast({
+              title: "Prospecctor atualizado automaticamente",
+              description: `${imported} obra${imported === 1 ? "" : "s"} de prioridade alta/média enviada${imported === 1 ? "" : "s"} para pesquisa e qualificação.`,
+            });
+          }
+        });
+      }
     } else {
       setWorks([]);
       setWorkSources([]);
@@ -357,6 +396,54 @@ export default function ConstructionRadarWorkspace() {
       toast({ title: "Falha ao prospectar", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setProspectingCompany(null);
+    }
+  }
+
+  async function prospectWork(work: ConstructionWorkSignal, silent = false) {
+    setProspectingWork(work.id);
+    try {
+      const response = await fetch("/api/prospector/construction-signals/prospect", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ work, actor: workActorChoice[work.id] ?? "auto", ...tenantField() }),
+      });
+      const data = await response.json() as {
+        leadId?: string;
+        dealId?: string | null;
+        merged?: boolean;
+        actor?: { role?: string; name?: string | null; type?: string };
+        opportunityScore?: number;
+        priority?: "alta" | "media" | "baixa";
+        readyForOutreach?: boolean;
+        message?: string;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao enviar obra ao Prospecctor");
+
+      setProspectedWorks((current) => new Set(current).add(work.id));
+      if (!silent) {
+        toast({
+          title: data.merged ? "Obra atualizada no Prospecctor" : "Obra enviada ao Prospecctor",
+          description: data.message ?? (data.readyForOutreach
+            ? "Contato empresarial público encontrado e oportunidade pronta para pesquisa consultiva."
+            : "O sinal foi salvo; o Prospecctor seguirá a pesquisa antes de qualquer abordagem."),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+      queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      return true;
+    } catch (error) {
+      if (!silent) {
+        toast({
+          title: "Falha ao enviar obra",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        });
+      }
+      return false;
+    } finally {
+      setProspectingWork(null);
     }
   }
 
@@ -572,6 +659,9 @@ export default function ConstructionRadarWorkspace() {
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <Badge variant="secondary">Obra detectada</Badge>
+                                <Badge variant="outline" className={workPriorityClass(work.priority)}>
+                                  Prioridade {work.priority} · {work.opportunityScore}/100
+                                </Badge>
                                 {work.fase && <Badge variant="outline">{work.fase}</Badge>}
                                 <Badge variant="outline">{CONSTRUCTION_SOURCE_LABEL[work.sourceFamily]}</Badge>
                                 {work.sourceAuthority === "oficial" && <Badge variant="outline">Fonte oficial</Badge>}
@@ -617,12 +707,51 @@ export default function ConstructionRadarWorkspace() {
                               </div>
                             </div>
 
+                            <div className="rounded-lg border bg-background p-2.5">
+                              <p className="font-medium text-foreground">Contato recomendado pelo Prospecctor</p>
+                              <p className="mt-0.5 text-muted-foreground">{actorLabel(work)}</p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">{work.priorityReason}</p>
+                              <div className="mt-2">
+                                <Select
+                                  value={workActorChoice[work.id] ?? "auto"}
+                                  onValueChange={(value) => setWorkActorChoice((current) => ({
+                                    ...current,
+                                    [work.id]: value as ConstructionActorChoice,
+                                  }))}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="Escolher contato" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="auto">Automático — usar recomendação</SelectItem>
+                                    {work.proprietario && <SelectItem value="proprietario">Proprietário — {work.proprietario}</SelectItem>}
+                                    {work.responsavelTecnico && <SelectItem value="responsavel_tecnico">Arquiteto/engenheiro — {work.responsavelTecnico}</SelectItem>}
+                                    {work.construtora && <SelectItem value="construtora">Construtora — {work.construtora}</SelectItem>}
+                                    {work.incorporadora && <SelectItem value="incorporadora">Incorporadora — {work.incorporadora}</SelectItem>}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
                             <p className="rounded-lg bg-muted/40 p-2.5 leading-5 text-muted-foreground">{work.evidencia}</p>
                             {work.dataReferencia && (
                               <p className="text-[11px] text-muted-foreground">
                                 Referência: {new Date(`${work.dataReferencia}T12:00:00`).toLocaleDateString("pt-BR")}
                               </p>
                             )}
+                            <Button
+                              size="sm"
+                              className="mt-2"
+                              variant={prospectedWorks.has(work.id) ? "outline" : "default"}
+                              disabled={prospectedWorks.has(work.id) || prospectingWork === work.id}
+                              onClick={() => void prospectWork(work)}
+                            >
+                              {prospectingWork === work.id
+                                ? <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                                : prospectedWorks.has(work.id)
+                                  ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                                  : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}
+                              {prospectedWorks.has(work.id) ? "No Prospecctor" : "Enviar ao Prospecctor"}
+                            </Button>
                           </div>
                         </div>
                       ))}

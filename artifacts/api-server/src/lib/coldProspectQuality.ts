@@ -106,6 +106,33 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
   const cnpj = cleanText(meta["cnpj"]) ?? cleanText(meta["documento"]);
   if (cnpj) pushEvidence(evidence, "business_registry", "Cadastro empresarial identificado", cnpj, "public_business_registry");
 
+  const constructionSignal = cleanText(meta["construction_signal"]);
+  if (constructionSignal) {
+    const authority = cleanText(meta["construction_signal_authority"]);
+    const sourceUrl = cleanText(meta["construction_signal_url"]);
+    const sourceTitle = cleanText(meta["construction_signal_title"]);
+    pushEvidence(
+      evidence,
+      "construction_work_signal",
+      "Obra/projeto identificado em fonte pública",
+      constructionSignal,
+      sourceUrl ?? sourceTitle ?? "construction_radar",
+      authority === "oficial" ? "high" : authority === "primaria" ? "medium" : "low",
+    );
+  }
+
+  const constructionActor = cleanText(meta["construction_actor_name"]);
+  if (constructionActor) {
+    pushEvidence(
+      evidence,
+      "construction_actor",
+      "Responsável ligado à obra identificado publicamente",
+      constructionActor,
+      cleanText(meta["construction_signal_url"]) ?? "construction_radar",
+      meta["construction_actor_role"] === "responsavel_tecnico" ? "high" : "medium",
+    );
+  }
+
   const hasValidContact = Boolean(cleanText(input.telefone) || cleanText(input.email) || cleanText(input.instagramHandle));
   const segmentIdentified = normalized(input.segmento) !== "" && normalized(input.segmento) !== "geral";
   const requiredEvidence = 2;

@@ -333,13 +333,30 @@ export async function enrichLead(
       leadMetadata["origem"] === "ad_library" ||
       leadMetadata["meta_anunciante_ativo"] === true ||
       Boolean(leadMetadata["meta_page_id"]);
-    const mustCheckGooglePresence = ["cnpj", "recem_aberta", "ad_library"].includes(lead.source ?? "");
+    const constructionActorIsBusiness =
+      lead.source === "construction_radar" &&
+      leadMetadata["construction_actor_type"] === "empresa";
+    const constructionActorNeedsNoGoogleAssumption =
+      lead.source === "construction_radar" &&
+      leadMetadata["construction_actor_type"] !== "empresa";
+    const mustCheckGooglePresence =
+      ["cnpj", "recem_aberta", "ad_library"].includes(lead.source ?? "") ||
+      constructionActorIsBusiness;
+
+    const shouldCheckMetaAds =
+      lead.source !== "construction_radar" || constructionActorIsBusiness;
 
     const [metaAds, googlePresence] = await Promise.allSettled([
-      metaAdvertiserSignal ? Promise.resolve(true) : checkHasMetaAds(lead.empresa ?? lead.nome),
+      metaAdvertiserSignal
+        ? Promise.resolve(true)
+        : shouldCheckMetaAds
+          ? checkHasMetaAds(lead.empresa ?? lead.nome)
+          : Promise.resolve(false),
       mustCheckGooglePresence
         ? checkGooglePresence(lead.empresa ?? lead.nome, leadMetadata["cidade"] as string ?? "")
-        : Promise.resolve(true), // Google Places-origin leads are already verified there
+        : constructionActorNeedsNoGoogleAssumption
+          ? Promise.resolve(false)
+          : Promise.resolve(true), // Google Places-origin leads are already verified there
     ]);
 
     growth.anuncios_ativos = metaAds.status === "fulfilled" ? metaAds.value : metaAdvertiserSignal;
@@ -396,6 +413,11 @@ export async function enrichLead(
         scoreResult.priority_reason = scoreResult.priority_reason
           ? `${scoreResult.priority_reason} (+${scoreBoost} pts: anunciante Meta/Instagram)`
           : `Anunciante Meta/Instagram ativo (+${scoreBoost} pts)`;
+      } else if (boostReason === "construction_radar_signal") {
+        const radarReason = String(leadMetadata["construction_priority_reason"] ?? "sinal público de obra");
+        scoreResult.priority_reason = scoreResult.priority_reason
+          ? `${radarReason} • ${scoreResult.priority_reason} (+${scoreBoost} pts: Radar de Obras)`
+          : `${radarReason} (+${scoreBoost} pts: Radar de Obras)`;
       }
     }
 

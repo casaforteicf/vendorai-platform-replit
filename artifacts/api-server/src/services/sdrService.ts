@@ -11,6 +11,8 @@ import {
   dealsTable,
   sdrTemplatesTable,
   businessProfilesTable,
+  conversationsTable,
+  messagesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -18,16 +20,14 @@ import { dispatchAgentBackground } from "./agent-dispatch.js";
 import { ensureColdProspectLandingPage } from "./coldProspectLandingPage.js";
 import type { ColdEvidence } from "../lib/coldProspectQuality.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
+import { getAgentConfig } from "../lib/agent-engine.js";
+import {
+  buildProspectorOpening,
+  isColdProspectSource,
+  resolveProspectorPlaybook,
+} from "../lib/prospector-consultive.js";
 
 export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
-
-const COLD_PROSPECT_SOURCES = new Set([
-  "prospector",
-  "prospector_auto",
-  "cnpj",
-  "recem_aberta",
-  "ad_library",
-]);
 
 type ColdProspectDossier = {
   status?: string;
@@ -47,6 +47,59 @@ type ColdProspectDossier = {
   lpSlug?: string;
   lpGeneratedAt?: string;
 };
+
+async function recordProspectorOutboundMessage(
+  tenantId: string,
+  leadId: string,
+  message: string,
+  log: Logger,
+): Promise<void> {
+  let [conversation] = await db
+    .select()
+    .from(conversationsTable)
+    .where(and(
+      eq(conversationsTable.tenantId, tenantId),
+      eq(conversationsTable.leadId, leadId),
+      eq(conversationsTable.channel, "whatsapp"),
+    ))
+    .orderBy(desc(conversationsTable.ultimaMensagemEm))
+    .limit(1);
+
+  if (!conversation) {
+    [conversation] = await db
+      .insert(conversationsTable)
+      .values({
+        tenantId,
+        leadId,
+        channel: "whatsapp",
+        status: "open",
+        naoLidas: 0,
+      })
+      .returning();
+  }
+
+  if (!conversation) throw new Error("PROSPECTOR_CONVERSATION_NOT_CREATED");
+
+  await db.insert(messagesTable).values({
+    tenantId,
+    conversationId: conversation.id,
+    leadId,
+    conteudo: message,
+    direcao: "saida",
+    enviadoPor: "agente_ia",
+    agentName: "sdr",
+    tipoConteudo: "texto",
+    status: "enviado",
+    canal: "whatsapp",
+  });
+
+  await db
+    .update(conversationsTable)
+    .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
+    .where(eq(conversationsTable.id, conversation.id));
+
+  log.debug({ tenantId, leadId, conversationId: conversation.id }, "sdrService: Prospecctor outbound persisted");
+}
 
 function metadataSuppressesColdOutreach(metadata: Record<string, unknown>): boolean {
   const booleanFlags = ["optOut", "opt_out", "doNotContact", "nao_contatar", "não_contatar", "unsubscribed", "blacklisted"];
@@ -122,7 +175,7 @@ export async function detectSdrCenario(
   });
   if (visitas.length > 0 && visitaSemDecisao) return "pos_visita";
 
-  if (COLD_PROSPECT_SOURCES.has(lead.source ?? "") && visitas.length === 0) return "frio_teste";
+  if (isColdProspectSource(lead.source) && visitas.length === 0) return "frio_teste";
 
   if (lead.source?.startsWith("site_")) return "inbound_site";
 
@@ -389,13 +442,15 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
-  let lpUrl: string | null = null;
-  if (cenario === "frio_teste") {
-    lpUrl = await ensureColdLandingBeforeApproach(leadId, tenantId, log);
-  }
-
   const [lead] = await db
-    .select({ telefone: leadsTable.telefone, nome: leadsTable.nome })
+    .select({
+      telefone: leadsTable.telefone,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      source: leadsTable.source,
+      metadata: leadsTable.metadata,
+    })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
@@ -405,17 +460,59 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
+  // Cold outbound discovered by Prospector must open as research, not as a pitch.
+  // Do not send the legacy maturity survey, product claim or landing page before
+  // the lead has confirmed the real project/business context.
+  if (cenario === "frio_teste") {
+    let resolvedProspector;
+    try {
+      resolvedProspector = await getAgentConfig(tenantId, "prospector");
+    } catch (err) {
+      log.info({ err, tenantId, leadId }, "sdrService: Prospector explicitly disabled — cold approach not sent");
+      return { sent: false, cenario };
+    }
+
+    const params = (resolvedProspector?.parametros ?? {}) as Record<string, unknown>;
+    const playbook = resolveProspectorPlaybook(
+      params["prospectorPlaybook"],
+      lead.mercadoSegmento,
+      {
+        ...((lead.metadata ?? {}) as Record<string, unknown>),
+        lead_source: lead.source ?? "",
+      },
+    );
+    const message = buildProspectorOpening({
+      playbook,
+      leadName: lead.nome,
+      companyName: lead.empresa,
+      metadata: (lead.metadata ?? {}) as Record<string, unknown>,
+    });
+
+    await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
+    await recordProspectorOutboundMessage(tenantId, leadId, message, log);
+    await db.insert(activitiesTable).values({
+      tenantId,
+      leadId,
+      dealId: dealId ?? undefined,
+      tipo: "whatsapp",
+      titulo: "Prospecctor — primeira abordagem consultiva",
+      descricao: message,
+      status: "concluida",
+      concluidaEm: new Date(),
+      resultadoExecucao: "cenario:frio_teste|prospector_consultivo:v1",
+    });
+
+    log.info({ leadId, tenantId }, "sdrService: Prospecctor research-first opening sent");
+    return { sent: true, cenario, message };
+  }
+
   const rawTemplate = await getTemplateForCenario(tenantId, cenario);
   if (!rawTemplate) {
     log.warn({ leadId, cenario }, "sdrService: no active template for cenario");
     return { sent: false, cenario };
   }
 
-  let message = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
-  if (cenario === "frio_teste" && lpUrl && !message.includes(lpUrl)) {
-    message = `${message.trim()}\n\nPreparamos uma análise pública da empresa: ${lpUrl}`;
-  }
-
+  const message = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
   await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
 
   await db.insert(activitiesTable).values({
@@ -427,10 +524,10 @@ export async function sendSdrFirstApproach(
     descricao: message,
     status: "concluida",
     concluidaEm: new Date(),
-    resultadoExecucao: `cenario:${cenario}|template_ordem:1${lpUrl ? "|lp_ready:true" : ""}`,
+    resultadoExecucao: `cenario:${cenario}|template_ordem:1`,
   });
 
-  log.info({ leadId, tenantId, cenario, lpUrl }, "sdrService: first SDR approach sent");
+  log.info({ leadId, tenantId, cenario }, "sdrService: first SDR approach sent");
   return { sent: true, cenario, message };
 }
 
@@ -491,8 +588,8 @@ export async function sendSdrFollowup(
     leadId,
     mensagem: `[FOLLOW-UP AUTOMÁTICO 48h] ${leadNome.split(" ")[0]} não respondeu à abordagem inicial. ` +
       "Envie uma mensagem de follow-up natural, curta e sem pressão. " +
-      "Mantenha o modelo de pesquisa — se ainda não sabemos o grau de maturidade em IA deste negócio, " +
-      "aproveite para avançar uma pergunta diagnóstica de forma orgânica.",
+      "Mantenha o modelo de pesquisa consultiva e avance somente a próxima pergunta diagnóstica ainda não respondida " +
+      "do playbook configurado para este tenant, sem presumir segmento, dor, produto ou solução.",
     log,
     forcedAgent: "sdr",
     scenario: {

@@ -18,20 +18,24 @@ export type ConstructionWorkSignal = {
   obra: string;
   categoria: string | null;
   local: string;
-  endereco: string | null;
-  proprietario: string | null;
+  endereco: string | null | undefined;
+  proprietario: string | null | undefined;
   proprietarioTipo: "pessoa" | "empresa" | "orgao_publico" | "nao_informado";
-  responsavelTecnico: string | null;
-  construtora: string | null;
-  incorporadora: string | null;
-  fase: string | null;
+  responsavelTecnico: string | null | undefined;
+  construtora: string | null | undefined;
+  incorporadora: string | null | undefined;
+  fase: string | null | undefined;
   evidencia: string;
-  dataReferencia: string | null;
+  dataReferencia: string | null | undefined;
   sourceUrl: string | null;
   sourceTitle: string | null;
   sourceFamily: ConstructionSourceFamily;
   sourceAuthority: ConstructionSourceAuthority;
   confidence: number;
+  opportunityScore: number;
+  priority: "alta" | "media" | "baixa";
+  priorityReason: string;
+  recommendedActor: "proprietario" | "responsavel_tecnico" | "construtora" | "incorporadora" | "identificar";
 };
 
 export type ConstructionWorkSearchResult = {
@@ -236,6 +240,111 @@ function sourceConfidenceBonus(authority: ConstructionSourceAuthority): number {
   return 0;
 }
 
+function normalizedPhase(phase: string | null | undefined): string {
+  return (phase ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+export function scoreConstructionOpportunity(work: {
+  sourceAuthority: ConstructionSourceAuthority;
+  confidence: number;
+  fase: string | null | undefined;
+  proprietario: string | null | undefined;
+  responsavelTecnico: string | null | undefined;
+  construtora: string | null | undefined;
+  incorporadora: string | null | undefined;
+  endereco: string | null | undefined;
+  dataReferencia: string | null | undefined;
+}): {
+  score: number;
+  priority: "alta" | "media" | "baixa";
+  reason: string;
+  recommendedActor: "proprietario" | "responsavel_tecnico" | "construtora" | "incorporadora" | "identificar";
+} {
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (work.sourceAuthority === "oficial") {
+    score += 25;
+    reasons.push("fonte oficial");
+  } else if (work.sourceAuthority === "primaria") {
+    score += 16;
+    reasons.push("fonte primária");
+  } else {
+    score += 7;
+  }
+
+  score += Math.round(Math.max(0, Math.min(100, work.confidence)) * 0.25);
+
+  const phase = normalizedPhase(work.fase);
+  if (/projeto|aprovacao|licenc|alvara/.test(phase)) {
+    score += 22;
+    reasons.push("fase ideal para definição de fornecedor");
+  } else if (/fundacao|terraplen|movimentacao|inicio/.test(phase)) {
+    score += 18;
+    reasons.push("obra em início");
+  } else if (/estrutura/.test(phase)) {
+    score += 12;
+  } else if (/fechamento|alvenaria|cobertura/.test(phase)) {
+    score += 7;
+  } else if (/acabamento/.test(phase)) {
+    score += 3;
+  } else if (/conclu/.test(phase)) {
+    score -= 18;
+  }
+
+  if (work.proprietario) {
+    score += 8;
+    reasons.push("proprietário identificado");
+  }
+  if (work.responsavelTecnico) {
+    score += 9;
+    reasons.push("responsável técnico identificado");
+  }
+  if (work.construtora || work.incorporadora) score += 5;
+  if (work.endereco) score += 4;
+
+  if (work.dataReferencia) {
+    const time = new Date(`${work.dataReferencia}T12:00:00Z`).getTime();
+    if (Number.isFinite(time)) {
+      const ageDays = Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
+      if (ageDays <= 30) {
+        score += 7;
+        reasons.push("sinal recente");
+      } else if (ageDays <= 90) {
+        score += 4;
+      } else if (ageDays > 365) {
+        score -= 8;
+      }
+    }
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  const priority = score >= 80 ? "alta" : score >= 60 ? "media" : "baixa";
+
+  let recommendedActor: "proprietario" | "responsavel_tecnico" | "construtora" | "incorporadora" | "identificar" = "identificar";
+  if (/projeto|aprovacao|licenc|alvara/.test(phase) && work.responsavelTecnico) {
+    recommendedActor = "responsavel_tecnico";
+  } else if (work.proprietario) {
+    recommendedActor = "proprietario";
+  } else if (work.responsavelTecnico) {
+    recommendedActor = "responsavel_tecnico";
+  } else if (work.incorporadora) {
+    recommendedActor = "incorporadora";
+  } else if (work.construtora) {
+    recommendedActor = "construtora";
+  }
+
+  return {
+    score,
+    priority,
+    reason: reasons.slice(0, 4).join(" · ") || "sinal de obra a validar",
+    recommendedActor,
+  };
+}
+
 function findCitedSource(
   candidateUrl: string | null,
   sources: Array<{
@@ -409,7 +518,7 @@ function parsePass(
           ? ownerTypeRaw
           : "nao_informado";
 
-      return {
+      const normalizedWork = {
         id: makeId({ obra, local, sourceUrl, index }),
         obra,
         categoria: nullableString(raw.categoria),
@@ -431,6 +540,14 @@ function parsePass(
           100,
           normalizeConfidence(raw.confidence) + sourceConfidenceBonus(classification.authority),
         ),
+      };
+      const opportunity = scoreConstructionOpportunity(normalizedWork);
+      return {
+        ...normalizedWork,
+        opportunityScore: opportunity.score,
+        priority: opportunity.priority,
+        priorityReason: opportunity.reason,
+        recommendedActor: opportunity.recommendedActor,
       };
     })
     .filter((item): item is ConstructionWorkSignal => item !== null);
@@ -466,6 +583,8 @@ function mergeWorks(works: ConstructionWorkSignal[], maxResults: number): Constr
   return [...bestByKey.values()]
     .sort((a, b) => {
       const authorityWeight = { oficial: 3, primaria: 2, secundaria: 1 } as const;
+      const scoreDiff = b.opportunityScore - a.opportunityScore;
+      if (scoreDiff) return scoreDiff;
       const authorityDiff = authorityWeight[b.sourceAuthority] - authorityWeight[a.sourceAuthority];
       return authorityDiff || b.confidence - a.confidence;
     })

@@ -38,6 +38,10 @@ import {
   Users,
   Workflow,
 } from "lucide-react";
+import ProspectorPlaybookEditor, {
+  normalizeProspectorPlaybookForm,
+  type ProspectorPlaybookForm,
+} from "./ProspectorPlaybookEditor";
 
 export type GuidedAgentData = {
   agentKey: string;
@@ -117,9 +121,9 @@ const ROLE_GUIDE: Record<string, { objective: string; audience: string; handoff:
     tone: "vendedor",
   },
   prospector: {
-    objective: "Abordar prospects com contexto, iniciar conversas relevantes e transformar interesse em oportunidade real para a equipe comercial.",
-    audience: "Empresas ou pessoas que correspondem ao perfil ideal de cliente definido para a prospecção ativa.",
-    handoff: "Quando houver resposta e interesse real, transfira para Recepção ou SDR sem repetir perguntas já respondidas.",
+    objective: "Pesquisar sinais observáveis, entender o estágio real do prospect, confirmar o contexto e qualificar a oportunidade antes de qualquer proposta.",
+    audience: "Empresas ou pessoas com um sinal verificável de momento, necessidade ou projeto, dentro do perfil ideal definido pelo tenant.",
+    handoff: "Só transfira após concluir o diagnóstico, resumir o contexto com as palavras do lead, receber confirmação e validar os critérios SQL. Não repita perguntas já respondidas.",
     tone: "profissional",
   },
   agendamento: {
@@ -325,6 +329,9 @@ export default function AgentGuidedSetup({ agent, tenantId, teamPosition, onClos
   const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [setup, setSetup] = useState<GuidedSetup>(() => initialSetup(agent));
+  const [prospectorPlaybook, setProspectorPlaybook] = useState<ProspectorPlaybookForm>(() =>
+    normalizeProspectorPlaybookForm((agent.parametros ?? {})["prospectorPlaybook"]),
+  );
   const [briefing, setBriefing] = useState<string | null>(null);
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -387,6 +394,11 @@ export default function AgentGuidedSetup({ agent, tenantId, teamPosition, onClos
     setSaved(false);
   }
 
+  function updateProspectorPlaybook(value: ProspectorPlaybookForm) {
+    setProspectorPlaybook(value);
+    setSaved(false);
+  }
+
   function applyRecommendedKnowledge() {
     update("knowledgeIds", recommendedIds);
   }
@@ -405,7 +417,11 @@ export default function AgentGuidedSetup({ agent, tenantId, teamPosition, onClos
     mutationFn: async (activate: boolean) => {
       const configured: GuidedSetup = { ...setup, configuredAt: new Date().toISOString() };
       const systemPromptCustom = buildGuidedPrompt(agent, configured, briefing);
-      const parametros = { ...((agent.parametros ?? {}) as Record<string, unknown>), guidedSetup: configured };
+      const parametros = {
+        ...((agent.parametros ?? {}) as Record<string, unknown>),
+        guidedSetup: configured,
+        ...(agent.agentKey === "prospector" ? { prospectorPlaybook } : {}),
+      };
       const patchRes = await fetch(`/api/agent-configs/${agent.agentKey}`, {
         method: "PATCH",
         headers: {
@@ -480,7 +496,11 @@ export default function AgentGuidedSetup({ agent, tenantId, teamPosition, onClos
         tom: setup.tone,
         restricoes: setup.restrictions.trim() || null,
         systemPromptCustom: buildGuidedPrompt(agent, setup, briefing),
-        parametros: { ...((agent.parametros ?? {}) as Record<string, unknown>), guidedSetup: setup },
+        parametros: {
+          ...((agent.parametros ?? {}) as Record<string, unknown>),
+          guidedSetup: setup,
+          ...(agent.agentKey === "prospector" ? { prospectorPlaybook } : {}),
+        },
         knowledgeBaseIds: setup.knowledgeIds,
         ativo: activateOnFinish,
       };
@@ -557,6 +577,12 @@ export default function AgentGuidedSetup({ agent, tenantId, teamPosition, onClos
                 <Label htmlFor="guided-objective">Objetivo recomendado</Label>
                 <Textarea id="guided-objective" value={setup.objective} onChange={(e) => update("objective", e.target.value)} rows={4} />
               </div>
+              {agent.agentKey === "prospector" && (
+                <ProspectorPlaybookEditor
+                  value={prospectorPlaybook}
+                  onChange={updateProspectorPlaybook}
+                />
+              )}
             </div>
           )}
 

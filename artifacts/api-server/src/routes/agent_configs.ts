@@ -10,6 +10,10 @@ import {
   updateTenantAgentConfigSchema,
 } from "@workspace/db";
 import { getOpenAI } from "../lib/agent-engine.js";
+import {
+  buildProspectorConsultivePrompt,
+  resolveProspectorPlaybook,
+} from "../lib/prospector-consultive.js";
 
 const KNOWN_AGENT_KEYS = new Set([
   "sdr", "closer", "financeiro", "cobranca",
@@ -209,7 +213,18 @@ router.post("/agent-configs/:agentKey/test", async (req, res, next) => {
 
   if (!defaultCfg) { res.status(404).json({ error: "Agente não encontrado" }); return; }
 
-  const systemPrompt = tenantCfg?.systemPromptCustom?.trim() || defaultCfg.systemPromptBase;
+  let systemPrompt = tenantCfg?.systemPromptCustom?.trim() || defaultCfg.systemPromptBase;
+  if (agentKey === "prospector") {
+    const params = (tenantCfg?.parametros ?? defaultCfg.parametrosBase ?? {}) as Record<string, unknown>;
+    const playbook = resolveProspectorPlaybook(params["prospectorPlaybook"]);
+    systemPrompt = buildProspectorConsultivePrompt({
+      playbook,
+      discoveryData: {},
+      metadata: {},
+      customSystemPrompt: systemPrompt,
+      state: {},
+    });
+  }
   const tom          = tenantCfg?.tom ?? "profissional";
   const TOM_INST: Record<string, string> = {
     profissional: "Responda de forma profissional, clara e objetiva.",
