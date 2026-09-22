@@ -97,7 +97,7 @@ type PlannerAdCampaign = {
   latestCreative: PlannerAdCreative | null;
   creatives?: PlannerAdCreative[];
   segmentacao?: {
-    localizacao?: { locais?: string[]; raioKm?: number | null };
+    localizacao?: { locais?: string[]; raioKm?: number | null; tipoPresenca?: "presenca" | "interesse" | "ambos" };
     marketingContext?: { campaignId?: string; campaignName?: string };
     campaignControl?: { startDate?: string; endDate?: string };
   };
@@ -113,6 +113,14 @@ type PlannerAdsOverviewItem = {
   revenue: number;
   costPerLead: number | null;
   roas: number | null;
+};
+
+type PlannerDestinationPreview = {
+  type: string;
+  url: string | null;
+  label: string;
+  ready: boolean;
+  reason?: string | null;
 };
 
 type PlannerAdEvent = {
@@ -241,6 +249,7 @@ export default function PlanoMidia() {
   const [adActionBusy, setAdActionBusy] = useState<string | null>(null);
   const [selectedCreativeByAd, setSelectedCreativeByAd] = useState<Record<string, string>>({});
   const [placementByAd, setPlacementByAd] = useState<Record<string, "feed" | "story" | "reels" | "google">>({});
+  const [destinationByAd, setDestinationByAd] = useState<Record<string, PlannerDestinationPreview>>({});
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -287,6 +296,18 @@ export default function PlanoMidia() {
         const overviewData = await overviewResponse.json() as { campaigns?: PlannerAdsOverviewItem[] };
         setAdsOverview(overviewData.campaigns ?? []);
       }
+
+      const destinationEntries = await Promise.all(campaignsData.map(async (ad) => {
+        try {
+          const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/destination-preview`, { headers: authHeaders() });
+          if (!response.ok) return null;
+          const destination = await response.json() as PlannerDestinationPreview;
+          return [ad.id, destination] as const;
+        } catch {
+          return null;
+        }
+      }));
+      setDestinationByAd(Object.fromEntries(destinationEntries.filter(Boolean) as Array<readonly [string, PlannerDestinationPreview]>));
 
       const eventEntries = await Promise.all(campaignsData.map(async (ad) => {
         try {
@@ -774,6 +795,9 @@ export default function PlanoMidia() {
                             const title = creative?.headlines?.[0] || ad.itemLabel || campaign.nome;
                             const primaryText = creative?.headlines?.[1] || creative?.descriptions?.[0] || campaign.mensagemCentral;
                             const locations = ad.segmentacao?.localizacao?.locais ?? [];
+                            const radius = ad.segmentacao?.localizacao?.raioKm;
+                            const presence = ad.segmentacao?.localizacao?.tipoPresenca;
+                            const destination = destinationByAd[ad.id];
                             const destinationLabel = {
                               whatsapp: "WhatsApp",
                               landing_page: "Landing Page",
@@ -879,6 +903,38 @@ export default function PlanoMidia() {
                                         </Button>
                                       )}
                                     </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                  <div className="rounded-lg border bg-background p-3">
+                                    <div className="flex items-center gap-1.5 text-xs font-semibold"><MapPin className="h-3.5 w-3.5" />Área de veiculação</div>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {locations.length ? locations.map((location) => <Badge key={location} variant="secondary">{location}</Badge>) : <Badge variant="outline">Sem local definido</Badge>}
+                                      {radius ? <Badge variant="outline">Raio {radius} km</Badge> : null}
+                                      {presence ? <Badge variant="outline">{presence === "presenca" ? "Pessoas na região" : presence === "interesse" ? "Interesse na região" : "Presença ou interesse"}</Badge> : null}
+                                    </div>
+                                    <p className="mt-2 text-[10px] text-muted-foreground">
+                                      Esta é a segmentação territorial salva na campanha. A publicação usa os alvos reconhecidos pela plataforma.
+                                    </p>
+                                  </div>
+
+                                  <div className="rounded-lg border bg-background p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold">Destino do clique</p>
+                                      {destination?.ready ? <Badge className="bg-emerald-600">Pronto</Badge> : <Badge variant="secondary">Revisar</Badge>}
+                                    </div>
+                                    <p className="mt-2 text-sm font-medium">{destination?.label ?? destinationLabel}</p>
+                                    {destination?.url ? (
+                                      <div className="mt-2 flex items-center gap-2">
+                                        <p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{destination.url}</p>
+                                        <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => window.open(destination.url!, "_blank", "noopener,noreferrer")}>
+                                          Visualizar <ExternalLink className="ml-1 h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <p className="mt-2 text-[11px] text-muted-foreground">{destination?.reason ?? "O destino será resolvido na publicação."}</p>
+                                    )}
                                   </div>
                                 </div>
 
