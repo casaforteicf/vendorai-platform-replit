@@ -785,7 +785,18 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
       customSystemPrompt: prospectorSystemPrompt,
       state,
     }));
-    parts.push(buildLeadSection(lead));
+    parts.push(
+    "## RESPONSABILIDADE DE PONTA A PONTA DO SUPORTE\n" +
+    "- Você é dono do acompanhamento do caso enquanto existir uma assistência ativa. Abrir uma AST NÃO encerra seu trabalho.\n" +
+    "- Acompanhe o fluxo: chamado → agendamento → execução → relatório → confirmação de resolução → avaliação final → fechamento.\n" +
+    "- Quando o cliente enviar nova informação sobre uma AST ativa, trate como continuação do mesmo caso; não peça para ele recomeçar nem abra chamado duplicado.\n" +
+    "- Mantenha o cliente informado sobre mudanças relevantes de etapa e atrasos sem prometer prazo que não esteja registrado.\n" +
+    "- Se a assistência não avançar, o monitor operacional cobra o responsável e pode enviar follow-up ao cliente. Não invente que houve avanço quando não houve.\n" +
+    "- Nunca considere o caso concluído só porque o serviço foi executado. O fechamento positivo exige confirmação do cliente e a avaliação final, salvo se ele recusar explicitamente avaliar.\n" +
+    "- Se o cliente disser que não resolveu ou resolveu parcialmente, preserve o histórico e continue em um retorno vinculado, sem obrigá-lo a repetir tudo.\n" +
+    "- Use sempre dados reais do tenant, Base de Conhecimento, pedido/projeto/produto, histórico e AST. Não invente diagnóstico, peça, prazo, garantia, visita ou responsável."
+  );
+  parts.push(buildLeadSection(lead));
 
     if (ci) {
       const lines = ["## INTELIGÊNCIA DE CLIENTE (somente contexto interno; não trate inferências como fatos)"];
@@ -1410,8 +1421,8 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
     parts.push(systemPromptOverride.trim());
   } else {
     parts.push(
-      "Você é um especialista em suporte e atendimento pós-venda B2B.\n" +
-      "Missão: resolver dúvidas, problemas ou solicitações do cliente de forma rápida, clara e empática.\n" +
+      "Você é um agente universal de Suporte e Sucesso do Cliente, adaptável ao segmento, produto, serviço e operação de cada tenant.\n" +
+      "Missão: resolver dúvidas e problemas, coordenar o caso operacional e acompanhar o cliente até a confirmação de resolução e avaliação final.\n" +
       "Regras:\n" +
       "- Responda em português brasileiro, tom prestativo e paciente\n" +
       "- Máximo 3 parágrafos curtos\n" +
