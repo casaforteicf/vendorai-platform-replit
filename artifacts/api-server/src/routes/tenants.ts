@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count, and, gte, or } from "drizzle-orm";
+import { eq, count, and, gte, or, desc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   db,
@@ -1020,11 +1020,59 @@ function normalizeProvisionCountryCode(value?: string): ProvisionCountryCode | n
   return aliases[normalized] ?? null;
 }
 
+// GET /superadmin/tenants/prefill?email=... — reaproveita cadastro existente
+router.get("/superadmin/tenants/prefill", requireRole("super_admin"), async (req, res) => {
+  const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
+  if (!email) {
+    res.status(422).json({ error: "E-mail obrigatório" });
+    return;
+  }
+
+  const [lead] = await db
+    .select({
+      nome: leadsTable.nome,
+      email: leadsTable.email,
+      telefone: leadsTable.telefone,
+      empresa: leadsTable.empresa,
+      documento: leadsTable.documento,
+      dadosPj: leadsTable.dadosPj,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      logoUrl: leadsTable.logoUrl,
+      websiteUrl: leadsTable.websiteUrl,
+      discoveryData: leadsTable.discoveryData,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.email, email))
+    .orderBy(desc(leadsTable.updatedAt))
+    .limit(1);
+
+  if (!lead) {
+    res.json({ found: false });
+    return;
+  }
+
+  const pj = lead.dadosPj ?? {};
+  res.json({
+    found: true,
+    data: {
+      companyName: pj.razaoSocial || lead.empresa || undefined,
+      responsibleName: lead.nome || undefined,
+      email: lead.email || email,
+      phone: lead.telefone || undefined,
+      taxIdentifier: pj.cnpj || lead.documento || undefined,
+      segment: pj.segmento || lead.mercadoSegmento || undefined,
+      logoUrl: lead.logoUrl || undefined,
+      websiteUrl: lead.websiteUrl || undefined,
+      discoveryData: lead.discoveryData || undefined,
+    },
+  });
+});
+
 router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (req, res) => {
   const { z } = await import("zod/v4");
   const schema = z.object({
-    companyName: z.string().min(1),
-    responsibleName: z.string().min(1),
+    companyName: z.string().optional(),
+    responsibleName: z.string().optional(),
     email: z.email(),
     phone: z.string().optional(),
     countryCode: z.enum(["BR", "PY", "AR", "UY", "CL"]).optional().default("BR"),
@@ -1041,7 +1089,7 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     res.status(422).json({ error: parsed.error.message });
     return;
   }
-  const {
+  let {
     companyName,
     responsibleName,
     email,
@@ -1055,7 +1103,37 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     sendWelcomeEmailFlag,
   } = parsed.data;
   const countryProfile = TENANT_COUNTRY_PROFILES[countryCode as ProvisionCountryCode];
-  const normalizedTaxIdentifier = (taxIdentifier ?? cnpj)?.trim() || null;
+
+  const [existingRegistration] = await db
+    .select({
+      nome: leadsTable.nome,
+      telefone: leadsTable.telefone,
+      empresa: leadsTable.empresa,
+      documento: leadsTable.documento,
+      dadosPj: leadsTable.dadosPj,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      logoUrl: leadsTable.logoUrl,
+      websiteUrl: leadsTable.websiteUrl,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.email, email.trim().toLowerCase()))
+    .orderBy(desc(leadsTable.updatedAt))
+    .limit(1);
+
+  const pj = existingRegistration?.dadosPj ?? {};
+  companyName = companyName?.trim() || pj.razaoSocial || existingRegistration?.empresa || "";
+  responsibleName = responsibleName?.trim() || existingRegistration?.nome || "";
+  phone = phone?.trim() || existingRegistration?.telefone || undefined;
+
+  if (!companyName || !responsibleName) {
+    res.status(422).json({
+      error: "Faltam dados essenciais. Informe empresa e responsável ou use um e-mail com cadastro existente.",
+    });
+    return;
+  }
+
+  const normalizedTaxIdentifier =
+    (taxIdentifier ?? cnpj ?? pj.cnpj ?? existingRegistration?.documento)?.trim() || null;
 
   const slug = companyName
     .trim().toLowerCase()
@@ -1093,12 +1171,31 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
       taxIdentifierType: countryProfile.taxIdentifierType,
       taxIdentifier: normalizedTaxIdentifier,
       internalNotes: internalNotes ?? null,
+      ...(existingRegistration?.mercadoSegmento || pj.segmento ? {
+        segmento: (pj.segmento || existingRegistration?.mercadoSegmento) ?? undefined,
+        vertical: (pj.segmento || existingRegistration?.mercadoSegmento) ?? undefined,
+      } : {}),
+      ...(existingRegistration?.logoUrl ? { logoUrl: existingRegistration.logoUrl } : {}),
       ...(resolvedPlanId ? { planId: resolvedPlanId, billingCycle: billingCycle ?? "monthly", planStartedAt: new Date() } : {}),
     }).returning();
 
     if (!tenant) throw new Error("Failed to create tenant");
 
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
+
+    if (existingRegistration) {
+      await db.insert(businessProfilesTable).values({
+        tenantId: tenant.id,
+        razaoSocial: companyName,
+        nomeFantasia: companyName,
+        telefone: phone ?? null,
+        email,
+        cnpj: normalizedTaxIdentifier,
+        vertical: pj.segmento || existingRegistration.mercadoSegmento || null,
+        logoUrl: existingRegistration.logoUrl ?? null,
+        site: existingRegistration.websiteUrl ?? null,
+      }).onConflictDoNothing();
+    }
 
     // Create Cloudflare custom hostname for {slug}.appvendorai.com (fire-and-forget, non-critical)
     createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { /* CF not configured or error */ });
