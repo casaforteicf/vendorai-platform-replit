@@ -1,5 +1,5 @@
-import { useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Home, Move, Ruler } from "lucide-react";
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CheckCircle2, Home, Move, Ruler, Sparkles } from "lucide-react";
 import {
   buildSitePlacementSuggestions,
   clampBuildingOrigin,
@@ -15,6 +15,8 @@ type Props = {
   placement: SitePlacement;
   onPlacementChange: (placement: SitePlacement) => void;
   onMoveBuilding: (origin: { x: number; y: number }) => void;
+  onContinue?: () => void;
+  onOpenFacade?: () => void;
 };
 
 function roomFill(kind: string) {
@@ -36,9 +38,12 @@ export default function ConceptSitePlacementPanel({
   placement,
   onPlacementChange,
   onMoveBuilding,
+  onContinue,
+  onOpenFacade,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
+  const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
   const bounds = useMemo(() => getBuildingBounds(rooms), [rooms]);
   const envelope = useMemo(
@@ -69,6 +74,7 @@ export default function ConceptSitePlacementPanel({
     const point = pointFromEvent(event);
     if (point.x < bounds.minX || point.x > bounds.maxX || point.y < bounds.minY || point.y > bounds.maxY) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    setActiveSuggestionId(null);
     setDragOffset({ x: point.x - bounds.minX, y: point.y - bounds.minY });
   };
 
@@ -121,7 +127,7 @@ export default function ConceptSitePlacementPanel({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${lotWidth} ${lotDepth}`}
-          className={`h-72 w-full touch-none rounded-xl bg-white ${dragOffset ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`h-80 w-full touch-none rounded-xl bg-white ${dragOffset ? "cursor-grabbing" : "cursor-grab"}`}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -177,6 +183,11 @@ export default function ConceptSitePlacementPanel({
         <div className="mt-2 flex items-center justify-between text-[10px] font-semibold text-slate-500">
           <span><Move className="mr-1 inline h-3 w-3" />Arraste a casa</span>
           <span>{frontLabel}</span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-semibold text-slate-500">
+          <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Verde = área edificável</span>
+          <span className="rounded-full bg-orange-50 px-2 py-1 text-orange-700">Laranja = perímetro da casa</span>
+          <span className="rounded-full bg-slate-200 px-2 py-1 text-slate-700">Faixa escura = rua</span>
         </div>
       </div>
 
@@ -245,22 +256,23 @@ export default function ConceptSitePlacementPanel({
 
       {bounds && suggestions.length > 0 && (
         <section>
-          <div className="mb-2 text-xs font-bold text-slate-800">Sugestões automáticas</div>
+          <div className="mb-2 flex items-center justify-between gap-2"><div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Sparkles className="h-4 w-4 text-orange-500" />Sugestões automáticas</div><span className="text-[9px] font-semibold text-slate-400">1 clique para aplicar</span></div>
           <div className="space-y-2">
             {suggestions.map((suggestion) => (
               <button
                 key={suggestion.id}
                 type="button"
-                onClick={() => applyOrigin(suggestion.origin.x, suggestion.origin.y)}
-                className="w-full rounded-2xl border bg-white p-3 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
+                onClick={() => { setActiveSuggestionId(suggestion.id); applyOrigin(suggestion.origin.x, suggestion.origin.y); }}
+                className={activeSuggestionId === suggestion.id ? "w-full rounded-2xl border-2 border-orange-500 bg-orange-50 p-3 text-left shadow-sm" : "w-full rounded-2xl border bg-white p-3 text-left transition hover:border-orange-300 hover:bg-orange-50/40"}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-bold text-slate-900">{suggestion.title}</div>
                     <p className="mt-1 text-[10px] leading-4 text-slate-500">{suggestion.description}</p>
                   </div>
-                  <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600">
-                    Aplicar
+                  <span className={activeSuggestionId === suggestion.id ? "flex shrink-0 items-center gap-1 rounded-lg bg-orange-500 px-2 py-1 text-[9px] font-bold text-white" : "shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600"}>
+                    {activeSuggestionId === suggestion.id && <CheckCircle2 className="h-3 w-3" />}
+                    {activeSuggestionId === suggestion.id ? "Aplicada" : "Aplicar"}
                   </span>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] font-semibold text-slate-500">
@@ -316,6 +328,38 @@ export default function ConceptSitePlacementPanel({
         <div className="rounded-xl border bg-slate-50 p-3 text-[10px] leading-5 text-slate-600">
           Casa: <strong>{bounds.width.toFixed(1)} × {bounds.depth.toFixed(1)} m</strong> ·
           Área edificável: <strong>{envelope.width.toFixed(1)} × {envelope.depth.toFixed(1)} m</strong>
+        </div>
+      )}
+
+      {bounds && (
+        <div className="sticky bottom-0 space-y-2 rounded-2xl border bg-white/95 p-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="flex items-center justify-between gap-3 text-[10px]">
+            <span className="font-semibold text-slate-500">Implantação</span>
+            <span className={fits ? "font-bold text-emerald-600" : "font-bold text-red-600"}>
+              {fits ? "Dentro dos recuos" : "Precisa de ajuste"}
+            </span>
+          </div>
+          {onContinue && (
+            <button
+              type="button"
+              disabled={!fits}
+              onClick={onContinue}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Confirmar implantação e continuar
+            </button>
+          )}
+          {onOpenFacade && (
+            <button
+              type="button"
+              disabled={!fits}
+              onClick={onOpenFacade}
+              className="w-full rounded-xl border bg-white px-3 py-2.5 text-[11px] font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Ver fachada com esta implantação
+            </button>
+          )}
         </div>
       )}
     </div>
