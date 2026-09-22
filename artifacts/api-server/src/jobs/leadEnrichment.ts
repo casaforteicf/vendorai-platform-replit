@@ -343,8 +343,15 @@ export async function enrichLead(
       ["cnpj", "recem_aberta", "ad_library"].includes(lead.source ?? "") ||
       constructionActorIsBusiness;
 
+    const shouldCheckMetaAds =
+      lead.source !== "construction_radar" || constructionActorIsBusiness;
+
     const [metaAds, googlePresence] = await Promise.allSettled([
-      metaAdvertiserSignal ? Promise.resolve(true) : checkHasMetaAds(lead.empresa ?? lead.nome),
+      metaAdvertiserSignal
+        ? Promise.resolve(true)
+        : shouldCheckMetaAds
+          ? checkHasMetaAds(lead.empresa ?? lead.nome)
+          : Promise.resolve(false),
       mustCheckGooglePresence
         ? checkGooglePresence(lead.empresa ?? lead.nome, leadMetadata["cidade"] as string ?? "")
         : constructionActorNeedsNoGoogleAssumption
