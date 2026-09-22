@@ -27,6 +27,7 @@ import {
 import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
 import { callOpenAI as gatewayCallOpenAI, callAnthropic as gatewayCallAnthropic } from "./ai-gateway.js";
+import { CLOSER_OBJECTION_PLAYBOOK_PROMPT } from "./closer-objection-playbook.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lead         = typeof leadsTable.$inferSelect;
@@ -1039,7 +1040,7 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
 
-  // ── Meeting link or pending-link injection ──────────────────────────────────
+  // Universal objection handling knowledge. Tenant facts still come from the\n  // configured prompt / Knowledge Base / runtime scenario.\n  parts.push(CLOSER_OBJECTION_PLAYBOOK_PROMPT);\n\n  // ── Meeting link or pending-link injection ──────────────────────────────────
   // When auto-schedule succeeded: inject the real Google Meet URL.
   // When scheduling intent was detected but Calendar was unavailable: tell the
   // agent to confirm the link is coming — never ask for availability.
