@@ -4172,7 +4172,7 @@ export default function ConceptPlanner() {
                 </div>
               </div>
 
-              <div className="order-3 w-full min-w-0 lg:absolute lg:left-1/2 lg:top-1/2 lg:order-none lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
+              <div className="order-3 hidden w-full min-w-0 sm:block lg:absolute lg:left-1/2 lg:top-1/2 lg:order-none lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
                 <div className="flex w-full snap-x overflow-x-auto rounded-xl border border-white/10 bg-white/5 p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inline-flex lg:w-auto">
                   {([
                     ["plan", "2D"],

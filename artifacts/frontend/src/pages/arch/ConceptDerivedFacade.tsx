@@ -456,7 +456,7 @@ export default function ConceptDerivedFacade({
         onSelectSurface?.(null);
       }}
       preserveAspectRatio="xMidYMid meet"
-      className="block h-full min-h-[calc(100vh-64px)] w-full"
+      className="block h-full w-full md:min-h-[calc(100vh-64px)]"
       role="img"
       aria-label="Fachada arquitetônica conceitual derivada do pré-projeto"
     >

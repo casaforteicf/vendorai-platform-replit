@@ -64,6 +64,43 @@ const STYLE_LABELS: Array<[ConceptFacadePreferences["style"], string]> = [
   ["rustico_contemporaneo", "Rústico atual"],
 ];
 
+const STYLE_DESCRIPTIONS: Record<ConceptFacadePreferences["style"], string> = {
+  contemporaneo: "Volumes limpos, grandes vãos e composição horizontal.",
+  minimalista: "Poucos elementos, linhas precisas e materiais claros.",
+  tropical: "Madeira, sombra, vegetação e aberturas generosas.",
+  industrial: "Concreto, metal escuro e volumes marcados.",
+  classico_contemporaneo: "Proporções elegantes com leitura atual.",
+  rustico_contemporaneo: "Pedra, madeira e volumes mais acolhedores.",
+};
+
+function FacadeStylePreview({ style }: { style: ConceptFacadePreferences["style"] }) {
+  const industrial = style === "industrial";
+  const tropical = style === "tropical";
+  const classic = style === "classico_contemporaneo";
+  const rustic = style === "rustico_contemporaneo";
+  const minimal = style === "minimalista";
+  return (
+    <div className="relative h-24 overflow-hidden bg-gradient-to-b from-sky-100 via-slate-50 to-stone-100">
+      <div className="absolute inset-x-0 bottom-0 h-5 bg-[#dfe5dc]" />
+      <div className={`absolute bottom-4 left-[8%] right-[8%] h-14 overflow-hidden shadow-sm ${classic ? "rounded-t-[20px]" : "rounded-sm"} ${industrial ? "bg-zinc-500" : minimal ? "bg-white" : rustic ? "bg-stone-200" : "bg-stone-100"}`}>
+        <div className={`absolute inset-y-0 w-[30%] ${style === "contemporaneo" ? "left-[34%] bg-amber-700/60" : tropical ? "right-0 bg-amber-700/65" : industrial ? "left-0 bg-zinc-700" : classic ? "left-[35%] bg-stone-300" : rustic ? "left-0 bg-stone-400/70" : "left-0 bg-white"}`} />
+        <div className={`absolute bottom-0 h-9 w-[30%] bg-slate-800 ${style === "contemporaneo" || industrial ? "left-[4%]" : "right-[4%]"}`} />
+        <div className={`absolute bottom-3 h-6 w-[25%] border-2 border-slate-700 bg-slate-400/60 ${style === "contemporaneo" || industrial ? "right-[8%]" : "left-[8%]"}`} />
+        {tropical && <div className="absolute left-[42%] top-2 h-8 w-2 bg-amber-800/70" />}
+        {classic && <div className="absolute inset-x-[18%] top-0 h-2 rounded-full bg-stone-400" />}
+        {rustic && <div className="absolute inset-y-0 left-[34%] w-[18%]" style={{ backgroundImage: "repeating-linear-gradient(135deg,#8b735f 0 3px,#b5a18e 3px 6px)" }} />}
+      </div>
+      <div className={`absolute left-[7%] right-[7%] top-5 h-1.5 ${industrial ? "bg-zinc-700" : minimal ? "bg-slate-300" : classic ? "bg-stone-400" : "bg-orange-400/80"}`} />
+      {(tropical || rustic) && (
+        <>
+          <div className="absolute bottom-2 left-[3%] h-7 w-10 rounded-full bg-emerald-600/60" />
+          <div className="absolute bottom-1 right-[4%] h-6 w-12 rounded-full bg-emerald-700/50" />
+        </>
+      )}
+    </div>
+  );
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -176,7 +213,7 @@ export default function ConceptFacadeEditor({
   realisticPreviewLoading = false,
 }: Props) {
   const [panel, setPanel] = useState<"style" | "volumes" | "materials" | "frames" | "outdoor" | "lighting">("style");
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [selectedSurface, setSelectedSurface] = useState<FacadeSurfaceKey>("main");
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
 
@@ -276,7 +313,7 @@ export default function ConceptFacadeEditor({
 
   return (
     <div className="relative h-[calc(100dvh-64px)] min-h-[520px] overflow-hidden bg-[#eef1f3] md:min-h-[680px]">
-      <div className="absolute inset-x-3 top-3 z-30 flex snap-x overflow-x-auto rounded-2xl border bg-white/95 p-1 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:inset-x-auto md:left-4 md:top-4 md:rounded-xl md:p-0">
+      <div className="absolute inset-x-3 top-2 z-30 flex snap-x overflow-x-auto rounded-2xl border bg-white/95 p-1 shadow-lg backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:inset-x-auto md:left-4 md:top-4 md:rounded-xl md:p-0">
         {([
           ["style", Sparkles, "Estilo"],
           ["volumes", Box, "Volumes"],
@@ -293,9 +330,12 @@ export default function ConceptFacadeEditor({
               setPanel(value);
               setPanelOpen((open) => same ? !open : true);
             }}
-            className={panel === value
-              ? "flex h-10 shrink-0 snap-center items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white md:rounded-none md:border-r md:last:border-r-0"
-              : "flex h-10 shrink-0 snap-center items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 md:rounded-none md:border-r md:last:border-r-0"}
+            className={[
+              panel === value
+                ? "flex h-10 shrink-0 snap-center items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white md:rounded-none md:border-r md:last:border-r-0"
+                : "flex h-10 shrink-0 snap-center items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 md:rounded-none md:border-r md:last:border-r-0",
+              value === "frames" || value === "lighting" ? "hidden md:flex" : "",
+            ].join(" ")}
           >
             <Icon className="h-4 w-4" />
             {label}
@@ -304,11 +344,14 @@ export default function ConceptFacadeEditor({
       </div>
 
       {panelOpen && (
-      <div className="fixed inset-x-2 bottom-20 z-40 max-h-[62vh] overflow-auto rounded-3xl border bg-white shadow-2xl md:absolute md:inset-x-auto md:bottom-auto md:left-4 md:top-16 md:z-30 md:w-[286px] md:max-h-[calc(100vh-100px)] md:rounded-2xl md:shadow-xl">
+      <div className="fixed inset-x-0 bottom-[72px] z-40 max-h-[48dvh] overflow-auto rounded-t-[28px] border border-b-0 bg-white shadow-[0_-18px_50px_rgba(15,23,42,0.22)] md:absolute md:inset-x-auto md:bottom-auto md:left-4 md:top-16 md:z-30 md:w-[286px] md:max-h-[calc(100vh-100px)] md:rounded-2xl md:border md:shadow-xl">
+        <div className="sticky top-0 z-20 flex justify-center bg-white pt-2 md:hidden">
+          <div className="h-1 w-10 rounded-full bg-slate-300" />
+        </div>
         <button
           type="button"
           onClick={() => setPanelOpen(false)}
-          className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className="absolute right-2 top-2 z-30 grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
           title="Fechar painel"
         >
           <X className="h-4 w-4" />
@@ -623,29 +666,22 @@ export default function ConceptFacadeEditor({
               Comece pela linguagem visual; depois refine volumes, materiais, esquadrias e área externa.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              {STYLE_LABELS.map(([value, label], index) => (
+              {STYLE_LABELS.map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => onFacadeChange({ ...facade, style: value })}
                   className={facade.style === value
-                    ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
-                    : "overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
+                    ? "overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left shadow-sm"
+                    : "overflow-hidden rounded-2xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
                 >
-                  <div className={[
-                    "relative h-16 overflow-hidden",
-                    index % 3 === 0 ? "bg-gradient-to-br from-stone-100 to-slate-200"
-                      : index % 3 === 1 ? "bg-gradient-to-br from-white to-zinc-100"
-                      : "bg-gradient-to-br from-orange-50 to-stone-100",
-                  ].join(" ")}>
-                    <div className="absolute bottom-2 left-3 right-3 h-9 rounded-t-md bg-white/90 shadow-sm" />
-                    <div className="absolute bottom-2 left-5 h-6 w-7 rounded-sm bg-slate-700" />
-                    <div className="absolute bottom-5 right-5 h-4 w-9 rounded-sm bg-slate-500/70" />
-                    <div className="absolute left-3 right-3 top-3 h-1.5 rounded-full bg-orange-400/70" />
-                  </div>
+                  <FacadeStylePreview style={value} />
                   <div className="p-2.5">
                     <div className="text-[11px] font-bold text-slate-800">{label}</div>
-                    <div className="mt-0.5 text-[9px] text-slate-400">Aplicar como direção principal</div>
+                    <div className="mt-1 min-h-[32px] text-[9px] leading-4 text-slate-500">{STYLE_DESCRIPTIONS[value]}</div>
+                    <div className={facade.style === value ? "mt-2 text-[9px] font-bold text-orange-600" : "mt-2 text-[9px] font-bold text-slate-400"}>
+                      {facade.style === value ? "Estilo aplicado" : "Aplicar estilo"}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -687,6 +723,7 @@ export default function ConceptFacadeEditor({
 
       <div className="absolute inset-0 grid grid-cols-1 bg-slate-200 md:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
         <div className="relative min-w-0 overflow-hidden border-r border-slate-200 bg-[#eef1f3]">
+          <div className="absolute inset-x-0 top-14 h-[46dvh] md:inset-0 md:h-auto">
           <ConceptDerivedFacade
             lotWidth={lotWidth}
             levels={levels}
@@ -705,8 +742,9 @@ export default function ConceptFacadeEditor({
               setPanelOpen(true);
             }}
           />
+          </div>
 
-          <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+          <div className="absolute right-4 top-16 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:top-4">
             <Sun className="h-4 w-4 text-orange-500" />
             <span className="text-xs font-semibold">
               {design.lighting === "day" ? "Dia" : design.lighting === "sunset" ? "Pôr do sol" : "Noite"}
