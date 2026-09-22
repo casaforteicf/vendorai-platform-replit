@@ -106,29 +106,6 @@ export function sanitizeProspectorInboundText(input: {
   return value || null;
 }
 
-export function isProspectorOptOut(value: string): boolean {
-  const normalized = value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return [
-    "nao tenho interesse",
-    "nao me contate",
-    "nao entrar em contato",
-    "pare de enviar",
-    "remova meu contato",
-    "remover meu contato",
-    "descadastrar",
-    "cancelar contato",
-    "stop",
-    "unsubscribe",
-  ].some((phrase) => normalized === phrase || normalized.includes(phrase));
-}
-
 export function buildProspectorEmailSubject(companyName?: string | null): string {
   const company = (companyName ?? "").trim();
   return company ? `Uma pergunta rápida sobre ${company}` : "Uma pergunta rápida";
