@@ -320,6 +320,7 @@ archPublicRouter.get("/arch/public-tour/:token", async (req, res) => {
       rooms: archConceptProjectsTable.rooms,
       openingOverrides: archConceptProjectsTable.openingOverrides,
       facadePreferences: archConceptProjectsTable.facadePreferences,
+      conceptRender: archConceptProjectsTable.conceptRender,
       updatedAt: archConceptProjectsTable.updatedAt,
     })
     .from(archConceptProjectsTable)
@@ -347,6 +348,17 @@ archPublicRouter.get("/arch/public-tour/:token", async (req, res) => {
     rooms: concept.rooms,
     openingOverrides: concept.openingOverrides,
     facadePreferences: concept.facadePreferences,
+    coverImageUrl: (() => {
+      const render = (concept.conceptRender ?? {}) as Record<string, unknown>;
+      const direct = typeof render.resultImageUrl === "string" ? render.resultImageUrl : "";
+      if (direct) return direct;
+      const history = Array.isArray(render.history) ? render.history : [];
+      for (let index = history.length - 1; index >= 0; index -= 1) {
+        const item = history[index] as Record<string, unknown>;
+        if (typeof item?.resultImageUrl === "string" && item.resultImageUrl) return item.resultImageUrl;
+      }
+      return null;
+    })(),
     updatedAt: concept.updatedAt,
   });
 });
