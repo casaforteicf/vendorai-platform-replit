@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectivePrice, fallbackDraft, uniqueMedia } from "./facebook_marketplace";
+import { effectivePrice, fallbackDraft, uniqueMedia } from "./facebook_marketplace.js";
 
 describe("Facebook Marketplace draft helpers", () => {
   it("uses an active promotional price", () => {
