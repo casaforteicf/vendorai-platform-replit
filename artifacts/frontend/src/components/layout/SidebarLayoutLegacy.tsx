@@ -928,8 +928,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  function UserFooter() {
-    const showUtilities = sidebarExpanded && sidebarUtilitiesExpanded;
+  function UserFooter({ mobile = false }: { mobile?: boolean }) {
+    const canShowUtilities = mobile || sidebarExpanded;
+    const showUtilities = canShowUtilities && sidebarUtilitiesExpanded;
 
     return (
       <div
@@ -937,7 +938,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         data-vendorai-sidebar-utilities-expanded={showUtilities ? "true" : "false"}
         className="border-t border-sidebar-border/70"
       >
-        {sidebarExpanded && (
+        {canShowUtilities && (
           <button
             type="button"
             onClick={toggleSidebarUtilities}
@@ -1062,7 +1063,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <div className="flex-1 py-3 flex flex-col gap-1 px-3 overflow-y-auto">
               <NavLinks onNavigate={() => setMobileOpen(false)} />
             </div>
-            <UserFooter />
+            <UserFooter mobile />
           </div>
         </div>
       )}
