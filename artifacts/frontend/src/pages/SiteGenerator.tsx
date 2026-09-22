@@ -21,6 +21,17 @@ import {
 type Mode = "new-site" | "remodel" | "landing" | "campaign" | "product" | "catalog" | "ecommerce";
 type RemodelLevel = "visual" | "structural" | "complete";
 type AssetKind = "image" | "video";
+type MotionPreset = "auto" | "clean" | "cinematic" | "premium" | "dynamic" | "minimal";
+type MotionSourceAsset = { assetId: string; url: string; kind: AssetKind; name: string };
+type MotionJob = {
+  id: string;
+  operation: string;
+  status: "running" | "done" | "error" | string;
+  progress?: number | null;
+  total?: number | null;
+  error?: string | null;
+  output?: { videoUrl?: string; videoAssetId?: string; duration?: number; aspectRatio?: "portrait" | "landscape" } | null;
+};
 type CatalogItem = { id: string; nome: string; precoBase?: string | number | null; descricao?: string | null; categoria?: string | null; marca?: string | null; imagemUrl?: string | null; imagens?: string[] | null; ativo?: boolean };
 type Keyword = { termo: string; volumeBusca?: number | null; serpTop10?: unknown };
 type Testimonial = { id: string; name: string; company: string; text: string; mediaUrl: string; mediaType: AssetKind | null };
@@ -224,6 +235,19 @@ function GeneratorWorkspace() {
   const [mode, setMode] = useState<Mode>(() => (sessionStorage.getItem("vendorai_site_creation_mode") as Mode | null) ?? "new-site"); const [choosing, setChoosing] = useState(true); const [editContext, setEditContext] = useState(false); const [assetsOpen, setAssetsOpen] = useState(false); const [editor, setEditor] = useState(false); const [generating, setGenerating] = useState(false); const [error, setError] = useState<string | null>(null);
   const [audience, setAudience] = useState(""); const [offer, setOffer] = useState(""); const [objectiveId, setObjectiveId] = useState<(typeof OBJECTIVES)[number]["id"]>("leads"); const [name, setName] = useState(""); const [sector, setSector] = useState(""); const [desc, setDesc] = useState(""); const [notes, setNotes] = useState(""); const [tone, setTone] = useState("profissional");
   const [catalog, setCatalog] = useState<CatalogItem[]>([]); const [selected, setSelected] = useState<string[]>([]); const [images, setImages] = useState<string[]>([]); const [videos, setVideos] = useState<string[]>([]); const [videoUrl, setVideoUrl] = useState(""); const [testimonials, setTestimonials] = useState<Testimonial[]>([]); const [extras, setExtras] = useState<ExtraContent[]>([]); const [uploads, setUploads] = useState(0);
+  const [motionAssets, setMotionAssets] = useState<MotionSourceAsset[]>([]);
+  const [motionOpen, setMotionOpen] = useState(false);
+  const [motionSourceUrl, setMotionSourceUrl] = useState("");
+  const [motionPreset, setMotionPreset] = useState<MotionPreset>("auto");
+  const [motionDuration, setMotionDuration] = useState("8");
+  const [motionAspectRatio, setMotionAspectRatio] = useState<"landscape" | "portrait">("landscape");
+  const [motionPrompt, setMotionPrompt] = useState("");
+  const [motionPreserve, setMotionPreserve] = useState(true);
+  const [motionLoop, setMotionLoop] = useState(true);
+  const [motionBusy, setMotionBusy] = useState(false);
+  const [motionProjectId, setMotionProjectId] = useState("");
+  const [motionJobId, setMotionJobId] = useState("");
+  const [motionJob, setMotionJob] = useState<MotionJob | null>(null);
   const [market, setMarket] = useState<{ tone?: string; keywords: Keyword[]; competitors: string[] } | null>(null); const [marketBusy, setMarketBusy] = useState(false); const [aiBusiness, setAiBusiness] = useState<AiBusinessSuggestions | null>(null); const [aiBusinessBusy, setAiBusinessBusy] = useState(false); const [bp, setBp] = useState<any>(null); const aiBusinessKey = useRef(""); const aiBusinessFailedUntil = useRef(0);
   const [siteUrl, setSiteUrl] = useState(""); const [remodelLevel, setRemodelLevel] = useState<RemodelLevel>("complete"); const [preserve, setPreserve] = useState("Logo, identidade visual, conteúdos aprovados, URLs importantes e informações comerciais verdadeiras"); const [structure, setStructure] = useState<RemodelStructure | null>(null); const [remodelTone, setRemodelTone] = useState<unknown>(null); const [analyzing, setAnalyzing] = useState(false);
   const [campaignBriefing, setCampaignBriefing] = useState<SiteCampaignBriefing | null>(null);
@@ -471,10 +495,128 @@ function GeneratorWorkspace() {
       toast({ title: "Não foi possível visualizar o site", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
-  async function upload(file: File) { const x = await uploadHook.mutateAsync({ data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } }) as { uploadURL: string; objectPath: string }; const r = await fetch(x.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } }); if (!r.ok) throw new Error(`Falha ao enviar ${file.name}`); return `${window.location.origin}/api/storage${x.objectPath}`; }
-  async function uploadMany(files: File[], kind: AssetKind) { if (!files.length) return; setUploads((v) => v + files.length); await Promise.all(files.map(async (f) => { try { const url = await upload(f); kind === "image" ? setImages((v) => [...v, url]) : setVideos((v) => [...v, url]); } catch (e) { toast({ title: "Erro no upload", description: e instanceof Error ? e.message : undefined, variant: "destructive" }); } finally { setUploads((v) => Math.max(0, v - 1)); } })); }
-  async function uploadTestimonial(id: string, file: File) { setUploads((v) => v + 1); try { const url = await upload(file); const mediaType: AssetKind = file.type.startsWith("video/") ? "video" : "image"; setTestimonials((v) => v.map((t) => t.id === id ? { ...t, mediaUrl: url, mediaType } : t)); } finally { setUploads((v) => Math.max(0, v - 1)); } }
-  async function uploadExtra(id: string, file: File) { setUploads((v) => v + 1); try { const url = await upload(file); const mediaType: AssetKind = file.type.startsWith("video/") ? "video" : "image"; setExtras((v) => v.map((x) => x.id === id ? { ...x, mediaUrl: url, mediaType } : x)); } finally { setUploads((v) => Math.max(0, v - 1)); } }
+  async function upload(file: File) { const x = await uploadHook.mutateAsync({ data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } }) as { uploadURL: string; objectPath: string }; const r = await fetch(x.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } }); if (!r.ok) throw new Error(`Falha ao enviar ${file.name}`); return { url: `${window.location.origin}/api/storage${x.objectPath}`, objectPath: x.objectPath }; }
+  async function registerMotionAsset(file: File, kind: AssetKind, objectPath: string, url: string) {
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets`, {
+        method: "POST",
+        headers: headers(token),
+        body: JSON.stringify({
+          type: kind,
+          role: "source",
+          source: "upload",
+          storageUrl: objectPath,
+          originalFilename: file.name,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          metadata: { uploadedFrom: "site_generator_motion_ai", siteGenerator: true },
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.asset?.id) return;
+      setMotionAssets((current) => current.some((item) => item.assetId === body.asset.id) ? current : [...current, { assetId: String(body.asset.id), url, kind, name: file.name }]);
+      setMotionSourceUrl((current) => current || url);
+    } catch {
+      // O upload do site continua válido mesmo se o registro na Biblioteca falhar.
+    }
+  }
+  async function uploadMany(files: File[], kind: AssetKind) { if (!files.length) return; setUploads((v) => v + files.length); await Promise.all(files.map(async (f) => { try { const uploaded = await upload(f); kind === "image" ? setImages((v) => [...v, uploaded.url]) : setVideos((v) => [...v, uploaded.url]); void registerMotionAsset(f, kind, uploaded.objectPath, uploaded.url); } catch (e) { toast({ title: "Erro no upload", description: e instanceof Error ? e.message : undefined, variant: "destructive" }); } finally { setUploads((v) => Math.max(0, v - 1)); } })); }
+  async function uploadTestimonial(id: string, file: File) { setUploads((v) => v + 1); try { const uploaded = await upload(file); const mediaType: AssetKind = file.type.startsWith("video/") ? "video" : "image"; setTestimonials((v) => v.map((t) => t.id === id ? { ...t, mediaUrl: uploaded.url, mediaType } : t)); } finally { setUploads((v) => Math.max(0, v - 1)); } }
+  async function uploadExtra(id: string, file: File) { setUploads((v) => v + 1); try { const uploaded = await upload(file); const mediaType: AssetKind = file.type.startsWith("video/") ? "video" : "image"; setExtras((v) => v.map((x) => x.id === id ? { ...x, mediaUrl: uploaded.url, mediaType } : x)); } finally { setUploads((v) => Math.max(0, v - 1)); } }
+  const selectedMotionAsset = motionAssets.find((asset) => asset.url === motionSourceUrl) ?? null;
+  const motionProgress = (() => {
+    const progress = Number(motionJob?.progress ?? 0);
+    const total = Number(motionJob?.total ?? 100);
+    if (!Number.isFinite(progress)) return 0;
+    return total > 0 && total !== 100 ? Math.max(0, Math.min(100, Math.round((progress / total) * 100))) : Math.max(0, Math.min(100, Math.round(progress)));
+  })();
+
+  async function animateMedia() {
+    if (!selectedMotionAsset || motionBusy) return;
+    setMotionBusy(true);
+    setMotionJob(null);
+    setMotionProjectId("");
+    setMotionJobId("");
+    try {
+      const preserveText = motionPreserve
+        ? "Preservação máxima obrigatória: mantenha geometria, proporções, identidade visual, materiais, produto, fachada, móveis, pessoas e elementos originais. Não invente, remova nem redesenhe partes da imagem ou vídeo."
+        : "";
+      const effectsByPreset: Record<MotionPreset, Record<string, unknown>> = {
+        auto: { preset: "auto", intensity: "soft", transition: "smooth", motion: "ken_burns", color: "clean", grain: false, vignette: false, sharpen: true, beatSync: false, bpm: 110, sfx: "none" },
+        clean: { preset: "clean", intensity: "soft", transition: "fade", motion: "drift", color: "clean", grain: false, vignette: false, sharpen: true, beatSync: false, bpm: 110, sfx: "none" },
+        cinematic: { preset: "cinematic", intensity: "soft", transition: "blur", motion: "ken_burns", color: "cinematic", grain: true, vignette: true, sharpen: false, beatSync: false, bpm: 100, sfx: "none" },
+        premium: { preset: "premium", intensity: "soft", transition: "smooth", motion: "parallax", color: "product", grain: false, vignette: true, sharpen: true, beatSync: false, bpm: 105, sfx: "none" },
+        dynamic: { preset: "dynamic", intensity: "medium", transition: "zoom", motion: "zoom_in", color: "vibrant", grain: false, vignette: false, sharpen: true, beatSync: false, bpm: 120, sfx: "none" },
+        minimal: { preset: "minimal", intensity: "soft", transition: "fade", motion: "drift", color: "minimal", grain: false, vignette: false, sharpen: false, beatSync: false, bpm: 100, sfx: "none" },
+      };
+      const prompt = [
+        selectedMotionAsset.kind === "image" ? "Anime esta foto para uso em site com movimento de câmera natural e sofisticado." : "Otimize este vídeo para uso em site, com movimento e acabamento profissional sem descaracterizar o material original.",
+        preserveText,
+        motionLoop ? "Crie uma saída visualmente adequada para loop suave em hero ou seção de site." : "",
+        motionPrompt.trim(),
+      ].filter(Boolean).join("\n");
+      const response = await fetch(`/api/tenants/${tenantId}/media-engine/jobs`, {
+        method: "POST",
+        headers: headers(token),
+        body: JSON.stringify({
+          operation: "video_generate",
+          title: `Motion AI — ${selectedMotionAsset.name.slice(0, 60)}`,
+          context: {
+            prompt,
+            style: motionPreset === "cinematic" ? "cinematic, photorealistic, premium commercial production" : "photorealistic, clean premium commercial production",
+            aspectRatio: motionAspectRatio,
+            duration: Number(motionDuration),
+            effects: effectsByPreset[motionPreset],
+            generationMode: "media_only",
+            mediaInputs: [{ assetId: selectedMotionAsset.assetId, type: selectedMotionAsset.kind, role: "main_scene", importance: "required", order: 0, note: preserveText || undefined }],
+          },
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.projectId || !body.jobId) throw new Error(body.error ?? "Não foi possível iniciar a animação");
+      setMotionProjectId(String(body.projectId));
+      setMotionJobId(String(body.jobId));
+      toast({ title: "Motion AI iniciado", description: "A mídia será animada pelo Media Engine e adicionada automaticamente aos vídeos do site." });
+    } catch (e) {
+      toast({ title: "Não foi possível animar a mídia", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      setMotionBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!motionProjectId || !motionJobId) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/media/projects/${motionProjectId}`, { headers: headers(token), cache: "no-store" });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error ?? "Falha ao consultar Motion AI");
+        const job = (Array.isArray(body.jobs) ? body.jobs : []).find((item: MotionJob) => item.id === motionJobId && item.operation === "video_generate") as MotionJob | undefined;
+        if (!job || cancelled) return;
+        setMotionJob(job);
+        if (job.status === "done" && job.output?.videoUrl) {
+          setVideos((current) => current.includes(job.output!.videoUrl!) ? current : [...current, job.output!.videoUrl!]);
+          setMotionBusy(false);
+          toast({ title: "Animação pronta", description: "O vídeo gerado já foi adicionado aos ativos deste site." });
+          return;
+        }
+        if (job.status === "error") {
+          setMotionBusy(false);
+          toast({ title: "Falha na animação", description: job.error ?? "O Media Engine não conseguiu concluir esta mídia.", variant: "destructive" });
+          return;
+        }
+        window.setTimeout(() => { if (!cancelled) void check(); }, 4_000);
+      } catch (e) {
+        if (!cancelled) {
+          setMotionBusy(false);
+          toast({ title: "Falha ao acompanhar animação", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+        }
+      }
+    };
+    void check();
+    return () => { cancelled = true; };
+  }, [motionProjectId, motionJobId, tenantId, token]);
+
   async function intelligence() { setMarketBusy(true); try { const [cr, kr] = await Promise.all([fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { headers: headers(token), cache: "no-store" }), fetch(`/api/tenants/${tenantId}/content-autopilot/keywords`, { headers: headers(token), cache: "no-store" })]); const c = cr.ok ? await cr.json() : {}; const k = kr.ok ? await kr.json() : {}; const keywords = Array.isArray(k.keywords) ? (k.keywords as Keyword[]).sort((a, b) => Number(b.volumeBusca ?? 0) - Number(a.volumeBusca ?? 0)).slice(0, 12) : []; const bt = c?.config?.brandTone; const data = { tone: bt?.tom as string | undefined, keywords, competitors: competitorHosts(keywords) }; setMarket(data); if (!audience && bt?.publicoAlvo) setAudience(bt.publicoAlvo); if (data.tone?.toLowerCase().includes("premium")) setTone("premium"); if (!bt && !keywords.length) toast({ title: "Ainda não há pesquisa no Content Autopilot", description: "Quando houver keywords e concorrentes pesquisados, eles entram aqui automaticamente." }); else toast({ title: "Contexto enriquecido", description: `${keywords.length} sinais de busca e ${data.competitors.length} referências públicas carregados.` }); } finally { setMarketBusy(false); } }
   async function analyzeSite() { if (!siteUrl.trim()) throw new Error("Informe a URL do site atual"); setAnalyzing(true); try { const save = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { method: "PUT", headers: headers(token), body: JSON.stringify({ siteUrl: siteUrl.trim() }) }); if (!save.ok) throw new Error("Não foi possível conectar a URL"); const [tr, sr] = await Promise.all([fetch(`/api/tenants/${tenantId}/content-autopilot/analyze-site`, { method: "POST", headers: headers(token) }), fetch(`/api/tenants/${tenantId}/site-generator/remodel-analyze`, { method: "POST", headers: headers(token), body: JSON.stringify({ url: siteUrl.trim() }) })]); const tb = await tr.json().catch(() => ({})); const sb = await sr.json().catch(() => ({})); if (!tr.ok) throw new Error(tb.error ?? "Falha ao analisar tom"); if (!sr.ok) throw new Error(sb.error ?? "Falha ao analisar estrutura"); setRemodelTone(tb.brandTone ?? null); setStructure(sb); if (!audience && tb.brandTone?.publicoAlvo) setAudience(tb.brandTone.publicoAlvo); toast({ title: "Site analisado", description: `${sb.sections?.length ?? 0} seções mapeadas.` }); return sb as RemodelStructure; } finally { setAnalyzing(false); } }
 
@@ -570,6 +712,24 @@ function GeneratorWorkspace() {
       </CardContent></Card>
       <Card><CardHeader><div className="flex items-center justify-between gap-2"><div><CardTitle className="flex items-center gap-2 text-base"><ImageIcon className="h-4 w-4 text-primary" />Conteúdo & ativos</CardTitle><p className="mt-1 text-sm text-muted-foreground">Opcional: produtos/categorias, fotos, vídeos, depoimentos e orientações reais.</p></div><Button size="sm" variant="outline" onClick={() => setAssetsOpen((v) => !v)}>{assetsOpen ? "Ocultar" : "Adicionar conteúdo"}</Button></div></CardHeader><CardContent>{!assetsOpen ? <div className="grid grid-cols-4 gap-2 text-xs"><div className="rounded-lg border p-3">Produtos <strong className="block text-base">{selectedProducts.length || (mode === "ecommerce" ? catalog.length : 0)}</strong></div><div className="rounded-lg border p-3">Fotos <strong className="block text-base">{images.length}</strong></div><div className="rounded-lg border p-3">Vídeos <strong className="block text-base">{videos.length}</strong></div><div className="rounded-lg border p-3">Depoimentos <strong className="block text-base">{testimonials.filter((t) => t.text).length}</strong></div></div> : <div className="space-y-5">
         {!!catalog.length && mode !== "ecommerce" && <div className="space-y-2"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Produtos e categorias</p><p className="text-xs text-muted-foreground">Escolha o que deve aparecer neste site.</p></div><Badge>{selected.length} selecionado{selected.length === 1 ? "" : "s"}</Badge></div><div className="flex flex-wrap gap-2">{groups.map(([g, items]) => <button key={g} type="button" onClick={() => toggleGroup(items)} className={`rounded-full border px-3 py-1 text-xs ${items.every((x) => selected.includes(x.id)) ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground"}`}>{g} ({items.length})</button>)}</div><div className="grid max-h-56 gap-2 overflow-y-auto rounded-xl border p-2 md:grid-cols-2 xl:grid-cols-3">{catalog.map((p) => <button key={p.id} type="button" onClick={() => toggleProduct(p.id)} className={`flex items-center gap-2 rounded-lg border p-2 text-left ${selected.includes(p.id) ? "border-primary bg-primary/5" : ""}`}><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{p.nome}</p><p className="text-[10px] text-muted-foreground">{price(p.precoBase) || p.categoria || "Catálogo"}</p></div>{selected.includes(p.id) && <CheckCircle2 className="h-4 w-4 text-primary" />}</button>)}</div></div>}
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div><div className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Animar com IA</p><Badge variant="secondary">Motion AI</Badge></div><p className="mt-1 text-xs text-muted-foreground">Transforme uma foto em vídeo ou dê acabamento a um vídeo usando o Media Engine. A saída entra automaticamente no site.</p></div>
+            <Button size="sm" variant={motionOpen ? "secondary" : "outline"} onClick={() => setMotionOpen((value) => !value)} disabled={!motionAssets.length}>{motionOpen ? "Ocultar" : "Criar animação"}</Button>
+          </div>
+          {!motionAssets.length && <p className="mt-3 rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">Envie uma foto ou vídeo acima. Os novos uploads ficam registrados na Biblioteca e podem ser animados aqui.</p>}
+          {motionOpen && motionAssets.length > 0 && <div className="mt-4 space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[1.4fr_.8fr_.8fr]">
+              <div><Label>Mídia de origem</Label><Select value={motionSourceUrl || motionAssets[0]?.url || ""} onValueChange={setMotionSourceUrl}><SelectTrigger className="mt-1"><SelectValue placeholder="Selecione uma foto ou vídeo" /></SelectTrigger><SelectContent>{motionAssets.map((asset) => <SelectItem key={asset.assetId} value={asset.url}>{asset.kind === "image" ? "Foto" : "Vídeo"} · {asset.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Formato</Label><Select value={motionAspectRatio} onValueChange={(value) => setMotionAspectRatio(value as "landscape" | "portrait")}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="landscape">16:9 horizontal — site</SelectItem><SelectItem value="portrait">9:16 vertical</SelectItem></SelectContent></Select></div>
+              <div><Label>Duração</Label><Select value={motionDuration} onValueChange={setMotionDuration}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="8">8 segundos</SelectItem><SelectItem value="12">12 segundos</SelectItem><SelectItem value="16">16 segundos</SelectItem><SelectItem value="20">20 segundos</SelectItem></SelectContent></Select></div>
+            </div>
+            <div><Label>Estilo de movimento</Label><div className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{(["auto", "clean", "cinematic", "premium", "dynamic", "minimal"] as MotionPreset[]).map((preset) => <button key={preset} type="button" onClick={() => setMotionPreset(preset)} className={`rounded-lg border px-3 py-2 text-xs font-medium ${motionPreset === preset ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:border-primary/40"}`}>{preset === "auto" ? "Automático" : preset === "clean" ? "Clean" : preset === "cinematic" ? "Cinematográfico" : preset === "premium" ? "Premium" : preset === "dynamic" ? "Dinâmico" : "Minimalista"}</button>)}</div></div>
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]"><div><Label>Direção adicional</Label><Textarea className="mt-1" rows={2} value={motionPrompt} onChange={(e) => setMotionPrompt(e.target.value)} placeholder="Ex.: aproximação lenta na fachada, luz natural, movimento suave da esquerda para a direita..." /></div><div className="grid min-w-56 gap-2 pt-6"><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-xs"><span>Preservação máxima</span><input type="checkbox" checked={motionPreserve} onChange={(e) => setMotionPreserve(e.target.checked)} /></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-xs"><span>Preparar para loop</span><input type="checkbox" checked={motionLoop} onChange={(e) => setMotionLoop(e.target.checked)} /></label></div></div>
+            {selectedMotionAsset && <div className="flex items-center gap-3 rounded-lg border bg-background p-3">{selectedMotionAsset.kind === "image" ? <img src={selectedMotionAsset.url} alt="" className="h-16 w-24 rounded-md object-cover" /> : <video src={selectedMotionAsset.url} className="h-16 w-24 rounded-md object-cover" muted playsInline />}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{selectedMotionAsset.name}</p><p className="text-[11px] text-muted-foreground">Origem preservada · saída {motionAspectRatio === "landscape" ? "16:9" : "9:16"} · {motionDuration}s</p></div><Button onClick={() => void animateMedia()} disabled={motionBusy}>{motionBusy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Animando {motionProgress}%</> : <><Sparkles className="mr-2 h-4 w-4" />Gerar animação</>}</Button></div>}
+            {motionJob?.output?.videoUrl && <div className="grid gap-3 rounded-xl border border-green-500/20 bg-green-500/5 p-3 sm:grid-cols-[220px_1fr]"><video src={motionJob.output.videoUrl} controls loop={motionLoop} muted playsInline className="w-full rounded-lg bg-black" /><div className="self-center"><p className="text-sm font-semibold">Animação pronta</p><p className="mt-1 text-xs text-muted-foreground">O vídeo já foi adicionado em “Vídeos” e seguirá para a geração do site.</p></div></div>}
+          </div>}
+        </div>
         <div className="grid gap-4 lg:grid-cols-2"><div><p className="mb-2 text-sm font-semibold">Fotos</p><label className="block cursor-pointer"><input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => { void uploadMany(Array.from(e.target.files ?? []) as File[], "image"); e.target.value = ""; }} /><div className="flex items-center justify-center gap-2 rounded-xl border border-dashed p-5 text-sm text-muted-foreground"><Upload className="h-4 w-4" />Adicionar fotos</div></label>{images.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{images.map((u, i) => <div key={u + i} className="group relative"><img src={u} alt="" className="h-14 w-14 rounded-md border object-cover" /><button type="button" onClick={() => setImages((v) => v.filter((_, x) => x !== i))} className="absolute -right-1 -top-1 hidden rounded-full bg-destructive px-1 text-white group-hover:block">×</button></div>)}</div>}</div><div><p className="mb-2 text-sm font-semibold">Vídeos</p><label className="block cursor-pointer"><input type="file" accept="video/*" multiple className="sr-only" onChange={(e) => { void uploadMany(Array.from(e.target.files ?? []) as File[], "video"); e.target.value = ""; }} /><div className="flex items-center justify-center gap-2 rounded-xl border border-dashed p-5 text-sm text-muted-foreground"><Video className="h-4 w-4" />Fazer upload de vídeos</div></label><div className="mt-2 flex gap-2"><Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="ou cole a URL do vídeo" /><Button variant="outline" disabled={!videoUrl.trim()} onClick={() => { setVideos((v) => [...v, videoUrl.trim()]); setVideoUrl(""); }}><Plus className="h-4 w-4" /></Button></div>{videos.map((u, i) => <div key={u + i} className="mt-1 flex items-center gap-2 rounded-md border px-2 py-1 text-xs"><span className="min-w-0 flex-1 truncate">{u}</span><button type="button" onClick={() => setVideos((v) => v.filter((_, x) => x !== i))}><Trash2 className="h-3.5 w-3.5" /></button></div>)}</div></div>
         <div className="rounded-xl border p-4"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Depoimentos</p><p className="text-xs text-muted-foreground">Escreva o depoimento real e anexe foto ou vídeo se quiser.</p></div><Button size="sm" variant="outline" onClick={() => setTestimonials((v) => [...v, { id: crypto.randomUUID(), name: "", company: "", text: "", mediaUrl: "", mediaType: null }])}><Quote className="mr-2 h-4 w-4" />Adicionar</Button></div>{!testimonials.length && <p className="mt-3 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">Nenhum depoimento adicionado. A IA não inventará depoimentos.</p>}{testimonials.map((t, i) => <div key={t.id} className="mt-3 space-y-2 rounded-lg border p-3"><div className="flex justify-between"><strong className="text-xs">Depoimento {i + 1}</strong><button type="button" onClick={() => setTestimonials((v) => v.filter((x) => x.id !== t.id))}><Trash2 className="h-4 w-4" /></button></div><div className="grid grid-cols-2 gap-2"><Input value={t.name} onChange={(e) => setTestimonials((v) => v.map((x) => x.id === t.id ? { ...x, name: e.target.value } : x))} placeholder="Nome do cliente" /><Input value={t.company} onChange={(e) => setTestimonials((v) => v.map((x) => x.id === t.id ? { ...x, company: e.target.value } : x))} placeholder="Empresa/cargo" /></div><Textarea rows={2} value={t.text} onChange={(e) => setTestimonials((v) => v.map((x) => x.id === t.id ? { ...x, text: e.target.value } : x))} placeholder="Depoimento real" /><div className="flex items-center gap-2"><label className="cursor-pointer"><input type="file" accept="image/*,video/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadTestimonial(t.id, f); e.target.value = ""; }} /><Button type="button" size="sm" variant="outline" asChild><span><Upload className="mr-2 h-4 w-4" />Foto/vídeo</span></Button></label><Input value={t.mediaUrl} onChange={(e) => setTestimonials((v) => v.map((x) => x.id === t.id ? { ...x, mediaUrl: e.target.value, mediaType: e.target.value ? inferMediaKind(e.target.value) : null } : x))} placeholder="ou URL da mídia" />{t.mediaUrl && <Badge variant="secondary">✓</Badge>}</div></div>)}</div>
         <div className="rounded-xl border p-4"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Outros conteúdos</p><p className="text-xs text-muted-foreground">Cases, certificações, equipe, FAQ ou qualquer informação que mereça texto e mídia próprios.</p></div><Button size="sm" variant="outline" onClick={() => setExtras((v) => [...v, { id: crypto.randomUUID(), title: "", text: "", mediaUrl: "", mediaType: null }])}><Plus className="mr-2 h-4 w-4" />Adicionar</Button></div>{!extras.length && <p className="mt-3 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">Opcional. Adicione somente informações reais que devam entrar no site.</p>}{extras.map((x, i) => <div key={x.id} className="mt-3 space-y-2 rounded-lg border p-3"><div className="flex justify-between"><strong className="text-xs">Conteúdo {i + 1}</strong><button type="button" onClick={() => setExtras((v) => v.filter((a) => a.id !== x.id))}><Trash2 className="h-4 w-4" /></button></div><Input value={x.title} onChange={(e) => setExtras((v) => v.map((a) => a.id === x.id ? { ...a, title: e.target.value } : a))} placeholder="Título — ex.: Case Hotel X, Certificação, FAQ técnico" /><Textarea rows={2} value={x.text} onChange={(e) => setExtras((v) => v.map((a) => a.id === x.id ? { ...a, text: e.target.value } : a))} placeholder="Escreva a informação real que deve ser usada" /><div className="flex items-center gap-2"><label className="cursor-pointer"><input type="file" accept="image/*,video/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadExtra(x.id, f); e.target.value = ""; }} /><Button type="button" size="sm" variant="outline" asChild><span><Upload className="mr-2 h-4 w-4" />Foto/vídeo</span></Button></label><Input value={x.mediaUrl} onChange={(e) => setExtras((v) => v.map((a) => a.id === x.id ? { ...a, mediaUrl: e.target.value, mediaType: e.target.value ? inferMediaKind(e.target.value) : null } : a))} placeholder="ou URL da mídia" />{x.mediaUrl && <Badge variant="secondary">✓</Badge>}</div></div>)}</div>
