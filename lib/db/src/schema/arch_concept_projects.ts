@@ -17,6 +17,13 @@ export type ArchConceptConfiguration = {
   layoutPreferences?: Record<string, boolean>;
   wallFirstFloors?: number[];
   showDimensions?: boolean;
+  sitePlacement?: {
+    frontSide: "bottom" | "top" | "left" | "right";
+    setbackFront: number;
+    setbackRear: number;
+    setbackLeft: number;
+    setbackRight: number;
+  };
   customWalls?: Array<{
     id: string;
     floor: number;
