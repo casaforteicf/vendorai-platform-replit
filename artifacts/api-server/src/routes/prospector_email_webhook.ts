@@ -10,11 +10,10 @@ import {
 } from "@workspace/db";
 import {
   extractEmailAddress,
-  isProspectorOptOut,
   parseProspectorReplyAddress,
   sanitizeProspectorInboundText,
 } from "../services/prospector-email.js";
-import { isColdProspectSource } from "../lib/prospector-consultive.js";
+import { isColdProspectSource, isProspectorOptOut } from "../lib/prospector-consultive.js";
 import { processAgentInternal } from "../services/agent-dispatch.js";
 
 const router: IRouter = Router();
