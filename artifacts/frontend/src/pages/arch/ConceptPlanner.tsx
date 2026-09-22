@@ -40,6 +40,8 @@ import ConceptTypologyPreview from "./ConceptTypologyPreview";
 import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import ConceptFacadeEditor from "./ConceptFacadeEditor";
 import ConceptClientBriefPanel from "./ConceptClientBriefPanel";
+import ConceptSitePlacementPanel from "./ConceptSitePlacementPanel";
+import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, normalizeSitePlacement, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative } from "./conceptClientBrief";
 import ConceptModel3D, { type ConceptModelLevel } from "./ConceptModel3D";
 import {
@@ -69,12 +71,13 @@ type RoomKind =
   | "escada"
   | "outro";
 
-type EditorLibraryTab = "site" | "brief" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
+type EditorLibraryTab = "site" | "brief" | "placement" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
 type EditorExperienceMode = "guided" | "professional";
 
 const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
   { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
   { id: "brief", label: "Necessidades", helper: "Conte como a casa precisa funcionar." },
+  { id: "placement", label: "Implantação", helper: "Posicione a casa dentro dos recuos do terreno." },
   { id: "rooms", label: "Ambientes", helper: "Revise e ajuste os cômodos sugeridos." },
   { id: "build", label: "Construir", helper: "Ajuste paredes, portas, janelas e escada." },
   { id: "furniture", label: "Mobiliar", helper: "Posicione móveis e equipamentos reais." },
@@ -313,6 +316,7 @@ type ConceptDraftResponse = {
     objects?: ConceptPlanObject[];
     wallMaterials?: Record<string, string>;
     savedTourPoints?: SavedTourPoint[];
+    sitePlacement?: SitePlacement;
   };
   rooms: Room[];
   openingOverrides: Record<string, OpeningOverride>;
@@ -694,6 +698,7 @@ export default function ConceptPlanner() {
   const [step, setStep] = useState(WORKSPACE_STEP);
   const [lotWidth, setLotWidth] = useState(12);
   const [lotDepth, setLotDepth] = useState(30);
+  const [sitePlacement, setSitePlacement] = useState<SitePlacement>(DEFAULT_SITE_PLACEMENT);
   const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(DEFAULT_LAYOUT_PREFERENCES);
   const [floors, setFloors] = useState(1);
@@ -1114,6 +1119,7 @@ export default function ConceptPlanner() {
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
+        setSitePlacement(normalizeSitePlacement(draft.configuration?.sitePlacement));
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1141,7 +1147,7 @@ export default function ConceptPlanner() {
       title: "Meu pré-projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
-      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, savedTourPoints: savedTourPointsOverride ?? savedTourPoints },
+      configuration: { floors, desiredArea, typology, layoutPreferences, wallFirstFloors, showDimensions, customWalls, customOpenings, spaceProfiles, objects, wallMaterials, savedTourPoints: savedTourPointsOverride ?? savedTourPoints, sitePlacement },
       rooms,
       openingOverrides,
       customerProfile,
@@ -1289,9 +1295,42 @@ export default function ConceptPlanner() {
     setSelectedClosedSpaceId(null);
     setInteractionMode("room");
     setEditorView("plan");
-    setEditorLibraryTab("rooms");
+    setEditorLibraryTab("placement");
     setLibraryOpen(true);
     setStep(4);
+  };
+
+  const moveWholeProjectTo = (origin: { x: number; y: number }) => {
+    const bounds = getBuildingBounds(roomsRef.current);
+    if (!bounds) return;
+    const dx = origin.x - bounds.minX;
+    const dy = origin.y - bounds.minY;
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+
+    setRooms((current) => (Array.isArray(current) ? current : []).map((room) => ({
+      ...room,
+      x: room.x + dx,
+      y: room.y + dy,
+    })));
+    setCustomWalls((current) => (Array.isArray(current) ? current : []).map((wall) => ({
+      ...wall,
+      x1: wall.x1 + dx,
+      x2: wall.x2 + dx,
+      y1: wall.y1 + dy,
+      y2: wall.y2 + dy,
+    })));
+    setObjects((current) => (Array.isArray(current) ? current : []).map((object) => ({
+      ...object,
+      x: object.x + dx,
+      y: object.y + dy,
+    })));
+    setSpaceProfiles((current) => (Array.isArray(current) ? current : []).map((profile) => ({
+      ...profile,
+      centroid: { x: profile.centroid.x + dx, y: profile.centroid.y + dy },
+    })));
+    setOpeningOverrides((current) => Object.fromEntries(
+      Object.entries(current).map(([key, value]) => [key, { ...value, x: value.x + dx, y: value.y + dy }]),
+    ));
   };
 
   const startBlankPlan = () => {
@@ -4441,6 +4480,7 @@ export default function ConceptPlanner() {
                       {([
                         ["site", Ruler, "Terreno"],
                         ["brief", FileText, "Necessidades"],
+                        ["placement", Home, "Implantação"],
                         ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
@@ -4448,7 +4488,7 @@ export default function ConceptPlanner() {
                         ["materials", Sparkles, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
-                        .filter(([value]) => editorExperienceMode === "professional" ? value !== "brief" : value !== "models")
+                        .filter(([value]) => editorExperienceMode === "professional" ? value !== "brief" && value !== "placement" : value !== "models")
                         .map(([value, Icon, label]) => (
                         <button
                           key={value}
@@ -4478,6 +4518,8 @@ export default function ConceptPlanner() {
                           ? "Terreno"
                           : editorLibraryTab === "brief"
                             ? "Necessidades"
+                            : editorLibraryTab === "placement"
+                              ? "Implantação"
                           : editorLibraryTab === "models"
                             ? "Modelos"
                             : editorLibraryTab === "build"
@@ -4502,6 +4544,8 @@ export default function ConceptPlanner() {
                           ? "Dimensões e implantação do lote"
                           : editorLibraryTab === "brief"
                             ? "Preferências para gerar uma planta inicial"
+                            : editorLibraryTab === "placement"
+                              ? "Recuos e posição da casa no lote"
                           : editorLibraryTab === "models"
                             ? "Escolha uma base sem sair do editor"
                             : editorLibraryTab === "build"
@@ -4838,6 +4882,17 @@ export default function ConceptPlanner() {
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       onGenerate={applyClientBrief}
+                    />
+                  )}
+
+                  {editorLibraryTab === "placement" && (
+                    <ConceptSitePlacementPanel
+                      lotWidth={lotWidth}
+                      lotDepth={lotDepth}
+                      rooms={safeRooms}
+                      placement={sitePlacement}
+                      onPlacementChange={setSitePlacement}
+                      onMoveBuilding={moveWholeProjectTo}
                     />
                   )}
 
