@@ -136,6 +136,8 @@ export default function AdminTenants() {
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
+  const [prefillFound, setPrefillFound] = useState(false);
   const [form, setForm] = useState({
     companyName: "",
     responsibleName: "",
@@ -272,6 +274,39 @@ export default function AdminTenants() {
       internalNotes: "",
       segmentTemplateId: "",
     });
+  }
+
+  async function prefillFromExistingRegistration() {
+    const email = form.email.trim();
+    if (!email || !email.includes("@")) return;
+    setPrefilling(true);
+    setPrefillFound(false);
+    try {
+      const res = await fetch(`/api/superadmin/tenants/prefill?email=${encodeURIComponent(email)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({})) as {
+        found?: boolean;
+        data?: {
+          companyName?: string;
+          responsibleName?: string;
+          phone?: string;
+          taxIdentifier?: string;
+        };
+      };
+      if (res.ok && data.found && data.data) {
+        setForm((current) => ({
+          ...current,
+          companyName: current.companyName.trim() || data.data?.companyName || "",
+          responsibleName: current.responsibleName.trim() || data.data?.responsibleName || "",
+          phone: current.phone.trim() || data.data?.phone || "",
+          taxIdentifier: current.taxIdentifier.trim() || data.data?.taxIdentifier || "",
+        }));
+        setPrefillFound(true);
+      }
+    } finally {
+      setPrefilling(false);
+    }
   }
 
   async function handleProvision(sendEmail: boolean) {
@@ -631,9 +666,18 @@ export default function AdminTenants() {
                     <Input
                       type="email"
                       value={form.email}
-                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                      onChange={(event) => {
+                        setPrefillFound(false);
+                        setForm((current) => ({ ...current, email: event.target.value }));
+                      }}
+                      onBlur={() => void prefillFromExistingRegistration()}
                       placeholder="email@empresa.com"
                     />
+                    {prefilling ? (
+                      <p className="text-xs text-muted-foreground">Buscando cadastro existente...</p>
+                    ) : prefillFound ? (
+                      <p className="text-xs text-emerald-600">Cadastro encontrado. Dados existentes foram reaproveitados.</p>
+                    ) : null}
                   </div>
                 </div>
               </div>
