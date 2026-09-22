@@ -102,6 +102,35 @@ type ProvisionableTenantDomain = {
   cloudflareCustomHostnameId: string | null;
 };
 
+type DnsRefreshableTenantDomain = ProvisionableTenantDomain & {
+  dnsRecordName: string | null;
+  dnsRecordValue: string | null;
+};
+
+async function refreshDnsInstructions(domain: DnsRefreshableTenantDomain) {
+  const instructions = getDnsInstructions(domain.domain);
+  const nextValue = instructions.value || null;
+  const changed =
+    domain.dnsRecordName !== instructions.name ||
+    domain.dnsRecordValue !== nextValue;
+
+  if (changed) {
+    await db
+      .update(tenantDomainsTable)
+      .set({
+        dnsRecordName: instructions.name,
+        dnsRecordValue: nextValue,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantDomainsTable.id, domain.id));
+
+    domain.dnsRecordName = instructions.name;
+    domain.dnsRecordValue = nextValue;
+  }
+
+  return instructions;
+}
+
 async function loadOrProvisionCloudflareHostname(domain: ProvisionableTenantDomain) {
   const config = getCloudflareCustomDomainConfig();
   if (!config.apiConfigured) return null;
@@ -246,6 +275,7 @@ router.get(
       return;
     }
 
+    await refreshDnsInstructions(domain);
     const dnsCheck = await inspectCname(domain.dnsRecordName, domain.dnsRecordValue);
     let cloudflareStatus: string | null = null;
     let cloudflareSslStatus: string | null = null;
@@ -316,6 +346,7 @@ router.post(
       return;
     }
 
+    await refreshDnsInstructions(domain);
     const dnsCheck = await inspectCname(domain.dnsRecordName, domain.dnsRecordValue);
 
     // Re-attempt provisioning on every explicit verification. This self-heals
