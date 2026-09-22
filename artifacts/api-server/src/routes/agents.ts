@@ -18,6 +18,7 @@ import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspa
 import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
+import { formatCloserWinningResponsesPrompt, loadCloserWinningResponses } from "../lib/closer-winning-response-memory.js";
 import {
   loadContext,
   computeLimits,
@@ -217,6 +218,32 @@ async function handleAgentProcess(
         req.log.warn({ err }, "closer: auto-schedule failed (non-fatal), using meetingRequested fallback");
         closerEnrichedScenario = { meetingRequested: true };
       }
+    }
+  }
+
+  if (agentName === "closer") {
+    try {
+      const learnedResponses = await loadCloserWinningResponses({
+        tenantId,
+        segmento: ctx.lead.mercadoSegmento,
+        incomingMessage: mensagem,
+      });
+      const learnedPrompt = formatCloserWinningResponsesPrompt(learnedResponses);
+      if (learnedPrompt) {
+        closerEnrichedScenario = {
+          ...(closerEnrichedScenario ?? {}),
+          closerWinningResponsesPrompt: learnedPrompt,
+        };
+        req.log.debug(
+          { tenantId, leadId, learnedResponses: learnedResponses.length },
+          "closer: tenant winning-response memory injected",
+        );
+      }
+    } catch (err) {
+      req.log.warn(
+        { err, tenantId, leadId },
+        "closer: winning-response memory unavailable (non-fatal)",
+      );
     }
   }
 

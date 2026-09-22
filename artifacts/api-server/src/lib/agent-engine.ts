@@ -1089,6 +1089,13 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
   // Universal objection handling knowledge. Tenant facts still come from the
   // configured prompt / Knowledge Base / runtime scenario.
   parts.push(CLOSER_OBJECTION_PLAYBOOK_PROMPT);
+  const closerWinningResponsesPrompt =
+    typeof scenario?.closerWinningResponsesPrompt === "string"
+      ? scenario.closerWinningResponsesPrompt.trim()
+      : "";
+  if (closerWinningResponsesPrompt) {
+    parts.push(closerWinningResponsesPrompt);
+  }
 
   // ── Meeting link or pending-link injection ──────────────────────────────────
   // When auto-schedule succeeded: inject the real Google Meet URL.
