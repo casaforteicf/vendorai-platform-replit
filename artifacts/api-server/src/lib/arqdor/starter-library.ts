@@ -134,6 +134,39 @@ function starterRealModel(family: string, variantIndex: number) {
   return variants[variantIndex] ?? null;
 }
 
+const starterPolyHavenQueries: Record<string, string[]> = {
+  camas: ["bed", "bed", "bed", "bed"],
+  roupeiros: ["wardrobe cabinet", "wardrobe cabinet", "wardrobe cabinet"],
+  "cozinha-base": [
+    "kitchen cabinet",
+    "kitchen cabinet",
+    "kitchen cabinet",
+    "tall kitchen cabinet",
+    "wall cabinet",
+    "wall cabinet",
+    "kitchen island",
+  ],
+  banheiro: [
+    "bathroom cabinet",
+    "bathroom cabinet",
+    "bathroom cabinet",
+    "toilet",
+    "bathroom sink",
+  ],
+  escritorio: [
+    "office desk",
+    "office desk",
+    "office chair",
+    "bookshelf",
+  ],
+  jantar: ["dining table", "dining table", "dining table", "round dining table"],
+  externo: ["sun lounger", "outdoor dining table", "garden bench", "parasol"],
+};
+
+function starterPolyHavenQuery(family: string, variantIndex: number) {
+  return starterPolyHavenQueries[family]?.[variantIndex] ?? null;
+}
+
 
 type SeedItem = {
   nome: string;
@@ -364,7 +397,12 @@ const familySeeds: SeedItem[] = familyTemplates.flatMap((template) =>
       modelLabel: starterRealModel(template.family, index)?.label ?? null,
       modelLicense: starterRealModel(template.family, index)?.license ?? null,
       modelSource: starterRealModel(template.family, index)?.source ?? null,
-      lod: starterRealModel(template.family, index) ? "real" : "placeholder",
+      polyHavenQuery: starterRealModel(template.family, index) ? null : starterPolyHavenQuery(template.family, index),
+      lod: starterRealModel(template.family, index)
+        ? "real"
+        : starterPolyHavenQuery(template.family, index)
+          ? "real-auto"
+          : "placeholder",
       replaceable: true,
       source: starterRealModel(template.family, index) ? "arqdor-real-starter" : "arqdor-starter",
       partnerStatus: "generic",
