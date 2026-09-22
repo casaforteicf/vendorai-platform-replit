@@ -464,6 +464,7 @@ export async function enrichLead(
       telefone: lead.telefone,
       email: lead.email,
       instagramHandle: lead.instagramHandle,
+      instagramScopedId: lead.instagramScopedId,
       websiteUrl: lead.websiteUrl,
       source: lead.source,
       metadata: leadMetadata,
@@ -484,6 +485,9 @@ export async function enrichLead(
       evidenceCount: quality.evidenceCount,
       requiredEvidence: quality.requiredEvidence,
       hasValidContact: quality.hasValidContact,
+      hasExecutableChannel: quality.hasExecutableChannel,
+      preferredChannel: quality.preferredChannel,
+      outreachChannels: quality.channels,
       segmentIdentified: quality.segmentIdentified,
       blockingReasons: quality.reasons,
       evidence: quality.evidence,
@@ -545,8 +549,14 @@ export async function enrichLead(
     // A high score alone never authorizes cold outreach.
     if (quality.ready) {
       log.info(
-        { leadId, score: scoreResult.propensity_score, threshold, evidenceCount: quality.evidenceCount },
-        "enrichLead: quality gate passed — auto-dispatching SDR",
+        {
+          leadId,
+          score: scoreResult.propensity_score,
+          threshold,
+          evidenceCount: quality.evidenceCount,
+          preferredChannel: quality.preferredChannel,
+        },
+        "enrichLead: quality gate passed — auto-dispatching Prospecctor",
       );
 
       // Load vertical profile for context
