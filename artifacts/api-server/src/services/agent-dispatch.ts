@@ -1548,7 +1548,7 @@ export async function processAgentInternal(params: {
     // a resposta por uma mensagem determinística com os números exatos,
     // nunca gerada por IA em cima do resultado (evita qualquer chance de
     // arredondamento/invenção de valor pelo modelo).
-    if ((resolvedAgentName === "sdr" || resolvedAgentName === "closer")) {
+    if (!prospectorMode && (resolvedAgentName === "sdr" || resolvedAgentName === "closer")) {
       const calcM2Match = /<!--CALC_M2:([\s\S]*?)-->/.exec(resposta);
       if (calcM2Match && calcM2Match[1]) {
         try {
