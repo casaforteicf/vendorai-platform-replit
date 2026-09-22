@@ -553,7 +553,7 @@ const curatedPolyHavenSeeds: SeedItem[] = [
       source: "arqdor-curated-polyhaven",
       partnerStatus: "generic",
     },
-
+  },
 ];
 
 export const ARQDOR_STARTER_LIBRARY = [...familySeeds, ...curatedPolyHavenSeeds, ...materialSeeds];
