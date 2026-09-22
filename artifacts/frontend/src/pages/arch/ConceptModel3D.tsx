@@ -63,6 +63,20 @@ type Props = {
   onPaintWall?: (wallId: string, materialId: string) => void;
   onPaintFloor?: (spaceId: string, materialId: string) => void;
   onCancelPaint?: () => void;
+  tourPoints?: Array<{
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }>;
+  onTourPointsChange?: (points: Array<{
+    id: string;
+    name: string;
+    floor: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }>) => void;
   onRenderView?: (lightingMode: "day" | "sunset" | "night", renderView: "interior" | "exterior") => void;
 };
 
@@ -559,6 +573,8 @@ export default function ConceptModel3D({
   onPaintWall,
   onPaintFloor,
   onCancelPaint,
+  tourPoints = [],
+  onTourPointsChange,
   onRenderView,
 }: Props) {
   const [rotation, setRotation] = useState(35);
@@ -577,6 +593,9 @@ export default function ConceptModel3D({
   const [walkControl, setWalkControl] = useState({ forward: 0, strafe: 0 });
   const [walkSpeed, setWalkSpeed] = useState(0.12);
   const [walkResetToken, setWalkResetToken] = useState(0);
+  const [cameraSnapshotToken, setCameraSnapshotToken] = useState(0);
+  const [pendingTourSave, setPendingTourSave] = useState(false);
+  const [activeTourPointId, setActiveTourPointId] = useState<string | null>(null);
   const sceneRootRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
@@ -622,6 +641,34 @@ export default function ConceptModel3D({
   useEffect(() => {
     if (navigationMode !== "walk") setWalkControl({ forward: 0, strafe: 0 });
   }, [navigationMode]);
+
+  const activeTourPoint = tourPoints.find((point) => point.id === activeTourPointId) ?? null;
+
+  const requestSaveTourPoint = () => {
+    if (!webglReady) return;
+    setPendingTourSave(true);
+    setCameraSnapshotToken((value) => value + 1);
+  };
+
+  const saveTourSnapshot = (snapshot: {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }) => {
+    if (!pendingTourSave) return;
+    const nextIndex = tourPoints.length + 1;
+    const point = {
+      id: `tour-${Date.now()}`,
+      name: `Ponto ${nextIndex}`,
+      floor: activeFloor,
+      position: snapshot.position,
+      target: snapshot.target,
+    };
+    const next = [...tourPoints, point];
+    onTourPointsChange?.(next);
+    setActiveTourPointId(point.id);
+    setPendingTourSave(false);
+    setNavigationMode("orbit");
+  };
 
   const resetCamera = () => {
     setRotation(35);
@@ -1102,6 +1149,38 @@ export default function ConceptModel3D({
             </div>
           )}
           {webglReady && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={requestSaveTourPoint}
+                className="h-9 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                title="Salvar a câmera atual como ponto do tour"
+              >
+                {pendingTourSave ? "Salvando..." : "Salvar vista"}
+              </button>
+              {tourPoints.length > 0 && (
+                <div className="flex max-w-[46vw] gap-1 overflow-x-auto rounded-lg border bg-white p-1">
+                  {tourPoints.map((point) => (
+                    <button
+                      key={point.id}
+                      type="button"
+                      onClick={() => {
+                        setNavigationMode("orbit");
+                        setActiveTourPointId(point.id);
+                      }}
+                      className={activeTourPointId === point.id
+                        ? "h-7 shrink-0 rounded-md bg-violet-600 px-2 text-[10px] font-semibold text-white"
+                        : "h-7 shrink-0 rounded-md px-2 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"}
+                      title={`${point.name} · Pavimento ${point.floor + 1}`}
+                    >
+                      {point.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {webglReady && (
             <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white">
               <button
                 type="button"
@@ -1360,6 +1439,9 @@ export default function ConceptModel3D({
         walkControl={walkControl}
         walkSpeed={walkSpeed}
         walkResetToken={walkResetToken}
+        cameraSnapshotToken={cameraSnapshotToken}
+        cameraViewpoint={activeTourPoint}
+        onCameraSnapshot={saveTourSnapshot}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
