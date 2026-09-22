@@ -4,12 +4,11 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
-# The Railway frontend image builds the full monorepo workspace context. If another
-# workspace package gains a dependency before the root lockfile is regenerated,
-# --frozen-lockfile blocks an otherwise valid frontend build. Refresh the ephemeral
-# lockfile inside the image, then build only the frontend package.
-RUN pnpm install --no-frozen-lockfile \
-  && pnpm --filter @workspace/frontend build
+# The frontend recovery/validation image uses the same deterministic gate that
+# Cloudflare Pages can run natively. Dependency drift must fail instead of
+# rewriting the lockfile during a production build.
+RUN pnpm install --frozen-lockfile \
+  && pnpm run validate:frontend
 
 FROM node:24-bookworm-slim AS runtime
 
