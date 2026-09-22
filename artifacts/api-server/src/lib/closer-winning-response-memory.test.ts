@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectCloserObjectionCategories,
   formatCloserWinningResponsesPrompt,
+  sanitizeLearnedResponse,
   wilsonLowerBound,
 } from "./closer-winning-response-memory.js";
 
@@ -20,6 +21,20 @@ describe("closer winning response memory", () => {
 
   it("penaliza amostras pequenas no score Wilson", () => {
     expect(wilsonLowerBound(1, 1)).toBeLessThan(wilsonLowerBound(61, 84));
+  });
+
+  it("remove dados e condições específicas de uma resposta histórica", () => {
+    const sanitized = sanitizeLearnedResponse(
+      "Marcos, ficou R$ 12.500,00 com 10% até hoje. Me chama no +55 49 99999-1234 ou https://exemplo.com",
+    );
+    expect(sanitized).not.toContain("12.500");
+    expect(sanitized).not.toContain("10%");
+    expect(sanitized).not.toContain("99999-1234");
+    expect(sanitized).not.toContain("https://");
+  });
+
+  it("não reutiliza marcadores internos como memória", () => {
+    expect(sanitizeLearnedResponse("{{action:generate_quote}}")).toBeNull();
   });
 
   it("formata memória sem transformar a resposta histórica em regra", () => {
