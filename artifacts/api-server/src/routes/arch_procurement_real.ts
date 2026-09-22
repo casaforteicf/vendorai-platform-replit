@@ -108,8 +108,8 @@ router.post("/arch/procurement/:obraId/analyze-document", upload.single("documen
       res.json({ extracted: { tipo: "orcamento", itens: [] }, document, parseLocally: true });
       return;
     }
-    const { apiKey } = await resolveAIKey(tid, "anthropic");
-    const anthropic = new Anthropic({ apiKey });
+    const aiKey = await resolveAIKey(tid, "anthropic");
+    const anthropic = new Anthropic({ apiKey: aiKey.apiKey });
     const system = `Você extrai dados de documentos de compras de obras no Brasil.
 Retorne APENAS JSON válido, sem markdown:
 {
@@ -170,11 +170,11 @@ Não invente valores. Quando ausente use null ou 0. Se houver vários itens, ext
       tenantId: tid,
       provider: "anthropic",
       model,
-      feature: "construction_procurement_document_import",
+      feature: "document_extraction",
       inputTokens,
       outputTokens,
       costEstimateUsd: estimateCost(model, inputTokens, outputTokens),
-      usedByok: false,
+      usedByok: aiKey.usedByok,
       success: true,
     });
 
