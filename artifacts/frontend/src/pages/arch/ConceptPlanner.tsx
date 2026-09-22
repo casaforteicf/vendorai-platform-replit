@@ -28,6 +28,9 @@ import {
   Ruler,
   Share2,
   ChevronDown,
+  Heart,
+  Clock3,
+  Box,
   X,
 } from "lucide-react";
 import { buildConceptGeometry, nudgeOpening, validateConceptLayout } from "./conceptGeometry";
@@ -610,6 +613,25 @@ export default function ConceptPlanner() {
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [furnitureSearch, setFurnitureSearch] = useState("");
   const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
+  const [libraryMode, setLibraryMode] = useState<"all" | "favorites" | "recent">("all");
+  const [favoriteItemIds, setFavoriteItemIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("arqdor:library:favorites");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [recentItemIds, setRecentItemIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("arqdor:library:recent");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
@@ -637,14 +659,48 @@ export default function ConceptPlanner() {
     });
   }, [modelCategory, modelSearch]);
 
+  const libraryItemKey = (label: string, category: string) => `param:${category}:${label}`;
+  const realLibraryItemKey = (id: string) => `real:${id}`;
+
+  const toggleFavoriteItem = (id: string) => {
+    setFavoriteItemIds((current) => {
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [id, ...current].slice(0, 80);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.setItem("arqdor:library:favorites", JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+  };
+
+  const rememberRecentItem = (id: string) => {
+    setRecentItemIds((current) => {
+      const next = [id, ...current.filter((item) => item !== id)].slice(0, 30);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.setItem("arqdor:library:recent", JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+  };
+
   const filteredFurniture = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
     return CONCEPT_FURNITURE_LIBRARY.filter((item) => {
+      const itemId = libraryItemKey(item.label, item.category);
       const categoryMatch = furnitureCategory === "Todos" || item.category === furnitureCategory;
       const queryMatch = !query || `${item.label} ${item.category}`.toLocaleLowerCase("pt-BR").includes(query);
-      return categoryMatch && queryMatch;
+      const modeMatch = libraryMode === "all"
+        || (libraryMode === "favorites" && favoriteItemIds.includes(itemId))
+        || (libraryMode === "recent" && recentItemIds.includes(itemId));
+      return categoryMatch && queryMatch && modeMatch;
+    }).sort((a, b) => {
+      if (libraryMode !== "recent") return 0;
+      const aIndex = recentItemIds.indexOf(libraryItemKey(a.label, a.category));
+      const bIndex = recentItemIds.indexOf(libraryItemKey(b.label, b.category));
+      return aIndex - bIndex;
     });
-  }, [furnitureSearch, furnitureCategory]);
+  }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, recentItemIds]);
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture" || realCatalogProducts.length || realCatalogLoading) return;
@@ -689,10 +745,17 @@ export default function ConceptPlanner() {
       const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
         .toLocaleLowerCase("pt-BR");
       const queryMatch = !query || text.includes(query);
+      const itemId = realLibraryItemKey(item.id);
       const categoryMatch = furnitureCategory === "Todos" || categoryRegex[furnitureCategory]?.test(text) === true;
-      return queryMatch && categoryMatch;
+      const modeMatch = libraryMode === "all"
+        || (libraryMode === "favorites" && favoriteItemIds.includes(itemId))
+        || (libraryMode === "recent" && recentItemIds.includes(itemId));
+      return queryMatch && categoryMatch && modeMatch;
+    }).sort((a, b) => {
+      if (libraryMode !== "recent") return 0;
+      return recentItemIds.indexOf(realLibraryItemKey(a.id)) - recentItemIds.indexOf(realLibraryItemKey(b.id));
     }).slice(0, 24);
-  }, [realCatalogProducts, furnitureCategory, furnitureSearch]);
+  }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, realCatalogProducts, recentItemIds]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -3703,7 +3766,7 @@ export default function ConceptPlanner() {
                       onClick={() => {
                         setStep(4);
                         setEditorView(value);
-                        if (value !== "plan") setLibraryOpen(false);
+                        if (value === "facade" || value === "render") setLibraryOpen(false);
                       }}
                       className={editorView === value
                         ? "shrink-0 snap-center rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 shadow-sm sm:px-4"
@@ -3727,6 +3790,22 @@ export default function ConceptPlanner() {
                 >
                   <Ruler className="h-4 w-4" />
                 </button>
+                )}
+                {(editorView === "plan" || editorView === "model3d") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorLibraryTab("furniture");
+                      setLibraryOpen((open) => !(open && editorLibraryTab === "furniture"));
+                    }}
+                    title="Abrir biblioteca de itens"
+                    className={libraryOpen && editorLibraryTab === "furniture"
+                      ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
+                      : "hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex"}
+                  >
+                    <Box className="h-4 w-4" />
+                    Itens
+                  </button>
                 )}
                 <button
                   type="button"
@@ -4239,6 +4318,26 @@ export default function ConceptPlanner() {
                         />
                       </label>
 
+                      <div className="mb-3 grid grid-cols-3 gap-2">
+                        {([
+                          ["all", LayoutGrid, "Todos"],
+                          ["favorites", Heart, "Favoritos"],
+                          ["recent", Clock3, "Recentes"],
+                        ] as const).map(([mode, Icon, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setLibraryMode(mode)}
+                            className={libraryMode === mode
+                              ? "flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-2 text-[11px] font-bold text-white"
+                              : "flex h-9 items-center justify-center gap-1.5 rounded-xl border bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
                       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação", "Exterior"] as const).map((category) => (
                           <button
@@ -4289,7 +4388,9 @@ export default function ConceptPlanner() {
                                       model3dUrl: getCatalogModel3dUrl(item),
                                     }));
                                   }}
-                                  onClick={() => addObjectAt(
+                                  onClick={() => {
+                                    rememberRecentItem(realLibraryItemKey(item.id));
+                                    addObjectAt(
                                     preset.kind,
                                     item.nome,
                                     preset.width,
@@ -4302,10 +4403,24 @@ export default function ConceptPlanner() {
                                       price: price > 0 ? price : undefined,
                                       model3dUrl: getCatalogModel3dUrl(item),
                                     },
-                                  )}
+                                  );
+                                  }}
                                   className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
                                 >
                                   <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                                    <button
+                                      type="button"
+                                      aria-label="Favoritar produto"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleFavoriteItem(realLibraryItemKey(item.id));
+                                      }}
+                                      className={favoriteItemIds.includes(realLibraryItemKey(item.id))
+                                        ? "absolute bottom-2 right-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white text-rose-500 shadow-md"
+                                        : "absolute bottom-2 right-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-slate-500 shadow-md hover:text-rose-500"}
+                                    >
+                                      <Heart className="h-4 w-4" fill={favoriteItemIds.includes(realLibraryItemKey(item.id)) ? "currentColor" : "none"} />
+                                    </button>
                                     <img
                                       src={imageUrl}
                                       alt={item.nome}
@@ -4356,10 +4471,26 @@ export default function ConceptPlanner() {
                               event.dataTransfer.effectAllowed = "copy";
                               event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({ kind, label, width, depth }));
                             }}
-                            onClick={() => addObjectAt(kind, label, width, depth, libraryInsertPoint)}
+                            onClick={() => {
+                              rememberRecentItem(libraryItemKey(label, category));
+                              addObjectAt(kind, label, width, depth, libraryInsertPoint);
+                            }}
                             className="cursor-grab overflow-hidden rounded-xl border bg-white text-left transition active:cursor-grabbing hover:border-orange-300 hover:shadow-md"
                           >
                             <div className="relative grid h-24 place-items-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-stone-100">
+                              <button
+                                type="button"
+                                aria-label="Favoritar item"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleFavoriteItem(libraryItemKey(label, category));
+                                }}
+                                className={favoriteItemIds.includes(libraryItemKey(label, category))
+                                  ? "absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full bg-white text-rose-500 shadow-sm"
+                                  : "absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-400 shadow-sm hover:text-rose-500"}
+                              >
+                                <Heart className="h-3.5 w-3.5" fill={favoriteItemIds.includes(libraryItemKey(label, category)) ? "currentColor" : "none"} />
+                              </button>
                               <div className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[9px] font-semibold text-slate-500 shadow-sm">
                                 {category}
                               </div>
@@ -4431,7 +4562,11 @@ export default function ConceptPlanner() {
 
                       {!filteredFurniture.length && (
                         <div className="rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
-                          Nenhum item encontrado nessa categoria.
+                          {libraryMode === "favorites"
+                            ? "Nenhum favorito ainda. Toque no coração dos itens que você usa mais."
+                            : libraryMode === "recent"
+                              ? "Nenhum item recente ainda. Os últimos itens inseridos aparecerão aqui."
+                              : "Nenhum item encontrado nessa categoria."}
                         </div>
                       )}
                     </>
