@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Home, Move, Ruler } from "lucide-react";
 import {
   clampBuildingOrigin,
