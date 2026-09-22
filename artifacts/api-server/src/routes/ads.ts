@@ -17,6 +17,7 @@ import {
   contentPublishedPostsTable,
   contentAutopilotConfigTable,
   adCampaignEventsTable,
+  tenantsTable,
 } from "@workspace/db";
 import type { AdCampaign } from "@workspace/db";
 import { logger } from "../lib/logger.js";
@@ -442,6 +443,100 @@ router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     latestCreative: latestByCampaign.get(row.id) ?? null,
     creatives: creativesByCampaign.get(row.id) ?? [],
   })));
+});
+
+router.post("/tenants/:tenantId/ads/creatives/:id/select", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const creativeId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [creative] = await db.select().from(adCreativesTable).where(eq(adCreativesTable.id, creativeId)).limit(1);
+  if (!creative) return res.status(404).json({ error: "Criativo não encontrado." });
+
+  const [campaign] = await db.select({ id: adCampaignsTable.id, tenantId: adCampaignsTable.tenantId })
+    .from(adCampaignsTable)
+    .where(eq(adCampaignsTable.id, creative.campaignId))
+    .limit(1);
+  if (!campaign || campaign.tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
+
+  await db.update(adCreativesTable)
+    .set({ status: "rascunho", aprovadoPorId: null, aprovadoEm: null })
+    .where(eq(adCreativesTable.campaignId, campaign.id));
+
+  const userId = (req as any).user?.sub as string | undefined;
+  const [selected] = await db.update(adCreativesTable)
+    .set({ status: "aprovado", aprovadoPorId: userId ?? null, aprovadoEm: new Date() })
+    .where(eq(adCreativesTable.id, creativeId))
+    .returning();
+
+  await recordAdCampaignEvent({
+    tenantId,
+    campaignId: campaign.id,
+    userId,
+    eventType: "creative_selected",
+    severity: "success",
+    message: "Variação criativa selecionada para publicação.",
+    metadata: { creativeId },
+  });
+
+  return res.json(selected);
+});
+
+router.get("/tenants/:tenantId/ads/campaigns/:id/destination-preview", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+
+  let url: string | null = null;
+  let label = "";
+  if (campaign.destinoClique === "whatsapp") {
+    const [profile] = await db.select({ telefone: businessProfilesTable.telefone })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1);
+    const number = profile?.telefone?.replace(/\D/g, "");
+    if (number) {
+      const text = campaign.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campaign.utmCode}`)}` : "";
+      url = `https://wa.me/${number}${text}`;
+    }
+    label = "WhatsApp";
+  } else if (campaign.destinoClique === "landing_page" && campaign.landingPageId) {
+    const [site] = await db.select({ siteSlug: generatedSitesTable.siteSlug })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.id, campaign.landingPageId))
+      .limit(1);
+    if (site?.siteSlug) {
+      const target = new URL(`https://${site.siteSlug}.appvendorai.com`);
+      if (campaign.utmCode) target.searchParams.set("utm_campaign", campaign.utmCode);
+      url = target.toString();
+    }
+    label = "Landing Page";
+  } else if (campaign.destinoClique === "formulario_lead") {
+    const [tenant] = await db.select({ slug: tenantsTable.slug }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+    const templateId = (campaign.segmentacao as any)?.campaignControl?.leadFormTemplateId ?? "contato_rapido";
+    if (tenant?.slug) {
+      const target = new URL(`https://appvendorai.com/api/public/${tenant.slug}/forms/${templateId}`);
+      if (campaign.utmCode) target.searchParams.set("utm_campaign", campaign.utmCode);
+      target.searchParams.set("utm_source", campaign.plataforma);
+      target.searchParams.set("utm_medium", "paid");
+      url = target.toString();
+    }
+    label = "Formulário VendorAI";
+  } else {
+    label = "Página do produto/estoque";
+  }
+
+  return res.json({
+    type: campaign.destinoClique,
+    label,
+    url,
+    ready: Boolean(url),
+  });
 });
 
 router.delete("/tenants/:tenantId/ads/campaigns/:id", async (req, res) => {
