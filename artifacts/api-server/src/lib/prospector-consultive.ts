@@ -217,6 +217,9 @@ function isConstructionContext(segment?: string | null, metadata?: Record<string
     String(metadata?.["setor"] ?? ""),
     String(metadata?.["categoria"] ?? ""),
     String(metadata?.["source_family"] ?? ""),
+    String(metadata?.["source"] ?? ""),
+    String(metadata?.["lead_source"] ?? ""),
+    String(metadata?.["origem"] ?? ""),
     String(metadata?.["obra"] ?? ""),
   ].join(" ").toLocaleLowerCase("pt-BR");
   return /constru|obra|residenc|arquitet|engenhar|terreno|incorpora/.test(text);
@@ -240,6 +243,7 @@ export function resolveProspectorPlaybook(
   const signal = objectValue(obj["signal"]);
   const persona = objectValue(obj["persona"]);
   const anchor = objectValue(obj["anchor"]);
+  const qualification = objectValue(obj["qualification"]);
   const nextStep = objectValue(obj["nextStep"]);
   const metrics = objectValue(obj["metrics"]);
   const limits = objectValue(obj["limits"]);
@@ -300,7 +304,23 @@ export function resolveProspectorPlaybook(
       forbiddenBeforeConfirmation: stringList(anchor["forbiddenBeforeConfirmation"], fallback.anchor.forbiddenBeforeConfirmation),
     },
     diagnosis: diagnosis.length > 0 ? diagnosis.slice(0, 10) : fallback.diagnosis,
-    qualification: fallback.qualification,
+    qualification: {
+      terrainDefined: typeof qualification["terrainDefined"] === "boolean"
+        ? qualification["terrainDefined"] as boolean
+        : fallback.qualification.terrainDefined,
+      projectOrClearIntent: typeof qualification["projectOrClearIntent"] === "boolean"
+        ? qualification["projectOrClearIntent"] as boolean
+        : fallback.qualification.projectOrClearIntent,
+      estimatedTimeline: typeof qualification["estimatedTimeline"] === "boolean"
+        ? qualification["estimatedTimeline"] as boolean
+        : fallback.qualification.estimatedTimeline,
+      declaredPain: typeof qualification["declaredPain"] === "boolean"
+        ? qualification["declaredPain"] as boolean
+        : fallback.qualification.declaredPain,
+      acceptsNextStep: typeof qualification["acceptsNextStep"] === "boolean"
+        ? qualification["acceptsNextStep"] as boolean
+        : fallback.qualification.acceptsNextStep,
+    },
     nextStep: {
       offer: stringValue(nextStep["offer"], fallback.nextStep.offer),
       format: stringValue(nextStep["format"], fallback.nextStep.format),
