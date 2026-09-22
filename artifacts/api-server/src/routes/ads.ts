@@ -316,6 +316,46 @@ router.get("/tenants/:tenantId/ads/campaigns/:id/events", async (req, res) => {
   return res.json(events);
 });
 
+const adCommentSchema = z.object({
+  message: z.string().trim().min(2).max(2000),
+});
+
+router.post("/tenants/:tenantId/ads/campaigns/:id/comments", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = adCommentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Comentário inválido." });
+
+  const [campaign] = await db.select({ id: adCampaignsTable.id })
+    .from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+
+  await recordAdCampaignEvent({
+    tenantId,
+    campaignId,
+    userId: (req as any).user?.sub,
+    eventType: "internal_comment",
+    severity: "info",
+    message: parsed.data.message,
+    metadata: { source: "media_planner" },
+  });
+
+  const [comment] = await db.select().from(adCampaignEventsTable)
+    .where(and(
+      eq(adCampaignEventsTable.tenantId, tenantId),
+      eq(adCampaignEventsTable.campaignId, campaignId),
+      eq(adCampaignEventsTable.eventType, "internal_comment"),
+    ))
+    .orderBy(desc(adCampaignEventsTable.createdAt))
+    .limit(1);
+
+  return res.status(201).json(comment);
+});
+
 router.post("/tenants/:tenantId/ads/events/:id/resolve", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
