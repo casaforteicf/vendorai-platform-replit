@@ -29,7 +29,7 @@ type Props = {
   cameraPresetDegrees: number;
   cameraZoom: number;
   transformMode?: "translate" | "rotate";
-  navigationMode?: "orbit" | "walk" | "spin" | "tour";
+  navigationMode?: "orbit" | "walk" | "spin" | "tour" | "panorama";
   walkControl?: { forward: number; strafe: number };
   walkSpeed?: number;
   walkResetToken?: number;
@@ -76,7 +76,7 @@ type Runtime = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   };
-  navigationMode: "orbit" | "walk" | "spin" | "tour";
+  navigationMode: "orbit" | "walk" | "spin" | "tour" | "panorama";
   walkKeys: Set<string>;
   walkControl: { forward: number; strafe: number };
   walkSpeed: number;
@@ -85,6 +85,14 @@ type Runtime = {
   walkDragging: boolean;
   walkLastPointer: { x: number; y: number } | null;
   environmentTexture?: any;
+  panoramaRenderTarget?: any;
+  panoramaPreviousBackground?: any;
+  panoramaHiddenObjects?: Array<{ object: any; visible: boolean }>;
+  panoramaPreviousCamera?: {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+    fov: number;
+  };
   walkWalls: Array<{
     x1: number;
     y1: number;
@@ -492,13 +500,13 @@ export default function ConceptWebGLScene({
           runtime.walkKeys.delete(event.key.toLowerCase());
         };
         const handleWalkPointerDown = (event: PointerEvent) => {
-          if (runtime.navigationMode !== "walk" || event.button !== 0) return;
+          if (!["walk", "panorama"].includes(runtime.navigationMode) || event.button !== 0) return;
           runtime.walkDragging = true;
           runtime.walkLastPointer = { x: event.clientX, y: event.clientY };
           renderer.domElement.setPointerCapture?.(event.pointerId);
         };
         const handleWalkPointerMove = (event: PointerEvent) => {
-          if (runtime.navigationMode !== "walk" || !runtime.walkDragging || !runtime.walkLastPointer) return;
+          if (!["walk", "panorama"].includes(runtime.navigationMode) || !runtime.walkDragging || !runtime.walkLastPointer) return;
           const dx = event.clientX - runtime.walkLastPointer.x;
           const dy = event.clientY - runtime.walkLastPointer.y;
           runtime.walkLastPointer = { x: event.clientX, y: event.clientY };
@@ -529,6 +537,16 @@ export default function ConceptWebGLScene({
             const angle = Math.atan2(dx, dz) + 0.0035;
             camera.position.x = target.x + Math.sin(angle) * radius;
             camera.position.z = target.z + Math.cos(angle) * radius;
+          }
+
+          if (runtime.navigationMode === "panorama") {
+            const lookDistance = 5;
+            const cosPitch = Math.cos(runtime.walkPitch);
+            controls.target.set(
+              camera.position.x - Math.sin(runtime.walkYaw) * cosPitch * lookDistance,
+              camera.position.y + Math.sin(runtime.walkPitch) * lookDistance,
+              camera.position.z - Math.cos(runtime.walkYaw) * cosPitch * lookDistance,
+            );
           }
 
           if (runtime.navigationMode === "walk") {
@@ -631,6 +649,10 @@ export default function ConceptWebGLScene({
       runtime.renderer.domElement.removeEventListener("pointerup", (runtime as any).handleWalkPointerUp);
       runtime.renderer.domElement.removeEventListener("pointercancel", (runtime as any).handleWalkPointerUp);
       runtime.environmentTexture?.dispose?.();
+      runtime.panoramaRenderTarget?.dispose?.();
+      if (runtime.panoramaHiddenObjects) {
+        for (const entry of runtime.panoramaHiddenObjects) entry.object.visible = entry.visible;
+      }
       // handleWalkKeyDownCleanupMarker
             (runtime as any).observer?.disconnect?.();
       runtime.renderer.domElement.removeEventListener("click", (runtime as any).handlePointer);
@@ -1428,12 +1450,79 @@ export default function ConceptWebGLScene({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || engineState !== "ready") return;
+
+    if (runtime.navigationMode === "panorama" && navigationMode !== "panorama") {
+      if (runtime.panoramaHiddenObjects) {
+        for (const entry of runtime.panoramaHiddenObjects) entry.object.visible = entry.visible;
+      }
+      runtime.scene.background = runtime.panoramaPreviousBackground ?? null;
+      if (runtime.panoramaPreviousCamera) {
+        runtime.camera.position.set(
+          runtime.panoramaPreviousCamera.position.x,
+          runtime.panoramaPreviousCamera.position.y,
+          runtime.panoramaPreviousCamera.position.z,
+        );
+        runtime.controls.target.set(
+          runtime.panoramaPreviousCamera.target.x,
+          runtime.panoramaPreviousCamera.target.y,
+          runtime.panoramaPreviousCamera.target.z,
+        );
+        runtime.camera.fov = runtime.panoramaPreviousCamera.fov;
+        runtime.camera.updateProjectionMatrix();
+      }
+      runtime.panoramaRenderTarget?.dispose?.();
+      runtime.panoramaRenderTarget = undefined;
+      runtime.panoramaPreviousBackground = undefined;
+      runtime.panoramaHiddenObjects = undefined;
+      runtime.panoramaPreviousCamera = undefined;
+    }
+
     runtime.navigationMode = navigationMode;
     runtime.walkKeys.clear();
     runtime.cameraGoal = null;
     runtime.controls.enabled = navigationMode === "orbit";
 
-    if (navigationMode === "tour") {
+    if (navigationMode === "panorama") {
+      const { THREE, scene, camera, renderer, controls } = runtime;
+      if (THREE?.WebGLCubeRenderTarget && THREE?.CubeCamera && !runtime.panoramaRenderTarget) {
+        runtime.panoramaPreviousBackground = scene.background;
+        runtime.panoramaPreviousCamera = {
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+          target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+          fov: camera.fov,
+        };
+        const direction = controls.target.clone().sub(camera.position).normalize();
+        runtime.walkYaw = Math.atan2(-direction.x, -direction.z || -1);
+        runtime.walkPitch = Math.asin(Math.max(-1, Math.min(1, direction.y)));
+
+        const cubeSize = renderQuality === "ultra" ? 2048 : renderQuality === "fast" ? 512 : 1024;
+        const renderTarget = new THREE.WebGLCubeRenderTarget(cubeSize, {
+          generateMipmaps: true,
+          minFilter: THREE.LinearMipmapLinearFilter,
+          magFilter: THREE.LinearFilter,
+        });
+        const cubeCamera = new THREE.CubeCamera(0.05, 500, renderTarget);
+        cubeCamera.position.copy(camera.position);
+        scene.add(cubeCamera);
+        cubeCamera.update(renderer, scene);
+        scene.remove(cubeCamera);
+
+        const hidden: Array<{ object: any; visible: boolean }> = [];
+        scene.traverse((object: any) => {
+          if (object?.isMesh) {
+            hidden.push({ object, visible: object.visible });
+            object.visible = false;
+          }
+        });
+        runtime.panoramaHiddenObjects = hidden;
+        runtime.panoramaRenderTarget = renderTarget;
+        scene.background = renderTarget.texture;
+        camera.fov = 72;
+        camera.updateProjectionMatrix();
+      }
+      runtime.walkKeys.clear();
+      runtime.walkControl = { forward: 0, strafe: 0 };
+    } else if (navigationMode === "tour") {
       runtime.walkPitch = 0;
       runtime.walkKeys.clear();
       runtime.walkControl = { forward: 0, strafe: 0 };
