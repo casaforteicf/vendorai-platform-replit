@@ -194,6 +194,13 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
         supportLifecycleStage: stage,
         supportStageEnteredAt: stageEnteredAt.toISOString(),
         supportLifecycleLastCheckedAt: now.toISOString(),
+        ...(stageChanged
+          ? {
+              supportStageFollowupCount: 0,
+              supportStageFollowupAt: null,
+              supportOwnerReminderAt: null,
+            }
+          : {}),
       };
 
       // Important stage transitions are proactively communicated once.
@@ -224,7 +231,9 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
               ? metadata.supportFeedbackRequestedAt
               : stageEnteredAt.toISOString();
         const feedbackAge = hoursSince(baseAt, now);
-        const reminderCount = Number(metadata.supportFeedbackReminderCount ?? 0);
+        const reminderCount = stageChanged
+          ? 0
+          : Number(metadata.supportFeedbackReminderCount ?? 0);
 
         if (feedbackAge >= 24 && reminderCount < 3 && lead?.telefone) {
           const text =
@@ -232,7 +241,7 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
               ? `Falta só sua avaliação final da assistência ${card.codigo}. De 1 a 5, que nota você dá para o atendimento?`
               : `Quero confirmar o resultado da assistência ${card.codigo}. O problema ficou resolvido? Responda SIM ${card.codigo}, PARCIALMENTE ${card.codigo} ou NÃO ${card.codigo}.`;
           const lastReminderAt =
-            typeof metadata.supportFeedbackLastReminderAt === "string"
+            !stageChanged && typeof metadata.supportFeedbackLastReminderAt === "string"
               ? metadata.supportFeedbackLastReminderAt
               : null;
           if (!lastReminderAt || hoursSince(lastReminderAt, now) >= 24) {
@@ -244,9 +253,11 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
         }
       } else if (policy.customerFollowupAfterHours != null && lead?.telefone) {
         const age = hoursSince(stageEnteredAt, now);
-        const followupCount = Number(metadata.supportStageFollowupCount ?? 0);
+        const followupCount = stageChanged
+          ? 0
+          : Number(metadata.supportStageFollowupCount ?? 0);
         const lastFollowupAt =
-          typeof metadata.supportStageFollowupAt === "string"
+          !stageChanged && typeof metadata.supportStageFollowupAt === "string"
             ? metadata.supportStageFollowupAt
             : null;
 
@@ -267,7 +278,7 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
 
       const stageAge = hoursSince(stageEnteredAt, now);
       const lastOwnerReminderAt =
-        typeof metadata.supportOwnerReminderAt === "string"
+        !stageChanged && typeof metadata.supportOwnerReminderAt === "string"
           ? metadata.supportOwnerReminderAt
           : null;
 
@@ -288,13 +299,6 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
         });
         nextMetadata.supportOwnerReminderAt = now.toISOString();
         ownerReminders++;
-      }
-
-      // Reset stage-scoped counters on a real stage transition.
-      if (stageChanged) {
-        nextMetadata.supportStageFollowupCount = 0;
-        nextMetadata.supportStageFollowupAt = null;
-        nextMetadata.supportOwnerReminderAt = null;
       }
 
       await db
