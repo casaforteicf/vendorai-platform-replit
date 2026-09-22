@@ -764,6 +764,7 @@ export default function ConceptWebGLScene({
           const safeZ = Math.max(0.01, size.z);
           const targetHeight = definition.targetHeight ?? {
             sofa: 0.90, bed: 0.65, table: 0.80, chair: 0.95, cabinet: 2.10,
+            appliance: 1.90, sanitary: 0.90, outdoor: 0.95,
             tv: 1.30, plant: 1.40, lamp: 1.60, rug: 0.08, outlet: 0.22,
             switch: 1.10, light_point: 2.60, water_point: 0.55, drain_point: 0.08,
             shower_point: 2.10, faucet_point: 1.05,
