@@ -258,7 +258,7 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   label: string;
   width: number;
   depth: number;
-  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Elétrica" | "Hidráulica";
+  category: "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior" | "Elétrica" | "Hidráulica";
 }> = [
   { kind: "sofa", label: "Sofá 3 lugares", width: 2.20, depth: 0.90, category: "Sala" },
   { kind: "sofa", label: "Sofá 2 lugares", width: 1.70, depth: 0.90, category: "Sala" },
@@ -288,6 +288,12 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "drain_point", label: "Ponto de esgoto", width: 0.40, depth: 0.40, category: "Hidráulica" },
   { kind: "shower_point", label: "Ponto de chuveiro", width: 0.45, depth: 0.45, category: "Hidráulica" },
   { kind: "faucet_point", label: "Ponto de torneira", width: 0.40, depth: 0.40, category: "Hidráulica" },
+  { kind: "chair", label: "Espreguiçadeira", width: 0.75, depth: 1.90, category: "Exterior" },
+  { kind: "table", label: "Mesa externa", width: 1.40, depth: 0.90, category: "Exterior" },
+  { kind: "chair", label: "Cadeira externa", width: 0.62, depth: 0.62, category: "Exterior" },
+  { kind: "plant", label: "Árvore ornamental", width: 1.40, depth: 1.40, category: "Exterior" },
+  { kind: "plant", label: "Arbusto", width: 0.80, depth: 0.80, category: "Exterior" },
+  { kind: "lamp", label: "Balizador jardim", width: 0.30, depth: 0.30, category: "Exterior" },
 ];
 
 const DEFAULT_FACADE: ConceptFacadePreferences = {
@@ -603,7 +609,7 @@ export default function ConceptPlanner() {
   const [modelSearch, setModelSearch] = useState("");
   const [modelCategory, setModelCategory] = useState<"todos" | "terreas" | "sobrados" | "lazer">("todos");
   const [furnitureSearch, setFurnitureSearch] = useState("");
-  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação">("Todos");
+  const [furnitureCategory, setFurnitureCategory] = useState<"Todos" | "Sala" | "Quarto" | "Jantar" | "Cozinha" | "Escritório" | "Decoração" | "Iluminação" | "Exterior">("Todos");
   const [realCatalogProducts, setRealCatalogProducts] = useState<RealCatalogProduct[]>([]);
   const [realCatalogLoading, setRealCatalogLoading] = useState(false);
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
@@ -669,13 +675,24 @@ export default function ConceptPlanner() {
 
   const visibleRealCatalogProducts = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
+    const categoryRegex: Partial<Record<typeof furnitureCategory, RegExp>> = {
+      Sala: /sofá|sofa|poltrona|chaise|rack|painel|televis|tv|mesa de centro/,
+      Quarto: /cama|colchão|colchao|roupeiro|guarda-roupa|criado|cabeceira/,
+      Jantar: /mesa|cadeira|banco|banqueta/,
+      Cozinha: /cozinha|balcão|balcao|gabinete|armário|armario|ilha/,
+      Escritório: /escritório|escritorio|office|home office|cadeira/,
+      Decoração: /decora|tapete|vaso|planta|folhagem|quadro|espelho/,
+      Iluminação: /luminária|luminaria|abajur|pendente|plafon|arandela/,
+      Exterior: /extern|outdoor|jardim|garden|espreguiçadeira|paisag|varanda|deck/,
+    };
     return realCatalogProducts.filter((item) => {
-      if (!query) return true;
-      return `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
-        .toLocaleLowerCase("pt-BR")
-        .includes(query);
-    }).slice(0, 12);
-  }, [realCatalogProducts, furnitureSearch]);
+      const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
+        .toLocaleLowerCase("pt-BR");
+      const queryMatch = !query || text.includes(query);
+      const categoryMatch = furnitureCategory === "Todos" || categoryRegex[furnitureCategory]?.test(text) === true;
+      return queryMatch && categoryMatch;
+    }).slice(0, 24);
+  }, [realCatalogProducts, furnitureCategory, furnitureSearch]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -1132,7 +1149,6 @@ export default function ConceptPlanner() {
     setSelectedWallId(null);
     setSelectedCustomWallId(null);
     setSelectedClosedSpaceId(null);
-    setEditorView("plan");
     closeLibraryOnMobile();
     pushRoomHistory(before);
   };
@@ -1745,6 +1761,20 @@ export default function ConceptPlanner() {
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
+
+  const libraryInsertPoint = useMemo(() => {
+    if (selectedClosedSpace) return selectedClosedSpace.centroid;
+    if (selected) return {
+      x: selected.x + selected.width / 2,
+      y: selected.y + selected.depth / 2,
+    };
+    const activeRooms = safeRooms.filter((room) => room.floor === activeFloor && room.kind !== "piscina");
+    if (activeRooms.length) {
+      const room = activeRooms[0];
+      return { x: room.x + room.width / 2, y: room.y + room.depth / 2 };
+    }
+    return { x: lotWidth / 2, y: lotDepth / 2 };
+  }, [activeFloor, lotDepth, lotWidth, safeRooms, selected, selectedClosedSpace]);
 
   const updateSelectedSpaceProfile = (patch: Partial<Pick<SpaceProfile, "label" | "kind">>) => {
     if (!selectedClosedSpace) return;
@@ -3822,7 +3852,7 @@ export default function ConceptPlanner() {
                         ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
-                        ["furniture", LayoutGrid, "Móveis"],
+                        ["furniture", LayoutGrid, "Itens"],
                         ["materials", Sparkles, "Materiais"],
                         ["outdoor", Trees, "Externo"],
                       ] as const).map(([value, Icon, label]) => (
@@ -3859,7 +3889,7 @@ export default function ConceptPlanner() {
                               : editorLibraryTab === "rooms"
                                 ? "Ambientes"
                                 : editorLibraryTab === "furniture"
-                                  ? "Móveis e objetos"
+                                  ? "Biblioteca de itens"
                                   : editorLibraryTab === "materials"
                                     ? "Materiais"
                                     : "Área externa"}
@@ -3874,7 +3904,7 @@ export default function ConceptPlanner() {
                               : editorLibraryTab === "rooms"
                                 ? "Organize os ambientes"
                                 : editorLibraryTab === "furniture"
-                                  ? "Insira e mova itens na planta"
+                                  ? "Pesquise, insira e edite no 2D ou 3D"
                                   : editorLibraryTab === "materials"
                                     ? "Aplique no objeto selecionado"
                                     : "Lazer e área externa"}
@@ -4192,8 +4222,11 @@ export default function ConceptPlanner() {
                   {editorLibraryTab === "furniture" && (
                     <>
                       <div className="mb-3 flex items-center justify-between">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Móveis e objetos</div>
-                        <span className="text-[10px] text-slate-400">Arraste para a planta</span>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Biblioteca de itens</div>
+                          <div className="mt-0.5 text-[10px] text-slate-400">{editorView === "model3d" ? "Clique para inserir sem sair do 3D" : "Arraste para posicionar ou clique para inserir"}</div>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{visibleRealCatalogProducts.length + filteredFurniture.length}</span>
                       </div>
 
                       <label className="mb-3 flex h-10 items-center gap-2 rounded-xl border bg-white px-3">
@@ -4201,13 +4234,13 @@ export default function ConceptPlanner() {
                         <input
                           value={furnitureSearch}
                           onChange={(event) => setFurnitureSearch(event.target.value)}
-                          placeholder="Buscar sofá, cama, mesa..."
+                          placeholder="Buscar sofá, cama, árvore, luminária..."
                           className="w-full bg-transparent text-sm outline-none"
                         />
                       </label>
 
                       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação"] as const).map((category) => (
+                        {(["Todos", "Sala", "Quarto", "Jantar", "Cozinha", "Escritório", "Decoração", "Iluminação", "Exterior"] as const).map((category) => (
                           <button
                             key={category}
                             type="button"
@@ -4226,7 +4259,7 @@ export default function ConceptPlanner() {
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
                               <div className="text-xs font-bold text-slate-900">Produtos reais do catálogo</div>
-                              <div className="text-[10px] text-slate-500">Imagens cadastradas no tenant · clique para inserir no projeto</div>
+                              <div className="text-[10px] text-slate-500">Produtos do tenant · clique para inserir no ambiente ativo</div>
                             </div>
                             {realCatalogLoading && <span className="text-[10px] font-semibold text-orange-600">Carregando...</span>}
                           </div>
@@ -4261,7 +4294,7 @@ export default function ConceptPlanner() {
                                     item.nome,
                                     preset.width,
                                     preset.depth,
-                                    undefined,
+                                    libraryInsertPoint,
                                     {
                                       catalogProductId: item.id,
                                       imageUrl,
@@ -4323,7 +4356,7 @@ export default function ConceptPlanner() {
                               event.dataTransfer.effectAllowed = "copy";
                               event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({ kind, label, width, depth }));
                             }}
-                            onClick={() => addObject(kind, label, width, depth)}
+                            onClick={() => addObjectAt(kind, label, width, depth, libraryInsertPoint)}
                             className="cursor-grab overflow-hidden rounded-xl border bg-white text-left transition active:cursor-grabbing hover:border-orange-300 hover:shadow-md"
                           >
                             <div className="relative grid h-24 place-items-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-stone-100">
