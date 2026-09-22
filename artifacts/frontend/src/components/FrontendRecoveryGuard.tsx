@@ -5,8 +5,15 @@ const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
 const RECOVERY_WINDOW_MS = 30_000;
 const STUCK_SPINNER_MS = 12_000;
 const VERSION_CHECK_MS = 60_000;
+const REFRESH_PROTECTION_SELECTOR = '[data-vendorai-refresh-protected="true"]';
+
 const CHUNK_ERROR_PATTERN =
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html|Cannot read properties of undefined \(reading ["']default["']\)/i;
+
+function isFrontendRefreshProtected() {
+  if (typeof document === "undefined") return false;
+  return document.querySelector(REFRESH_PROTECTION_SELECTOR) !== null;
+}
 
 function currentEntryAsset() {
   const entryScript = Array.from(document.scripts).find((script) =>
@@ -117,10 +124,13 @@ async function latestEntryAsset() {
 }
 
 async function recoverIfDeploymentChanged() {
+  if (isFrontendRefreshProtected()) return;
+
   const current = currentEntryAsset();
   if (!current) return;
   const latest = await latestEntryAsset();
   if (!latest || latest === current) return;
+  if (isFrontendRefreshProtected()) return;
   await recoverFrontendOnce("nova versão publicada");
 }
 
