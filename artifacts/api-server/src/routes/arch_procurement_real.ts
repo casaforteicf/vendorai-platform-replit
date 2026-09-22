@@ -96,13 +96,18 @@ router.post("/arch/procurement/:obraId/analyze-document", upload.single("documen
     const isPdf = file.mimetype === "application/pdf" || lower.endsWith(".pdf");
     const isImage = file.mimetype.startsWith("image/");
     const isText = file.mimetype.startsWith("text/") || /\.(txt|csv|xml)$/i.test(lower);
-    if (!isPdf && !isImage && !isText) {
-      res.status(422).json({ error: "Use PDF, imagem, CSV, TXT ou XML. Planilhas XLS/XLSX são lidas diretamente na tela de Compras." });
+    const isSpreadsheet = /\.(xlsx|xls)$/i.test(lower);
+    if (!isPdf && !isImage && !isText && !isSpreadsheet) {
+      res.status(422).json({ error: "Use PDF, imagem, CSV, XLS/XLSX, TXT ou XML." });
       return;
     }
 
     const context = String(req.body?.context ?? "request");
     const document = await saveProcurementDocument(tid, obraId, file);
+    if (isSpreadsheet) {
+      res.json({ extracted: { tipo: "orcamento", itens: [] }, document, parseLocally: true });
+      return;
+    }
     const { apiKey } = await resolveAIKey(tid, "anthropic");
     const anthropic = new Anthropic({ apiKey });
     const system = `Você extrai dados de documentos de compras de obras no Brasil.
