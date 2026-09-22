@@ -51,7 +51,7 @@ describe("prospector consultive playbook", () => {
       },
     });
     expect(message).toContain("Obra/projeto identificado em fonte pública");
-    expect(message.indexOf("Obra/projeto")).toBeLessThan(message.indexOf("Site comercial"));
+    expect(message).not.toContain("Site comercial encontrado");
   });
 
   it("uses verified public evidence when it exists", () => {
