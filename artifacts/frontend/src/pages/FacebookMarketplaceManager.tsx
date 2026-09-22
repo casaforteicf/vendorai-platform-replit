@@ -35,6 +35,15 @@ type ListingEdit = {
   state: string;
 };
 
+type MarketplaceCapabilities = {
+  channel: string;
+  mode: string;
+  directPublishing: boolean;
+  officialConnectorConnected: boolean;
+  connectorContractReady: boolean;
+  reason?: string;
+};
+
 type MarketplaceListing = {
   id: string;
   productId: string;
@@ -96,7 +105,10 @@ export default function FacebookMarketplaceManager() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [capabilities, setCapabilities] = useState<MarketplaceCapabilities | null>(null);
   const [productId, setProductId] = useState("");
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkProductIds, setBulkProductIds] = useState<string[]>([]);
   const [campaignId, setCampaignId] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
@@ -109,10 +121,11 @@ export default function FacebookMarketplaceManager() {
 
   const loadData = useCallback(async () => {
     if (!tenantId) return;
-    const [productResponse, campaignResponse, listingResponse] = await Promise.all([
+    const [productResponse, campaignResponse, listingResponse, capabilityResponse] = await Promise.all([
       fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: authHeaders() }),
       fetch(`/api/tenants/${tenantId}/campaigns`, { headers: authHeaders() }),
       fetch(`/api/tenants/${tenantId}/facebook-marketplace/listings`, { headers: authHeaders() }),
+      fetch(`/api/tenants/${tenantId}/facebook-marketplace/capabilities`, { headers: authHeaders() }),
     ]);
 
     if (productResponse.ok) {
@@ -129,6 +142,9 @@ export default function FacebookMarketplaceManager() {
       setExternalUrls(
         Object.fromEntries(data.map((item) => [item.id, item.externalUrl ?? ""])),
       );
+    }
+    if (capabilityResponse.ok) {
+      setCapabilities((await capabilityResponse.json()) as MarketplaceCapabilities);
     }
   }, [tenantId]);
 
@@ -148,27 +164,43 @@ export default function FacebookMarketplaceManager() {
   }, [listings]);
 
   async function createDraft() {
-    if (!productId || !tenantId) {
-      toast({ title: "Selecione um produto do catálogo", variant: "destructive" });
+    if (!tenantId) return;
+    const selectedProductIds = bulkMode ? bulkProductIds : (productId ? [productId] : []);
+    if (selectedProductIds.length === 0) {
+      toast({ title: bulkMode ? "Selecione ao menos um produto" : "Selecione um produto do catálogo", variant: "destructive" });
       return;
     }
     setCreating(true);
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/facebook-marketplace/drafts`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          productId,
-          campaignId: campaignId || null,
-          city: city.trim() || null,
-          state: state.trim() || null,
-          category: category.trim() || null,
-        }),
-      });
+      const response = await fetch(
+        bulkMode
+          ? `/api/tenants/${tenantId}/facebook-marketplace/drafts/bulk`
+          : `/api/tenants/${tenantId}/facebook-marketplace/drafts`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            ...(bulkMode ? { productIds: selectedProductIds } : { productId: selectedProductIds[0] }),
+            campaignId: campaignId || null,
+            city: city.trim() || null,
+            state: state.trim() || null,
+            category: category.trim() || null,
+          }),
+        },
+      );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || "Não foi possível gerar o anúncio.");
-      toast({ title: "Rascunho criado", description: "Título e descrição foram preparados a partir do catálogo." });
+
+      const createdCount = bulkMode ? Number(data?.summary?.created ?? 0) : 1;
+      const failedCount = bulkMode ? Number(data?.summary?.failed ?? 0) : 0;
+      toast({
+        title: bulkMode ? `${createdCount} anúncio(s) criado(s)` : "Rascunho criado",
+        description: failedCount > 0
+          ? `${failedCount} produto(s) não puderam ser processados. Os demais foram criados normalmente.`
+          : "Título e descrição foram preparados a partir do catálogo.",
+      });
       setProductId("");
+      setBulkProductIds([]);
       setCampaignId("");
       setCategory("");
       await loadData();
@@ -315,8 +347,10 @@ export default function FacebookMarketplaceManager() {
           </p>
         </div>
         <div className="rounded-xl border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-          <strong className="block text-foreground">Modo assistido</strong>
-          O VendorAI prepara tudo e registra o ciclo. A confirmação final acontece no Facebook enquanto não houver conector oficial elegível.
+          <strong className="block text-foreground">
+            {capabilities?.directPublishing ? "Publicação direta disponível" : "Modo assistido"}
+          </strong>
+          {capabilities?.reason || "O VendorAI prepara tudo e registra o ciclo. A confirmação final acontece no Facebook enquanto não houver conector oficial elegível."}
         </div>
       </div>
 
@@ -342,19 +376,56 @@ export default function FacebookMarketplaceManager() {
             <p className="text-xs text-muted-foreground">A IA cria título e descrição sem inventar dados fora do produto cadastrado.</p>
           </div>
         </div>
-        <div className="grid gap-3 xl:grid-cols-[2fr_1.5fr_1fr_100px_1.2fr_auto]">
-          <select
-            value={productId}
-            onChange={(event) => setProductId(event.target.value)}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={bulkMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setBulkMode((current) => !current);
+              setProductId("");
+              setBulkProductIds([]);
+            }}
           >
-            <option value="">Selecione um produto</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.nome}{product.sku ? ` · ${product.sku}` : ""} · {money(product.precoPromocional || product.precoBase)}
-              </option>
-            ))}
-          </select>
+            {bulkMode ? "Modo lote ativo" : "Selecionar vários produtos"}
+          </Button>
+          {bulkMode && (
+            <span className="text-xs text-muted-foreground">
+              {bulkProductIds.length} selecionado(s) · máximo 40 por lote
+            </span>
+          )}
+        </div>
+        <div className="grid gap-3 xl:grid-cols-[2fr_1.5fr_1fr_100px_1.2fr_auto]">
+          {bulkMode ? (
+            <select
+              multiple
+              value={bulkProductIds}
+              onChange={(event) => {
+                const values = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+                setBulkProductIds(values.slice(0, 40));
+              }}
+              className="min-h-28 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.nome}{product.sku ? ` · ${product.sku}` : ""} · {money(product.precoPromocional || product.precoBase)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={productId}
+              onChange={(event) => setProductId(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Selecione um produto</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.nome}{product.sku ? ` · ${product.sku}` : ""} · {money(product.precoPromocional || product.precoBase)}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             value={campaignId}
             onChange={(event) => setCampaignId(event.target.value)}
@@ -370,9 +441,9 @@ export default function FacebookMarketplaceManager() {
           <Input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Cidade" />
           <Input value={state} onChange={(event) => setState(event.target.value.toUpperCase())} placeholder="UF" maxLength={2} />
           <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Categoria (opcional)" />
-          <Button onClick={() => void createDraft()} disabled={creating || !productId}>
+          <Button onClick={() => void createDraft()} disabled={creating || (bulkMode ? bulkProductIds.length === 0 : !productId)}>
             {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-            Gerar
+            {bulkMode ? `Gerar ${bulkProductIds.length || ""} em lote`.trim() : "Gerar"}
           </Button>
         </div>
       </section>
