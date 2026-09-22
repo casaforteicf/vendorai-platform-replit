@@ -2943,7 +2943,14 @@ export default function ObraDetalhe() {
         {activeTab === "cronograma"   && <Cronograma tenantId={tenantId} obraId={obraId} etapas={etapas} portalToken={(obra as any).portalToken} />}
         {activeTab === "medicoes"     && <Medicoes tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
-        {activeTab === "financeiro"   && <TabFinanceiro tenantId={tenantId} obraId={obraId} etapas={etapas} />}
+        {activeTab === "financeiro"   && (
+          <TabFinanceiro
+            tenantId={tenantId}
+            obraId={obraId}
+            etapas={etapas}
+            onOpenOrcamento={() => setActiveTab("orcamento")}
+          />
+        )}
         {activeTab === "estoque"      && <EstoqueObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
         {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
