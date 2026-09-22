@@ -12,59 +12,18 @@ import {
   messagesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
-import { sendSdrFollowup, type ProspectorCadenceStep, type ProspectorCadenceStepKey } from "../services/sdrService.js";
+import { sendSdrFollowup } from "../services/sdrService.js";
+import {
+  PROSPECTOR_COLD_CADENCE,
+  nextProspectorCadenceStep,
+  type ProspectorCadenceStepKey,
+} from "../lib/prospector-cold-cadence.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
-
-export const PROSPECTOR_COLD_CADENCE: Array<ProspectorCadenceStep & { dueHours: number }> = [
-  {
-    key: "followup_48h",
-    label: "48h",
-    dueHours: 48,
-    instruction:
-      "Retome pelo contexto/sinal original sem repetir a primeira mensagem. " +
-      "Faça uma pergunta curta e fácil de responder.",
-  },
-  {
-    key: "followup_120h",
-    label: "5 dias",
-    dueHours: 120,
-    instruction:
-      "Use um ângulo novo baseado nas evidências já verificadas. " +
-      "Não use 'só passando para lembrar' e não repita a pergunta anterior.",
-  },
-  {
-    key: "followup_216h",
-    label: "9 dias",
-    dueHours: 216,
-    instruction:
-      "Faça a última tentativa ativa de forma elegante e permission-based. " +
-      "Deixe claro que pode encerrar o contato se não for prioridade agora.",
-  },
-];
 
 const FIRST_FOLLOWUP_H = PROSPECTOR_COLD_CADENCE[0]!.dueHours;
 const NURTURE_AFTER_FINAL_H = 72;
 const LOOKBACK_H = 24 * 30;
-
-export function nextProspectorCadenceStep(
-  hoursSinceFirst: number,
-  sentKeys: Iterable<ProspectorCadenceStepKey>,
-): (ProspectorCadenceStep & { dueHours: number }) | null {
-  const sent = new Set(sentKeys);
-  const sentIndexes = PROSPECTOR_COLD_CADENCE
-    .map((step, index) => sent.has(step.key) ? index : -1)
-    .filter((index) => index >= 0);
-  const lastSentIndex = sentIndexes.length > 0 ? Math.max(...sentIndexes) : -1;
-
-  // Se o worker ficou parado, não dispara uma rajada para "compensar" etapas
-  // vencidas. Escolhe somente a etapa MAIS RECENTE já devida depois da última
-  // tentativa realmente enviada.
-  const due = PROSPECTOR_COLD_CADENCE.filter(
-    (step, index) => index > lastSentIndex && !sent.has(step.key) && hoursSinceFirst >= step.dueHours,
-  );
-  return due.length > 0 ? due[due.length - 1]! : null;
-}
 
 async function recordAttributedLifecycleEvent(params: {
   tenantId: string;
