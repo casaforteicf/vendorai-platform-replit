@@ -428,7 +428,10 @@ export async function sendSdrFirstApproach(
     const playbook = resolveProspectorPlaybook(
       params["prospectorPlaybook"],
       lead.mercadoSegmento,
-      (lead.metadata ?? {}) as Record<string, unknown>,
+      {
+        ...((lead.metadata ?? {}) as Record<string, unknown>),
+        lead_source: "prospector",
+      },
     );
     const message = buildProspectorOpening({
       playbook,
