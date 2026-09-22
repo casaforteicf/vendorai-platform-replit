@@ -131,7 +131,10 @@ export async function getAdsOverview(tenantId: string) {
       spend: sql<string>`coalesce(sum(${adPerformanceSnapshotsTable.custo}), 0)`,
       platformConversions: sql<number>`coalesce(sum(${adPerformanceSnapshotsTable.conversoesPlataforma}), 0)`,
     }).from(adPerformanceSnapshotsTable)
-      .where(eq(adPerformanceSnapshotsTable.campaignId, campaign.id));
+      .where(and(
+        eq(adPerformanceSnapshotsTable.campaignId, campaign.id),
+        isNull(adPerformanceSnapshotsTable.creativeId),
+      ));
 
     const [leadStats] = await db.select({ total: sql<number>`count(*)` })
       .from(leadsTable).where(eq(leadsTable.adCampaignId, campaign.id));
