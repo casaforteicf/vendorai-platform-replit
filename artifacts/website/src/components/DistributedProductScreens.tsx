@@ -89,17 +89,6 @@ const PT = {
       href: "/produtos/revenue-scout",
     },
     {
-      eyebrow: "Oportunidades de Ingreso",
-      title: "Las señales comerciales se convierten en acciones concretas.",
-      description:
-        "La pantalla de oportunidades reúne señales detectadas por la inteligencia y organiza qué merece contacto, seguimiento o expansión.",
-      bullets: ["Señales priorizadas", "Motivo de la oportunidad", "Próxima acción sugerida"],
-      image: `${MEDIA}/revenue-opportunities/desktop-1440.png`,
-      mobile: `${MEDIA}/revenue-opportunities/mobile-390.png`,
-      alt: "Pantalla real de Oportunidades de Ingreso de VendorAI",
-      href: "/produtos/revenue-scout",
-    },
-    {
       eyebrow: "Agenda Inteligente",
       title: "Próxima ação com responsável e prazo.",
       description:
@@ -217,6 +206,17 @@ const ES = {
       image: `${MEDIA}/jarvis/desktop-aberto.png`,
       alt: "Pantalla real de JARVIS de VendorAI",
       href: "/produtos/jarvis",
+    },
+    {
+      eyebrow: "Oportunidades de Ingreso",
+      title: "Las señales comerciales se convierten en acciones concretas.",
+      description:
+        "La pantalla de oportunidades reúne señales detectadas por la inteligencia y organiza qué merece contacto, seguimiento o expansión.",
+      bullets: ["Señales priorizadas", "Motivo de la oportunidad", "Próxima acción sugerida"],
+      image: `${MEDIA}/revenue-opportunities/desktop-1440.png`,
+      mobile: `${MEDIA}/revenue-opportunities/mobile-390.png`,
+      alt: "Pantalla real de Oportunidades de Ingreso de VendorAI",
+      href: "/produtos/revenue-scout",
     },
     {
       eyebrow: "Agenda Inteligente",
