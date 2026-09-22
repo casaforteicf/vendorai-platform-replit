@@ -570,6 +570,7 @@ export default function ConceptModel3D({
   const [showLabels, setShowLabels] = useState(true);
   const [interiorMode, setInteriorMode] = useState(false);
   const [lightingMode, setLightingMode] = useState<"day" | "sunset" | "night">("day");
+  const [renderQuality, setRenderQuality] = useState<"fast" | "realistic" | "ultra">("realistic");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
   const [navigationMode, setNavigationMode] = useState<"orbit" | "walk">("orbit");
@@ -1039,6 +1040,24 @@ export default function ConceptModel3D({
               </button>
             </div>
           )}
+          <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white" title="Qualidade da visualização 3D">
+            {([
+              ["fast", "Rápido"],
+              ["realistic", "Realista"],
+              ["ultra", "Ultra"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRenderQuality(value)}
+                className={renderQuality === value
+                  ? "bg-orange-500 px-2.5 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-2.5 py-2 text-[11px] font-semibold text-slate-600 first:border-l-0 hover:bg-slate-50"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {onRenderView && (
             <button
               type="button"
@@ -1186,6 +1205,7 @@ export default function ConceptModel3D({
         showRoof={showRoof}
         roof={roof}
         lightingMode={lightingMode}
+        renderQuality={renderQuality}
         cameraPresetDegrees={rotation}
         cameraZoom={zoom}
         transformMode={transformMode}
