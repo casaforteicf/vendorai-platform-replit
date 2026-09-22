@@ -103,51 +103,29 @@ export function AiBudgetUsageIndicator() {
     };
   }, [load]);
 
-  // Mantém o acionador pequeno ao lado de Novidades, sem cobrir o botão Sair.
+  // O indicador passa a ocupar um slot declarativo no rodapé da sidebar.
+  // Nunca usa position: fixed: se Conta e atalhos estiver recolhido, ele some
+  // junto e não cobre conteúdo, campos ou botões da tela.
   useEffect(() => {
-    let createdSlot: HTMLElement | null = null;
-    let utilitiesContainer: HTMLElement | null = null;
+    const attachToSidebar = () => {
+      const slots = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-ai-budget-sidebar-slot]"),
+      );
+      const visibleSlot = slots.find((slot) => slot.offsetParent !== null) ?? null;
 
-    const attachBesideNovidades = () => {
-      if (window.innerWidth < 768) {
-        setSidebarSlot(null);
-        return;
-      }
-      const desktopSidebar = document.querySelector(".hidden.md\\:flex.sticky.top-0.h-screen");
-      const footer = desktopSidebar?.querySelector(".p-4.border-t") as HTMLElement | null;
-      const utilities = footer?.querySelector(".mb-1.space-y-1") as HTMLElement | null;
-      if (!utilities) return setSidebarSlot(null);
-
-      const novidadesButton = Array.from(utilities.querySelectorAll("button")).find((button) =>
-        /novidades/i.test(button.textContent ?? ""),
-      ) as HTMLButtonElement | undefined;
-      if (!novidadesButton) return setSidebarSlot(null);
-
-      let slot = utilities.querySelector<HTMLElement>("[data-ai-budget-sidebar-slot]");
-      if (!slot) {
-        slot = document.createElement("div");
-        slot.dataset.aiBudgetSidebarSlot = "true";
-        slot.setAttribute("aria-label", "Consumo VendorAI");
-        slot.style.position = "absolute";
-        slot.style.right = "36px";
-        slot.style.bottom = "4px";
-        slot.style.zIndex = "4";
-        utilities.style.position = "relative";
-        utilities.appendChild(slot);
-        createdSlot = slot;
-        utilitiesContainer = utilities;
-      }
-      setSidebarSlot((current) => current === slot ? current : slot);
+      setSidebarSlot((current) => current === visibleSlot ? current : visibleSlot);
+      if (!visibleSlot) setExpanded(false);
     };
 
-    attachBesideNovidades();
-    const timer = window.setInterval(attachBesideNovidades, 750);
-    window.addEventListener("resize", attachBesideNovidades);
+    attachToSidebar();
+    const timer = window.setInterval(attachToSidebar, 500);
+    window.addEventListener("resize", attachToSidebar);
+    window.addEventListener("popstate", attachToSidebar);
+
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("resize", attachBesideNovidades);
-      if (createdSlot?.isConnected) createdSlot.remove();
-      if (utilitiesContainer?.isConnected) utilitiesContainer.style.position = "";
+      window.removeEventListener("resize", attachToSidebar);
+      window.removeEventListener("popstate", attachToSidebar);
     };
   }, []);
 
@@ -237,13 +215,14 @@ export function AiBudgetUsageIndicator() {
         ref={triggerRef}
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className={`flex h-7 items-center gap-1 rounded-full border px-2 text-left shadow-sm ${tone}`}
+        className={`flex h-6 items-center gap-1 rounded-full border px-1.5 text-left ${tone}`}
         aria-expanded={expanded}
-        aria-label="Abrir consumo do plano"
+        aria-label="Abrir consumo de IA"
+        title={`Uso de IA: ${maxPercent.toFixed(0)}%`}
       >
-        <Sparkles className="h-3 w-3" />
-        <span className="text-[9px] font-semibold leading-none">Uso · {maxPercent.toFixed(0)}%</span>
-        {expanded ? <ChevronDown className="h-3 w-3 opacity-70" /> : <ChevronUp className="h-3 w-3 opacity-70" />}
+        <Sparkles className="h-2.5 w-2.5" />
+        <span className="text-[9px] font-semibold leading-none">IA · {maxPercent.toFixed(0)}%</span>
+        {expanded ? <ChevronDown className="h-2.5 w-2.5 opacity-60" /> : <ChevronUp className="h-2.5 w-2.5 opacity-60" />}
       </button>,
       sidebarSlot,
     );
@@ -253,13 +232,7 @@ export function AiBudgetUsageIndicator() {
     return <>{trigger}{popover}</>;
   }
 
-  return (
-    <div className={`fixed bottom-4 left-3 z-[125] ${expanded ? "right-3" : ""} sm:left-4 sm:right-auto sm:w-[min(420px,calc(100vw-2rem))]`}>
-      {expanded ? panel : (
-        <button type="button" onClick={() => setExpanded(true)} className={`flex h-8 items-center gap-1.5 rounded-full border px-2.5 shadow-lg ${tone}`}>
-          <Sparkles className="h-3.5 w-3.5" /><span className="text-[10px] font-semibold">Uso · {maxPercent.toFixed(0)}%</span><ChevronUp className="h-3 w-3" />
-        </button>
-      )}
-    </div>
-  );
+  // Sem slot visível (sidebar/Conta e atalhos recolhidos), não cria
+  // nenhum card flutuante sobre o conteúdo principal.
+  return null;
 }
