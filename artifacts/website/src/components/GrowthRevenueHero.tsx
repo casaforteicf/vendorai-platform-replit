@@ -1,5 +1,5 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   BarChart3,
@@ -70,10 +70,25 @@ const ES = {
 
 const MEDIA = "/media/vendorai-official";
 
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  return reduced;
+}
+
 export default function GrowthRevenueHero() {
   const { isSpanish } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = usePrefersReducedMotion();
 
   return (
     <section className="vendor-home-hero vendor-home-hero-cinematic relative overflow-hidden text-white">
@@ -83,12 +98,7 @@ export default function GrowthRevenueHero() {
       <div className="vendor-hero-beam" aria-hidden="true" />
 
       <div className="relative mx-auto grid min-h-[760px] max-w-[1480px] gap-12 px-4 pb-16 pt-12 sm:px-6 sm:pb-20 sm:pt-16 lg:grid-cols-[0.88fr_1.12fr] lg:items-center lg:gap-14 lg:px-8 lg:pb-28 lg:pt-24 xl:gap-20">
-        <motion.div
-          className="max-w-3xl"
-          initial={reduceMotion ? false : { opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.68, ease: "easeOut" }}
-        >
+        <div className="vendor-hero-enter max-w-3xl">
           <div className="vendor-hero-eyebrow vendor-hero-eyebrow-dark mb-6 inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold leading-5 sm:mb-7 sm:px-4 sm:text-sm">
             <WandSparkles className="h-4 w-4" />
             {copy.eyebrow}
@@ -124,12 +134,10 @@ export default function GrowthRevenueHero() {
               {copy.engines.map((engine, index) => {
                 const Icon = engine.icon;
                 return (
-                  <motion.div
+                  <div
                     key={engine.title}
-                    className="vendor-engine-card vendor-engine-card-dark rounded-[20px] p-4"
-                    initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.45, delay: 0.2 + index * 0.08 }}
+                    className="vendor-engine-card vendor-engine-card-dark vendor-engine-enter rounded-[20px] p-4"
+                    style={{ animationDelay: (200 + index * 80) + "ms" }}
                   >
                     <div className="mb-4 flex items-center justify-between">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-400/20 bg-orange-400/10 text-orange-300">
@@ -139,19 +147,14 @@ export default function GrowthRevenueHero() {
                     </div>
                     <p className="text-sm font-semibold text-white">{engine.title}</p>
                     <p className="mt-1.5 text-xs leading-5 text-slate-400">{engine.text}</p>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          className="relative min-w-0 lg:pl-2"
-          initial={reduceMotion ? false : { opacity: 0, x: 34, scale: 0.98 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          transition={{ duration: 0.82, delay: 0.08, ease: "easeOut" }}
-        >
+        <div className="vendor-hero-visual-enter relative min-w-0 lg:pl-2">
           <div className="vendor-product-window vendor-product-window-dark overflow-hidden rounded-[24px] sm:rounded-[32px]">
             <div className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/25 px-4 py-3.5 backdrop-blur-xl sm:px-6 sm:py-4">
               <div>
@@ -161,11 +164,7 @@ export default function GrowthRevenueHero() {
                 <h2 className="mt-2 text-lg font-semibold tracking-[-0.025em] text-white sm:text-2xl">{copy.previewTitle}</h2>
               </div>
               <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 sm:inline-flex">
-                <motion.span
-                  className="h-1.5 w-1.5 rounded-full bg-emerald-400"
-                  animate={reduceMotion ? undefined : { opacity: [0.35, 1, 0.35], scale: [0.9, 1.18, 0.9] }}
-                  transition={{ duration: 1.8, repeat: Infinity }}
-                />
+                <span className="vendor-live-dot h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 {copy.live}
               </span>
             </div>
@@ -177,11 +176,11 @@ export default function GrowthRevenueHero() {
                 loop
                 playsInline
                 preload="metadata"
-                poster={`${MEDIA}/crm-pipeline/desktop-1440.webp`}
+                poster={MEDIA + "/crm-pipeline/desktop-1440.webp"}
                 className="h-full w-full object-cover object-top"
                 aria-label={copy.previewTitle}
               >
-                <source src={`${MEDIA}/videos/crm-short.webm`} type="video/webm" />
+                <source src={MEDIA + "/videos/crm-short.webm"} type="video/webm" />
               </video>
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,transparent_50%,rgba(249,115,22,0.07)_100%)]" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#05080d]/70 to-transparent" />
@@ -195,39 +194,22 @@ export default function GrowthRevenueHero() {
             </div>
           </div>
 
-          <motion.div
-            className="vendor-floating-stat vendor-floating-stat-dark vendor-floating-stat-left hidden lg:flex"
-            animate={reduceMotion ? undefined : { y: [0, -8, 0] }}
-            transition={{ duration: 4.4, repeat: Infinity, ease: "easeInOut" }}
-          >
+          <div className="vendor-floating-stat vendor-floating-stat-dark vendor-floating-stat-left vendor-float-up hidden lg:flex">
             <BarChart3 className="h-4 w-4 text-orange-300" />
             <div><strong>{copy.signal}</strong><span>{copy.signalText}</span></div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            className="vendor-floating-stat vendor-floating-stat-dark vendor-floating-stat-right hidden xl:flex"
-            animate={reduceMotion ? undefined : { y: [0, 9, 0] }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 0.35 }}
-          >
+          <div className="vendor-floating-stat vendor-floating-stat-dark vendor-floating-stat-right vendor-float-down hidden xl:flex">
             <UsersRound className="h-4 w-4 text-emerald-300" />
             <div><strong>{copy.context}</strong><span>{copy.contextText}</span></div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            className="vendor-hero-signal-chip pointer-events-none absolute left-5 top-[42%] hidden items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.13em] text-orange-200 backdrop-blur-xl 2xl:flex"
-            animate={reduceMotion ? undefined : { x: [0, 10, 0], opacity: [0.72, 1, 0.72] }}
-            transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
-          >
+          <div className="vendor-hero-signal-chip vendor-signal-drift pointer-events-none absolute left-5 top-[42%] hidden items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.13em] text-orange-200 backdrop-blur-xl 2xl:flex">
             <Zap className="h-3.5 w-3.5" />
             TAD · next best action
-          </motion.div>
+          </div>
 
-          <motion.div
-            className="vendor-hero-flow absolute -bottom-6 left-5 right-5 hidden items-center justify-between rounded-2xl px-4 py-3 text-[11px] font-semibold text-slate-300 md:flex xl:left-8 xl:right-8"
-            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, delay: 0.65 }}
-          >
+          <div className="vendor-hero-flow vendor-flow-enter absolute -bottom-6 left-5 right-5 hidden items-center justify-between rounded-2xl px-4 py-3 text-[11px] font-semibold text-slate-300 md:flex xl:left-8 xl:right-8">
             {["Sinal", "Prospector", "CRM", "SDR", "Closer", "Venda", "Pós-venda"].map((step, index) => (
               <span key={step} className="flex min-w-0 items-center gap-2">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-orange-400/20 bg-orange-400/10 text-[10px] font-bold text-orange-300">{index + 1}</span>
@@ -235,8 +217,8 @@ export default function GrowthRevenueHero() {
                 {index < 6 ? <ArrowRight className="h-3 w-3 shrink-0 text-slate-600" /> : null}
               </span>
             ))}
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       </div>
     </section>
   );

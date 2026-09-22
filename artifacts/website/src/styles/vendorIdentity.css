@@ -356,3 +356,81 @@
     transition: none !important;
   }
 }
+
+
+/* Critical-path hero motion without Framer Motion. */
+@keyframes vendorHeroEnter {
+  from { opacity: 0; transform: translate3d(0, 28px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes vendorHeroVisualEnter {
+  from { opacity: 0; transform: translate3d(34px, 0, 0) scale(.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes vendorEngineEnter {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes vendorLivePulse {
+  0%, 100% { opacity: .35; transform: scale(.9); }
+  50% { opacity: 1; transform: scale(1.18); }
+}
+@keyframes vendorFloatUp {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -8px, 0); }
+}
+@keyframes vendorFloatDown {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, 9px, 0); }
+}
+@keyframes vendorSignalDrift {
+  0%, 100% { opacity: .72; transform: translate3d(0, 0, 0); }
+  50% { opacity: 1; transform: translate3d(10px, 0, 0); }
+}
+@keyframes vendorFlowEnter {
+  from { opacity: 0; transform: translate3d(0, 18px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.vendor-hero-enter {
+  animation: vendorHeroEnter .68s ease-out both;
+  will-change: transform, opacity;
+}
+.vendor-hero-visual-enter {
+  animation: vendorHeroVisualEnter .82s .08s ease-out both;
+  will-change: transform, opacity;
+}
+.vendor-engine-enter {
+  opacity: 0;
+  animation: vendorEngineEnter .45s ease-out both;
+}
+.vendor-live-dot {
+  animation: vendorLivePulse 1.8s ease-in-out infinite;
+}
+.vendor-float-up {
+  animation: vendorFloatUp 4.4s ease-in-out infinite;
+}
+.vendor-float-down {
+  animation: vendorFloatDown 5s .35s ease-in-out infinite;
+}
+.vendor-signal-drift {
+  animation: vendorSignalDrift 3.6s ease-in-out infinite;
+}
+.vendor-flow-enter {
+  animation: vendorFlowEnter .55s .65s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vendor-hero-enter,
+  .vendor-hero-visual-enter,
+  .vendor-engine-enter,
+  .vendor-live-dot,
+  .vendor-float-up,
+  .vendor-float-down,
+  .vendor-signal-drift,
+  .vendor-flow-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
