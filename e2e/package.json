@@ -10,7 +10,9 @@
     "media:capture": "playwright test tests/media-capture.spec.ts",
     "media:video": "tsx scripts/media-video.ts",
     "test:p0": "playwright test tests/p0-smoke.spec.ts",
-    "test:p0:debug": "PWDEBUG=1 playwright test tests/p0-smoke.spec.ts --headed"
+    "test:p0:debug": "PWDEBUG=1 playwright test tests/p0-smoke.spec.ts --headed",
+    "test:p1": "playwright test tests/p1-transactional.spec.ts",
+    "test:p0p1": "playwright test tests/p0-smoke.spec.ts tests/p1-transactional.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

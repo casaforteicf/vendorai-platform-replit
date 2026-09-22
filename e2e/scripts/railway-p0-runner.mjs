@@ -9,7 +9,7 @@ let state = "running";
 
 const child = spawn(
   "pnpm",
-  ["--filter", "@workspace/e2e", "run", "test:p0"],
+  ["--filter", "@workspace/e2e", "run", "test:p0p1"],
   {
     cwd: "/workspace",
     env: { ...process.env, CI: "1" },
@@ -21,7 +21,7 @@ child.on("exit", (code) => {
   exitCode = code ?? 1;
   finishedAt = new Date().toISOString();
   state = exitCode === 0 ? "passed" : "failed";
-  console.log(`[e2e-runner] P0 concluído: ${state} (exit=${exitCode})`);
+  console.log(`[e2e-runner] P0+P1 concluído: ${state} (exit=${exitCode})`);
 });
 
 child.on("error", (error) => {
@@ -49,12 +49,14 @@ const server = http.createServer((req, res) => {
 
   res.statusCode = 200;
   res.end(JSON.stringify({
-    service: "vendorai-e2e-p0",
+    service: "vendorai-e2e-p0p1",
     endpoints: ["/health", "/result"],
     ...JSON.parse(payload),
   }));
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`[e2e-runner] health server em :${port}; iniciando P0 contra ${process.env.E2E_BASE_URL || "https://app.appvendorai.com"}`);
+  console.log(
+    `[e2e-runner] health server em :${port}; iniciando P0+P1 contra ${process.env.E2E_BASE_URL || "https://app.appvendorai.com"}`,
+  );
 });
