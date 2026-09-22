@@ -15,6 +15,8 @@ import ConceptDerivedFacade from "./ConceptDerivedFacade";
 import type { ConceptFacadePreferences } from "./ConceptVolumetry";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptRoomShape } from "./conceptGeometry";
+import type { SitePlacement } from "./conceptSitePlacement";
+import { applySiteExteriorToFacade, buildSiteExteriorPlan } from "./conceptSiteExterior";
 import {
   DEFAULT_FACADE_DESIGN,
   FACADE_MATERIALS,
@@ -30,6 +32,8 @@ import {
 
 type Props = {
   lotWidth: number;
+  lotDepth: number;
+  sitePlacement: SitePlacement;
   levels: ConceptModelLevel[];
   rooms: ConceptRoomShape[];
   facade: ConceptFacadePreferences;
@@ -158,6 +162,8 @@ function FacadePresetThumbnail({ kind }: { kind: FacadeVolumeKind }) {
 
 export default function ConceptFacadeEditor({
   lotWidth,
+  lotDepth,
+  sitePlacement,
   levels,
   rooms,
   facade,
@@ -177,6 +183,11 @@ export default function ConceptFacadeEditor({
   const selectedVolume = useMemo(
     () => design.volumes.find((volume) => volume.id === selectedVolumeId) ?? null,
     [design.volumes, selectedVolumeId],
+  );
+
+  const siteExteriorPlan = useMemo(
+    () => buildSiteExteriorPlan(rooms, lotWidth, lotDepth, sitePlacement),
+    [rooms, lotWidth, lotDepth, sitePlacement],
   );
 
   const facadeMetrics = useMemo(() => {
@@ -453,6 +464,21 @@ export default function ConceptFacadeEditor({
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Complete a fachada com jardim, muro, portão, pergolado e elementos externos.
             </p>
+
+            <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-600">Implantação vinculada</div>
+              <div className="mt-1 text-[11px] font-semibold text-slate-800">
+                {siteExteriorPlan.frontLabel} · garagem {siteExteriorPlan.garageSide === "left" ? "à esquerda" : siteExteriorPlan.garageSide === "right" ? "à direita" : siteExteriorPlan.garageSide === "center" ? "central" : "não identificada"}
+              </div>
+              <div className="mt-1 text-[10px] leading-4 text-slate-500">{siteExteriorPlan.leisureSummary}</div>
+              <button
+                type="button"
+                onClick={() => onDesignChange(applySiteExteriorToFacade(design, siteExteriorPlan))}
+                className="mt-3 w-full rounded-lg bg-slate-950 px-3 py-2 text-[11px] font-bold text-white"
+              >
+                Aplicar implantação ao exterior
+              </button>
+            </div>
 
             <label className="mt-4 flex items-center justify-between rounded-xl border p-3">
               <span>
