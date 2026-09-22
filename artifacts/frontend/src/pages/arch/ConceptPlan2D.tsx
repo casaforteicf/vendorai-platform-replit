@@ -238,7 +238,7 @@ function doorGlyph(opening: OpeningMarker) {
       <path
         d={`M ${opening.x + r} ${opening.y - r / 2} A ${r} ${r} 0 0 1 ${opening.x} ${opening.y + r / 2}`}
         fill="none"
-        stroke={objectMaterial(object).stroke}
+        stroke="#94a3b8"
         strokeWidth="0.04"
         strokeDasharray="0.08 0.06"
       />
@@ -1243,7 +1243,7 @@ export default function ConceptPlan2D({
             setSnapGuides({});
           }
         }}
-        viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
+        viewBox={`${Number.isFinite(view.x) ? view.x : -2} ${Number.isFinite(view.y) ? view.y : -2} ${Number.isFinite(view.width) && view.width > 0 ? view.width : Math.max(16, lotWidth + 4)} ${Number.isFinite(view.height) && view.height > 0 ? view.height : Math.max(20, lotDepth + 4)}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Planta conceitual arquitetônica"
@@ -1259,6 +1259,17 @@ export default function ConceptPlan2D({
 
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="#fcfcfd" />
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="url(#concept-grid)" opacity="0.72" />
+        <rect
+          x="0"
+          y="0"
+          width={lotWidth}
+          height={lotDepth}
+          fill="none"
+          stroke="#94a3b8"
+          strokeWidth="0.08"
+          strokeDasharray="0.22 0.14"
+          pointerEvents="none"
+        />
 
         {snapGuides.x != null && (
           <g pointerEvents="none">
