@@ -368,6 +368,47 @@ router.post("/tenants/:tenantId/ads/events/:id/resolve", async (req, res) => {
   return res.json(event);
 });
 
+router.post("/tenants/:tenantId/ads/campaigns/:id/ab-test/prepare", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada." });
+
+  let creatives = await db.select().from(adCreativesTable)
+    .where(eq(adCreativesTable.campaignId, campaignId))
+    .orderBy(desc(adCreativesTable.geradoEm));
+
+  if (creatives.length < 2) {
+    const created = await generateCreativeForCampaign(tenantId, campaign);
+    creatives = [created, ...creatives];
+  }
+
+  const candidates = creatives.slice(0, 2);
+  await recordAdCampaignEvent({
+    tenantId,
+    campaignId,
+    userId: (req as any).user?.sub,
+    eventType: "ab_test_prepared",
+    severity: "info",
+    message: "Teste A/B preparado com duas variações de criativo. Nenhuma alteração de orçamento ou ativação foi executada.",
+    metadata: {
+      creativeAId: candidates[0]?.id ?? null,
+      creativeBId: candidates[1]?.id ?? null,
+      source: "media_planner",
+    },
+  });
+
+  return res.json({
+    prepared: true,
+    variants: candidates,
+    note: "O teste foi preparado. A distribuição real entre variantes depende da publicação/configuração na plataforma e continua sob controle humano.",
+  });
+});
+
 router.get("/tenants/:tenantId/ads/campaigns/:id/destination-preview", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   const campaignId = req.params.id as string;
