@@ -9,7 +9,7 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "validate:api": "pnpm --filter @workspace/api-server run ci:railway",
-    "validate:frontend": "pnpm run typecheck:libs && pnpm --filter @workspace/frontend typecheck && pnpm --filter @workspace/frontend test && pnpm --filter @workspace/frontend build",
+    "validate:frontend": "pnpm exec tsc --build lib/api-client-react/tsconfig.json lib/vendor-brain/tsconfig.json && pnpm --filter @workspace/frontend typecheck && pnpm --filter @workspace/frontend test && pnpm --filter @workspace/frontend build",
     "validate:production": "pnpm run validate:api && pnpm run validate:frontend"
   },
   "private": true,
