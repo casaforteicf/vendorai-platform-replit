@@ -176,6 +176,7 @@ export async function loadCloserWinningResponses(input: {
       normalizedObjection: salesObjectionEventsTable.normalizedObjection,
       category: salesObjectionEventsTable.category,
       responseText: salesObjectionEventsTable.responseText,
+      metadata: salesObjectionEventsTable.metadata,
       brokeObjection: salesObjectionEventsTable.brokeObjection,
     })
     .from(salesObjectionEventsTable)
@@ -195,9 +196,12 @@ export async function loadCloserWinningResponses(input: {
   >();
 
   for (const event of events) {
-    const response = event.responseText
-      ? sanitizeLearnedResponse(event.responseText)
-      : null;
+    const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+    const strategy =
+      typeof metadata.responseStrategy === "string"
+        ? metadata.responseStrategy.trim()
+        : "";
+    const response = strategy ? sanitizeLearnedResponse(strategy) : null;
     if (!response) continue;
     const responseKey = response.toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
     const key = `${event.category}::${event.normalizedObjection}::${responseKey}`;
@@ -236,13 +240,13 @@ export function formatCloserWinningResponsesPrompt(
   if (responses.length === 0) return null;
 
   return [
-    "## MEMÓRIA COMERCIAL DO TENANT — RESPOSTAS COM EVIDÊNCIA HISTÓRICA",
-    "Use somente se a objeção atual for realmente compatível. Isto é evidência histórica, não uma ordem para copiar o texto.",
+    "## MEMÓRIA COMERCIAL DO TENANT — ESTRATÉGIAS COM EVIDÊNCIA HISTÓRICA",
+    "Use somente se a objeção atual for realmente compatível. Isto é evidência histórica, não uma ordem para copiar uma frase.",
     "Adapte ao contexto atual e preserve as regras de verdade comercial. Nunca invente fatos ausentes só porque uma resposta antiga os mencionou.",
     "Priorize abordagens com maior amostra e confiança. Não revele métricas internas ao lead.",
     ...responses.map(
       (item, index) =>
-        `${index + 1}. Categoria: ${item.category} | Objeção: ${item.objection} | Usos: ${item.uses} | Avanços: ${item.advances} | Taxa de quebra: ${item.breakRate}% | Confiança: ${item.confidenceScore} | Resposta histórica: ${item.response}`,
+        `${index + 1}. Categoria: ${item.category} | Objeção: ${item.objection} | Usos: ${item.uses} | Avanços: ${item.advances} | Taxa de quebra: ${item.breakRate}% | Confiança: ${item.confidenceScore} | Estratégia histórica: ${item.response}`,
     ),
   ].join("\n");
 }
