@@ -2852,8 +2852,8 @@ export default function ConceptPlanner() {
           throw new Error("Não foi possível localizar a câmera 3D atual para gerar o render.");
         }
 
-        const targetWidth = 1920;
-        const targetHeight = 1080;
+        const targetWidth = 2560;
+        const targetHeight = 1440;
         const exportCanvas = document.createElement("canvas");
         exportCanvas.width = targetWidth;
         exportCanvas.height = targetHeight;
@@ -2902,6 +2902,24 @@ export default function ConceptPlanner() {
         ],
       });
 
+      const openingSummary = safeCustomOpenings
+        .map((opening) => [
+          opening.familyLabel ?? (opening.type === "door" ? "Porta" : "Janela"),
+          `${(opening.width ?? (opening.type === "door" ? 0.9 : 1.2)).toFixed(2)}m x ${(opening.height ?? (opening.type === "door" ? 2.1 : 1.2)).toFixed(2)}m`,
+          opening.openingStyle ?? (opening.type === "door" ? "hinged" : "sliding"),
+        ].join(" | "))
+        .join("; ");
+
+      const renderProfile = renderView === "interior"
+        ? [
+            "INTERIOR CAMERA PROFILE: eye-level architectural photography, approximately 1.55m camera height, 24-28mm full-frame equivalent, vertical lines corrected, natural perspective, no fisheye, no exaggerated wide angle.",
+            "INTERIOR LIGHTING: balanced daylight plus physically plausible warm practical lights, soft indirect bounce, realistic contact shadows, preserved window directions and room proportions.",
+          ]
+        : [
+            "EXTERIOR CAMERA PROFILE: professional architectural exterior photography, 28-35mm full-frame equivalent, corrected verticals, realistic perspective, natural sky exposure, no drone distortion unless the reference clearly shows an elevated view.",
+            "EXTERIOR LIGHTING: physically plausible sun direction, soft global illumination, realistic facade reflections, glazing, vegetation and ground contact shadows.",
+          ];
+
       if (source === "model3d") setEditorView("render");
 
       const response = await fetch("/api/arch/ai-render", {
@@ -2914,8 +2932,12 @@ export default function ConceptPlanner() {
           ambiente: renderView === "interior" ? "interior" : "fachada",
           user_notes: [
             brief,
-            "FINAL OUTPUT TARGET: luxury architectural visualization, physically plausible materials and lighting, ray-traced look, realistic glass, realistic water when present, natural contact shadows, balanced exposure, professional architectural photography composition, no geometry changes, no invented openings, no structural modifications.",
-          ].join("\n"),
+            ...renderProfile,
+            openingSummary ? `OPENINGS TO PRESERVE EXACTLY: ${openingSummary}` : "",
+            "PRESERVATION LOCK: keep the exact floor plan, wall positions, openings, room proportions, object positions, furniture layout, facade massing, roof shape and camera composition from the reference. Do not move, add, remove or resize architectural elements unless explicitly described.",
+            "MATERIAL FIDELITY: preserve the specified PBR/material identity, realistic roughness, reflectance and texture scale. Glass must remain glass, wood must preserve grain direction, metals must not become plastic, stone/porcelain joints must remain proportionally realistic.",
+            "FINAL OUTPUT TARGET: high-end photoreal architectural visualization, physically plausible materials and lighting, ray-traced look, realistic glass, realistic water when present, natural contact shadows, subtle ambient occlusion, balanced exposure, professional architectural photography composition, no geometry changes, no invented openings, no structural modifications, no fantasy styling, no extra furniture.",
+          ].filter(Boolean).join("\n"),
           output_resolution: "4k",
           aspect_ratio: "16:9",
         }),
