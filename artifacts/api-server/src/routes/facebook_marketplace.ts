@@ -349,7 +349,7 @@ router.post("/tenants/:tenantId/facebook-marketplace/drafts/bulk", async (req, r
 
   const productById = new Map(products.map((product) => [product.id, product]));
   const missingProductIds = productIds.filter((id) => !productById.has(id));
-  const created: typeof facebookMarketplaceListingsTable.$inferSelect[] = [];
+  const created: Array<typeof facebookMarketplaceListingsTable.$inferSelect> = [];
   const failed: Array<{ productId: string; error: string }> = [];
 
   // Limita a concorrência para não disparar dezenas de gerações de IA ao
