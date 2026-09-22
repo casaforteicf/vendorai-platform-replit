@@ -5746,6 +5746,20 @@ export default function ConceptPlanner() {
                         }
                       }}
                       onObjectChange={updateObjectById}
+                      onObjectDrop={(preset, point) => addObjectAt(
+                        preset.kind,
+                        preset.label,
+                        preset.width,
+                        preset.depth,
+                        point,
+                        {
+                          catalogProductId: preset.catalogProductId,
+                          imageUrl: preset.imageUrl,
+                          supplier: preset.supplier,
+                          price: preset.price,
+                          model3dUrl: preset.model3dUrl,
+                        },
+                      )}
                       onObjectRotate={rotateObject}
                       onObjectDuplicate={duplicateObject}
                       onObjectDelete={deleteObject}
