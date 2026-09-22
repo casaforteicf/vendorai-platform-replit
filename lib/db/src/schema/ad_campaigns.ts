@@ -140,6 +140,7 @@ export const adCreativesTable = pgTable("ad_creatives", {
   imagens: jsonb("imagens").$type<string[]>().notNull().default([]),
   externalCreativeId: text("external_creative_id"),
   externalAdId: text("external_ad_id"),
+  externalStatus: text("external_status").$type<"paused" | "active">(),
   status: adCriativoStatusEnum("status").notNull().default("rascunho"),
   geradoEm: timestamp("gerado_em").notNull().defaultNow(),
   aprovadoPorId: text("aprovado_por_id").references(() => usersTable.id, { onDelete: "set null" }),
