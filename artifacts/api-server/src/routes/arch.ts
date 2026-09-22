@@ -219,6 +219,138 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   return res.json(updated);
 });
 
+router.post("/arch/concept-projects/:id/share-tour", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select()
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;
+  const existingToken = typeof currentConfig.publicTourToken === "string"
+    && /^[a-zA-Z0-9-]{20,80}$/.test(currentConfig.publicTourToken)
+      ? currentConfig.publicTourToken
+      : null;
+  const token = existingToken ?? crypto.randomUUID().replace(/-/g, "");
+
+  const nextConfig = {
+    ...currentConfig,
+    publicTourToken: token,
+    publicTourEnabled: true,
+    publicTourUpdatedAt: new Date().toISOString(),
+  };
+
+  await db
+    .update(archConceptProjectsTable)
+    .set({ configuration: nextConfig as any, updatedAt: new Date() })
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+
+  return res.json({
+    token,
+    path: `/tour/arqdor/${token}`,
+    enabled: true,
+  });
+});
+
+router.post("/arch/concept-projects/:id/share-tour/disable", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  await db
+    .update(archConceptProjectsTable)
+    .set({
+      configuration: {
+        ...((concept.configuration ?? {}) as Record<string, unknown>),
+        publicTourEnabled: false,
+        publicTourUpdatedAt: new Date().toISOString(),
+      } as any,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+
+  return res.json({ enabled: false });
+});
+
+// Público, somente leitura. Não retorna cliente, orçamento, tenant, lead, deal ou proprietário.
+archPublicRouter.get("/arch/public-tour/:token", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  if (!/^[a-zA-Z0-9-]{20,80}$/.test(token)) {
+    return res.status(404).json({ error: "Tour não encontrado." });
+  }
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      title: archConceptProjectsTable.title,
+      lot: archConceptProjectsTable.lot,
+      configuration: archConceptProjectsTable.configuration,
+      rooms: archConceptProjectsTable.rooms,
+      openingOverrides: archConceptProjectsTable.openingOverrides,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
+      updatedAt: archConceptProjectsTable.updatedAt,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      sql`${archConceptProjectsTable.configuration}->>'publicTourToken' = ${token}`,
+      sql`coalesce((${archConceptProjectsTable.configuration}->>'publicTourEnabled')::boolean, false) = true`,
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Tour não encontrado ou compartilhamento desativado." });
+
+  const configuration = (concept.configuration ?? {}) as Record<string, unknown>;
+  const {
+    publicTourToken: _token,
+    publicTourEnabled: _enabled,
+    publicTourUpdatedAt: _updated,
+    ...safeConfiguration
+  } = configuration;
+
+  return res.json({
+    id: concept.id,
+    title: concept.title,
+    lot: concept.lot,
+    configuration: safeConfiguration,
+    rooms: concept.rooms,
+    openingOverrides: concept.openingOverrides,
+    facadePreferences: concept.facadePreferences,
+    updatedAt: concept.updatedAt,
+  });
+});
+
 router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;

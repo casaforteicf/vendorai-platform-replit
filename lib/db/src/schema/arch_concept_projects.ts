@@ -73,6 +73,9 @@ export type ArchConceptConfiguration = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }>;
+  publicTourToken?: string;
+  publicTourEnabled?: boolean;
+  publicTourUpdatedAt?: string;
 };
 
 export type ArchConceptRoom = {
