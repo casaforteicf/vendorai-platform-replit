@@ -1737,19 +1737,32 @@ export async function processAgentInternal(params: {
     await updateCounters(config, limits, tokensUsed, now);
 
     const isAutonomous = !!config.autonomyEnabledAt;
+    const responseChannel = enrichedScenario?.["response_channel"] === "email" ? "email" : "whatsapp";
     const task = await insertAndRun({
       tenantId,
       leadId,
       agentName: resolvedAgentName,
+      // Mantemos o actionType legado porque o executor é multicanal pelo payload.
+      // O campo canal é sobrescrito no extraPayload para respostas recebidas por e-mail.
       actionType: "enviar_whatsapp",
       resposta: finalResposta,
+      extraPayload: responseChannel === "email" ? { canal: "email" } : undefined,
       isAutonomous,
       now,
       log,
     });
 
     log.info(
-      { taskId: task.id, status: task.status, leadId, tenantId, agentName: resolvedAgentName, tokensUsed, isAutonomous },
+      {
+        taskId: task.id,
+        status: task.status,
+        leadId,
+        tenantId,
+        agentName: resolvedAgentName,
+        tokensUsed,
+        isAutonomous,
+        responseChannel,
+      },
       "dispatch: agent task created"
     );
 
