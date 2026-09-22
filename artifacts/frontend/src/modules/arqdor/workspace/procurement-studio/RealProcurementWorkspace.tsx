@@ -462,7 +462,6 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
     setQuoteDeliveryId("");
   }, [selectedId, bundle?.obra.nome]);
 
-  const selectedQuotes = bundle?.requests.find((request) => request.id === selectedId) ?? null;
   const selectedQuotes = useMemo(() => (bundle?.quotes ?? []).filter((quote) => quote.requestId === selectedId).sort((a, b) => quoteTotal(a) - quoteTotal(b)), [bundle, selectedId]);
   const selectedReceipts = useMemo(() => (bundle?.receipts ?? []).filter((receipt) => receipt.requestId === selectedId), [bundle, selectedId]);
   const selectedDeliveries = useMemo(() => (bundle?.rfqDeliveries ?? []).filter((delivery) => delivery.requestId === selectedId), [bundle, selectedId]);
@@ -605,6 +604,65 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
     popup.document.close();
   }
 
+  async function sendRfq() {
+    if (!bundle || !selected || !rfqDraft.supplier.trim() || !rfqDraft.destination.trim()) return;
+    setBusy("send-rfq");
+    setError(null);
+    try {
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/rfq/send`, {
+        method: "POST",
+        body: JSON.stringify({
+          supplierName: rfqDraft.supplier.trim(),
+          channel: rfqDraft.channel,
+          destination: rfqDraft.destination.trim(),
+          message: rfqDraft.message.trim() || rfqText(bundle.obra.nome, selected),
+        }),
+      });
+      setRfqDraft({
+        supplier: "",
+        channel: "whatsapp",
+        destination: "",
+        message: rfqText(bundle.obra.nome, selected),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar solicitação de cotação.");
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateRfqStatus(delivery: RfqDelivery, status: "viewed" | "responded") {
+    if (!bundle || !selected) return;
+    setBusy(`rfq-${delivery.id}-${status}`);
+    setError(null);
+    try {
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/rfq/${delivery.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao atualizar status do fornecedor.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function prepareQuoteFromDelivery(delivery: RfqDelivery) {
+    setSelectedId(delivery.requestId);
+    setQuoteDeliveryId(delivery.id);
+    setQuoteDraft((value) => ({ ...value, supplier: delivery.supplier }));
+    setView("quotes");
+  }
+
+  function selectQuoteDelivery(deliveryId: string) {
+    setQuoteDeliveryId(deliveryId);
+    const delivery = selectedDeliveries.find((item) => item.id === deliveryId);
+    if (delivery) setQuoteDraft((value) => ({ ...value, supplier: delivery.supplier }));
+  }
+
   async function createRequest() {
     if (!bundle || !requestDraft.item.trim()) return;
     setBusy("new-request"); setError(null);
@@ -631,9 +689,26 @@ button{border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:poin
     if (!bundle || !selected || !quoteDraft.supplier.trim()) return;
     setBusy("new-quote"); setError(null);
     try {
-      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({ projectId: meta.id || undefined, supplierName: quoteDraft.supplier.trim(), confirmedValue: n(quoteDraft.value), freightValue: n(quoteDraft.freight), discountValue: n(quoteDraft.discount), taxValue: n(quoteDraft.taxes), leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime), expectedDelivery: quoteDraft.expectedDelivery || null, paymentTerms: quoteDraft.paymentTerms || null, quoteNumber: quoteDraft.quoteNumber || null, documents: quoteDocuments }) });
+      const delivery = selectedDeliveries.find((item) => item.id === quoteDeliveryId);
+      await api(`/api/arch/procurement/${bundle.obra.id}/requests/${selected.id}/quotes`, { method: "POST", body: JSON.stringify({
+        projectId: meta.id || undefined,
+        supplierName: quoteDraft.supplier.trim(),
+        confirmedValue: n(quoteDraft.value),
+        freightValue: n(quoteDraft.freight),
+        discountValue: n(quoteDraft.discount),
+        taxValue: n(quoteDraft.taxes),
+        leadTimeDays: quoteDraft.leadTime === "" ? null : n(quoteDraft.leadTime),
+        expectedDelivery: quoteDraft.expectedDelivery || null,
+        paymentTerms: quoteDraft.paymentTerms || null,
+        quoteNumber: quoteDraft.quoteNumber || null,
+        documents: quoteDocuments,
+        deliveryId: quoteDeliveryId || undefined,
+        contactPhone: delivery?.channel === "whatsapp" ? delivery.destination : undefined,
+        contactEmail: delivery?.channel === "email" ? delivery.destination : undefined,
+      }) });
       setQuoteDraft({ supplier: "", value: "0", freight: "0", discount: "0", taxes: "0", leadTime: "", expectedDelivery: "", paymentTerms: "", quoteNumber: "" });
       setQuoteDocuments([]);
+      setQuoteDeliveryId("");
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao registrar cotação."); }
     finally { setBusy(null); }
