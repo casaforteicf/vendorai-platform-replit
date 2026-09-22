@@ -173,6 +173,47 @@ export async function prepareSupportAiIntake(input: {
   )).orderBy(desc(workCardsTable.updatedAt));
   const activeCard = existingCards.find((card) => !CLOSED_SUPPORT_STAGES.has(card.etapa));
   if (activeCard) {
+    const now = new Date();
+    const metadata = (activeCard.metadata ?? {}) as Record<string, unknown>;
+    const existingUpdates = Array.isArray(metadata["supportCustomerUpdates"])
+      ? (metadata["supportCustomerUpdates"] as Array<Record<string, unknown>>)
+      : [];
+    const customerUpdate = {
+      at: now.toISOString(),
+      message: input.currentMessage.slice(0, 2000),
+      problemSummary: classification.problemSummary || null,
+      category: classification.category,
+      products: classification.products,
+    };
+
+    await db
+      .update(workCardsTable)
+      .set({
+        descricao: classification.problemSummary || activeCard.descricao,
+        metadata: {
+          ...metadata,
+          supportCustomerUpdates: [...existingUpdates, customerUpdate].slice(-20),
+          supportLastCustomerUpdateAt: now.toISOString(),
+        },
+        updatedAt: now,
+      })
+      .where(and(
+        eq(workCardsTable.id, activeCard.id),
+        eq(workCardsTable.tenantId, input.tenantId),
+      ));
+
+    await db.insert(activitiesTable).values({
+      tenantId: input.tenantId,
+      leadId: input.lead.id,
+      dealId: activeCard.dealId,
+      tipo: "assistencia",
+      titulo: `${activeCard.codigo}: nova informação do cliente`,
+      descricao: input.currentMessage.slice(0, 5000),
+      status: "concluida",
+      concluidaEm: now,
+      responsavelId: activeCard.responsavelId,
+    });
+
     return {
       state: "existing",
       isSupportRequest: true,
@@ -181,7 +222,7 @@ export async function prepareSupportAiIntake(input: {
       priority: activeCard.prioridade,
       problemSummary: classification.problemSummary || activeCard.descricao || undefined,
       products: classification.products,
-      instruction: `Já existe a assistência ${activeCard.codigo} ativa para este cliente. Não abra outro chamado. Continue o atendimento mencionando o código quando for útil e informe que as novas informações serão vinculadas ao chamado existente.`,
+      instruction: `Já existe a assistência ${activeCard.codigo} ativa para este cliente. Não abra outro chamado. A nova informação já foi vinculada ao histórico dessa assistência. Continue acompanhando o mesmo caso e mencione o código quando for útil.`,
     };
   }
 
