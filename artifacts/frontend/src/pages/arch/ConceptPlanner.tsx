@@ -201,18 +201,18 @@ function inferCatalogFurniturePreset(item: RealCatalogProduct): {
     depth: dims?.depth ?? depth,
   });
 
-  if (/sofá|sofa|poltrona|chaise/.test(text)) return sized("sofa", 2.1, 0.9);
-  if (/cama|colchão|colchao/.test(text)) return sized("bed", 1.6, 2.0);
-  if (/mesa|ilha cozinha/.test(text)) return sized("table", 1.4, 0.8);
-  if (/cadeira|banco|banqueta|espreguiçadeira/.test(text)) return sized("chair", 0.55, 0.55);
-  if (/geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa|lava-louças|lava louças|lavadora|secadora/.test(text)) return sized("appliance", 0.75, 0.70);
-  if (/vaso sanitário|vaso sanitario|bacia sanitária|bacia sanitaria|cuba|lavatório|lavatorio|banheira/.test(text)) return sized("sanitary", 0.75, 0.70);
-  if (/espreguiçadeira|espreguicadeira|ombrelone|banco externo|sofá externo|sofa externo|cadeira externa/.test(text)) return sized("outdoor", 0.90, 0.90);
-  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack|torre quente|estante/.test(text)) return sized("cabinet", 1.2, 0.55);
+  if (/sofá|sofa|couch|poltrona|armchair|chaise/.test(text)) return sized("sofa", 2.1, 0.9);
+  if (/cama|bed|colchão|colchao|mattress/.test(text)) return sized("bed", 1.6, 2.0);
+  if (/mesa|table|desk|ilha cozinha|kitchen island/.test(text)) return sized("table", 1.4, 0.8);
+  if (/cadeira|chair|banco|bench|banqueta|stool|espreguiçadeira|sun lounger/.test(text)) return sized("chair", 0.55, 0.55);
+  if (/geladeira|refrigerador|refrigerator|fridge|forno|oven|micro-ondas|microondas|microwave|cooktop|coifa|range hood|lava-louças|lava louças|dishwasher|lavadora|washer|secadora|dryer/.test(text)) return sized("appliance", 0.75, 0.70);
+  if (/vaso sanitário|vaso sanitario|bacia sanitária|bacia sanitaria|toilet|cuba|sink|lavatório|lavatorio|washbasin|banheira|bathtub/.test(text)) return sized("sanitary", 0.75, 0.70);
+  if (/espreguiçadeira|espreguicadeira|sun lounger|ombrelone|parasol|banco externo|outdoor bench|sofá externo|sofa externo|outdoor sofa|cadeira externa|outdoor chair/.test(text)) return sized("outdoor", 0.90, 0.90);
+  if (/armário|armario|cabinet|roupeiro|wardrobe|gabinete|balcão|balcao|rack|torre quente|estante|shelf|bookcase/.test(text)) return sized("cabinet", 1.2, 0.55);
   if (/televis|\btv\b|painel/.test(text)) return sized("tv", 1.6, 0.25);
-  if (/planta|vaso|folhagem|flores|árvore|arvore|palmeira|arbusto/.test(text)) return sized("plant", 0.65, 0.65);
-  if (/luminária|luminaria|abajur|pendente|plafon|arandela|balizador/.test(text)) return sized("lamp", 0.45, 0.45);
-  if (/tapete/.test(text)) return sized("rug", 2.0, 1.5);
+  if (/planta|plant|vaso|vase|folhagem|foliage|flores|flowers|árvore|arvore|tree|palmeira|palm|arbusto|shrub/.test(text)) return sized("plant", 0.65, 0.65);
+  if (/luminária|luminaria|lamp|abajur|table lamp|pendente|pendant|plafon|ceiling light|arandela|wall light|balizador/.test(text)) return sized("lamp", 0.45, 0.45);
+  if (/tapete|rug|carpet/.test(text)) return sized("rug", 2.0, 1.5);
   return null;
 }
 
@@ -755,7 +755,18 @@ export default function ConceptPlanner() {
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture") return;
-    const query = furnitureSearch.trim() || "modern furniture";
+    const categoryQuery: Record<typeof furnitureCategory, string> = {
+      Todos: "modern furniture",
+      Sala: "sofa armchair living room",
+      Quarto: "bed wardrobe bedroom",
+      Jantar: "dining table chair",
+      Cozinha: "kitchen cabinet appliance",
+      Escritório: "office desk chair",
+      Decoração: "decor vase plant rug",
+      Iluminação: "lamp lighting",
+      Exterior: "outdoor furniture garden",
+    };
+    const query = furnitureSearch.trim() || categoryQuery[furnitureCategory];
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setPolyHavenLoading(true);
@@ -775,7 +786,7 @@ export default function ConceptPlanner() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [editorLibraryTab, furnitureSearch]);
+  }, [editorLibraryTab, furnitureCategory, furnitureSearch]);
 
   useEffect(() => {
     if (editorLibraryTab !== "furniture" || realCatalogProducts.length || realCatalogLoading) return;
@@ -4602,7 +4613,7 @@ export default function ConceptPlanner() {
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <div>
                               <div className="text-xs font-bold text-slate-900">Modelos 3D reais · Poly Haven</div>
-                              <div className="text-[10px] text-slate-500">CC0 · Powered by Poly Haven · clique para inserir</div>
+                              <div className="text-[10px] text-slate-500">CC0 · <a href="https://polyhaven.com" target="_blank" rel="noreferrer" className="font-semibold text-slate-600 underline-offset-2 hover:underline">Powered by Poly Haven</a> · clique para inserir</div>
                             </div>
                             {polyHavenLoading && <span className="text-[10px] font-semibold text-orange-600">Buscando...</span>}
                           </div>
