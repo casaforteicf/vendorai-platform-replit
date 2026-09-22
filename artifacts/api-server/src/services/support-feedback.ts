@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   activitiesTable,
   db,
@@ -144,6 +144,40 @@ export async function tryHandleSupportFeedbackMessage(input: {
         concluidaEm: now,
         responsavelId: ratingCard.responsavelId,
       });
+
+      if (!declined && rating !== null) {
+        await db.execute(sql`
+          INSERT INTO customer_feedback (
+            tenant_id,
+            lead_id,
+            deal_id,
+            work_card_id,
+            feedback_type,
+            score,
+            scale_min,
+            scale_max,
+            answer,
+            comment,
+            channel,
+            responded_at,
+            metadata
+          ) VALUES (
+            ${input.tenantId},
+            ${lead.id},
+            ${ratingCard.dealId},
+            ${ratingCard.id},
+            'csat',
+            ${rating},
+            1,
+            5,
+            ${String(rating)},
+            ${input.text.slice(0, 5000)},
+            'whatsapp',
+            ${now},
+            ${JSON.stringify({ source: "support_agent", assistanceCode: ratingCard.codigo })}::jsonb
+          )
+        `);
+      }
 
       await sendDirectWhatsAppMessage(
         input.tenantId,
