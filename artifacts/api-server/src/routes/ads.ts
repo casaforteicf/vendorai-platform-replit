@@ -379,7 +379,17 @@ router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   for (const creative of creatives) {
     if (!latestByCampaign.has(creative.campaignId)) latestByCampaign.set(creative.campaignId, creative);
   }
-  return res.json(rows.map((row) => ({ ...row, latestCreative: latestByCampaign.get(row.id) ?? null })));
+  const creativesByCampaign = new Map<string, typeof creatives>();
+  for (const creative of creatives) {
+    const list = creativesByCampaign.get(creative.campaignId) ?? [];
+    list.push(creative);
+    creativesByCampaign.set(creative.campaignId, list);
+  }
+  return res.json(rows.map((row) => ({
+    ...row,
+    latestCreative: latestByCampaign.get(row.id) ?? null,
+    creatives: creativesByCampaign.get(row.id) ?? [],
+  })));
 });
 
 router.delete("/tenants/:tenantId/ads/campaigns/:id", async (req, res) => {
