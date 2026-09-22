@@ -337,8 +337,8 @@ export default function ConstructionRadarWorkspace() {
 
       const autoEligible = locatedWorks.filter((work) => work.opportunityScore >= 60);
       if (autoEligible.length > 0) {
-        void Promise.allSettled(autoEligible.map((work) => prospectWork(work, true))).then((results) => {
-          const imported = results.filter((item) => item.status === "fulfilled").length;
+        void Promise.all(autoEligible.map((work) => prospectWork(work, true))).then((results) => {
+          const imported = results.filter(Boolean).length;
           if (imported > 0) {
             toast({
               title: "Prospecctor atualizado automaticamente",
@@ -428,6 +428,7 @@ export default function ConstructionRadarWorkspace() {
       queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
       queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
+      return true;
     } catch (error) {
       if (!silent) {
         toast({
@@ -436,7 +437,7 @@ export default function ConstructionRadarWorkspace() {
           variant: "destructive",
         });
       }
-      throw error;
+      return false;
     } finally {
       setProspectingWork(null);
     }
