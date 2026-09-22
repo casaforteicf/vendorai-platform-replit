@@ -6,6 +6,7 @@ import { orthogonalEnd, snapPointToWallNetwork, wallLength, wallMidpoint, type C
 export type ConceptPlanObject = {
   id: string;
   kind: "sofa" | "bed" | "table" | "chair" | "cabinet" | "tv" | "plant" | "lamp" | "rug"
+    | "appliance" | "sanitary" | "outdoor"
     | "outlet" | "switch" | "light_point" | "water_point" | "drain_point" | "shower_point" | "faucet_point";
   label: string;
   floor: number;
