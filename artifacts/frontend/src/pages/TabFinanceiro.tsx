@@ -13,7 +13,7 @@ import {
 import {
   Upload, FileText, CheckCircle2, AlertCircle, Loader2,
   Trash2, Pencil, TrendingDown, TrendingUp, DollarSign,
-  BarChart3, X, ChevronDown, ChevronUp,
+  BarChart3, X, ChevronDown, ChevronUp, FileSpreadsheet,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -281,11 +281,26 @@ function LancamentoForm({ initial, etapas, onSave, onCancel, saving, title }: La
 
 // ─── DRE Card ─────────────────────────────────────────────────────────────────
 
-function DrePanel({ dre }: { dre: DreData }) {
+function DrePanel({
+  dre,
+  onOpenOrcamento,
+}: {
+  dre: DreData;
+  onOpenOrcamento?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const pct = Math.max(0, dre.percentualCustoRealizado ?? 0);
   const over = dre.desvioCusto < 0;
   const hasStructuredBudget = dre.orcamentoFonte === "orcamento_obra" && !!dre.orcamentoVinculado;
+  const structuredBudgetEmpty =
+    hasStructuredBudget &&
+    (dre.orcamentoEtapas.length === 0 || dre.custoOrcado <= 0 || dre.orcamentoTotal <= 0);
+  const noStructuredBudget = !hasStructuredBudget;
+  const budgetNeedsAction = structuredBudgetEmpty || noStructuredBudget;
+
+  const budgetStatusLabel = hasStructuredBudget
+    ? `Vinculado ao orçamento V${dre.orcamentoVinculado!.versao}${dre.orcamentoVinculado!.titulo ? ` — ${dre.orcamentoVinculado!.titulo}` : ""} • ${dre.orcamentoVinculado!.status}`
+    : "Sem orçamento estruturado vinculado — referência pelo valor global da obra";
 
   return (
     <div className="border rounded-xl overflow-hidden">
@@ -299,20 +314,66 @@ function DrePanel({ dre }: { dre: DreData }) {
             Custos x Orçamento
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground truncate">
-            {hasStructuredBudget
-              ? `Vinculado ao orçamento V${dre.orcamentoVinculado!.versao}${dre.orcamentoVinculado!.titulo ? ` — ${dre.orcamentoVinculado!.titulo}` : ""} • ${dre.orcamentoVinculado!.status}`
-              : "Sem orçamento estruturado vinculado — referência pelo valor global da obra"}
+            {budgetStatusLabel}
           </div>
         </div>
         {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
       </div>
 
+      {budgetNeedsAction && (
+        <div className="border-t border-amber-200 bg-amber-50/80 px-4 py-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-2 flex-1 min-w-0">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-700" />
+              <div>
+                <p className="text-sm font-semibold text-amber-950">
+                  {structuredBudgetEmpty
+                    ? "Orçamento vinculado, porém sem etapas/itens"
+                    : "Nenhum orçamento estruturado vinculado"}
+                </p>
+                <p className="text-xs text-amber-900/80 mt-0.5">
+                  {structuredBudgetEmpty
+                    ? "Preencha etapas, composições e itens do orçamento para liberar a comparação automática entre custo previsto e realizado."
+                    : "Crie o orçamento da obra para que cada lançamento seja comparado automaticamente com o custo previsto."}
+                </p>
+              </div>
+            </div>
+            {onOpenOrcamento && (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenOrcamento();
+                }}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                {structuredBudgetEmpty ? "Preencher orçamento" : "Criar orçamento"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 text-center px-0">
         {[
-          { label: "Custo orçado", value: fmtBRL(dre.custoOrcado), color: "text-blue-700" },
+          {
+            label: "Custo orçado",
+            value: structuredBudgetEmpty ? "—" : fmtBRL(dre.custoOrcado),
+            color: "text-blue-700",
+          },
           { label: "Custo realizado", value: fmtBRL(dre.totalGasto), color: "text-orange-600" },
-          { label: over ? "Estouro de custo" : "Saldo de custo", value: fmtBRL(Math.abs(dre.desvioCusto)), color: over ? "text-red-600" : "text-emerald-700" },
-          { label: "Orçamento / contrato", value: fmtBRL(dre.orcamentoTotal), color: "text-slate-700" },
+          {
+            label: over ? "Estouro de custo" : "Saldo de custo",
+            value: structuredBudgetEmpty ? "—" : fmtBRL(Math.abs(dre.desvioCusto)),
+            color: over ? "text-red-600" : "text-emerald-700",
+          },
+          {
+            label: "Orçamento / contrato",
+            value: structuredBudgetEmpty ? "—" : fmtBRL(dre.orcamentoTotal),
+            color: "text-slate-700",
+          },
         ].map((item) => (
           <div key={item.label} className="py-3 px-2">
             <p className={`text-sm font-semibold ${item.color}`}>{item.value}</p>
@@ -325,12 +386,16 @@ function DrePanel({ dre }: { dre: DreData }) {
         <div className="h-2 bg-muted rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${over ? "bg-red-500" : pct > 80 ? "bg-amber-500" : "bg-blue-500"}`}
-            style={{ width: `${Math.min(100, pct)}%` }}
+            style={{ width: `${structuredBudgetEmpty ? 0 : Math.min(100, pct)}%` }}
           />
         </div>
         <div className="flex items-center justify-between gap-3 mt-1">
-          <p className="text-xs text-muted-foreground">{pct.toFixed(1)}% do custo orçado consumido</p>
-          {over && <p className="text-xs font-medium text-red-600">Acima do previsto</p>}
+          <p className="text-xs text-muted-foreground">
+            {structuredBudgetEmpty
+              ? "Aguardando itens do orçamento para calcular o consumo."
+              : `${pct.toFixed(1)}% do custo orçado consumido`}
+          </p>
+          {!structuredBudgetEmpty && over && <p className="text-xs font-medium text-red-600">Acima do previsto</p>}
         </div>
       </div>
 
@@ -347,11 +412,11 @@ function DrePanel({ dre }: { dre: DreData }) {
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">BDI / margem orçada</p>
-              <p className="text-sm font-semibold mt-1">{fmtBRL(dre.margemOrcada)}</p>
+              <p className="text-sm font-semibold mt-1">{structuredBudgetEmpty ? "—" : fmtBRL(dre.margemOrcada)}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Margem orçada</p>
-              <p className="text-sm font-semibold mt-1">{dre.margemOrcadaPct.toFixed(1)}%</p>
+              <p className="text-sm font-semibold mt-1">{structuredBudgetEmpty ? "—" : `${dre.margemOrcadaPct.toFixed(1)}%`}</p>
             </div>
           </div>
 
@@ -404,15 +469,6 @@ function DrePanel({ dre }: { dre: DreData }) {
               </div>
             </div>
           )}
-
-          {!hasStructuredBudget && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>
-                Para compatibilizar corretamente custo previsto x realizado por etapa, crie ou aprove uma versão na aba Orçamento desta obra.
-              </span>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -425,10 +481,12 @@ export default function TabFinanceiro({
   tenantId,
   obraId,
   etapas,
+  onOpenOrcamento,
 }: {
   tenantId: string;
   obraId: string;
   etapas: ObraEtapa[];
+  onOpenOrcamento?: () => void;
 }) {
   // ── State ──
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
@@ -580,7 +638,7 @@ export default function TabFinanceiro({
     <div className="space-y-6">
 
       {/* ── DRE ── */}
-      {dre && <DrePanel dre={dre} />}
+      {dre && <DrePanel dre={dre} onOpenOrcamento={onOpenOrcamento} />}
 
       {/* ── Upload + actions ── */}
       <div className="space-y-3">
