@@ -75,6 +75,7 @@ const SupportAdmin       = lazy(() => import("@/pages/admin/SupportAdmin"));
 const RelatosTecnicos    = lazy(() => import("@/pages/admin/RelatosTecnicos"));
 const AdminChangelog     = lazy(() => import("@/pages/admin/AdminChangelog"));
 const AdminMlStatus      = lazy(() => import("@/pages/admin/AdminMlStatus"));
+const AdminKnowledgeBaseInternal = lazy(() => import("@/pages/admin/AdminKnowledgeBaseInternal"));
 const AdminFinanceiro    = lazy(() => import("@/pages/AdminFinanceiro"));
 const OrganizacaoPainel  = lazy(() => import("@/pages/OrganizacaoPainel"));
 const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
@@ -673,6 +674,7 @@ function AppRoutes() {
         <Route path="/admin/relatos-tecnicos">{() => <SuperAdminRoute component={RelatosTecnicos} />}</Route>
         <Route path="/admin/changelog">{() => <SuperAdminRoute component={AdminChangelog} />}</Route>
         <Route path="/admin/ml-status">{() => <SuperAdminRoute component={AdminMlStatus} />}</Route>
+        <Route path="/admin/base-interna">{() => <SuperAdminRoute component={AdminKnowledgeBaseInternal} />}</Route>
         <Route path="/admin/financeiro">{() => <SuperAdminRoute component={AdminFinanceiro} />}</Route>
         <Route path="/organizacao">{() => <ProtectedRoute component={OrganizacaoPainel} />}</Route>
         <Route path="/trocar-senha"><ForcePasswordChange /></Route>
