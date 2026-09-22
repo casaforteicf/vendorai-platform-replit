@@ -14,6 +14,11 @@ import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendEvolutionWhatsAppMessage, sendEvolutionDocument, sendEvolutionMedia } from "./evolution-whatsapp.js";
+import { sendJarvisEmail } from "./jarvis-email-provider.js";
+import {
+  buildProspectorEmailSubject,
+  sendProspectorColdEmail,
+} from "./prospector-email.js";
 
 export interface AgentAttachment {
   name: string;
@@ -748,6 +753,7 @@ export async function sendOutgoingMessage(
 
   if (!lead) throw new LeadNotFoundError(leadId);
 
+  let externalMessageId: string | null = null;
   let selectedWhatsappConnection: typeof whatsappConnectionsTable.$inferSelect | null = null;
   if (canal === "whatsapp") {
     const [latestConversation] = await db.select({ whatsappConnectionId: conversationsTable.whatsappConnectionId })
@@ -952,7 +958,37 @@ export async function sendOutgoingMessage(
     }
   }
 
-  // ── 3b. Messenger: validate credentials + actually send
+  // ── 3b. Email: envia de verdade via Resend ───────────────────────────────
+  if (canal === "email") {
+    if (!lead.email) {
+      throw new Error(`Lead "${leadId}" não tem e-mail cadastrado.`);
+    }
+
+    if (agentName === "sdr") {
+      // Resposta do Prospecctor no mesmo canal de um reply recebido. Mantém o
+      // Reply-To único do lead para que futuras respostas continuem roteáveis,
+      // mas não repete o rodapé de opt-out em cada turno da conversa.
+      const sent = await sendProspectorColdEmail({
+        to: lead.email,
+        leadId,
+        subject: `Re: ${buildProspectorEmailSubject(lead.empresa ?? lead.nome)}`,
+        body: conteudo,
+        includeOptOut: false,
+      });
+      externalMessageId = sent.id;
+    } else {
+      const sent = await sendJarvisEmail({
+        to: lead.email,
+        subject: "Mensagem da equipe",
+        body: conteudo,
+      });
+      externalMessageId = sent.id;
+    }
+
+    log.info({ leadId, externalMessageId, agentName }, "omnichannel: email sent via Resend");
+  }
+
+  // ── 3c. Messenger: validate credentials + actually send
   if (canal === "messenger") {
     const [config] = await db
       .select({
@@ -1025,6 +1061,8 @@ export async function sendOutgoingMessage(
       tipoConteudo: input.midia ? inferTipoConteudo(input.midia.mimeType) : "texto",
       midiaUrl: input.midia?.url ?? null,
       status: "enviado",
+      sourceMessageId: externalMessageId,
+      provider: canal === "email" ? "resend" : null,
     })
     .returning();
 
