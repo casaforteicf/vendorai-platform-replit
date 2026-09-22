@@ -3,20 +3,68 @@
  * Runs hourly. For leads that received a first SDR approach 48h+ ago with no reply,
  * sends ONE follow-up message. After 72h more silence → moves to reactivation queue.
  */
-import { and, eq, gte, lte, desc, sql, not, inArray } from "drizzle-orm";
+import { and, eq, gte, lte, desc, sql, not, inArray, or } from "drizzle-orm";
 import {
   db,
   leadsTable,
   activitiesTable,
   dealsTable,
+  messagesTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
-import { sendSdrFollowup } from "../services/sdrService.js";
+import { sendSdrFollowup, type ProspectorCadenceStep, type ProspectorCadenceStepKey } from "../services/sdrService.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
-const FOLLOWUP_WINDOW_H = 48; // send follow-up after 48h no reply
-const REACTIVATION_WINDOW_H = 120; // 48 + 72 = 120h → move to reactivation
+export const PROSPECTOR_COLD_CADENCE: Array<ProspectorCadenceStep & { dueHours: number }> = [
+  {
+    key: "followup_48h",
+    label: "48h",
+    dueHours: 48,
+    instruction:
+      "Retome pelo contexto/sinal original sem repetir a primeira mensagem. " +
+      "Faça uma pergunta curta e fácil de responder.",
+  },
+  {
+    key: "followup_120h",
+    label: "5 dias",
+    dueHours: 120,
+    instruction:
+      "Use um ângulo novo baseado nas evidências já verificadas. " +
+      "Não use 'só passando para lembrar' e não repita a pergunta anterior.",
+  },
+  {
+    key: "followup_216h",
+    label: "9 dias",
+    dueHours: 216,
+    instruction:
+      "Faça a última tentativa ativa de forma elegante e permission-based. " +
+      "Deixe claro que pode encerrar o contato se não for prioridade agora.",
+  },
+];
+
+const FIRST_FOLLOWUP_H = PROSPECTOR_COLD_CADENCE[0]!.dueHours;
+const NURTURE_AFTER_FINAL_H = 72;
+const LOOKBACK_H = 24 * 30;
+
+export function nextProspectorCadenceStep(
+  hoursSinceFirst: number,
+  sentKeys: Iterable<ProspectorCadenceStepKey>,
+): (ProspectorCadenceStep & { dueHours: number }) | null {
+  const sent = new Set(sentKeys);
+  const sentIndexes = PROSPECTOR_COLD_CADENCE
+    .map((step, index) => sent.has(step.key) ? index : -1)
+    .filter((index) => index >= 0);
+  const lastSentIndex = sentIndexes.length > 0 ? Math.max(...sentIndexes) : -1;
+
+  // Se o worker ficou parado, não dispara uma rajada para "compensar" etapas
+  // vencidas. Escolhe somente a etapa MAIS RECENTE já devida depois da última
+  // tentativa realmente enviada.
+  const due = PROSPECTOR_COLD_CADENCE.filter(
+    (step, index) => index > lastSentIndex && !sent.has(step.key) && hoursSinceFirst >= step.dueHours,
+  );
+  return due.length > 0 ? due[due.length - 1]! : null;
+}
 
 async function recordAttributedLifecycleEvent(params: {
   tenantId: string;
@@ -47,10 +95,11 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
   log.info("sdr-followup: starting");
 
   const now = new Date();
-  const windowStart = new Date(now.getTime() - REACTIVATION_WINDOW_H * 3_600_000);
-  const windowEnd = new Date(now.getTime() - FOLLOWUP_WINDOW_H * 3_600_000);
+  const windowStart = new Date(now.getTime() - LOOKBACK_H * 3_600_000);
+  const windowEnd = new Date(now.getTime() - FIRST_FOLLOWUP_H * 3_600_000);
 
-  // Find all "sdr_primeira_abordagem" activities created 48h–120h ago
+  // Compatibilidade: aceita tanto o marcador legado template_ordem:1 quanto
+  // as abordagens consultivas v1/v2 do Prospecctor.
   const approaches = await db
     .select({
       activityId: activitiesTable.id,
@@ -65,9 +114,13 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
       eq(activitiesTable.tipo, "whatsapp"),
       gte(activitiesTable.concluidaEm, windowStart),
       lte(activitiesTable.concluidaEm, windowEnd),
-      sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:%|template_ordem:1'`,
+      or(
+        sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:%|template_ordem:1%'`,
+        sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:v1%'`,
+        sql`${activitiesTable.resultadoExecucao} LIKE '%prospector_consultivo:v2%'`,
+      ),
     ))
-    .limit(200);
+    .limit(300);
 
   if (approaches.length === 0) {
     log.info("sdr-followup: no qualifying approaches — done");
@@ -76,23 +129,20 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
 
   let sent = 0;
   let recovered = 0;
-  let movedToReactivation = 0;
+  let movedToNurture = 0;
 
   for (const approach of approaches) {
     try {
       const { leadId, dealId, tenantId, sentAt } = approach;
       if (!leadId || !tenantId || !sentAt) continue;
 
-      // Follow-up é mensagem espontânea — só sai em horário comercial, fica
-      // pra próxima rodada (a janela de 48h+ segue valendo, só adia o envio).
       if (!(await tenantIsWithinBusinessHours(tenantId))) continue;
 
-      // Get lead once so lifecycle telemetry and the outbound message share the
-      // same attribution source. No campaign = CRM still works, telemetry skips.
       const [lead] = await db
         .select({
           nome: leadsTable.nome,
           telefone: leadsTable.telefone,
+          status: leadsTable.status,
           adCampaignId: leadsTable.adCampaignId,
         })
         .from(leadsTable)
@@ -101,65 +151,76 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
 
       if (!lead) continue;
 
-      // Check if follow-up already sent before checking the reply. This lets us
-      // distinguish a normal reply to the first approach from a lead recovered
-      // specifically after the automated 48h follow-up.
-      const [followupSent] = await db
-        .select({ id: activitiesTable.id, sentAt: activitiesTable.concluidaEm })
-        .from(activitiesTable)
-        .where(and(
-          eq(activitiesTable.leadId, leadId),
-          eq(activitiesTable.tenantId, tenantId),
-          sql`${activitiesTable.resultadoExecucao} = 'cenario:followup_48h'`,
-        ))
-        .orderBy(desc(activitiesTable.createdAt))
-        .limit(1);
+      // Se o lead já avançou por outro caminho, não insistimos na cadência fria.
+      if (lead.status === "qualificado" || lead.status === "cliente" || lead.status === "aquecimento") {
+        continue;
+      }
 
-      // Check if lead replied after approach (any incoming whatsapp message or entry)
-      const [reply] = await db
-        .select({ id: activitiesTable.id, createdAt: activitiesTable.createdAt })
+      const cadenceActivities = await db
+        .select({
+          resultado: activitiesTable.resultadoExecucao,
+          sentAt: activitiesTable.concluidaEm,
+        })
         .from(activitiesTable)
         .where(and(
           eq(activitiesTable.leadId, leadId),
           eq(activitiesTable.tenantId, tenantId),
-          gte(activitiesTable.createdAt, followupSent?.sentAt ?? sentAt),
-          sql`${activitiesTable.titulo} NOT LIKE 'SDR — %'`,
+          sql`${activitiesTable.resultadoExecucao} LIKE 'cenario:followup_%|prospector_cadence:v2'`,
         ))
-        .orderBy(desc(activitiesTable.createdAt))
+        .orderBy(desc(activitiesTable.createdAt));
+
+      const sentKeys = new Set<ProspectorCadenceStepKey>();
+      let finalSentAt: Date | null = null;
+      for (const item of cadenceActivities) {
+        const result = item.resultado ?? "";
+        for (const step of PROSPECTOR_COLD_CADENCE) {
+          if (result.includes(`cenario:${step.key}|`)) {
+            sentKeys.add(step.key);
+            if (step.key === "followup_216h" && item.sentAt && !finalSentAt) finalSentAt = item.sentAt;
+          }
+        }
+      }
+
+      // Mensagem recebida é a fonte de verdade para "respondeu"; não usamos
+      // qualquer atividade interna do CRM como falso sinal de resposta.
+      const [reply] = await db
+        .select({ id: messagesTable.id, createdAt: messagesTable.createdAt })
+        .from(messagesTable)
+        .where(and(
+          eq(messagesTable.leadId, leadId),
+          eq(messagesTable.tenantId, tenantId),
+          eq(messagesTable.direcao, "entrada"),
+          gte(messagesTable.createdAt, sentAt),
+        ))
+        .orderBy(desc(messagesTable.createdAt))
         .limit(1);
 
       if (reply) {
-        if (followupSent) {
+        if (sentKeys.size > 0) {
           await recordAttributedLifecycleEvent({
             tenantId,
             leadId,
             campaignId: lead.adCampaignId,
             eventType: "lead_recovered",
-            message: "Lead voltou a responder depois do follow-up automático.",
-            dedupeSuffix: "recovered:sdr48",
-            metadata: { dealId: dealId ?? null, replyActivityId: reply.id },
+            message: "Lead voltou a responder durante a cadência fria do Prospecctor.",
+            dedupeSuffix: "recovered:prospector-cadence-v2",
+            metadata: { dealId: dealId ?? null, replyMessageId: reply.id },
           }).catch((err) => {
             log.warn({ err, tenantId, leadId }, "sdr-followup: failed to record lead_recovered");
           });
           recovered++;
         }
-        continue; // lead is engaged
+        continue;
       }
 
-      if (followupSent) {
-        // Follow-up already sent — check if 72h+ since follow-up → aquecimento.
-        // Use the real follow-up timestamp when available instead of the first
-        // approach time so the 72h window is measured correctly.
-        const followupAt = followupSent.sentAt ?? sentAt;
-        const hoursSinceFollowup = (now.getTime() - followupAt.getTime()) / 3_600_000;
-        if (hoursSinceFollowup >= 72) {
-          // Move lead to aquecimento (long-term nurturing, not active outreach)
+      if (finalSentAt) {
+        const hoursSinceFinal = (now.getTime() - finalSentAt.getTime()) / 3_600_000;
+        if (hoursSinceFinal >= NURTURE_AFTER_FINAL_H) {
           await db
             .update(leadsTable)
             .set({ status: "aquecimento" })
             .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 
-          // Move deal to em_aquecimento stage
           if (dealId) {
             await db
               .update(dealsTable)
@@ -170,7 +231,6 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
                 not(inArray(dealsTable.etapa, ["ganho", "perdido", "em_aquecimento"])),
               ));
           } else {
-            // fallback: find the most-recent active deal for this lead
             const [activeDeal] = await db
               .select({ id: dealsTable.id })
               .from(dealsTable)
@@ -188,34 +248,48 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
                 .where(eq(dealsTable.id, activeDeal.id));
             }
           }
-          movedToReactivation++;
+          movedToNurture++;
         }
         continue;
       }
 
       if (!lead.telefone) continue;
 
-      await recordAttributedLifecycleEvent({
-        tenantId,
-        leadId,
-        campaignId: lead.adCampaignId,
-        eventType: "lead_cooling",
-        message: "Lead entrou em esfriamento após 48h sem resposta; follow-up automático iniciado.",
-        dedupeSuffix: "cooling:sdr48",
-        metadata: { dealId: dealId ?? null, inactivityHours: FOLLOWUP_WINDOW_H },
-      }).catch((err) => {
-        log.warn({ err, tenantId, leadId }, "sdr-followup: failed to record lead_cooling");
-      });
+      const hoursSinceFirst = (now.getTime() - sentAt.getTime()) / 3_600_000;
+      const nextStep = nextProspectorCadenceStep(hoursSinceFirst, sentKeys);
+      if (!nextStep) continue;
 
-      await sendSdrFollowup(leadId, dealId ?? null, tenantId, lead.nome, lead.telefone, log);
+      if (sentKeys.size === 0) {
+        await recordAttributedLifecycleEvent({
+          tenantId,
+          leadId,
+          campaignId: lead.adCampaignId,
+          eventType: "lead_cooling",
+          message: "Lead entrou na cadência fria do Prospecctor após não responder à primeira abordagem.",
+          dedupeSuffix: "cooling:prospector-cadence-v2",
+          metadata: { dealId: dealId ?? null, inactivityHours: hoursSinceFirst },
+        }).catch((err) => {
+          log.warn({ err, tenantId, leadId }, "sdr-followup: failed to record lead_cooling");
+        });
+      }
+
+      await sendSdrFollowup(
+        leadId,
+        dealId ?? null,
+        tenantId,
+        lead.nome,
+        lead.telefone,
+        log,
+        nextStep,
+      );
       sent++;
 
-      // Anti-ban delay
+      // Pequeno espaçamento entre leads; a cadência por lead é controlada em dias.
       await new Promise((r) => setTimeout(r, 1_200));
     } catch (err) {
       log.warn({ err, leadId: approach.leadId }, "sdr-followup: error for lead (non-fatal)");
     }
   }
 
-  log.info({ sent, recovered, movedToReactivation }, "sdr-followup: complete");
+  log.info({ sent, recovered, movedToNurture }, "sdr-followup: complete");
 }
