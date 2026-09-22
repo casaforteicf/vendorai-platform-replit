@@ -399,25 +399,25 @@ export default function DistributedProductScreens() {
                     onClick={() => setActiveIndex(index)}
                     onMouseEnter={() => prefetchScreen(item)}
                     onFocus={() => prefetchScreen(item)}
-                    className={\`group rounded-2xl border px-4 py-3.5 text-left transition ${
+                    className={`group rounded-2xl border px-4 py-3.5 text-left transition ${
                       selected
                         ? "border-orange-400/30 bg-orange-400/10 shadow-[0_12px_35px_rgba(249,115,22,0.08)]"
                         : "border-transparent bg-white/[0.025] hover:border-white/10 hover:bg-white/[0.05]"
-                    }\`}
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className={\`text-[10px] font-bold uppercase tracking-[0.14em] ${
+                      <span className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
                         selected ? "text-orange-300" : "text-slate-500"
-                      }\`}>
+                      }`}>
                         {String(index + 1).padStart(2, "0")} · {item.eyebrow}
                       </span>
-                      <span className={\`h-1.5 w-1.5 rounded-full ${
+                      <span className={`h-1.5 w-1.5 rounded-full ${
                         selected ? "bg-orange-400" : "bg-slate-700"
-                      }\`} />
+                      }`} />
                     </div>
-                    <p className={\`mt-2 line-clamp-2 text-sm font-semibold leading-5 ${
+                    <p className={`mt-2 line-clamp-2 text-sm font-semibold leading-5 ${
                       selected ? "text-white" : "text-slate-300"
-                    }\`}>
+                    }`}>
                       {item.title}
                     </p>
                   </button>
