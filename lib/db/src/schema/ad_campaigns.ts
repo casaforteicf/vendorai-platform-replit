@@ -96,6 +96,7 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
       startDate: string;
       endDate: string;
       totalBudget: number;
+      leadFormTemplateId?: string;
       specialAdCategory: "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS";
       conversionTracking: { mode: "vendorai" | "platform" | "clicks"; confirmed: boolean };
       automation: {
