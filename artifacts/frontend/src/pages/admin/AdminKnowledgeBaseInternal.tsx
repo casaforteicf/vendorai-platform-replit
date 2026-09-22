@@ -1,6 +1,56 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Building2, Megaphone, Route, Smartphone, Sparkles } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { BookOpen, Building2, Clipboard, FileQuestion, LayoutTemplate, Megaphone, Presentation, Route, Smartphone, Sparkles, Target } from "lucide-react";
+
+
+const actionBriefs = {
+  marketing: {
+    title: "Usar no Marketing",
+    instruction: "Crie um plano de marketing para uma construtora usando este escopo como referência central. Priorize geração de demanda, Pré-Projeto Arqdor.ai como isca de captação, conteúdo de obras reais, Reels, provas sociais, nutrição e remarketing.",
+    href: "/content?tab=planejamento&source=superadmin-scope&scope=construtoras",
+  },
+  lp: {
+    title: "Gerar LP",
+    instruction: "Crie uma Landing Page de alta conversão para construtoras. A oferta principal deve ser: o visitante cria uma prévia da casa, fachada ou ambiente antes de falar com a construtora. A LP deve capturar briefing, intenção, faixa de investimento e referências para o CRM.",
+    href: "/content?tab=campanhas&view=lp&source=superadmin-scope&scope=construtoras",
+  },
+  campaign: {
+    title: "Gerar campanha",
+    instruction: "Crie uma campanha completa para construtoras baseada no Pré-Projeto Arqdor.ai como porta de entrada. Defina público, promessa, canais, criativos, CTA, Landing Page, sequência de nutrição e indicadores.",
+    href: "/content?tab=campanhas&source=superadmin-scope&scope=construtoras",
+  },
+  presentation: {
+    title: "Gerar apresentação comercial",
+    instruction: "Monte uma apresentação comercial para vender Vendor.ai + Arqdor.ai a construtoras. Estruture a narrativa da captação até o pós-venda, mostrando Pré-Projeto, marketing, CRM, agentes, orçamento, planejamento, obra, app e Revenue Scout. Linguagem comercial, não técnica.",
+  },
+  faq: {
+    title: "Gerar FAQ",
+    instruction: "Crie um FAQ comercial para construtoras com perguntas e respostas sobre Pré-Projeto, captação de leads, Marketing, CRM, orçamento, planejamento, gestão de obras, compras, custos, app, portal e pós-venda. Respostas simples, comerciais e orientadas a benefícios.",
+  },
+  audit: {
+    title: "Auditar produto contra o escopo",
+    instruction: "Audite o produto Vendor.ai + Arqdor.ai contra este escopo de Construtoras. Para cada requisito, classifique como: pronto, parcial, ausente ou precisa validar. Liste evidência esperada, impacto comercial, prioridade e próximo passo. Não considere uma função pronta apenas por existir visualmente.",
+  },
+} as const;
+
+type ActionKey = keyof typeof actionBriefs;
+
+const scopeContext = `ESCOPO: Construtoras
+- Pré-Projeto Arqdor.ai como ferramenta de aquisição e qualificação
+- Landing Pages por campanha, modelo, região, faixa de investimento ou empreendimento
+- Marketing ativo: planejamento, conteúdo, Reels, campanhas, nutrição e remarketing
+- CRM, Cliente 360, Pipeline, SDR, Closer, Follow-up e Agenda
+- Orçamento, composições, proposta e contrato
+- Planejamento comercial, marketing, lead, obra e relacionamento
+- Gestão de obra, diário, equipe por perfil, insumos, compras, cotações e custos
+- App e Portal do Cliente
+- Revenue Scout e pós-venda
+- Jornada integrada da campanha à entrega da obra`;
 
 const sections = [
   {
@@ -94,6 +144,41 @@ const sections = [
 ];
 
 export default function AdminKnowledgeBaseInternal() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [preparedBrief, setPreparedBrief] = useState("");
+  const [preparedTitle, setPreparedTitle] = useState("");
+
+  function prepareAction(key: ActionKey) {
+    const action = actionBriefs[key];
+    const brief = `${scopeContext}\n\nOBJETIVO\n${action.instruction}`;
+    sessionStorage.setItem("vendorai_superadmin_internal_scope_v1", JSON.stringify({
+      scope: "construtoras",
+      title: "Escopo Comercial — Construtoras",
+      action: key,
+      brief,
+      createdAt: new Date().toISOString(),
+    }));
+    setPreparedTitle(action.title);
+    setPreparedBrief(brief);
+
+    if ("href" in action && action.href) {
+      setLocation(action.href);
+      return;
+    }
+
+    toast({
+      title: action.title,
+      description: "Brief preparado abaixo. Você pode copiar e usar onde quiser dentro do Superadmin.",
+    });
+  }
+
+  async function copyPreparedBrief() {
+    if (!preparedBrief) return;
+    await navigator.clipboard.writeText(preparedBrief);
+    toast({ title: "Brief copiado" });
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6">
       <div className="rounded-2xl border bg-card p-5 shadow-sm">
@@ -111,6 +196,63 @@ export default function AdminKnowledgeBaseInternal() {
           <Badge variant="outline">Atualizado em 22/09/2026</Badge>
         </div>
       </div>
+
+
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Target className="h-5 w-5 text-primary" />
+            Centro de comando — Construtoras
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-sm leading-6 text-muted-foreground">
+            Use este escopo como contexto para criar materiais e orientar o produto. As ações abaixo continuam privadas no Superadmin.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("marketing")}>
+              <Megaphone className="h-5 w-5 shrink-0" />
+              <span><strong className="block">Usar no Marketing</strong><span className="text-xs text-muted-foreground">Abrir planejamento com contexto do segmento</span></span>
+            </Button>
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("lp")}>
+              <LayoutTemplate className="h-5 w-5 shrink-0" />
+              <span><strong className="block">Gerar LP</strong><span className="text-xs text-muted-foreground">Pré-Projeto como porta de entrada</span></span>
+            </Button>
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("campaign")}>
+              <Megaphone className="h-5 w-5 shrink-0" />
+              <span><strong className="block">Gerar campanha</strong><span className="text-xs text-muted-foreground">Campanha conectada ao escopo</span></span>
+            </Button>
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("presentation")}>
+              <Presentation className="h-5 w-5 shrink-0" />
+              <span><strong className="block">Apresentação comercial</strong><span className="text-xs text-muted-foreground">Preparar narrativa para venda</span></span>
+            </Button>
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("faq")}>
+              <FileQuestion className="h-5 w-5 shrink-0" />
+              <span><strong className="block">Gerar FAQ</strong><span className="text-xs text-muted-foreground">Perguntas comerciais do segmento</span></span>
+            </Button>
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => prepareAction("audit")}>
+              <Clipboard className="h-5 w-5 shrink-0" />
+              <span><strong className="block">Auditar produto</strong><span className="text-xs text-muted-foreground">Comparar sistema x escopo</span></span>
+            </Button>
+          </div>
+
+          {preparedBrief && (
+            <div className="mt-5 rounded-xl border bg-muted/30 p-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">{preparedTitle}</p>
+                  <p className="text-xs text-muted-foreground">Brief interno preparado com o contexto de Construtoras.</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={copyPreparedBrief}>
+                  <Clipboard className="mr-2 h-4 w-4" />
+                  Copiar brief
+                </Button>
+              </div>
+              <Textarea value={preparedBrief} readOnly className="min-h-48 resize-y text-xs leading-5" />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
