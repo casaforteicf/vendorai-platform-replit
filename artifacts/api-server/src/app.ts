@@ -9,6 +9,7 @@ import { db, tenantsTable, generatedSitesTable, tenantDomainsTable } from "@work
 import router from "./routes";
 import vendorAiSubscriptionWebhookRouter from "./routes/vendorai_subscription_webhook.js";
 import generatedSiteTouchpointRouter from "./routes/generated_site_touchpoints.js";
+import prospectorEmailWebhookRouter from "./routes/prospector_email_webhook.js";
 import { logger } from "./lib/logger";
 import { injectGeneratedSiteTouchpointTracking } from "./lib/generated-site-attribution.js";
 import { enforceTenantPath } from "./middlewares/tenant-path-guard.js";
@@ -129,6 +130,14 @@ app.use(
     },
     credentials: true,
   }),
+);
+
+// Resend assina o corpo bruto. Esta rota precisa vir antes do express.json()
+ // para que a assinatura Svix possa ser verificada sem reserialização.
+app.use(
+  "/api/webhooks/resend/prospector",
+  express.raw({ type: "application/json", limit: "2mb" }),
+  prospectorEmailWebhookRouter,
 );
 
 app.use(express.json({ limit: "20mb" }));
