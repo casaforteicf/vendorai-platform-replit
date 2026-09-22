@@ -127,8 +127,8 @@ function Roof({
   if (facade.roof === "platibanda") {
     return (
       <g>
-        <rect x={x - 0.8} y={y - 2.2} width={width + 1.6} height="2.5" rx="0.25" fill={color} />
-        <line x1={x} y1={y - 0.35} x2={x + width} y2={y - 0.35} stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.32" />
+        <rect x={x - 0.8} y={y - 2.2} width={width + 1.6} height="2.5" rx="0.25" fill={color} stroke="#334155" strokeWidth="0.55" />
+        <line x1={x} y1={y - 0.35} x2={x + width} y2={y - 0.35} stroke="#94a3b8" strokeOpacity="0.75" strokeWidth="0.28" />
       </g>
     );
   }
