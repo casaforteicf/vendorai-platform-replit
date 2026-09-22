@@ -74,6 +74,7 @@ import { runObjectionsExtraction } from "./objectionsExtraction.js";
 import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
+import { runSupportLifecycle } from "./supportLifecycle.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
@@ -1839,6 +1840,13 @@ export function startScheduler(log: Logger): void {
     });
   }, { timezone: "America/Sao_Paulo" });
 
+  // Job 20b: Suporte ponta a ponta — every 30 minutes
+  cron.schedule("*/30 * * * *", () => {
+    runSupportLifecycle(log).catch((err) => {
+      log.error({ err }, "scheduler/support-lifecycle: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
   // Job 21 (Cmd 22): Micro-events re-scan — every Monday at 03:30 BRT
   cron.schedule("30 3 * * 1", () => {
     runMicroEventsRescan(log).catch((err) => {
@@ -1890,7 +1898,7 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, content-autopilot @05:00-BRT, appointment-reminders @*/30min, ads-review-sync @*/10min, ads-waste-guard @:25, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, content-autopilot @05:00-BRT, appointment-reminders @*/30min, ads-review-sync @*/10min, ads-waste-guard @:25, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, support-lifecycle @*/30min, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────
