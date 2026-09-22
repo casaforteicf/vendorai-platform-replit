@@ -1,4 +1,4 @@
-name: Build VendorAI Android Native APK
+name: Build VendorAI Android Release APK
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  build-native-apk:
+  build-release-apk:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
 
@@ -46,6 +46,20 @@ jobs:
       - name: Instalar dependências
         run: pnpm install --no-frozen-lockfile
 
+      - name: Validar credenciais de assinatura Android
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "::error::ANDROID_KEYSTORE_BASE64 não configurado" && exit 1)
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || (echo "::error::ANDROID_KEYSTORE_PASSWORD não configurado" && exit 1)
+          test -n "$ANDROID_KEY_ALIAS" || (echo "::error::ANDROID_KEY_ALIAS não configurado" && exit 1)
+          test -n "$ANDROID_KEY_PASSWORD" || (echo "::error::ANDROID_KEY_PASSWORD não configurado" && exit 1)
+
       - name: Gerar projeto Android nativo
         working-directory: artifacts/mobile
         env:
@@ -54,27 +68,98 @@ jobs:
           PICOVOICE_ACCESS_KEY: ''
         run: pnpm exec expo prebuild --platform android --clean --no-install
 
-      - name: Compilar APK Android
+      - name: Restaurar keystore de produção
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > artifacts/mobile/android/app/vendorai-release.keystore
+          test -s artifacts/mobile/android/app/vendorai-release.keystore
+
+      - name: Configurar assinatura de release
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cat >> artifacts/mobile/android/gradle.properties <<EOF
+          VENDORAI_UPLOAD_STORE_FILE=vendorai-release.keystore
+          VENDORAI_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
+          VENDORAI_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS
+          VENDORAI_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("artifacts/mobile/android/app/build.gradle")
+          s = p.read_text()
+          marker = "signingConfigs {"
+          if marker not in s:
+              raise SystemExit("Bloco signingConfigs não encontrado no build.gradle")
+
+          # Acrescenta config persistente de release ao bloco signingConfigs.
+          needle = "signingConfigs {\n"
+          release_cfg = """signingConfigs {
+              release {
+                  storeFile file(VENDORAI_UPLOAD_STORE_FILE)
+                  storePassword VENDORAI_UPLOAD_STORE_PASSWORD
+                  keyAlias VENDORAI_UPLOAD_KEY_ALIAS
+                  keyPassword VENDORAI_UPLOAD_KEY_PASSWORD
+              }
+          """
+          s = s.replace(needle, release_cfg, 1)
+
+          # Expo/React Native normalmente aponta release para debug por padrão.
+          s = s.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+
+          p.write_text(s)
+          PY
+
+      - name: Compilar APK release
         working-directory: artifacts/mobile/android
         env:
           CI: 'true'
           ORG_GRADLE_PROJECT_org.gradle.jvmargs: -Xmx4096m -Dfile.encoding=UTF-8
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Preparar APK
+      - name: Validar APK antes de publicar
+        shell: bash
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          APK="artifacts/mobile/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+
+          BUILD_TOOLS_DIR="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apk-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apk-signature.txt || \
+            (echo "::error::APK não possui assinatura v2 válida" && exit 1)
+
+          "$BUILD_TOOLS_DIR/aapt" dump badging "$APK" | tee /tmp/apk-badging.txt
+          grep -q "package: name='com.appvendorai.vendorai'" /tmp/apk-badging.txt || \
+            (echo "::error::Package Android inesperado" && exit 1)
+
+      - name: Preparar APK aprovado
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cp artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk dist/vendorai.apk
-          test -s dist/vendorai.apk
-          ls -lh dist/vendorai.apk
+          cp artifacts/mobile/android/app/build/outputs/apk/release/app-release.apk dist/vendorai.apk
+          sha256sum dist/vendorai.apk | tee dist/vendorai.apk.sha256
+          ls -lh dist/vendorai.apk dist/vendorai.apk.sha256
 
-      - name: Publicar APK como artefato
+      - name: Publicar APK aprovado como artefato
         uses: actions/upload-artifact@v4
         with:
-          name: vendorai-android-apk
-          path: dist/vendorai.apk
+          name: vendorai-android-release-apk
+          path: |
+            dist/vendorai.apk
+            dist/vendorai.apk.sha256
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
