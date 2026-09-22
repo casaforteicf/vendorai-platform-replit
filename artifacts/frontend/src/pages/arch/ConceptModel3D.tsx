@@ -606,6 +606,9 @@ export default function ConceptModel3D({
   const [cameraSnapshotToken, setCameraSnapshotToken] = useState(0);
   const [pendingSavedScene, setPendingSavedScene] = useState(false);
   const [activeSavedSceneId, setActiveSavedSceneId] = useState<string | null>(null);
+  const [panoramaExportToken, setPanoramaExportToken] = useState(0);
+  const [panoramaExportState, setPanoramaExportState] = useState<"idle" | "exporting" | "error">("idle");
+  const [panoramaExportError, setPanoramaExportError] = useState<string | null>(null);
   const sceneRootRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
@@ -1267,6 +1270,29 @@ export default function ConceptModel3D({
               </button>
             </div>
           )}
+          {webglReady && navigationMode === "panorama" && (
+            <div className="flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPanoramaExportError(null);
+                  setPanoramaExportState("exporting");
+                  setPanoramaExportToken((value) => value + 1);
+                }}
+                disabled={panoramaExportState === "exporting"}
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+                title="Gerar imagem equiretangular 2:1 em PNG"
+              >
+                {panoramaExportState === "exporting" ? "Exportando..." : "Exportar 360°"}
+              </button>
+              <span className="px-1 text-[9px] font-semibold text-cyan-700">4096 × 2048 PNG</span>
+              {panoramaExportError && (
+                <span className="max-w-[220px] truncate px-1 text-[9px] font-semibold text-red-600" title={panoramaExportError}>
+                  {panoramaExportError}
+                </span>
+              )}
+            </div>
+          )}
           {webglReady && (
             <div className="flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 p-1">
               <button
@@ -1551,6 +1577,27 @@ export default function ConceptModel3D({
         cameraSnapshotToken={cameraSnapshotToken}
         savedCameraViewpoint={activeSavedScene}
         onCameraSnapshot={handleCameraSnapshot}
+        panoramaExportToken={panoramaExportToken}
+        panoramaExportWidth={4096}
+        onPanoramaExport={(dataUrl) => {
+          try {
+            const link = document.createElement("a");
+            link.href = dataUrl;
+            link.download = `arqdor-panorama-360-${Date.now()}.png`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setPanoramaExportState("idle");
+            setPanoramaExportError(null);
+          } catch {
+            setPanoramaExportState("error");
+            setPanoramaExportError("Não foi possível salvar o arquivo 360°.");
+          }
+        }}
+        onPanoramaExportError={(message) => {
+          setPanoramaExportState("error");
+          setPanoramaExportError(message);
+        }}
         tourPoint={activeTourPoint ? {
           x: activeTourPoint.x,
           y: activeTourPoint.y,
