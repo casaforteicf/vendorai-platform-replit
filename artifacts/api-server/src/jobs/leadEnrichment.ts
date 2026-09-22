@@ -18,9 +18,10 @@ import {
   segmentBenchmarksTable,
   sdrVerticalProfilesTable,
   prospectorConfigTable,
+  agentConfigsTable,
+  whatsappConnectionsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
-import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { sendSdrFirstApproach } from "../services/sdrService.js";
 import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMemory.js";
 import { logger as rootLogger } from "../lib/logger.js";
@@ -459,6 +460,51 @@ export async function enrichLead(
       .limit(1);
 
     const threshold = config?.autoDispatchThreshold ?? 80;
+
+    const [legacyChannelConfig, activeWhatsappConnection] = await Promise.all([
+      db
+        .select({
+          zapiInstanceId: agentConfigsTable.zapiInstanceId,
+          zapiToken: agentConfigsTable.zapiToken,
+          zapiClientToken: agentConfigsTable.zapiClientToken,
+          evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
+          evolutionConnected: agentConfigsTable.evolutionConnected,
+          metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+          metaAccessToken: agentConfigsTable.metaAccessToken,
+        })
+        .from(agentConfigsTable)
+        .where(eq(agentConfigsTable.tenantId, tenantId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+      db
+        .select({ id: whatsappConnectionsTable.id })
+        .from(whatsappConnectionsTable)
+        .where(and(
+          eq(whatsappConnectionsTable.tenantId, tenantId),
+          eq(whatsappConnectionsTable.status, "active"),
+        ))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+    ]);
+
+    const hasLegacyWhatsapp = Boolean(
+      (legacyChannelConfig?.zapiInstanceId && legacyChannelConfig.zapiToken && legacyChannelConfig.zapiClientToken) ||
+      (legacyChannelConfig?.evolutionInstanceName && legacyChannelConfig.evolutionConnected) ||
+      (legacyChannelConfig?.metaPhoneNumberId && legacyChannelConfig.metaAccessToken),
+    );
+    const channelCapabilities = {
+      whatsapp: Boolean(activeWhatsappConnection || hasLegacyWhatsapp),
+      // E-mail só entra em automação fria quando envio + recebimento assinado
+      // estão configurados; assim a cadência consegue parar quando houver reply.
+      email: Boolean(
+        process.env["RESEND_API_KEY"] &&
+        process.env["RESEND_WEBHOOK_SECRET"] &&
+        process.env["RESEND_PROSPECTOR_REPLY_DOMAIN"]
+      ),
+      // Instagram exige IGSID obtido após inbound; não é canal de cold-start.
+      instagram: false,
+    };
+
     const quality = evaluateColdProspectQuality({
       segmento: rawSegmento,
       telefone: lead.telefone,
@@ -472,6 +518,7 @@ export async function enrichLead(
       growth,
       propensityScore: scoreResult.propensity_score,
       dispatchThreshold: threshold,
+      channelCapabilities,
     });
 
     const dossier = {
@@ -488,6 +535,7 @@ export async function enrichLead(
       hasExecutableChannel: quality.hasExecutableChannel,
       preferredChannel: quality.preferredChannel,
       outreachChannels: quality.channels,
+      channelCapabilities,
       segmentIdentified: quality.segmentIdentified,
       blockingReasons: quality.reasons,
       evidence: quality.evidence,
@@ -587,35 +635,21 @@ export async function enrichLead(
         ? `${COLD_OUTREACH_TRIGGER} Sinal principal: ${sinalPrincipal}. Evidências verificadas: ${evidenceSummary}.`
         : `${COLD_OUTREACH_TRIGGER} Evidências verificadas: ${evidenceSummary}.`;
 
-      // Prefer the canonical SDR service for the first approach because it
-      // records the activity marker consumed by the 48h follow-up job. When a
-      // template cannot use that flow, keep the existing AI dispatch as a safe
-      // fallback — but only AFTER the evidence gate has passed.
+      // A primeira abordagem é sempre executada pelo serviço canônico do
+      // Prospecctor, que escolhe um canal realmente disponível. Não existe mais
+      // fallback para SDR genérico/WhatsApp porque isso poderia contatar por um
+      // canal não autorizado ou não configurado.
       const firstApproach = await sendSdrFirstApproach(leadId, null, tenantId, log);
-      if (!firstApproach.sent) {
-        dispatchAgentBackground({
-          tenantId,
-          leadId,
-          mensagem: trigger,
-          log,
-          forcedAgent: "sdr",
-          scenario: {
-            cold_outreach: true,
-            origem: "prospector_predictive",
-            propensity_score: scoreResult.propensity_score,
-            fit_score: quality.fitScore,
-            pain_score: quality.painScore,
-            evidence_count: quality.evidenceCount,
-            evidence: quality.evidence.slice(0, 5),
-            sinal_growth_principal: sinalPrincipal,
-            segmento,
-          },
-        });
+      if (firstApproach.sent) {
+        await db.update(leadsTable)
+          .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+          .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+      } else {
+        log.info(
+          { leadId, preferredChannel: quality.preferredChannel, trigger },
+          "enrichLead: ready prospect kept scored — canonical first approach was not sent",
+        );
       }
-
-      await db.update(leadsTable)
-        .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
-        .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
     } else {
       log.info(
         {
