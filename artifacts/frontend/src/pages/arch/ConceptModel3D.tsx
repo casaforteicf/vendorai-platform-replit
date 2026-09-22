@@ -132,6 +132,9 @@ function boxPolygons(
     table: 0.76,
     chair: 0.88,
     cabinet: 2.10,
+    appliance: 1.90,
+    sanitary: 0.90,
+    outdoor: 0.95,
     tv: 1.25,
     plant: 1.15,
     lamp: 1.45,
@@ -286,6 +289,24 @@ function objectPrimitives(object: ConceptPlanObject, zBase: number): ObjectPrimi
       return [
         p("body", 0.02, 0.02, 0.96, 0.96, 0.02, 2.08),
         p("plinth", 0.04, 0.04, 0.92, 0.92, 0.00, 0.10),
+      ];
+    case "appliance":
+      return [
+        p("body", 0.03, 0.03, 0.94, 0.94, 0.02, 1.86),
+        p("front", 0.08, 0.00, 0.84, 0.10, 0.18, 1.72),
+        p("handle", 0.80, 0.00, 0.08, 0.08, 0.88, 1.56),
+      ];
+    case "sanitary":
+      return [
+        p("base", 0.16, 0.18, 0.68, 0.66, 0.02, 0.42),
+        p("bowl", 0.10, 0.08, 0.80, 0.76, 0.36, 0.60),
+        p("back", 0.20, 0.02, 0.60, 0.30, 0.48, 0.92),
+      ];
+    case "outdoor":
+      return [
+        p("base", 0.04, 0.10, 0.92, 0.82, 0.10, 0.34),
+        p("seat", 0.06, 0.14, 0.88, 0.72, 0.32, 0.52),
+        p("back", 0.06, 0.04, 0.88, 0.16, 0.50, 0.96),
       ];
     case "tv":
       return [
