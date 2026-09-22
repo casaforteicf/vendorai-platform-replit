@@ -27,7 +27,7 @@ import {
   whatsappConnectionsTable,
 } from "@workspace/db";
 import { registerLeadFeedback } from "../lib/prospectorMemory.js";
-import { COLD_PROSPECT_SOURCES } from "../lib/prospector-consultive.js";
+import { COLD_PROSPECT_SOURCES, isColdProspectSource } from "../lib/prospector-consultive.js";
 import {
   callOpenAI as gatewayCallOpenAI,
   generateEmbedding,
@@ -116,7 +116,7 @@ const router: IRouter = Router();
 // Garante que um leadId opcional pertence ao tenant resolvido (isolamento multi-tenant)
 async function assertLeadInTenant(leadId: string, tenantId: string): Promise<void> {
   const [lead] = await db
-    .select({ id: leadsTable.id })
+    .select({ id: leadsTable.id, source: leadsTable.source })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
     .limit(1);
@@ -2238,6 +2238,12 @@ router.post("/prospector/dispatch-sdr/:leadId", async (req, res) => {
     .limit(1);
 
   if (!lead) return res.status(404).json({ error: "Lead não encontrado" });
+  if (!isColdProspectSource(lead.source)) {
+    return res.status(422).json({
+      error: "Este contato não pertence à fila de prospecção fria do Prospecctor.",
+      code: "NOT_COLD_PROSPECT",
+    });
+  }
 
   try {
     const result = await dispatchCanonicalProspectorLead({ tenantId, leadId, log: req.log });
@@ -2271,6 +2277,12 @@ router.post("/prospector/dispatch-top", async (req, res) => {
     .where(
       and(
         eq(leadsTable.tenantId, tenantId),
+        or(
+          inArray(leadsTable.source, Array.from(COLD_PROSPECT_SOURCES)),
+          sql`${leadsTable.source} LIKE 'prospector_%'`,
+          sql`${leadsTable.source} LIKE 'cold_%'`,
+          sql`${leadsTable.source} LIKE 'outbound_%'`,
+        ),
         inArray(leadsTable.enrichmentStatus, ["enriched", "scored"]),
         isNotNull(leadsTable.propensityScore),
       ),
