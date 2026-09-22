@@ -445,6 +445,43 @@ export default function PlanoMidia() {
     }
   }
 
+  async function runCreativeVariantAction(
+    ad: PlannerAdCampaign,
+    creative: PlannerAdCreative,
+    action: "publish" | "activate" | "pause",
+  ) {
+    if (adActionBusy) return;
+    if (action === "activate" && !window.confirm("Ativar esta variação A/B agora? Ela poderá começar a consumir parte do orçamento da campanha.")) return;
+
+    const key = `${ad.id}:variant:${creative.id}:${action}`;
+    setAdActionBusy(key);
+    try {
+      const suffix = action === "publish"
+        ? "publish-variant"
+        : action === "activate"
+          ? "ativar-variant"
+          : "pausar-variant";
+      const response = await fetch(`/api/tenants/${tenantId}/ads/creatives/${creative.id}/${suffix}`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível alterar a variação.");
+      await refreshAdsWorkspace();
+      toast({
+        title: action === "publish"
+          ? "Variação publicada pausada"
+          : action === "activate"
+            ? "Variação A/B ativada"
+            : "Variação A/B pausada",
+      });
+    } catch (error) {
+      toast({ title: "Não foi possível concluir", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setAdActionBusy(null);
+    }
+  }
+
   async function runAdAction(ad: PlannerAdCampaign, action: "approve" | "publish" | "activate" | "pause") {
     if (adActionBusy) return;
     if (action === "activate" && !window.confirm("Ativar esta campanha agora? A plataforma poderá começar a consumir o orçamento configurado.")) return;
@@ -873,6 +910,22 @@ export default function PlanoMidia() {
                             const metric = overviewByAd.get(ad.id);
                             const ctr = metric?.impressions ? (metric.clicks / metric.impressions) * 100 : null;
                             const clickToLead = metric?.clicks ? (metric.leads / metric.clicks) * 100 : null;
+                            const comparableVariants = variants.filter((variant) => {
+                              const p = variant.performance;
+                              return Boolean(variant.externalAdId && p && (p.impressions >= 200 || p.clicks >= 20 || p.conversions >= 2));
+                            });
+                            const bestSignal = comparableVariants.length >= 2
+                              ? [...comparableVariants].sort((a, b) => {
+                                  const pa = a.performance!;
+                                  const pb = b.performance!;
+                                  const cvrA = pa.clicks > 0 ? pa.conversions / pa.clicks : 0;
+                                  const cvrB = pb.clicks > 0 ? pb.conversions / pb.clicks : 0;
+                                  if (cvrA !== cvrB) return cvrB - cvrA;
+                                  const ctrA = pa.impressions > 0 ? pa.clicks / pa.impressions : 0;
+                                  const ctrB = pb.impressions > 0 ? pb.clicks / pb.impressions : 0;
+                                  return ctrB - ctrA;
+                                })[0]
+                              : null;
                             const comments = (adEvents[ad.id] ?? []).filter((event) => event.eventType === "internal_comment");
                             const imageUrl = creative?.imagens?.[0];
                             const title = creative?.headlines?.[0] || ad.itemLabel || campaign.nome;
@@ -927,6 +980,73 @@ export default function PlanoMidia() {
                                     </Button>
                                   ))}
                                 </div>
+                                {creative && (
+                                  <div className="mb-3 rounded-lg border bg-background p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-xs font-semibold">Performance desta variação</p>
+                                        {bestSignal?.id === creative.id ? <Badge className="bg-emerald-600">Melhor sinal até agora</Badge> : null}
+                                        {creative.externalStatus ? (
+                                          <Badge variant="outline">{creative.externalStatus === "active" ? "Ativa no A/B" : "Pausada no A/B"}</Badge>
+                                        ) : null}
+                                      </div>
+                                      <div className="flex flex-wrap gap-2">
+                                        {ad.externalCampaignId && creative.status === "aprovado" && !creative.externalAdId ? (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-[11px]"
+                                            disabled={!!adActionBusy}
+                                            onClick={() => void runCreativeVariantAction(ad, creative, "publish")}
+                                          >
+                                            {adActionBusy === `${ad.id}:variant:${creative.id}:publish` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                            Publicar no A/B
+                                          </Button>
+                                        ) : null}
+                                        {creative.externalAdId && creative.externalStatus !== "active" ? (
+                                          <Button
+                                            size="sm"
+                                            className="h-7 text-[11px]"
+                                            disabled={!!adActionBusy}
+                                            onClick={() => void runCreativeVariantAction(ad, creative, "activate")}
+                                          >
+                                            {adActionBusy === `${ad.id}:variant:${creative.id}:activate` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                            Ativar variação
+                                          </Button>
+                                        ) : null}
+                                        {creative.externalAdId && creative.externalStatus === "active" ? (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-[11px]"
+                                            disabled={!!adActionBusy}
+                                            onClick={() => void runCreativeVariantAction(ad, creative, "pause")}
+                                          >
+                                            {adActionBusy === `${ad.id}:variant:${creative.id}:pause` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                            Pausar variação
+                                          </Button>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                                      {[
+                                        ["Impressões", String(creative.performance?.impressions ?? 0)],
+                                        ["Cliques", String(creative.performance?.clicks ?? 0)],
+                                        ["CTR", creative.performance?.impressions ? `${((creative.performance.clicks / creative.performance.impressions) * 100).toFixed(2)}%` : "—"],
+                                        ["Conversões", String(creative.performance?.conversions ?? 0)],
+                                        ["Custo", `R$ ${(creative.performance?.spend ?? 0).toFixed(2)}`],
+                                      ].map(([label, value]) => (
+                                        <div key={label} className="rounded-md bg-muted/30 px-2 py-2 text-center">
+                                          <p className="text-[10px] text-muted-foreground">{label}</p>
+                                          <p className="mt-0.5 text-xs font-semibold">{value}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {bestSignal == null && variants.filter((variant) => variant.externalAdId).length >= 2 ? (
+                                      <p className="mt-2 text-[10px] text-muted-foreground">Ainda sem volume comparável. O VendorAI não declara vencedora antes de pelo menos 200 impressões, 20 cliques ou 2 conversões por variação.</p>
+                                    ) : null}
+                                  </div>
+                                )}
                                 <div className="grid gap-3 md:grid-cols-[160px_1fr]">
                                   <div className={`overflow-hidden rounded-lg border bg-background ${placement === "story" || placement === "reels" ? "md:max-w-[140px]" : ""}`}>
                                     {placement === "google" ? (
