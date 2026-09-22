@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   BarChart3,
@@ -10,6 +10,7 @@ import {
   Target,
   UsersRound,
   WandSparkles,
+  Zap,
 } from "lucide-react";
 import { usePublicCountry } from "@/lib/publicCountry";
 
@@ -22,16 +23,22 @@ const PT = {
   primary: "Testar 5 dias grátis",
   secondary: "Explorar a plataforma",
   proof: "5 dias grátis · CRM e histórico preservados · suporte em português",
-  enginesIntro: "Uma operação, três momentos coordenados",
+  live: "Sistema real em operação",
+  enginesIntro: "Uma operação, três movimentos coordenados",
   engines: [
     { icon: Megaphone, title: "Gerar demanda", text: "Ads, conteúdo, social, sites, landing pages e campanhas." },
     { icon: Radar, title: "Encontrar oportunidades", text: "Prospector, sinais, enriquecimento, priorização e Revenue Scout." },
     { icon: Target, title: "Converter e expandir", text: "CRM, SDR, Closer, follow-up, propostas, cobrança e pós-venda." },
   ],
   previewLabel: "VendorAI em operação",
-  previewTitle: "Tela real do VendorAI em operação",
-  previewText: "Este é o produto real: pipeline, contexto comercial, responsáveis, estágio e próxima ação no mesmo lugar.",
+  previewTitle: "O produto real, não um mockup.",
+  previewText:
+    "Pipeline, contexto comercial, responsáveis, estágio e próxima ação funcionando na mesma tela.",
   previewLink: "Conhecer o CRM",
+  signal: "Novo sinal comercial",
+  signalText: "Oportunidade priorizada pelo TAD",
+  context: "CRM + IA",
+  contextText: "Contexto compartilhado em tempo real",
 };
 
 const ES = {
@@ -43,16 +50,22 @@ const ES = {
   primary: "Probar 5 días gratis",
   secondary: "Explorar la plataforma",
   proof: "5 días gratis · CRM e historial preservados · soporte en español",
-  enginesIntro: "Una operación, tres momentos coordinados",
+  live: "Sistema real en operación",
+  enginesIntro: "Una operación, tres movimientos coordinados",
   engines: [
     { icon: Megaphone, title: "Generar demanda", text: "Ads, contenido, social, sitios, landing pages y campañas." },
     { icon: Radar, title: "Encontrar oportunidades", text: "Prospector, señales, enriquecimiento, priorización y Revenue Scout." },
     { icon: Target, title: "Convertir y expandir", text: "CRM, SDR, Closer, seguimiento, propuestas, cobranza y posventa." },
   ],
   previewLabel: "VendorAI en operación",
-  previewTitle: "Pantalla real de VendorAI en operación",
-  previewText: "Este es el producto real: pipeline, contexto comercial, responsables, etapa y próxima acción en el mismo lugar.",
+  previewTitle: "El producto real, no un mockup.",
+  previewText:
+    "Pipeline, contexto comercial, responsables, etapa y próxima acción funcionando en la misma pantalla.",
   previewLink: "Conocer el CRM",
+  signal: "Nueva señal comercial",
+  signalText: "Oportunidad priorizada por TAD",
+  context: "CRM + IA",
+  contextText: "Contexto compartido en tiempo real",
 };
 
 const MEDIA = "/media/vendorai-official";
@@ -60,65 +73,73 @@ const MEDIA = "/media/vendorai-official";
 export default function GrowthRevenueHero() {
   const { isSpanish } = usePublicCountry();
   const copy = isSpanish ? ES : PT;
+  const reduceMotion = useReducedMotion();
 
   return (
-    <section className="vendor-home-hero relative overflow-hidden border-b border-slate-200/70 text-slate-950">
-      <div className="vendor-home-grid" aria-hidden="true" />
+    <section className="vendor-home-hero vendor-home-hero-cinematic relative overflow-hidden text-white">
+      <div className="vendor-home-grid vendor-home-grid-dark" aria-hidden="true" />
       <div className="vendor-home-orb vendor-home-orb-orange" aria-hidden="true" />
       <div className="vendor-home-orb vendor-home-orb-blue" aria-hidden="true" />
+      <div className="vendor-hero-beam" aria-hidden="true" />
 
-      <div className="relative mx-auto grid max-w-[1480px] gap-10 px-4 pb-12 pt-10 sm:gap-12 sm:px-6 sm:pb-16 sm:pt-14 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-14 lg:px-8 lg:pb-24 lg:pt-20 xl:gap-20">
+      <div className="relative mx-auto grid min-h-[760px] max-w-[1480px] gap-12 px-4 pb-16 pt-12 sm:px-6 sm:pb-20 sm:pt-16 lg:grid-cols-[0.88fr_1.12fr] lg:items-center lg:gap-14 lg:px-8 lg:pb-28 lg:pt-24 xl:gap-20">
         <motion.div
           className="max-w-3xl"
-          initial={{ opacity: 0, y: 26 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 28 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.65, ease: "easeOut" }}
+          transition={{ duration: 0.68, ease: "easeOut" }}
         >
-          <div className="vendor-hero-eyebrow mb-5 inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold leading-5 sm:mb-7 sm:px-4 sm:text-sm">
+          <div className="vendor-hero-eyebrow vendor-hero-eyebrow-dark mb-6 inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold leading-5 sm:mb-7 sm:px-4 sm:text-sm">
             <WandSparkles className="h-4 w-4" />
             {copy.eyebrow}
           </div>
 
-          <h1 className="vendor-display text-[clamp(2.25rem,11vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.055em] text-[#111827] sm:leading-[0.95] sm:tracking-[-0.06em] lg:leading-[0.94] lg:tracking-[-0.065em]">
+          <h1 className="vendor-display text-[clamp(2.55rem,10vw,5.9rem)] font-semibold leading-[0.96] tracking-[-0.06em] text-white lg:leading-[0.92] lg:tracking-[-0.068em]">
             {copy.title}
             <span className="vendor-hero-accent mt-4 block">{copy.accent}</span>
           </h1>
 
-          <p className="mt-6 max-w-2xl text-[16px] leading-7 text-slate-600 sm:mt-8 sm:text-xl sm:leading-9">
+          <p className="mt-7 max-w-2xl text-[16px] leading-7 text-slate-300 sm:mt-8 sm:text-xl sm:leading-9">
             {copy.description}
           </p>
 
-          <div className="mt-7 flex flex-col gap-3 sm:mt-9 sm:flex-row">
+          <div className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row">
             <Link href="/demo" className="vendor-cta-primary group inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-7 font-semibold text-white">
               {copy.primary}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
-            <Link href="/produtos" className="vendor-cta-secondary inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-7 font-semibold text-slate-800">
+            <Link href="/produtos" className="vendor-cta-secondary vendor-cta-secondary-dark inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-7 font-semibold text-white">
               {copy.secondary}
             </Link>
           </div>
 
-          <div className="mt-5 flex items-start gap-2 text-sm leading-6 text-slate-500">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          <div className="mt-5 flex items-start gap-2 text-sm leading-6 text-slate-400">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
             <span>{copy.proof}</span>
           </div>
 
-          <div className="mt-8 sm:mt-10">
-            <p className="mb-4 text-xs font-bold uppercase tracking-[0.19em] text-slate-400">{copy.enginesIntro}</p>
+          <div className="mt-9 sm:mt-11">
+            <p className="mb-4 text-xs font-bold uppercase tracking-[0.19em] text-slate-500">{copy.enginesIntro}</p>
             <div className="grid gap-3 sm:grid-cols-3">
               {copy.engines.map((engine, index) => {
                 const Icon = engine.icon;
                 return (
-                  <div key={engine.title} className="vendor-engine-card rounded-[20px] p-4">
+                  <motion.div
+                    key={engine.title}
+                    className="vendor-engine-card vendor-engine-card-dark rounded-[20px] p-4"
+                    initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.45, delay: 0.2 + index * 0.08 }}
+                  >
                     <div className="mb-4 flex items-center justify-between">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-400/20 bg-orange-400/10 text-orange-300">
                         <Icon className="h-5 w-5" />
                       </div>
-                      <span className="text-xs font-semibold text-slate-300">0{index + 1}</span>
+                      <span className="text-xs font-semibold text-slate-600">0{index + 1}</span>
                     </div>
-                    <p className="text-sm font-semibold text-slate-950">{engine.title}</p>
-                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{engine.text}</p>
-                  </div>
+                    <p className="text-sm font-semibold text-white">{engine.title}</p>
+                    <p className="mt-1.5 text-xs leading-5 text-slate-400">{engine.text}</p>
+                  </motion.div>
                 );
               })}
             </div>
@@ -127,66 +148,91 @@ export default function GrowthRevenueHero() {
 
         <motion.div
           className="relative min-w-0 lg:pl-2"
-          initial={{ opacity: 0, x: 34, scale: 0.985 }}
+          initial={reduceMotion ? false : { opacity: 0, x: 34, scale: 0.98 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
-          transition={{ duration: 0.78, delay: 0.08, ease: "easeOut" }}
+          transition={{ duration: 0.82, delay: 0.08, ease: "easeOut" }}
         >
-          <div className="vendor-product-window overflow-hidden rounded-[22px] sm:rounded-[30px]">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white/90 px-4 py-3.5 backdrop-blur-xl sm:px-6 sm:py-4">
+          <div className="vendor-product-window vendor-product-window-dark overflow-hidden rounded-[24px] sm:rounded-[32px]">
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/25 px-4 py-3.5 backdrop-blur-xl sm:px-6 sm:py-4">
               <div>
-                <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.17em] text-orange-600">
+                <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.17em] text-orange-300">
                   <Sparkles className="h-3.5 w-3.5" /> {copy.previewLabel}
                 </div>
-                <h2 className="mt-2 text-lg font-semibold tracking-[-0.025em] text-slate-950 sm:text-2xl">{copy.previewTitle}</h2>
+                <h2 className="mt-2 text-lg font-semibold tracking-[-0.025em] text-white sm:text-2xl">{copy.previewTitle}</h2>
               </div>
-              <span className="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 sm:inline-flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online
+              <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 sm:inline-flex">
+                <motion.span
+                  className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+                  animate={reduceMotion ? undefined : { opacity: [0.35, 1, 0.35], scale: [0.9, 1.18, 0.9] }}
+                  transition={{ duration: 1.8, repeat: Infinity }}
+                />
+                {copy.live}
               </span>
             </div>
 
-            <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 sm:aspect-[16/9]">
+            <div className="relative aspect-[4/3] overflow-hidden bg-[#05080d] sm:aspect-[16/9]">
               <video
-                autoPlay
+                autoPlay={!reduceMotion}
                 muted
                 loop
                 playsInline
                 preload="metadata"
                 poster={`${MEDIA}/crm-pipeline/desktop-1440.webp`}
-                className="h-full w-full object-cover object-top sm:object-cover"
+                className="h-full w-full object-cover object-top"
                 aria-label={copy.previewTitle}
               >
                 <source src={`${MEDIA}/videos/crm-short.webm`} type="video/webm" />
               </video>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white/35 to-transparent" />
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,transparent_50%,rgba(249,115,22,0.07)_100%)]" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#05080d]/70 to-transparent" />
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-200/70 bg-white/95 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
-              <p className="max-w-xl text-sm leading-6 text-slate-600">{copy.previewText}</p>
-              <Link href="/produtos/crm" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-700 hover:text-orange-600">
+            <div className="flex flex-col gap-3 border-t border-white/10 bg-black/25 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+              <p className="max-w-xl text-sm leading-6 text-slate-300">{copy.previewText}</p>
+              <Link href="/produtos/crm" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-300 hover:text-orange-200">
                 {copy.previewLink} <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
 
-          <div className="vendor-floating-stat vendor-floating-stat-left hidden lg:flex">
-            <BarChart3 className="h-4 w-4 text-orange-600" />
-            <div><strong>Revenue Intelligence</strong><span>Próxima melhor ação</span></div>
-          </div>
-          <div className="vendor-floating-stat vendor-floating-stat-right hidden xl:flex">
-            <UsersRound className="h-4 w-4 text-emerald-600" />
-            <div><strong>CRM + IA</strong><span>Contexto em tempo real</span></div>
-          </div>
           <motion.div
-            className="pointer-events-none absolute -bottom-5 left-8 right-8 hidden items-center justify-between rounded-2xl border border-white/70 bg-white/90 px-4 py-3 text-xs font-semibold text-slate-600 shadow-xl backdrop-blur-xl md:flex"
-            initial={{ opacity: 0, y: 18 }}
+            className="vendor-floating-stat vendor-floating-stat-dark vendor-floating-stat-left hidden lg:flex"
+            animate={reduceMotion ? undefined : { y: [0, -8, 0] }}
+            transition={{ duration: 4.4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <BarChart3 className="h-4 w-4 text-orange-300" />
+            <div><strong>{copy.signal}</strong><span>{copy.signalText}</span></div>
+          </motion.div>
+
+          <motion.div
+            className="vendor-floating-stat vendor-floating-stat-dark vendor-floating-stat-right hidden xl:flex"
+            animate={reduceMotion ? undefined : { y: [0, 9, 0] }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 0.35 }}
+          >
+            <UsersRound className="h-4 w-4 text-emerald-300" />
+            <div><strong>{copy.context}</strong><span>{copy.contextText}</span></div>
+          </motion.div>
+
+          <motion.div
+            className="vendor-hero-signal-chip pointer-events-none absolute left-5 top-[42%] hidden items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.13em] text-orange-200 backdrop-blur-xl 2xl:flex"
+            animate={reduceMotion ? undefined : { x: [0, 10, 0], opacity: [0.72, 1, 0.72] }}
+            transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Zap className="h-3.5 w-3.5" />
+            TAD · next best action
+          </motion.div>
+
+          <motion.div
+            className="vendor-hero-flow absolute -bottom-6 left-5 right-5 hidden items-center justify-between rounded-2xl px-4 py-3 text-[11px] font-semibold text-slate-300 md:flex xl:left-8 xl:right-8"
+            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.65 }}
           >
             {["Sinal", "Prospector", "CRM", "SDR", "Closer", "Venda", "Pós-venda"].map((step, index) => (
-              <span key={step} className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-50 text-[10px] font-bold text-orange-700">{index + 1}</span>
-                {step}
-                {index < 6 ? <ArrowRight className="h-3 w-3 text-slate-300" /> : null}
+              <span key={step} className="flex min-w-0 items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-orange-400/20 bg-orange-400/10 text-[10px] font-bold text-orange-300">{index + 1}</span>
+                <span className="hidden xl:inline">{step}</span>
+                {index < 6 ? <ArrowRight className="h-3 w-3 shrink-0 text-slate-600" /> : null}
               </span>
             ))}
           </motion.div>
