@@ -573,7 +573,9 @@ export default function ConceptModel3D({
   const [renderQuality, setRenderQuality] = useState<"fast" | "realistic" | "ultra">("realistic");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
-  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin">("orbit");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin" | "tour">("orbit");
+  const [tourIndex, setTourIndex] = useState(0);
+  const [tourToken, setTourToken] = useState(0);
   const [walkControl, setWalkControl] = useState({ forward: 0, strafe: 0 });
   const [walkSpeed, setWalkSpeed] = useState(0.12);
   const [walkResetToken, setWalkResetToken] = useState(0);
@@ -622,6 +624,42 @@ export default function ConceptModel3D({
   useEffect(() => {
     if (navigationMode !== "walk") setWalkControl({ forward: 0, strafe: 0 });
   }, [navigationMode]);
+
+  const tourPoints = useMemo(() => {
+    const level = levels.find((item) => item.floor === activeFloor);
+    if (!level) return [];
+    return level.closedSpaces
+      .filter((space) => Number.isFinite(space.centroid?.x) && Number.isFinite(space.centroid?.y) && space.area >= 1.5)
+      .sort((a, b) => b.area - a.area)
+      .map((space, index) => ({
+        id: space.id,
+        label: level.labels?.[space.id] ?? `Ambiente ${index + 1}`,
+        x: space.centroid.x,
+        y: space.centroid.y,
+        floor: activeFloor,
+        area: space.area,
+      }));
+  }, [activeFloor, levels]);
+
+  const activeTourPoint = tourPoints.length
+    ? tourPoints[Math.min(tourIndex, tourPoints.length - 1)]
+    : null;
+
+  useEffect(() => {
+    if (!tourPoints.length) {
+      setTourIndex(0);
+      if (navigationMode === "tour") setNavigationMode("walk");
+      return;
+    }
+    setTourIndex((current) => Math.min(current, tourPoints.length - 1));
+  }, [navigationMode, tourPoints.length]);
+
+  const goToTourPoint = (nextIndex: number) => {
+    if (!tourPoints.length) return;
+    const normalized = ((nextIndex % tourPoints.length) + tourPoints.length) % tourPoints.length;
+    setTourIndex(normalized);
+    setTourToken((value) => value + 1);
+  };
 
   const resetCamera = () => {
     setRotation(35);
@@ -1141,6 +1179,24 @@ export default function ConceptModel3D({
               >
                 Giro 360°
               </button>
+              <button
+                type="button"
+                disabled={!tourPoints.length}
+                onClick={() => {
+                  setNavigationMode("tour");
+                  setInteriorMode(true);
+                  setShowAllFloors(false);
+                  setShowRoof(false);
+                  setTourIndex(0);
+                  setTourToken((value) => value + 1);
+                }}
+                className={navigationMode === "tour"
+                  ? "border-l border-slate-700 bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"}
+                title={tourPoints.length ? "Tour automático pelos ambientes" : "Nenhum ambiente fechado detectado neste pavimento"}
+              >
+                Tour
+              </button>
             </div>
           )}
           <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white" title="Qualidade da visualização 3D">
@@ -1161,6 +1217,37 @@ export default function ConceptModel3D({
               </button>
             ))}
           </div>
+          {webglReady && navigationMode === "tour" && activeTourPoint && (
+            <div className="flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 p-1">
+              <button
+                type="button"
+                onClick={() => goToTourPoint(tourIndex - 1)}
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-orange-800 hover:bg-orange-100"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTourToken((value) => value + 1);
+                }}
+                className="min-w-[110px] rounded-md px-2 py-1.5 text-[10px] font-semibold text-orange-900 hover:bg-orange-100"
+                title={`${activeTourPoint.label} · ${activeTourPoint.area.toFixed(1)} m²`}
+              >
+                {activeTourPoint.label}
+              </button>
+              <button
+                type="button"
+                onClick={() => goToTourPoint(tourIndex + 1)}
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-orange-800 hover:bg-orange-100"
+              >
+                →
+              </button>
+              <span className="px-1 text-[9px] font-semibold text-orange-700">
+                {tourIndex + 1}/{tourPoints.length}
+              </span>
+            </div>
+          )}
           {webglReady && navigationMode === "walk" && (
             <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
               {([
@@ -1360,6 +1447,12 @@ export default function ConceptModel3D({
         walkControl={walkControl}
         walkSpeed={walkSpeed}
         walkResetToken={walkResetToken}
+        tourPoint={activeTourPoint ? {
+          x: activeTourPoint.x,
+          y: activeTourPoint.y,
+          floor: activeTourPoint.floor,
+          token: tourToken,
+        } : null}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
