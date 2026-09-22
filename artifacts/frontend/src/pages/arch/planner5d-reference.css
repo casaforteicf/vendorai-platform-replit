@@ -149,10 +149,10 @@
   overflow: hidden;
   background-color: var(--arq-canvas);
   background-image:
-    linear-gradient(rgb(203 213 225 / .62) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(203 213 225 / .62) 1px, transparent 1px),
-    linear-gradient(rgb(226 232 240 / .78) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(226 232 240 / .78) 1px, transparent 1px);
+    linear-gradient(rgb(203 213 225 / .34) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(203 213 225 / .34) 1px, transparent 1px),
+    linear-gradient(rgb(226 232 240 / .46) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(226 232 240 / .46) 1px, transparent 1px);
   background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
 }
 
@@ -161,7 +161,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  box-shadow: inset 0 0 80px rgb(15 23 42 / .035);
+  box-shadow: inset 0 0 72px rgb(15 23 42 / .025);
 }
 
 .arqdor-reference-ui .arq-canvas > svg,

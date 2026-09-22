@@ -409,7 +409,7 @@ export default function ConceptPlan2D({
       setWallDrawPreview(null);
       pendingClosedSpaceSelectRef.current = false;
     }
-  }, [interactionMode]);
+  }, [fitView, interactionMode]);
 
   useEffect(() => {
     const currentIds = new Set(closedSpaces.map((space) => space.id));
@@ -543,6 +543,22 @@ export default function ConceptPlan2D({
         return;
       }
 
+      if (event.key.toLowerCase() === "f" || event.key === "0") {
+        event.preventDefault();
+        setView(fitView);
+        return;
+      }
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        zoomView(0.84);
+        return;
+      }
+      if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        zoomView(1.18);
+        return;
+      }
+
       if (interactionMode === "draw-wall" && (event.key === "Escape" || event.key === "Enter")) {
         event.preventDefault();
         setWallDrawStart(null);
@@ -596,6 +612,7 @@ export default function ConceptPlan2D({
   };
 
   const resetView = () => setView(fitView);
+  const zoomPercent = Math.max(25, Math.min(400, Math.round((fitView.width / Math.max(0.001, view.width)) * 100)));
 
   const toSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -1075,40 +1092,44 @@ export default function ConceptPlan2D({
   };
 
   return (
-    <div className="relative h-[calc(100dvh-64px)] min-h-[420px] overflow-hidden bg-white sm:min-h-[620px]">
-      <div className="absolute bottom-4 right-4 z-20 flex flex-col items-center gap-1 rounded-xl border bg-white/95 p-1 shadow-sm backdrop-blur">
+    <div className="relative h-[calc(100dvh-64px)] min-h-[420px] overflow-hidden bg-[#f8fafc] sm:min-h-[620px]">
+      <div className="absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-lg backdrop-blur">
         <button
           type="button"
-          onClick={() => zoomView(0.82)}
-          className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-          title="Aproximar"
+          onClick={() => zoomView(0.84)}
+          className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          title="Aproximar (+)"
         >
           <ZoomIn className="h-4 w-4" />
         </button>
+        <div className="min-w-[54px] rounded-lg bg-slate-50 px-2 py-1.5 text-center text-[11px] font-bold tabular-nums text-slate-600">
+          {zoomPercent}%
+        </div>
         <button
           type="button"
-          onClick={() => zoomView(1.22)}
-          className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-          title="Afastar"
+          onClick={() => zoomView(1.18)}
+          className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          title="Afastar (-)"
         >
           <ZoomOut className="h-4 w-4" />
         </button>
+        <div className="mx-0.5 h-6 w-px bg-slate-200" />
         <button
           type="button"
           onClick={resetView}
-          className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-          title="Enquadrar construção"
+          className="grid h-9 w-9 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          title="Enquadrar projeto (F)"
         >
           <Maximize2 className="h-4 w-4" />
         </button>
         {interactionMode === "navigate" && (
-          <div className="ml-1 flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1.5 text-[11px] font-semibold text-white">
-            <Move className="h-3.5 w-3.5" /> Arraste para navegar
+          <div className="hidden items-center gap-1 rounded-xl bg-slate-900 px-2.5 py-2 text-[11px] font-semibold text-white lg:flex">
+            <Move className="h-3.5 w-3.5" /> Arraste
           </div>
         )}
         {interactionMode === "draw-wall" && wallDrawStart && (
-          <div className="ml-1 hidden items-center rounded-lg bg-orange-50 px-2 py-1.5 text-[11px] font-semibold text-orange-700 md:flex">
-            Clique para continuar · volte ao início para fechar · Esc/Enter finaliza
+          <div className="hidden items-center rounded-xl bg-orange-50 px-2.5 py-2 text-[11px] font-semibold text-orange-700 xl:flex">
+            Clique para continuar · Esc/Enter finaliza
           </div>
         )}
       </div>
@@ -1296,27 +1317,24 @@ export default function ConceptPlan2D({
           </g>
         )}
 
-        <line x1="0" y1="-0.55" x2={lotWidth} y2="-0.55" stroke="#94a3b8" strokeWidth="0.035" />
-        <line x1="0" y1="-0.82" x2="0" y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
-        <line x1={lotWidth} y1="-0.82" x2={lotWidth} y2="-0.25" stroke="#94a3b8" strokeWidth="0.035" />
-        <text x={lotWidth / 2} y="-0.88" textAnchor="middle" fontSize="0.34" fontWeight="700" fill="#64748b">
-          {formatMeters(lotWidth)} m
-        </text>
-
-        <line x1="-0.55" y1="0" x2="-0.55" y2={lotDepth} stroke="#94a3b8" strokeWidth="0.035" />
-        <line x1="-0.82" y1="0" x2="-0.25" y2="0" stroke="#94a3b8" strokeWidth="0.035" />
-        <line x1="-0.82" y1={lotDepth} x2="-0.25" y2={lotDepth} stroke="#94a3b8" strokeWidth="0.035" />
-        <text
-          x="-0.9"
-          y={lotDepth / 2}
-          textAnchor="middle"
-          fontSize="0.34"
-          fontWeight="700"
-          fill="#64748b"
-          transform={`rotate(-90 -0.9 ${lotDepth / 2})`}
-        >
-          {formatMeters(lotDepth)} m
-        </text>
+        {showDimensions && (
+          <g pointerEvents="none">
+            <text x={lotWidth / 2} y="-0.82" textAnchor="middle" fontSize="0.28" fontWeight="700" fill="#64748b">
+              {formatMeters(lotWidth)} m
+            </text>
+            <text
+              x="-0.82"
+              y={lotDepth / 2}
+              textAnchor="middle"
+              fontSize="0.28"
+              fontWeight="700"
+              fill="#64748b"
+              transform={`rotate(-90 -0.82 ${lotDepth / 2})`}
+            >
+              {formatMeters(lotDepth)} m
+            </text>
+          </g>
+        )}
 
         <g>
           <line x1={lotWidth - 0.9} y1="-1.65" x2={lotWidth - 0.9} y2="-0.75" stroke="#0f172a" strokeWidth="0.07" />
@@ -1324,24 +1342,16 @@ export default function ConceptPlan2D({
           <text x={lotWidth - 0.9} y="-2.02" textAnchor="middle" fontSize="0.34" fontWeight="800" fill="#0f172a">N</text>
         </g>
 
-        <g pointerEvents="none">
-          <rect
-            x={lotWidth / 2 - 1.65}
-            y="-2.05"
-            width="3.3"
-            height="0.58"
-            rx="0.18"
-            fill="#fff7ed"
-            stroke="#fb923c"
-            strokeWidth="0.035"
-          />
-          <text x={lotWidth / 2} y="-1.66" textAnchor="middle" fontSize="0.28" fontWeight="850" fill="#c2410c" letterSpacing="0.06">
-            FRENTE / ACESSO
-          </text>
-          <text x={lotWidth / 2} y={lotDepth + 1.35} textAnchor="middle" fontSize="0.28" fontWeight="750" fill="#94a3b8" letterSpacing="0.08">
-            FUNDOS
-          </text>
-        </g>
+        {showDimensions && (
+          <g pointerEvents="none">
+            <text x={lotWidth / 2} y="-1.55" textAnchor="middle" fontSize="0.23" fontWeight="800" fill="#c2410c" letterSpacing="0.05">
+              FRENTE / ACESSO
+            </text>
+            <text x={lotWidth / 2} y={lotDepth + 1.05} textAnchor="middle" fontSize="0.22" fontWeight="700" fill="#94a3b8" letterSpacing="0.07">
+              FUNDOS
+            </text>
+          </g>
+        )}
 
         {closedSpaces.map((space, index) => {
           const selectedSpace = selectedClosedSpaceId === space.id;
@@ -2131,8 +2141,8 @@ export default function ConceptPlan2D({
                 y1={wall.y1}
                 x2={wall.x2}
                 y2={wall.y2}
-                stroke={selected ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? "#111827"}
-                strokeWidth={selected ? "0.21" : String(wall.thickness ?? 0.15)}
+                stroke={selected ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? "#1e293b"}
+                strokeWidth={selected ? "0.18" : String(Math.max(0.10, Math.min(0.15, wall.thickness ?? 0.15)))}
                 strokeLinecap="square"
                 pointerEvents="none"
               />
@@ -2457,8 +2467,8 @@ export default function ConceptPlan2D({
                 y1={wall.y1}
                 x2={wall.x2}
                 y2={wall.y2}
-                stroke={selectedWall ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? (wall.exterior ? "#111827" : "#334155")}
-                strokeWidth={selectedWall ? "0.20" : wall.exterior ? "0.16" : "0.095"}
+                stroke={selectedWall ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? (wall.exterior ? "#1e293b" : "#475569")}
+                strokeWidth={selectedWall ? "0.18" : wall.exterior ? "0.14" : "0.085"}
                 strokeLinecap="square"
                 pointerEvents="none"
               />
