@@ -31,6 +31,8 @@ type Props = {
   transformMode?: "translate" | "rotate";
   navigationMode?: "orbit" | "walk" | "spin";
   walkControl?: { forward: number; strafe: number };
+  walkSpeed?: number;
+  walkResetToken?: number;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
@@ -66,6 +68,7 @@ type Runtime = {
   navigationMode: "orbit" | "walk" | "spin";
   walkKeys: Set<string>;
   walkControl: { forward: number; strafe: number };
+  walkSpeed: number;
   walkYaw: number;
   walkPitch: number;
   walkDragging: boolean;
@@ -208,6 +211,8 @@ export default function ConceptWebGLScene({
   transformMode = "translate",
   navigationMode = "orbit",
   walkControl = { forward: 0, strafe: 0 },
+  walkSpeed = 0.12,
+  walkResetToken = 0,
   paintTool = null,
   onReady,
   onSelectObject,
@@ -343,6 +348,7 @@ export default function ConceptWebGLScene({
           navigationMode: "orbit",
           walkKeys: new Set(),
           walkControl: { forward: 0, strafe: 0 },
+          walkSpeed: Math.max(0.05, Math.min(0.28, walkSpeed)),
           walkYaw: 0,
           walkPitch: 0,
           walkDragging: false,
@@ -517,7 +523,7 @@ export default function ConceptWebGLScene({
               - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
             const forward = Math.max(-1, Math.min(1, keyboardForward + runtime.walkControl.forward));
             const strafe = Math.max(-1, Math.min(1, keyboardStrafe + runtime.walkControl.strafe));
-            const speed = 0.12;
+            const speed = runtime.walkSpeed;
             if (forward || strafe) {
               const stepX = (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
               const stepZ = (-Math.cos(runtime.walkYaw) * forward - Math.sin(runtime.walkYaw) * strafe) * speed;
@@ -1333,6 +1339,26 @@ export default function ConceptWebGLScene({
       strafe: Math.max(-1, Math.min(1, walkControl.strafe || 0)),
     };
   }, [engineState, walkControl.forward, walkControl.strafe]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+    runtime.walkSpeed = Math.max(0.05, Math.min(0.28, walkSpeed));
+  }, [engineState, walkSpeed]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || navigationMode !== "walk") return;
+    const floorY = activeFloor * 2.96 + 1.62;
+    const startZ = Math.min(lotDepth / 2 - 0.8, 2.5);
+    runtime.camera.position.set(0, floorY, startZ);
+    runtime.walkYaw = Math.PI;
+    runtime.walkPitch = 0;
+    runtime.walkKeys.clear();
+    runtime.walkControl = { forward: 0, strafe: 0 };
+    const lookDistance = 5;
+    runtime.controls.target.set(0, floorY, startZ + lookDistance);
+  }, [activeFloor, engineState, lotDepth, navigationMode, walkResetToken]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

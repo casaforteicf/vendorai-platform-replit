@@ -575,6 +575,9 @@ export default function ConceptModel3D({
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
   const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin">("orbit");
   const [walkControl, setWalkControl] = useState({ forward: 0, strafe: 0 });
+  const [walkSpeed, setWalkSpeed] = useState(0.12);
+  const [walkResetToken, setWalkResetToken] = useState(0);
+  const sceneRootRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
@@ -931,7 +934,7 @@ export default function ConceptModel3D({
         };
 
   return (
-    <div className="relative h-[calc(100dvh-64px)] overflow-hidden bg-[#edf1f4]">
+    <div ref={sceneRootRef} className="relative h-[calc(100dvh-64px)] overflow-hidden bg-[#edf1f4]">
       <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-start justify-between gap-3">
         <div className="pointer-events-auto hidden max-w-[360px] rounded-2xl border border-slate-200/90 bg-white/94 px-3.5 py-3 text-slate-800 shadow-lg backdrop-blur lg:block">
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1078,6 +1081,50 @@ export default function ConceptModel3D({
               </button>
             ))}
           </div>
+          {webglReady && navigationMode === "walk" && (
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+              {([
+                [0.08, "Lenta"],
+                [0.12, "Normal"],
+                [0.20, "Rápida"],
+              ] as const).map(([speed, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setWalkSpeed(speed)}
+                  className={Math.abs(walkSpeed - speed) < 0.001
+                    ? "rounded-md bg-orange-500 px-2 py-1.5 text-[10px] font-semibold text-white"
+                    : "rounded-md px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setWalkControl({ forward: 0, strafe: 0 });
+                  setWalkResetToken((value) => value + 1);
+                }}
+                className="rounded-md border-l border-slate-200 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                title="Voltar para o ponto inicial do tour"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const root = sceneRootRef.current;
+                  if (!root) return;
+                  if (document.fullscreenElement) void document.exitFullscreen?.();
+                  else void root.requestFullscreen?.();
+                }}
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                title="Abrir walkthrough em tela cheia"
+              >
+                Tela cheia
+              </button>
+            </div>
+          )}
           {onRenderView && (
             <button
               type="button"
@@ -1231,6 +1278,8 @@ export default function ConceptModel3D({
         transformMode={transformMode}
         navigationMode={navigationMode}
         walkControl={walkControl}
+        walkSpeed={walkSpeed}
+        walkResetToken={walkResetToken}
         paintTool={paintTool}
         onReady={setWebglReady}
         onSelectObject={(objectId) => {
