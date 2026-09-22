@@ -4090,7 +4090,7 @@ export default function ConceptPlanner() {
                               </div>
                               <div className="mt-0.5 text-[11px] text-slate-500">{item.subtitle}</div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -4370,9 +4370,10 @@ export default function ConceptPlanner() {
                               if (!preset || !imageUrl) return null;
                               const price = Number(item.precoBase ?? 0);
                               return (
-                                <button
+                                <div
                                   key={item.id}
-                                  type="button"
+                                  role="button"
+                                  tabIndex={0}
                                   draggable
                                   onDragStart={(event) => {
                                     event.dataTransfer.effectAllowed = "copy";
@@ -4387,6 +4388,9 @@ export default function ConceptPlanner() {
                                       price: price > 0 ? price : undefined,
                                       model3dUrl: getCatalogModel3dUrl(item),
                                     }));
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") event.currentTarget.click();
                                   }}
                                   onClick={() => {
                                     rememberRecentItem(realLibraryItemKey(item.id));
@@ -4447,7 +4451,7 @@ export default function ConceptPlanner() {
                                       </div>
                                     )}
                                   </div>
-                                </button>
+                                </div>
                               );
                             })}
                           </div>
@@ -4463,13 +4467,17 @@ export default function ConceptPlanner() {
 
                       <div className="grid grid-cols-2 gap-3">
                         {filteredFurniture.map(({ kind, label, width, depth, category }) => (
-                          <button
+                          <div
                             key={`${category}-${label}`}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             draggable
                             onDragStart={(event) => {
                               event.dataTransfer.effectAllowed = "copy";
                               event.dataTransfer.setData("application/x-arqdor-object", JSON.stringify({ kind, label, width, depth }));
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") event.currentTarget.click();
                             }}
                             onClick={() => {
                               rememberRecentItem(libraryItemKey(label, category));
