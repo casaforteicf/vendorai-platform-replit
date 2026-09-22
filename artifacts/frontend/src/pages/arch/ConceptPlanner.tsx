@@ -67,6 +67,18 @@ type RoomKind =
   | "escada"
   | "outro";
 
+type EditorLibraryTab = "site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor";
+type EditorExperienceMode = "guided" | "professional";
+
+const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
+  { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
+  { id: "rooms", label: "Ambientes", helper: "Adicione ou nomeie os cômodos da casa." },
+  { id: "build", label: "Construir", helper: "Ajuste paredes, portas, janelas e escada." },
+  { id: "furniture", label: "Mobiliar", helper: "Posicione móveis e equipamentos reais." },
+  { id: "materials", label: "Acabamentos", helper: "Aplique pisos, paredes e materiais." },
+  { id: "outdoor", label: "Externo", helper: "Complete jardim, lazer e área externa." },
+];
+
 type Room = {
   id: string;
   kind: RoomKind;
@@ -685,6 +697,7 @@ export default function ConceptPlanner() {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
+  const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
 
   useEffect(() => {
     if (step !== WORKSPACE_STEP) {
@@ -781,7 +794,7 @@ export default function ConceptPlanner() {
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
   const [polyHavenInsertSlug, setPolyHavenInsertSlug] = useState<string | null>(null);
   const [autoModelPreviews, setAutoModelPreviews] = useState<Record<string, AutoModelPreview>>({});
-  const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
   const closeLibraryOnMobile = () => {
@@ -4063,6 +4076,26 @@ export default function ConceptPlanner() {
                   <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
                   <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                 </button>
+                <div className="ml-1 hidden items-center rounded-xl border border-white/10 bg-white/5 p-1 xl:flex">
+                  <button
+                    type="button"
+                    onClick={() => setEditorExperienceMode("guided")}
+                    className={editorExperienceMode === "guided"
+                      ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
+                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
+                  >
+                    Guiado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorExperienceMode("professional")}
+                    className={editorExperienceMode === "professional"
+                      ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
+                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
+                  >
+                    Profissional
+                  </button>
+                </div>
               </div>
 
               <div className="order-3 w-full min-w-0 lg:absolute lg:left-1/2 lg:top-1/2 lg:order-none lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
@@ -4376,10 +4409,12 @@ export default function ConceptPlanner() {
                         ["models", LayoutGrid, "Modelos"],
                         ["build", Layers3, "Construir"],
                         ["rooms", Home, "Ambientes"],
-                        ["furniture", LayoutGrid, "Itens"],
-                        ["materials", Sparkles, "Materiais"],
+                        ["furniture", LayoutGrid, editorExperienceMode === "guided" ? "Mobiliar" : "Itens"],
+                        ["materials", Sparkles, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
-                      ] as const).map(([value, Icon, label]) => (
+                      ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
+                        .filter(([value]) => editorExperienceMode === "professional" || value !== "models")
+                        .map(([value, Icon, label]) => (
                         <button
                           key={value}
                           type="button"
@@ -4418,8 +4453,15 @@ export default function ConceptPlanner() {
                                     ? "Materiais"
                                     : "Área externa"}
                       </div>
+                      {editorExperienceMode === "guided" && editorView === "plan" && (
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-orange-600">
+                          Etapa {Math.max(1, GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab) + 1)} de {GUIDED_LIBRARY_FLOW.length}
+                        </div>
+                      )}
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
-                        {editorLibraryTab === "site"
+                        {editorExperienceMode === "guided"
+                          ? (GUIDED_LIBRARY_FLOW.find((item) => item.id === editorLibraryTab)?.helper ?? "Escolha uma etapa para continuar.")
+                          : editorLibraryTab === "site"
                           ? "Dimensões e implantação do lote"
                           : editorLibraryTab === "models"
                             ? "Escolha uma base sem sair do editor"
@@ -4433,6 +4475,39 @@ export default function ConceptPlanner() {
                                     ? "Aplique no objeto selecionado"
                                     : "Lazer e área externa"}
                       </div>
+                      {editorExperienceMode === "guided" && editorView === "plan" && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="flex min-w-0 flex-1 gap-1">
+                            {GUIDED_LIBRARY_FLOW.map((item, index) => (
+                              <span
+                                key={item.id}
+                                className={item.id === editorLibraryTab
+                                  ? "h-1.5 flex-1 rounded-full bg-orange-500"
+                                  : index < GUIDED_LIBRARY_FLOW.findIndex((flow) => flow.id === editorLibraryTab)
+                                    ? "h-1.5 flex-1 rounded-full bg-emerald-400"
+                                    : "h-1.5 flex-1 rounded-full bg-slate-200"}
+                              />
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = GUIDED_LIBRARY_FLOW.findIndex((item) => item.id === editorLibraryTab);
+                              const next = GUIDED_LIBRARY_FLOW[Math.min(GUIDED_LIBRARY_FLOW.length - 1, Math.max(0, current) + 1)];
+                              if (next) {
+                                setEditorLibraryTab(next.id);
+                                setLibraryOpen(true);
+                              } else {
+                                setEditorView("facade");
+                                setLibraryOpen(false);
+                              }
+                            }}
+                            className="shrink-0 rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white"
+                          >
+                            Próximo
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
