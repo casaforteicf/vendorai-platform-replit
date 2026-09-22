@@ -202,7 +202,10 @@ function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   if (/cama|colchão|colchao/.test(text)) return sized("bed", 1.6, 2.0);
   if (/mesa|ilha cozinha/.test(text)) return sized("table", 1.4, 0.8);
   if (/cadeira|banco|banqueta|espreguiçadeira/.test(text)) return sized("chair", 0.55, 0.55);
-  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack|torre quente|estante|geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa/.test(text)) return sized("cabinet", 1.2, 0.55);
+  if (/geladeira|refrigerador|forno|micro-ondas|microondas|cooktop|coifa|lava-louças|lava louças|lavadora|secadora/.test(text)) return sized("appliance", 0.75, 0.70);
+  if (/vaso sanitário|vaso sanitario|bacia sanitária|bacia sanitaria|cuba|lavatório|lavatorio|banheira/.test(text)) return sized("sanitary", 0.75, 0.70);
+  if (/espreguiçadeira|espreguicadeira|ombrelone|banco externo|sofá externo|sofa externo|cadeira externa/.test(text)) return sized("outdoor", 0.90, 0.90);
+  if (/armário|armario|roupeiro|gabinete|balcão|balcao|rack|torre quente|estante/.test(text)) return sized("cabinet", 1.2, 0.55);
   if (/televis|\btv\b|painel/.test(text)) return sized("tv", 1.6, 0.25);
   if (/planta|vaso|folhagem|flores|árvore|arvore|palmeira|arbusto/.test(text)) return sized("plant", 0.65, 0.65);
   if (/luminária|luminaria|abajur|pendente|plafon|arandela|balizador/.test(text)) return sized("lamp", 0.45, 0.45);
@@ -306,6 +309,11 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "chair", label: "Cadeira", width: 0.55, depth: 0.55, category: "Jantar" },
   { kind: "cabinet", label: "Balcão", width: 1.20, depth: 0.60, category: "Cozinha" },
   { kind: "cabinet", label: "Armário", width: 1.80, depth: 0.60, category: "Cozinha" },
+  { kind: "appliance", label: "Geladeira", width: 0.78, depth: 0.72, category: "Cozinha" },
+  { kind: "appliance", label: "Forno torre", width: 0.60, depth: 0.60, category: "Cozinha" },
+  { kind: "appliance", label: "Lava-louças", width: 0.60, depth: 0.60, category: "Cozinha" },
+  { kind: "sanitary", label: "Vaso sanitário", width: 0.70, depth: 0.75, category: "Hidráulica" },
+  { kind: "sanitary", label: "Cuba / lavatório", width: 0.65, depth: 0.50, category: "Hidráulica" },
   { kind: "table", label: "Mesa escritório", width: 1.20, depth: 0.60, category: "Escritório" },
   { kind: "chair", label: "Cadeira escritório", width: 0.60, depth: 0.60, category: "Escritório" },
   { kind: "plant", label: "Planta em vaso", width: 0.65, depth: 0.65, category: "Decoração" },
@@ -321,9 +329,10 @@ const CONCEPT_FURNITURE_LIBRARY: Array<{
   { kind: "drain_point", label: "Ponto de esgoto", width: 0.40, depth: 0.40, category: "Hidráulica" },
   { kind: "shower_point", label: "Ponto de chuveiro", width: 0.45, depth: 0.45, category: "Hidráulica" },
   { kind: "faucet_point", label: "Ponto de torneira", width: 0.40, depth: 0.40, category: "Hidráulica" },
-  { kind: "chair", label: "Espreguiçadeira", width: 0.75, depth: 1.90, category: "Exterior" },
+  { kind: "outdoor", label: "Espreguiçadeira", width: 0.75, depth: 1.90, category: "Exterior" },
+  { kind: "outdoor", label: "Sofá externo", width: 1.90, depth: 0.85, category: "Exterior" },
   { kind: "table", label: "Mesa externa", width: 1.40, depth: 0.90, category: "Exterior" },
-  { kind: "chair", label: "Cadeira externa", width: 0.62, depth: 0.62, category: "Exterior" },
+  { kind: "outdoor", label: "Cadeira externa", width: 0.62, depth: 0.62, category: "Exterior" },
   { kind: "plant", label: "Árvore ornamental", width: 1.40, depth: 1.40, category: "Exterior" },
   { kind: "plant", label: "Arbusto", width: 0.80, depth: 0.80, category: "Exterior" },
   { kind: "lamp", label: "Balizador jardim", width: 0.30, depth: 0.30, category: "Exterior" },
@@ -394,6 +403,7 @@ function normalizeLoadedObjects(input: unknown, floorCount: number): ConceptPlan
   if (!Array.isArray(input)) return [];
   const validKinds = new Set<ConceptPlanObject["kind"]>([
     "sofa", "bed", "table", "chair", "cabinet", "tv", "plant", "lamp", "rug",
+    "appliance", "sanitary", "outdoor",
     "outlet", "switch", "light_point", "water_point", "drain_point", "shower_point", "faucet_point",
   ]);
   return input.flatMap((candidate, index) => {
