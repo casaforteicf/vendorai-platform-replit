@@ -32,7 +32,7 @@ import {
 import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { enrichLead } from "../jobs/leadEnrichment.js";
-import { searchConstructionWorkSignals } from "../services/construction-radar-search.js";
+import { searchConstructionWorkSignals, scoreConstructionOpportunity } from "../services/construction-radar-search.js";
 import {
   searchByCnae,
   getCompanyByCnpj,
@@ -832,6 +832,316 @@ router.post("/prospector/construction-signals/search", async (req, res) => {
     req.log.error({ err }, "prospector/construction-signals/search failed");
     return res.status(502).json({ error: message });
   }
+});
+
+
+// ── POST /prospector/construction-signals/prospect — envia obra ao Prospecctor ──
+const constructionSignalProspectBodySchema = z.object({
+  work: z.object({
+    id: z.string().min(1),
+    obra: z.string().min(2),
+    categoria: z.string().nullish(),
+    local: z.string().min(2),
+    endereco: z.string().nullish(),
+    proprietario: z.string().nullish(),
+    proprietarioTipo: z.enum(["pessoa", "empresa", "orgao_publico", "nao_informado"]),
+    responsavelTecnico: z.string().nullish(),
+    construtora: z.string().nullish(),
+    incorporadora: z.string().nullish(),
+    fase: z.string().nullish(),
+    evidencia: z.string().min(5),
+    dataReferencia: z.string().nullish(),
+    sourceUrl: z.string().url().nullish(),
+    sourceTitle: z.string().nullish(),
+    sourceFamily: z.enum([
+      "prefeitura_alvara",
+      "diario_oficial",
+      "crea_cau",
+      "licenciamento_ambiental",
+      "incorporadora_construtora",
+      "arquiteto_engenheiro",
+      "noticia_portal",
+      "portal_imobiliario",
+      "outro",
+    ]),
+    sourceAuthority: z.enum(["oficial", "primaria", "secundaria"]),
+    confidence: z.number().min(0).max(100),
+  }),
+  actor: z.enum(["auto", "proprietario", "responsavel_tecnico", "construtora", "incorporadora"]).optional().default("auto"),
+  tenantId: z.string().optional(),
+});
+
+function compactConstructionKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 220);
+}
+
+function constructionWorkKey(work: z.infer<typeof constructionSignalProspectBodySchema>["work"]): string {
+  return compactConstructionKey([
+    work.sourceUrl ?? "",
+    work.endereco ?? "",
+    work.obra,
+    work.local,
+  ].join("|"));
+}
+
+router.post("/prospector/construction-signals/prospect", async (req, res) => {
+  const parsed = constructionSignalProspectBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
+  }
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const work = parsed.data.work;
+  const scored = scoreConstructionOpportunity(work);
+
+  const requestedActor = parsed.data.actor;
+  const autoActor = scored.recommendedActor;
+  const actorRole = requestedActor === "auto" ? autoActor : requestedActor;
+  const actorName =
+    actorRole === "proprietario" ? work.proprietario :
+    actorRole === "responsavel_tecnico" ? work.responsavelTecnico :
+    actorRole === "construtora" ? work.construtora :
+    actorRole === "incorporadora" ? work.incorporadora :
+    null;
+
+  const actorType =
+    actorRole === "construtora" || actorRole === "incorporadora" ||
+    (actorRole === "proprietario" && work.proprietarioTipo === "empresa")
+      ? "empresa"
+      : actorName
+        ? "pessoa"
+        : "a_identificar";
+
+  let telefone: string | null = null;
+  let websiteUrl: string | null = null;
+
+  // Só tenta contato empresarial público. Nunca procura telefone pessoal de
+  // proprietário ou responsável técnico pessoa física.
+  if (actorName && actorType === "empresa") {
+    try {
+      await checkApiQuota(tenantId, "google_places", req.log);
+      const place = await searchPlace(\`\${actorName} \${work.local}\`, req.log);
+      if (place?.nomeEmpresa) {
+        const expected = normalizeName(actorName);
+        const found = normalizeName(place.nomeEmpresa);
+        const sameBusiness = expected === found || expected.includes(found) || found.includes(expected);
+        if (sameBusiness) {
+          telefone = place.telefone;
+          websiteUrl = place.siteOficial;
+        }
+      }
+    } catch (err) {
+      req.log.info({ err, actorName }, "prospector/construction-signals/prospect: business contact lookup unavailable");
+    }
+  }
+
+  const workKey = constructionWorkKey(work);
+  const actorLabel = actorName || \`Oportunidade — \${work.obra}\`;
+  const prospectKey = compactConstructionKey(\`\${workKey}|\${actorRole}|\${actorLabel}\`);
+
+  const [existing] = await db
+    .select({
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      metadata: leadsTable.metadata,
+      telefone: leadsTable.telefone,
+      websiteUrl: leadsTable.websiteUrl,
+    })
+    .from(leadsTable)
+    .where(and(
+      eq(leadsTable.tenantId, tenantId),
+      sql\`\${leadsTable.metadata}->>'construction_prospect_key' = \${prospectKey}\`,
+    ))
+    .limit(1);
+
+  const now = new Date().toISOString();
+  const evidenceItem = {
+    key: "construction_work_signal",
+    label: "Obra/projeto identificado em fonte pública",
+    value: \`\${work.obra}\${work.fase ? \` · fase \${work.fase}\` : ""}\`,
+    source: work.sourceUrl ?? work.sourceTitle ?? "Radar de Obras",
+    confidence: work.sourceAuthority === "oficial" ? "high" : work.sourceAuthority === "primaria" ? "medium" : "low",
+    observedAt: now,
+  };
+
+  const metadataPatch = {
+    origem: "construction_radar",
+    source: "construction_radar",
+    source_family: work.sourceFamily,
+    construction_work_key: workKey,
+    construction_prospect_key: prospectKey,
+    construction_actor_role: actorRole,
+    construction_actor_name: actorName,
+    construction_actor_type: actorType,
+    construction_signal: work.evidencia,
+    construction_signal_url: work.sourceUrl,
+    construction_signal_title: work.sourceTitle,
+    construction_signal_authority: work.sourceAuthority,
+    construction_signal_confidence: work.confidence,
+    construction_opportunity_score: scored.score,
+    construction_priority: scored.priority,
+    construction_priority_reason: scored.reason,
+    construction_recommended_actor: scored.recommendedActor,
+    construction_work: {
+      obra: work.obra,
+      categoria: work.categoria,
+      local: work.local,
+      endereco: work.endereco,
+      proprietario: work.proprietario,
+      proprietarioTipo: work.proprietarioTipo,
+      responsavelTecnico: work.responsavelTecnico,
+      construtora: work.construtora,
+      incorporadora: work.incorporadora,
+      fase: work.fase,
+      evidencia: work.evidencia,
+      dataReferencia: work.dataReferencia,
+      sourceUrl: work.sourceUrl,
+      sourceTitle: work.sourceTitle,
+      sourceFamily: work.sourceFamily,
+      sourceAuthority: work.sourceAuthority,
+      confidence: work.confidence,
+    },
+    coldProspectDossier: {
+      status: actorName ? "ready_for_research" : "needs_actor",
+      evidence: [evidenceItem],
+      fitScore: scored.score,
+      painScore: 0,
+      playbook: {
+        segment: "construcao",
+        niche: work.categoria ?? "obra",
+        focusSignals: ["construction_stage", "public_work_signal", "owner_or_technical_responsible"],
+        recommendedModules: ["prospector", "crm", "sdr", "agendamento"],
+      },
+    },
+    prospectado_em: now,
+  };
+
+  if (existing) {
+    await db.update(leadsTable)
+      .set({
+        telefone: existing.telefone ?? telefone ?? undefined,
+        websiteUrl: existing.websiteUrl ?? websiteUrl ?? undefined,
+        endereco: work.endereco ?? undefined,
+        constructionStage: work.fase ?? undefined,
+        propensityScore: Math.max(scored.score, 0),
+        priorityReason: \`Radar de Obras: \${scored.reason}\`,
+        proximaAcao: actorName
+          ? "Prospecctor: pesquisar contexto e iniciar diagnóstico consultivo"
+          : "Identificar proprietário, arquiteto/engenheiro ou empresa responsável antes da abordagem",
+        metadata: {
+          ...((existing.metadata ?? {}) as Record<string, unknown>),
+          ...metadataPatch,
+        },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, tenantId)));
+
+    await db.insert(activitiesTable).values({
+      tenantId,
+      leadId: existing.id,
+      tipo: "tarefa",
+      titulo: "Radar de Obras — sinal atualizado",
+      descricao: \`\${work.obra} · \${work.local} · prioridade \${scored.priority} (\${scored.score}/100). \${work.evidencia}\`,
+      status: "concluida",
+    });
+
+    return res.status(200).json({
+      leadId: existing.id,
+      merged: true,
+      actor: { role: actorRole, name: actorName, type: actorType },
+      opportunityScore: scored.score,
+      priority: scored.priority,
+      priorityReason: scored.reason,
+      readyForOutreach: Boolean(existing.telefone ?? telefone),
+      message: \`Sinal atualizado no Prospecctor para \${existing.nome}.\`,
+    });
+  }
+
+  const [lead] = await db.insert(leadsTable).values({
+    tenantId,
+    nome: actorLabel,
+    empresa: actorType === "empresa" ? actorName ?? undefined : undefined,
+    telefone: telefone ?? undefined,
+    websiteUrl: websiteUrl ?? undefined,
+    endereco: work.endereco ?? undefined,
+    source: "construction_radar",
+    mercadoSegmento: \`Construção civil \${work.categoria ?? "residencial"}\`,
+    enrichmentStatus: "pending",
+    propensityScore: scored.score,
+    priorityReason: \`Radar de Obras: \${scored.reason}\`,
+    constructionStage: work.fase ?? undefined,
+    proximaAcao: actorName
+      ? "Prospecctor: pesquisar contexto e iniciar diagnóstico consultivo"
+      : "Identificar proprietário, arquiteto/engenheiro ou empresa responsável antes da abordagem",
+    tipoPessoa: actorType === "empresa" ? "juridica" : "fisica",
+    metadata: metadataPatch,
+  }).returning({ id: leadsTable.id });
+
+  if (!lead) return res.status(500).json({ error: "Falha ao enviar a obra ao Prospecctor" });
+
+  const [firstFunil] = await db
+    .select({ id: funisTable.id })
+    .from(funisTable)
+    .where(eq(funisTable.tenantId, tenantId))
+    .orderBy(asc(funisTable.createdAt))
+    .limit(1);
+
+  let dealId: string | null = null;
+  if (firstFunil) {
+    const [deal] = await db.insert(dealsTable).values({
+      tenantId,
+      leadId: lead.id,
+      funilId: firstFunil.id,
+      titulo: \`\${actorName || work.obra} — Radar de Obras\`,
+      etapa: "novo",
+    }).returning({ id: dealsTable.id });
+    dealId = deal?.id ?? null;
+  }
+
+  await db.insert(activitiesTable).values({
+    tenantId,
+    leadId: lead.id,
+    dealId,
+    tipo: "tarefa",
+    titulo: "Radar de Obras — nova oportunidade",
+    descricao: [
+      \`\${work.obra} · \${work.local}\`,
+      work.endereco ? \`Endereço: \${work.endereco}\` : null,
+      actorName ? \`Contato recomendado: \${actorName} (\${actorRole})\` : "Contato: ainda a identificar",
+      \`Prioridade: \${scored.priority} (\${scored.score}/100)\`,
+      \`Evidência: \${work.evidencia}\`,
+      work.sourceUrl ? \`Fonte: \${work.sourceUrl}\` : null,
+    ].filter(Boolean).join("\n"),
+    status: "concluida",
+  });
+
+  enrichLead({
+    leadId: lead.id,
+    tenantId,
+    log: req.log,
+    scoreBoost: scored.priority === "alta" ? 18 : scored.priority === "media" ? 10 : 4,
+    boostReason: "construction_radar_signal",
+  }).catch((err) => req.log.warn({ err, leadId: lead.id }, "prospector: construction radar enrichment failed"));
+
+  return res.status(201).json({
+    leadId: lead.id,
+    dealId,
+    merged: false,
+    actor: { role: actorRole, name: actorName, type: actorType },
+    opportunityScore: scored.score,
+    priority: scored.priority,
+    priorityReason: scored.reason,
+    readyForOutreach: Boolean(telefone),
+    message: actorName
+      ? \`Obra enviada ao Prospecctor com \${actorName} como contato recomendado.\`
+      : "Obra enviada ao Prospecctor; falta identificar um contato público antes da abordagem.",
+  });
 });
 
 // ── GET /prospector/export — exporta enriquecimentos do tenant em CSV ─────────
