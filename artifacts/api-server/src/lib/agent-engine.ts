@@ -28,6 +28,7 @@ import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
 import { callOpenAI as gatewayCallOpenAI, callAnthropic as gatewayCallAnthropic } from "./ai-gateway.js";
 import { CLOSER_OBJECTION_PLAYBOOK_PROMPT } from "./closer-objection-playbook.js";
+import { buildProspectorConsultivePrompt, resolveProspectorPlaybook } from "./prospector-consultive.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lead         = typeof leadsTable.$inferSelect;
@@ -757,6 +758,46 @@ function joinWithCalibration(parts: string[]): string {
 export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
+
+  // Cold outbound discovered by Prospector runs in a dedicated research-first mode.
+  // This intentionally bypasses the generic SPIN/product pitch until the lead has
+  // confirmed stage, timeline and challenge. The same SDR transport/runtime is
+  // reused, but the commercial behavior is governed by the Prospector playbook.
+  if (scenario?.["prospector_mode"] === true) {
+    const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+    const discoveryData = (lead.discoveryData ?? {}) as Record<string, unknown>;
+    const playbook = resolveProspectorPlaybook(
+      scenario?.["prospector_playbook"],
+      lead.mercadoSegmento,
+      { ...metadata, lead_source: lead.source ?? "" },
+    );
+    const state = scenario?.["prospector_state"] && typeof scenario["prospector_state"] === "object"
+      ? scenario["prospector_state"] as Record<string, unknown>
+      : null;
+    const prospectorSystemPrompt = typeof scenario?.["prospector_system_prompt"] === "string"
+      ? scenario["prospector_system_prompt"] as string
+      : null;
+
+    parts.push(buildProspectorConsultivePrompt({
+      playbook,
+      discoveryData,
+      metadata,
+      customSystemPrompt: prospectorSystemPrompt,
+      state,
+    }));
+    parts.push(buildLeadSection(lead));
+
+    if (ci) {
+      const lines = ["## INTELIGÊNCIA DE CLIENTE (somente contexto interno; não trate inferências como fatos)"];
+      if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+      if (ci.intentAnalysis)       lines.push(`Intenção: ${ci.intentAnalysis}`);
+      if (ci.goalAnalysis)         lines.push(`Objetivo: ${ci.goalAnalysis}`);
+      if (ci.nextBestAction)       lines.push(`Próxima ação sugerida: ${ci.nextBestAction}`);
+      if (lines.length > 1) parts.push(lines.join("\n"));
+    }
+
+    return joinWithCalibration(parts);
+  }
   if (systemPromptOverride?.trim()) {
     parts.push(systemPromptOverride.trim());
   } else {
@@ -1017,14 +1058,14 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       "- CALIBRAÇÃO DE TAMANHO: Mensagens curtas (saudações, 'bom dia', 'oi', 'ok', 'certo', 'entendi') devem receber respostas curtas — máximo 1 frase. Respostas mais elaboradas apenas para perguntas complexas ou objeções. NUNCA repita vantagens já mencionadas na conversa.\n" +
       "- Máximo 3 parágrafos curtos quando a mensagem exigir explicação\n" +
       "- Reconheça a objeção, valide-a, apresente contra-argumento com evidência\n" +
-      "- TRATAMENTO DE OBJEÇÕES: use LAER como padrão. FEEL-FELT-FOUND só pode ser usado quando existir um case real no contexto do tenant; nunca invente que 'muitos clientes' tiveram a mesma experiência.\\n" +
+      "- TRATAMENTO DE OBJEÇÕES: use LAER como padrão. FEEL-FELT-FOUND só pode ser usado quando existir um case real no contexto do tenant; nunca invente que 'muitos clientes' tiveram a mesma experiência.\n" +
       "- Se o lead estiver pronto, proponha o próximo passo concreto\n" +
       "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
       "- OFERTA: apresente no máximo 2 opções de plano por vez — mais do que isso confunde e paralisa a decisão\n" +
       "\n## EXEMPLOS DE SUPERAÇÃO DE OBJEÇÕES\n" +
       "✅ BOM — objeção de preço:\n" +
       "  Lead: 'Acho que está muito caro.'\n" +
-      "  Closer: 'Entendo. O que está pesando mais pra você: o valor total ou a dúvida sobre o retorno? Se me passar como vocês fazem hoje e o custo/tempo envolvido, eu faço a conta com você usando dados reais.'\\n" +
+      "  Closer: 'Entendo. O que está pesando mais pra você: o valor total ou a dúvida sobre o retorno? Se me passar como vocês fazem hoje e o custo/tempo envolvido, eu faço a conta com você usando dados reais.'\n" +
       "✅ BOM — objeção de tempo:\n" +
       "  Lead: 'Preciso pensar mais.'\n" +
       "  Closer: 'Faz todo sentido — é uma decisão importante. O que exatamente você precisa avaliar? Posso ajudar com informações específicas agora.'\n" +
@@ -1040,8 +1081,8 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
 
-  // Universal objection handling knowledge. Tenant facts still come from the
-  // configured prompt / Knowledge Base / runtime scenario.
+  // Conhecimento universal de objeções do Closer. Fatos específicos do tenant
+  // continuam vindo da Base de Conhecimento, catálogo, prompt e cenário.
   parts.push(CLOSER_OBJECTION_PLAYBOOK_PROMPT);
 
   // ── Meeting link or pending-link injection ──────────────────────────────────
