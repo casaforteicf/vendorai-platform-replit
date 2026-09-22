@@ -23,20 +23,19 @@ import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.
 import { calcularOrcamentoProdutoArea, ErroCalculoOrcamento, type ProdutoCalculo, type TipoCalculo } from "../lib/calculoOrcamentoM2.js";
 import { resolverECalcularOrcamento, ErroResolucaoOrcamento } from "../lib/calculoOrcamentoM2Resolver.js";
 import { buildProposalProductContext, proposalProductPromptRules } from "../lib/proposal-catalog-context.js";
+import {
+  normalizeOrcamentoMoney,
+  normalizeOrcamentoQuantity,
+  roundOrcamentoNumber,
+} from "../lib/orcamento-numbers.js";
 const router: IRouter = Router();
 
 // ── Proposal number generation ────────────────────────────────────────────────
-function roundOrcamentoNumber(value: number | string | null | undefined): number {
-  const numericValue = Number(value ?? 0);
-  if (!Number.isFinite(numericValue)) return 0;
-  return Math.round((numericValue + Number.EPSILON) * 100) / 100;
-}
-
 function normalizarItensExecucao(itens: PropostaItem[]): PropostaItem[] {
   return itens.map((item, index) => ({
     ...item,
-    quantidade: Math.max(0.01, roundOrcamentoNumber(item.quantidade)),
-    valorUnitario: Math.max(0, roundOrcamentoNumber(item.valorUnitario)),
+    quantidade: normalizeOrcamentoQuantity(item.quantidade),
+    valorUnitario: normalizeOrcamentoMoney(item.valorUnitario),
     ordemExecucao: item.ordemExecucao ?? index + 1,
     statusExecucao: item.statusExecucao ?? "pendente",
   }));
@@ -724,8 +723,8 @@ router.post(
     const propostaItens = itens.map((item) => {
       if (item.produtoId) {
         const produto = produtoMap.get(item.produtoId)!;
-        const quantidade = Math.max(0.01, roundOrcamentoNumber(item.quantidade));
-        const valorUnitario = roundOrcamentoNumber(
+        const quantidade = normalizeOrcamentoQuantity(item.quantidade);
+        const valorUnitario = normalizeOrcamentoMoney(
           item.precoUnitario !== undefined
             ? item.precoUnitario
             : parseFloat(produto.precoBase),
@@ -746,8 +745,8 @@ router.post(
       }
 
       const composicao = composicaoMap.get(item.composicaoId!)!;
-      const quantidade = Math.max(0.01, roundOrcamentoNumber(item.quantidade));
-      const valorUnitario = roundOrcamentoNumber(
+      const quantidade = normalizeOrcamentoQuantity(item.quantidade);
+      const valorUnitario = normalizeOrcamentoMoney(
         item.precoUnitario !== undefined
           ? item.precoUnitario
           : Number(composicao.custoTotal ?? 0),
