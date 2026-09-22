@@ -103,6 +103,7 @@ type Runtime = {
     target: { x: number; y: number; z: number };
     fov: number;
   };
+  contentFramed: boolean;
   walkWalls: Array<{
     x1: number;
     y1: number;
@@ -269,6 +270,7 @@ export default function ConceptWebGLScene({
   const runtimeRef = useRef<Runtime | null>(null);
   const [engineState, setEngineState] = useState<"loading" | "ready" | "fallback">("loading");
   const [dragOverScene, setDragOverScene] = useState(false);
+  const [sceneContentReady, setSceneContentReady] = useState(false);
 
   const acceptsArqdorObject = (event: ReactDragEvent<HTMLDivElement>) =>
     event.dataTransfer.types.includes("application/x-arqdor-object");
@@ -469,6 +471,7 @@ export default function ConceptWebGLScene({
           walkPitch: 0,
           walkDragging: false,
           walkLastPointer: null,
+          contentFramed: false,
           walkWalls: [],
         };
         runtimeRef.current = runtime;
@@ -719,10 +722,12 @@ export default function ConceptWebGLScene({
         (runtime as any).handleWalkPointerUp = handleWalkPointerUp;
 
         setEngineState("ready");
-        onReady?.(true);
+        setSceneContentReady(false);
+        onReady?.(false);
       } catch {
         if (!cancelled) {
           setEngineState("fallback");
+          setSceneContentReady(false);
           onReady?.(false);
         }
       }
@@ -1448,6 +1453,32 @@ export default function ConceptWebGLScene({
       }
     }
 
+    const sceneBounds = new THREE.Box3().setFromObject(modelRoot);
+    const hasRenderableContent = modelRoot.children.length > 0 && !sceneBounds.isEmpty();
+    if (hasRenderableContent && !runtime.contentFramed) {
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      sceneBounds.getSize(size);
+      sceneBounds.getCenter(center);
+      const horizontalSpan = Math.max(6, size.x, size.z);
+      const verticalSpan = Math.max(3, size.y);
+      const distance = Math.max(9, horizontalSpan * 1.35, verticalSpan * 2.4) / Math.max(0.65, cameraZoom);
+      const radians = (cameraPresetDegrees * Math.PI) / 180;
+      runtime.camera.position.set(
+        center.x + Math.sin(radians) * distance,
+        center.y + Math.max(5.2, distance * 0.48),
+        center.z + Math.cos(radians) * distance,
+      );
+      runtime.controls.target.set(center.x, Math.max(1.25, center.y), center.z);
+      runtime.camera.near = 0.05;
+      runtime.camera.far = Math.max(500, distance * 20);
+      runtime.camera.updateProjectionMatrix();
+      runtime.controls.update();
+      runtime.contentFramed = true;
+    }
+    setSceneContentReady(hasRenderableContent);
+    onReady?.(hasRenderableContent);
+
   }, [
     activeFloor,
     engineState,
@@ -1810,7 +1841,7 @@ export default function ConceptWebGLScene({
 
   return (
     <div
-      className="absolute inset-0 z-[1] bg-slate-200"
+      className={`absolute inset-0 z-[1] transition-opacity duration-150 ${sceneContentReady ? "bg-slate-200 opacity-100" : "pointer-events-none bg-transparent opacity-0"}`}
       onDragOver={handleSceneDragOver}
       onDragLeave={handleSceneDragLeave}
       onDrop={handleSceneDrop}
