@@ -95,6 +95,7 @@ export * from "./google_ads_connections";
 export * from "./search_console_connections";
 export * from "./social_connections";
 export * from "./social_publications";
+export * from "./facebook_marketplace_listings";
 export * from "./tenant_domains";
 export * from "./notifications";
 export * from "./plans";
