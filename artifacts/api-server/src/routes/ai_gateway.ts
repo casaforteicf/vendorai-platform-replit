@@ -114,31 +114,61 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [monthlyRow] = await db.select({ total: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)` })
+  const [monthlyRow] = await db.select({
+    totalCost: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)`,
+    totalTokens: sql<number>`coalesce(sum(${aiUsageLogsTable.inputTokens} + ${aiUsageLogsTable.outputTokens}), 0)`,
+  })
     .from(aiUsageLogsTable).where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)));
-  const spentThisMonthUsd = Number(monthlyRow?.total ?? 0);
+  const spentThisMonthUsd = Number(monthlyRow?.totalCost ?? 0);
+  const tokensUsed = Number(monthlyRow?.totalTokens ?? 0);
+  const totalCycleBudgetUsd = Math.max(0, (quotaUsd ?? 0) + Number(tenant.aiCreditsUsd ?? 0));
+  const usagePercent = totalCycleBudgetUsd > 0
+    ? Math.max(0, Math.min(100, (spentThisMonthUsd / totalCycleBudgetUsd) * 100))
+    : 0;
 
   const featureRows = await db.select({
     feature: aiUsageLogsTable.feature,
-    total: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)`,
+    tokens: sql<number>`coalesce(sum(${aiUsageLogsTable.inputTokens} + ${aiUsageLogsTable.outputTokens}), 0)`,
     calls: sql<number>`count(*)`,
   }).from(aiUsageLogsTable)
     .where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)))
     .groupBy(aiUsageLogsTable.feature);
 
-  const recentLogs = await db.select().from(aiUsageLogsTable)
+  const recentLogs = await db.select({
+    id: aiUsageLogsTable.id,
+    provider: aiUsageLogsTable.provider,
+    model: aiUsageLogsTable.model,
+    feature: aiUsageLogsTable.feature,
+    inputTokens: aiUsageLogsTable.inputTokens,
+    outputTokens: aiUsageLogsTable.outputTokens,
+    usedByok: aiUsageLogsTable.usedByok,
+    success: aiUsageLogsTable.success,
+    errorMessage: aiUsageLogsTable.errorMessage,
+    requestId: aiUsageLogsTable.requestId,
+    createdAt: aiUsageLogsTable.createdAt,
+  }).from(aiUsageLogsTable)
     .where(eq(aiUsageLogsTable.tenantId, tenantId as string)).orderBy(desc(aiUsageLogsTable.createdAt)).limit(50);
 
-  return res.json({
-    quotaUsd,
-    creditsUsd: Number(tenant.aiCreditsUsd ?? 0),
-    spentThisMonthUsd,
-    remainingUsd: (quotaUsd ?? 0) + Number(tenant.aiCreditsUsd ?? 0) - spentThisMonthUsd,
-    dailySpendUsd: Number(tenant.aiDailySpendUsd ?? 0),
-    dailySpendResetAt: tenant.aiDailySpendResetAt,
+  const publicUsage = {
+    usagePercent,
+    tokensUsed,
     byok: { openai: tenant.openaiKeyStatus === "ativo", anthropic: tenant.anthropicKeyStatus === "ativo" },
     featureBreakdown: featureRows,
     recentLogs,
+  };
+
+  if (req.user?.platformRole !== "super_admin") return res.json(publicUsage);
+
+  return res.json({
+    ...publicUsage,
+    internalFinancial: {
+      quotaUsd,
+      creditsUsd: Number(tenant.aiCreditsUsd ?? 0),
+      spentThisMonthUsd,
+      remainingUsd: totalCycleBudgetUsd - spentThisMonthUsd,
+      dailySpendUsd: Number(tenant.aiDailySpendUsd ?? 0),
+      dailySpendResetAt: tenant.aiDailySpendResetAt,
+    },
   });
 });
 
