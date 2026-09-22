@@ -94,7 +94,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/pipeline-operacional", "/pipeline-relacionamento", "/base-conhecimento", "/configuracoes", "/faq"]);
+  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/marketing/facebook-marketplace", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/pipeline-operacional", "/pipeline-relacionamento", "/base-conhecimento", "/configuracoes", "/faq"]);
   const isTenantAdmin = isEffectiveAdmin;
   // Todos os modelos comerciais entregam a experiência completa; a licença controla apenas o período ativo.
   const isStartPlan = false;
@@ -355,6 +355,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Monitor Praça.ai", href: "/logistica-praca", icon: Navigation, sellerHidden: false, section: "crm", fn: ["suporte", "administrador"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Marketplace FB", href: "/marketing/facebook-marketplace", icon: Store, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },

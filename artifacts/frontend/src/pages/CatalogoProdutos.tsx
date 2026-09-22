@@ -15,6 +15,7 @@ import {
   Plus,
   Route,
   Save,
+  Store,
   Trash2,
   Truck,
   WalletCards,
@@ -1049,12 +1050,20 @@ export default function CatalogoProdutos() {
             Cadastre, importe e organize os produtos publicados nos canais de venda.
           </p>
         </div>
-        <Link href="/catalogo/categorias">
-          <Button type="button" variant="outline" size="sm">
-            <FolderTree className="h-4 w-4 mr-1.5" />
-            Gerenciar categorias
-          </Button>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/marketing/facebook-marketplace">
+            <Button type="button" size="sm">
+              <Store className="h-4 w-4 mr-1.5" />
+              Marketplace Facebook
+            </Button>
+          </Link>
+          <Link href="/catalogo/categorias">
+            <Button type="button" variant="outline" size="sm">
+              <FolderTree className="h-4 w-4 mr-1.5" />
+              Gerenciar categorias
+            </Button>
+          </Link>
+        </div>
       </div>
       <CatalogoModal open tenantId={tenantId} onClose={() => navigate("/")} />
       {portalTarget && activeProduct
