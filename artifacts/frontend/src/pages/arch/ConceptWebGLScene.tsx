@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
 import { getConceptModelDefinition } from "./catalogs/conceptModelCatalog";
@@ -59,6 +59,11 @@ type Props = {
   onPaintWall?: (wallId: string, materialId: string) => void;
   onPaintFloor?: (spaceId: string, materialId: string) => void;
   onObjectChange?: (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "rotation" | "materialId" | "materialScale" | "materialRotation">>) => void;
+  onObjectDrop?: (
+    preset: Pick<ConceptPlanObject, "kind" | "label" | "width" | "depth"> &
+      Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl">>,
+    point: { x: number; y: number },
+  ) => void;
   onObjectEditStart?: () => void;
   onObjectEditEnd?: () => void;
 };
@@ -256,12 +261,91 @@ export default function ConceptWebGLScene({
   onPaintWall,
   onPaintFloor,
   onObjectChange,
+  onObjectDrop,
   onObjectEditStart,
   onObjectEditEnd,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<Runtime | null>(null);
   const [engineState, setEngineState] = useState<"loading" | "ready" | "fallback">("loading");
+  const [dragOverScene, setDragOverScene] = useState(false);
+
+  const acceptsArqdorObject = (event: ReactDragEvent<HTMLDivElement>) =>
+    event.dataTransfer.types.includes("application/x-arqdor-object");
+
+  const handleSceneDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!onObjectDrop || !acceptsArqdorObject(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDragOverScene(true);
+  };
+
+  const handleSceneDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget as Node | null;
+    if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+    setDragOverScene(false);
+  };
+
+  const handleSceneDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!onObjectDrop) return;
+    const raw = event.dataTransfer.getData("application/x-arqdor-object");
+    if (!raw) return;
+
+    event.preventDefault();
+    setDragOverScene(false);
+
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready") return;
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<ConceptPlanObject>;
+      if (
+        typeof parsed.kind !== "string" ||
+        typeof parsed.label !== "string" ||
+        !Number.isFinite(Number(parsed.width)) ||
+        !Number.isFinite(Number(parsed.depth))
+      ) return;
+
+      const rect = runtime.renderer.domElement.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      runtime.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      runtime.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      runtime.raycaster.setFromCamera(runtime.pointer, runtime.camera);
+
+      const floorY = activeFloor * 2.96 + 0.16;
+      const plane = new runtime.THREE.Plane(
+        new runtime.THREE.Vector3(0, 1, 0),
+        -floorY,
+      );
+      const worldPoint = new runtime.THREE.Vector3();
+      const intersection = runtime.raycaster.ray.intersectPlane(plane, worldPoint);
+
+      const point = intersection
+        ? {
+            x: Math.max(0, Math.min(lotWidth, worldPoint.x + lotWidth / 2)),
+            y: Math.max(0, Math.min(lotDepth, worldPoint.z + lotDepth / 2)),
+          }
+        : { x: lotWidth / 2, y: lotDepth / 2 };
+
+      onObjectDrop(
+        {
+          kind: parsed.kind as ConceptPlanObject["kind"],
+          label: parsed.label,
+          width: Math.max(0.3, Number(parsed.width)),
+          depth: Math.max(0.3, Number(parsed.depth)),
+          catalogProductId: typeof parsed.catalogProductId === "string" ? parsed.catalogProductId : undefined,
+          imageUrl: typeof parsed.imageUrl === "string" ? parsed.imageUrl : undefined,
+          supplier: typeof parsed.supplier === "string" ? parsed.supplier : undefined,
+          price: Number.isFinite(Number(parsed.price)) ? Number(parsed.price) : undefined,
+          model3dUrl: typeof parsed.model3dUrl === "string" ? parsed.model3dUrl : undefined,
+        },
+        point,
+      );
+    } catch {
+      // Ignore invalid drag payloads from outside the Arqdor library.
+    }
+  };
 
   const visibleFloors = useMemo(() => {
     if (interiorMode || !showAllFloors) return new Set([activeFloor]);
@@ -1725,8 +1809,21 @@ export default function ConceptWebGLScene({
   ]);
 
   return (
-    <div className="absolute inset-0 z-[1] bg-slate-200">
+    <div
+      className="absolute inset-0 z-[1] bg-slate-200"
+      onDragOver={handleSceneDragOver}
+      onDragLeave={handleSceneDragLeave}
+      onDrop={handleSceneDrop}
+    >
       <div ref={hostRef} className="h-full w-full" />
+      {dragOverScene && engineState === "ready" && (
+        <div className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-orange-400 bg-orange-500/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]">
+          <div className="rounded-2xl border border-orange-200 bg-white/95 px-4 py-3 text-center shadow-xl backdrop-blur">
+            <div className="text-sm font-bold text-slate-900">Solte para inserir no 3D</div>
+            <div className="mt-1 text-[11px] font-semibold text-orange-600">Pavimento ${activeFloor + 1} · posição exata pela câmera</div>
+          </div>
+        </div>
+      )}
       {engineState === "loading" && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center bg-slate-900/85 text-white">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-center shadow-2xl backdrop-blur">
