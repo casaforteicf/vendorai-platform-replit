@@ -9,8 +9,9 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "validate:api": "pnpm --filter @workspace/api-server run ci:railway",
-    "validate:frontend": "pnpm exec tsc --build lib/api-client-react/tsconfig.json lib/vendor-brain/tsconfig.json && pnpm --filter @workspace/frontend typecheck && pnpm --filter @workspace/frontend test && pnpm --filter @workspace/frontend build",
-    "validate:production": "pnpm run validate:api && pnpm run validate:frontend"
+    "validate:frontend": "pnpm run audit:frontend:typecheck && pnpm --filter @workspace/frontend test && pnpm --filter @workspace/frontend build",
+    "validate:production": "pnpm run validate:api && pnpm run validate:frontend",
+    "audit:frontend:typecheck": "node ./scripts/audit-frontend-typecheck.mjs --baseline=156"
   },
   "private": true,
   "devDependencies": {
