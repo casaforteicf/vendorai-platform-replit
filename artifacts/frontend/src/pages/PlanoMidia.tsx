@@ -91,6 +91,7 @@ type PlannerAdCampaign = {
   itemLabel: string | null;
   vertical: string;
   status: string;
+  externalCampaignId: string | null;
   destinoClique: "landing_page" | "whatsapp" | "produto" | "formulario_lead";
   orcamentoDiario: string;
   latestCreative: PlannerAdCreative | null;
@@ -236,6 +237,7 @@ export default function PlanoMidia() {
   const [adEvents, setAdEvents] = useState<Record<string, PlannerAdEvent[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [sendingComment, setSendingComment] = useState<string | null>(null);
+  const [adActionBusy, setAdActionBusy] = useState<string | null>(null);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -296,6 +298,36 @@ export default function PlanoMidia() {
       setAdEvents(Object.fromEntries(eventEntries));
     } catch {
       // O planejador continua utilizável mesmo se Ads estiver temporariamente indisponível.
+    }
+  }
+
+  async function runAdAction(ad: PlannerAdCampaign, action: "approve" | "publish" | "activate" | "pause") {
+    if (adActionBusy) return;
+    if (action === "activate" && !window.confirm("Ativar esta campanha agora? A plataforma poderá começar a consumir o orçamento configurado.")) return;
+
+    setAdActionBusy(`${ad.id}:${action}`);
+    try {
+      let endpoint = "";
+      if (action === "approve") {
+        if (!ad.latestCreative?.id) throw new Error("Nenhum criativo disponível para aprovação.");
+        endpoint = `/api/tenants/${tenantId}/ads/creatives/${ad.latestCreative.id}/aprovar`;
+      } else {
+        const suffix = action === "publish" ? "publicar" : action === "activate" ? "ativar" : "pausar";
+        endpoint = `/api/tenants/${tenantId}/ads/campaigns/${ad.id}/${suffix}`;
+      }
+
+      const response = await fetch(endpoint, { method: "POST", headers: authHeaders() });
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "A plataforma recusou a operação.");
+
+      await refreshAdsWorkspace();
+      toast({
+        title: action === "approve" ? "Criativo aprovado" : action === "publish" ? "Campanha publicada pausada" : action === "activate" ? "Campanha ativada" : "Campanha pausada",
+      });
+    } catch (error) {
+      toast({ title: "Não foi possível concluir", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setAdActionBusy(null);
     }
   }
 
@@ -730,6 +762,32 @@ export default function PlanoMidia() {
                                       <div><span className="font-medium">Orçamento:</span> R$ {Number(ad.orcamentoDiario || 0).toFixed(2)}/dia</div>
                                       <div className="flex items-start gap-1"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /><span>{locations.length ? locations.join(", ") : "Localização não definida"}</span></div>
                                       <div><span className="font-medium">Período:</span> {ad.segmentacao?.campaignControl?.startDate ?? "—"} → {ad.segmentacao?.campaignControl?.endDate ?? "—"}</div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                      {creative && creative.status !== "aprovado" && (
+                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!!adActionBusy} onClick={() => void runAdAction(ad, "approve")}>
+                                          {adActionBusy === `${ad.id}:approve` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                          Aprovar criativo
+                                        </Button>
+                                      )}
+                                      {creative?.status === "aprovado" && !ad.externalCampaignId && (
+                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!!adActionBusy} onClick={() => void runAdAction(ad, "publish")}>
+                                          {adActionBusy === `${ad.id}:publish` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                          Publicar pausado
+                                        </Button>
+                                      )}
+                                      {ad.externalCampaignId && ad.status === "pausado" && (
+                                        <Button size="sm" className="h-8 text-xs" disabled={!!adActionBusy} onClick={() => void runAdAction(ad, "activate")}>
+                                          {adActionBusy === `${ad.id}:activate` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                          Ativar campanha
+                                        </Button>
+                                      )}
+                                      {ad.externalCampaignId && ad.status === "ativo" && (
+                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!!adActionBusy} onClick={() => void runAdAction(ad, "pause")}>
+                                          {adActionBusy === `${ad.id}:pause` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                                          Pausar campanha
+                                        </Button>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
