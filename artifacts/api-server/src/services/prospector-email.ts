@@ -18,7 +18,8 @@ export function prospectorEmailAutomationConfigured(env: NodeJS.ProcessEnv = pro
   return Boolean(
     env["RESEND_API_KEY"]?.trim() &&
     env["RESEND_WEBHOOK_SECRET"]?.trim() &&
-    cleanDomain(env["RESEND_PROSPECTOR_REPLY_DOMAIN"]),
+    cleanDomain(env["RESEND_PROSPECTOR_REPLY_DOMAIN"]) &&
+    env["RESEND_PROSPECTOR_RECEIVING_VERIFIED"]?.trim().toLowerCase() === "true",
   );
 }
 
