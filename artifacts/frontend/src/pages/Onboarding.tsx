@@ -144,16 +144,12 @@ export default function Onboarding() {
           return;
         }
         const s = data.stepAtual ?? 1;
-        if (s >= 4) {
-          if (trialActive) {
-            setStep("plan");
-          } else {
-            await apiPatch("/api/onboarding/step/4", {});
-            setStep("done");
-          }
+        if (s >= 2) {
+          await apiPatch("/api/onboarding/step/4", {});
+          window.location.replace("/dashboard");
           return;
         }
-        setStep(Math.min(Math.max(s, 1), 3) as WizardStep);
+        setStep(1);
       } catch {
         // ignore — start at step 1
       } finally {
@@ -251,7 +247,8 @@ export default function Onboarding() {
         segmento: s1Segmento,
       });
       await saveCanonicalBusinessBrand(companyName, s1Logo || undefined);
-      setStep(2);
+      await apiPatch("/api/onboarding/step/4", {});
+      window.location.assign("/dashboard");
     } catch (err) {
       toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
     } finally {
@@ -346,14 +343,10 @@ export default function Onboarding() {
   }
 
   // ── Progress bar ─────────────────────────────────────────────────────────────
-  const stepNum = step === "done" || step === "plan" ? 3 : Math.min(step as number, 3);
-  const progressPct = step === "done" || step === "plan" ? 100 : ((stepNum - 1) / 3) * 100;
+  const stepNum = 1;
+  const progressPct = step === "done" ? 100 : 0;
 
-  const STEP_LABELS = [
-    t("onboarding.progress.company"),
-    t("onboarding.progress.whatsapp"),
-    t("onboarding.progress.firstAgent"),
-  ];
+  const STEP_LABELS = [t("onboarding.progress.company")];
 
   if (loading) {
     return (
@@ -373,7 +366,7 @@ export default function Onboarding() {
             <span className="text-sm font-medium text-primary">Escolha seu plano</span>
           ) : step !== "done" ? (
             <span className="text-sm text-muted-foreground">
-              {t("onboarding.header.step", { current: stepNum, total: 3 })}
+              {t("onboarding.header.step", { current: 1, total: 1 })}
             </span>
           ) : null}
           <button
@@ -540,7 +533,7 @@ export default function Onboarding() {
                   onClick={handleStep1}
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {t("common.next")}
+                  Criar e entrar no VendorAI
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </CardContent>
