@@ -4079,7 +4079,7 @@ export default function ConceptPlanner() {
                       onClick={() => {
                         setStep(4);
                         setEditorView(value);
-                        if (value === "facade" || value === "render") setLibraryOpen(false);
+                        if (value !== "plan") setLibraryOpen(false);
                       }}
                       className={editorView === value
                         ? "shrink-0 snap-center rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 shadow-sm sm:px-4"
