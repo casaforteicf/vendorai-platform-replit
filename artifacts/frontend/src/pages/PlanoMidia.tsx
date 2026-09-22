@@ -256,6 +256,7 @@ export default function PlanoMidia() {
   const [selectedCreativeByAd, setSelectedCreativeByAd] = useState<Record<string, string>>({});
   const [placementByAd, setPlacementByAd] = useState<Record<string, "feed" | "story" | "reels" | "google">>({});
   const [destinationByAd, setDestinationByAd] = useState<Record<string, PlannerDestinationPreview>>({});
+  const [optimizationBusy, setOptimizationBusy] = useState<string | null>(null);
   const [recommendationBusy, setRecommendationBusy] = useState<string | null>(null);
   const [abPreparing, setAbPreparing] = useState<string | null>(null);
 
@@ -375,6 +376,29 @@ export default function PlanoMidia() {
       toast({ title: "Não foi possível preparar", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
     } finally {
       setRecommendationBusy(null);
+    }
+  }
+
+  async function prepareOptimization(ad: PlannerAdCampaign, recommendation: NonNullable<PlannerAdsOverviewItem["recommendation"]>) {
+    if (optimizationBusy) return;
+    setOptimizationBusy(ad.id);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${ad.id}/prepare-recommendation`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ action: recommendation.action }),
+      });
+      const data = await response.json().catch(() => ({})) as { campaign?: { id?: string }; guidance?: string[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível preparar a melhoria.");
+      await refreshAdsWorkspace();
+      toast({
+        title: "Melhoria preparada em rascunho",
+        description: data.guidance?.join(" ") || "A campanha atual não foi alterada. Revise o novo rascunho antes de publicar.",
+      });
+    } catch (error) {
+      toast({ title: "Não foi possível preparar a melhoria", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setOptimizationBusy(null);
     }
   }
 
@@ -1084,6 +1108,57 @@ export default function PlanoMidia() {
                                       <p className="mt-0.5 text-xs font-semibold">{value}</p>
                                     </div>
                                   ))}
+                                </div>
+
+                                <div className="mt-3 rounded-lg border bg-background p-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                      <p className="text-xs font-semibold">IA de otimização</p>
+                                      <p className="mt-1 text-[10px] text-muted-foreground">Analisa resultado comercial, não só clique e alcance.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      <Badge variant="outline">CPL {metric?.costPerLead != null ? `R$ ${metric.costPerLead.toFixed(2)}` : "—"}</Badge>
+                                      <Badge variant="outline">ROAS {metric?.roas != null ? `${metric.roas.toFixed(2)}x` : "—"}</Badge>
+                                      <Badge variant="outline">Lead→Venda {metric?.leadToSaleRate != null ? `${metric.leadToSaleRate.toFixed(1)}%` : "—"}</Badge>
+                                    </div>
+                                  </div>
+
+                                  {metric?.recommendation ? (
+                                    <div className="mt-3 rounded-lg border border-primary/20 bg-primary/[0.03] p-3">
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                          <p className="text-sm font-semibold">{metric.recommendation.title}</p>
+                                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{metric.recommendation.reason}</p>
+                                          {metric.recommendation.requiresApproval ? (
+                                            <p className="mt-1 text-[10px] font-medium text-amber-700">Exige revisão/aprovação antes de qualquer mudança financeira.</p>
+                                          ) : null}
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="shrink-0"
+                                          disabled={optimizationBusy === ad.id}
+                                          onClick={() => void prepareOptimization(ad, metric.recommendation!)}
+                                        >
+                                          {optimizationBusy === ad.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                                          Preparar melhoria
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="mt-3 text-xs text-muted-foreground">Ainda não há volume suficiente para uma recomendação específica. Continue coletando dados antes de escalar.</p>
+                                  )}
+
+                                  {(metric?.alerts?.length ?? 0) > 0 && (
+                                    <div className="mt-3 space-y-1.5">
+                                      {metric!.alerts!.slice(0, 3).map((alert) => (
+                                        <div key={alert.id} className="rounded-md bg-muted/40 px-2.5 py-2 text-[11px]">
+                                          <span className="font-semibold">{alert.severity === "critical" ? "Crítico" : alert.severity === "warning" ? "Atenção" : "Sinal"}: </span>
+                                          {alert.message}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                                   <div className="rounded-lg border bg-background p-3">
