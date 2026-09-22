@@ -446,6 +446,87 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
 
 // Liga/desliga a veiculação de verdade — a única chamada que de fato
 // pode gastar dinheiro. Só funciona depois de publishCampaignToGoogleAds.
+export async function publishGoogleAdsCreativeVariant(
+  tenantId: string,
+  campaignId: string,
+  creativeId: string,
+): Promise<{ externalAdId: string }> {
+  const [[campaign], [creative]] = await Promise.all([
+    db.select().from(adCampaignsTable)
+      .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId))),
+    db.select().from(adCreativesTable)
+      .where(and(eq(adCreativesTable.id, creativeId), eq(adCreativesTable.campaignId, campaignId))),
+  ]);
+  if (!campaign?.externalCampaignId) throw new GoogleAdsPublishError("Publique a campanha antes de adicionar uma variação A/B.");
+  if (!creative) throw new GoogleAdsPublishError("Variação não encontrada.");
+  if (creative.status !== "aprovado") throw new GoogleAdsPublishError("Aprove a variação antes de publicar no teste A/B.");
+  if (creative.externalAdId) return { externalAdId: creative.externalAdId };
+  if (creative.headlines.length === 0 || creative.descriptions.length === 0) throw new GoogleAdsPublishError("Variação sem títulos ou descrições.");
+
+  const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const query = [
+    "SELECT ad_group.resource_name",
+    "FROM ad_group",
+    `WHERE campaign.id = ${campaign.externalCampaignId}`,
+  ].join(" ");
+  const searchRes = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!searchRes.ok) throw new GoogleAdsPublishError(traduzirErroGoogleAds(searchRes.status, await searchRes.text()));
+  const chunks = await searchRes.json() as Array<{ results?: Array<{ adGroup?: { resourceName?: string } }> }>;
+  const adGroupResourceName = chunks.flatMap((chunk) => chunk.results ?? [])[0]?.adGroup?.resourceName;
+  if (!adGroupResourceName) throw new GoogleAdsPublishError("Grupo de anúncios não encontrado no Google Ads.");
+
+  const finalUrl = await resolveFinalUrl(tenantId, campaign);
+  const adRes = await mutate(customerId, accessToken, "adGroupAds", [{
+    create: {
+      adGroup: adGroupResourceName,
+      status: "PAUSED",
+      ad: {
+        finalUrls: [finalUrl],
+        responsiveSearchAd: {
+          headlines: creative.headlines.slice(0, 15).map((text) => ({ text })),
+          descriptions: creative.descriptions.slice(0, 4).map((text) => ({ text })),
+        },
+      },
+    },
+  }]);
+  const externalAdId = adRes.results[0]?.resourceName;
+  if (!externalAdId) throw new GoogleAdsPublishError("Google Ads não retornou o anúncio da variação.");
+
+  await db.update(adCreativesTable).set({ externalAdId }).where(eq(adCreativesTable.id, creativeId));
+  return { externalAdId };
+}
+
+export async function setGoogleAdsCreativeVariantStatus(
+  tenantId: string,
+  campaignId: string,
+  creativeId: string,
+  ativar: boolean,
+): Promise<void> {
+  const [[campaign], [creative]] = await Promise.all([
+    db.select().from(adCampaignsTable)
+      .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId))),
+    db.select().from(adCreativesTable)
+      .where(and(eq(adCreativesTable.id, creativeId), eq(adCreativesTable.campaignId, campaignId))),
+  ]);
+  if (!campaign?.externalCampaignId) throw new GoogleAdsPublishError("Campanha ainda não publicada.");
+  if (!creative?.externalAdId) throw new GoogleAdsPublishError("Variação ainda não publicada.");
+
+  const { accessToken } = await getValidAccessToken(tenantId);
+  const customerId = creative.externalAdId.split("/")[1];
+  await mutate(customerId, accessToken, "adGroupAds", [{
+    update: { resourceName: creative.externalAdId, status: ativar ? "ENABLED" : "PAUSED" },
+    updateMask: "status",
+  }]);
+}
+
 export async function setGoogleAdsCampaignStatus(
   tenantId: string,
   campaignId: string,
