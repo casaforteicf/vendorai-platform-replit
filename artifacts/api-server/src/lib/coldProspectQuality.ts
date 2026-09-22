@@ -164,9 +164,9 @@ export function evaluateColdProspectQuality(input: ColdProspectQualityInput): Co
     {
       channel: "instagram",
       available: Boolean(instagramHandle || instagramScopedId),
-      autoExecutable: Boolean(instagramScopedId),
+      autoExecutable: false,
       reason: instagramScopedId
-        ? "instagram_scoped_id_disponivel"
+        ? "instagram_disponivel_mas_cadencia_automatica_ainda_nao_habilitada"
         : instagramHandle
           ? "handle_publico_sem_permissao_de_dm_automatica"
           : "sem_instagram",
