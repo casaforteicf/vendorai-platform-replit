@@ -499,7 +499,7 @@ export async function sendSdrFirstApproach(
       descricao: message,
       status: "concluida",
       concluidaEm: new Date(),
-      resultadoExecucao: "cenario:frio_teste|prospector_consultivo:v1",
+      resultadoExecucao: "cenario:frio_teste|template_ordem:1|prospector_consultivo:v2",
     });
 
     log.info({ leadId, tenantId }, "sdrService: Prospecctor research-first opening sent");
@@ -575,6 +575,22 @@ export async function sendSdrRevelacao(
 
 // ── 48h follow-up ─────────────────────────────────────────────────────────────
 
+export type ProspectorCadenceStepKey = "followup_48h" | "followup_120h" | "followup_216h";
+
+export type ProspectorCadenceStep = {
+  key: ProspectorCadenceStepKey;
+  label: string;
+  instruction: string;
+};
+
+const DEFAULT_PROSPECTOR_FOLLOWUP: ProspectorCadenceStep = {
+  key: "followup_48h",
+  label: "48h",
+  instruction:
+    "Retome a conversa pelo contexto/sinal original sem repetir a primeira mensagem. " +
+    "Faça uma pergunta curta que seja fácil de responder e não apresente produto, preço ou proposta.",
+};
+
 export async function sendSdrFollowup(
   leadId: string,
   dealId: string | null,
@@ -582,20 +598,25 @@ export async function sendSdrFollowup(
   leadNome: string,
   leadTelefone: string,
   log: Logger,
+  step: ProspectorCadenceStep = DEFAULT_PROSPECTOR_FOLLOWUP,
 ): Promise<boolean> {
+  // Follow-up frio obedece exatamente as mesmas regras de horário, opt-out,
+  // lead desativado e bloqueio usadas na primeira abordagem.
+  await assertColdOutreachAllowed(leadId, tenantId, log);
+
   dispatchAgentBackground({
     tenantId,
     leadId,
-    mensagem: `[FOLLOW-UP AUTOMÁTICO 48h] ${leadNome.split(" ")[0]} não respondeu à abordagem inicial. ` +
-      "Envie uma mensagem de follow-up natural, curta e sem pressão. " +
-      "Mantenha o modelo de pesquisa consultiva e avance somente a próxima pergunta diagnóstica ainda não respondida " +
-      "do playbook configurado para este tenant, sem presumir segmento, dor, produto ou solução.",
+    mensagem: `[CADÊNCIA FRIA PROSPECCTOR — ${step.label}] ${leadNome.split(" ")[0]} ainda não respondeu. ` +
+      step.instruction + " " +
+      "Mantenha o modelo de pesquisa consultiva, use apenas evidências verificadas já existentes e não presuma segmento, dor, produto ou solução.",
     log,
     forcedAgent: "sdr",
     scenario: {
       cold_outreach: true,
-      origem: "sdr_followup_48h",
-      template_ordem: 2,
+      origem: `prospector_${step.key}`,
+      prospector_cadence_step: step.key,
+      template_ordem: step.key === "followup_48h" ? 2 : step.key === "followup_120h" ? 3 : 4,
     },
   });
 
@@ -604,13 +625,13 @@ export async function sendSdrFollowup(
     leadId,
     dealId: dealId ?? undefined,
     tipo: "whatsapp",
-    titulo: "SDR — follow-up 48h",
-    descricao: `Follow-up automático 48h para ${leadNome}`,
+    titulo: `Prospecctor — cadência fria — ${step.label}`,
+    descricao: `Cadência automática ${step.label} para ${leadNome}`,
     status: "concluida",
     concluidaEm: new Date(),
-    resultadoExecucao: "cenario:followup_48h",
+    resultadoExecucao: `cenario:${step.key}|prospector_cadence:v2`,
   });
 
-  log.info({ leadId, tenantId }, "sdrService: 48h follow-up dispatched via agent");
+  log.info({ leadId, tenantId, step: step.key }, "sdrService: Prospecctor cadence step dispatched");
   return true;
 }
