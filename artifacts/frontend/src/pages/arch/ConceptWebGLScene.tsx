@@ -1553,7 +1553,7 @@ export default function ConceptWebGLScene({
         },
       };
     }
-  }, [activeFloor, cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth, navigationMode]);
+  }, [activeFloor, cameraPresetDegrees, cameraZoom, engineState, levels.length, lotDepth, lotWidth, navigationMode, renderQuality]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -1631,7 +1631,12 @@ export default function ConceptWebGLScene({
           3D Pro indisponível neste navegador. Exibindo modo compatível.
         </div>
       )}
-      {engineState === "ready" && navigationMode === "walk" && (
+      {engineState === "ready" && navigationMode === "panorama" && (
+        <div className="pointer-events-none absolute bottom-5 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/15 bg-slate-950/70 px-4 py-2 text-[11px] font-semibold text-white shadow-xl backdrop-blur">
+          Panorama 360° cubemap · arraste para olhar ao redor
+        </div>
+      )}
+            {engineState === "ready" && navigationMode === "walk" && (
         <div data-walk-pad className="absolute bottom-20 right-4 z-20 grid grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-slate-950/75 p-2 shadow-2xl backdrop-blur md:bottom-5">
           {[
             ["", ""], ["w", "↑"], ["", ""],
