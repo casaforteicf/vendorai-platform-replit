@@ -79,6 +79,15 @@ export const CONCEPT_MODEL_VARIANTS: ConceptModelDefinition[] = [
     targetHeight: 0.98,
   },
   {
+    id: "khronos-specular-silk-pouf",
+    kind: "chair",
+    label: "Pufe Specular Silk",
+    url: `${KH}/SpecularSilkPouf/glTF-Binary/SpecularSilkPouf.glb`,
+    license: "CC BY 4.0",
+    source: "Khronos glTF Sample Assets / Wayfair",
+    targetHeight: 0.48,
+  },
+  {
     id: "khronos-iridescence-lamp",
     kind: "lamp",
     label: "Luminária Iridescence",
@@ -95,6 +104,24 @@ export const CONCEPT_MODEL_VARIANTS: ConceptModelDefinition[] = [
     license: "CC BY 4.0",
     source: "Khronos glTF Sample Assets / Wayfair",
     targetHeight: 1.45,
+  },
+  {
+    id: "khronos-punctual-lamp-variant",
+    kind: "lamp",
+    label: "Luminária com luz pontual",
+    url: `${KH}/LightsPunctualLamp/glTF-Binary/LightsPunctualLamp.glb`,
+    license: "CC BY 4.0",
+    source: "Khronos glTF Sample Assets / DGG",
+    targetHeight: 1.55,
+  },
+  {
+    id: "khronos-lantern",
+    kind: "lamp",
+    label: "Lanterna decorativa",
+    url: `${KH}/Lantern/glTF-Binary/Lantern.glb`,
+    license: "CC0",
+    source: "Khronos glTF Sample Assets / Microsoft",
+    targetHeight: 1.20,
   },
 ];
 

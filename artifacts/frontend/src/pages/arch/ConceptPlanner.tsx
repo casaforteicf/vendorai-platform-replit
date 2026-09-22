@@ -204,7 +204,7 @@ function inferCatalogFurniturePreset(item: RealCatalogProduct): {
   if (/sofá|sofa|couch|poltrona|armchair|chaise/.test(text)) return sized("sofa", 2.1, 0.9);
   if (/cama|bed|colchão|colchao|mattress/.test(text)) return sized("bed", 1.6, 2.0);
   if (/mesa|table|desk|ilha cozinha|kitchen island/.test(text)) return sized("table", 1.4, 0.8);
-  if (/cadeira|chair|banco|bench|banqueta|stool|espreguiçadeira|sun lounger/.test(text)) return sized("chair", 0.55, 0.55);
+  if (/cadeira|chair|banco|bench|banqueta|stool|pufe|pouf|espreguiçadeira|sun lounger/.test(text)) return sized("chair", 0.55, 0.55);
   if (/geladeira|refrigerador|refrigerator|fridge|forno|oven|micro-ondas|microondas|microwave|cooktop|coifa|range hood|lava-louças|lava louças|dishwasher|lavadora|washer|secadora|dryer/.test(text)) return sized("appliance", 0.75, 0.70);
   if (/vaso sanitário|vaso sanitario|bacia sanitária|bacia sanitaria|toilet|cuba|sink|lavatório|lavatorio|washbasin|banheira|bathtub/.test(text)) return sized("sanitary", 0.75, 0.70);
   if (/espreguiçadeira|espreguicadeira|sun lounger|ombrelone|parasol|banco externo|outdoor bench|sofá externo|sofa externo|outdoor sofa|cadeira externa|outdoor chair/.test(text)) return sized("outdoor", 0.90, 0.90);
