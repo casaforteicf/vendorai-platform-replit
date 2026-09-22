@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { activitiesTable, db, leadsTable, prospectorConfigTable } from "@workspace/db";
 import { ensureColdProspectLandingPage } from "../services/coldProspectLandingPage.js";
+import { COLD_PROSPECT_SOURCES } from "../lib/prospector-consultive.js";
 import type { ColdEvidence } from "../lib/coldProspectQuality.js";
 
 const router: IRouter = Router();
@@ -106,8 +107,6 @@ router.get("/prospector/pilot-validation", async (req, res) => {
   try {
     const explicitTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
     const tenantId = resolveTenantId(req, explicitTenantId);
-    const coldSources = ["prospector", "prospector_auto", "cnpj", "recem_aberta", "ad_library"];
-
     const leads = await db
       .select({
         id: leadsTable.id,
@@ -127,7 +126,15 @@ router.get("/prospector/pilot-validation", async (req, res) => {
         createdAt: leadsTable.createdAt,
       })
       .from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), inArray(leadsTable.source, coldSources)))
+      .where(and(
+        eq(leadsTable.tenantId, tenantId),
+        or(
+          inArray(leadsTable.source, Array.from(COLD_PROSPECT_SOURCES)),
+          sql`${leadsTable.source} LIKE 'prospector_%'`,
+          sql`${leadsTable.source} LIKE 'cold_%'`,
+          sql`${leadsTable.source} LIKE 'outbound_%'`,
+        ),
+      ))
       .orderBy(desc(leadsTable.createdAt))
       .limit(5);
 
