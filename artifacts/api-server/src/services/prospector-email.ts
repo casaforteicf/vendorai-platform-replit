@@ -35,10 +35,16 @@ export function buildProspectorReplyAddress(
   return `prospector+${normalizedLeadId}@${domain}`;
 }
 
-export function parseProspectorReplyAddress(value: string): string | null {
+export function parseProspectorReplyAddress(
+  value: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
   const normalized = extractEmailAddress(value);
-  if (!normalized) return null;
-  const match = /^prospector\+([a-z0-9-]{8,50})@/i.exec(normalized);
+  const expectedDomain = cleanDomain(env["RESEND_PROSPECTOR_REPLY_DOMAIN"]);
+  if (!normalized || !expectedDomain) return null;
+  const [localPart, domain] = normalized.split("@");
+  if (!localPart || domain !== expectedDomain) return null;
+  const match = /^prospector\+([a-z0-9-]{8,50})$/i.exec(localPart);
   return match?.[1]?.toLowerCase() ?? null;
 }
 
@@ -47,6 +53,80 @@ export function extractEmailAddress(value: string): string | null {
   const angle = /<([^<>\s]+@[^<>\s]+)>/.exec(trimmed);
   const candidate = (angle?.[1] ?? trimmed).trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : null;
+}
+
+export function sanitizeProspectorInboundText(input: {
+  text?: string | null;
+  html?: string | null;
+}): string | null {
+  let value = (input.text ?? "").trim();
+
+  if (!value && input.html) {
+    value = input.html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#039;/gi, "'")
+      .trim();
+  }
+
+  if (!value) return null;
+
+  // Remove histórico citado para não alimentar o agente com o próprio texto
+  // antigo nem com headers de reply. Preserva apenas a resposta nova do lead.
+  const quotedMarkers = [
+    /^On .+wrote:\s*$/im,
+    /^Em .+escreveu:\s*$/im,
+    /^De:\s.+$/im,
+    /^From:\s.+$/im,
+    /^-----Original Message-----$/im,
+  ];
+  let cutAt = value.length;
+  for (const marker of quotedMarkers) {
+    const match = marker.exec(value);
+    if (match?.index !== undefined) cutAt = Math.min(cutAt, match.index);
+  }
+
+  value = value
+    .slice(0, cutAt)
+    .split("\n")
+    .filter((line) => !line.trim().startsWith(">"))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 5000);
+
+  return value || null;
+}
+
+export function isProspectorOptOut(value: string): boolean {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return [
+    "nao tenho interesse",
+    "nao me contate",
+    "nao entrar em contato",
+    "pare de enviar",
+    "remova meu contato",
+    "remover meu contato",
+    "descadastrar",
+    "cancelar contato",
+    "stop",
+    "unsubscribe",
+  ].some((phrase) => normalized === phrase || normalized.includes(phrase));
 }
 
 export function buildProspectorEmailSubject(companyName?: string | null): string {
