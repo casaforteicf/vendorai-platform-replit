@@ -3,7 +3,8 @@
 
 ALTER TABLE ad_creatives
   ADD COLUMN IF NOT EXISTS external_creative_id text,
-  ADD COLUMN IF NOT EXISTS external_ad_id text;
+  ADD COLUMN IF NOT EXISTS external_ad_id text,
+  ADD COLUMN IF NOT EXISTS external_status text CHECK (external_status IS NULL OR external_status IN ('paused','active'));
 
 ALTER TABLE ad_performance_snapshots
   ADD COLUMN IF NOT EXISTS creative_id text REFERENCES ad_creatives(id) ON DELETE CASCADE;
