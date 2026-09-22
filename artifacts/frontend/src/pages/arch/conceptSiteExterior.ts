@@ -83,19 +83,23 @@ export function applySiteExteriorToFacade(
 ): FacadeDesignState {
   const kept = design.volumes.filter((volume) => !volume.label.startsWith("Implantação ·"));
   const garageCenter = plan.garagePercent ?? 50;
-  const gateWidth = 30;
-  const gateX = Math.max(2, Math.min(100 - gateWidth - 2, garageCenter - gateWidth / 2));
-  const planterX = garageCenter < 50 ? 68 : 8;
+  const gateWidth = 26;
+  const gateX = Math.max(4, Math.min(100 - gateWidth - 4, garageCenter - gateWidth / 2));
+  const gateRight = gateX + gateWidth;
+  const leftWallWidth = Math.max(0, gateX - 5);
+  const rightWallWidth = Math.max(0, 95 - gateRight);
+  const planterX = garageCenter < 50 ? Math.min(72, gateRight + 8) : 8;
 
   const generated: FacadeVolume[] = [
-    autoVolume("site-auto-wall", "wall", "Implantação · Muro frontal", 4, 69, 92, 22, "stone-graphite", 0.25),
-    autoVolume("site-auto-gate", "gate", "Implantação · Portão garagem", gateX, 56, gateWidth, 34, "metal-black", 0.18),
-    autoVolume("site-auto-planter", "planter", "Implantação · Jardim frontal", planterX, 76, 22, 11, "concrete-light", 0.5),
+    ...(leftWallWidth > 8
+      ? [autoVolume("site-auto-wall-left", "wall", "Implantação · Muro frontal esquerdo", 4, 77, leftWallWidth, 13, "stone-graphite", 0.2)]
+      : []),
+    autoVolume("site-auto-gate", "gate", "Implantação · Portão garagem", gateX, 62, gateWidth, 28, "metal-black", 0.16),
+    ...(rightWallWidth > 8
+      ? [autoVolume("site-auto-wall-right", "wall", "Implantação · Muro frontal direito", gateRight + 1, 77, rightWallWidth, 13, "stone-graphite", 0.2)]
+      : []),
+    autoVolume("site-auto-planter", "planter", "Implantação · Jardim frontal", planterX, 78, 18, 9, "concrete-light", 0.4),
   ];
-
-  if (plan.hasGourmet) {
-    generated.push(autoVolume("site-auto-pergola", "pergola", "Implantação · Pergolado lazer", garageCenter < 50 ? 58 : 8, 42, 28, 16, "wood-dark", 1.4));
-  }
 
   return {
     ...design,
