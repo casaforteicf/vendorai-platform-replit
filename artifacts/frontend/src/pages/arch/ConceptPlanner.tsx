@@ -163,6 +163,12 @@ type PolyHavenModel = {
   license: "CC0";
 };
 
+type AutoModelPreview = {
+  slug: string;
+  name: string;
+  thumbnailUrl?: string | null;
+};
+
 
 function getCatalogModel3dUrl(item: RealCatalogProduct) {
   const specs = item.especificacoes;
@@ -759,6 +765,7 @@ export default function ConceptPlanner() {
   const [polyHavenModels, setPolyHavenModels] = useState<PolyHavenModel[]>([]);
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
   const [polyHavenInsertSlug, setPolyHavenInsertSlug] = useState<string | null>(null);
+  const [autoModelPreviews, setAutoModelPreviews] = useState<Record<string, AutoModelPreview>>({});
   const [editorLibraryTab, setEditorLibraryTab] = useState<"site" | "models" | "build" | "rooms" | "furniture" | "materials" | "outdoor">("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
@@ -917,6 +924,58 @@ export default function ConceptPlanner() {
       return recentItemIds.indexOf(realLibraryItemKey(a.id)) - recentItemIds.indexOf(realLibraryItemKey(b.id));
     }).slice(0, 24);
   }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, realCatalogProducts, recentItemIds]);
+
+  useEffect(() => {
+    if (editorLibraryTab !== "furniture") return;
+
+    const queries = [...new Set(
+      visibleRealCatalogProducts
+        .filter((item) =>
+          !item.imagens?.[0]
+          && !getCatalogModel3dUrl(item)
+          && !getCatalogPolyHavenSlug(item)
+          && getCatalogPolyHavenQuery(item)
+        )
+        .map((item) => getCatalogPolyHavenQuery(item)!)
+    )]
+      .filter((query) => !autoModelPreviews[query])
+      .slice(0, 8);
+
+    if (!queries.length) return;
+
+    let cancelled = false;
+    void Promise.all(
+      queries.map(async (query) => {
+        try {
+          const response = await fetch(`/api/arch/polyhaven/search?q=${encodeURIComponent(query)}&limit=1`);
+          if (!response.ok) return [query, null] as const;
+          const payload = await response.json();
+          const first = Array.isArray(payload?.items) ? payload.items[0] : null;
+          if (!first || typeof first.slug !== "string") return [query, null] as const;
+          return [query, {
+            slug: first.slug,
+            name: typeof first.name === "string" ? first.name : query,
+            thumbnailUrl: typeof first.thumbnailUrl === "string" ? first.thumbnailUrl : null,
+          } satisfies AutoModelPreview] as const;
+        } catch {
+          return [query, null] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setAutoModelPreviews((current) => {
+        const next = { ...current };
+        for (const [query, preview] of entries) {
+          if (preview) next[query] = preview;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [autoModelPreviews, editorLibraryTab, visibleRealCatalogProducts]);
 
   const catalogMaterialOptions = useMemo(
     () => realCatalogProducts
@@ -4800,7 +4859,9 @@ export default function ConceptPlanner() {
                           <div className="grid grid-cols-2 gap-3">
                             {visibleRealCatalogProducts.map((item) => {
                               const preset = inferCatalogFurniturePreset(item);
-                              const imageUrl = item.imagens?.[0];
+                              const polyHavenQuery = getCatalogPolyHavenQuery(item);
+                              const autoPreview = polyHavenQuery ? autoModelPreviews[polyHavenQuery] : undefined;
+                              const imageUrl = item.imagens?.[0] ?? autoPreview?.thumbnailUrl ?? undefined;
                               if (!preset) return null;
                               const price = Number(item.precoBase ?? 0);
                               const starter = typeof item.especificacoes?.source === "string" && item.especificacoes.source.startsWith("arqdor-");
@@ -4833,6 +4894,7 @@ export default function ConceptPlanner() {
                                     let resolvedSupplier = item.fornecedor ?? undefined;
                                     const polyHavenSlug = getCatalogPolyHavenSlug(item);
                                     const polyHavenQuery = getCatalogPolyHavenQuery(item);
+                                    const autoPreview = polyHavenQuery ? autoModelPreviews[polyHavenQuery] : undefined;
                                     if (!model3dUrl && polyHavenSlug) {
                                       try {
                                         const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(polyHavenSlug)}`);
@@ -4846,6 +4908,18 @@ export default function ConceptPlanner() {
                                       } catch {
                                         // Se a resolução remota falhar, o objeto ainda entra com fallback paramétrico.
                                       }
+                                    }
+                                    if (!model3dUrl && polyHavenQuery && autoPreview?.slug) {
+                                      try {
+                                        const response = await fetch(`/api/arch/polyhaven/assets/${encodeURIComponent(autoPreview.slug)}`);
+                                        if (response.ok) {
+                                          const asset = await response.json();
+                                          if (typeof asset?.model3dUrl === "string") {
+                                            model3dUrl = asset.model3dUrl;
+                                            resolvedSupplier = "Poly Haven";
+                                          }
+                                        }
+                                      } catch {}
                                     }
                                     if (!model3dUrl && polyHavenQuery) {
                                       const autoModel = await resolveCatalogAutoModel(polyHavenQuery);
@@ -4911,7 +4985,7 @@ export default function ConceptPlanner() {
                                   <div className="p-3">
                                     <div className="line-clamp-2 text-xs font-semibold text-slate-900">{item.nome}</div>
                                     <div className="mt-1 text-[10px] text-slate-500">
-                                      {[item.categoria, item.fornecedor].filter(Boolean).join(" · ") || "Catálogo"}
+                                      {[item.categoria, item.fornecedor ?? (autoPreview ? "Poly Haven" : null)].filter(Boolean).join(" · ") || "Catálogo"}
                                     </div>
                                     {price > 0 && (
                                       <div className="mt-2 text-xs font-bold text-slate-900">
