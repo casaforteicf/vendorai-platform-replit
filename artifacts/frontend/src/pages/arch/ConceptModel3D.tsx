@@ -597,7 +597,7 @@ export default function ConceptModel3D({
   const [renderQuality, setRenderQuality] = useState<"fast" | "realistic" | "ultra">("realistic");
   const [webglReady, setWebglReady] = useState(false);
   const [transformMode, setTransformMode] = useState<"translate" | "rotate">("translate");
-  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin" | "tour">("orbit");
+  const [navigationMode, setNavigationMode] = useState<"orbit" | "walk" | "spin" | "tour" | "panorama">("orbit");
   const [tourIndex, setTourIndex] = useState(0);
   const [tourToken, setTourToken] = useState(0);
   const [walkControl, setWalkControl] = useState({ forward: 0, strafe: 0 });
@@ -1231,6 +1231,21 @@ export default function ConceptModel3D({
                 title="Giro automático de inspeção ao redor do projeto"
               >
                 Giro 360°
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNavigationMode("panorama");
+                  setInteriorMode(true);
+                  setShowAllFloors(false);
+                  setShowRoof(false);
+                }}
+                className={navigationMode === "panorama"
+                  ? "border-l border-violet-700 bg-violet-700 px-3 py-2 text-[11px] font-semibold text-white"
+                  : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-violet-700 hover:bg-violet-50"}
+                title="Capturar panorama 360° real da posição atual da câmera"
+              >
+                Panorama 360°
               </button>
               <button
                 type="button"
