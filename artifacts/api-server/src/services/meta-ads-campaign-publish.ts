@@ -182,9 +182,19 @@ function metaDemographicTargeting(campanha: AdCampaign) {
 // não vale a pena acoplar os dois só por isso.
 async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<string> {
   if (campanha.destinoClique === "formulario_lead") {
-    throw new MetaAdsPublishError(
-      "Destino \"Formulário de lead nativo\" ainda não implementado — publique com destino Landing Page ou WhatsApp por enquanto.",
-    );
+    const [tenant] = await db
+      .select({ slug: tenantsTable.slug })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+    if (!tenant?.slug) {
+      throw new MetaAdsPublishError("Tenant sem slug público — necessário para o formulário de campanha.");
+    }
+    const templateId = campanha.segmentacao?.campaignControl?.leadFormTemplateId ?? "contato_rapido";
+    const url = new URL(`https://appvendorai.com/api/public/${tenant.slug}/forms/${templateId}`);
+    if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+    url.searchParams.set("utm_source", campanha.plataforma);
+    url.searchParams.set("utm_medium", "paid");
+    return url.toString();
   }
 
   if (campanha.destinoClique === "whatsapp") {
