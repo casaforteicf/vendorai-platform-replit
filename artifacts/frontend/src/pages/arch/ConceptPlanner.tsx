@@ -184,6 +184,41 @@ function getCatalogPolyHavenSlug(item: RealCatalogProduct) {
   return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value) ? value : undefined;
 }
 
+type ConceptMaterialOption = {
+  id: string;
+  name: string;
+  category: string;
+  swatch: string;
+  source?: string;
+  catalogProductId?: string;
+};
+
+function getCatalogMaterialOption(item: RealCatalogProduct): ConceptMaterialOption | null {
+  const specs = item.especificacoes;
+  if (!specs || typeof specs !== "object" || specs.assetType !== "material") return null;
+  const pbrKey = typeof specs.pbrKey === "string" ? specs.pbrKey.trim() : "";
+  const swatch = typeof specs.swatch === "string" ? specs.swatch : "";
+  if (!pbrKey || !/^#[0-9a-f]{6}$/i.test(swatch)) return null;
+  return {
+    id: pbrKey,
+    name: item.nome,
+    category: item.subcategoria ?? item.categoria ?? "Materiais",
+    swatch,
+    source: typeof specs.source === "string" ? specs.source : item.fornecedor ?? undefined,
+    catalogProductId: item.id,
+  };
+}
+
+function mergeMaterialOptions(
+  fallback: readonly ConceptMaterialOption[],
+  catalog: ConceptMaterialOption[],
+) {
+  const merged = new Map<string, ConceptMaterialOption>();
+  for (const material of fallback) merged.set(material.id, material);
+  for (const material of catalog) merged.set(material.id, material);
+  return [...merged.values()];
+}
+
 function catalogDimensions(item: RealCatalogProduct) {
   const specs = item.especificacoes;
   const dims = specs && typeof specs === "object" ? specs.dimensionsM : null;
@@ -796,7 +831,7 @@ export default function ConceptPlanner() {
   }, [editorLibraryTab, furnitureCategory, furnitureSearch]);
 
   useEffect(() => {
-    if (editorLibraryTab !== "furniture" || realCatalogProducts.length || realCatalogLoading) return;
+    if (!["furniture", "materials"].includes(editorLibraryTab) || realCatalogProducts.length || realCatalogLoading) return;
     let cancelled = false;
     setRealCatalogLoading(true);
     fetch("/api/arch/catalogo?limit=240")
@@ -805,7 +840,7 @@ export default function ConceptPlanner() {
         if (cancelled) return;
         const products = Array.isArray(rows)
           ? rows.filter((item): item is RealCatalogProduct =>
-              Boolean(item && typeof item === "object" && typeof item.nome === "string" && inferCatalogFurniturePreset(item))
+              Boolean(item && typeof item === "object" && typeof item.nome === "string")
             )
           : [];
         setRealCatalogProducts(products);
@@ -835,6 +870,7 @@ export default function ConceptPlanner() {
       Exterior: /extern|outdoor|jardim|garden|espreguiçadeira|paisag|varanda|deck/,
     };
     return realCatalogProducts.filter((item) => {
+      if (!inferCatalogFurniturePreset(item)) return false;
       const text = `${item.nome} ${item.categoria ?? ""} ${item.subcategoria ?? ""} ${item.fornecedor ?? ""}`
         .toLocaleLowerCase("pt-BR");
       const queryMatch = !query || text.includes(query);
@@ -849,6 +885,34 @@ export default function ConceptPlanner() {
       return recentItemIds.indexOf(realLibraryItemKey(a.id)) - recentItemIds.indexOf(realLibraryItemKey(b.id));
     }).slice(0, 24);
   }, [favoriteItemIds, furnitureCategory, furnitureSearch, libraryMode, realCatalogProducts, recentItemIds]);
+
+  const catalogMaterialOptions = useMemo(
+    () => realCatalogProducts
+      .map(getCatalogMaterialOption)
+      .filter((item): item is ConceptMaterialOption => Boolean(item)),
+    [realCatalogProducts],
+  );
+
+  const objectMaterialOptions = useMemo(() => {
+    const compatible = catalogMaterialOptions.filter((material) =>
+      /madeira|mdf|metal|aço|aco|vidro|tecido|linho|boucl|couro|marcenaria/i.test(material.category + " " + material.name)
+    );
+    return mergeMaterialOptions(CONCEPT_OBJECT_MATERIALS, compatible);
+  }, [catalogMaterialOptions]);
+
+  const wallMaterialOptions = useMemo(() => {
+    const compatible = catalogMaterialOptions.filter((material) =>
+      /pintura|tinta|madeira|ripad|pedra|cimento|ciment|revestimento|mármore|marmore|granito/i.test(material.category + " " + material.name)
+    );
+    return mergeMaterialOptions(CONCEPT_WALL_MATERIALS, compatible);
+  }, [catalogMaterialOptions]);
+
+  const floorMaterialOptions = useMemo(() => {
+    const compatible = catalogMaterialOptions.filter((material) =>
+      /piso|porcelanato|cerâmica|ceramica|vinílico|vinilico|laminado|madeira|pedra|granito|mármore|marmore|cimento|deck|drenante/i.test(material.category + " " + material.name)
+    );
+    return mergeMaterialOptions(CONCEPT_FLOOR_MATERIALS, compatible);
+  }, [catalogMaterialOptions]);
 
   useEffect(() => {
     roomsRef.current = Array.isArray(rooms) ? rooms : [];
@@ -4959,7 +5023,7 @@ export default function ConceptPlanner() {
                         <>
                           <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento do móvel</div>
                           <div className="grid grid-cols-2 gap-3">
-                            {CONCEPT_OBJECT_MATERIALS.map((material) => (
+                            {objectMaterialOptions.map((material) => (
                               <button
                                 key={material.id}
                                 type="button"
@@ -4984,7 +5048,7 @@ export default function ConceptPlanner() {
                         <>
                           <div className="mb-3 text-xs font-semibold text-slate-600">Acabamento da parede</div>
                           <div className="grid grid-cols-2 gap-3">
-                            {CONCEPT_WALL_MATERIALS.map((material) => {
+                            {wallMaterialOptions.map((material) => {
                               const wallId = selectedCustomWall?.id ?? selectedWall?.id ?? "";
                               const currentMaterial = wallMaterials[wallId];
                               return (
@@ -5020,7 +5084,7 @@ export default function ConceptPlanner() {
                         <>
                           <div className="mb-3 text-xs font-semibold text-slate-600">Piso do ambiente</div>
                           <div className="grid grid-cols-2 gap-3">
-                            {CONCEPT_FLOOR_MATERIALS.map((material) => {
+                            {floorMaterialOptions.map((material) => {
                               const currentMaterial = selected?.floorMaterialId ?? selectedSpaceProfile?.floorMaterialId;
                               return (
                                 <button
@@ -5824,7 +5888,7 @@ export default function ConceptPlanner() {
                         className="mt-1 h-9 w-full rounded-lg border bg-white px-2 text-xs"
                       >
                         <option value="">Automático</option>
-                        {CONCEPT_OBJECT_MATERIALS.map((material) => (
+                        {objectMaterialOptions.map((material) => (
                           <option key={material.id} value={material.id}>{material.name}</option>
                         ))}
                       </select>
