@@ -479,10 +479,13 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     optimization_goal: campaignControl.objective === "awareness"
       ? "REACH"
       : origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
-    ...(campaignControl.startDate > new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
-      ? { start_time: new Date(`${campaignControl.startDate}T00:00:00-03:00`).toISOString() }
-      : {}),
-    end_time: new Date(`${campaignControl.endDate}T23:59:59-03:00`).toISOString(),
+    ...(() => {
+      const timeZone = campaignControl.timezone ?? "America/Sao_Paulo";
+      const offset = timeZone === "America/Sao_Paulo" ? "-03:00" : "-03:00";
+      const startIso = new Date(`${campaignControl.startDate}T${campaignControl.startTime ?? "00:00"}:00${offset}`).toISOString();
+      return new Date(startIso).getTime() > Date.now() + 60_000 ? { start_time: startIso } : {};
+    })(),
+    end_time: new Date(`${campaignControl.endDate}T${campaignControl.endTime ?? "23:59"}:59-03:00`).toISOString(),
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
     targeting: JSON.stringify({
